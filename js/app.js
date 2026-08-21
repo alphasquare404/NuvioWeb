@@ -427,6 +427,9 @@ async function bootstrapApp() {
   appShellRendered = true;
   markBootStage("Initializing TV platform");
   Platform.init();
+  const isDesktopBrowser = Platform.isBrowser();
+  document.documentElement.classList.toggle("desktop-browser", isDesktopBrowser);
+  document.body.classList.toggle("desktop-browser", isDesktopBrowser);
   applyPerformanceMode();
   markBootStage("Loading language resources");
   await I18n.init();

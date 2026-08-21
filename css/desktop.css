@@ -1,0 +1,244 @@
+/*
+ * Browser-only application shell.
+ *
+ * The TV layouts remain in the existing stylesheets. Every rule here requires
+ * the desktop-browser class, which js/app.js adds only for Platform.isBrowser().
+ */
+
+html.desktop-browser,
+body.desktop-browser {
+  min-height: 100%;
+  overflow: auto;
+  font-size: 16px;
+}
+
+html.desktop-browser {
+  scroll-behavior: smooth;
+}
+
+.desktop-browser #app {
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+
+.desktop-browser .screen:not(#player) {
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+}
+
+/* Screens that already render the shared sidebar use a normal desktop grid. */
+.desktop-browser .home-shell,
+.desktop-browser .search-screen-shell,
+.desktop-browser .discover-shell,
+.desktop-browser .settings-shell,
+.desktop-browser .home-shell.library-shell {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+
+/* Keep the existing sidebar markup and click handlers, but make it persistent. */
+.desktop-browser .home-sidebar,
+.desktop-browser .home-sidebar[data-collapsible="true"]:not(.expanded) {
+  position: sticky;
+  top: 0;
+  grid-column: 1;
+  width: 248px;
+  height: 100vh;
+  padding: 24px 16px;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+}
+
+.desktop-browser .home-shell::before {
+  display: none;
+}
+
+.desktop-browser .home-profile-pill {
+  width: 100%;
+  height: 56px;
+  margin: 0 0 24px;
+  padding: 0 12px;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+}
+
+.desktop-browser .home-profile-avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 15px;
+}
+
+.desktop-browser .home-profile-name,
+.desktop-browser .home-nav-label {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.desktop-browser .home-nav-list {
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.desktop-browser .home-nav-item,
+.desktop-browser .home-sidebar.content-expanded .home-nav-item {
+  width: 100%;
+  height: 48px;
+  padding: 0 12px;
+  justify-content: flex-start;
+  gap: 12px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 20px;
+  transform: none;
+}
+
+.desktop-browser .home-sidebar.content-expanded .home-nav-label,
+.desktop-browser .home-nav-label {
+  width: auto;
+  opacity: 1;
+  transform: none;
+  text-overflow: ellipsis;
+}
+
+.desktop-browser .home-nav-icon-wrap,
+.desktop-browser .home-nav-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.desktop-browser .home-nav-icon.root-sidebar-icon-material {
+  width: 22px;
+  height: 22px;
+  font-size: 22px;
+}
+
+.desktop-browser .home-nav-item.selected,
+.desktop-browser .home-sidebar.content-expanded .home-nav-item.selected {
+  background: color-mix(in srgb, var(--secondary-color) 14%, transparent);
+  color: var(--secondary-color);
+}
+
+.desktop-browser .home-main,
+.desktop-browser .home-shell.has-collapsible-sidebar .home-main,
+.desktop-browser .home-shell.has-modern-sidebar .home-main {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  height: auto;
+  margin-left: 0;
+  padding: 32px clamp(24px, 4vw, 64px) 56px;
+  overflow: visible;
+}
+
+.desktop-browser .home-route-content,
+.desktop-browser .search-content > *,
+.desktop-browser .library-main > *,
+.desktop-browser .settings-workspace,
+.desktop-browser .discover-content {
+  max-width: 1440px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Home already receives its desktop inset from .home-main. Remove the TV-only
+   inner inset so hero text and the first card in every row share that edge. */
+.desktop-browser .home-screen-shell {
+  --home-content-start: 0px;
+}
+
+.desktop-browser .search-content,
+.desktop-browser .library-main {
+  padding-top: 32px;
+}
+
+.desktop-browser .focusable:focus-visible {
+  outline: 2px solid var(--focus-color) !important;
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .home-nav-item:hover,
+  .desktop-browser .home-profile-pill:hover {
+    background: var(--focus-bg);
+    color: var(--text-color);
+  }
+}
+
+@media (max-width: 1100px) {
+  .desktop-browser .home-shell,
+  .desktop-browser .search-screen-shell,
+  .desktop-browser .discover-shell,
+  .desktop-browser .settings-shell,
+  .desktop-browser .home-shell.library-shell {
+    grid-template-columns: 208px minmax(0, 1fr);
+  }
+
+  .desktop-browser .home-sidebar,
+  .desktop-browser .home-sidebar[data-collapsible="true"]:not(.expanded) {
+    width: 208px;
+  }
+}
+
+@media (max-width: 760px) {
+  .desktop-browser .home-shell,
+  .desktop-browser .search-screen-shell,
+  .desktop-browser .discover-shell,
+  .desktop-browser .settings-shell,
+  .desktop-browser .home-shell.library-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .desktop-browser .home-sidebar,
+  .desktop-browser .home-sidebar[data-collapsible="true"]:not(.expanded) {
+    position: sticky;
+    top: 0;
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 8px 16px;
+    z-index: 10;
+  }
+
+  .desktop-browser .home-profile-pill {
+    display: none;
+  }
+
+  .desktop-browser .home-nav-list {
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+  }
+
+  .desktop-browser .home-nav-item,
+  .desktop-browser .home-sidebar.content-expanded .home-nav-item {
+    width: auto;
+    min-width: max-content;
+    height: 40px;
+    padding: 0 10px;
+  }
+
+  .desktop-browser .home-main,
+  .desktop-browser .home-shell.has-collapsible-sidebar .home-main,
+  .desktop-browser .home-shell.has-modern-sidebar .home-main {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+    padding: 24px 16px 40px;
+  }
+}
