@@ -57,6 +57,10 @@ import {
   setModernSidebarPillIconOnly,
   setLegacySidebarExpanded
 } from "../../components/sidebarNavigation.js";
+import {
+  bindDesktopNavigationEvents,
+  renderDesktopNavigation
+} from "../../components/desktopNavigation.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import {
@@ -9123,15 +9127,19 @@ export const HomeScreen = {
       this.sidebarExpanded && retainedFocusState?.focusKind === "sidebar"
     );
 
-    const nextMarkup = `
-      <div class="home-shell home-screen-shell ${layoutClass}"${sizingStyle ? ` style="${escapeAttribute(sizingStyle)}"` : ""}>
-        ${renderRootSidebar({
+    const useDesktopNavigation = Platform.isBrowser();
+    const rootNavigation = useDesktopNavigation
+      ? renderDesktopNavigation({ selectedRoute: "home", profile: this.sidebarProfile })
+      : renderRootSidebar({
           selectedRoute: "home",
           profile: this.sidebarProfile,
           layout: this.layoutPrefs,
           expanded: Boolean(this.sidebarExpanded),
           pillIconOnly: Boolean(this.pillIconOnly)
-        })}
+        });
+    const nextMarkup = `
+      <div class="home-shell home-screen-shell ${layoutClass}${useDesktopNavigation ? " desktop-navigation-enabled" : ""}"${sizingStyle ? ` style="${escapeAttribute(sizingStyle)}"` : ""}>
+        ${rootNavigation}
 
         <main class="home-main home-screen-main">
           <div class="home-route-content${routeEnterClass}">
@@ -9170,12 +9178,16 @@ export const HomeScreen = {
         )
       );
     }
-    bindRootSidebarEvents(this.container, {
-      currentRoute: "home",
-      onSelectedAction: () => this.closeSidebarToContent(),
-      onExpandSidebar: () => this.openSidebar()
-    });
-    this.scheduleModernSidebarPillAutoCollapse();
+    if (useDesktopNavigation) {
+      bindDesktopNavigationEvents(this.container);
+    } else {
+      bindRootSidebarEvents(this.container, {
+        currentRoute: "home",
+        onSelectedAction: () => this.closeSidebarToContent(),
+        onExpandSidebar: () => this.openSidebar()
+      });
+      this.scheduleModernSidebarPillAutoCollapse();
+    }
 
     this.buildNavigationModel();
     this.bindHomeViewportEvents();
@@ -10395,6 +10407,9 @@ export const HomeScreen = {
   },
 
   onKeyDown(event) {
+    if (Platform.isBrowser() && event?.target?.closest?.(".desktop-navigation")) {
+      return;
+    }
     const currentFocusedNode =
       this.getCurrentFocusedNode() || this.container?.querySelector(".focusable") || null;
     const code = Number(event?.keyCode || 0);
