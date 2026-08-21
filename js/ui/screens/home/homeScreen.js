@@ -9180,6 +9180,7 @@ export const HomeScreen = {
     }
     if (useDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
+      this.bindDesktopHeroDetailsButton();
     } else {
       bindRootSidebarEvents(this.container, {
         currentRoute: "home",
@@ -10369,6 +10370,32 @@ export const HomeScreen = {
     });
   },
 
+  bindDesktopHeroDetailsButton() {
+    if (!Platform.isBrowser()) {
+      return;
+    }
+    const heroCard = this.container?.querySelector(".home-hero-card");
+    const heroCopy = heroCard?.querySelector(".home-hero-copy");
+    if (!heroCard || !heroCopy) {
+      return;
+    }
+
+    let button = heroCopy.querySelector(".desktop-hero-details-button");
+    if (!button) {
+      button = document.createElement("button");
+      button.className = "desktop-hero-details-button";
+      button.type = "button";
+      button.textContent = t("home_view_details", {}, "View Details");
+      heroCopy.append(button);
+    }
+
+    button.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.openDetailFromNode(heroCard);
+    };
+  },
+
   openCollectionFolderFromNode(node) {
     const target = this.resolveCollectionFolderTargetFromNode(node);
     const collectionId = String(target?.collectionId || "").trim();
@@ -10407,7 +10434,10 @@ export const HomeScreen = {
   },
 
   onKeyDown(event) {
-    if (Platform.isBrowser() && event?.target?.closest?.(".desktop-navigation")) {
+    if (
+      Platform.isBrowser() &&
+      event?.target?.closest?.(".desktop-navigation, .desktop-hero-details-button")
+    ) {
       return;
     }
     const currentFocusedNode =

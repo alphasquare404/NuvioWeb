@@ -176,6 +176,164 @@ html.desktop-browser {
   padding: 0;
 }
 
+/* The browser hero is a full-bleed, cinematic section while rows retain their
+   existing rendering and card dimensions below it. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card {
+  min-height: clamp(520px, 70vh, 780px);
+  height: clamp(520px, 70vh, 780px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-backdrop {
+  object-position: center center;
+  opacity: 1;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::before {
+  background: linear-gradient(
+    90deg,
+    rgba(5, 5, 6, 0.96) 0%,
+    rgba(5, 5, 6, 0.88) 26%,
+    rgba(5, 5, 6, 0.55) 48%,
+    rgba(5, 5, 6, 0.16) 72%,
+    rgba(5, 5, 6, 0) 100%
+  );
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::after {
+  background: linear-gradient(
+    180deg,
+    rgba(5, 5, 6, 0.02) 0%,
+    rgba(5, 5, 6, 0.08) 48%,
+    rgba(5, 5, 6, 0.92) 100%
+  );
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy {
+  width: min(52%, 720px);
+  min-height: 0;
+  padding: 0 0 clamp(40px, 6vh, 72px) clamp(48px, 8vw, 144px);
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-logo {
+  max-height: 120px;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-title-text {
+  font-size: clamp(38px, 4vw, 64px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary {
+  gap: 8px;
+  font-size: 14px;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description {
+  max-width: 580px;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.desktop-browser .desktop-hero-details-button {
+  min-height: 42px;
+  margin-top: 8px;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #151515;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.desktop-browser .desktop-hero-details-button:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .desktop-hero-details-button:hover {
+    background: #fff;
+    transform: translateY(-1px);
+  }
+}
+
+/* Modern Home uses a TV-style absolute row viewport. In browser mode, make
+   that viewport follow the hero in normal document flow without changing its
+   cards or its own scrolling behavior. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-stage {
+  position: relative;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+  position: relative;
+  inset: auto;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media {
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::before {
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(5, 5, 6, 0.96) 0%,
+    rgba(5, 5, 6, 0.88) 26%,
+    rgba(5, 5, 6, 0.55) 48%,
+    rgba(5, 5, 6, 0.16) 72%,
+    rgba(5, 5, 6, 0) 100%
+  );
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::after {
+  background: linear-gradient(
+    180deg,
+    rgba(5, 5, 6, 0.02) 0%,
+    rgba(5, 5, 6, 0.08) 48%,
+    rgba(5, 5, 6, 0.92) 100%
+  );
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+  top: 0;
+  right: auto;
+  bottom: 0;
+  left: 0;
+  width: min(52%, 720px);
+  max-width: min(52%, 720px);
+  padding: 0 0 clamp(40px, 6vh, 72px) clamp(48px, 8vw, 144px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-rows-viewport {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  height: clamp(360px, 52vh, 620px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-rows-scroll {
+  padding-bottom: 48px;
+}
+
 .desktop-browser .desktop-navigation {
   position: fixed;
   top: 20px;
@@ -284,6 +442,22 @@ html.desktop-browser {
 
   .desktop-browser .desktop-navigation-item {
     padding: 0 10px;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card {
+    min-height: min(70vh, 620px);
+    height: min(70vh, 620px);
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+    width: min(100% - 32px, 560px);
+    max-width: min(100% - 32px, 560px);
+    padding: 0 0 28px 16px;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description {
+    font-size: 14px;
   }
 }
 
