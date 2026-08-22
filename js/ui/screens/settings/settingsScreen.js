@@ -2565,6 +2565,7 @@ export const SettingsScreen = {
     title,
     value = "",
     multiline = false,
+    sensitive = false,
     placeholder = "",
     returnFocusKey,
     saveLabel = t("common.save", {}, "Save"),
@@ -2579,6 +2580,8 @@ export const SettingsScreen = {
       value: String(value ?? ""),
       draft: String(value ?? ""),
       multiline: Boolean(multiline),
+      sensitive: Boolean(sensitive),
+      sensitiveVisible: false,
       placeholder,
       returnFocusKey,
       saveLabel,
@@ -2684,6 +2687,16 @@ export const SettingsScreen = {
     if (!this.textDialog) {
       return "";
     }
+    const isSensitive = Boolean(this.textDialog.sensitive);
+    const isSensitiveVisible = Boolean(this.textDialog.sensitiveVisible);
+    const clearButtonIndex = isSensitive ? 3 : 2;
+    const cancelButtonIndex = isSensitive
+      ? typeof this.textDialog.onClear === "function"
+        ? 4
+        : 3
+      : typeof this.textDialog.onClear === "function"
+        ? 3
+        : 2;
     const field = this.textDialog.multiline
       ? `<textarea class="settings-text-dialog-field settings-text-dialog-textarea focusable"
                    data-zone="dialog"
@@ -2692,7 +2705,7 @@ export const SettingsScreen = {
       : `<input class="settings-text-dialog-field settings-text-dialog-input focusable"
                 data-zone="dialog"
                 data-text-dialog-role="field"
-                type="text"
+                type="${isSensitive && !isSensitiveVisible ? "password" : "text"}"
                 autocomplete="off"
                 autocapitalize="none"
                 spellcheck="false"
@@ -2716,11 +2729,21 @@ export const SettingsScreen = {
               <span class="settings-dialog-option-label">${escapeHtml(this.textDialog.saveLabel || t("common.save", {}, "Save"))}</span>
             </button>
             ${
+              isSensitive
+                ? `<button class="settings-dialog-option settings-text-dialog-button settings-content-focusable focusable"
+                    data-zone="dialog"
+                    data-text-dialog-action="toggleSensitive"
+                    data-dialog-index="2">
+              <span class="settings-dialog-option-label">${isSensitiveVisible ? t("common.hide", {}, "Hide") : t("common.show", {}, "Show")}</span>
+            </button>`
+                : ""
+            }
+            ${
               typeof this.textDialog.onClear === "function"
                 ? `<button class="settings-dialog-option settings-text-dialog-button settings-content-focusable focusable"
                     data-zone="dialog"
                     data-text-dialog-action="clear"
-                    data-dialog-index="2">
+                    data-dialog-index="${clearButtonIndex}">
               <span class="settings-dialog-option-label">${escapeHtml(this.textDialog.clearLabel || t("common.clear", {}, "Clear"))}</span>
             </button>`
                 : ""
@@ -2728,7 +2751,7 @@ export const SettingsScreen = {
             <button class="settings-dialog-option settings-text-dialog-button settings-content-focusable focusable"
                     data-zone="dialog"
                     data-text-dialog-action="cancel"
-                    data-dialog-index="${typeof this.textDialog.onClear === "function" ? 3 : 2}">
+                    data-dialog-index="${cancelButtonIndex}">
               <span class="settings-dialog-option-label">${escapeHtml(this.textDialog.cancelLabel || t("common.cancel", {}, "Cancel"))}</span>
             </button>
           </div>
@@ -2787,7 +2810,13 @@ export const SettingsScreen = {
   },
 
   getTextDialogMaxFocusIndex() {
-    return this.textDialog && typeof this.textDialog.onClear === "function" ? 3 : 2;
+    if (!this.textDialog) {
+      return 0;
+    }
+    if (this.textDialog.sensitive) {
+      return typeof this.textDialog.onClear === "function" ? 4 : 3;
+    }
+    return typeof this.textDialog.onClear === "function" ? 3 : 2;
   },
 
   stopDebridDeviceAuth({ clearState = true } = {}) {
@@ -4880,6 +4909,32 @@ export const SettingsScreen = {
       this.actionMap.set("integration:tmdb:enabled", () => {
         TmdbSettingsStore.set({ enabled: !TmdbSettingsStore.get().enabled });
       });
+      this.actionMap.set("integration:tmdb:key", () => {
+        this.openTextDialog({
+          title: "TMDB API Key",
+          value: TmdbSettingsStore.get().apiKey || "",
+          sensitive: true,
+          placeholder: "Enter your TMDB API key",
+          returnFocusKey: "integration:tmdb:key",
+          clearLabel: t("common.clear", {}, "Clear"),
+          onClear: () => {
+            TmdbSettingsStore.clearApiKey();
+            return true;
+          },
+          onSubmit: (value) => {
+            const apiKey = String(value || "").trim();
+            if (!apiKey) {
+              if (this.textDialog) {
+                this.textDialog.statusMessage = "Enter a TMDB API key or choose Clear.";
+                this.textDialog.statusKind = "error";
+              }
+              return false;
+            }
+            TmdbSettingsStore.setApiKey(apiKey);
+            return true;
+          }
+        });
+      });
       this.actionMap.set("integration:tmdb:modernHome", () => {
         toggleTmdbSetting("modernHomeEnabled");
       });
@@ -4945,6 +5000,13 @@ export const SettingsScreen = {
               title: t("settings.integration.tmdb.enable.title"),
               subtitle: t("settings.integration.tmdb.enable.subtitle"),
               checked: Boolean(model.tmdb.enabled)
+            })}
+            ${this.renderActionRow({
+              focusKey: "integration:tmdb:key",
+              title: "TMDB API Key",
+              subtitle: "Used for TMDB metadata, cast photos, credits, and metadata fallback.",
+              value: model.tmdb.apiKey ? "Configured" : "Not configured",
+              icon: "vpn_key"
             })}
             ${this.renderToggleRow({
               focusKey: "integration:tmdb:modernHome",
@@ -7609,6 +7671,11 @@ export const SettingsScreen = {
       if (action === "save") {
         await this.submitTextDialog();
         await this.render();
+        return;
+      }
+      if (action === "toggleSensitive") {
+        this.textDialog.sensitiveVisible = !this.textDialog.sensitiveVisible;
+        await this.render({ refreshModel: false });
         return;
       }
       if (action === "clear") {

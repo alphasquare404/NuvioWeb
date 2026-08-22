@@ -1,8 +1,8 @@
 import {
+  getEffectiveTmdbApiKey,
   normalizeTmdbLanguageCode,
   TmdbSettingsStore
 } from "../../data/local/tmdbSettingsStore.js";
-import { TMDB_API_KEY } from "../../config.js";
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_SIZES = {
@@ -222,7 +222,7 @@ function selectAgeRating(data = {}, type = "movie") {
 export const TmdbMetadataService = {
   async fetchEnrichment({ tmdbId, contentType, language = null } = {}) {
     const settings = TmdbSettingsStore.get();
-    const apiKey = String(TMDB_API_KEY || "").trim();
+    const apiKey = getEffectiveTmdbApiKey();
     if (!settings.enabled || !apiKey || !tmdbId) {
       return null;
     }
@@ -301,7 +301,7 @@ export const TmdbMetadataService = {
 
   async fetchSeasonRatings({ tmdbId, seasonNumber, language = null } = {}) {
     const settings = TmdbSettingsStore.get();
-    const apiKey = String(TMDB_API_KEY || "").trim();
+    const apiKey = getEffectiveTmdbApiKey();
     if (!settings.enabled || !apiKey || !tmdbId || !Number.isFinite(Number(seasonNumber))) {
       return [];
     }
@@ -325,7 +325,7 @@ export const TmdbMetadataService = {
 
   async fetchEpisodeEnrichment({ tmdbId, seasonNumbers = [], language = null } = {}) {
     const settings = TmdbSettingsStore.get();
-    const apiKey = String(TMDB_API_KEY || "").trim();
+    const apiKey = getEffectiveTmdbApiKey();
     if (!settings.enabled || !settings.useEpisodes || !apiKey || !tmdbId) {
       return new Map();
     }
@@ -372,7 +372,7 @@ export const TmdbMetadataService = {
 
   async fetchMovieCollection({ collectionId, language = null } = {}) {
     const settings = TmdbSettingsStore.get();
-    const apiKey = String(TMDB_API_KEY || "").trim();
+    const apiKey = getEffectiveTmdbApiKey();
     if (!settings.enabled || !apiKey || !collectionId) {
       return [];
     }
@@ -399,7 +399,7 @@ export const TmdbMetadataService = {
 
   async fetchRecommendations({ tmdbId, contentType, language = null } = {}) {
     const settings = TmdbSettingsStore.get();
-    const apiKey = String(TMDB_API_KEY || "").trim();
+    const apiKey = getEffectiveTmdbApiKey();
     if (!settings.enabled || !settings.useMoreLikeThis || !apiKey || !tmdbId) {
       return [];
     }

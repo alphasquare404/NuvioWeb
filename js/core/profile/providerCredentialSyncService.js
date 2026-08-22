@@ -4,6 +4,7 @@ import { DebridProviders } from "../debrid/debridProviders.js";
 import { DebridSettingsStore } from "../../data/local/debridSettingsStore.js";
 import { MdbListSettingsStore } from "../../data/local/mdbListSettingsStore.js";
 import { AnimeSkipSettingsStore } from "../../data/local/animeSkipSettingsStore.js";
+import { TmdbSettingsStore } from "../../data/local/tmdbSettingsStore.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { ProfileManager } from "./profileManager.js";
 import { getSyncClientId } from "../sync/syncClientIdentity.js";
@@ -19,6 +20,7 @@ const API_KEY_FIELD = "api_key";
 const CLIENT_ID_FIELD = "client_id";
 const MDBLIST_PROVIDER = "mdblist";
 const ANIMESKIP_PROVIDER = "animeskip";
+const TMDB_PROVIDER = "tmdb";
 
 const pushTimers = new Map();
 let syncInFlight = Promise.resolve();
@@ -62,7 +64,7 @@ function isPending(scope) {
 
 export function buildProviderCredentialSnapshot(
   profileId,
-  { debridSettings = {}, mdbListSettings = {}, animeSkipSettings = {} } = {}
+  { debridSettings = {}, mdbListSettings = {}, animeSkipSettings = {}, tmdbSettings = {} } = {}
 ) {
   const resolvedProfileId = resolveProfileId(profileId);
   return {
@@ -82,6 +84,11 @@ export function buildProviderCredentialSnapshot(
         provider: ANIMESKIP_PROVIDER,
         field: CLIENT_ID_FIELD,
         value: String(animeSkipSettings.clientId || "").trim()
+      },
+      {
+        provider: TMDB_PROVIDER,
+        field: API_KEY_FIELD,
+        value: String(tmdbSettings.apiKey || "").trim()
       }
     ]
   };
@@ -92,7 +99,8 @@ function snapshotFromLocal(profileId) {
   return buildProviderCredentialSnapshot(resolvedProfileId, {
     debridSettings: DebridSettingsStore.getForProfile(resolvedProfileId),
     mdbListSettings: MdbListSettingsStore.getForProfile(resolvedProfileId),
-    animeSkipSettings: AnimeSkipSettingsStore.getForProfile(resolvedProfileId)
+    animeSkipSettings: AnimeSkipSettingsStore.getForProfile(resolvedProfileId),
+    tmdbSettings: TmdbSettingsStore.getForProfile(resolvedProfileId)
   });
 }
 
@@ -212,6 +220,11 @@ function applySnapshot(snapshot) {
         { clientId: entry.value },
         { silentSync: true, silentCredentialSync: true }
       );
+    } else if (entry.provider === TMDB_PROVIDER) {
+      TmdbSettingsStore.setApiKeyForProfile(snapshot.profileId, entry.value, {
+        silentSync: true,
+        silentCredentialSync: true
+      });
     }
   });
 }

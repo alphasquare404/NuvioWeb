@@ -18,7 +18,7 @@ import { HomeCatalogStore } from "../../../data/local/homeCatalogStore.js";
 import { CollectionsStore, buildCollectionHomeKey } from "../../../data/local/collectionsStore.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
-import { TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
+import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { mdbListRepository } from "../../../data/repository/mdbListRepository.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
@@ -26,7 +26,7 @@ import { AvatarRepository } from "../../../data/remote/supabase/avatarRepository
 import { Platform } from "../../../platform/index.js";
 import { isFastHorizontalNavigationEnabled } from "../../../platform/sharedKeys.js";
 import { LocalStore } from "../../../core/storage/localStore.js";
-import { TMDB_API_KEY, YOUTUBE_PROXY_URL } from "../../../config.js";
+import { YOUTUBE_PROXY_URL } from "../../../config.js";
 import { I18n } from "../../../i18n/index.js";
 import {
   buildWatchedTitleIdSet,
@@ -1093,7 +1093,7 @@ async function resolveTrailerMetaWithTmdbFallback(meta = {}, itemType = "movie")
     return fallbackSource;
   }
   const settings = TmdbSettingsStore.get();
-  if (!settings.enabled || !settings.useTrailers || !TMDB_API_KEY) {
+  if (!settings.enabled || !settings.useTrailers || !getEffectiveTmdbApiKey()) {
     return fallbackSource;
   }
   try {
@@ -10252,7 +10252,7 @@ export const HomeScreen = {
 
   async enrichContinueWatchingMetaWithTmdb(meta = {}, item = {}) {
     const settings = TmdbSettingsStore.get();
-    if (!settings.enabled || !settings.enrichContinueWatching || !TMDB_API_KEY || !meta) {
+    if (!settings.enabled || !settings.enrichContinueWatching || !getEffectiveTmdbApiKey() || !meta) {
       return meta;
     }
     const contentType = item.contentType || meta.type || "movie";
@@ -10568,7 +10568,7 @@ export const HomeScreen = {
     const settings = TmdbSettingsStore.get();
     const tmdbEnabledForCurrentLayout =
       settings.enabled && (this.layoutMode !== "modern" || settings.modernHomeEnabled);
-    if (!tmdbEnabledForCurrentLayout || !TMDB_API_KEY) {
+    if (!tmdbEnabledForCurrentLayout || !getEffectiveTmdbApiKey()) {
       this.heroItem = hero;
       return;
     }

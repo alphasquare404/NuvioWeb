@@ -7,9 +7,9 @@ import { watchedItemsRepository } from "../../../data/repository/watchedItemsRep
 import { CollectionsStore } from "../../../data/local/collectionsStore.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
-import { TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
+import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
-import { TMDB_API_KEY, TRAKT_API_URL, TRAKT_CLIENT_ID } from "../../../config.js";
+import { TRAKT_API_URL, TRAKT_CLIENT_ID } from "../../../config.js";
 import {
   HomeScreen,
   buildModernHomeSizingStyle,
@@ -431,7 +431,7 @@ async function fetchAddonSourceItems(source = {}, page = 1) {
 
 function getTmdbApiKey() {
   const settings = TmdbSettingsStore.get();
-  return settings.enabled ? String(TMDB_API_KEY || "").trim() : "";
+  return settings.enabled ? getEffectiveTmdbApiKey() : "";
 }
 
 function getTmdbLanguage() {

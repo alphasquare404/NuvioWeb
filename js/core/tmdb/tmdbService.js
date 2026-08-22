@@ -1,5 +1,4 @@
-import { TmdbSettingsStore } from "../../data/local/tmdbSettingsStore.js";
-import { TMDB_API_KEY } from "../../config.js";
+import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../data/local/tmdbSettingsStore.js";
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
@@ -15,7 +14,7 @@ export const TmdbService = {
   async ensureTmdbId(id, type = "movie", options = {}) {
     const settings = TmdbSettingsStore.get();
     const requireEnabled = options?.requireEnabled !== false;
-    const apiKey = String(TMDB_API_KEY || "").trim();
+    const apiKey = getEffectiveTmdbApiKey();
     if ((requireEnabled && !settings.enabled) || !apiKey) {
       return null;
     }
@@ -58,7 +57,7 @@ export const TmdbService = {
   },
 
   async tmdbToImdb(tmdbId, type = "movie") {
-    const apiKey = String(TMDB_API_KEY || "").trim();
+    const apiKey = getEffectiveTmdbApiKey();
     const numericId = String(tmdbId || "").trim();
     if (!apiKey || !/^\d+$/.test(numericId)) {
       return null;

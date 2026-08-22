@@ -13,7 +13,7 @@ import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { imdbEpisodeRatingsRepository } from "../../../data/repository/imdbEpisodeRatingsRepository.js";
 import { normalizeEpisodeImdbRating, parseEpisodeRuntimeMinutes } from "./episodeCardMetadata.js";
 import { mdbListRepository } from "../../../data/repository/mdbListRepository.js";
-import { TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
+import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
 import {
   MoreLikeThisSourcePreference,
@@ -26,7 +26,6 @@ import {
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
 import {
-  TMDB_API_KEY,
   TRAKT_API_URL,
   TRAKT_CLIENT_ID,
   YOUTUBE_PROXY_URL
@@ -1890,10 +1889,16 @@ export const MetaDetailsScreen = {
       this.castItems = extractCast(this.meta);
       this.buildEpisodeState(progressItemsForDetail, allWatchedItems);
       this.trailerSource = resolveTrailerSource(this.meta);
-      if (!this.castItems.length) {
+      // Addon metadata often provides cast names without portrait URLs. In that
+      // case it is still useful to merge TMDB credits rather than treating the
+      // non-empty name list as complete cast data.
+      if (!this.castItems.some((person) => String(person?.photo || "").trim())) {
         const fallbackCast = await withTimeout(this.fetchTmdbCastFallback(this.meta), 3200, []);
         if (Array.isArray(fallbackCast) && fallbackCast.length) {
-          this.castItems = fallbackCast;
+          this.castItems = extractCast({
+            castMembers: this.castItems,
+            cast: fallbackCast
+          });
         }
       }
       this.selectedSeason = this.resolveInitialSelectedSeason(
@@ -2613,7 +2618,7 @@ export const MetaDetailsScreen = {
 
   async enrichMeta(meta) {
     const settings = TmdbSettingsStore.get();
-    if (!settings.enabled || !TMDB_API_KEY || !meta?.id) {
+    if (!settings.enabled || !getEffectiveTmdbApiKey() || !meta?.id) {
       return meta;
     }
 
@@ -2752,7 +2757,7 @@ export const MetaDetailsScreen = {
 
   async searchTmdbIdByTitle(meta = {}, contentType = "movie") {
     const settings = TmdbSettingsStore.get();
-    const apiKey = String(TMDB_API_KEY || "").trim();
+    const apiKey = getEffectiveTmdbApiKey();
     if (!settings.enabled || !apiKey) {
       return null;
     }
@@ -3665,7 +3670,13 @@ export const MetaDetailsScreen = {
                data-cast-name="${escapeHtml(person.name || "")}"
                data-cast-role="${escapeHtml(person.character || "")}"
                data-cast-photo="${escapeHtml(person.photo || "")}">
-        <div class="movie-cast-avatar"${person.photo ? ` style="background-image:url('${String(person.photo).replace(/'/g, "%27")}')"` : ""}></div>
+        <div class="movie-cast-avatar">
+          ${
+            person.photo
+              ? `<img class="movie-cast-avatar-image" src="${escapeAttribute(person.photo)}" alt="" loading="lazy" decoding="async" onerror="this.hidden=true" />`
+              : ""
+          }
+        </div>
         <div class="movie-cast-name">${escapeHtml(person.name || "")}</div>
         <div class="movie-cast-role">${escapeHtml(person.character || "")}</div>
       </article>
