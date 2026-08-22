@@ -56,12 +56,13 @@ const store = createProfileScopedStore({
 });
 
 function queueHomeCatalogSettingsSync(profileId = null) {
-  import("../../core/profile/homeCatalogSettingsSyncService.js")
+  return import("../../core/profile/homeCatalogSettingsSyncService.js")
     .then(({ HomeCatalogSettingsSyncService }) =>
       HomeCatalogSettingsSyncService.triggerPush(profileId)
     )
     .catch((error) => {
       console.warn("Home catalog settings sync enqueue failed", error);
+      return false;
     });
 }
 
@@ -85,16 +86,17 @@ export const HomeCatalogStore = {
       sameArray(current.disabled, next.disabled) &&
       sameObject(current.customTitles, next.customTitles)
     ) {
-      return;
+      return Promise.resolve(null);
     }
     store.replaceForProfile(profileId, next, options);
     if (!options.silentSync) {
-      queueHomeCatalogSettingsSync(profileId);
+      return queueHomeCatalogSettingsSync(profileId);
     }
+    return Promise.resolve(null);
   },
 
   set(partial, { silentSync = false, profileId = null } = {}) {
-    this.setForProfile(profileId, partial, { silentSync });
+    return this.setForProfile(profileId, partial, { silentSync });
   },
 
   isDisabled(key) {
@@ -106,15 +108,15 @@ export const HomeCatalogStore = {
     const disabled = current.disabled.includes(key)
       ? current.disabled.filter((item) => item !== key)
       : [...current.disabled, key];
-    this.set({ disabled }, options);
+    return this.set({ disabled }, options);
   },
 
   setOrder(order, options = {}) {
-    this.set({ order: unique(order || []) }, options);
+    return this.set({ order: unique(order || []) }, options);
   },
 
   setCustomTitles(customTitles, options = {}) {
-    this.set({ customTitles: normalizeCustomTitles(customTitles) }, options);
+    return this.set({ customTitles: normalizeCustomTitles(customTitles) }, options);
   },
 
   ensureOrderKeys(keys) {

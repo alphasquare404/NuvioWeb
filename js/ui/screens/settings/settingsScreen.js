@@ -85,6 +85,7 @@ import {
 } from "../../components/desktopNavigation.js";
 import { createDesktopAddonManager } from "../../components/desktopAddonManager.js";
 import { createDesktopPluginManager } from "../../components/desktopPluginManager.js";
+import { createDesktopHomeCatalogManager } from "../../components/desktopHomeCatalogManager.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
@@ -2021,6 +2022,7 @@ function createDefaultExpandedState(sectionId) {
     return {
       homeLayout: false,
       homeContent: false,
+      homeCatalogs: false,
       continueWatching: false,
       detailPage: false,
       focusedPoster: false,
@@ -2162,6 +2164,9 @@ export const SettingsScreen = {
       requestRender: () => this.render({ refreshModel: false })
     });
     this.desktopPluginManager = this.desktopPluginManager || createDesktopPluginManager({
+      requestRender: () => this.render({ refreshModel: false })
+    });
+    this.desktopHomeCatalogManager = this.desktopHomeCatalogManager || createDesktopHomeCatalogManager({
       requestRender: () => this.render({ refreshModel: false })
     });
     const [sidebarProfile, initialModel] = await Promise.all([
@@ -3632,6 +3637,12 @@ export const SettingsScreen = {
     this.actionMap.set("layout:toggle:homeContent", () => {
       this.toggleExpandedSection("layout", "homeContent");
     });
+    this.actionMap.set("layout:toggle:homeCatalogs", async () => {
+      this.toggleExpandedSection("layout", "homeCatalogs");
+      if (this.expandedSections.layout.homeCatalogs) {
+        await this.desktopHomeCatalogManager?.load();
+      }
+    });
     this.actionMap.set("layout:toggle:continueWatching", () => {
       this.toggleExpandedSection("layout", "continueWatching");
     });
@@ -4130,6 +4141,18 @@ export const SettingsScreen = {
           subtitle: t("settings.layout.hideUnreleased.subtitle"),
           checked: Boolean(model.layout.hideUnreleasedContent)
         })}
+        ${
+          isDesktopBrowser
+            ? this.renderCollapsibleRow({
+                focusKey: "layout:toggle:homeCatalogs",
+                title: "Home Catalogs",
+                subtitle: "Reorder catalog rows and choose which ones appear on Home.",
+                expanded: Boolean(expanded.homeCatalogs),
+                bodyHtml: expanded.homeCatalogs ? this.desktopHomeCatalogManager?.render() || "" : "",
+                classes: "settings-collapsible-home-catalogs"
+              })
+            : ""
+        }
       </div>
     `;
 
@@ -7547,6 +7570,9 @@ export const SettingsScreen = {
     }
     if (isDesktopBrowser && this.desktopPluginExpanded && section.id === "contentDiscovery") {
       this.desktopPluginManager.bind(contentSlot);
+    }
+    if (isDesktopBrowser && this.expandedSections?.layout?.homeCatalogs && section.id === "layout") {
+      this.desktopHomeCatalogManager.bind(contentSlot);
     }
 
     const dialogHtml = this.optionDialog ? this.renderOptionDialog() : this.renderTextDialog();

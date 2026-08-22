@@ -5087,6 +5087,262 @@ html.desktop-browser {
   background: rgba(255, 255, 255, 0.025);
 }
 
+/* Desktop Home Catalog ordering inside Layout > Home & Discovery. */
+.desktop-browser .settings-shell .desktop-home-catalog-manager {
+  min-width: 0;
+  color: var(--text-color);
+}
+
+.desktop-browser .settings-shell .settings-collapsible-home-catalogs .settings-collapsible-body {
+  margin-left: 12px;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-home-catalogs .settings-subsection-card {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-section {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-heading,
+.desktop-browser .settings-shell .desktop-home-catalog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-heading h2 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-heading p {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-count {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-row {
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.045);
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-row.is-hidden {
+  opacity: 0.72;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-row.is-dragging {
+  opacity: 0.58;
+  border-style: dashed;
+  transform: scale(0.99);
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-row.is-drag-over {
+  border-color: rgb(var(--secondary-color-rgb) / 0.9);
+  box-shadow: inset 0 3px 0 rgb(var(--secondary-color-rgb) / 0.9);
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-drag-handle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 32px;
+  min-width: 32px;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text-tertiary);
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-drag-handle:active {
+  cursor: grabbing;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-drag-handle .material-icons {
+  font-size: 18px;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-drag-handle:focus-visible,
+.desktop-browser .settings-shell .desktop-home-catalog-toggle input:focus-visible + .desktop-home-catalog-toggle-track {
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.76);
+  outline-offset: 2px;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-copy h3,
+.desktop-browser .settings-shell .desktop-home-catalog-copy p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-copy h3 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-copy p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-toggle-track {
+  display: inline-flex;
+  align-items: center;
+  width: 40px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.48);
+  box-sizing: border-box;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-toggle-track span {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 50%;
+  background: #f5f5f5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.42);
+  transition: transform 140ms ease, background-color 140ms ease;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-toggle input:checked + .desktop-home-catalog-toggle-track {
+  border-color: rgb(var(--secondary-color-rgb) / 0.95);
+  background: rgb(var(--secondary-color-rgb) / 0.82);
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-toggle input:checked + .desktop-home-catalog-toggle-track span {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-status,
+.desktop-browser .settings-shell .desktop-home-catalog-empty {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-status.is-success {
+  color: #a9dfb5;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-status.is-warning {
+  color: #f2cf8b;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-status.is-error {
+  color: #ff9daa;
+}
+
+.desktop-browser .settings-shell .desktop-home-catalog-empty {
+  padding: 22px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.035);
+  text-align: center;
+}
+
+.desktop-browser.desktop-home-catalog-dragging,
+.desktop-browser.desktop-home-catalog-dragging * {
+  user-select: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .settings-shell .desktop-home-catalog-row:hover,
+  .desktop-browser .settings-shell .desktop-home-catalog-drag-handle:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  .desktop-browser .settings-shell .desktop-home-catalog-toggle:hover .desktop-home-catalog-toggle-track {
+    border-color: rgba(255, 255, 255, 0.58);
+  }
+}
+
+@media (max-width: 640px) {
+  .desktop-browser .settings-shell .desktop-home-catalog-heading,
+  .desktop-browser .settings-shell .desktop-home-catalog-row {
+    align-items: flex-start;
+  }
+
+  .desktop-browser .settings-shell .desktop-home-catalog-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .desktop-browser .settings-shell .desktop-home-catalog-toggle {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+}
+
 .desktop-browser .settings-shell .desktop-plugin-master,
 .desktop-browser .settings-shell .desktop-plugin-section {
   padding: 18px;

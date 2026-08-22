@@ -8417,6 +8417,11 @@ export const HomeScreen = {
 
     if (this.hasLoadedOnce && Array.isArray(this.rows) && this.rows.length) {
       this.homeLoadToken = (this.homeLoadToken || 0) + 1;
+      // Settings can change catalog order or visibility while Home is unmounted.
+      // Reapply the canonical profile-scoped preferences before rendering the
+      // cached rows, so returning Home reflects the change immediately.
+      this.rows = this.sortAndFilterRows(this.rows, this.collections);
+      this.invalidateNavigationModel();
       this.render();
       this.loadData({
         background: true,

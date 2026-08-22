@@ -556,10 +556,26 @@ async function mergedSharedPayload(profileId, localPayload) {
 export const HomeCatalogSettingsSyncService = {
   syncingFromRemoteProfiles: new Set(),
   pushTimers: new Map(),
+  pushRequests: new Map(),
+  pushInFlightByProfile: new Map(),
   completedInitialPullTokens: new Set(),
 
   isSyncingFromRemote(profileId = null) {
     return this.syncingFromRemoteProfiles.has(resolveProfileId(profileId));
+  },
+
+  async pushPendingAfterInitialPull(profileId = null) {
+    const resolvedProfileId = resolveProfileId(profileId);
+    const didPush = await this.push(resolvedProfileId);
+    if (!didPush) {
+      this.settleScheduledPush(resolvedProfileId, false);
+      return false;
+    }
+    if (pendingPushVersion(currentPullToken(resolvedProfileId)) != null) {
+      return this.flushScheduledPush(resolvedProfileId);
+    }
+    this.settleScheduledPush(resolvedProfileId, true);
+    return true;
   },
 
   async pull(profileId = null) {
@@ -571,7 +587,7 @@ export const HomeCatalogSettingsSyncService = {
     try {
       if (pendingPushVersion(pullToken) != null) {
         this.completedInitialPullTokens.add(pullToken);
-        await this.push(resolvedProfileId);
+        await this.pushPendingAfterInitialPull(resolvedProfileId);
         return false;
       }
       const localPayload = await buildLocalPayload(resolvedProfileId);
@@ -580,13 +596,16 @@ export const HomeCatalogSettingsSyncService = {
         if (pullToken) {
           this.completedInitialPullTokens.add(pullToken);
         }
+        if (pendingPushVersion(pullToken) != null) {
+          await this.pushPendingAfterInitialPull(resolvedProfileId);
+        }
         return false;
       }
       // A local reorder can happen while the remote request is in flight. Do
       // not let that older response replace the user's newer local choice.
       if (pendingPushVersion(pullToken) != null) {
         this.completedInitialPullTokens.add(pullToken);
-        await this.push(resolvedProfileId);
+        await this.pushPendingAfterInitialPull(resolvedProfileId);
         return false;
       }
       if (payloadSignature(remote.payload) === payloadSignature(localPayload)) {
@@ -602,6 +621,7 @@ export const HomeCatalogSettingsSyncService = {
       return true;
     } catch (error) {
       console.warn("Home catalog settings sync pull failed", error);
+      this.settleScheduledPush(resolvedProfileId, false);
       return false;
     }
   },
@@ -636,27 +656,119 @@ export const HomeCatalogSettingsSyncService = {
     }
   },
 
+  schedulePush(profileId = null, { deferUntilInitialPull = false } = {}) {
+    const resolvedProfileId = resolveProfileId(profileId);
+    const existingRequest = this.pushRequests.get(resolvedProfileId);
+    if (existingRequest) {
+      if (deferUntilInitialPull) {
+        return existingRequest.promise;
+      }
+      const existingTimer = this.pushTimers.get(resolvedProfileId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const timerId = setTimeout(() => {
+        this.pushTimers.delete(resolvedProfileId);
+        void this.flushScheduledPush(resolvedProfileId);
+      }, PUSH_DEBOUNCE_MS);
+      this.pushTimers.set(resolvedProfileId, timerId);
+      return existingRequest.promise;
+    }
+
+    let resolveRequest = null;
+    const request = {
+      promise: new Promise((resolve) => {
+        resolveRequest = resolve;
+      }),
+      resolve: resolveRequest
+    };
+    this.pushRequests.set(resolvedProfileId, request);
+    if (deferUntilInitialPull) {
+      return request.promise;
+    }
+    const timerId = setTimeout(() => {
+      this.pushTimers.delete(resolvedProfileId);
+      void this.flushScheduledPush(resolvedProfileId);
+    }, PUSH_DEBOUNCE_MS);
+    this.pushTimers.set(resolvedProfileId, timerId);
+    return request.promise;
+  },
+
+  settleScheduledPush(profileId = null, didSync = false) {
+    const resolvedProfileId = resolveProfileId(profileId);
+    const timerId = this.pushTimers.get(resolvedProfileId);
+    if (timerId) {
+      clearTimeout(timerId);
+      this.pushTimers.delete(resolvedProfileId);
+    }
+    const request = this.pushRequests.get(resolvedProfileId);
+    if (!request) {
+      return;
+    }
+    this.pushRequests.delete(resolvedProfileId);
+    request.resolve(Boolean(didSync));
+  },
+
+  async flushScheduledPush(profileId = null) {
+    const resolvedProfileId = resolveProfileId(profileId);
+    const request = this.pushRequests.get(resolvedProfileId);
+    if (!request) {
+      return false;
+    }
+
+    const activePush = this.pushInFlightByProfile.get(resolvedProfileId);
+    if (activePush) {
+      await activePush.catch(() => false);
+    }
+
+    let didSync = false;
+    while (true) {
+      const pushToken = currentPullToken(resolvedProfileId);
+      if (pendingPushVersion(pushToken) == null) {
+        didSync = true;
+        break;
+      }
+      const pushPromise = this.push(resolvedProfileId);
+      this.pushInFlightByProfile.set(resolvedProfileId, pushPromise);
+      const didPush = await pushPromise;
+      if (this.pushInFlightByProfile.get(resolvedProfileId) === pushPromise) {
+        this.pushInFlightByProfile.delete(resolvedProfileId);
+      }
+      if (!didPush) {
+        didSync = false;
+        break;
+      }
+      // A newer local change may have arrived while the request was in flight.
+      // push() only clears the version it uploaded, so loop until the newest
+      // local preference snapshot has been sent.
+      if (pendingPushVersion(pushToken) == null) {
+        didSync = true;
+        break;
+      }
+    }
+
+    if (this.pushRequests.get(resolvedProfileId) === request) {
+      this.settleScheduledPush(resolvedProfileId, didSync);
+    }
+    return didSync;
+  },
+
   triggerPush(profileId = null) {
     if (!AuthManager.isAuthenticated) {
-      return;
+      return Promise.resolve(false);
     }
     const resolvedProfileId = resolveProfileId(profileId);
     const pullToken = currentPullToken(resolvedProfileId);
     markPendingPush(pullToken);
     if (!pullToken || !this.completedInitialPullTokens.has(pullToken)) {
-      return;
+      // Preserve the initial-pull safeguard: a local change made during
+      // bootstrap is pushed after the pull has established the profile state.
+      // The returned promise resolves once that real push completes.
+      return this.schedulePush(resolvedProfileId, { deferUntilInitialPull: true });
     }
     if (this.isSyncingFromRemote(resolvedProfileId)) {
-      return;
+      return Promise.resolve(null);
     }
-    const existingTimer = this.pushTimers.get(resolvedProfileId);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
-    const timerId = setTimeout(() => {
-      this.pushTimers.delete(resolvedProfileId);
-      void this.push(resolvedProfileId);
-    }, PUSH_DEBOUNCE_MS);
-    this.pushTimers.set(resolvedProfileId, timerId);
+    return this.schedulePush(resolvedProfileId);
   }
 };
