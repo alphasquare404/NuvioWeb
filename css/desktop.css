@@ -559,6 +559,133 @@ html.desktop-browser {
   }
 }
 
+/* Browser-only email/password sign-in. TV keeps the existing QR-first cards. */
+.desktop-browser #account .desktop-auth-shell {
+  box-sizing: border-box;
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: clamp(24px, 5vw, 56px) 20px;
+}
+
+.desktop-browser #account .desktop-auth-card {
+  width: min(100%, 460px);
+  padding: clamp(24px, 3vw, 36px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  background: rgba(18, 18, 22, 0.9);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.34);
+}
+
+.desktop-browser #account .desktop-auth-title {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(28px, 3vw, 34px);
+  line-height: 1.15;
+}
+
+.desktop-browser #account .desktop-auth-subtitle {
+  margin: 10px 0 26px;
+  color: rgba(255, 255, 255, 0.67);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.desktop-browser #account .desktop-auth-form {
+  display: grid;
+  gap: 16px;
+}
+
+.desktop-browser #account .desktop-auth-field {
+  display: grid;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.desktop-browser #account .desktop-auth-input,
+.desktop-browser #account .desktop-auth-submit {
+  box-sizing: border-box;
+  width: 100%;
+  height: 46px;
+  border-radius: 12px;
+  font: inherit;
+}
+
+.desktop-browser #account .desktop-auth-input {
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  outline: none;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.desktop-browser #account .desktop-auth-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.desktop-browser #account .desktop-auth-input:focus-visible {
+  border-color: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.16);
+}
+
+.desktop-browser #account .desktop-auth-submit {
+  border: 0;
+  color: #111;
+  background: #fff;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.desktop-browser #account .desktop-auth-submit:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.86);
+  transform: translateY(-1px);
+}
+
+.desktop-browser #account .desktop-auth-submit:focus-visible,
+.desktop-browser #account .desktop-auth-qr:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+.desktop-browser #account .desktop-auth-submit:disabled,
+.desktop-browser #account .desktop-auth-qr:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.desktop-browser #account .desktop-auth-error {
+  margin: -2px 0 0;
+  color: #ffaaa6;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.desktop-browser #account .desktop-auth-qr {
+  display: block;
+  margin: 18px auto 0;
+  padding: 6px 10px;
+  border: 0;
+  color: rgba(255, 255, 255, 0.72);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+}
+
+.desktop-browser #account .desktop-auth-qr:hover:not(:disabled) {
+  color: #fff;
+}
+
+@media (max-width: 480px) {
+  .desktop-browser #account .desktop-auth-card {
+    border-radius: 16px;
+  }
+}
+
 /* Desktop Detail Step 1: preserve the existing immersive detail markup while
    returning its hero and lower sections to normal browser document flow. */
 .desktop-browser #detail,

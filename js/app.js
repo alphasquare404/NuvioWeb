@@ -497,6 +497,12 @@ async function bootstrapApp() {
         }
         return;
       }
+      // Browsers use the existing Supabase email/password screen. TV platforms
+      // continue to use the QR pairing flow designed for remote-only input.
+      if (Platform.isBrowser()) {
+        Router.navigate("authSignIn");
+        return;
+      }
       const hasSeenQr = LocalStore.get("hasSeenAuthQrOnFirstLaunch");
       Router.navigate("authQrSignIn", {
         onboardingMode: !hasSeenQr

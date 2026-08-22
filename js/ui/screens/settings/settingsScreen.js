@@ -3042,7 +3042,13 @@ export const SettingsScreen = {
   renderAccountSection(model) {
     const signedIn = model.authState === "authenticated";
     const loading = model.authState === "loading";
-    this.actionMap.set("account:signin", () => Router.navigate("authQrSignIn"));
+    const isDesktopBrowser = Platform.isBrowser();
+    this.actionMap.set("account:signin", () =>
+      Router.navigate(isDesktopBrowser ? "authSignIn" : "authQrSignIn")
+    );
+    if (isDesktopBrowser) {
+      this.actionMap.set("account:signinQr", () => Router.navigate("authQrSignIn"));
+    }
     this.actionMap.set("account:signout", async () => {
       await AuthManager.signOut();
       this.accountSyncOverview = null;
@@ -3073,13 +3079,31 @@ export const SettingsScreen = {
             ${this.renderAccountActionButton({
               focusKey: "account:signin",
               icon: "vpn_key",
-              title: t("account_signin_qr_title", {}, "Sign In with QR"),
+              title: isDesktopBrowser
+                ? t("account_signin_title", {}, "Sign In")
+                : t("account_signin_qr_title", {}, "Sign In with QR"),
               subtitle: t(
-                "account_signin_qr_subtitle",
+                isDesktopBrowser ? "account_signin_subtitle" : "account_signin_qr_subtitle",
                 {},
-                "Scan a QR code and complete email login on your phone"
+                isDesktopBrowser
+                  ? "Sign in with your email and password"
+                  : "Scan a QR code and complete email login on your phone"
               )
             })}
+            ${
+              isDesktopBrowser
+                ? this.renderAccountActionButton({
+                    focusKey: "account:signinQr",
+                    icon: "qr_code_2",
+                    title: t("account_signin_qr_title", {}, "Sign In with QR"),
+                    subtitle: t(
+                      "account_signin_qr_subtitle_desktop",
+                      {},
+                      "Use another device to approve sign-in"
+                    )
+                  })
+                : ""
+            }
           `
               : ""
           }

@@ -2,6 +2,7 @@ import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { AuthManager } from "../../../core/auth/authManager.js";
 import { I18n } from "../../../i18n/index.js";
+import { Platform } from "../../../platform/index.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -19,6 +20,11 @@ export const AuthSignInScreen = {
   },
 
   render() {
+    if (Platform.isBrowser()) {
+      this.renderDesktopBrowser();
+      return;
+    }
+
     this.container.innerHTML = `
       <div class="auth-simple-shell">
         <div class="auth-simple-hero">
@@ -66,6 +72,83 @@ export const AuthSignInScreen = {
       input?.classList?.add("focused");
     } else {
       ScreenUtils.setInitialFocus(this.container);
+    }
+  },
+
+  renderDesktopBrowser() {
+    const errorMessage = this.desktopError
+      ? `<p class="desktop-auth-error" role="alert">${escapeHtml(this.desktopError)}</p>`
+      : "";
+    const submitting = Boolean(this.isDesktopSubmitting);
+
+    this.container.innerHTML = `
+      <main class="desktop-auth-shell">
+        <section class="desktop-auth-card" aria-labelledby="desktop-auth-title">
+          <h1 id="desktop-auth-title" class="desktop-auth-title">${escapeHtml(
+            I18n.t("auth.signIn.title")
+          )}</h1>
+          <p class="desktop-auth-subtitle">Sign in with your Nuvio account to sync your library, progress, and settings.</p>
+          <form class="desktop-auth-form" novalidate>
+            <label class="desktop-auth-field" for="desktop-auth-email">
+              <span>${escapeHtml(I18n.t("auth.signIn.emailPrompt"))}</span>
+              <input id="desktop-auth-email" class="desktop-auth-input" type="email" name="email"
+                autocomplete="email" inputmode="email" required ${submitting ? "disabled" : ""} />
+            </label>
+            <label class="desktop-auth-field" for="desktop-auth-password">
+              <span>${escapeHtml(I18n.t("auth.signIn.passwordPrompt"))}</span>
+              <input id="desktop-auth-password" class="desktop-auth-input" type="password" name="password"
+                autocomplete="current-password" required ${submitting ? "disabled" : ""} />
+            </label>
+            ${errorMessage}
+            <button class="desktop-auth-submit" type="submit" ${submitting ? "disabled" : ""}>
+              ${submitting ? "Signing in…" : "Sign In"}
+            </button>
+          </form>
+          <button class="desktop-auth-qr" type="button" data-action="openQr" ${
+            submitting ? "disabled" : ""
+          }>Sign in with QR</button>
+        </section>
+      </main>
+    `;
+
+    this.container.querySelector(".desktop-auth-form")?.addEventListener("submit", (event) => {
+      void this.submitDesktopBrowserSignIn(event);
+    });
+    this.container.querySelector("[data-action='openQr']")?.addEventListener("click", () => {
+      Router.navigate("authQrSignIn");
+    });
+  },
+
+  async submitDesktopBrowserSignIn(event) {
+    event.preventDefault();
+    if (this.isDesktopSubmitting) {
+      return;
+    }
+
+    const form = event.currentTarget;
+    const email = String(form?.elements?.email?.value || "").trim();
+    const password = String(form?.elements?.password?.value || "");
+    if (!email || !password) {
+      this.desktopError = "Enter your email address and password.";
+      this.renderDesktopBrowser();
+      return;
+    }
+
+    this.desktopError = "";
+    this.isDesktopSubmitting = true;
+    this.renderDesktopBrowser();
+    try {
+      // This is the same email/password authentication used by the existing TV dialog.
+      // AuthManager's subscription continues the normal profile and sync startup flow.
+      await AuthManager.signInWithEmail(email, password);
+    } catch (error) {
+      console.error("SignIn failed", error);
+      this.desktopError = "Sign-in failed. Check your email and password.";
+    } finally {
+      this.isDesktopSubmitting = false;
+      if (Router.getCurrent() === "authSignIn") {
+        this.renderDesktopBrowser();
+      }
     }
   },
 
@@ -117,6 +200,10 @@ export const AuthSignInScreen = {
   },
 
   async onKeyDown(event) {
+    if (Platform.isBrowser()) {
+      return;
+    }
+
     if (this.textDialog) {
       if (event.keyCode === 27 || event.keyCode === 461) {
         this.textDialog = null;
@@ -182,6 +269,8 @@ export const AuthSignInScreen = {
   cleanup() {
     this.textDialog = null;
     this.pendingEmail = "";
+    this.desktopError = "";
+    this.isDesktopSubmitting = false;
     ScreenUtils.hide(this.container);
   }
 };
