@@ -441,6 +441,7 @@ export const ProfileSelectionScreen = {
 
   render() {
     const visibleProfiles = this.getVisibleProfiles();
+    const isDesktopBrowser = Platform.isBrowser();
     const canAddProfile = visibleProfiles.length < MAX_PROFILES;
     const totalItems = visibleProfiles.length + (canAddProfile ? 1 : 0);
     const gridClass = totalItems >= 5 ? "profile-grid profile-grid-compact" : "profile-grid";
@@ -473,6 +474,14 @@ export const ProfileSelectionScreen = {
             ${canAddProfile ? this.renderAddProfileCard() : ""}
           </div>
 
+          ${
+            isDesktopBrowser && !this.isManagementMode
+              ? `<button class="profile-manage-button" type="button" data-action="open-management">${escapeHtml(
+                  t("profile_manage_button", {}, "Manage Profiles")
+                )}</button>`
+              : ""
+          }
+
           <p class="profile-hint">${escapeHtml(hint)}</p>
         </div>
         ${this.renderPinOverlay()}
@@ -482,6 +491,14 @@ export const ProfileSelectionScreen = {
     `;
 
     this.bindEvents();
+    if (isDesktopBrowser) {
+      this.container.querySelector("[data-action='open-management']")?.addEventListener("click", () => {
+        void Router.navigate("profileSelection", {
+          mode: "management",
+          returnRoute: "profileSelection"
+        });
+      });
+    }
     if (renderedPinState) {
       const pinProfile = this.getPinOverlayProfile();
       if (pinProfile?.avatarColorHex) {
@@ -495,8 +512,10 @@ export const ProfileSelectionScreen = {
     const avatarUrl = resolveProfileAvatarUrl(profile, (avatarId) =>
       this.getAvatarImageUrl(avatarId)
     );
+    const isDesktopActive =
+      Platform.isBrowser() && String(profile.id) === String(this.activeProfileId);
     return `
-      <div class="profile-card profile-focusable focusable"
+      <div class="profile-card profile-focusable focusable${isDesktopActive ? " is-active-profile" : ""}"
            data-profile-id="${escapeHtml(profile.id)}"
            data-focus-key="profile:${escapeHtml(profile.id)}"
            tabindex="0">
@@ -509,6 +528,7 @@ export const ProfileSelectionScreen = {
             }
           </div>
           ${profile.isPrimary ? `<span class="profile-primary-dot" aria-hidden="true">&#9733;</span>` : ""}
+          ${isDesktopActive ? `<span class="profile-active-indicator" aria-label="${escapeHtml(t("profile_active", {}, "Active profile"))}">&#10003;</span>` : ""}
         </div>
         <div class="profile-name">${escapeHtml(profile.name)}</div>
         ${profile.isPrimary ? `<div class="profile-badge">${escapeHtml(t("profile_selection_primary_badge", {}, "PRIMARY"))}</div>` : `<div class="profile-badge-slot" aria-hidden="true"></div>`}
