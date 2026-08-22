@@ -5713,6 +5713,180 @@ export const MetaDetailsScreen = {
     `;
   },
 
+  bindDesktopEpisodeDragScrolling() {
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+    if (!this.boundDesktopEpisodeDragClickHandler) {
+      this.boundDesktopEpisodeDragClickHandler = (event) => {
+        const suppression = this.desktopEpisodeDragClickSuppression;
+        if (!suppression || Date.now() > suppression.until) {
+          this.desktopEpisodeDragClickSuppression = null;
+          return;
+        }
+        const target = event?.target;
+        if (!(target instanceof Element) || !suppression.track.contains(target)) {
+          return;
+        }
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        event.stopImmediatePropagation?.();
+        this.desktopEpisodeDragClickSuppression = null;
+      };
+      this.container.addEventListener("click", this.boundDesktopEpisodeDragClickHandler, true);
+    }
+
+    const track = this.getEpisodeTrackElement();
+    if (!track || track.dataset.desktopEpisodeDragBound === "true") {
+      return;
+    }
+    track.dataset.desktopEpisodeDragBound = "true";
+
+    track.addEventListener("dragstart", (event) => {
+      if (event.target instanceof HTMLImageElement && event.target.closest(".series-episode-card")) {
+        event.preventDefault();
+      }
+    });
+
+    track.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "mouse" || event.button !== 0) {
+        return;
+      }
+      // A new gesture cannot belong to the previous drag release.
+      this.desktopEpisodeDragClickSuppression = null;
+      this.clearDesktopEpisodeDrag();
+      this.desktopEpisodeDragState = {
+        track,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startScrollLeft: track.scrollLeft,
+        dragging: false
+      };
+    });
+
+    track.addEventListener("pointermove", (event) => {
+      const state = this.desktopEpisodeDragState;
+      if (!state || state.track !== track || state.pointerId !== event.pointerId) {
+        return;
+      }
+      const distance = event.clientX - state.startX;
+      const verticalDistance = event.clientY - state.startY;
+      if (!state.dragging) {
+        // Preserve normal clicks and page-oriented vertical movement. A rail
+        // drag begins only after a clearly horizontal movement threshold.
+        if (Math.abs(distance) < 6 || Math.abs(distance) <= Math.abs(verticalDistance)) {
+          return;
+        }
+      }
+      if (!state.dragging) {
+        state.dragging = true;
+        track.setPointerCapture?.(event.pointerId);
+      }
+      track.classList.add("is-pointer-dragging");
+      track.scrollLeft = state.startScrollLeft - distance;
+      event.preventDefault?.();
+    });
+
+    track.addEventListener("pointerup", (event) => {
+      const state = this.desktopEpisodeDragState;
+      if (state?.track === track && state.pointerId === event.pointerId) {
+        this.clearDesktopEpisodeDrag({ suppressClick: state.dragging });
+      }
+    });
+
+    track.addEventListener("pointercancel", (event) => {
+      const state = this.desktopEpisodeDragState;
+      if (state?.track === track && state.pointerId === event.pointerId) {
+        this.clearDesktopEpisodeDrag();
+      }
+    });
+
+    track.addEventListener("lostpointercapture", (event) => {
+      const state = this.desktopEpisodeDragState;
+      if (state?.track === track && state.pointerId === event.pointerId) {
+        this.clearDesktopEpisodeDrag();
+      }
+    });
+
+    track.addEventListener("pointerleave", (event) => {
+      const state = this.desktopEpisodeDragState;
+      if (
+        state?.track === track &&
+        state.pointerId === event.pointerId &&
+        !track.hasPointerCapture?.(event.pointerId)
+      ) {
+        this.clearDesktopEpisodeDrag();
+      }
+    });
+
+    // Browser pointer activation is not handled by the TV focus engine. Keep
+    // this delegated so clicks on the image or any card copy use the existing
+    // episode stream-selection method, while a confirmed drag is intercepted
+    // by the one-shot capture listener above.
+    track.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const card = target.closest(".series-episode-card[data-action='openEpisodeStreams']");
+      if (!(card instanceof HTMLElement) || !track.contains(card)) {
+        return;
+      }
+      const videoId = String(card.dataset.videoId || "").trim();
+      if (videoId) {
+        void this.openEpisodeStreamChooser(videoId);
+      }
+    });
+  },
+
+  clearDesktopEpisodeDrag({ suppressClick = false } = {}) {
+    const state = this.desktopEpisodeDragState;
+    if (!state) {
+      return;
+    }
+    const { track, pointerId } = state;
+    track?.classList?.remove("is-pointer-dragging");
+    if (suppressClick) {
+      // The browser-generated click following this completed drag is captured
+      // once, then removed. pointerdown above clears it for a new gesture.
+      this.desktopEpisodeDragClickSuppression = {
+        track,
+        until: Date.now() + 350
+      };
+    }
+    this.desktopEpisodeDragState = null;
+    if (track?.hasPointerCapture?.(pointerId)) {
+      track.releasePointerCapture?.(pointerId);
+    }
+  },
+
+  bindDesktopDetailActions() {
+    if (!Platform.isBrowser() || !this.container || this.boundDesktopDetailActionHandler) {
+      return;
+    }
+    this.boundDesktopDetailActionHandler = (event) => {
+      const target = event?.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const actionNode = target.closest(".series-detail-actions [data-action]");
+      if (!(actionNode instanceof HTMLElement) || !this.container.contains(actionNode)) {
+        return;
+      }
+      const action = String(actionNode.dataset.action || "");
+      if (action === "playDefault") {
+        void this.playDefaultFromHero();
+      } else if (action === "playFromBeginning") {
+        void this.playDefaultFromHero({ startOver: true });
+      } else {
+        return;
+      }
+      event.preventDefault();
+    };
+    this.container.addEventListener("click", this.boundDesktopDetailActionHandler);
+  },
+
   bindDetailChrome() {
     this.observeEpisodeThumbnails();
     const content = this.container?.querySelector(".series-detail-content");
@@ -5724,6 +5898,7 @@ export const MetaDetailsScreen = {
       if (backButton) {
         backButton.onclick = () => this.handleDetailBack();
       }
+      this.bindDesktopDetailActions();
     }
     if (this.detailScrollHandler) {
       content.removeEventListener("scroll", this.detailScrollHandler);
@@ -5751,6 +5926,7 @@ export const MetaDetailsScreen = {
       this.episodeTrackScrollNode.addEventListener("scroll", this.episodeTrackScrollHandler, {
         passive: true
       });
+      this.bindDesktopEpisodeDragScrolling();
     } else {
       this.episodeTrackScrollHandler = null;
     }
@@ -9231,6 +9407,7 @@ export const MetaDetailsScreen = {
 
   cleanup() {
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+    this.clearDesktopEpisodeDrag();
     this.cancelPendingEpisodeHold();
     this.cancelPendingSeasonHold();
     this.cancelPendingPosterHold();
@@ -9284,6 +9461,15 @@ export const MetaDetailsScreen = {
       this.container.removeEventListener("click", this.detailClickHandler, true);
       this.detailClickHandler = null;
     }
+    if (this.boundDesktopEpisodeDragClickHandler && this.container) {
+      this.container.removeEventListener("click", this.boundDesktopEpisodeDragClickHandler, true);
+      this.boundDesktopEpisodeDragClickHandler = null;
+    }
+    if (this.boundDesktopDetailActionHandler && this.container) {
+      this.container.removeEventListener("click", this.boundDesktopDetailActionHandler);
+      this.boundDesktopDetailActionHandler = null;
+    }
+    this.desktopEpisodeDragClickSuppression = null;
     if (this.trailerProxyMessageHandler) {
       window.removeEventListener("message", this.trailerProxyMessageHandler);
       this.trailerProxyMessageHandler = null;

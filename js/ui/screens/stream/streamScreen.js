@@ -39,6 +39,7 @@ import {
   resolveAddonLogo
 } from "../../../core/media/addonLogoCache.js";
 import { Environment } from "../../../platform/environment.js";
+import { Platform } from "../../../platform/index.js";
 import { WebOsLunaService } from "../../../platform/webos/webosLunaService.js";
 import { I18n } from "../../../i18n/index.js";
 import {
@@ -904,6 +905,24 @@ export const StreamScreen = {
 
   consumeBackRequest() {
     return this.navigateBackFromStream();
+  },
+
+  renderDesktopBackButton() {
+    if (!Platform.isBrowser()) {
+      return "";
+    }
+    return `
+      <button class="stream-desktop-back-button" type="button" data-stream-desktop-back
+              aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
+        <span aria-hidden="true">&#8592;</span>
+      </button>
+    `;
+  },
+
+  handleStreamBack() {
+    if (!this.navigateBackFromStream()) {
+      Router.back();
+    }
   },
 
   captureRouteState() {
@@ -2328,6 +2347,7 @@ export const StreamScreen = {
         <div class="stream-route-backdrop-dim"></div>
         <div class="stream-route-left-gradient"></div>
         <div class="stream-route-right-gradient"></div>
+        ${this.renderDesktopBackButton()}
         ${routeContent}
         ${this.renderContinueWatchingResumeOverlay()}
         ${this.renderAutoPlayOverlay()}
@@ -2357,6 +2377,12 @@ export const StreamScreen = {
     ScreenUtils.indexFocusables(this.container);
     this.restoreScrollPosition();
     this.applyFocus();
+    if (Platform.isBrowser()) {
+      const backButton = this.container.querySelector("[data-stream-desktop-back]");
+      if (backButton) {
+        backButton.onclick = () => this.handleStreamBack();
+      }
+    }
     this.bindListScrollState();
     this.hasRenderedStreamRouteShell = true;
   },

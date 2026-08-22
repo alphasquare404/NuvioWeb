@@ -620,9 +620,9 @@ html.desktop-browser {
 }
 
 .desktop-browser #detail .detail-desktop-back-button {
-  position: absolute;
-  z-index: 3;
-  top: 24px;
+  position: fixed;
+  z-index: 30;
+  top: clamp(16px, 2vw, 24px);
   left: clamp(20px, 3.4vw, 64px);
   display: inline-flex;
   width: 44px;
@@ -644,6 +644,37 @@ html.desktop-browser {
 }
 
 .desktop-browser #detail .detail-desktop-back-button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow: none;
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
+  outline-offset: 2px;
+}
+
+.desktop-browser #stream .stream-desktop-back-button {
+  position: fixed;
+  z-index: 30;
+  top: clamp(16px, 2vw, 24px);
+  left: clamp(20px, 3.4vw, 64px);
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.54);
+  color: var(--text-color, #fff);
+  cursor: pointer;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+}
+
+.desktop-browser #stream .stream-desktop-back-button:focus-visible {
   border-color: rgba(255, 255, 255, 0.42);
   box-shadow: none;
   outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
@@ -732,6 +763,11 @@ html.desktop-browser {
 
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser #detail .detail-desktop-back-button:hover {
+    border-color: transparent;
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .desktop-browser #stream .stream-desktop-back-button:hover {
     border-color: transparent;
     background: rgba(255, 255, 255, 0.14);
   }
@@ -832,6 +868,687 @@ html.desktop-browser {
 
   .desktop-browser #detail .series-detail-actions {
     flex-wrap: wrap;
+  }
+}
+
+/* Desktop Detail Step 2: compact the existing lower-section markup without
+   changing its data, routing, or TV focus behavior. */
+.desktop-browser #detail .series-insight-section {
+  margin-top: clamp(28px, 3vw, 40px);
+}
+
+.desktop-browser #detail .series-insight-tabs,
+.desktop-browser #detail .movie-cast-track,
+.desktop-browser #detail .series-cast-track,
+.desktop-browser #detail .series-rating-seasons,
+.desktop-browser #detail .series-episode-ratings-grid,
+.desktop-browser #detail .detail-morelike-track,
+.desktop-browser #detail .detail-company-track,
+.desktop-browser #detail .detail-comments-modes,
+.desktop-browser #detail .detail-comments-track {
+  padding-right: clamp(20px, 3.4vw, 64px);
+  padding-left: clamp(20px, 3.4vw, 64px);
+  box-sizing: border-box;
+}
+
+.desktop-browser #detail .series-insight-tabs {
+  gap: 8px;
+  margin-bottom: 4px;
+  padding-top: 0;
+  padding-bottom: 8px;
+}
+
+.desktop-browser #detail .series-insight-divider {
+  display: none;
+}
+
+.desktop-browser #detail .series-insight-tab {
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--detail-text-secondary);
+  font-size: 17px;
+  line-height: 1.25;
+  transform: none;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.desktop-browser #detail .series-insight-tab.selected {
+  background: rgb(var(--secondary-color-rgb) / 0.16);
+  color: var(--detail-text-primary);
+}
+
+.desktop-browser #detail .series-insight-tab.focused,
+.desktop-browser #detail .series-insight-tab:focus-visible {
+  border-color: var(--detail-focus-ring);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.22);
+  color: var(--detail-text-primary);
+  outline: none;
+  transform: none;
+}
+
+.desktop-browser #detail .movie-cast-track,
+.desktop-browser #detail .series-cast-track {
+  gap: 14px;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-top: 8px;
+  padding-bottom: 12px;
+  scrollbar-width: none;
+}
+
+.desktop-browser #detail .movie-cast-card,
+.desktop-browser #detail .series-cast-card {
+  flex: 0 0 108px;
+  width: 108px;
+  padding: 0;
+  overflow: visible;
+  transform: none;
+}
+
+.desktop-browser #detail .movie-cast-avatar {
+  position: relative;
+  overflow: hidden;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 9px;
+  border-radius: 50%;
+  transition: box-shadow 140ms ease, transform 140ms ease;
+}
+
+.desktop-browser #detail .movie-cast-avatar-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.desktop-browser #detail .movie-cast-name {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #detail .movie-cast-role {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--detail-text-tertiary);
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #detail .movie-cast-card.focused,
+.desktop-browser #detail .movie-cast-card:focus-visible {
+  transform: none;
+  outline: none;
+}
+
+.desktop-browser #detail .movie-cast-card.focused .movie-cast-avatar,
+.desktop-browser #detail .movie-cast-card:focus-visible .movie-cast-avatar {
+  box-shadow: 0 0 0 3px var(--detail-focus-ring);
+}
+
+.desktop-browser #detail .movie-ratings-row {
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px clamp(20px, 3.4vw, 64px) 4px;
+}
+
+.desktop-browser #detail .movie-rating-card {
+  width: 132px;
+  height: 88px;
+  border-radius: 12px;
+}
+
+.desktop-browser #detail .movie-rating-card img {
+  width: 44px;
+  height: 22px;
+}
+
+.desktop-browser #detail .movie-rating-value {
+  margin-top: 6px;
+  font-size: 18px;
+}
+
+.desktop-browser #detail .series-rating-seasons {
+  gap: 8px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.desktop-browser #detail .series-rating-season {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.desktop-browser #detail .series-rating-season.focused,
+.desktop-browser #detail .series-rating-season:focus-visible,
+.desktop-browser #detail .series-episode-rating-chip.focused,
+.desktop-browser #detail .series-episode-rating-chip:focus-visible {
+  box-shadow: 0 0 0 2px var(--detail-focus-ring);
+  outline: none;
+  transform: none;
+}
+
+.desktop-browser #detail .series-rating-summary {
+  padding: 2px clamp(20px, 3.4vw, 64px) 0;
+  font-size: 14px;
+}
+
+.desktop-browser #detail .series-episode-ratings-grid {
+  gap: 8px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.desktop-browser #detail .series-episode-rating-chip {
+  width: 72px;
+  min-width: 72px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.desktop-browser #detail .detail-morelike-track {
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-top: 10px;
+  padding-bottom: 14px;
+  scrollbar-width: none;
+}
+
+.desktop-browser #detail .detail-morelike-card {
+  position: relative;
+  z-index: 0;
+  flex: 0 0 clamp(150px, 10vw, 180px);
+  width: clamp(150px, 10vw, 180px);
+  overflow: visible;
+  transform: none;
+}
+
+.desktop-browser #detail .detail-morelike-poster-wrap {
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-width: 1px;
+  border-radius: 12px;
+  overflow: visible;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.desktop-browser #detail .detail-morelike-poster,
+.desktop-browser #detail .detail-morelike-poster-image {
+  height: 100%;
+  border-radius: 11px;
+}
+
+.desktop-browser #detail .detail-morelike-name {
+  overflow: hidden;
+  margin-top: 8px;
+  color: var(--detail-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #detail .detail-morelike-type {
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--detail-text-tertiary);
+  font-size: 13px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #detail .detail-trailer-card {
+  flex-basis: clamp(260px, 20vw, 340px);
+  width: clamp(260px, 20vw, 340px);
+}
+
+.desktop-browser #detail .detail-trailer-card .detail-morelike-poster-wrap {
+  aspect-ratio: 16 / 9;
+}
+
+.desktop-browser #detail .detail-trailer-card .detail-trailer-play-badge img {
+  width: 34px;
+  height: 34px;
+}
+
+.desktop-browser #detail .detail-morelike-card.focused,
+.desktop-browser #detail .detail-morelike-card:focus-visible {
+  z-index: 1;
+  transform: none;
+  outline: none;
+}
+
+.desktop-browser #detail .detail-morelike-card.focused .detail-morelike-poster-wrap,
+.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelike-poster-wrap {
+  border-color: var(--detail-focus-ring);
+  box-shadow: 0 0 0 2px var(--detail-focus-ring);
+  transform: none;
+}
+
+.desktop-browser #detail .detail-company-section {
+  margin-top: clamp(28px, 3vw, 40px);
+}
+
+.desktop-browser #detail .detail-company-title {
+  padding: 0 clamp(20px, 3.4vw, 64px);
+  font-size: clamp(22px, 1.7vw, 28px);
+  line-height: 1.25;
+}
+
+.desktop-browser #detail .detail-company-track {
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-top: 10px;
+  padding-bottom: 12px;
+  scrollbar-width: none;
+}
+
+.desktop-browser #detail .detail-company-card {
+  flex: 0 0 clamp(180px, 14vw, 220px);
+  width: clamp(180px, 14vw, 220px);
+  height: 92px;
+  padding: 14px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: var(--detail-bg-card);
+  transform: none;
+}
+
+.desktop-browser #detail .detail-company-card img {
+  max-width: 100%;
+  max-height: 56px;
+  object-fit: contain;
+}
+
+.desktop-browser #detail .detail-company-card span {
+  font-size: 14px;
+}
+
+.desktop-browser #detail .detail-company-card.focused,
+.desktop-browser #detail .detail-company-card:focus-visible {
+  border-color: var(--detail-focus-ring);
+  box-shadow: 0 0 0 2px var(--detail-focus-ring);
+  outline: none;
+  transform: none;
+}
+
+.desktop-browser #detail .detail-comments-section {
+  margin-top: clamp(28px, 3vw, 40px);
+  padding: 0 0 8px;
+}
+
+.desktop-browser #detail .detail-comments-heading {
+  gap: 10px;
+  padding: 0 clamp(20px, 3.4vw, 64px);
+  font-size: clamp(22px, 1.7vw, 28px);
+}
+
+.desktop-browser #detail .detail-comments-heading img {
+  width: 60px;
+  height: 28px;
+}
+
+.desktop-browser #detail .detail-comments-subtitle {
+  margin-top: 4px;
+  padding: 0 clamp(20px, 3.4vw, 64px);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.desktop-browser #detail .detail-comments-modes {
+  gap: 8px;
+  padding-top: 12px;
+  padding-bottom: 10px;
+}
+
+.desktop-browser #detail .detail-comments-mode {
+  min-height: 38px;
+  padding: 0 14px;
+  border-width: 1px;
+  font-size: 14px;
+}
+
+.desktop-browser #detail .detail-comments-track {
+  gap: 12px;
+  overflow-y: visible;
+  padding-top: 8px;
+  padding-bottom: 12px;
+}
+
+.desktop-browser #detail .detail-comment-card {
+  flex: 0 0 clamp(280px, 23vw, 340px);
+  width: clamp(280px, 23vw, 340px);
+  height: auto;
+  min-height: 220px;
+  padding: 18px;
+  border-width: 1px;
+  border-radius: 14px;
+}
+
+.desktop-browser #detail .detail-comment-card.focused,
+.desktop-browser #detail .detail-comment-card:focus-visible {
+  border-color: var(--detail-focus-ring);
+  box-shadow: 0 0 0 2px var(--detail-focus-ring);
+  outline: none;
+  transform: none;
+}
+
+.desktop-browser #detail .detail-comment-card h4 {
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.desktop-browser #detail .detail-comment-chips {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.desktop-browser #detail .detail-comment-chips span {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.desktop-browser #detail .detail-comment-card p {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+}
+
+.desktop-browser #detail .detail-comment-card small {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #detail .series-insight-tab:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--detail-text-primary);
+  }
+
+  .desktop-browser #detail .movie-cast-card:hover .movie-cast-avatar {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.42);
+    transform: scale(1.03);
+  }
+
+  .desktop-browser #detail .detail-morelike-card:hover {
+    z-index: 1;
+  }
+
+  .desktop-browser #detail .detail-morelike-card:hover .detail-morelike-poster-wrap {
+    border-color: rgba(255, 255, 255, 0.56);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+    transform: scale(1.04);
+  }
+
+  .desktop-browser #detail .detail-company-card:hover {
+    border-color: rgba(255, 255, 255, 0.26);
+    background: color-mix(in srgb, var(--detail-bg-card) 78%, white);
+  }
+
+  .desktop-browser #detail .detail-comment-card:hover {
+    border-color: rgba(255, 255, 255, 0.24);
+  }
+}
+
+@media (max-width: 700px) {
+  .desktop-browser #detail .series-insight-tab {
+    font-size: 16px;
+  }
+
+  .desktop-browser #detail .movie-cast-card,
+  .desktop-browser #detail .series-cast-card {
+    flex-basis: 96px;
+    width: 96px;
+  }
+
+  .desktop-browser #detail .movie-cast-avatar {
+    width: 88px;
+    height: 88px;
+  }
+}
+
+/* Desktop Detail Step 3: keep the existing series controls and episode rail,
+   with browser-scale geometry and mouse-friendly interaction space. */
+.desktop-browser #detail .series-season-row {
+  gap: 8px;
+  margin-bottom: 4px;
+  padding: 12px clamp(20px, 3.4vw, 64px) 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.desktop-browser #detail .series-season-row::-webkit-scrollbar {
+  display: none;
+}
+
+.desktop-browser #detail .series-season-btn {
+  min-height: 40px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--detail-text-secondary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  transform: none;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.desktop-browser #detail .series-season-btn.selected {
+  border-color: rgb(var(--secondary-color-rgb) / 0.5);
+  background: rgb(var(--secondary-color-rgb) / 0.18);
+  color: var(--detail-text-primary);
+}
+
+.desktop-browser #detail .series-season-btn.focused,
+.desktop-browser #detail .series-season-btn:focus-visible {
+  border-color: var(--detail-focus-ring);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
+  outline: none;
+  transform: none;
+}
+
+.desktop-browser #detail .series-episode-track {
+  gap: 14px;
+  padding: 12px clamp(20px, 3.4vw, 64px) 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  cursor: grab;
+  scrollbar-width: none;
+}
+
+.desktop-browser #detail .series-episode-track.is-virtualized {
+  gap: 0;
+}
+
+.desktop-browser #detail .series-episode-track-window {
+  gap: var(--episode-track-gap, 14px);
+}
+
+.desktop-browser #detail .series-episode-track.is-pointer-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.desktop-browser #detail .series-episode-track.is-pointer-dragging .series-episode-card {
+  user-select: none;
+}
+
+.desktop-browser #detail .series-episode-card {
+  position: relative;
+  z-index: 0;
+  flex: 0 0 clamp(340px, 19vw, 370px);
+  width: clamp(340px, 19vw, 370px);
+  border: 0;
+  border-radius: 14px;
+  overflow: visible;
+  transform: none;
+}
+
+.desktop-browser #detail .series-episode-thumb {
+  height: auto;
+  margin: 0;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  transition: box-shadow 140ms ease, transform 140ms ease;
+}
+
+.desktop-browser #detail .series-episode-copy {
+  gap: 4px;
+  padding: 16px 16px 18px;
+}
+
+.desktop-browser #detail .series-episode-badge {
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.25;
+  letter-spacing: 0.07em;
+}
+
+.desktop-browser #detail .series-episode-title {
+  min-height: 0;
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 700;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.desktop-browser #detail .series-episode-overview {
+  max-height: none;
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.desktop-browser #detail .series-episode-meta {
+  gap: 8px;
+  min-height: 16px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.desktop-browser #detail .series-episode-runtime-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.desktop-browser #detail .series-episode-meta .series-imdb-badge,
+.desktop-browser #detail .series-episode-date {
+  font-size: 12px;
+}
+
+.desktop-browser #detail .series-episode-meta .series-imdb-badge img {
+  width: 24px;
+  height: 12px;
+}
+
+.desktop-browser #detail .series-episode-progress {
+  height: 4px;
+}
+
+.desktop-browser #detail .series-episode-status {
+  top: 12px;
+  left: 12px;
+  width: 30px;
+  height: 30px;
+}
+
+.desktop-browser #detail .series-episode-status.complete {
+  font-size: 17px;
+}
+
+.desktop-browser #detail .series-watched-badge-svg {
+  width: 19px;
+  height: 19px;
+}
+
+.desktop-browser #detail .series-episode-unavailable {
+  top: 12px;
+  right: 12px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.desktop-browser #detail .series-episode-card.focused,
+.desktop-browser #detail .series-episode-card:focus-visible {
+  z-index: 2;
+  outline: none;
+  transform: none;
+}
+
+.desktop-browser #detail .series-episode-card.focused .series-episode-thumb,
+.desktop-browser #detail .series-episode-card:focus-visible .series-episode-thumb {
+  box-shadow: 0 0 0 2px var(--detail-focus-ring), 0 10px 22px rgba(0, 0, 0, 0.32);
+  transform: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #detail .series-season-btn:hover {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--detail-text-primary);
+  }
+
+  .desktop-browser #detail .series-episode-card:hover {
+    z-index: 1;
+  }
+
+  .desktop-browser #detail .series-episode-card:hover .series-episode-thumb {
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.32);
+    transform: scale(1.03);
+  }
+}
+
+@media (max-width: 1180px) {
+  .desktop-browser #detail .series-episode-card {
+    flex-basis: clamp(300px, 28vw, 340px);
+    width: clamp(300px, 28vw, 340px);
+  }
+}
+
+@media (max-width: 700px) {
+  .desktop-browser #detail .series-season-row,
+  .desktop-browser #detail .series-episode-track {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .desktop-browser #detail .series-season-btn {
+    min-height: 38px;
+    height: 38px;
+    padding-inline: 14px;
+    font-size: 14px;
+  }
+
+  .desktop-browser #detail .series-episode-card {
+    flex-basis: clamp(260px, 76vw, 300px);
+    width: clamp(260px, 76vw, 300px);
   }
 }
 
