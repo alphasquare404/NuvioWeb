@@ -83,6 +83,7 @@ import {
   bindDesktopNavigationEvents,
   renderDesktopNavigation
 } from "../../components/desktopNavigation.js";
+import { createDesktopAddonManager } from "../../components/desktopAddonManager.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
@@ -2154,6 +2155,10 @@ export const SettingsScreen = {
     this.dialogFocusIndex = Number.isFinite(this.dialogFocusIndex) ? this.dialogFocusIndex : 0;
     this.sidebarExpanded = false;
     this.pillIconOnly = false;
+    this.desktopAddonExpanded = Boolean(this.desktopAddonExpanded);
+    this.desktopAddonManager = this.desktopAddonManager || createDesktopAddonManager({
+      requestRender: () => this.render({ refreshModel: false })
+    });
     const [sidebarProfile, initialModel] = await Promise.all([
       getSidebarProfileState(),
       this.collectModel()
@@ -4454,6 +4459,13 @@ export const SettingsScreen = {
 
   renderContentDiscoverySection() {
     this.actionMap.set("contentDiscovery:addons", async () => {
+      if (Platform.isBrowser()) {
+        this.desktopAddonExpanded = !this.desktopAddonExpanded;
+        if (this.desktopAddonExpanded) {
+          await this.desktopAddonManager?.load();
+        }
+        return;
+      }
       await Router.navigate("plugin");
     });
     this.actionMap.set("contentDiscovery:plugins", async () => {
@@ -4464,16 +4476,27 @@ export const SettingsScreen = {
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "contentDiscovery"))}
       <div class="settings-group-card">
         <div class="settings-stack">
-          ${this.renderActionRow({
-            focusKey: "contentDiscovery:addons",
-            title: t("addon_title", {}, "Addons"),
-            subtitle: t(
-              "settings.contentDiscovery.addonsSubtitle",
-              {},
-              "Manage add-ons, catalog order, and collections"
-            ),
-            leadingIcon: "grid_view"
-          })}
+          ${
+            Platform.isBrowser()
+              ? this.renderCollapsibleRow({
+                  focusKey: "contentDiscovery:addons",
+                  title: t("addon_title", {}, "Addons"),
+                  subtitle: "Manage installed addons and sources.",
+                  expanded: Boolean(this.desktopAddonExpanded),
+                  bodyHtml: this.desktopAddonExpanded ? this.desktopAddonManager?.render() || "" : "",
+                  classes: "settings-collapsible-addon"
+                })
+              : this.renderActionRow({
+                  focusKey: "contentDiscovery:addons",
+                  title: t("addon_title", {}, "Addons"),
+                  subtitle: t(
+                    "settings.contentDiscovery.addonsSubtitle",
+                    {},
+                    "Manage add-ons, catalog order, and collections"
+                  ),
+                  leadingIcon: "grid_view"
+                })
+          }
           ${
             ExperienceModeStore.isEssential()
               ? ""
@@ -7498,6 +7521,10 @@ export const SettingsScreen = {
       }
     }
 
+    if (isDesktopBrowser && this.desktopAddonExpanded && section.id === "contentDiscovery") {
+      this.desktopAddonManager.bind(contentSlot);
+    }
+
     const dialogHtml = this.optionDialog ? this.renderOptionDialog() : this.renderTextDialog();
     if (dialogSlot && dialogSlot.innerHTML !== dialogHtml) {
       dialogSlot.innerHTML = dialogHtml;
@@ -8009,6 +8036,11 @@ export const SettingsScreen = {
       return;
     }
 
+    if (Platform.isBrowser() && this.desktopAddonExpanded) {
+      const handled = await this.desktopAddonManager.handleKeyDown(event);
+      if (handled) return;
+    }
+
     if (Platform.isBackEvent(event)) {
       event?.preventDefault?.();
       if (this.textDialog) {
@@ -8268,6 +8300,7 @@ export const SettingsScreen = {
     this.dialogFocusIndex = 0;
     this.sidebarExpanded = false;
     this.pillIconOnly = false;
+    this.desktopAddonExpanded = false;
     this.suppressNextContentFocusScroll = false;
     this.renderedSectionId = null;
     ScreenUtils.hide(this.container);

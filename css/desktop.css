@@ -5033,6 +5033,429 @@ html.desktop-browser {
   outline-offset: 2px;
 }
 
+/* Desktop Addons expandable Settings section. */
+.desktop-browser .settings-shell .desktop-addon-manager-inline {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: var(--text-color);
+}
+
+.desktop-browser .settings-shell .desktop-addon-primary-action:focus-visible,
+.desktop-browser .settings-shell .desktop-addon-action:focus-visible,
+.desktop-browser .settings-shell .desktop-addon-drag-handle:focus-visible,
+.desktop-browser .settings-shell .desktop-addon-toggle input:focus-visible + .desktop-addon-toggle-track {
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.76);
+  outline-offset: 2px;
+}
+
+.desktop-browser .settings-shell .desktop-addon-section-heading p {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.desktop-browser .settings-shell .desktop-addon-section {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.desktop-browser .settings-shell .settings-collapsible-addon .settings-collapsible-body {
+  margin-left: 12px;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-addon .settings-subsection-card {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.desktop-browser .settings-shell .desktop-addon-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.desktop-browser .settings-shell .desktop-addon-section-heading h2 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.desktop-browser .settings-shell .desktop-addon-count,
+.desktop-browser .settings-shell .desktop-addon-version {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.desktop-browser .settings-shell .desktop-addon-form {
+  margin-top: 18px;
+}
+
+.desktop-browser .settings-shell .desktop-addon-input-label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.desktop-browser .settings-shell .desktop-addon-input-row {
+  display: flex;
+  gap: 10px;
+}
+
+.desktop-browser .settings-shell .desktop-addon-input {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 11px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--text-color);
+  font: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.desktop-browser .settings-shell .desktop-addon-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.desktop-browser .settings-shell .desktop-addon-input:focus-visible {
+  border-color: rgba(255, 255, 255, 0.48);
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.7);
+  outline-offset: 2px;
+}
+
+.desktop-browser .settings-shell .desktop-addon-primary-action,
+.desktop-browser .settings-shell .desktop-addon-action,
+.desktop-browser .settings-shell .desktop-addon-drag-handle {
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  color: var(--text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.desktop-browser .settings-shell .desktop-addon-primary-action {
+  padding: 0 15px;
+  border-color: transparent;
+  background: var(--text-color);
+  color: var(--bg-color);
+}
+
+.desktop-browser .settings-shell .desktop-addon-action {
+  padding: 0 11px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.desktop-browser .settings-shell .desktop-addon-action-danger {
+  border-color: rgba(222, 105, 122, 0.42);
+  color: #ffbbc5;
+}
+
+.desktop-browser .settings-shell .desktop-addon-primary-action:disabled,
+.desktop-browser .settings-shell .desktop-addon-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.desktop-browser .settings-shell .desktop-addon-form-message,
+.desktop-browser .settings-shell .desktop-addon-inline-status {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.desktop-browser .settings-shell .desktop-addon-form-message.is-error,
+.desktop-browser .settings-shell .desktop-addon-inline-status.is-error {
+  color: #ff9daa;
+}
+
+.desktop-browser .settings-shell .desktop-addon-inline-status.is-success {
+  color: #a9dfb5;
+}
+
+.desktop-browser .settings-shell .desktop-addon-inline-status.is-warning {
+  color: #f2cf8b;
+}
+
+.desktop-browser .settings-shell .desktop-addon-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.desktop-browser .settings-shell .desktop-addon-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.045);
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.desktop-browser .settings-shell .desktop-addon-card.is-disabled {
+  opacity: 0.72;
+}
+
+.desktop-browser .settings-shell .desktop-addon-card.is-dragging {
+  opacity: 0.58;
+  border-style: dashed;
+  transform: scale(0.99);
+}
+
+.desktop-browser .settings-shell .desktop-addon-card.is-drag-over {
+  border-color: rgb(var(--secondary-color-rgb) / 0.9);
+  box-shadow: inset 0 3px 0 rgb(var(--secondary-color-rgb) / 0.9);
+}
+
+.desktop-browser .settings-shell .desktop-addon-drag-handle {
+  display: inline-flex;
+  width: 32px;
+  min-width: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text-tertiary);
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.desktop-browser .settings-shell .desktop-addon-drag-handle:active {
+  cursor: grabbing;
+}
+
+.desktop-browser .settings-shell .desktop-addon-drag-handle .material-icons {
+  font-size: 18px;
+}
+
+.desktop-browser .settings-shell .desktop-addon-card-copy {
+  min-width: 0;
+}
+
+.desktop-browser .settings-shell .desktop-addon-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.desktop-browser .settings-shell .desktop-addon-card h2,
+.desktop-browser .settings-shell .desktop-addon-description,
+.desktop-browser .settings-shell .desktop-addon-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .settings-shell .desktop-addon-card h2 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.desktop-browser .settings-shell .desktop-addon-description,
+.desktop-browser .settings-shell .desktop-addon-url {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.desktop-browser .settings-shell .desktop-addon-url {
+  color: var(--text-tertiary);
+}
+
+.desktop-browser .settings-shell .desktop-addon-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.desktop-browser .settings-shell .desktop-addon-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.desktop-browser .settings-shell .desktop-addon-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.desktop-browser .settings-shell .desktop-addon-toggle-track {
+  display: inline-flex;
+  align-items: center;
+  width: 40px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.48);
+  box-sizing: border-box;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.desktop-browser .settings-shell .desktop-addon-toggle-track span {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 50%;
+  background: #f5f5f5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.42);
+  transition: transform 140ms ease, background-color 140ms ease;
+}
+
+.desktop-browser .settings-shell .desktop-addon-toggle input:checked + .desktop-addon-toggle-track {
+  border-color: rgb(var(--secondary-color-rgb) / 0.95);
+  background: rgb(var(--secondary-color-rgb) / 0.82);
+}
+
+.desktop-browser .settings-shell .desktop-addon-toggle input:checked + .desktop-addon-toggle-track span {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+.desktop-browser .settings-shell .desktop-addon-empty {
+  margin: 0;
+  padding: 22px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.desktop-browser .settings-shell .desktop-addon-dialog-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.desktop-browser .settings-shell .desktop-addon-dialog {
+  width: min(100%, 420px);
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 18px;
+  background: #181818;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.desktop-browser .settings-shell .desktop-addon-dialog h2,
+.desktop-browser .settings-shell .desktop-addon-dialog p {
+  margin: 0;
+}
+
+.desktop-browser .settings-shell .desktop-addon-dialog h2 {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.desktop-browser .settings-shell .desktop-addon-dialog p {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.desktop-browser .settings-shell .desktop-addon-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.desktop-browser.desktop-addon-dragging,
+.desktop-browser.desktop-addon-dragging * {
+  user-select: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .settings-shell .desktop-addon-primary-action:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.84);
+  }
+
+  .desktop-browser .settings-shell .desktop-addon-action:not(:disabled):hover,
+  .desktop-browser .settings-shell .desktop-addon-drag-handle:hover,
+  .desktop-browser .settings-shell .desktop-addon-card:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  .desktop-browser .settings-shell .desktop-addon-toggle:hover .desktop-addon-toggle-track {
+    border-color: rgba(255, 255, 255, 0.58);
+  }
+}
+
+@media (max-width: 1024px) {
+  .desktop-browser .settings-shell .desktop-addon-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .desktop-browser .settings-shell .desktop-addon-card-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .desktop-browser .settings-shell .desktop-addon-section {
+    padding: 14px;
+  }
+
+  .desktop-browser .settings-shell .desktop-addon-input-row {
+    flex-direction: column;
+  }
+
+  .desktop-browser .settings-shell .desktop-addon-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser .home-nav-item:hover,
   .desktop-browser .home-profile-pill:hover {

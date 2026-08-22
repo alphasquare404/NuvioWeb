@@ -58,6 +58,9 @@ export const StartupSyncService = {
   inFlight: false,
   profileScopedSyncEnabled: false,
   addonPushTimer: null,
+  addonSyncInFlight: null,
+  addonSyncWaiters: [],
+  addonSyncPending: false,
   unsubscribeAddonChanges: null,
 
   async start({ profileScopedSyncEnabled = false, runInitialPull = true } = {}) {
@@ -94,6 +97,8 @@ export const StartupSyncService = {
       clearTimeout(this.addonPushTimer);
       this.addonPushTimer = null;
     }
+    this.addonSyncWaiters.splice(0).forEach((resolve) => resolve(false));
+    this.addonSyncPending = false;
     if (this.unsubscribeAddonChanges) {
       this.unsubscribeAddonChanges();
       this.unsubscribeAddonChanges = null;
@@ -192,22 +197,61 @@ export const StartupSyncService = {
   },
 
   scheduleAddonPush() {
-    if (!this.started || !this.profileScopedSyncEnabled) {
-      return;
+    void this.requestAddonSync();
+  },
+
+  requestAddonSync() {
+    if (!this.started || !this.profileScopedSyncEnabled || !AuthManager.isAuthenticated) {
+      return Promise.resolve(false);
     }
-    if (this.addonPushTimer) {
-      clearTimeout(this.addonPushTimer);
-    }
-    this.addonPushTimer = setTimeout(async () => {
-      this.addonPushTimer = null;
-      if (!AuthManager.isAuthenticated) {
+
+    return new Promise((resolve) => {
+      this.addonSyncWaiters.push(resolve);
+      if (this.addonSyncInFlight) {
+        this.addonSyncPending = true;
         return;
       }
-      try {
-        await LibrarySyncService.push();
-      } catch (error) {
-        console.warn("Addon auto push failed", error);
+      if (this.addonPushTimer) {
+        clearTimeout(this.addonPushTimer);
       }
-    }, ADDON_PUSH_DEBOUNCE_MS);
+      this.addonPushTimer = setTimeout(() => {
+        this.addonPushTimer = null;
+        void this.flushAddonSync();
+      }, ADDON_PUSH_DEBOUNCE_MS);
+    });
+  },
+
+  async flushAddonSync() {
+    if (this.addonSyncInFlight) {
+      this.addonSyncPending = true;
+      return this.addonSyncInFlight;
+    }
+    if (!this.started || !this.profileScopedSyncEnabled) {
+      return false;
+    }
+    const run = async () => {
+      let synced = true;
+      do {
+        this.addonSyncPending = false;
+        try {
+          synced = (await LibrarySyncService.push()) && synced;
+        } catch (error) {
+          console.warn("Addon auto push failed", error);
+          synced = false;
+        }
+      } while (this.addonSyncPending);
+
+      this.addonSyncWaiters.splice(0).forEach((resolve) => resolve(synced));
+      return synced;
+    };
+    this.addonSyncInFlight = run();
+    try {
+      return await this.addonSyncInFlight;
+    } finally {
+      this.addonSyncInFlight = null;
+      if (this.addonSyncPending) {
+        void this.flushAddonSync();
+      }
+    }
   }
 };
