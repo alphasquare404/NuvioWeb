@@ -4750,11 +4750,47 @@ html.desktop-browser {
   left: auto;
   height: auto;
   overflow: visible;
+  /* Rows remain in normal flow so a wrapped hero description and CTA always
+     keep their safe clearance before Continue Watching begins. */
+  z-index: 3;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-rows-scroll {
   min-height: 0;
   padding-bottom: 48px;
+}
+
+/* Extend only the hero media beyond its layout box. The Continue Watching row
+   stays in normal flow while its cards sit over this decorative fade tail. */
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-card {
+  --desktop-home-hero-fade-tail: 96px;
+  overflow: visible;
+}
+
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-media {
+  height: calc(100% + var(--desktop-home-hero-fade-tail));
+  overflow: visible;
+}
+
+/* Keep the full-bleed backdrop visible behind the upper portion of the first
+   rail, then fade it gradually into the page background without a hard seam. */
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-media::after {
+  background: linear-gradient(
+    180deg,
+    rgba(5, 5, 6, 0.02) 0%,
+    rgba(5, 5, 6, 0.08) 48%,
+    rgba(5, 5, 6, 0.28) 72%,
+    rgba(5, 5, 6, 0.58) 88%,
+    rgba(5, 5, 6, 0.86) 96%,
+    rgb(5, 5, 6) 100%
+  );
+  pointer-events: none;
 }
 
 .desktop-browser .desktop-navigation {
