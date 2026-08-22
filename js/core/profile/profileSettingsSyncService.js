@@ -25,6 +25,7 @@ import {
   normalizeStreamBadgeRules
 } from "../../core/streams/streamBadgeRules.js";
 import { ProfileManager } from "./profileManager.js";
+import { Platform } from "../../platform/index.js";
 import {
   clearProfileSettingsCloudSyncPending,
   hasProfileSettingsCloudSyncPending
@@ -34,7 +35,8 @@ import { isFastHorizontalNavigationEnabled } from "../../platform/sharedKeys.js"
 
 const PULL_RPC = "sync_pull_profile_settings_blob";
 const PUSH_RPC = "sync_push_profile_settings_blob";
-const SETTINGS_SYNC_PLATFORM = "tv";
+const TV_SETTINGS_SYNC_PLATFORM = "tv";
+const DESKTOP_SETTINGS_SYNC_PLATFORM = "desktop";
 const CACHE_KEY = "profileSettingsSyncCache";
 const EXCLUDED_PROFILE_KEYS = {
   layout_settings: new Set(["search_discover_enabled"]),
@@ -67,6 +69,14 @@ function resolveProfileId(profileId = null) {
     return Math.trunc(raw);
   }
   return 1;
+}
+
+export function getProfileSettingsSyncPlatform() {
+  return Platform.isBrowser() ? DESKTOP_SETTINGS_SYNC_PLATFORM : TV_SETTINGS_SYNC_PLATFORM;
+}
+
+function isDesktopBrowserProfileSettings() {
+  return getProfileSettingsSyncPlatform() === DESKTOP_SETTINGS_SYNC_PLATFORM;
 }
 
 function cloneValue(value) {
@@ -187,9 +197,13 @@ function readCache() {
   return isPlainObject(cached) ? cached : {};
 }
 
-function setCachedBlob(profileId, blob) {
+function cacheKeyForProfileSettings(profileId, platform = getProfileSettingsSyncPlatform()) {
+  return `${String(platform || TV_SETTINGS_SYNC_PLATFORM).trim()}:${resolveProfileId(profileId)}`;
+}
+
+function setCachedBlob(profileId, blob, platform = getProfileSettingsSyncPlatform()) {
   const cache = readCache();
-  cache[String(resolveProfileId(profileId))] = normalizeBlob(blob);
+  cache[cacheKeyForProfileSettings(profileId, platform)] = normalizeBlob(blob);
   LocalStore.set(CACHE_KEY, cache);
 }
 
@@ -2059,17 +2073,36 @@ function extractBlobFromResponse(response) {
   return normalizeBlob(blob);
 }
 
-async function pullRemoteBlob(profileId) {
+async function pullRemoteBlob(profileId, platform = getProfileSettingsSyncPlatform()) {
   const resolvedProfileId = resolveProfileId(profileId);
   const response = await SupabaseApi.rpc(
     PULL_RPC,
     {
       p_profile_id: resolvedProfileId,
-      p_platform: SETTINGS_SYNC_PLATFORM
+      p_platform: platform
     },
     true
   );
   return extractBlobFromResponse(response);
+}
+
+function hasUsableRemoteProfileSettings(blob) {
+  return SUPPORTED_FEATURE_NAMES.some((featureName) => {
+    const featurePayload = blob?.features?.[featureName];
+    return isPlainObject(featurePayload) && Object.keys(featurePayload).length > 0;
+  });
+}
+
+function importRemoteBlob(profileId, blob, platform) {
+  setCachedBlob(profileId, blob, platform);
+
+  const remoteSignature = buildComparableSignatureFromBlob(blob);
+  const localSignature = buildComparableSignatureFromLocal(profileId);
+  if (remoteSignature === localSignature) {
+    return false;
+  }
+
+  return applyRemoteBlob(String(profileId), blob);
 }
 
 function applyRemoteBlob(profileId, blob) {
@@ -2098,20 +2131,31 @@ export const ProfileSettingsSyncService = {
         await this.push(resolvedProfileId);
         return false;
       }
-      const blob = await pullRemoteBlob(resolvedProfileId);
-      if (!blob) {
+      const platform = getProfileSettingsSyncPlatform();
+      const blob = await pullRemoteBlob(resolvedProfileId, platform);
+      if (hasUsableRemoteProfileSettings(blob)) {
+        return importRemoteBlob(resolvedProfileId, blob, platform);
+      }
+
+      if (!isDesktopBrowserProfileSettings()) {
         return false;
       }
 
-      setCachedBlob(resolvedProfileId, blob);
-
-      const remoteSignature = buildComparableSignatureFromBlob(blob);
-      const localSignature = buildComparableSignatureFromLocal(resolvedProfileId);
-      if (remoteSignature === localSignature) {
+      // Older browser builds shared the TV namespace. Read it only when the
+      // Desktop namespace is missing or empty, then migrate the recovered
+      // settings by pushing to Desktop. The legacy TV blob is never written.
+      const legacyBlob = await pullRemoteBlob(resolvedProfileId, TV_SETTINGS_SYNC_PLATFORM);
+      if (!hasUsableRemoteProfileSettings(legacyBlob)) {
         return false;
       }
 
-      return applyRemoteBlob(String(resolvedProfileId), blob);
+      const didApplyLegacySettings = importRemoteBlob(
+        resolvedProfileId,
+        legacyBlob,
+        TV_SETTINGS_SYNC_PLATFORM
+      );
+      await this.push(resolvedProfileId);
+      return didApplyLegacySettings;
     } catch (error) {
       if (shouldTreatAsMissingResource(error)) {
         return false;
@@ -2127,18 +2171,19 @@ export const ProfileSettingsSyncService = {
         return false;
       }
       const resolvedProfileId = resolveProfileId(profileId);
-      const remoteBlob = await pullRemoteBlob(resolvedProfileId);
+      const platform = getProfileSettingsSyncPlatform();
+      const remoteBlob = await pullRemoteBlob(resolvedProfileId, platform);
       const blob = buildOutgoingBlob(String(resolvedProfileId), remoteBlob);
       await SupabaseApi.rpc(
         PUSH_RPC,
         {
           p_profile_id: resolvedProfileId,
           p_settings_json: blob,
-          p_platform: SETTINGS_SYNC_PLATFORM
+          p_platform: platform
         },
         true
       );
-      setCachedBlob(resolvedProfileId, blob);
+      setCachedBlob(resolvedProfileId, blob, platform);
       clearProfileSettingsCloudSyncPending(resolvedProfileId);
       return true;
     } catch (error) {

@@ -104,6 +104,29 @@ function isDesktopSettingsBrowser() {
   return Platform.isBrowser();
 }
 
+function getFusionSourceDisplay(sourceUrl, index = 0) {
+  const fallbackTitle = `Fusion Source ${Number(index) + 1}`;
+  const rawSourceUrl = String(sourceUrl || "").trim();
+  if (!rawSourceUrl) {
+    return { title: fallbackTitle, subtitle: "" };
+  }
+
+  try {
+    const url = new URL(rawSourceUrl);
+    const host = String(url.host || "").trim();
+    const path = String(url.pathname || "/").trim() || "/";
+    return {
+      title: fallbackTitle,
+      subtitle: host ? `${host}${path}` : path
+    };
+  } catch (_) {
+    return {
+      title: fallbackTitle,
+      subtitle: rawSourceUrl === "Pasted badge rules" ? "Pasted badge rules" : "Saved badge rules"
+    };
+  }
+}
+
 function catalogMediaTypeLabel(type) {
   const normalized = String(type || "").trim().toLowerCase();
   if (normalized === "movie") return "Movie";
@@ -2154,6 +2177,8 @@ export const SettingsScreen = {
       persistedUiState.expandedSections || this.expandedSections
     );
     this.streamBadgePreviewSourceUrl = null;
+    // Desktop-only, temporary presentation state. Do not persist or sync this.
+    this.streamBadgeSourcesExpanded = false;
     this.advancedCacheCleared = false;
     this.optionDialog = this.optionDialog || null;
     this.textDialog = this.textDialog || null;
@@ -5558,6 +5583,7 @@ export const SettingsScreen = {
   },
 
   renderStreamsSection(model) {
+    const isDesktopBrowser = isDesktopSettingsBrowser();
     const badgeSettings = model.streamBadgeSettings || StreamBadgeSettingsStore.get();
     const rules = badgeSettings.rules || { imports: [] };
     const imports = Array.isArray(rules.imports) ? rules.imports : [];
@@ -5632,10 +5658,54 @@ export const SettingsScreen = {
       this.streamBadgePreviewSourceUrl = null;
     });
 
-    imports.forEach((importItem, index) => {
+    this.actionMap.set("streams:sources:toggle", () => {
+      this.streamBadgeSourcesExpanded = !this.streamBadgeSourcesExpanded;
+      if (!this.streamBadgeSourcesExpanded) {
+        this.streamBadgePreviewSourceUrl = null;
+      }
+    });
+
+    const openFusionSourceEditor = (sourceUrl, returnFocusKey) => {
+      this.openTextDialog({
+        title: t("settings_fusion_badge_url_label", {}, "Fusion badge JSON URL"),
+        value: sourceUrl,
+        placeholder: "https://...",
+        returnFocusKey,
+        onSubmit: async (nextValue) => {
+          const trimmed = String(nextValue || "").trim();
+          if (!trimmed) {
+            if (this.textDialog) {
+              this.textDialog.statusMessage = "Enter a badge JSON URL.";
+              this.textDialog.statusKind = "error";
+            }
+            return false;
+          }
+          if (trimmed.toLowerCase() === sourceUrl.toLowerCase()) {
+            return true;
+          }
+          const result = await StreamBadgeSettingsStore.importStreamBadgeRulesFromUrl(trimmed);
+          if (result.status !== "success") {
+            if (this.textDialog) {
+              this.textDialog.statusMessage =
+                result.message ||
+                t("settings_fusion_badges_empty", {}, "No Fusion badge URLs imported.");
+              this.textDialog.statusKind = "error";
+            }
+            return false;
+          }
+          StreamBadgeSettingsStore.deleteStreamBadgeRulesSource(sourceUrl);
+          this.streamBadgePreviewSourceUrl = result.rules?.imports?.[0]?.sourceUrl || trimmed;
+          return true;
+        }
+      });
+    };
+
+    if (!isDesktopBrowser) {
+      imports.forEach((importItem, index) => {
       const focusKey = `streams:import:${index}`;
       this.actionMap.set(focusKey, () => {
         const sourceUrl = String(importItem?.sourceUrl || "").trim();
+        const sourceDisplay = getFusionSourceDisplay(sourceUrl, index);
         const options = [];
         if (imports.length > 1 && !importItem.isActive) {
           options.push({ id: "activate", label: "Activate" });
@@ -5645,7 +5715,10 @@ export const SettingsScreen = {
         options.push({ id: "delete", label: "Delete" });
         options.push({ id: "cancel", labelKey: "action_cancel", label: "Cancel" });
         this.openOptionDialog({
-          title: sourceUrl || t("settings_stream_badge_urls_title", {}, "Fusion badge URLs"),
+          title: isDesktopBrowser
+            ? sourceDisplay.title
+            : sourceUrl || t("settings_stream_badge_urls_title", {}, "Fusion badge URLs"),
+          subtitle: isDesktopBrowser ? sourceDisplay.subtitle : "",
           options,
           selectedId: "preview",
           returnFocusKey: focusKey,
@@ -5667,52 +5740,130 @@ export const SettingsScreen = {
               return true;
             }
             if (option.id === "edit") {
-              this.openTextDialog({
-                title: t("settings_fusion_badge_url_label", {}, "Fusion badge JSON URL"),
-                value: sourceUrl,
-                placeholder: "https://...",
-                returnFocusKey: focusKey,
-                onSubmit: async (nextValue) => {
-                  const trimmed = String(nextValue || "").trim();
-                  if (!trimmed) {
-                    if (this.textDialog) {
-                      this.textDialog.statusMessage = "Enter a badge JSON URL.";
-                      this.textDialog.statusKind = "error";
-                    }
-                    return false;
-                  }
-                  if (trimmed.toLowerCase() === sourceUrl.toLowerCase()) {
-                    return true;
-                  }
-                  const result =
-                    await StreamBadgeSettingsStore.importStreamBadgeRulesFromUrl(trimmed);
-                  if (result.status !== "success") {
-                    if (this.textDialog) {
-                      this.textDialog.statusMessage =
-                        result.message ||
-                        t("settings_fusion_badges_empty", {}, "No Fusion badge URLs imported.");
-                      this.textDialog.statusKind = "error";
-                    }
-                    return false;
-                  }
-                  StreamBadgeSettingsStore.deleteStreamBadgeRulesSource(sourceUrl);
-                  this.streamBadgePreviewSourceUrl =
-                    result.rules?.imports?.[0]?.sourceUrl || trimmed;
-                  return true;
-                }
-              });
+              openFusionSourceEditor(sourceUrl, focusKey);
               return true;
             }
             return true;
           }
         });
       });
-    });
+      });
+    }
 
-    const previewHtml = previewImport ? this.renderStreamBadgePreviewCard(previewImport) : "";
+    const sourceRowsHtml = imports
+      .map((importItem, index) => {
+        const sourceUrl = String(importItem?.sourceUrl || "").trim();
+        const sourceDisplay = getFusionSourceDisplay(sourceUrl, index);
+        const enabledCount = Array.isArray(importItem?.filters)
+          ? importItem.filters.filter((filter) => filter?.isEnabled !== false).length
+          : 0;
+        const groupCount = Array.isArray(importItem?.groups) ? importItem.groups.length : 0;
+        const statusLabel =
+          importItem?.isActive === false
+            ? t("settings_fusion_badge_url_inactive", {}, "Inactive")
+            : t("settings_fusion_badge_url_active", {}, "Active");
+        const summary = t(
+          "settings_fusion_badge_url_status_summary",
+          [statusLabel, enabledCount, groupCount],
+          `${statusLabel}, ${enabledCount} enabled badges, ${groupCount} groups`
+        );
+        if (isDesktopBrowser) {
+          const actionPrefix = `streams:import:${index}`;
+          const isActive = importItem?.isActive !== false;
+          this.actionMap.set(`${actionPrefix}:preview`, () => {
+            this.streamBadgePreviewSourceUrl = sourceUrl;
+          });
+          this.actionMap.set(`${actionPrefix}:edit`, () => {
+            openFusionSourceEditor(sourceUrl, `${actionPrefix}:edit`);
+          });
+          this.actionMap.set(`${actionPrefix}:delete`, () => {
+            StreamBadgeSettingsStore.deleteStreamBadgeRulesSource(sourceUrl);
+            if (previewSourceUrl && previewSourceUrl.toLowerCase() === sourceUrl.toLowerCase()) {
+              this.streamBadgePreviewSourceUrl = null;
+            }
+          });
+          if (!isActive) {
+            this.actionMap.set(`${actionPrefix}:activate`, () => {
+              StreamBadgeSettingsStore.setActiveStreamBadgeRulesSource(sourceUrl);
+              this.streamBadgePreviewSourceUrl = sourceUrl;
+            });
+          }
+          return `
+            <article class="settings-fusion-source-card${isActive ? " is-active" : ""}">
+              <div class="settings-fusion-source-copy">
+                <div class="settings-row-title">${escapeHtml(sourceDisplay.title)}</div>
+                <div class="settings-row-subtitle">${escapeHtml(sourceDisplay.subtitle)}</div>
+                <div class="settings-row-subtitle settings-fusion-source-meta">${escapeHtml(summary)}</div>
+              </div>
+              <div class="settings-fusion-source-actions" aria-label="${escapeHtml(sourceDisplay.title)} actions">
+                <button class="settings-fusion-source-action settings-content-focusable focusable"
+                        data-zone="content"
+                        ${this.registerAction(`${actionPrefix}:preview`, this.actionMap.get(`${actionPrefix}:preview`))}>
+                  Preview
+                </button>
+                <button class="settings-fusion-source-action settings-content-focusable focusable"
+                        data-zone="content"
+                        ${this.registerAction(`${actionPrefix}:edit`, this.actionMap.get(`${actionPrefix}:edit`))}>
+                  Edit
+                </button>
+                <button class="settings-fusion-source-action settings-fusion-source-action-danger settings-content-focusable focusable"
+                        data-zone="content"
+                        ${this.registerAction(`${actionPrefix}:delete`, this.actionMap.get(`${actionPrefix}:delete`))}>
+                  Delete
+                </button>
+                ${
+                  isActive
+                    ? `<button class="settings-fusion-source-action is-disabled" disabled title="One Fusion source must remain active.">
+                         Deactivate
+                       </button>`
+                    : `<button class="settings-fusion-source-action settings-content-focusable focusable"
+                               data-zone="content"
+                               ${this.registerAction(`${actionPrefix}:activate`, this.actionMap.get(`${actionPrefix}:activate`))}>
+                         Activate
+                       </button>`
+                }
+              </div>
+            </article>
+          `;
+        }
+        return this.renderActionRow({
+          focusKey: `streams:import:${index}`,
+          title: sourceUrl || `Badge URL ${index + 1}`,
+          subtitle: summary,
+          value: statusLabel,
+          classes: ""
+        });
+      })
+      .join("");
+    const previewHtml = previewImport
+      ? this.renderStreamBadgePreviewCard(previewImport, imports.indexOf(previewImport))
+      : "";
     const emptyHtml = imports.length
       ? ""
       : `<p class="settings-row-subtitle">${escapeHtml(t("settings_fusion_badges_empty", {}, "No Fusion badge URLs imported."))}</p>`;
+    const importLimitReached = imports.length >= STREAM_BADGE_IMPORT_LIMIT;
+    const desktopSourcesBodyHtml = this.streamBadgeSourcesExpanded
+      ? `
+          <div class="settings-fusion-sources-actions">
+            <button class="settings-fusion-sources-import settings-content-focusable focusable${importLimitReached ? " is-disabled" : ""}"
+                    data-zone="content"
+                    ${this.registerAction("streams:add", importLimitReached ? () => {} : this.actionMap.get("streams:add"))}
+                    ${importLimitReached ? "disabled aria-disabled=\"true\"" : ""}>
+              ${escapeHtml(t("action_import", {}, "Import"))}
+            </button>
+          </div>
+          ${sourceRowsHtml || emptyHtml}
+          ${previewHtml}
+        `
+      : "";
+    const desktopSourcesHtml = this.renderCollapsibleRow({
+      focusKey: "streams:sources:toggle",
+      title: "Fusion Badge Sources",
+      subtitle: `Save up to ${STREAM_BADGE_IMPORT_LIMIT} sources. One source is active at a time.`,
+      expanded: this.streamBadgeSourcesExpanded,
+      bodyHtml: desktopSourcesBodyHtml,
+      classes: "settings-collapsible-fusion"
+    });
 
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "streams"))}
@@ -5750,54 +5901,34 @@ export const SettingsScreen = {
               badgePlacementOptions.find((option) => option.id === badgePlacement)?.label ||
               badgePlacementOptions[0].label
           })}
-          ${this.renderActionRow({
-            focusKey: "streams:add",
-            title: t("settings_stream_badge_urls_title", {}, "Fusion badge URLs"),
-            subtitle: t(
-              "settings_stream_badge_urls_description",
-              [STREAM_BADGE_IMPORT_LIMIT],
-              `Import up to ${STREAM_BADGE_IMPORT_LIMIT} Fusion-style stream badge JSON URLs.`
-            ),
-            value: t("action_import", {}, "Import")
-          })}
-          ${imports
-            .map((importItem, index) => {
-              const sourceUrl = String(importItem?.sourceUrl || "").trim();
-              const enabledCount = Array.isArray(importItem?.filters)
-                ? importItem.filters.filter((filter) => filter?.isEnabled !== false).length
-                : 0;
-              const groupCount = Array.isArray(importItem?.groups) ? importItem.groups.length : 0;
-              const statusLabel =
-                importItem?.isActive === false
-                  ? t("settings_fusion_badge_url_inactive", {}, "Inactive")
-                  : t("settings_fusion_badge_url_active", {}, "Active");
-              const summary = t(
-                "settings_fusion_badge_url_status_summary",
-                [statusLabel, enabledCount, groupCount],
-                `${statusLabel}, ${enabledCount} enabled badges, ${groupCount} groups`
-              );
-              return this.renderActionRow({
-                focusKey: `streams:import:${index}`,
-                title: sourceUrl || `Badge URL ${index + 1}`,
-                subtitle: summary,
-                value: statusLabel
-              });
-            })
-            .join("")}
-          ${emptyHtml}
+          ${
+            isDesktopBrowser
+              ? desktopSourcesHtml
+              : `${this.renderActionRow({
+                  focusKey: "streams:add",
+                  title: t("settings_stream_badge_urls_title", {}, "Fusion badge URLs"),
+                  subtitle: t(
+                    "settings_stream_badge_urls_description",
+                    [STREAM_BADGE_IMPORT_LIMIT],
+                    `Import up to ${STREAM_BADGE_IMPORT_LIMIT} Fusion-style stream badge JSON URLs.`
+                  ),
+                  value: t("action_import", {}, "Import")
+                })}${sourceRowsHtml}${emptyHtml}`
+          }
         </div>
       </div>
-      ${previewHtml}
+      ${isDesktopBrowser ? "" : previewHtml}
     `;
   },
 
-  renderStreamBadgePreviewCard(importItem) {
+  renderStreamBadgePreviewCard(importItem, sourceIndex = 0) {
     const sections = getStreamBadgePreviewSections(importItem);
     const badgeCount = sections.reduce(
       (total, section) => total + (Array.isArray(section.filters) ? section.filters.length : 0),
       0
     );
     const sourceUrl = String(importItem?.sourceUrl || "").trim();
+    const sourceDisplay = getFusionSourceDisplay(sourceUrl, Math.max(0, sourceIndex));
     const bodyHtml = sections.length
       ? sections
           .map(
@@ -5846,15 +5977,25 @@ export const SettingsScreen = {
       <div class="settings-group-card settings-group-card-fill">
         <div class="settings-stack">
           <div class="settings-row-title">${escapeHtml(t("settings_fusion_badge_preview_title", {}, "Fusion badge preview"))}</div>
-          <div class="settings-row-subtitle">${escapeHtml(sourceUrl)}</div>
+          <div class="settings-row-subtitle">${escapeHtml(
+            isDesktopSettingsBrowser() ? sourceDisplay.subtitle : sourceUrl
+          )}</div>
           <div class="settings-row-subtitle">${escapeHtml(t("settings_fusion_badge_preview_count", [badgeCount], `${badgeCount} Fusion-style badges from this URL`))}</div>
           ${bodyHtml}
-          ${this.renderActionRow({
-            focusKey: "streams:preview:close",
-            title: t("common.close", {}, "Close"),
-            subtitle: "",
-            value: ""
-          })}
+          ${
+            isDesktopSettingsBrowser()
+              ? `<button class="settings-fusion-preview-close settings-content-focusable focusable"
+                         data-zone="content"
+                         ${this.registerAction("streams:preview:close", this.actionMap.get("streams:preview:close"))}>
+                   Close Preview
+                 </button>`
+              : this.renderActionRow({
+                  focusKey: "streams:preview:close",
+                  title: t("common.close", {}, "Close"),
+                  subtitle: "",
+                  value: ""
+                })
+          }
         </div>
       </div>
     `;

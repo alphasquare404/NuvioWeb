@@ -289,6 +289,7 @@ function compileStreamBadgeFilters(rules = {}) {
     .filter((importItem) => importItem.isActive)
     .flatMap((importItem) =>
       importItem.filters
+        .filter((filter) => filter.isEnabled !== false)
         .map((filter) => {
           try {
             const pattern = String(filter.pattern || "").trim();

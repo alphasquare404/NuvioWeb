@@ -3568,6 +3568,159 @@ html.desktop-browser {
   font-size: 11px;
 }
 
+/* Fusion sources retain their raw URLs for import, identity, and sync, but the
+   desktop list deliberately displays only a safe hostname/path summary. */
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import,
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-preview-close {
+  flex: 0 0 auto;
+  min-height: 36px;
+  align-self: center;
+  padding: 0 14px;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  background: rgb(var(--secondary-color-rgb) / 0.88);
+  border: 1px solid rgb(var(--secondary-color-rgb) / 0.96);
+  border-radius: 9px;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import {
+  color: #111;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-subsection-card {
+  display: grid;
+  gap: 14px;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import.is-disabled,
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import:focus-visible,
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-preview-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.42);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import:not(:disabled):hover,
+  .desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-preview-close:hover {
+    background: rgb(var(--secondary-color-rgb) / 1);
+  }
+}
+
+.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-preview-close {
+  min-height: 34px;
+  justify-self: start;
+  margin-top: 4px;
+}
+
+.desktop-browser .settings-shell .settings-fusion-source-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+}
+
+.desktop-browser .settings-shell .settings-fusion-source-card.is-active {
+  border-color: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 3px 0 0 rgb(var(--secondary-color-rgb) / 0.92);
+}
+
+.desktop-browser .settings-shell .settings-fusion-source-card.is-active .settings-row-title {
+  color: #fff;
+  font-weight: 600;
+}
+
+.desktop-browser .settings-shell .settings-fusion-source-meta {
+  color: rgb(var(--secondary-color-rgb) / 1);
+}
+
+.desktop-browser .settings-shell .settings-fusion-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.desktop-browser .settings-shell .settings-fusion-source-action {
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--text-color);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.desktop-browser .settings-shell .settings-fusion-source-action.is-disabled,
+.desktop-browser .settings-shell .settings-fusion-source-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.desktop-browser .settings-shell .settings-fusion-source-action-danger {
+  color: #ffaaa8;
+}
+
+.desktop-browser .settings-shell .settings-fusion-source-action:focus-visible,
+.desktop-browser .settings-shell .settings-fusion-source-action.focused {
+  border-color: var(--focus-color);
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .settings-shell .settings-fusion-source-card:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.085);
+  }
+
+  .desktop-browser .settings-shell .settings-fusion-source-card.is-active:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .desktop-browser .settings-shell .settings-fusion-source-action:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+}
+
+@media (max-width: 720px) {
+  .desktop-browser .settings-shell .settings-fusion-source-card {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-browser .settings-shell .settings-fusion-source-actions {
+    justify-content: flex-start;
+  }
+}
+
 .desktop-browser .settings-shell .settings-toggle-pill {
   width: 42px;
   height: 24px;
