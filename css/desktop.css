@@ -559,6 +559,677 @@ html.desktop-browser {
   }
 }
 
+/* Settings Desktop Step 1: retain the existing category/content markup while
+   replacing the TV canvas geometry with a normal browser page. */
+.desktop-browser .settings-shell {
+  display: block;
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+
+.desktop-browser .settings-shell .settings-workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 24px;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  padding: 112px clamp(24px, 3vw, 48px) 56px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser .settings-shell .settings-sidebar-frame,
+.desktop-browser .settings-shell .settings-content-frame {
+  min-height: 0;
+  overflow: visible;
+}
+
+.desktop-browser .settings-shell .settings-sidebar {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  gap: 6px;
+  overflow: visible;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+}
+
+.desktop-browser .settings-shell .settings-scroll-indicator {
+  display: none;
+}
+
+.desktop-browser .settings-shell .settings-nav-item {
+  min-height: 44px;
+  padding: 0 12px;
+  border-width: 1px;
+  border-radius: 10px;
+}
+
+.desktop-browser .settings-shell .settings-nav-leading {
+  gap: 10px;
+}
+
+.desktop-browser .settings-shell .settings-nav-icon-material,
+.desktop-browser .settings-shell .settings-nav-icon-svg,
+.desktop-browser .settings-shell .settings-nav-icon-image {
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+}
+
+.desktop-browser .settings-shell .settings-nav-label {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.desktop-browser .settings-shell .settings-nav-badge {
+  padding: 3px 7px;
+  font-size: 10px;
+}
+
+.desktop-browser .settings-shell .settings-nav-chevron {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-browser .settings-shell .settings-nav-item.focused,
+.desktop-browser .settings-shell .settings-nav-item:focus-visible {
+  border-color: var(--focus-color) !important;
+  outline: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .settings-shell .settings-nav-item:hover {
+    background: var(--focus-bg);
+    color: var(--text-color);
+  }
+}
+
+.desktop-browser .settings-shell .settings-content {
+  height: auto;
+  min-height: 0;
+  gap: 20px;
+  overflow: visible;
+  padding: 0;
+}
+
+.desktop-browser .settings-shell .settings-content-header {
+  gap: 6px;
+  padding: 2px 0 6px;
+}
+
+.desktop-browser .settings-shell .settings-title {
+  font-size: clamp(30px, 2.5vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.desktop-browser .settings-shell .settings-subtitle {
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.desktop-browser .settings-shell .settings-group-card-fill {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+/* Desktop content is document-scrolled, so a group must size itself from its
+   rows instead of retaining the TV panel's zero flex basis. */
+.desktop-browser .settings-shell .settings-content > .settings-group-card-fill {
+  align-self: stretch;
+}
+
+/* Settings Desktop Step 2: compact the existing controls without changing
+   their markup, actions, or TV presentation. */
+.desktop-browser .settings-shell .settings-content {
+  gap: 18px;
+}
+
+.desktop-browser .settings-shell .settings-group-card,
+.desktop-browser .settings-shell .settings-subsection-card {
+  padding: 20px;
+  border-radius: 18px;
+}
+
+.desktop-browser .settings-shell .settings-stack {
+  gap: 12px;
+}
+
+.desktop-browser .settings-shell .settings-group-heading {
+  gap: 4px;
+}
+
+.desktop-browser .settings-shell .settings-group-title {
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.desktop-browser .settings-shell .settings-group-subtitle,
+.desktop-browser .settings-shell .settings-account-description,
+.desktop-browser .settings-shell .settings-account-inline-note {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.desktop-browser .settings-shell .settings-action-row,
+.desktop-browser .settings-shell .settings-toggle-row,
+.desktop-browser .settings-shell .settings-collapsible-trigger,
+.desktop-browser .settings-shell .settings-subsection-card .settings-action-row {
+  min-height: 64px;
+  padding: 10px 16px;
+  gap: 12px;
+  border-width: 1px;
+  border-radius: 12px;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.desktop-browser .settings-shell .settings-row-copy,
+.desktop-browser .settings-shell .settings-collapsible-trigger .settings-row-copy,
+.desktop-browser .settings-shell .settings-subsection-card .settings-row-copy {
+  gap: 2px;
+}
+
+.desktop-browser .settings-shell .settings-row-title,
+.desktop-browser .settings-shell .settings-collapsible-trigger .settings-row-title,
+.desktop-browser .settings-shell .settings-subsection-card .settings-row-title {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.desktop-browser .settings-shell .settings-row-subtitle,
+.desktop-browser .settings-shell .settings-collapsible-trigger .settings-row-subtitle,
+.desktop-browser .settings-shell .settings-subsection-card .settings-row-subtitle {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.desktop-browser .settings-shell .settings-row-tail,
+.desktop-browser .settings-shell .settings-collapsible-trigger .settings-row-tail,
+.desktop-browser .settings-shell .settings-subsection-card .settings-row-tail {
+  gap: 10px;
+}
+
+.desktop-browser .settings-shell .settings-row-value,
+.desktop-browser .settings-shell .settings-collapsible-trigger .settings-row-value,
+.desktop-browser .settings-shell .settings-subsection-card .settings-row-value {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.desktop-browser .settings-shell .settings-row-icon,
+.desktop-browser .settings-shell .settings-collapsible-trigger .settings-row-icon,
+.desktop-browser .settings-shell .settings-subsection-card .settings-row-icon,
+.desktop-browser .settings-shell .settings-row-leading-icon {
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+}
+
+.desktop-browser .settings-shell .settings-row-badge {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.desktop-browser .settings-shell .settings-toggle-pill {
+  width: 42px;
+  height: 24px;
+  padding: 3px;
+}
+
+.desktop-browser .settings-shell .settings-toggle-thumb {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-browser .settings-shell .settings-action-row.focused,
+.desktop-browser .settings-shell .settings-action-row:focus-visible,
+.desktop-browser .settings-shell .settings-theme-card.focused,
+.desktop-browser .settings-shell .settings-theme-card:focus-visible,
+.desktop-browser .settings-shell .settings-layout-card.focused,
+.desktop-browser .settings-shell .settings-layout-card:focus-visible {
+  border-color: var(--focus-color) !important;
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.2);
+  outline: none;
+  transform: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .settings-shell .settings-action-row:hover,
+  .desktop-browser .settings-shell .settings-theme-card:hover,
+  .desktop-browser .settings-shell .settings-layout-card:hover {
+    border-color: rgba(255, 255, 255, 0.22);
+    background: color-mix(in srgb, var(--focus-bg) 60%, var(--bg-color));
+  }
+}
+
+.desktop-browser .settings-shell .settings-appearance-group-card {
+  gap: 14px;
+}
+
+.desktop-browser .settings-shell .settings-theme-grid-card,
+.desktop-browser .settings-shell .settings-theme-grid-card .settings-group-heading,
+.desktop-browser .settings-shell .settings-theme-grid-card .settings-horizontal-scroll-frame,
+.desktop-browser .settings-shell .settings-theme-row {
+  min-height: 0;
+}
+
+.desktop-browser .settings-shell .settings-horizontal-scroll-frame {
+  overflow: visible;
+}
+
+.desktop-browser .settings-shell .settings-theme-row {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  overflow: visible;
+  padding: 2px;
+}
+
+.desktop-browser .settings-shell .settings-theme-card {
+  flex: 0 0 116px;
+  width: 116px;
+  height: 110px;
+  min-height: 110px;
+  padding: 12px 8px;
+  gap: 8px;
+  border-width: 1px;
+  border-radius: 14px;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.desktop-browser .settings-shell .settings-theme-swatch-wrap {
+  min-height: 52px;
+}
+
+.desktop-browser .settings-shell .settings-theme-swatch {
+  width: 52px;
+  height: 52px;
+}
+
+.desktop-browser .settings-shell .settings-theme-check {
+  width: 24px;
+  height: 24px;
+}
+
+.desktop-browser .settings-shell .settings-theme-name {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.desktop-browser .settings-shell .settings-layout-grid {
+  gap: 14px;
+}
+
+.desktop-browser .settings-shell .settings-layout-card {
+  min-height: 208px;
+  padding: 14px;
+  gap: 8px;
+  border-width: 1px;
+  border-radius: 16px;
+}
+
+.desktop-browser .settings-shell .settings-layout-preview,
+.desktop-browser .settings-shell .settings-layout-preview-placeholder {
+  height: 132px;
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.desktop-browser .settings-shell .settings-layout-preview-placeholder {
+  gap: 8px;
+}
+
+.desktop-browser .settings-shell .settings-layout-placeholder-line {
+  height: 12px;
+}
+
+.desktop-browser .settings-shell .settings-layout-placeholder-bars {
+  gap: 8px;
+}
+
+.desktop-browser .settings-shell .settings-layout-placeholder-panel {
+  border-radius: 10px;
+}
+
+.desktop-browser .settings-shell .settings-layout-name {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.desktop-browser .settings-shell .settings-layout-badge {
+  top: 10px;
+  right: 10px;
+  padding: 4px 7px;
+  font-size: 10px;
+}
+
+.desktop-browser .settings-shell .settings-collapsible {
+  gap: 6px;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-body {
+  padding: 0;
+}
+
+.desktop-browser .settings-shell .settings-subsection-card {
+  padding: 14px;
+}
+
+.desktop-browser .settings-shell .settings-dialog-backdrop {
+  z-index: 40;
+  padding: 24px;
+}
+
+.desktop-browser .settings-shell .settings-dialog,
+.desktop-browser .settings-shell .settings-text-dialog,
+.desktop-browser .settings-shell .settings-p2p-consent-dialog {
+  width: min(560px, calc(100vw - 48px));
+  max-width: min(560px, calc(100vw - 48px));
+  max-height: min(680px, calc(100vh - 48px));
+  padding: 24px;
+  gap: 18px;
+  border-width: 1px;
+  border-radius: 18px;
+}
+
+.desktop-browser .settings-shell .settings-dialog-title {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.desktop-browser .settings-shell .settings-dialog-list {
+  max-height: min(440px, calc(100vh - 220px));
+  gap: 8px;
+  padding: 4px;
+  margin: 0;
+}
+
+.desktop-browser .settings-shell .settings-dialog-option {
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border-width: 1px;
+}
+
+.desktop-browser .settings-shell .settings-dialog-option.focused,
+.desktop-browser .settings-shell .settings-dialog-option:focus-visible {
+  transform: none;
+  border-color: var(--focus-color) !important;
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.2);
+  outline: none;
+}
+
+.desktop-browser .settings-shell .settings-dialog-option-label {
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.desktop-browser .settings-shell .settings-text-dialog-field {
+  border-width: 1px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.desktop-browser .settings-shell .settings-text-dialog-input {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.desktop-browser .settings-shell .settings-text-dialog-textarea {
+  min-height: 150px;
+  padding: 12px;
+}
+
+.desktop-browser .settings-shell .settings-text-dialog-message,
+.desktop-browser .settings-shell .settings-option-dialog-message {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .desktop-browser .settings-shell .settings-theme-row {
+    gap: 8px;
+  }
+
+  .desktop-browser .settings-shell .settings-layout-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .desktop-browser .settings-shell .settings-workspace {
+    padding-inline: 20px;
+  }
+
+  .desktop-browser .settings-shell .settings-group-card,
+  .desktop-browser .settings-shell .settings-subsection-card {
+    padding: 16px;
+  }
+
+  .desktop-browser .settings-shell .settings-action-row,
+  .desktop-browser .settings-shell .settings-toggle-row,
+  .desktop-browser .settings-shell .settings-collapsible-trigger {
+    padding-inline: 12px;
+  }
+
+  .desktop-browser .settings-shell .settings-theme-card {
+    flex-basis: 106px;
+    width: 106px;
+  }
+
+  .desktop-browser .settings-shell .settings-dialog-backdrop {
+    padding: 16px;
+  }
+
+  .desktop-browser .settings-shell .settings-dialog,
+  .desktop-browser .settings-shell .settings-text-dialog,
+  .desktop-browser .settings-shell .settings-p2p-consent-dialog {
+    width: min(560px, calc(100vw - 32px));
+    max-width: min(560px, calc(100vw - 32px));
+    padding: 20px;
+  }
+}
+
+/* Tracking is a separate route with a TV-only split panel. In a browser it
+   becomes a normal, document-scrolled Settings content column. */
+.desktop-browser .trakt-route-shell {
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  padding: 112px clamp(24px, 3vw, 48px) 56px;
+  overflow: visible;
+}
+
+.desktop-browser .trakt-route-content {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.desktop-browser .trakt-route-shell .settings-tracking-panel {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  padding: 0;
+}
+
+.desktop-browser .trakt-route-shell .settings-tracking-hero {
+  min-height: 0;
+  height: auto;
+  margin: 0 0 18px;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-title {
+  margin-top: 0;
+  font-size: clamp(30px, 2.5vw, 40px);
+  line-height: 1.1;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-description {
+  margin-top: 6px;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-scroll-area {
+  display: flex;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
+  gap: 18px;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-card {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  padding: 20px;
+  border-radius: 18px;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-card-title {
+  margin: 0 0 12px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-options-stack {
+  gap: 12px;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-options-stack .settings-action-row,
+.desktop-browser .trakt-route-shell .settings-trakt-card .settings-action-row,
+.desktop-browser .trakt-route-shell .settings-trakt-card .settings-toggle-row {
+  min-height: 64px;
+  padding: 10px 16px;
+  border-radius: 12px;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-options-stack .settings-row-title,
+.desktop-browser .trakt-route-shell .settings-trakt-card .settings-row-title {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-options-stack .settings-row-subtitle,
+.desktop-browser .trakt-route-shell .settings-trakt-card .settings-row-subtitle {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-options-stack .settings-row-value,
+.desktop-browser .trakt-route-shell .settings-trakt-card .settings-row-value,
+.desktop-browser .trakt-route-shell .settings-trakt-meta-copy,
+.desktop-browser .trakt-route-shell .settings-trakt-body-copy,
+.desktop-browser .trakt-route-shell .settings-trakt-message,
+.desktop-browser .trakt-route-shell .settings-trakt-error,
+.desktop-browser .trakt-route-shell .settings-trakt-warning {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.desktop-browser .trakt-route-shell .settings-trakt-options-stack .settings-row-icon {
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 900px) {
+  .desktop-browser .trakt-route-shell {
+    padding-top: 100px;
+  }
+}
+
+@media (max-width: 560px) {
+  .desktop-browser .trakt-route-shell {
+    padding: 92px 20px 40px;
+  }
+}
+
+/* Horizon normally changes the TV workspace into a horizontal rail. Keep its
+   stored visual style, but use the same browser shell geometry as other styles. */
+.desktop-browser .settings-shell[data-settings-style="horizon"] .settings-workspace {
+  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-rows: none;
+  gap: 24px;
+}
+
+.desktop-browser .settings-shell[data-settings-style="horizon"] .settings-sidebar {
+  flex-direction: column;
+  overflow: visible;
+}
+
+@media (max-width: 1100px) {
+  .desktop-browser .settings-shell .settings-workspace {
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 20px;
+    padding-inline: clamp(24px, 3vw, 40px);
+  }
+
+  .desktop-browser .settings-shell[data-settings-style="horizon"] .settings-workspace {
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 20px;
+  }
+}
+
+@media (max-width: 900px) {
+  .desktop-browser .settings-shell .settings-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    padding-top: 100px;
+  }
+
+  .desktop-browser .settings-shell .settings-sidebar {
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px;
+    scrollbar-width: none;
+  }
+
+  .desktop-browser .settings-shell .settings-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-item {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 0 12px;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-chevron {
+    display: none;
+  }
+
+  .desktop-browser .settings-shell[data-settings-style="horizon"] .settings-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    gap: 18px;
+  }
+
+  .desktop-browser .settings-shell[data-settings-style="horizon"] .settings-sidebar {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+
 /* Desktop Library uses the existing data and controls in a browser-sized page
    flow, separate from the TV sidebar layout. */
 .desktop-browser .library-shell.desktop-navigation-enabled {

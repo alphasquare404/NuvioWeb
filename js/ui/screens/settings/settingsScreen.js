@@ -77,6 +77,10 @@ import {
   setModernSidebarExpanded,
   setLegacySidebarExpanded
 } from "../../components/sidebarNavigation.js";
+import {
+  bindDesktopNavigationEvents,
+  renderDesktopNavigation
+} from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
@@ -7138,13 +7142,19 @@ export const SettingsScreen = {
     const contentSlot = this.container.querySelector("[data-settings-content]");
     const dialogSlot = this.container.querySelector("[data-settings-dialog]");
 
-    const rootSidebarHtml = renderRootSidebar({
-      selectedRoute: "settings",
-      profile: this.sidebarProfile,
-      layout: this.layoutPrefs,
-      expanded: Boolean(this.sidebarExpanded),
-      pillIconOnly: Boolean(this.pillIconOnly)
-    });
+    const isDesktopBrowser = Platform.isBrowser();
+    const rootSidebarHtml = isDesktopBrowser
+      ? renderDesktopNavigation({
+          selectedRoute: "settings",
+          profile: this.sidebarProfile
+        })
+      : renderRootSidebar({
+          selectedRoute: "settings",
+          profile: this.sidebarProfile,
+          layout: this.layoutPrefs,
+          expanded: Boolean(this.sidebarExpanded),
+          pillIconOnly: Boolean(this.pillIconOnly)
+        });
     if (rootSidebarSlot && rootSidebarSlot.innerHTML !== rootSidebarHtml) {
       rootSidebarSlot.innerHTML = rootSidebarHtml;
     }
@@ -7206,11 +7216,15 @@ export const SettingsScreen = {
     }
     this.bindTextDialogEvents();
 
-    bindRootSidebarEvents(this.container, {
-      currentRoute: "settings",
-      onSelectedAction: () => this.closeSidebarToNav(),
-      onExpandSidebar: () => this.openSidebar()
-    });
+    if (isDesktopBrowser) {
+      bindDesktopNavigationEvents(this.container);
+    } else {
+      bindRootSidebarEvents(this.container, {
+        currentRoute: "settings",
+        onSelectedAction: () => this.closeSidebarToNav(),
+        onExpandSidebar: () => this.openSidebar()
+      });
+    }
     ScreenUtils.indexFocusables(this.container);
     bindSettingsScrollIndicators(this.container);
     this.settingsRouteEnterPending = false;
@@ -7221,6 +7235,7 @@ export const SettingsScreen = {
   },
 
   applyFocus() {
+    const isDesktopBrowser = Platform.isBrowser();
     this.container
       .querySelectorAll(".focusable.focused")
       .forEach((node) => node.classList.remove("focused"));
@@ -7282,7 +7297,7 @@ export const SettingsScreen = {
       this.focusZone = "nav";
     }
 
-    if (!this.layoutPrefs?.modernSidebar) {
+    if (!isDesktopBrowser && !this.layoutPrefs?.modernSidebar) {
       setLegacySidebarExpanded(this.container, false);
     }
     if (this.focusZone === "content") {
@@ -7324,6 +7339,12 @@ export const SettingsScreen = {
   },
 
   async openSidebar() {
+    if (Platform.isBrowser()) {
+      this.syncNavFocusToActive();
+      this.focusZone = "nav";
+      this.applyFocus();
+      return;
+    }
     this.focusZone = "sidebar";
     const sidebarNodes = getRootSidebarNodes(this.container, this.layoutPrefs);
     const selectedSidebarNode = getRootSidebarSelectedNode(this.container, this.layoutPrefs);
@@ -7670,6 +7691,10 @@ export const SettingsScreen = {
   },
 
   async onKeyDown(event) {
+    if (Platform.isBrowser() && event?.target?.closest?.(".desktop-navigation")) {
+      return;
+    }
+
     if (Platform.isBackEvent(event)) {
       event?.preventDefault?.();
       if (this.textDialog) {
