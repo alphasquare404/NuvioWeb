@@ -1406,6 +1406,844 @@ html.desktop-browser {
   }
 }
 
+/* Desktop Player Step 1: retain the custom player UI and playback behavior,
+   but replace Android-TV-scale controls with browser-sized controls. */
+.desktop-browser #player {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.desktop-browser #player.desktop-player-cursor-hidden,
+.desktop-browser #player.desktop-player-cursor-hidden * {
+  cursor: none;
+}
+
+.desktop-browser #player #videoPlayer {
+  object-fit: contain;
+}
+
+.desktop-browser #player #playerUiRoot {
+  --player-controls-x: clamp(28px, 3vw, 48px);
+  --player-controls-y: clamp(24px, 2.8vw, 40px);
+  --player-control-size: 44px;
+  --player-control-icon: 20px;
+  --player-action-controls-open-bottom: clamp(172px, 21vh, 228px);
+  --player-html-subtitle-font-size: clamp(24px, 3.1vh, 46px);
+}
+
+.desktop-browser #player .player-controls-overlay {
+  z-index: 30;
+  padding: var(--player-controls-y) var(--player-controls-x);
+}
+
+.desktop-browser #player .player-controls-gradient {
+  transition: opacity 180ms ease;
+}
+
+.desktop-browser #player .player-controls-gradient-top {
+  height: min(24vh, 210px);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.68) 0%, rgba(0, 0, 0, 0) 100%);
+}
+
+.desktop-browser #player .player-controls-gradient-bottom {
+  height: min(34vh, 300px);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.8) 100%);
+}
+
+.desktop-browser #player .player-controls-overlay.hidden .player-controls-gradient {
+  opacity: 0;
+}
+
+.desktop-browser #player .player-controls-top {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.desktop-browser #player .player-clock {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.15;
+}
+
+.desktop-browser #player .player-ends-at {
+  margin-top: 3px;
+  font-size: 14px;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.desktop-browser #player .player-meta {
+  max-width: min(74vw, 980px);
+}
+
+.desktop-browser #player .player-title {
+  font-size: clamp(28px, 2.1vw, 36px);
+  line-height: 1.14;
+}
+
+.desktop-browser #player .player-subtitle {
+  margin-top: 3px;
+  font-size: clamp(14px, 1.05vw, 17px);
+  line-height: 1.3;
+}
+
+.desktop-browser #player .player-meta-tertiary {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.desktop-browser #player .player-progress-shell {
+  margin-top: 14px;
+  padding: 7px 0;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.desktop-browser #player .player-progress-track {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.desktop-browser #player .player-progress-shell.focused .player-progress-track,
+.desktop-browser #player .player-progress-shell:focus-visible .player-progress-track {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.desktop-browser #player .player-progress-buffered,
+.desktop-browser #player .player-progress-fill {
+  border-radius: 999px;
+}
+
+.desktop-browser #player .player-controls-row {
+  margin-top: 10px;
+  gap: 20px;
+}
+
+.desktop-browser #player .player-control-buttons {
+  gap: 6px;
+}
+
+.desktop-browser #player .player-control-btn {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  border: 1px solid transparent;
+  background: rgba(18, 18, 22, 0.38);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 15px;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.desktop-browser #player .player-control-btn.is-primary {
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.desktop-browser #player .player-control-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.desktop-browser #player .player-control-btn.is-primary .player-control-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.desktop-browser #player .player-control-btn.focused,
+.desktop-browser #player .player-control-btn:focus-visible {
+  border-color: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.52);
+  outline: none;
+}
+
+.desktop-browser #player .player-control-btn.focused .player-control-icon,
+.desktop-browser #player .player-control-btn:focus-visible .player-control-icon {
+  filter: invert(1) brightness(1.15);
+}
+
+.desktop-browser #player .player-control-btn.focused .player-control-icon-mask,
+.desktop-browser #player .player-control-btn:focus-visible .player-control-icon-mask {
+  background-color: #ffffff;
+}
+
+.desktop-browser #player .player-time-label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.desktop-browser #player .player-desktop-back-button {
+  position: fixed;
+  z-index: 50;
+  top: clamp(16px, 2vw, 24px);
+  left: clamp(20px, 3vw, 48px);
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.54);
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  pointer-events: auto;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+}
+
+.desktop-browser #player .player-desktop-back-button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.42);
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
+  outline-offset: 2px;
+}
+
+/* Existing panels retain their data and renderers; only their TV geometry is
+   reduced for desktop browser input. */
+.desktop-browser #player .player-subtitle-modal,
+.desktop-browser #player .player-audio-modal {
+  left: clamp(28px, 3vw, 48px);
+  bottom: clamp(28px, 3vw, 48px);
+  width: min(620px, calc(100vw - 56px));
+  height: min(64vh, calc(100vh - 96px));
+}
+
+.desktop-browser #player .player-speed-modal {
+  left: clamp(28px, 3vw, 48px);
+  bottom: clamp(28px, 3vw, 48px);
+  width: min(280px, calc(100vw - 56px));
+  max-height: calc(100vh - 96px);
+  padding: 18px;
+  border-radius: 14px;
+  background: rgba(25, 25, 30, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.desktop-browser #player .player-dialog-title,
+.desktop-browser #player .player-sources-title,
+.desktop-browser #player .player-episode-panel-title {
+  font-size: 22px;
+}
+
+.desktop-browser #player .player-dialog-tab,
+.desktop-browser #player .player-sources-filter,
+.desktop-browser #player .player-episode-season-tab {
+  height: 34px;
+  font-size: 14px;
+}
+
+.desktop-browser #player .player-dialog-item {
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+.desktop-browser #player .player-dialog-item-main,
+.desktop-browser #player .player-audio-track-list .player-dialog-item-main {
+  font-size: 15px;
+}
+
+.desktop-browser #player .player-sources-panel,
+.desktop-browser #player .player-episode-panel {
+  width: min(460px, 42vw);
+  padding: 20px;
+  border-radius: 14px 0 0 14px;
+  background: rgba(25, 25, 30, 0.97);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.desktop-browser #player .player-source-card {
+  padding: 12px;
+  margin-bottom: 7px;
+}
+
+.desktop-browser #player .player-source-title {
+  font-size: 16px;
+}
+
+.desktop-browser #player .player-source-desc,
+.desktop-browser #player .player-source-current-meta {
+  font-size: 13px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #player .player-control-btn:hover {
+    border-color: rgba(255, 255, 255, 0.26);
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .desktop-browser #player .player-control-btn.is-primary:hover,
+  .desktop-browser #player .player-desktop-back-button:hover {
+    border-color: transparent;
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  .desktop-browser #player .player-progress-shell:hover .player-progress-track {
+    height: 8px;
+  }
+}
+
+@media (max-width: 720px) {
+  .desktop-browser #player #playerUiRoot {
+    --player-controls-x: 20px;
+    --player-controls-y: 20px;
+  }
+
+  .desktop-browser #player .player-meta {
+    max-width: calc(100vw - 40px);
+  }
+
+  .desktop-browser #player .player-title {
+    font-size: 24px;
+  }
+
+  .desktop-browser #player .player-control-buttons {
+    gap: 3px;
+  }
+
+  .desktop-browser #player .player-control-btn {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .desktop-browser #player .player-control-btn.is-primary {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .desktop-browser #player .player-sources-panel,
+  .desktop-browser #player .player-episode-panel {
+    width: min(100vw, 460px);
+  }
+}
+
+/* Desktop Player Step 1 panel refinement: use the existing dialog markup and
+   actions, but replace the Android-TV dimensions with compact browser panels. */
+.desktop-browser #player .player-modal-backdrop {
+  z-index: 34;
+}
+
+.desktop-browser #player .player-modal,
+.desktop-browser #player .player-sources-panel,
+.desktop-browser #player .player-episode-panel {
+  z-index: 36;
+  /* player-ui-root intentionally disables hit testing; desktop panels must
+     explicitly restore it so their existing delegated actions receive clicks. */
+  pointer-events: auto;
+}
+
+/* The active panel needs hit testing, but this desktop rule is more specific
+   than the shared .hidden rule. Restore non-interactive hidden panels so an
+   invisible dialog cannot sit above and swallow every player click. */
+.desktop-browser #player .player-modal.hidden,
+.desktop-browser #player .player-sources-panel.hidden,
+.desktop-browser #player .player-episode-panel.hidden {
+  pointer-events: none;
+}
+
+.desktop-browser #player .player-subtitle-modal {
+  left: clamp(28px, 3vw, 48px);
+  bottom: clamp(28px, 3vw, 48px);
+  width: min(920px, calc(100vw - 56px));
+  height: min(76vh, calc(100vh - 96px));
+  max-height: min(76vh, calc(100vh - 96px));
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(24, 24, 29, 0.96);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.desktop-browser #player .player-subtitle-modal .player-dialog-title {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.desktop-browser #player .player-subtitle-overlay-grid {
+  grid-template-columns: 175px minmax(320px, 1fr) 240px;
+  gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+}
+
+.desktop-browser #player .player-subtitle-rail {
+  gap: 6px;
+  min-height: 0;
+  height: auto;
+  padding: 0 3px 3px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.desktop-browser #player .player-subtitle-language-rail .player-dialog-item {
+  min-height: 40px;
+  padding: 7px 9px;
+  border-width: 1px;
+  border-radius: 9px;
+}
+
+.desktop-browser #player .player-subtitle-language-rail .player-dialog-item-main {
+  gap: 7px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.desktop-browser #player .player-subtitle-language-count {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item {
+  /* The shared TV rail is a constrained flex column. Keep browser subtitle
+     results as independent, normal-flow rows so long labels cannot overlap. */
+  flex: 0 0 auto;
+  position: static;
+  min-height: 52px;
+  height: auto;
+  padding: 8px 10px;
+  border-width: 1px;
+  border-radius: 9px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  align-content: center;
+  box-sizing: border-box;
+}
+
+.desktop-browser #player .player-subtitle-options-rail {
+  display: block;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item + .player-dialog-item {
+  margin-top: 6px;
+}
+
+.desktop-browser #player .player-subtitle-option-copy {
+  position: static;
+  grid-column: 1 / 2;
+  grid-row: 1 / 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  align-content: start;
+  min-height: 0;
+  gap: 3px;
+  overflow: visible;
+}
+
+.desktop-browser #player .player-subtitle-source-chip {
+  min-height: 20px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item-main,
+.desktop-browser #player .player-subtitle-style-rail .player-dialog-item-main {
+  font-size: 14px;
+  line-height: 1.22;
+}
+
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item-sub,
+.desktop-browser #player .player-subtitle-style-rail .player-dialog-item-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.22;
+}
+
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item-main,
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item-sub {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+}
+
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item-main {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item-sub {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item-main,
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item-sub,
+.desktop-browser #player .player-subtitle-options-rail .player-subtitle-source-chip {
+  position: static;
+  transform: none;
+}
+
+.desktop-browser #player .player-subtitle-options-rail .player-dialog-item-check {
+  font-size: 16px;
+}
+
+.desktop-browser #player .player-subtitle-style-rail {
+  gap: 7px;
+}
+
+.desktop-browser #player .player-subtitle-style-rail .player-dialog-style-item {
+  min-height: 42px;
+  padding: 4px;
+  border-width: 1px;
+  border-radius: 9px;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  column-gap: 7px;
+}
+
+.desktop-browser #player .player-dialog-step,
+.desktop-browser #player .player-subtitle-modal .player-dialog-step,
+.desktop-browser #player .player-audio-modal .player-dialog-step {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  border-width: 1px;
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.desktop-browser #player .player-subtitle-modal .player-dialog-item.selected,
+.desktop-browser #player .player-subtitle-modal .player-dialog-item.selected.focused,
+.desktop-browser #player .player-audio-modal .player-dialog-item.selected,
+.desktop-browser #player .player-speed-modal .player-dialog-item.selected {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: var(--player-text-primary);
+}
+
+.desktop-browser #player .player-dialog-item.focused:not(.selected),
+.desktop-browser #player .player-audio-control-card.focused:not(.selected),
+.desktop-browser #player .player-dialog-step.focused:not(.disabled) {
+  border-color: rgb(var(--secondary-color-rgb) / 0.78);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.desktop-browser #player .player-audio-modal {
+  left: clamp(28px, 3vw, 48px);
+  bottom: clamp(28px, 3vw, 48px);
+  width: min(540px, calc(100vw - 56px));
+  height: min(66vh, calc(100vh - 96px));
+  max-height: min(66vh, calc(100vh - 96px));
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(24, 24, 29, 0.96);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.desktop-browser #player .player-audio-modal .player-dialog-title {
+  margin-bottom: 12px;
+}
+
+.desktop-browser #player .player-audio-overlay-grid {
+  grid-template-columns: minmax(0, 1fr) 166px;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.desktop-browser #player .player-audio-track-list,
+.desktop-browser #player .player-audio-controls-list {
+  width: auto;
+  min-height: 0;
+  max-height: 100%;
+  padding: 0 3px 3px;
+  gap: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.desktop-browser #player .player-audio-track-list .player-dialog-item {
+  min-height: 46px;
+  padding: 7px 9px;
+  border-width: 1px;
+  border-radius: 9px;
+}
+
+.desktop-browser #player .player-audio-track-list .player-dialog-item-main,
+.desktop-browser #player .player-audio-control-title,
+.desktop-browser #player .player-audio-control-value {
+  font-size: 14px;
+  line-height: 1.22;
+}
+
+.desktop-browser #player .player-audio-track-list .player-dialog-item-sub,
+.desktop-browser #player .player-audio-control-card > .player-dialog-item-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.desktop-browser #player .player-audio-track-list .player-dialog-item-check {
+  font-size: 16px;
+}
+
+.desktop-browser #player .player-audio-control-card {
+  padding: 7px;
+  border-width: 1px;
+  border-radius: 9px;
+}
+
+.desktop-browser #player .player-audio-step-row {
+  gap: 6px;
+  margin: 5px 0 0;
+}
+
+.desktop-browser #player .player-speed-modal {
+  left: clamp(28px, 3vw, 48px);
+  bottom: clamp(28px, 3vw, 48px);
+  width: min(320px, calc(100vw - 56px));
+  max-height: min(62vh, calc(100vh - 96px));
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(24, 24, 29, 0.96);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+}
+
+.desktop-browser #player .player-speed-modal .player-dialog-title {
+  margin-bottom: 10px;
+  font-size: 20px;
+}
+
+.desktop-browser #player .player-speed-modal .player-dialog-list {
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.desktop-browser #player .player-speed-modal .player-dialog-item {
+  min-height: 40px;
+  padding: 6px 9px;
+  border-width: 1px;
+  border-radius: 8px;
+}
+
+.desktop-browser #player .player-speed-modal .player-dialog-item-main {
+  font-size: 14px;
+}
+
+.desktop-browser #player .player-speed-modal .player-dialog-item-sub {
+  margin-top: 0;
+  font-size: 11px;
+}
+
+.desktop-browser #player .player-speed-modal .player-dialog-item-check {
+  font-size: 16px;
+}
+
+.desktop-browser #player .player-sources-panel {
+  width: min(460px, 34vw);
+  padding: 18px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px 0 0 14px;
+  background: rgba(24, 24, 29, 0.97);
+  box-shadow: -18px 0 42px rgba(0, 0, 0, 0.26);
+}
+
+.desktop-browser #player .player-sources-header {
+  gap: 12px;
+}
+
+.desktop-browser #player .player-sources-title {
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.desktop-browser #player .player-sources-actions {
+  gap: 7px;
+}
+
+.desktop-browser #player .player-sources-top-btn {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 14px;
+}
+
+.desktop-browser #player .player-sources-filters {
+  margin-top: 12px;
+  gap: 6px;
+  padding: 2px 0 6px;
+}
+
+.desktop-browser #player .player-sources-filter {
+  height: 34px;
+  padding: 0 10px;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.14);
+  font-size: 13px;
+}
+
+.desktop-browser #player .player-sources-list {
+  margin-top: 10px;
+  padding: 2px 3px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.desktop-browser #player .player-source-card {
+  min-height: 76px;
+  padding: 12px;
+  margin-bottom: 7px;
+  border-width: 1px;
+  border-radius: 10px;
+  gap: 10px;
+}
+
+.desktop-browser #player .player-source-title {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.desktop-browser #player .player-source-desc,
+.desktop-browser #player .player-source-addon {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.desktop-browser #player .player-source-logo {
+  width: 38px;
+  height: 38px;
+}
+
+.desktop-browser #player .player-parental-guide {
+  left: clamp(72px, 5vw, 96px);
+  top: clamp(24px, 3vw, 40px);
+  z-index: 33;
+  max-width: min(320px, calc(100vw - 112px));
+}
+
+.desktop-browser #player .player-parental-line {
+  width: 3px;
+  border-radius: 2px;
+}
+
+.desktop-browser #player .player-parental-list {
+  gap: 3px;
+  padding-left: 11px;
+  max-height: min(34vh, 220px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.desktop-browser #player .player-parental-item {
+  min-height: 28px;
+  height: 28px;
+  white-space: nowrap;
+}
+
+.desktop-browser #player .player-parental-label {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.desktop-browser #player .player-parental-separator,
+.desktop-browser #player .player-parental-severity {
+  font-size: 14px;
+}
+
+.desktop-browser #player .player-parental-severity {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #player .player-dialog-item:hover:not(.selected),
+  .desktop-browser #player .player-audio-control-card:hover:not(.selected),
+  .desktop-browser #player .player-sources-top-btn:hover,
+  .desktop-browser #player .player-sources-filter:hover:not(.selected),
+  .desktop-browser #player .player-source-card:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+
+@media (max-width: 880px) {
+  .desktop-browser #player .player-subtitle-modal {
+    width: min(760px, calc(100vw - 40px));
+    height: min(78vh, calc(100vh - 72px));
+    padding: 14px;
+  }
+
+  .desktop-browser #player .player-subtitle-overlay-grid {
+    grid-template-columns: 150px minmax(240px, 1fr) 200px;
+    gap: 10px;
+  }
+
+  .desktop-browser #player .player-sources-panel {
+    width: min(460px, calc(100vw - 48px));
+  }
+}
+
+@media (max-width: 640px) {
+  .desktop-browser #player .player-subtitle-modal {
+    width: calc(100vw - 32px);
+    height: min(82vh, calc(100vh - 32px));
+    padding: 12px;
+  }
+
+  .desktop-browser #player .player-subtitle-overlay-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(90px, 0.6fr) minmax(160px, 1fr) minmax(160px, 1fr);
+  }
+
+  .desktop-browser #player .player-subtitle-language-rail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+  }
+
+  .desktop-browser #player .player-audio-modal {
+    width: calc(100vw - 32px);
+    height: min(74vh, calc(100vh - 32px));
+    padding: 14px;
+  }
+
+  .desktop-browser #player .player-audio-overlay-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(160px, 1fr) auto;
+  }
+
+  .desktop-browser #player .player-audio-controls-list {
+    max-height: 150px;
+  }
+}
+
 /* Desktop Detail Step 2: compact the existing lower-section markup without
    changing its data, routing, or TV focus behavior. */
 .desktop-browser #detail .series-insight-section {

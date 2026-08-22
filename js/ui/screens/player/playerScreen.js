@@ -2163,6 +2163,7 @@ function uniqueNonEmptyValues(values = []) {
 export const PlayerScreen = {
   async mount(params = {}) {
     this.container = document.getElementById("player");
+    this.unbindDesktopPlayerPointerBridge();
     this.container.style.display = "block";
     this.container.classList.toggle("player-platform-webos", Environment.isWebOS());
     const mountToken = Number(this.playerMountToken || 0) + 1;
@@ -2533,6 +2534,9 @@ export const PlayerScreen = {
     this.autoHideControlsAfterSeek = false;
     this.controlFocusIndex = 0;
     this.controlsHideTimer = null;
+    this.desktopProgressPointer = null;
+    this.desktopSuppressProgressClick = false;
+    this.desktopProgressClickSuppressTimer = null;
     this.tickTimer = null;
     this.skipIntervalCheckTimer = null;
     this.skipIntervalsRequestToken = Number(this.skipIntervalsRequestToken || 0);
@@ -2568,6 +2572,7 @@ export const PlayerScreen = {
     this.audioMediaSource = null;
 
     this.renderPlayerUi();
+    this.bindDesktopPlayerPointerBridge();
     this.bindPlayerExitCleanup();
     this.pauseOverlayMeta = this.buildPauseOverlayMeta();
     if (!this.isExternalFrameMode()) {
@@ -5147,6 +5152,11 @@ export const PlayerScreen = {
       `;
     }
 
+    const desktopBackButton = this.renderDesktopBackButton();
+    if (desktopBackButton) {
+      root.insertAdjacentHTML("beforeend", desktopBackButton);
+    }
+
     this.container.appendChild(root);
     this.cachePlayerUiRefs(root);
     this.syncPlayerOverlayLayoutState();
@@ -5163,6 +5173,286 @@ export const PlayerScreen = {
       this.renderPauseOverlay();
       this.renderNextEpisodeCard();
     }
+  },
+
+  renderDesktopBackButton() {
+    if (!Environment.isBrowser()) {
+      return "";
+    }
+    return `
+      <button class="player-desktop-back-button" type="button" data-player-desktop-back
+              aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
+        <span aria-hidden="true">&#8592;</span>
+      </button>
+    `;
+  },
+
+  bindDesktopPlayerPointerBridge() {
+    if (!Environment.isBrowser() || !this.container || this.boundDesktopPlayerClickHandler) {
+      return;
+    }
+
+    this.boundDesktopPlayerPointerMoveHandler = (event) => {
+      const activePointer = this.desktopProgressPointer;
+      if (activePointer && Number(event.pointerId) === Number(activePointer.pointerId)) {
+        const deltaX = Number(event.clientX || 0) - activePointer.startX;
+        const deltaY = Number(event.clientY || 0) - activePointer.startY;
+        if (!activePointer.dragging && Math.hypot(deltaX, deltaY) > 2) {
+          activePointer.dragging = true;
+        }
+        if (activePointer.dragging) {
+          event.preventDefault?.();
+          this.seekProgressFromPointer(event, activePointer.shell);
+        }
+        return;
+      }
+
+      this.revealDesktopPlayerControls();
+    };
+
+    this.boundDesktopPlayerPointerDownHandler = (event) => {
+      if (event.button !== 0 || event.isPrimary === false) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const shell = target.closest(".player-progress-shell");
+      if (!(shell instanceof HTMLElement) || !this.container.contains(shell)) {
+        return;
+      }
+      this.desktopProgressPointer = {
+        pointerId: event.pointerId,
+        startX: Number(event.clientX || 0),
+        startY: Number(event.clientY || 0),
+        shell,
+        dragging: false
+      };
+      try {
+        shell.setPointerCapture?.(event.pointerId);
+      } catch (_) {
+        // Pointer capture is best effort; a click still follows the existing path.
+      }
+      this.revealDesktopPlayerControls();
+    };
+
+    const finishProgressPointer = (event, { cancelled = false } = {}) => {
+      const activePointer = this.desktopProgressPointer;
+      if (!activePointer || Number(event.pointerId) !== Number(activePointer.pointerId)) {
+        return;
+      }
+      if (activePointer.dragging && !cancelled) {
+        event.preventDefault?.();
+        this.seekProgressFromPointer(event, activePointer.shell);
+        // Only the native click emitted by this completed drag is ignored. A
+        // normal progress click still reaches onPointerActivate below.
+        this.desktopSuppressProgressClick = true;
+        if (this.desktopProgressClickSuppressTimer) {
+          clearTimeout(this.desktopProgressClickSuppressTimer);
+        }
+        this.desktopProgressClickSuppressTimer = setTimeout(() => {
+          this.desktopSuppressProgressClick = false;
+          this.desktopProgressClickSuppressTimer = null;
+        }, 0);
+      }
+      try {
+        activePointer.shell.releasePointerCapture?.(event.pointerId);
+      } catch (_) {
+        // Capture may already have been released by the browser.
+      }
+      this.desktopProgressPointer = null;
+      this.revealDesktopPlayerControls();
+    };
+
+    this.boundDesktopPlayerPointerUpHandler = (event) => finishProgressPointer(event);
+    this.boundDesktopPlayerPointerCancelHandler = (event) =>
+      finishProgressPointer(event, { cancelled: true });
+
+    this.boundDesktopPlayerClickHandler = (event) => {
+      // Enter already activates the TV/D-pad focus target through onKeyDown.
+      // Do not run its keyboard-generated browser click a second time.
+      if (event.defaultPrevented || Number(event.detail || 0) === 0) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const backButton = target.closest("[data-player-desktop-back]");
+      if (backButton && this.container.contains(backButton)) {
+        this.navigateBackToStreamScreen();
+        return;
+      }
+
+      // A browser click outside an open panel should use the same cleanup path
+      // as Esc/Back, and must not fall through to the video play/pause click.
+      if (this.dismissDesktopPlayerPanelFromPointer(target)) {
+        return;
+      }
+
+      const progressShell = target.closest(".player-progress-shell");
+      if (progressShell && this.container.contains(progressShell)) {
+        if (this.desktopSuppressProgressClick) {
+          this.desktopSuppressProgressClick = false;
+          if (this.desktopProgressClickSuppressTimer) {
+            clearTimeout(this.desktopProgressClickSuppressTimer);
+            this.desktopProgressClickSuppressTimer = null;
+          }
+          return;
+        }
+        void this.onPointerActivate(progressShell, event);
+        return;
+      }
+
+      const actionTarget = target.closest(
+        ".player-control-btn[data-action], [data-player-pointer-action], [data-player-error-action], " +
+          "[data-sources-zone], [data-subtitle-style-action], [data-subtitle-rail], " +
+          "[data-audio-step], [data-audio-column], [data-speed-index], [data-episode-action], " +
+          "[data-episode-stream-action], [data-episode-stream-filter-index], " +
+          "[data-episode-stream-index], [data-episode-season-index], [data-episode-index]"
+      );
+      if (actionTarget && this.container.contains(actionTarget)) {
+        void this.onPointerActivate(actionTarget, event);
+        return;
+      }
+
+      if (this.isDesktopVideoAreaClick(target)) {
+        this.togglePause({ focusControls: false });
+      }
+    };
+
+    this.container.addEventListener("pointermove", this.boundDesktopPlayerPointerMoveHandler);
+    this.container.addEventListener("pointerdown", this.boundDesktopPlayerPointerDownHandler);
+    this.container.addEventListener("pointerup", this.boundDesktopPlayerPointerUpHandler);
+    this.container.addEventListener("pointercancel", this.boundDesktopPlayerPointerCancelHandler);
+    this.container.addEventListener("click", this.boundDesktopPlayerClickHandler);
+  },
+
+  unbindDesktopPlayerPointerBridge() {
+    if (!this.container || !this.boundDesktopPlayerClickHandler) {
+      return;
+    }
+    this.container.removeEventListener("pointermove", this.boundDesktopPlayerPointerMoveHandler);
+    this.container.removeEventListener("pointerdown", this.boundDesktopPlayerPointerDownHandler);
+    this.container.removeEventListener("pointerup", this.boundDesktopPlayerPointerUpHandler);
+    this.container.removeEventListener("pointercancel", this.boundDesktopPlayerPointerCancelHandler);
+    this.container.removeEventListener("click", this.boundDesktopPlayerClickHandler);
+    this.boundDesktopPlayerPointerMoveHandler = null;
+    this.boundDesktopPlayerPointerDownHandler = null;
+    this.boundDesktopPlayerPointerUpHandler = null;
+    this.boundDesktopPlayerPointerCancelHandler = null;
+    this.boundDesktopPlayerClickHandler = null;
+    this.desktopProgressPointer = null;
+    this.desktopSuppressProgressClick = false;
+    if (this.desktopProgressClickSuppressTimer) {
+      clearTimeout(this.desktopProgressClickSuppressTimer);
+      this.desktopProgressClickSuppressTimer = null;
+    }
+  },
+
+  revealDesktopPlayerControls() {
+    if (!Environment.isBrowser() || this.isExternalFrameMode()) {
+      return;
+    }
+    this.container?.classList.remove("desktop-player-cursor-hidden");
+    if (this.controlsVisible) {
+      this.resetControlsAutoHide();
+      return;
+    }
+    this.setControlsVisible(true, { focus: false });
+  },
+
+  isDesktopVideoAreaClick(target) {
+    if (!Environment.isBrowser() || this.isExternalFrameMode() || !this.container?.contains(target)) {
+      return false;
+    }
+    const blockedSelector = [
+      "[data-player-desktop-back]",
+      ".player-controls-top",
+      ".player-controls-bottom",
+      ".player-modal",
+      ".player-modal-backdrop",
+      ".player-sources-panel",
+      ".player-episode-panel",
+      ".player-pause-overlay",
+      ".player-next-episode-card",
+      ".player-skip-intro",
+      ".player-seek-overlay",
+      ".player-loading-overlay",
+      ".player-startup-error-overlay",
+      ".player-torrent-overlay"
+    ].join(", ");
+    return !target.closest(blockedSelector);
+  },
+
+  dismissDesktopPlayerPanelFromPointer(target) {
+    if (!Environment.isBrowser() || !(target instanceof Element)) {
+      return false;
+    }
+
+    const panels = [
+      {
+        visible: this.sourcesPanelVisible,
+        node: this.uiRefs?.sourcesPanel,
+        close: () => this.closeSourcesPanel()
+      },
+      {
+        visible: this.subtitleDialogVisible,
+        node: this.uiRefs?.subtitleDialog,
+        close: () => this.closeSubtitleDialog()
+      },
+      {
+        visible: this.audioDialogVisible,
+        node: this.uiRefs?.audioDialog,
+        close: () => this.closeAudioDialog()
+      },
+      {
+        visible: this.speedDialogVisible,
+        node: this.uiRefs?.speedDialog,
+        close: () => this.closeSpeedDialog()
+      },
+      {
+        visible: this.episodePanelVisible,
+        node: this.uiRefs?.root?.querySelector("#episodeSidePanel"),
+        close: () => {
+          if (this.episodePanelMode === "streams") {
+            this.closeEpisodeStreamsView();
+          } else {
+            this.hideEpisodePanel();
+          }
+        }
+      }
+    ];
+
+    const activePanel = panels.find(({ visible, node }) => visible && node instanceof Element);
+    if (!activePanel || activePanel.node.contains(target)) {
+      return false;
+    }
+
+    activePanel.close();
+    return true;
+  },
+
+  getDesktopPlayerInteractiveTarget(target) {
+    if (!(target instanceof Element)) {
+      return null;
+    }
+    return target.closest(
+      "[data-player-desktop-back], .player-control-btn[data-action], [data-player-pointer-action], " +
+        "[data-player-error-action], [data-sources-zone], [data-subtitle-style-action], " +
+        "[data-subtitle-rail], [data-audio-step], [data-audio-column], [data-speed-index], " +
+        "[data-episode-action], [data-episode-stream-action], [data-episode-stream-filter-index], " +
+        "[data-episode-stream-index], [data-episode-season-index], [data-episode-index]"
+    );
+  },
+
+  isDesktopEditableTarget(target) {
+    return Boolean(
+      target instanceof Element &&
+        target.closest("input, textarea, select, [contenteditable], [contenteditable='true']")
+    );
   },
 
   cachePlayerUiRefs(root = null) {
@@ -9303,6 +9593,12 @@ export const PlayerScreen = {
 
   setControlsVisible(visible, { focus = false } = {}) {
     this.controlsVisible = Boolean(visible);
+    if (Environment.isBrowser()) {
+      this.container?.classList.toggle(
+        "desktop-player-cursor-hidden",
+        !this.controlsVisible && !this.paused
+      );
+    }
     if (this.isExternalFrameMode()) {
       return;
     }
@@ -17235,8 +17531,8 @@ export const PlayerScreen = {
       PARENTAL_GUIDE_LINE_OUT_DELAY_MS;
     const containerExitDelay =
       lineExitDelay + PARENTAL_GUIDE_LINE_OUT_MS + PARENTAL_GUIDE_CONTAINER_OUT_DELAY_MS;
-    const rowHeight = PARENTAL_GUIDE_ROW_HEIGHT;
-    const rowGap = PARENTAL_GUIDE_ROW_GAP;
+    const rowHeight = Environment.isBrowser() ? 28 : PARENTAL_GUIDE_ROW_HEIGHT;
+    const rowGap = Environment.isBrowser() ? 3 : PARENTAL_GUIDE_ROW_GAP;
     const lineHeight = rowHeight * total + rowGap * Math.max(0, total - 1);
     const currentLineHeight = clamp(Number(this.parentalGuideLineProgress || 0), 0, lineHeight);
     const rootStyle = getComputedStyle(document.documentElement);
@@ -17367,9 +17663,10 @@ export const PlayerScreen = {
     this.parentalGuideShown = true;
     this.renderParentalGuideOverlay();
     this.stopParentalGuideLineAnimation({ reset: true });
+    const rowHeight = Environment.isBrowser() ? 28 : PARENTAL_GUIDE_ROW_HEIGHT;
+    const rowGap = Environment.isBrowser() ? 3 : PARENTAL_GUIDE_ROW_GAP;
     const lineHeight =
-      PARENTAL_GUIDE_ROW_HEIGHT * this.parentalWarnings.length +
-      PARENTAL_GUIDE_ROW_GAP * Math.max(0, this.parentalWarnings.length - 1);
+      rowHeight * this.parentalWarnings.length + rowGap * Math.max(0, this.parentalWarnings.length - 1);
     this.scheduleParentalGuideLineAnimation(
       lineHeight,
       PARENTAL_GUIDE_CONTAINER_IN_MS,
@@ -18852,6 +19149,30 @@ export const PlayerScreen = {
       this.consumeBackRequest();
       return;
     }
+    if (Environment.isBrowser() && (keyCode === 32 || event?.code === "Space")) {
+      const eventTarget = event?.target instanceof Element ? event.target : document.activeElement;
+      const activeTarget =
+        document.activeElement instanceof Element ? document.activeElement : eventTarget;
+      if (this.isDesktopEditableTarget(eventTarget) || this.isDesktopEditableTarget(activeTarget)) {
+        return;
+      }
+
+      const interactiveTarget =
+        this.getDesktopPlayerInteractiveTarget(eventTarget) ||
+        this.getDesktopPlayerInteractiveTarget(activeTarget);
+      event?.preventDefault?.();
+      if (interactiveTarget) {
+        if (interactiveTarget.matches("[data-player-desktop-back]")) {
+          this.navigateBackToStreamScreen();
+        } else {
+          void this.onPointerActivate(interactiveTarget, event);
+        }
+        return;
+      }
+
+      this.performControlAction("playPause");
+      return;
+    }
     if (this.nextEpisodeBackExitArmed) {
       this.nextEpisodeBackExitArmed = false;
     }
@@ -19342,6 +19663,7 @@ export const PlayerScreen = {
   cleanup() {
     try {
       this.playerRouteActive = false;
+      this.unbindDesktopPlayerPointerBridge();
       this.playerMountToken = Number(this.playerMountToken || 0) + 1;
       this.nextEpisodeLaunchToken = Number(this.nextEpisodeLaunchToken || 0) + 1;
       this.nextEpisodeLaunching = false;
