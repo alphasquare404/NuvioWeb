@@ -3034,6 +3034,24 @@ export const MetaDetailsScreen = {
     return ` detail-trailer-active detail-trailer-${mode}${this.trailerVisualReady ? " detail-trailer-ready" : ""}`;
   },
 
+  renderDesktopBackButton() {
+    if (!Platform.isBrowser()) {
+      return "";
+    }
+    return `
+      <button class="detail-desktop-back-button" type="button" data-detail-back
+              aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
+        <span aria-hidden="true">&#8592;</span>
+      </button>
+    `;
+  },
+
+  handleDetailBack() {
+    if (!this.navigateBackFromDetail()) {
+      Router.back();
+    }
+  },
+
   renderSeriesLayout(meta) {
     const backdrop = meta.background || meta.poster || "";
     const heroMarkup = this.renderSeriesHeroMarkup(meta);
@@ -3050,6 +3068,7 @@ export const MetaDetailsScreen = {
         <div class="detail-bottom-shadow"></div>
 
         <div class="series-detail-content">
+          ${this.renderDesktopBackButton()}
           <div id="detailHeroSection">${heroMarkup}</div>
           <div id="detailSeasonRowMount">
             <div class="series-season-row" data-scroll-key="season-tabs">${this.renderSeasonButtons()}</div>
@@ -3371,6 +3390,7 @@ export const MetaDetailsScreen = {
         <div class="detail-bottom-shadow"></div>
 
         <div class="series-detail-content movie-detail-content">
+          ${this.renderDesktopBackButton()}
           <div id="detailHeroSection">${heroMarkup}</div>
           <div id="detailInsightSectionMount">${this.renderMovieInsightSection(meta)}</div>
           <div id="detailCommentsSectionMount">${this.renderStandaloneCommentsSection()}</div>
@@ -5699,6 +5719,12 @@ export const MetaDetailsScreen = {
     if (!content) {
       return;
     }
+    if (Platform.isBrowser()) {
+      const backButton = this.container?.querySelector("[data-detail-back]");
+      if (backButton) {
+        backButton.onclick = () => this.handleDetailBack();
+      }
+    }
     if (this.detailScrollHandler) {
       content.removeEventListener("scroll", this.detailScrollHandler);
     }
@@ -6180,6 +6206,11 @@ export const MetaDetailsScreen = {
     if (this.trailerAutoplayTimer) {
       clearTimeout(this.trailerAutoplayTimer);
       this.trailerAutoplayTimer = null;
+    }
+    // Desktop Detail keeps the cinematic backdrop visible until a user
+    // explicitly chooses Trailer. TV platforms retain their existing autoplay.
+    if (Platform.isBrowser()) {
+      return;
     }
     if (
       !this.trailerSource ||

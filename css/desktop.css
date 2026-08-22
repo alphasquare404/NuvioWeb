@@ -559,6 +559,282 @@ html.desktop-browser {
   }
 }
 
+/* Desktop Detail Step 1: preserve the existing immersive detail markup while
+   returning its hero and lower sections to normal browser document flow. */
+.desktop-browser #detail,
+.desktop-browser #detail .series-detail-shell {
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+
+.desktop-browser #detail .series-detail-shell {
+  background: var(--detail-bg);
+}
+
+.desktop-browser #detail .series-detail-backdrop,
+.desktop-browser #detail .series-detail-vignette {
+  bottom: auto;
+  height: clamp(600px, 72vh, 840px);
+}
+
+.desktop-browser #detail .series-detail-vignette {
+  background:
+    linear-gradient(90deg, rgba(4, 7, 11, 0.94) 0%, rgba(8, 12, 17, 0.72) 42%, rgba(8, 12, 17, 0.25) 72%, rgba(8, 12, 17, 0.08) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08) 42%, var(--detail-bg) 100%);
+}
+
+.desktop-browser #detail .detail-bottom-shadow {
+  top: clamp(440px, 54vh, 660px);
+  bottom: auto;
+  height: clamp(160px, 24vh, 260px);
+  opacity: 1;
+  background: linear-gradient(180deg, transparent, var(--detail-bg));
+}
+
+.desktop-browser #detail .series-detail-content {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
+  padding: 0 0 72px;
+}
+
+.desktop-browser #detail .detail-hero-section {
+  min-height: clamp(600px, 72vh, 840px);
+  height: auto;
+  padding: 0 clamp(20px, 3.4vw, 64px) clamp(48px, 5vh, 72px);
+}
+
+.desktop-browser #detail .detail-hero-brand {
+  min-height: 0;
+}
+
+.desktop-browser #detail .detail-hero-body {
+  width: min(100%, 660px);
+  max-height: none;
+  overflow: visible;
+}
+
+.desktop-browser #detail .detail-desktop-back-button {
+  position: absolute;
+  z-index: 3;
+  top: 24px;
+  left: clamp(20px, 3.4vw, 64px);
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.54);
+  color: var(--detail-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+}
+
+.desktop-browser #detail .detail-desktop-back-button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow: none;
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
+  outline-offset: 2px;
+}
+
+.desktop-browser #detail .series-detail-logo {
+  max-width: min(100%, 480px);
+  max-height: 112px;
+  margin-bottom: 18px;
+}
+
+.desktop-browser #detail .series-detail-title {
+  margin-bottom: 14px;
+  font-size: clamp(42px, 3.4vw, 56px);
+  line-height: 1.08;
+}
+
+.desktop-browser #detail .series-detail-actions {
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.desktop-browser #detail .series-primary-btn {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 0;
+  height: 46px;
+  min-height: 46px;
+  padding: 0 20px;
+  border: 1px solid transparent;
+  border-radius: 23px;
+  font-size: 16px;
+  gap: 9px;
+  flex: 0 0 auto;
+}
+
+.desktop-browser #detail .series-secondary-btn {
+  box-sizing: border-box;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 23px;
+  font-size: 16px;
+}
+
+.desktop-browser #detail .series-secondary-btn {
+  background: rgb(18 22 28 / 0.76);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--detail-text-primary);
+}
+
+.desktop-browser #detail .series-circle-btn {
+  box-sizing: border-box;
+  flex: 0 0 42px;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgb(18 22 28 / 0.76);
+  font-size: 18px;
+}
+
+.desktop-browser #detail .series-btn-svg {
+  width: 22px;
+  height: 22px;
+}
+
+.desktop-browser #detail .series-primary-btn .series-btn-svg {
+  width: 17px;
+  height: 17px;
+}
+
+.desktop-browser #detail .series-circle-btn .series-btn-svg {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-browser #detail .series-primary-btn:focus-visible,
+.desktop-browser #detail .series-secondary-btn:focus-visible,
+.desktop-browser #detail .series-circle-btn:focus-visible {
+  box-shadow: 0 0 0 3px rgb(var(--secondary-color-rgb) / 0.3);
+  outline: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #detail .detail-desktop-back-button:hover {
+    border-color: transparent;
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .desktop-browser #detail .series-secondary-btn:hover,
+  .desktop-browser #detail .series-circle-btn:hover {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .desktop-browser #detail .series-primary-btn:hover {
+    background: rgba(255, 255, 255, 0.9);
+  }
+}
+
+.desktop-browser #detail .detail-resume-indicator {
+  gap: 8px;
+  min-height: 0;
+  margin: -2px 0 12px;
+  font-size: 14px;
+}
+
+.desktop-browser #detail .detail-resume-indicator span:not(:last-child)::after {
+  margin-left: 8px;
+}
+
+.desktop-browser #detail .series-detail-support {
+  max-width: 660px;
+  margin-bottom: 8px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.desktop-browser #detail .detail-ratings-row {
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.desktop-browser #detail .detail-rating-item {
+  gap: 6px;
+  font-size: 14px;
+}
+
+.desktop-browser #detail .detail-rating-item img {
+  width: 22px;
+  height: 22px;
+}
+
+.desktop-browser #detail .series-detail-description {
+  max-width: 660px;
+  margin-bottom: 12px;
+  font-size: 16px;
+  line-height: 1.48;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+}
+
+.desktop-browser #detail .detail-meta-stack {
+  gap: 6px;
+}
+
+.desktop-browser #detail .detail-meta-row {
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.desktop-browser #detail .detail-meta-row.secondary {
+  font-size: 14px;
+}
+
+.desktop-browser #detail .detail-meta-dot {
+  height: 12px;
+}
+
+@media (max-width: 700px) {
+  .desktop-browser #detail .series-detail-backdrop,
+  .desktop-browser #detail .series-detail-vignette,
+  .desktop-browser #detail .detail-hero-section {
+    min-height: min(68vh, 620px);
+    height: min(68vh, 620px);
+  }
+
+  .desktop-browser #detail .detail-hero-section {
+    padding-inline: 20px;
+  }
+
+  .desktop-browser #detail .detail-desktop-back-button {
+    top: 18px;
+    left: 20px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .desktop-browser #detail .series-detail-title {
+    font-size: clamp(34px, 9vw, 44px);
+  }
+
+  .desktop-browser #detail .series-detail-actions {
+    flex-wrap: wrap;
+  }
+}
+
 /* Settings Desktop Step 1: retain the existing category/content markup while
    replacing the TV canvas geometry with a normal browser page. */
 .desktop-browser .settings-shell {
