@@ -6523,6 +6523,12 @@ export const HomeScreen = {
     if (this.layoutMode !== "modern") {
       return;
     }
+    if (Platform.isBrowser()) {
+      this.cancelFocusedPosterFlow();
+      this.clearFocusedPosterFlowState();
+      this.collapseFocusedPoster();
+      return;
+    }
     this.cancelFocusedPosterFlow();
     if (this.isCollectionFolderNode(node)) {
       this.clearFocusedPosterFlowState();
@@ -7929,6 +7935,9 @@ export const HomeScreen = {
     }
     if (!this.boundHomeMouseOverHandler) {
       this.boundHomeMouseOverHandler = (event) => {
+        if (Platform.isBrowser()) {
+          return;
+        }
         const target = event?.target?.closest?.(".home-main .home-content-card.focusable");
         if (!target || !this.container?.contains(target) || target.classList.contains("focused")) {
           return;
@@ -7952,6 +7961,18 @@ export const HomeScreen = {
         const main = this.getHomeViewport();
         const target = event?.target;
         if (!(target instanceof HTMLElement) || !main?.contains(target)) {
+          return;
+        }
+        if (Platform.isBrowser()) {
+          const track = target.closest(".home-modern-catalogs .home-track");
+          const hasHorizontalWheelIntent =
+            Boolean(event.shiftKey) || Math.abs(Number(event.deltaX || 0)) > Math.abs(Number(event.deltaY || 0));
+          if (track && this.container?.contains(track) && hasHorizontalWheelIntent) {
+            const deltaX = Number(event.deltaX || 0);
+            const deltaY = Number(event.deltaY || 0);
+            track.scrollLeft += deltaX || deltaY;
+            event.preventDefault?.();
+          }
           return;
         }
         // LG Magic Remote wheel events scroll the hovered element natively.
@@ -7981,6 +8002,131 @@ export const HomeScreen = {
     this.container.addEventListener("mouseover", this.boundHomeMouseOverHandler);
     this.container.addEventListener("wheel", this.boundHomeWheelHandler, { passive: false });
     this.boundHomeEventContainer = this.container;
+  },
+
+  bindDesktopCatalogDragScrolling() {
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+    if (!this.boundDesktopCatalogDragClickHandler) {
+      this.boundDesktopCatalogDragClickHandler = (event) => {
+        const suppression = this.desktopCatalogDragClickSuppression;
+        if (!suppression || Date.now() > suppression.until) {
+          this.desktopCatalogDragClickSuppression = null;
+          return;
+        }
+        const target = event?.target;
+        if (!(target instanceof HTMLElement) || !suppression.track.contains(target)) {
+          return;
+        }
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        event.stopImmediatePropagation?.();
+        this.desktopCatalogDragClickSuppression = null;
+      };
+      this.container.addEventListener("click", this.boundDesktopCatalogDragClickHandler, true);
+    }
+
+    this.container.querySelectorAll(".home-modern-catalogs .home-track").forEach((track) => {
+      if (track.dataset.desktopDragBound === "true") {
+        return;
+      }
+      track.dataset.desktopDragBound = "true";
+
+      // Browser images are draggable by default. Prevent their native drag
+      // gesture so pointer movement can continue to the shelf drag handler.
+      // This does not affect a normal click on the poster.
+      track.addEventListener("dragstart", (event) => {
+        const image = event.target;
+        if (image instanceof HTMLImageElement && image.closest(".home-poster-card:not(.home-collection-card)")) {
+          event.preventDefault();
+        }
+      });
+
+      track.addEventListener("pointerdown", (event) => {
+        if (event.pointerType !== "mouse" || event.button !== 0) {
+          return;
+        }
+        this.clearDesktopCatalogDrag();
+        this.desktopCatalogDragState = {
+          track,
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startScrollLeft: track.scrollLeft,
+          dragging: false
+        };
+      });
+
+      track.addEventListener("pointermove", (event) => {
+        const state = this.desktopCatalogDragState;
+        if (!state || state.track !== track || state.pointerId !== event.pointerId) {
+          return;
+        }
+        const distance = event.clientX - state.startX;
+        if (!state.dragging && Math.abs(distance) < 6) {
+          return;
+        }
+        if (!state.dragging) {
+          state.dragging = true;
+          track.setPointerCapture?.(event.pointerId);
+        }
+        track.classList.add("is-pointer-dragging");
+        track.scrollLeft = state.startScrollLeft - distance;
+        event.preventDefault?.();
+      });
+
+      track.addEventListener("pointerup", (event) => {
+        const state = this.desktopCatalogDragState;
+        if (!state || state.track !== track || state.pointerId !== event.pointerId) {
+          return;
+        }
+        this.clearDesktopCatalogDrag({ suppressClick: state.dragging });
+      });
+
+      track.addEventListener("pointercancel", (event) => {
+        const state = this.desktopCatalogDragState;
+        if (state?.track === track && state.pointerId === event.pointerId) {
+          this.clearDesktopCatalogDrag();
+        }
+      });
+
+      track.addEventListener("lostpointercapture", (event) => {
+        const state = this.desktopCatalogDragState;
+        if (state?.track === track && state.pointerId === event.pointerId) {
+          this.clearDesktopCatalogDrag();
+        }
+      });
+
+      track.addEventListener("pointerleave", (event) => {
+        const state = this.desktopCatalogDragState;
+        if (
+          state?.track === track &&
+          state.pointerId === event.pointerId &&
+          !track.hasPointerCapture?.(event.pointerId)
+        ) {
+          this.clearDesktopCatalogDrag();
+        }
+      });
+    });
+  },
+
+  clearDesktopCatalogDrag({ suppressClick = false } = {}) {
+    const state = this.desktopCatalogDragState;
+    if (!state) {
+      return;
+    }
+    const { track, pointerId } = state;
+    track?.classList?.remove("is-pointer-dragging");
+    if (track?.hasPointerCapture?.(pointerId)) {
+      track.releasePointerCapture?.(pointerId);
+    }
+    if (suppressClick) {
+      this.desktopCatalogDragClickSuppression = {
+        track,
+        until: Date.now() + 350
+      };
+    }
+    this.desktopCatalogDragState = null;
   },
 
   bindHomeViewportEvents() {
@@ -8971,7 +9117,7 @@ export const HomeScreen = {
       `--card-depth-sheen:${Number(this.layoutPrefs?.cardDepthSheenStrength ?? 10) / 100}`,
       `--card-depth-coverage:${Number(this.layoutPrefs?.cardDepthEdgeCoverage ?? 0)}%`
     ].filter(Boolean).join(";");
-    const showPosterLabels = this.layoutPrefs?.posterLabelsEnabled !== false;
+    const showPosterLabels = Platform.isBrowser() || this.layoutPrefs?.posterLabelsEnabled !== false;
     const showCatalogAddonName = this.layoutPrefs?.catalogAddonNameEnabled !== false;
     const showCatalogTypeSuffix = this.layoutPrefs?.catalogTypeSuffixEnabled !== false;
     const pendingPosterFocusState = this.pendingPosterHoldFocus?.rowKey
@@ -9012,6 +9158,7 @@ export const HomeScreen = {
         );
     const focusedPosterFlowConfig = this.getFocusedPosterFlowConfig(this.layoutPrefs || {});
     const expandFocusedPoster =
+      !Platform.isBrowser() &&
       this.layoutMode === "modern" &&
       Boolean(focusedPosterFlowConfig.shouldExpand) &&
       Number(this.layoutPrefs?.focusedPosterBackdropExpandDelaySeconds ?? 3) <= 0 &&
@@ -9181,6 +9328,7 @@ export const HomeScreen = {
     if (useDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
       this.bindDesktopHeroDetailsButton();
+      this.bindDesktopCatalogDragScrolling();
     } else {
       bindRootSidebarEvents(this.container, {
         currentRoute: "home",
@@ -10827,7 +10975,7 @@ export const HomeScreen = {
         const currentItems = Array.isArray(rowPayload.items) ? rowPayload.items : [];
         const rowIndex = (this.rows || []).indexOf(rowData);
         const layoutPrefs = this.layoutPrefs || {};
-        const showPosterLabels = Boolean(layoutPrefs.showPosterLabels !== false);
+        const showPosterLabels = Platform.isBrowser() || Boolean(layoutPrefs.showPosterLabels !== false);
         const preferLandscape = Boolean(layoutPrefs.modernLandscapePostersEnabled);
         const chunkSize = Math.max(
           1,
@@ -11093,6 +11241,11 @@ export const HomeScreen = {
     this.cancelFocusedPosterFlow();
     this.clearFocusedPosterFlowState();
     this.collapseFocusedPoster();
+    this.clearDesktopCatalogDrag();
+    if (this.boundDesktopCatalogDragClickHandler) {
+      this.container?.removeEventListener("click", this.boundDesktopCatalogDragClickHandler, true);
+      this.boundDesktopCatalogDragClickHandler = null;
+    }
     this.teardownGridStickyHeader();
     this.teardownModernTrackScrollPagination();
     this.teardownContinueWatchingProgressiveRendering();

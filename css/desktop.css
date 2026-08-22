@@ -322,15 +322,109 @@ html.desktop-browser {
   padding: 0 0 clamp(40px, 6vh, 72px) clamp(48px, 8vw, 144px);
 }
 
+/* Desktop catalog shelves retain compact portrait cards. Continue Watching
+   is intentionally excluded because it remains a separate landscape section. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track {
+  --home-track-gap: 18px;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) img {
+  -webkit-user-drag: none;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track.is-pointer-dragging {
+  cursor: grabbing;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card),
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded {
+  flex: 0 0 clamp(160px, 10vw, 188px);
+  min-width: clamp(160px, 10vw, 188px);
+  max-width: clamp(160px, 10vw, 188px);
+  margin: 0;
+  transform: none;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-frame,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded .home-poster-frame {
+  height: auto;
+  aspect-ratio: 2 / 3;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-expanded-backdrop,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-expanded-gradient,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-expanded-brand,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-trailer-layer,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-landscape-copy {
+  display: none !important;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded .content-poster {
+  opacity: 1 !important;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-copy,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded .home-poster-copy {
+  display: block;
+  min-height: 0;
+  height: auto;
+  padding: 9px 2px 0;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-title {
+  overflow: hidden;
+  color: var(--text-color);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-subtitle {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).focused,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card):focus-visible {
+  transform: none;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).focused .home-poster-frame,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card):focus-visible .home-poster-frame {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px var(--secondary-color);
+  background-color: var(--focus-bg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card):hover .home-poster-frame {
+    border-color: rgba(255, 255, 255, 0.62);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  }
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-rows-viewport {
   position: relative;
   right: auto;
   bottom: auto;
   left: auto;
-  height: clamp(360px, 52vh, 620px);
+  height: auto;
+  overflow: visible;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-rows-scroll {
+  min-height: 0;
   padding-bottom: 48px;
 }
 
