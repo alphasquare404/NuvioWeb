@@ -1349,6 +1349,10 @@ async function validateDebridApiKey(providerId, apiKey) {
   return false;
 }
 
+function isDesktopDebridComingSoon(provider) {
+  return Platform.isBrowser() && (provider?.id === "torbox" || provider?.id === "premiumize");
+}
+
 function normalizeSelectableSubtitleLanguageCode(language) {
   const code = String(language ?? "")
     .trim()
@@ -4672,6 +4676,9 @@ export const SettingsScreen = {
       });
       providers.forEach((provider) => {
         this.actionMap.set(`integration:debrid:key:${provider.id}`, () => {
+          if (isDesktopDebridComingSoon(provider)) {
+            return;
+          }
           if (provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE) {
             this.openDebridDeviceAuthDialog(provider);
             return;
@@ -4949,12 +4956,15 @@ export const SettingsScreen = {
               <div class="settings-group-title">${escapeHtml(t("debrid_section_account", {}, "Account"))}</div>
             </div>
             ${providers
-              .map((provider) =>
-                this.renderActionRow({
+              .map((provider) => {
+                const comingSoon = isDesktopDebridComingSoon(provider);
+                return this.renderActionRow({
                   focusKey: `integration:debrid:key:${provider.id}`,
                   title: provider.displayName,
                   subtitle:
-                    provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE
+                    comingSoon
+                      ? "Desktop browser support is coming soon."
+                      : provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE
                       ? t(
                           "debrid_provider_device_description",
                           { provider: provider.displayName },
@@ -4964,18 +4974,21 @@ export const SettingsScreen = {
                           "settings.integration.debrid.providerDescription",
                           { provider: provider.displayName },
                           `Connect your ${provider.displayName} account.`
-                        ),
+                      ),
                   value: maskValue(
-                    provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE
+                    comingSoon || provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE
                       ? ""
                       : DebridProviders.apiKeyFor(model.debrid, provider.id),
-                    DebridProviders.apiKeyFor(model.debrid, provider.id)
+                    comingSoon
+                      ? "Coming Soon"
+                      : DebridProviders.apiKeyFor(model.debrid, provider.id)
                       ? t("debrid_connected", {}, "Connected")
                       : t("settings.integration.debrid.notSet", {}, "Not set")
                   ),
-                  icon: "chevron"
-                })
-              )
+                  icon: comingSoon ? null : "chevron",
+                  disabled: comingSoon
+                });
+              })
               .join("")}
             ${
               canResolvePlayableLinks
