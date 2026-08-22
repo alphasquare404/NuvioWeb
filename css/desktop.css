@@ -216,7 +216,7 @@ html.desktop-browser {
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy {
   width: min(52%, 720px);
   min-height: 0;
-  padding: 0 0 clamp(40px, 6vh, 72px) clamp(48px, 8vw, 144px);
+  padding: 0 0 clamp(40px, 6vh, 72px) clamp(32px, 5vw, 96px);
   justify-content: flex-end;
   gap: 12px;
 }
@@ -319,7 +319,97 @@ html.desktop-browser {
   left: 0;
   width: min(52%, 720px);
   max-width: min(52%, 720px);
-  padding: 0 0 clamp(40px, 6vh, 72px) clamp(48px, 8vw, 144px);
+  padding: 0 0 clamp(40px, 6vh, 72px) clamp(32px, 5vw, 96px);
+}
+
+/* The browser hero is explicitly selected with these controls. TV retains its
+   existing focus-driven indicators and D-pad behavior. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-indicators {
+  display: none;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
+  position: absolute;
+  bottom: clamp(26px, 4vh, 48px);
+  right: clamp(24px, 5vw, 88px);
+  z-index: 5;
+  display: inline-flex;
+  max-width: calc(100vw - 40px);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(12, 12, 14, 0.58);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel[hidden] {
+  display: none;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot {
+  flex: 0 0 auto;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots {
+  display: inline-flex;
+  max-width: min(38vw, 224px);
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots::-webkit-scrollbar {
+  display: none;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot.is-active {
+  width: 20px;
+  background: #fff;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button:focus-visible,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button:hover {
+    background: rgba(255, 255, 255, 0.24);
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot:hover {
+    background: rgba(255, 255, 255, 0.72);
+  }
 }
 
 /* Desktop catalog shelves retain compact portrait cards. Continue Watching

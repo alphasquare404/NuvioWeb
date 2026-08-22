@@ -4158,6 +4158,7 @@ export const HomeScreen = {
     if (indicators) {
       indicators.innerHTML = buildHeroIndicators(this.heroCandidates, hero);
     }
+    this.updateDesktopHeroCarouselControls();
   },
 
   setSidebarExpanded(expanded) {
@@ -5541,7 +5542,9 @@ export const HomeScreen = {
   },
 
   scheduleModernHeroUpdate(node) {
-    if (this.layoutMode !== "modern") {
+    // Browser Home keeps its hero independent from the TV focus engine. Desktop
+    // users choose featured titles with the carousel controls instead.
+    if (Platform.isBrowser() || this.layoutMode !== "modern") {
       return;
     }
     const hero = this.getNodeHeroSource(node);
@@ -8923,7 +8926,7 @@ export const HomeScreen = {
   },
 
   pickInitialHero() {
-    if (this.layoutMode === "modern") {
+    if (this.layoutMode === "modern" && !Platform.isBrowser()) {
       if (
         this.continueWatchingLoading &&
         Array.isArray(this.continueWatching) &&
@@ -9456,6 +9459,7 @@ export const HomeScreen = {
     if (useDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
       this.bindDesktopHeroDetailsButton();
+      this.bindDesktopHeroCarouselControls();
       this.bindDesktopCatalogDragScrolling();
     } else {
       bindRootSidebarEvents(this.container, {
@@ -10539,10 +10543,23 @@ export const HomeScreen = {
 
   collectHeroCandidates(rows) {
     const flat = [];
-    const selectedKeys = new Set(this.layoutPrefs?.heroCatalogKeys || []);
-    const eligibleRows = selectedKeys.size
-      ? (rows || []).filter((row) => selectedKeys.has(String(row?.homeCatalogKey || "")))
-      : rows;
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const selectedKeys = Array.from(
+      new Set(
+        (this.layoutPrefs?.heroCatalogKeys || [])
+          .map((key) => String(key || "").trim())
+          .filter(Boolean)
+      )
+    );
+    const eligibleRows = selectedKeys.length
+      ? Platform.isBrowser()
+        ? selectedKeys
+            .map((key) =>
+              sourceRows.find((row) => String(row?.homeCatalogKey || "") === key)
+            )
+            .filter(Boolean)
+        : sourceRows.filter((row) => selectedKeys.includes(String(row?.homeCatalogKey || "")))
+      : sourceRows;
     eligibleRows.forEach((row) => {
       (row?.result?.data?.items || []).slice(0, 4).forEach((item) => {
         const normalized = normalizeHomeRowItem(row, item);
@@ -10552,7 +10569,7 @@ export const HomeScreen = {
         flat.push(normalized);
       });
     });
-    return flat.slice(0, 10);
+    return flat.slice(0, Platform.isBrowser() ? 8 : 10);
   },
 
   async enrichHero(baseHero = null) {
@@ -10672,6 +10689,80 @@ export const HomeScreen = {
     };
   },
 
+  bindDesktopHeroCarouselControls() {
+    if (!Platform.isBrowser()) {
+      return;
+    }
+    const heroCard = this.container?.querySelector(".home-modern-hero-card");
+    if (!heroCard) {
+      return;
+    }
+
+    let carousel = heroCard.querySelector(".desktop-hero-carousel");
+    if (!carousel) {
+      carousel = document.createElement("div");
+      carousel.className = "desktop-hero-carousel";
+      carousel.setAttribute("aria-label", "Featured titles");
+      carousel.innerHTML = `
+        <button class="desktop-hero-carousel-button" type="button" data-hero-direction="previous" aria-label="Previous featured title">‹</button>
+        <div class="desktop-hero-carousel-dots" aria-label="Featured title selection"></div>
+        <button class="desktop-hero-carousel-button" type="button" data-hero-direction="next" aria-label="Next featured title">›</button>
+      `;
+      carousel.onclick = (event) => {
+        const button = event.target?.closest?.("button");
+        if (!button || !carousel.contains(button)) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+
+        const direction = String(button.dataset.heroDirection || "");
+        if (direction === "previous") {
+          this.rotateHero(-1);
+          return;
+        }
+        if (direction === "next") {
+          this.rotateHero(1);
+          return;
+        }
+        const targetIndex = Number(button.dataset.heroIndex);
+        if (!Number.isInteger(targetIndex) || targetIndex === this.heroIndex) {
+          return;
+        }
+        this.rotateHero(targetIndex - Number(this.heroIndex || 0));
+      };
+      heroCard.append(carousel);
+    }
+    this.updateDesktopHeroCarouselControls();
+  },
+
+  updateDesktopHeroCarouselControls() {
+    if (!Platform.isBrowser()) {
+      return;
+    }
+    const carousel = this.container?.querySelector(".desktop-hero-carousel");
+    if (!carousel) {
+      return;
+    }
+    const candidates = Array.isArray(this.heroCandidates) ? this.heroCandidates : [];
+    const activeIndex = Math.max(0, Math.min(candidates.length - 1, Number(this.heroIndex || 0)));
+    const hasMultipleCandidates = candidates.length > 1;
+    carousel.hidden = !hasMultipleCandidates;
+    carousel.querySelectorAll(".desktop-hero-carousel-button").forEach((button) => {
+      button.disabled = !hasMultipleCandidates;
+    });
+    const dots = carousel.querySelector(".desktop-hero-carousel-dots");
+    if (dots) {
+      dots.innerHTML = candidates
+        .map(
+          (item, index) => `
+            <button class="desktop-hero-carousel-dot${index === activeIndex ? " is-active" : ""}" type="button" data-hero-index="${index}" aria-label="Show ${escapeAttribute(item?.name || `featured title ${index + 1}`)}"${index === activeIndex ? ' aria-current="true"' : ""}></button>
+          `
+        )
+        .join("");
+    }
+  },
+
   openCollectionFolderFromNode(node) {
     const target = this.resolveCollectionFolderTargetFromNode(node);
     const collectionId = String(target?.collectionId || "").trim();
@@ -10712,7 +10803,10 @@ export const HomeScreen = {
   onKeyDown(event) {
     if (
       Platform.isBrowser() &&
-      event?.target?.closest?.(".desktop-navigation, .desktop-hero-details-button")
+      event
+        ?.target?.closest?.(
+          ".desktop-navigation, .desktop-hero-details-button, .desktop-hero-carousel"
+        )
     ) {
       return;
     }
