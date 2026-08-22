@@ -559,6 +559,470 @@ html.desktop-browser {
   }
 }
 
+/* Desktop Search uses the browser navigation component and normal page flow. */
+.desktop-browser .search-screen-shell.desktop-navigation-enabled {
+  display: block;
+  grid-template-columns: none;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled > .search-content {
+  display: block;
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+  padding: 104px clamp(24px, 2vw, 40px) 64px;
+  box-sizing: border-box;
+  scroll-padding-top: 104px;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading {
+  width: 100%;
+  max-width: none;
+  margin: 0 0 14px;
+  color: var(--text-color);
+  font-size: clamp(30px, 2.5vw, 40px);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-voice,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover.no-voice {
+  grid-template-columns: repeat(2, 48px) minmax(0, 1fr);
+  width: 100%;
+  max-width: none;
+  gap: 10px;
+  margin: 0 0 24px;
+  padding: 0;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-voice {
+  grid-template-columns: 48px minmax(0, 1fr);
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover.no-voice {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-discover-btn,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-voice-btn {
+  width: 48px;
+  height: 58px;
+  border-radius: 14px;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-action-icon {
+  font-size: 24px;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-input-field {
+  height: 58px;
+  padding: 0 18px;
+  border-color: rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(26, 26, 29, 0.9);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-input-field:focus,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-input-field:focus-visible,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-input-field.focused {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 3px rgb(var(--secondary-color-rgb) / 0.2);
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-empty-state-idle {
+  min-height: calc(100vh - 244px);
+  padding: 24px 0 64px;
+  box-sizing: border-box;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-empty-state-idle .search-empty-icon {
+  font-size: clamp(72px, 7vw, 96px);
+  color: var(--text-tertiary);
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-empty-state-idle h2 {
+  margin: 18px 0 8px;
+  font-size: clamp(26px, 2vw, 32px);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-empty-state-idle p {
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-row {
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+  margin-bottom: 32px;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-title,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-subtitle {
+  padding-inline: 8px;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-title {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-subtitle {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-track {
+  --search-desktop-card-width: clamp(156px, 9.5vw, 194px);
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px 8px 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-track.is-pointer-dragging {
+  cursor: grabbing;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-seeall-card {
+  position: relative;
+  z-index: 0;
+  flex: 0 0 var(--search-desktop-card-width);
+  width: var(--search-desktop-card-width);
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-poster-wrap {
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 14px;
+  transform: scale(1);
+  transform-origin: center bottom;
+  transition:
+    transform 150ms ease-out,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    background-color 120ms ease;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-poster {
+  border-radius: 12px;
+  -webkit-user-drag: none;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-name {
+  margin-top: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-date {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card.focused,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card:focus-visible {
+  z-index: 1;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card.focused .search-result-poster-wrap,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card:focus-visible .search-result-poster-wrap {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px var(--secondary-color);
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-seeall-inner {
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 14px;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-seeall-arrow {
+  font-size: 36px;
+}
+
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-seeall-label {
+  font-size: 16px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card:hover {
+    z-index: 1;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card:hover .search-result-poster-wrap {
+    transform: scale(1.04);
+    border-color: rgba(255, 255, 255, 0.62);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  }
+}
+
+@media (max-width: 760px) {
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled > .search-content {
+    padding: 84px 20px 40px;
+    scroll-padding-top: 84px;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading {
+    margin-bottom: 12px;
+    font-size: 28px;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header {
+    margin-bottom: 28px;
+  }
+}
+
+/* Desktop Discover keeps the existing filters and result cards, but places
+   them in the browser page flow instead of the TV-sized canvas. */
+.desktop-browser .discover-shell.desktop-navigation-enabled {
+  display: block;
+  grid-template-columns: none;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled > .discover-main {
+  display: block;
+  grid-column: auto;
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  margin: 0;
+  padding: 104px clamp(32px, 2vw, 40px) 64px;
+  box-sizing: border-box;
+  overflow: visible;
+  scroll-padding-top: 104px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-seeall-shell {
+  width: 100%;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
+  margin-bottom: 22px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .seeall-title {
+  font-size: clamp(30px, 2.5vw, 40px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .seeall-subtitle {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-filter-shell {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-anchor {
+  min-height: 58px;
+  padding: 8px 14px;
+  gap: 12px;
+  border-radius: 14px;
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(26, 26, 29, 0.9);
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-title {
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-value {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-chevron {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-anchor.focused,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-anchor:focus-visible,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker.open .library-picker-anchor {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 3px rgb(var(--secondary-color-rgb) / 0.2);
+  background: rgba(35, 35, 39, 0.96);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-anchor:hover {
+    border-color: rgba(255, 255, 255, 0.36);
+    background: rgba(35, 35, 39, 0.96);
+  }
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-menu {
+  top: calc(100% + 6px);
+  max-height: 320px;
+  padding: 4px;
+  border-radius: 14px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-option {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid {
+  grid-template-columns: repeat(auto-fill, minmax(156px, 190px));
+  justify-content: start;
+  gap: 24px 14px;
+  padding-bottom: 48px;
+  overflow: visible;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card-poster-wrap {
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 14px;
+  transform: scale(1);
+  transform-origin: center bottom;
+  transition:
+    transform 150ms ease-out,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card-poster-image,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card-poster {
+  border-radius: 12px;
+  -webkit-user-drag: none;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card-title {
+  margin-top: 9px;
+  padding: 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card-year {
+  margin-top: 3px;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card.focused,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card:focus-visible {
+  z-index: 1;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card.focused .seeall-card-poster-wrap,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card:focus-visible .seeall-card-poster-wrap {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px var(--secondary-color);
+  transform: scale(1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card:hover {
+    z-index: 1;
+  }
+
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card:hover .seeall-card-poster-wrap {
+    transform: scale(1.04);
+    border-color: rgba(255, 255, 255, 0.62);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  }
+}
+
+@media (max-width: 900px) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled > .discover-main {
+    padding-inline: 24px;
+  }
+
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-filter-shell {
+    flex-basis: min(280px, 100%);
+  }
+
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid {
+    grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled > .discover-main {
+    padding: 84px 20px 40px;
+    scroll-padding-top: 84px;
+  }
+
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row {
+    gap: 10px;
+  }
+
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-filter-shell {
+    flex-basis: 100%;
+  }
+
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid {
+    gap: 20px 12px;
+  }
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-rows-viewport {
   position: relative;
   right: auto;

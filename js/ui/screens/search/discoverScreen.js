@@ -30,6 +30,10 @@ import {
   setModernSidebarPillIconOnly,
   setLegacySidebarExpanded
 } from "../../components/sidebarNavigation.js";
+import {
+  bindDesktopNavigationEvents,
+  renderDesktopNavigation
+} from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 
 const POSTER_HOLD_DELAY_MS = 650;
@@ -1414,7 +1418,10 @@ export const DiscoverScreen = {
   },
 
   isSidebarRootRoute() {
-    return String(this.layoutPrefs?.discoverLocation || "in_search") === "in_sidebar";
+    return (
+      !Platform.isBrowser() &&
+      String(this.layoutPrefs?.discoverLocation || "in_search") === "in_sidebar"
+    );
   },
 
   focusSidebarNode(preferredNode = null) {
@@ -1489,7 +1496,8 @@ export const DiscoverScreen = {
   render() {
     this.cancelScheduledRender();
     this.layoutPrefs = LayoutPreferences.get();
-    const showRootSidebar = this.isSidebarRootRoute();
+    const useDesktopNavigation = Platform.isBrowser();
+    const showRootSidebar = !useDesktopNavigation && this.isSidebarRootRoute();
     const openPicker = this.openPicker || null;
     if (this.lastRenderedOpenPicker && this.lastRenderedOpenPicker !== openPicker) {
       this.startClosingPicker(this.lastRenderedOpenPicker);
@@ -1512,9 +1520,11 @@ export const DiscoverScreen = {
     this.discoverRouteEnterPending = false;
 
     this.container.innerHTML = `
-      <div class="home-shell search-screen-shell discover-shell${showRootSidebar ? " discover-root-route" : ""}">
+      <div class="home-shell search-screen-shell discover-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${showRootSidebar ? " discover-root-route" : ""}">
         ${
-          showRootSidebar
+          useDesktopNavigation
+            ? renderDesktopNavigation({ selectedRoute: "search", profile: this.sidebarProfile })
+            : showRootSidebar
             ? renderRootSidebar({
                 selectedRoute: "discover",
                 profile: this.sidebarProfile,
@@ -1546,7 +1556,9 @@ export const DiscoverScreen = {
 
     ScreenUtils.indexFocusables(this.container);
     this.buildNavigationModel();
-    if (showRootSidebar) {
+    if (useDesktopNavigation) {
+      bindDesktopNavigationEvents(this.container);
+    } else if (showRootSidebar) {
       bindRootSidebarEvents(this.container, {
         currentRoute: "discover",
         onSelectedAction: () => this.closeSidebarToContent(),
@@ -1657,6 +1669,9 @@ export const DiscoverScreen = {
   },
 
   async onKeyDown(event) {
+    if (Platform.isBrowser() && event?.target?.closest?.(".desktop-navigation")) {
+      return;
+    }
     if (Platform.isBackEvent(event)) {
       event?.preventDefault?.();
       if (this.closePosterOptionsMenu()) {

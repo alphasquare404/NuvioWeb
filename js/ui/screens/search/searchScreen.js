@@ -22,6 +22,10 @@ import {
   setLegacySidebarExpanded
 } from "../../components/sidebarNavigation.js";
 import {
+  bindDesktopNavigationEvents,
+  renderDesktopNavigation
+} from "../../components/desktopNavigation.js";
+import {
   PosterOptionsDialogController,
   posterItemFromNode
 } from "../../components/posterOptionsMenu.js";
@@ -498,15 +502,20 @@ export const SearchScreen = {
   },
 
   renderLoading() {
+    const useDesktopNavigation = Platform.isBrowser();
     this.container.innerHTML = `
-      <div class="home-shell search-screen-shell${this.searchRouteEnterPending ? " search-route-enter" : ""}">
-        ${renderRootSidebar({
-          selectedRoute: "search",
-          profile: this.sidebarProfile,
-          layout: this.layoutPrefs,
-          expanded: Boolean(this.sidebarExpanded),
-          pillIconOnly: Boolean(this.pillIconOnly)
-        })}
+      <div class="home-shell search-screen-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.searchRouteEnterPending ? " search-route-enter" : ""}">
+        ${
+          useDesktopNavigation
+            ? renderDesktopNavigation({ selectedRoute: "search", profile: this.sidebarProfile })
+            : renderRootSidebar({
+                selectedRoute: "search",
+                profile: this.sidebarProfile,
+                layout: this.layoutPrefs,
+                expanded: Boolean(this.sidebarExpanded),
+                pillIconOnly: Boolean(this.pillIconOnly)
+              })
+        }
         <main class="home-main search-content search-loading-shell">
           <div class="search-loading">
             ${renderLoadingIndicator()}
@@ -516,6 +525,9 @@ export const SearchScreen = {
       </div>
     `;
     this.searchRouteEnterPending = false;
+    if (useDesktopNavigation) {
+      bindDesktopNavigationEvents(this.container);
+    }
   },
 
   async reloadRows() {
@@ -567,6 +579,7 @@ export const SearchScreen = {
     ScreenUtils.indexFocusables(this.container);
     this.buildNavigationModel();
     this.bindActionEvents();
+    this.bindDesktopSearchShelfInteractions();
     input.value = this.query || "";
     input.focus?.();
     this.focusNode(this.container?.querySelector(".focusable.focused") || null, input);
@@ -788,7 +801,7 @@ export const SearchScreen = {
         `;
       }
       return `
-        <div class="search-empty-state">
+        <div class="search-empty-state search-empty-state-idle">
           <span class="search-empty-icon material-icons" aria-hidden="true">search</span>
           <h2>${escapeHtml(t("search_start_title", {}, "Start Searching"))}</h2>
           <p>${escapeHtml(
@@ -869,16 +882,22 @@ export const SearchScreen = {
   render() {
     this.cancelScheduledRender();
     const queryText = this.query || "";
+    const useDesktopNavigation = Platform.isBrowser();
     this.container.innerHTML = `
-      <div class="home-shell search-screen-shell${this.searchRouteEnterPending ? " search-route-enter" : ""}">
-        ${renderRootSidebar({
-          selectedRoute: "search",
-          profile: this.sidebarProfile,
-          layout: this.layoutPrefs,
-          expanded: Boolean(this.sidebarExpanded),
-          pillIconOnly: Boolean(this.pillIconOnly)
-        })}
+      <div class="home-shell search-screen-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.searchRouteEnterPending ? " search-route-enter" : ""}">
+        ${
+          useDesktopNavigation
+            ? renderDesktopNavigation({ selectedRoute: "search", profile: this.sidebarProfile })
+            : renderRootSidebar({
+                selectedRoute: "search",
+                profile: this.sidebarProfile,
+                layout: this.layoutPrefs,
+                expanded: Boolean(this.sidebarExpanded),
+                pillIconOnly: Boolean(this.pillIconOnly)
+              })
+        }
         <main class="home-main search-content">
+          <h1 class="search-page-heading">${escapeHtml(t("sidebar.search", {}, "Search"))}</h1>
           <section class="search-header${this.layoutPrefs?.discoverLocation === "in_search" ? "" : " no-discover"}${this.voiceSearchSupported ? "" : " no-voice"}">
             ${
               this.layoutPrefs?.discoverLocation === "in_search"
@@ -920,13 +939,18 @@ export const SearchScreen = {
 
     ScreenUtils.indexFocusables(this.container);
     this.buildNavigationModel();
-    bindRootSidebarEvents(this.container, {
-      currentRoute: "search",
-      onSelectedAction: () => this.closeSidebarToContent(),
-      onExpandSidebar: () => this.openSidebar()
-    });
+    if (useDesktopNavigation) {
+      bindDesktopNavigationEvents(this.container);
+    } else {
+      bindRootSidebarEvents(this.container, {
+        currentRoute: "search",
+        onSelectedAction: () => this.closeSidebarToContent(),
+        onExpandSidebar: () => this.openSidebar()
+      });
+    }
     this.bindSearchInputEvents();
     this.bindActionEvents();
+    this.bindDesktopSearchShelfInteractions();
     const input = this.container.querySelector("#searchInput");
     input?.blur?.();
     this.restoreScrollState();
@@ -939,6 +963,145 @@ export const SearchScreen = {
       this.restoreContentFocus(shouldFocusResults);
     }
     this.pendingAutoFocusResults = false;
+  },
+
+  bindDesktopSearchShelfInteractions() {
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+
+    if (!this.boundDesktopSearchDragClickHandler) {
+      this.boundDesktopSearchDragClickHandler = (event) => {
+        const suppression = this.desktopSearchDragClickSuppression;
+        if (!suppression || Date.now() > suppression.until) {
+          this.desktopSearchDragClickSuppression = null;
+          return;
+        }
+        const target = event?.target;
+        if (!(target instanceof HTMLElement) || !suppression.track.contains(target)) {
+          return;
+        }
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        event.stopImmediatePropagation?.();
+        this.desktopSearchDragClickSuppression = null;
+      };
+      this.container.addEventListener("click", this.boundDesktopSearchDragClickHandler, true);
+    }
+
+    if (!this.boundDesktopSearchWheelHandler) {
+      this.boundDesktopSearchWheelHandler = (event) => {
+        const target = event?.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        const track = target.closest(".search-results-track");
+        const hasHorizontalWheelIntent =
+          Boolean(event.shiftKey) || Math.abs(Number(event.deltaX || 0)) > Math.abs(Number(event.deltaY || 0));
+        if (!track || !this.container?.contains(track) || !hasHorizontalWheelIntent) {
+          return;
+        }
+        track.scrollLeft += Number(event.deltaX || 0) || Number(event.deltaY || 0);
+        event.preventDefault?.();
+      };
+      this.container.addEventListener("wheel", this.boundDesktopSearchWheelHandler, { passive: false });
+    }
+
+    this.container.querySelectorAll(".search-results-track").forEach((track) => {
+      if (track.dataset.desktopDragBound === "true") {
+        return;
+      }
+      track.dataset.desktopDragBound = "true";
+
+      track.addEventListener("dragstart", (event) => {
+        if (event.target instanceof HTMLImageElement && event.target.closest(".search-result-card")) {
+          event.preventDefault();
+        }
+      });
+
+      track.addEventListener("pointerdown", (event) => {
+        if (event.pointerType !== "mouse" || event.button !== 0) {
+          return;
+        }
+        this.clearDesktopSearchShelfDrag();
+        this.desktopSearchDragState = {
+          track,
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startScrollLeft: track.scrollLeft,
+          dragging: false
+        };
+      });
+
+      track.addEventListener("pointermove", (event) => {
+        const state = this.desktopSearchDragState;
+        if (!state || state.track !== track || state.pointerId !== event.pointerId) {
+          return;
+        }
+        const distance = event.clientX - state.startX;
+        if (!state.dragging && Math.abs(distance) < 6) {
+          return;
+        }
+        if (!state.dragging) {
+          state.dragging = true;
+          track.setPointerCapture?.(event.pointerId);
+        }
+        track.classList.add("is-pointer-dragging");
+        track.scrollLeft = state.startScrollLeft - distance;
+        event.preventDefault?.();
+      });
+
+      track.addEventListener("pointerup", (event) => {
+        const state = this.desktopSearchDragState;
+        if (state?.track === track && state.pointerId === event.pointerId) {
+          this.clearDesktopSearchShelfDrag({ suppressClick: state.dragging });
+        }
+      });
+
+      track.addEventListener("pointercancel", (event) => {
+        const state = this.desktopSearchDragState;
+        if (state?.track === track && state.pointerId === event.pointerId) {
+          this.clearDesktopSearchShelfDrag();
+        }
+      });
+
+      track.addEventListener("lostpointercapture", (event) => {
+        const state = this.desktopSearchDragState;
+        if (state?.track === track && state.pointerId === event.pointerId) {
+          this.clearDesktopSearchShelfDrag();
+        }
+      });
+
+      track.addEventListener("pointerleave", (event) => {
+        const state = this.desktopSearchDragState;
+        if (
+          state?.track === track &&
+          state.pointerId === event.pointerId &&
+          !track.hasPointerCapture?.(event.pointerId)
+        ) {
+          this.clearDesktopSearchShelfDrag();
+        }
+      });
+    });
+  },
+
+  clearDesktopSearchShelfDrag({ suppressClick = false } = {}) {
+    const state = this.desktopSearchDragState;
+    if (!state) {
+      return;
+    }
+    const { track, pointerId } = state;
+    track?.classList?.remove("is-pointer-dragging");
+    if (track?.hasPointerCapture?.(pointerId)) {
+      track.releasePointerCapture?.(pointerId);
+    }
+    if (suppressClick) {
+      this.desktopSearchDragClickSuppression = {
+        track,
+        until: Date.now() + 350
+      };
+    }
+    this.desktopSearchDragState = null;
   },
 
   isPosterHoldTarget(node) {
@@ -1551,7 +1714,7 @@ export const SearchScreen = {
       const col = Number(current.dataset.navCol || 0);
       if (direction === "left") {
         if (col > 0) return this.focusNode(current, nav.header?.[col - 1] || current) || true;
-        return "sidebar";
+        return Platform.isBrowser() ? true : "sidebar";
       }
       if (direction === "right") {
         if (col < (nav.header?.length || 0) - 1) {
@@ -1579,7 +1742,7 @@ export const SearchScreen = {
         if (col > 0) {
           return this.focusNode(current, rowNodes[col - 1] || current) || true;
         }
-        return "sidebar";
+        return Platform.isBrowser() ? true : "sidebar";
       }
       if (direction === "right") {
         const target = rowNodes[col + 1] || null;
@@ -1906,6 +2069,9 @@ export const SearchScreen = {
   },
 
   async onKeyDown(event) {
+    if (Platform.isBrowser() && event?.target?.closest?.(".desktop-navigation")) {
+      return;
+    }
     const code = Number(event?.keyCode || 0);
     if (this.suppressHoldMenuEnterUntilKeyUp && code === 13) {
       event.preventDefault?.();
@@ -2039,6 +2205,15 @@ export const SearchScreen = {
 
   cleanup() {
     this.cancelScheduledRender();
+    this.clearDesktopSearchShelfDrag();
+    if (this.boundDesktopSearchDragClickHandler) {
+      this.container?.removeEventListener("click", this.boundDesktopSearchDragClickHandler, true);
+      this.boundDesktopSearchDragClickHandler = null;
+    }
+    if (this.boundDesktopSearchWheelHandler) {
+      this.container?.removeEventListener("wheel", this.boundDesktopSearchWheelHandler);
+      this.boundDesktopSearchWheelHandler = null;
+    }
     this.cancelPendingPosterHold();
     this.posterOptionsMenu = null;
     this.posterOptionsController?.destroy?.({ restoreFocus: false });
