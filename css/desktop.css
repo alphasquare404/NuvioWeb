@@ -3662,6 +3662,105 @@ html.desktop-browser {
   gap: 8px;
 }
 
+/* Browser Tracking stays inside Settings and uses the standard collapsible shell. */
+.desktop-browser .settings-shell .settings-collapsible-tracking .settings-subsection-card {
+  display: grid;
+  gap: 14px;
+}
+
+.desktop-browser .settings-shell .settings-tracking-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.desktop-browser .settings-shell .settings-tracking-inline-button {
+  min-height: 38px;
+  padding: 0 14px;
+  color: #111;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  background: rgb(var(--secondary-color-rgb) / 0.9);
+  border: 1px solid rgb(var(--secondary-color-rgb) / 1);
+  border-radius: 9px;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.desktop-browser .settings-shell .settings-tracking-inline-button.is-secondary {
+  color: var(--text-color);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.desktop-browser .settings-shell .settings-tracking-inline-button.is-danger {
+  color: #ffb2b0;
+  background: rgba(190, 52, 48, 0.14);
+  border-color: rgba(255, 130, 126, 0.28);
+}
+
+.desktop-browser .settings-shell .settings-tracking-inline-button:focus-visible,
+.desktop-browser .settings-shell .settings-tracking-inline-button.focused {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.35);
+}
+
+.desktop-browser .settings-shell .settings-tracking-activation {
+  display: grid;
+  gap: 10px;
+}
+
+.desktop-browser .settings-shell .settings-tracking-activation-code {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 46px;
+  align-items: center;
+  padding: 0 14px;
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  user-select: text;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9px;
+}
+
+.desktop-browser .settings-shell .settings-tracking-activation-url,
+.desktop-browser .settings-shell .settings-tracking-provider-status,
+.desktop-browser .settings-shell .settings-tracking-error {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.desktop-browser .settings-shell .settings-tracking-activation-url {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.desktop-browser .settings-shell .settings-tracking-provider-status {
+  color: #9ee3b1;
+}
+
+.desktop-browser .settings-shell .settings-tracking-error {
+  color: #ffaaa8;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .settings-shell .settings-tracking-inline-button:not(.is-secondary):not(.is-danger):hover {
+    background: rgb(var(--secondary-color-rgb) / 1);
+  }
+
+  .desktop-browser .settings-shell .settings-tracking-inline-button.is-secondary:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+}
+
 .desktop-browser .settings-shell .settings-fusion-source-action {
   min-height: 32px;
   padding: 0 10px;

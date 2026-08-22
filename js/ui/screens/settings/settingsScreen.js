@@ -54,6 +54,8 @@ import { I18n } from "../../../i18n/index.js";
 import { PluginManager } from "../../../core/player/pluginManager.js";
 import { QrCodeGenerator } from "../../../core/qr/qrCodeGenerator.js";
 import { TraktAuthService } from "../../../data/repository/traktAuthService.js";
+import { SimklAuthService } from "../../../data/repository/simklAuthService.js";
+import { SimklSyncService } from "../../../data/repository/simklSyncService.js";
 import { mdbListRepository } from "../../../data/repository/mdbListRepository.js";
 import {
   getStreamBadgePreviewSections,
@@ -62,6 +64,8 @@ import {
 } from "../../../core/streams/streamBadgeRules.js";
 import {
   TRAKT_CONTINUE_WATCHING_DAYS_CAP_ALL,
+  MoreLikeThisSourcePreference,
+  SimklAnimeIdPreference,
   TraktLibrarySourceMode,
   TraktSettingsStore,
   WatchProgressSource
@@ -2189,6 +2193,11 @@ export const SettingsScreen = {
     this.pillIconOnly = false;
     this.desktopAddonExpanded = Boolean(this.desktopAddonExpanded);
     this.desktopPluginExpanded = Boolean(this.desktopPluginExpanded);
+    this.desktopTrackingExpanded = this.desktopTrackingExpanded || {
+      trakt: false,
+      simkl: false,
+      behavior: false
+    };
     this.desktopAddonManager = this.desktopAddonManager || createDesktopAddonManager({
       requestRender: () => this.render({ refreshModel: false })
     });
@@ -2253,6 +2262,9 @@ export const SettingsScreen = {
     if (this.activeSection && this.activeSection !== nextSectionId) {
       this.rememberAppearanceThemeFocusKey();
       this.collapseExpandedSection(this.activeSection);
+      if (this.activeSection === "trakt") {
+        this.stopDesktopSimklPolling?.();
+      }
     }
     this.activeSection = sectionId || null;
     this.contentFocusKey =
@@ -7501,7 +7513,263 @@ export const SettingsScreen = {
     `;
   },
 
+  toggleDesktopTrackingSection(sectionId) {
+    const current = this.desktopTrackingExpanded || {};
+    this.desktopTrackingExpanded = {
+      ...current,
+      [sectionId]: !current[sectionId]
+    };
+  },
+
+  stopDesktopSimklPolling() {
+    if (this.desktopSimklPollTimer) {
+      clearTimeout(this.desktopSimklPollTimer);
+      this.desktopSimklPollTimer = null;
+    }
+  },
+
+  startDesktopSimklPolling() {
+    if (this.desktopSimklPollTimer) return;
+    const poll = async () => {
+      const auth = SimklAuthService.getCurrentAuthState();
+      if (!auth.userCode || Router.getCurrent() !== "settings" || this.activeSection !== "trakt") {
+        this.stopDesktopSimklPolling();
+        return;
+      }
+      const result = await SimklAuthService.pollPin().catch((error) => ({
+        type: "failed",
+        message: String(error?.message || error || "Unable to reach Simkl. Try again.")
+      }));
+      if (result.type === "approved") {
+        this.stopDesktopSimklPolling();
+        this.desktopSimklStatusMessage = `Connected as ${result.username || "Simkl user"}`;
+        this.desktopSimklErrorMessage = null;
+        await SimklSyncService.refresh({ force: true }).catch(() => false);
+        await this.render();
+        return;
+      }
+      if (result.type === "pending") {
+        this.desktopSimklStatusMessage = "Waiting for Simkl approval...";
+        this.desktopSimklErrorMessage = null;
+      } else if (result.type === "expired" || result.type === "invalidated") {
+        this.stopDesktopSimklPolling();
+        this.desktopSimklStatusMessage = null;
+        this.desktopSimklErrorMessage = "Simkl code expired. Start again.";
+      } else if (result.type === "failed") {
+        this.stopDesktopSimklPolling();
+        this.desktopSimklStatusMessage = null;
+        this.desktopSimklErrorMessage = result.message;
+      }
+      await this.render();
+      const next = SimklAuthService.getCurrentAuthState();
+      if (next.userCode && !this.desktopSimklPollTimer) {
+        this.desktopSimklPollTimer = setTimeout(() => {
+          this.desktopSimklPollTimer = null;
+          void poll();
+        }, Math.max(1, Number(next.pollInterval || 5)) * 1000);
+      }
+    };
+    void poll();
+  },
+
+  renderDesktopTrackingSection() {
+    const settings = TraktSettingsStore.get();
+    const trakt = TraktAuthService.getCurrentAuthState();
+    const simkl = SimklAuthService.getCurrentAuthState();
+    const traktConnected = TraktAuthService.isAuthenticated();
+    const simklConnected = SimklAuthService.isAuthenticated();
+    const simklWaiting = Boolean(simkl.userCode && Number(simkl.expiresAt || 0) > Date.now());
+    const expanded = this.desktopTrackingExpanded || {};
+    if (simklWaiting) {
+      this.startDesktopSimklPolling();
+    }
+    const librarySources = [
+      { id: TraktLibrarySourceMode.LOCAL, label: "Nuvio" },
+      ...(traktConnected ? [{ id: TraktLibrarySourceMode.TRAKT, label: "Trakt" }] : []),
+      ...(simklConnected ? [{ id: TraktLibrarySourceMode.SIMKL, label: "Simkl" }] : [])
+    ];
+    const progressSources = [
+      { id: WatchProgressSource.NUVIO_SYNC, label: "Nuvio Sync" },
+      ...(traktConnected ? [{ id: WatchProgressSource.TRAKT, label: "Trakt" }] : []),
+      ...(simklConnected ? [{ id: WatchProgressSource.SIMKL, label: "Simkl" }] : [])
+    ];
+
+    this.actionMap.set("tracking:desktop:trakt", () => this.toggleDesktopTrackingSection("trakt"));
+    this.actionMap.set("tracking:desktop:simkl", () => this.toggleDesktopTrackingSection("simkl"));
+    this.actionMap.set("tracking:desktop:behavior", () => this.toggleDesktopTrackingSection("behavior"));
+    this.actionMap.set("tracking:desktop:simkl:connect", async () => {
+      this.desktopSimklErrorMessage = null;
+      try {
+        await SimklAuthService.startPinAuth();
+        this.desktopSimklStatusMessage = "Waiting for Simkl approval...";
+        this.desktopTrackingExpanded = { ...this.desktopTrackingExpanded, simkl: true };
+        this.startDesktopSimklPolling();
+      } catch (error) {
+        this.desktopSimklStatusMessage = null;
+        this.desktopSimklErrorMessage = String(error?.message || error || "Unable to start Simkl sign-in.");
+      }
+    });
+    this.actionMap.set("tracking:desktop:simkl:open", () => {
+      const url = String(SimklAuthService.getCurrentAuthState().verificationUrl || "").trim();
+      if (url) window.open?.(url, "_blank", "noopener,noreferrer");
+    });
+    this.actionMap.set("tracking:desktop:simkl:cancel", () => {
+      this.stopDesktopSimklPolling();
+      SimklAuthService.cancelPinAuth();
+      this.desktopSimklStatusMessage = null;
+      this.desktopSimklErrorMessage = null;
+    });
+    this.actionMap.set("tracking:desktop:simkl:refresh", async () => {
+      this.desktopSimklStatusMessage = "Syncing Simkl...";
+      this.desktopSimklErrorMessage = null;
+      try {
+        await SimklSyncService.refresh({ force: true });
+        this.desktopSimklStatusMessage = "Simkl sync completed.";
+      } catch (error) {
+        this.desktopSimklStatusMessage = null;
+        this.desktopSimklErrorMessage = String(error?.message || error || "Unable to reach Simkl. Try again.");
+      }
+    });
+    this.actionMap.set("tracking:desktop:simkl:disconnect", () => {
+      this.openOptionDialog({
+        title: "Disconnect Simkl?",
+        options: [
+          { id: "disconnect", label: "Disconnect" },
+          { id: "cancel", label: "Cancel" }
+        ],
+        selectedId: "cancel",
+        returnFocusKey: "tracking:desktop:simkl",
+        onSelect: async (option) => {
+          if (option.id !== "disconnect") return;
+          await SimklAuthService.disconnect();
+          SimklSyncService.clearCurrentProfile();
+          if (settings.watchProgressSource === WatchProgressSource.SIMKL) {
+            TraktSettingsStore.setWatchProgressSource(WatchProgressSource.NUVIO_SYNC);
+          }
+          if (settings.librarySourceMode === TraktLibrarySourceMode.SIMKL) {
+            TraktSettingsStore.setLibrarySourceMode(TraktLibrarySourceMode.LOCAL);
+          }
+        }
+      });
+    });
+    this.actionMap.set("tracking:desktop:trakt:disconnect", () => this.openTraktDisconnectDialog());
+    this.actionMap.set("tracking:desktop:library", () => {
+      this.openOptionDialog({
+        title: "Library source",
+        options: librarySources,
+        selectedId: settings.librarySourceMode,
+        returnFocusKey: "tracking:desktop:library",
+        onSelect: (option) => TraktSettingsStore.setLibrarySourceMode(option.id)
+      });
+    });
+    this.actionMap.set("tracking:desktop:progress", () => {
+      this.openOptionDialog({
+        title: "Watch progress source",
+        options: progressSources,
+        selectedId: settings.watchProgressSource,
+        returnFocusKey: "tracking:desktop:progress",
+        onSelect: (option) => TraktSettingsStore.setWatchProgressSource(option.id)
+      });
+    });
+    this.actionMap.set("tracking:desktop:cw", () => {
+      this.openOptionDialog({
+        title: "Continue Watching window",
+        options: [14, 30, 60, 90, 180, 365, 0].map((days) => ({
+          id: String(days),
+          label: days === 0 ? "All history" : `${days} days`
+        })),
+        selectedId: String(settings.continueWatchingDaysCap),
+        returnFocusKey: "tracking:desktop:cw",
+        onSelect: (option) => TraktSettingsStore.setContinueWatchingDaysCap(Number(option.id))
+      });
+    });
+    this.actionMap.set("tracking:desktop:comments", () => {
+      TraktSettingsStore.setShowMetaComments(!settings.showMetaComments);
+    });
+    this.actionMap.set("tracking:desktop:related", () => {
+      this.openOptionDialog({
+        title: "More Like This source",
+        options: [
+          { id: MoreLikeThisSourcePreference.TRAKT, label: "Trakt" },
+          { id: MoreLikeThisSourcePreference.TMDB, label: "TMDB" }
+        ],
+        selectedId: settings.moreLikeThisSource,
+        returnFocusKey: "tracking:desktop:related",
+        onSelect: (option) => TraktSettingsStore.setMoreLikeThisSource(option.id)
+      });
+    });
+    this.actionMap.set("tracking:desktop:anime", () => {
+      this.openOptionDialog({
+        title: "Simkl anime ID",
+        options: [
+          { id: SimklAnimeIdPreference.IMDB, label: "IMDb / TMDB" },
+          { id: SimklAnimeIdPreference.MAL, label: "MyAnimeList" },
+          { id: SimklAnimeIdPreference.KITSU, label: "Kitsu" }
+        ],
+        selectedId: settings.simklAnimeIdPreference,
+        returnFocusKey: "tracking:desktop:anime",
+        onSelect: (option) => {
+          TraktSettingsStore.setSimklAnimeIdPreference(option.id);
+          SimklSyncService.clearCurrentProfile();
+          void SimklSyncService.refresh({ force: true });
+        }
+      });
+    });
+
+    const inlineButton = (focusKey, label, classes = "") => `
+      <button class="settings-tracking-inline-button settings-content-focusable focusable${classes ? ` ${classes}` : ""}"
+              data-zone="content"
+              ${this.registerAction(focusKey, this.actionMap.get(focusKey))}>${escapeHtml(label)}</button>`;
+    const activationUrl = String(simkl.verificationUrl || "").trim();
+    const simklBody = simklConnected
+      ? `<p class="settings-tracking-provider-status">Connected as ${escapeHtml(simkl.username || "Simkl user")}</p>
+         <div class="settings-tracking-inline-actions">
+           ${inlineButton("tracking:desktop:simkl:refresh", "Refresh")}
+           ${inlineButton("tracking:desktop:simkl:disconnect", "Disconnect", "is-danger")}
+         </div>`
+      : simklWaiting
+        ? `<div class="settings-tracking-activation">
+             <div class="settings-row-title">Enter this code on Simkl</div>
+             <p class="settings-row-subtitle">Open Simkl PIN and enter this code to approve Nuvio. This section updates automatically.</p>
+             <code class="settings-tracking-activation-code">${escapeHtml(simkl.userCode || "-")}</code>
+             <div class="settings-tracking-activation-url">${escapeHtml(activationUrl)}</div>
+             <div class="settings-tracking-inline-actions">
+               ${inlineButton("tracking:desktop:simkl:open", "Open Simkl PIN")}
+               ${inlineButton("tracking:desktop:simkl:cancel", "Cancel", "is-secondary")}
+             </div>
+             <p class="settings-tracking-provider-status">${escapeHtml(this.desktopSimklStatusMessage || "Waiting for Simkl approval...")}</p>
+           </div>`
+        : `<p class="settings-row-subtitle">Connect Simkl to sync lists, watched history, playback progress, and scrobbles.</p>
+           ${inlineButton("tracking:desktop:simkl:connect", "Connect Simkl")}`;
+    const traktBody = traktConnected
+      ? `<p class="settings-tracking-provider-status">Connected as ${escapeHtml(trakt.username || "Trakt user")}</p>
+         ${inlineButton("tracking:desktop:trakt:disconnect", "Disconnect", "is-danger")}`
+      : `<p class="settings-row-subtitle">Browser sign-in coming soon. Trakt requires a secure server-side token exchange; this browser build does not expose its confidential client secret.</p>`;
+    const behaviorBody = `
+      ${this.renderActionRow({ focusKey: "tracking:desktop:library", title: "Library source", subtitle: "Choose the service Nuvio reads for your Library.", value: librarySources.find((item) => item.id === settings.librarySourceMode)?.label || "Nuvio" })}
+      ${this.renderActionRow({ focusKey: "tracking:desktop:progress", title: "Watch progress source", subtitle: "Choose the service Nuvio reads for resume and Continue Watching.", value: progressSources.find((item) => item.id === settings.watchProgressSource)?.label || "Nuvio Sync" })}
+      ${traktConnected ? this.renderActionRow({ focusKey: "tracking:desktop:cw", title: "Continue Watching window", subtitle: "Trakt history considered for Continue Watching.", value: settings.continueWatchingDaysCap === 0 ? "All history" : `${settings.continueWatchingDaysCap} days` }) : ""}
+      ${traktConnected ? this.renderToggleRow({ focusKey: "tracking:desktop:comments", title: "Trakt comments", subtitle: "Show Trakt reviews on metadata pages.", checked: Boolean(settings.showMetaComments) }) : ""}
+      ${traktConnected ? this.renderActionRow({ focusKey: "tracking:desktop:related", title: "More Like This source", subtitle: "Choose related titles from Trakt or TMDB.", value: settings.moreLikeThisSource === MoreLikeThisSourcePreference.TMDB ? "TMDB" : "Trakt" }) : ""}
+      ${simklConnected ? this.renderActionRow({ focusKey: "tracking:desktop:anime", title: "Simkl anime ID", subtitle: "Preferred catalog identity for anime matching.", value: settings.simklAnimeIdPreference === SimklAnimeIdPreference.MAL ? "MyAnimeList" : settings.simklAnimeIdPreference === SimklAnimeIdPreference.KITSU ? "Kitsu" : "IMDb / TMDB" }) : ""}
+    `;
+
+    return `
+      ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "trakt"))}
+      <div class="settings-group-card settings-group-card-fill">
+        <div class="settings-stack settings-desktop-tracking-stack">
+          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:trakt", title: "Trakt", subtitle: traktConnected ? `Connected as ${trakt.username || "Trakt user"}` : "Not connected", expanded: Boolean(expanded.trakt), bodyHtml: expanded.trakt ? traktBody : "", classes: "settings-collapsible-tracking" })}
+          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:simkl", title: "Simkl", subtitle: simklConnected ? `Connected as ${simkl.username || "Simkl user"}` : simklWaiting ? "Waiting for approval" : "Not connected", expanded: Boolean(expanded.simkl), bodyHtml: expanded.simkl ? `${simklBody}${this.desktopSimklErrorMessage ? `<p class="settings-tracking-error">${escapeHtml(this.desktopSimklErrorMessage)}</p>` : ""}` : "", classes: "settings-collapsible-tracking" })}
+          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:behavior", title: "Sources & Behavior", subtitle: "Choose the sources used for Library, progress, and related content.", expanded: Boolean(expanded.behavior), bodyHtml: expanded.behavior ? behaviorBody : "", classes: "settings-collapsible-tracking" })}
+        </div>
+      </div>
+    `;
+  },
+
   renderTraktLauncher() {
+    if (isDesktopSettingsBrowser()) {
+      return this.renderDesktopTrackingSection();
+    }
     this.actionMap.set("trakt:open", () => Router.navigate("trakt"));
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "trakt"))}
@@ -7899,7 +8167,12 @@ export const SettingsScreen = {
       return;
     }
     if (section.id === "trakt") {
-      await Router.navigate("trakt");
+      if (isDesktopSettingsBrowser()) {
+        this.setActiveSection("trakt");
+        await this.render();
+      } else {
+        await Router.navigate("trakt");
+      }
       return;
     }
     this.setActiveSection(section.id);
@@ -8476,6 +8749,7 @@ export const SettingsScreen = {
   cleanup() {
     this.persistUiState();
     this.stopTraktPolling?.();
+    this.stopDesktopSimklPolling?.();
     this.stopDebridDeviceAuth();
     if (this.container && this.handleWheelBound) {
       this.container.removeEventListener("wheel", this.handleWheelBound);
