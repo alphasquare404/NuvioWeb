@@ -84,6 +84,7 @@ import {
   renderDesktopNavigation
 } from "../../components/desktopNavigation.js";
 import { createDesktopAddonManager } from "../../components/desktopAddonManager.js";
+import { createDesktopPluginManager } from "../../components/desktopPluginManager.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
@@ -2156,7 +2157,11 @@ export const SettingsScreen = {
     this.sidebarExpanded = false;
     this.pillIconOnly = false;
     this.desktopAddonExpanded = Boolean(this.desktopAddonExpanded);
+    this.desktopPluginExpanded = Boolean(this.desktopPluginExpanded);
     this.desktopAddonManager = this.desktopAddonManager || createDesktopAddonManager({
+      requestRender: () => this.render({ refreshModel: false })
+    });
+    this.desktopPluginManager = this.desktopPluginManager || createDesktopPluginManager({
       requestRender: () => this.render({ refreshModel: false })
     });
     const [sidebarProfile, initialModel] = await Promise.all([
@@ -4469,6 +4474,13 @@ export const SettingsScreen = {
       await Router.navigate("plugin");
     });
     this.actionMap.set("contentDiscovery:plugins", async () => {
+      if (Platform.isBrowser()) {
+        this.desktopPluginExpanded = !this.desktopPluginExpanded;
+        if (this.desktopPluginExpanded) {
+          await this.desktopPluginManager?.load();
+        }
+        return;
+      }
       await Router.navigate("plugins");
     });
 
@@ -4500,16 +4512,25 @@ export const SettingsScreen = {
           ${
             ExperienceModeStore.isEssential()
               ? ""
-              : this.renderActionRow({
-                  focusKey: "contentDiscovery:plugins",
-                  title: t("plugin_title", {}, "Plugins"),
-                  subtitle: t(
-                    "settings.contentDiscovery.pluginsSubtitle",
-                    {},
-                    "Manage repositories and stream providers"
-                  ),
-                  leadingIcon: "build"
-                })
+              : Platform.isBrowser()
+                ? this.renderCollapsibleRow({
+                    focusKey: "contentDiscovery:plugins",
+                    title: t("plugin_title", {}, "Plugins"),
+                    subtitle: "Add custom stream source URL templates.",
+                    expanded: Boolean(this.desktopPluginExpanded),
+                    bodyHtml: this.desktopPluginExpanded ? this.desktopPluginManager?.render() || "" : "",
+                    classes: "settings-collapsible-plugin"
+                  })
+                : this.renderActionRow({
+                    focusKey: "contentDiscovery:plugins",
+                    title: t("plugin_title", {}, "Plugins"),
+                    subtitle: t(
+                      "settings.contentDiscovery.pluginsSubtitle",
+                      {},
+                      "Manage repositories and stream providers"
+                    ),
+                    leadingIcon: "build"
+                  })
           }
         </div>
       </div>
@@ -7524,6 +7545,9 @@ export const SettingsScreen = {
     if (isDesktopBrowser && this.desktopAddonExpanded && section.id === "contentDiscovery") {
       this.desktopAddonManager.bind(contentSlot);
     }
+    if (isDesktopBrowser && this.desktopPluginExpanded && section.id === "contentDiscovery") {
+      this.desktopPluginManager.bind(contentSlot);
+    }
 
     const dialogHtml = this.optionDialog ? this.renderOptionDialog() : this.renderTextDialog();
     if (dialogSlot && dialogSlot.innerHTML !== dialogHtml) {
@@ -8040,6 +8064,10 @@ export const SettingsScreen = {
       const handled = await this.desktopAddonManager.handleKeyDown(event);
       if (handled) return;
     }
+    if (Platform.isBrowser() && this.desktopPluginExpanded) {
+      const handled = await this.desktopPluginManager.handleKeyDown(event);
+      if (handled) return;
+    }
 
     if (Platform.isBackEvent(event)) {
       event?.preventDefault?.();
@@ -8301,6 +8329,7 @@ export const SettingsScreen = {
     this.sidebarExpanded = false;
     this.pillIconOnly = false;
     this.desktopAddonExpanded = false;
+    this.desktopPluginExpanded = false;
     this.suppressNextContentFocusScroll = false;
     this.renderedSectionId = null;
     ScreenUtils.hide(this.container);
