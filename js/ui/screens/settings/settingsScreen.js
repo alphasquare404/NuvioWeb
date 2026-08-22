@@ -6,6 +6,8 @@ import { LocalStore } from "../../../core/storage/localStore.js";
 import { SessionStore } from "../../../core/storage/sessionStore.js";
 import { TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
 import { HomeCatalogStore } from "../../../data/local/homeCatalogStore.js";
+import { buildCatalogOrderKey } from "../../../core/addons/homeCatalogs.js";
+import { CollectionsStore, buildCollectionHomeKey } from "../../../data/local/collectionsStore.js";
 import { ThemeStore } from "../../../data/local/themeStore.js";
 import { ThemeManager } from "../../theme/themeManager.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
@@ -94,6 +96,17 @@ const CURRENT_APP_VERSION =
   typeof __NUVIO_APP_VERSION__ !== "undefined" ? __NUVIO_APP_VERSION__ : "0.0.0";
 const SETTINGS_VERSION_LABEL = formatSettingsVersionLabel(CURRENT_APP_VERSION);
 const PRIVACY_URL = "https://nuvio.tv/privacy-policy";
+
+function isDesktopSettingsBrowser() {
+  return Platform.isBrowser();
+}
+
+function catalogMediaTypeLabel(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+  if (normalized === "movie") return "Movie";
+  if (normalized === "series" || normalized === "show" || normalized === "tv") return "Show";
+  return "";
+}
 
 function formatHalfStepSettingValue(value, suffix = "") {
   const rounded = Math.round(Number(value || 0) * 2) / 2;
@@ -2541,7 +2554,8 @@ export const SettingsScreen = {
     selectedIds = [],
     onToggle,
     returnFocusKey,
-    dialogClassName = ""
+    dialogClassName = "",
+    optionRenderer = "multi"
   }) {
     this.textDialog = null;
     this.optionDialog = {
@@ -2553,7 +2567,7 @@ export const SettingsScreen = {
       onToggle,
       returnFocusKey,
       dialogClassName,
-      optionRenderer: "multi",
+      optionRenderer,
       multiChoice: true,
       optionColumns: 1
     };
@@ -2626,7 +2640,9 @@ export const SettingsScreen = {
       : "";
     const useLanguageRenderer = this.optionDialog.optionRenderer === "subtitle-language";
     const useSingleChoiceRenderer = this.optionDialog.optionRenderer === "single-choice";
-    const useMultiRenderer = this.optionDialog.optionRenderer === "multi";
+    const useHeroCatalogRenderer = this.optionDialog.optionRenderer === "hero-catalog";
+    const useMultiRenderer =
+      this.optionDialog.optionRenderer === "multi" || useHeroCatalogRenderer;
     const isP2pConsentDialog =
       String(this.optionDialog.dialogClassName || "") === "settings-p2p-consent-dialog";
     const messageHtml = this.optionDialog.message
@@ -2638,7 +2654,7 @@ export const SettingsScreen = {
         <div class="settings-dialog${dialogClassName}">
           <div class="settings-dialog-title">${escapeHtml(this.optionDialog.title || t("common.selectOption"))}</div>
           ${messageHtml}
-          <div class="settings-dialog-list${useLanguageRenderer ? " settings-language-dialog-list" : ""}">
+          <div class="settings-dialog-list${useLanguageRenderer ? " settings-language-dialog-list" : ""}${useHeroCatalogRenderer ? " settings-hero-catalog-dialog-list" : ""}">
             ${this.optionDialog.options
               .map((option, index) => {
                 const optionId = String(option.id);
@@ -2646,12 +2662,17 @@ export const SettingsScreen = {
                   ? this.optionDialog.selectedIds?.has?.(optionId)
                   : optionId === String(this.optionDialog.selectedId);
                 return `
-              <button class="settings-dialog-option settings-content-focusable focusable${useLanguageRenderer ? " settings-language-option" : ""}${useSingleChoiceRenderer ? " settings-single-choice-option" : ""}${isSelected ? " is-selected" : ""}"
+              <button class="settings-dialog-option settings-content-focusable focusable${useLanguageRenderer ? " settings-language-option" : ""}${useHeroCatalogRenderer ? " settings-hero-catalog-option" : ""}${useSingleChoiceRenderer ? " settings-single-choice-option" : ""}${isSelected ? " is-selected" : ""}"
                       data-zone="dialog"
                       data-dialog-index="${index}"
                       data-dialog-option-id="${escapeHtml(option.id)}">
                 ${
-                  useLanguageRenderer
+                  useHeroCatalogRenderer
+                    ? `<span class="settings-hero-catalog-copy">
+                      <span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>
+                      <span class="settings-hero-catalog-meta">${escapeHtml(String(option.secondary || ""))}</span>
+                    </span>`
+                    : useLanguageRenderer
                     ? `<span class="settings-language-option-copy">
                       <span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>
                     </span>
@@ -3104,7 +3125,15 @@ export const SettingsScreen = {
             !loading && !signedIn
               ? `
             <p class="settings-account-description">${escapeHtml(t("account_sync_description", {}, "Sync your library, watch progress, addons, and plugins across devices."))}</p>
-            <p class="settings-account-inline-note">${escapeHtml(t("account_sync_restart_note", {}, "Sync is not real-time across active devices. Restart this device after signing in or to pick up changes made elsewhere."))}</p>
+            <p class="settings-account-inline-note">${escapeHtml(
+              isDesktopBrowser
+                ? "Reload or restart the app to pick up changes."
+                : t(
+                    "account_sync_restart_note",
+                    {},
+                    "Sync is not real-time across active devices. Restart this device after signing in or to pick up changes made elsewhere."
+                  )
+            )}</p>
             ${this.renderAccountActionButton({
               focusKey: "account:signin",
               icon: "vpn_key",
@@ -3140,7 +3169,15 @@ export const SettingsScreen = {
             signedIn
               ? `
             ${this.renderAccountStatusCard(model.accountEmail || t("settings.status.linkedFallback", {}, "Linked account"))}
-            <p class="settings-account-inline-note">${escapeHtml(t("account_sync_restart_note", {}, "Sync is not real-time across active devices. Restart this device after signing in or to pick up changes made elsewhere."))}</p>
+            <p class="settings-account-inline-note">${escapeHtml(
+              isDesktopBrowser
+                ? "Reload or restart the app to pick up changes."
+                : t(
+                    "account_sync_restart_note",
+                    {},
+                    "Sync is not real-time across active devices. Restart this device after signing in or to pick up changes made elsewhere."
+                  )
+            )}</p>
             ${
               model.accountSyncOverview
                 ? this.renderAccountSyncOverview(model.accountSyncOverview)
@@ -3308,6 +3345,7 @@ export const SettingsScreen = {
   },
 
   renderAdvancedSection(model) {
+    const isDesktopBrowser = isDesktopSettingsBrowser();
     this.actionMap.set("advanced:fastHorizontalNavigation", () => {
       LayoutPreferences.set({
         fastHorizontalNavigationEnabled: !isFastHorizontalNavigationEnabled()
@@ -3383,6 +3421,10 @@ export const SettingsScreen = {
           value: t("experience_mode_advanced", {}, "Advanced")
         })}
       </div></div>
+      ${
+        isDesktopBrowser
+          ? ""
+          : `
       <div class="settings-group-heading">
         <div class="settings-group-title">${escapeHtml(t("advanced_section_performance", {}, "Performance & navigation"))}</div>
       </div>
@@ -3399,7 +3441,8 @@ export const SettingsScreen = {
             checked: Boolean(model.fastHorizontalNavigation)
           })}
         </div>
-      </div>
+      </div>`
+      }
       <div class="settings-group-heading">
         <div class="settings-group-title">${escapeHtml(t("advanced_section_cache", {}, "Cache"))}</div>
       </div>
@@ -3424,6 +3467,7 @@ export const SettingsScreen = {
   },
 
   renderAppearanceSection(model) {
+    const isDesktopBrowser = isDesktopSettingsBrowser();
     THEME_OPTIONS.forEach((theme) => {
       this.actionMap.set(`appearance:theme:${theme.id}`, () => {
         ThemeStore.set({ themeName: theme.id, accentColor: theme.color });
@@ -3532,20 +3576,24 @@ export const SettingsScreen = {
           <div class="settings-group-subtitle">${escapeHtml(t("appearance_font_and_language_subtitle", {}, "Choose the typeface and locale used throughout the app"))}</div>
         </div>
         <div class="settings-stack">
-          ${this.renderActionRow({
-            focusKey: "appearance:settingsUiStyle",
-            title: t("appearance_settings_style", {}, "Settings style"),
-            subtitle: t(
-              "appearance_settings_style_subtitle",
-              {},
-              "Choose the layout used by Settings"
-            ),
-            value: t(
-              `settings_style_${String(model.theme.settingsUiStyle || "CLASSIC").toLowerCase()}`,
-              {},
-              String(model.theme.settingsUiStyle || "CLASSIC")
-            )
-          })}
+          ${
+            isDesktopBrowser
+              ? ""
+              : this.renderActionRow({
+                  focusKey: "appearance:settingsUiStyle",
+                  title: t("appearance_settings_style", {}, "Settings style"),
+                  subtitle: t(
+                    "appearance_settings_style_subtitle",
+                    {},
+                    "Choose the layout used by Settings"
+                  ),
+                  value: t(
+                    `settings_style_${String(model.theme.settingsUiStyle || "CLASSIC").toLowerCase()}`,
+                    {},
+                    String(model.theme.settingsUiStyle || "CLASSIC")
+                  )
+                })
+          }
           ${this.renderActionRow({
             focusKey: "appearance:font",
             title: t("appearance_font", {}, "App Font"),
@@ -3564,6 +3612,7 @@ export const SettingsScreen = {
   },
 
   renderLayoutSection(model) {
+    const isDesktopBrowser = isDesktopSettingsBrowser();
     this.ensureExpandedState("layout");
     const expanded = this.expandedSections.layout;
 
@@ -3604,26 +3653,64 @@ export const SettingsScreen = {
     this.actionMap.set("layout:heroSection", () => {
       LayoutPreferences.set({ heroSectionEnabled: !LayoutPreferences.get().heroSectionEnabled });
     });
-    this.actionMap.set("layout:heroCatalogs", () => {
+    this.actionMap.set("layout:heroCatalogs", async () => {
       const catalogSettings = model.homeCatalog || HomeCatalogStore.get();
+      const addons = await addonRepository.getInstalledAddons().catch(() => []);
+      const catalogDetails = new Map();
+      addons.forEach((addon) => {
+        (addon.catalogs || []).forEach((catalog) => {
+          const key = buildCatalogOrderKey(addon.id, catalog.apiType, catalog.id);
+          const catalogName = String(catalog.name || "").trim();
+          const addonName = String(addon.displayName || addon.name || "").trim();
+          if (catalogName) {
+            catalogDetails.set(key, {
+              label: catalogName,
+              typeLabel: catalogMediaTypeLabel(catalog.apiType),
+              addonName
+            });
+          }
+        });
+      });
+      const collectionKeys = new Set(CollectionsStore.get().map(buildCollectionHomeKey));
       const options = (catalogSettings.order || [])
         .filter((key) => !catalogSettings.disabled?.includes(key))
-        .map((key) => ({
-          id: key,
-          label: catalogSettings.customTitles?.[key] || key.split("::").pop() || key
-        }));
+        .filter(
+          (key) =>
+            !isDesktopBrowser ||
+            (!collectionKeys.has(key) && !String(key).startsWith("collection_"))
+        )
+        .map((key) => {
+          if (!isDesktopBrowser) {
+            return {
+              id: key,
+              label: catalogSettings.customTitles?.[key] || key.split("::").pop() || key
+            };
+          }
+          const details = catalogDetails.get(key);
+          const label = catalogSettings.customTitles?.[key] || details?.label || key;
+          const secondary = [details?.typeLabel, details?.addonName].filter(Boolean).join(" · ");
+          return {
+            id: key,
+            label,
+            secondary
+          };
+        });
       this.openMultiChoiceDialog({
         title: t("layout_hero_catalog", {}, "Hero catalogs"),
         options,
         selectedIds: model.layout.heroCatalogKeys || [],
         returnFocusKey: "layout:heroCatalogs",
-        onToggle: (selectedIds) => LayoutPreferences.set({ heroCatalogKeys: selectedIds })
+        onToggle: (selectedIds) => LayoutPreferences.set({ heroCatalogKeys: selectedIds }),
+        dialogClassName: isDesktopBrowser ? "settings-hero-catalog-dialog" : "",
+        optionRenderer: isDesktopBrowser ? "hero-catalog" : "multi"
       });
     });
     this.actionMap.set("layout:searchDiscover", () => {
       const options = [
         { id: "in_search", labelKey: "layout_discover_location_in_search" },
-        { id: "in_sidebar", labelKey: "layout_discover_location_in_sidebar" },
+        ...(!isDesktopBrowser
+          ? [{ id: "in_sidebar", labelKey: "layout_discover_location_in_sidebar" }]
+          : []),
         { id: "off", labelKey: "common_off" }
       ];
       this.openOptionDialog({
@@ -3902,7 +3989,7 @@ export const SettingsScreen = {
       </div>
     `;
 
-    if (model.experience?.mode === "ESSENTIAL") {
+    if (model.experience?.mode === "ESSENTIAL" && !isDesktopBrowser) {
       return `
         ${this.renderSectionHeader({
           ...SECTION_META.find((item) => item.id === "layout"),
@@ -3944,7 +4031,7 @@ export const SettingsScreen = {
     const homeContentBody = `
       <div class="settings-stack">
         ${
-          !model.layout.modernSidebar
+          !isDesktopBrowser && !model.layout.modernSidebar
             ? this.renderToggleRow({
                 focusKey: "layout:collapseSidebar",
                 title: t("settings.layout.collapseSidebar.title"),
@@ -3953,14 +4040,18 @@ export const SettingsScreen = {
               })
             : ""
         }
-        ${this.renderToggleRow({
-          focusKey: "layout:modernSidebar",
-          title: t("settings.layout.modernSidebar.title"),
-          subtitle: t("settings.layout.modernSidebar.subtitle"),
-          checked: Boolean(model.layout.modernSidebar)
-        })}
         ${
-          model.layout.modernSidebar && isModernSidebarBlurAvailable()
+          !isDesktopBrowser
+            ? this.renderToggleRow({
+                focusKey: "layout:modernSidebar",
+                title: t("settings.layout.modernSidebar.title"),
+                subtitle: t("settings.layout.modernSidebar.subtitle"),
+                checked: Boolean(model.layout.modernSidebar)
+              })
+            : ""
+        }
+        ${
+          !isDesktopBrowser && model.layout.modernSidebar && isModernSidebarBlurAvailable()
             ? this.renderToggleRow({
                 focusKey: "layout:modernSidebarBlur",
                 title: t("settings.layout.modernSidebarBlur.title"),
@@ -3987,9 +4078,18 @@ export const SettingsScreen = {
                 ? t("common.off", {}, "Off")
                 : t("layout_discover_location_in_search")
         })}
-        ${!isModernLayout ? this.renderToggleRow({ focusKey: "layout:classicFocusGradient", title: t("layout_classic_focus_gradient"), subtitle: t("layout_classic_focus_gradient_sub"), checked: Boolean(model.layout.classicFocusGradientEnabled) }) : ""}
         ${
-          !isModernLayout
+          !isDesktopBrowser && !isModernLayout
+            ? this.renderToggleRow({
+                focusKey: "layout:classicFocusGradient",
+                title: t("layout_classic_focus_gradient"),
+                subtitle: t("layout_classic_focus_gradient_sub"),
+                checked: Boolean(model.layout.classicFocusGradientEnabled)
+              })
+            : ""
+        }
+        ${
+          !isDesktopBrowser && !isModernLayout
             ? this.renderToggleRow({
                 focusKey: "layout:posterLabels",
                 title: t("settings.layout.posterLabels.title"),
@@ -3999,7 +4099,7 @@ export const SettingsScreen = {
             : ""
         }
         ${
-          !isModernLayout
+          !isDesktopBrowser && !isModernLayout
             ? this.renderToggleRow({
                 focusKey: "layout:addonName",
                 title: t("settings.layout.addonName.title"),
@@ -4025,7 +4125,24 @@ export const SettingsScreen = {
 
     const continueWatchingBody = `
       <div class="settings-stack">
-        ${this.renderActionRow({ focusKey: "layout:continueWatchingCardStyle", title: t("layout_cw_card_style", {}, "Card style"), subtitle: t("layout_section_continue_watching_desc", {}, "Choose the Continue Watching card shape"), value: t(`layout_cw_card_style_${model.layout.continueWatchingCardStyle || "card"}`, {}, model.layout.continueWatchingCardStyle || "card") })}
+        ${
+          !isDesktopBrowser
+            ? this.renderActionRow({
+                focusKey: "layout:continueWatchingCardStyle",
+                title: t("layout_cw_card_style", {}, "Card style"),
+                subtitle: t(
+                  "layout_section_continue_watching_desc",
+                  {},
+                  "Choose the Continue Watching card shape"
+                ),
+                value: t(
+                  `layout_cw_card_style_${model.layout.continueWatchingCardStyle || "card"}`,
+                  {},
+                  model.layout.continueWatchingCardStyle || "card"
+                )
+              })
+            : ""
+        }
         ${this.renderToggleRow({
           focusKey: "layout:useEpisodeThumbnailsInCw",
           title: t("settings.layout.useEpisodeThumbnailsInCw.title", {}, "Use Episode Thumbnails"),
@@ -4080,7 +4197,9 @@ export const SettingsScreen = {
           subtitle: t(
             "settings.layout.continueWatchingSort.subtitle",
             {},
-            "Choose the same Continue Watching ordering used on Android TV."
+            isDesktopBrowser
+              ? "Choose how Continue Watching is ordered."
+              : "Choose the same Continue Watching ordering used on Android TV."
           ),
           value: continueWatchingSortLabel
         })}
@@ -4183,8 +4302,26 @@ export const SettingsScreen = {
 
     const cardAppearanceBody = `
       <div class="settings-stack">
-        ${this.renderActionRow({ focusKey: "layout:posterWidth", title: t("layout_card_width", {}, "Card width"), subtitle: t("layout_section_card_style_desc", {}, "Adjust poster card width"), value: String(model.layout.posterCardWidthDp) })}
-        ${this.renderActionRow({ focusKey: "layout:posterRadius", title: t("layout_card_radius", {}, "Card corner radius"), subtitle: t("layout_section_card_style_desc", {}, "Adjust poster card corner radius"), value: String(model.layout.posterCardCornerRadiusDp) })}
+        ${
+          !isDesktopBrowser
+            ? this.renderActionRow({
+                focusKey: "layout:posterWidth",
+                title: t("layout_card_width", {}, "Card width"),
+                subtitle: t("layout_section_card_style_desc", {}, "Adjust poster card width"),
+                value: String(model.layout.posterCardWidthDp)
+              })
+            : ""
+        }
+        ${
+          !isDesktopBrowser
+            ? this.renderActionRow({
+                focusKey: "layout:posterRadius",
+                title: t("layout_card_radius", {}, "Card corner radius"),
+                subtitle: t("layout_section_card_style_desc", {}, "Adjust poster card corner radius"),
+                value: String(model.layout.posterCardCornerRadiusDp)
+              })
+            : ""
+        }
         ${this.renderToggleRow({ focusKey: "layout:cardDepthEnabled", title: t("settings_card_depth_enabled", {}, "Enable depth effect"), subtitle: t("settings_card_depth_description", {}, "Add edge light and sheen to image cards"), checked: Boolean(model.layout.cardDepthEnabled) })}
         ${
           model.layout.cardDepthEnabled
@@ -4212,9 +4349,51 @@ export const SettingsScreen = {
         }
       </div>`;
 
+    const desktopLayoutGroups = `
+      <div class="settings-group-card settings-group-card-fill">
+        <div class="settings-stack">
+          ${this.renderCollapsibleRow({
+            focusKey: "layout:toggle:homeContent",
+            title: "Home & Discovery",
+            subtitle: "Configure the Home hero, Discover entry, and catalog headings.",
+            expanded: Boolean(expanded.homeContent),
+            bodyHtml: homeContentBody
+          })}
+          ${this.renderCollapsibleRow({
+            focusKey: "layout:toggle:continueWatching",
+            title: t("settings.layout.groups.continueWatching.title", {}, "Continue Watching"),
+            subtitle: t(
+              "settings.layout.groups.continueWatching.subtitle",
+              {},
+              "Configure next episodes and ordering"
+            ),
+            expanded: Boolean(expanded.continueWatching),
+            bodyHtml: continueWatchingBody
+          })}
+          ${this.renderCollapsibleRow({
+            focusKey: "layout:toggle:detailPage",
+            title: t("settings.layout.groups.detailPage.title"),
+            subtitle: t("settings.layout.groups.detailPage.subtitle"),
+            expanded: Boolean(expanded.detailPage),
+            bodyHtml: detailPageBody
+          })}
+          ${this.renderCollapsibleRow({
+            focusKey: "layout:toggle:cardAppearance",
+            title: "Card Effects",
+            subtitle: t("settings_card_depth_description", {}, "Size, corners and depth surfaces"),
+            expanded: Boolean(expanded.cardAppearance),
+            bodyHtml: cardAppearanceBody
+          })}
+        </div>
+      </div>
+    `;
+
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "layout"))}
-      <div class="settings-group-card settings-group-card-fill">
+      ${
+        isDesktopBrowser
+          ? desktopLayoutGroups
+          : `<div class="settings-group-card settings-group-card-fill">
         <div class="settings-stack">
           ${this.renderCollapsibleRow({
             focusKey: "layout:toggle:homeLayout",
@@ -4257,7 +4436,8 @@ export const SettingsScreen = {
           })}
           ${this.renderCollapsibleRow({ focusKey: "layout:toggle:cardAppearance", title: t("settings_card_depth_title", {}, "Card appearance"), subtitle: t("settings_card_depth_description", {}, "Size, corners and depth surfaces"), expanded: Boolean(expanded.cardAppearance), bodyHtml: cardAppearanceBody })}
         </div>
-      </div>
+      </div>`
+      }
     `;
   },
 
@@ -4365,6 +4545,7 @@ export const SettingsScreen = {
   },
 
   renderIntegrationDetail(model, key) {
+    const isDesktopBrowser = isDesktopSettingsBrowser();
     this.actionMap.set("integration:back", () => {
       this.integrationView = "hub";
       const focusByIntegration = {
@@ -5010,12 +5191,16 @@ export const SettingsScreen = {
             })}
             ${this.renderToggleRow({
               focusKey: "integration:tmdb:modernHome",
-              title: t("tmdb_modern_home_title", {}, "Enable on Modern Home"),
-              subtitle: t(
-                "tmdb_modern_home_subtitle",
-                {},
-                "Also apply TMDB enrichment to Modern Home hero and focused cards"
-              ),
+              title: isDesktopBrowser
+                ? "Enable Home enrichment"
+                : t("tmdb_modern_home_title", {}, "Enable on Modern Home"),
+              subtitle: isDesktopBrowser
+                ? "Apply TMDB enrichment to Home hero and cards."
+                : t(
+                    "tmdb_modern_home_subtitle",
+                    {},
+                    "Also apply TMDB enrichment to Modern Home hero and focused cards"
+                  ),
               checked: Boolean(model.tmdb.modernHomeEnabled),
               disabled: !model.tmdb.enabled
             })}
@@ -5596,6 +5781,7 @@ export const SettingsScreen = {
   },
 
   renderPlaybackSection(model) {
+    const isDesktopBrowser = isDesktopSettingsBrowser();
     this.ensureExpandedState("playback");
     const expanded = this.expandedSections.playback;
     const torrentSettings = model.torrent || TorrentSettingsStore.get();
@@ -6212,7 +6398,9 @@ export const SettingsScreen = {
         ${["intro", "recap", "outro"].map((type) => this.renderToggleRow({ focusKey: `playback:autoSkip:${type}`, title: t(`auto_skip_${type}`, {}, `Auto-skip ${type}`), subtitle: t(`auto_skip_${type}_sub`, {}, `Skip ${type} segments automatically`), checked: model.player.autoSkipSegmentTypes?.includes(type) })).join("")}
         ${this.renderToggleRow({
           focusKey: "playback:osdClock",
-          title: t("playback_osd_clock", {}, "OSD Clock"),
+          title: isDesktopBrowser
+            ? "Show clock in player controls"
+            : t("playback_osd_clock", {}, "OSD Clock"),
           subtitle: t(
             "playback_show_clock_sub",
             {},
@@ -6431,13 +6619,30 @@ export const SettingsScreen = {
 
     const audioBody = `
       <div class="settings-stack">
-        ${this.renderToggleRow({
-          focusKey: "playback:trailer",
-          title: t("settings.playback.autoplayTrailer.title"),
-          subtitle: t("settings.playback.autoplayTrailer.subtitle"),
-          checked: Boolean(model.player.trailerAutoplay)
-        })}
-        ${model.player.trailerAutoplay ? this.renderActionRow({ focusKey: "playback:trailerDelay", title: t("audio_trailer_delay"), subtitle: t("audio_trailer_delay_sub", {}, "Delay before trailer playback starts"), value: `${model.player.trailerDelaySeconds ?? 7}s` }) : ""}
+        ${
+          !isDesktopBrowser
+            ? this.renderToggleRow({
+                focusKey: "playback:trailer",
+                title: t("settings.playback.autoplayTrailer.title"),
+                subtitle: t("settings.playback.autoplayTrailer.subtitle"),
+                checked: Boolean(model.player.trailerAutoplay)
+              })
+            : ""
+        }
+        ${
+          !isDesktopBrowser && model.player.trailerAutoplay
+            ? this.renderActionRow({
+                focusKey: "playback:trailerDelay",
+                title: t("audio_trailer_delay"),
+                subtitle: t(
+                  "audio_trailer_delay_sub",
+                  {},
+                  "Delay before trailer playback starts"
+                ),
+                value: `${model.player.trailerDelaySeconds ?? 7}s`
+              })
+            : ""
+        }
         ${this.renderActionRow({
           focusKey: "playback:audioLanguage",
           title: t("settings.playback.preferredAudio.title"),
@@ -7601,6 +7806,24 @@ export const SettingsScreen = {
   },
 
   async handleClickEvent(event) {
+    const dialogBackdrop = event?.target?.closest?.(".settings-dialog-backdrop");
+    if (
+      isDesktopSettingsBrowser() &&
+      dialogBackdrop &&
+      event.target === dialogBackdrop &&
+      (this.optionDialog || this.textDialog)
+    ) {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      if (this.textDialog) {
+        this.closeTextDialog();
+      } else {
+        this.closeOptionDialog();
+      }
+      await this.render({ refreshModel: false });
+      return;
+    }
+
     const target = event?.target?.closest?.(
       ".settings-nav-item, .settings-content-focusable, .settings-dialog-option, [data-text-dialog-role='field']"
     );

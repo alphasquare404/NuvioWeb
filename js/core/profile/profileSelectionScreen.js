@@ -463,6 +463,13 @@ export const ProfileSelectionScreen = {
 
     this.container.innerHTML = `
       <div class="profile-screen${pinScreenPhaseClass}${compactGridScreenClass}">
+        ${
+          isDesktopBrowser && this.isManagementMode
+            ? `<button class="profile-desktop-back-button" type="button" data-action="close-management" aria-label="${escapeHtml(
+                t("common.back", {}, "Back")
+              )}">&#8592;</button>`
+            : ""
+        }
         <div class="profile-main-layer"${isPinActive ? ' aria-hidden="true"' : ""}>
           <img src="assets/brand/app_logo_wordmark.png" class="profile-logo" alt="Nuvio"/>
 
@@ -497,6 +504,9 @@ export const ProfileSelectionScreen = {
           mode: "management",
           returnRoute: "profileSelection"
         });
+      });
+      this.container.querySelector("[data-action='close-management']")?.addEventListener("click", () => {
+        void Router.back();
       });
     }
     if (renderedPinState) {
