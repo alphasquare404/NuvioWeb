@@ -5145,6 +5145,7 @@ export const PlayerScreen = {
               <div class="player-controls-row">
                 <div id="playerControlButtons" class="player-control-buttons"></div>
                 <div id="playerTimeLabel" class="player-time-label">0:00 / 0:00</div>
+                ${this.renderDesktopPlaybackTools()}
               </div>
             </div>
           </div>
@@ -5184,6 +5185,28 @@ export const PlayerScreen = {
               aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
         <span aria-hidden="true">&#8592;</span>
       </button>
+    `;
+  },
+
+  renderDesktopPlaybackTools() {
+    if (!Environment.isBrowser()) {
+      return "";
+    }
+    const { volume, muted } = this.getDesktopVolumeState();
+    const volumePercent = Math.round(volume * 100);
+    return `
+      <div class="player-desktop-playback-tools" aria-label="Playback controls">
+        <button class="player-desktop-tool-button" type="button" data-player-desktop-action="mute"
+                title="${escapeHtml(muted ? "Unmute" : "Mute")}" aria-label="${escapeHtml(muted ? "Unmute" : "Mute")}">
+          <span class="player-desktop-tool-icon" data-player-desktop-mute-icon aria-hidden="true">${muted ? "&#128263;" : "&#128266;"}</span>
+        </button>
+        <input class="player-desktop-volume" type="range" min="0" max="100" step="1"
+               value="${volumePercent}" data-player-desktop-volume aria-label="Volume" />
+        <button class="player-desktop-tool-button" type="button" data-player-desktop-action="fullscreen"
+                title="Enter fullscreen" aria-label="Enter fullscreen">
+          <span class="player-desktop-tool-icon player-desktop-fullscreen-icon" data-player-desktop-fullscreen-icon aria-hidden="true">&#9974;</span>
+        </button>
+      </div>
     `;
   },
 
@@ -5282,7 +5305,7 @@ export const PlayerScreen = {
 
       const backButton = target.closest("[data-player-desktop-back]");
       if (backButton && this.container.contains(backButton)) {
-        this.navigateBackToStreamScreen();
+        void this.navigateDesktopPlayerBack();
         return;
       }
 
@@ -5311,7 +5334,8 @@ export const PlayerScreen = {
           "[data-sources-zone], [data-subtitle-style-action], [data-subtitle-rail], " +
           "[data-audio-step], [data-audio-column], [data-speed-index], [data-episode-action], " +
           "[data-episode-stream-action], [data-episode-stream-filter-index], " +
-          "[data-episode-stream-index], [data-episode-season-index], [data-episode-index]"
+          "[data-episode-stream-index], [data-episode-season-index], [data-episode-index], " +
+          "[data-player-desktop-action], [data-player-desktop-volume]"
       );
       if (actionTarget && this.container.contains(actionTarget)) {
         void this.onPointerActivate(actionTarget, event);
@@ -5328,6 +5352,23 @@ export const PlayerScreen = {
     this.container.addEventListener("pointerup", this.boundDesktopPlayerPointerUpHandler);
     this.container.addEventListener("pointercancel", this.boundDesktopPlayerPointerCancelHandler);
     this.container.addEventListener("click", this.boundDesktopPlayerClickHandler);
+    this.boundDesktopPlayerInputHandler = (event) => {
+      const volumeInput = event.target?.closest?.("[data-player-desktop-volume]");
+      if (!volumeInput || !this.container.contains(volumeInput)) {
+        return;
+      }
+      this.setDesktopVolume(Number(volumeInput.value) / 100);
+      this.revealDesktopPlayerControls();
+    };
+    this.container.addEventListener("input", this.boundDesktopPlayerInputHandler);
+
+    this.boundDesktopFullscreenChangeHandler = () => this.syncDesktopPlaybackTools();
+    document.addEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
+    const video = this.getDesktopPlaybackVideo();
+    if (video) {
+      this.boundDesktopVolumeChangeHandler = () => this.syncDesktopPlaybackTools();
+      video.addEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
+    }
   },
 
   unbindDesktopPlayerPointerBridge() {
@@ -5339,11 +5380,17 @@ export const PlayerScreen = {
     this.container.removeEventListener("pointerup", this.boundDesktopPlayerPointerUpHandler);
     this.container.removeEventListener("pointercancel", this.boundDesktopPlayerPointerCancelHandler);
     this.container.removeEventListener("click", this.boundDesktopPlayerClickHandler);
+    this.container.removeEventListener("input", this.boundDesktopPlayerInputHandler);
+    document.removeEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
+    this.getDesktopPlaybackVideo()?.removeEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
     this.boundDesktopPlayerPointerMoveHandler = null;
     this.boundDesktopPlayerPointerDownHandler = null;
     this.boundDesktopPlayerPointerUpHandler = null;
     this.boundDesktopPlayerPointerCancelHandler = null;
     this.boundDesktopPlayerClickHandler = null;
+    this.boundDesktopPlayerInputHandler = null;
+    this.boundDesktopFullscreenChangeHandler = null;
+    this.boundDesktopVolumeChangeHandler = null;
     this.desktopProgressPointer = null;
     this.desktopSuppressProgressClick = false;
     if (this.desktopProgressClickSuppressTimer) {
@@ -5385,6 +5432,120 @@ export const PlayerScreen = {
       ".player-torrent-overlay"
     ].join(", ");
     return !target.closest(blockedSelector);
+  },
+
+  getDesktopPlaybackVideo() {
+    const video = PlayerController.video;
+    return video instanceof HTMLMediaElement ? video : null;
+  },
+
+  getDesktopVolumeState() {
+    const video = this.getDesktopPlaybackVideo();
+    const volume = clamp(Number(video?.volume ?? 1), 0, 1);
+    const muted = Boolean(video?.muted) || volume <= 0;
+    return { volume, muted };
+  },
+
+  setDesktopVolume(value) {
+    const video = this.getDesktopPlaybackVideo();
+    if (!video) {
+      return false;
+    }
+    const volume = clamp(Number(value), 0, 1);
+    if (volume > 0) {
+      this.desktopLastAudibleVolume = volume;
+    }
+    video.volume = volume;
+    video.muted = volume <= 0;
+    this.syncDesktopPlaybackTools();
+    return true;
+  },
+
+  toggleDesktopMute() {
+    const video = this.getDesktopPlaybackVideo();
+    if (!video) {
+      return false;
+    }
+    const currentVolume = clamp(Number(video.volume ?? 1), 0, 1);
+    const currentlyMuted = Boolean(video.muted) || currentVolume <= 0;
+    if (currentlyMuted) {
+      const restoredVolume = clamp(Number(this.desktopLastAudibleVolume || currentVolume || 1), 0, 1);
+      video.volume = restoredVolume > 0 ? restoredVolume : 1;
+      video.muted = false;
+    } else {
+      if (currentVolume > 0) {
+        this.desktopLastAudibleVolume = currentVolume;
+      }
+      video.muted = true;
+    }
+    this.syncDesktopPlaybackTools();
+    return true;
+  },
+
+  isDesktopPlayerFullscreen() {
+    return Boolean(Environment.isBrowser() && document.fullscreenElement === this.container);
+  },
+
+  async toggleDesktopFullscreen() {
+    if (!Environment.isBrowser() || !this.container) {
+      return false;
+    }
+    try {
+      if (this.isDesktopPlayerFullscreen()) {
+        await document.exitFullscreen?.();
+      } else {
+        await this.container.requestFullscreen?.();
+      }
+      this.revealDesktopPlayerControls();
+      this.syncDesktopPlaybackTools();
+      return true;
+    } catch (_) {
+      this.syncDesktopPlaybackTools();
+      return false;
+    }
+  },
+
+  async navigateDesktopPlayerBack() {
+    if (this.isDesktopPlayerFullscreen()) {
+      try {
+        await document.exitFullscreen?.();
+      } catch (_) {
+        // Browser fullscreen exit is best effort before using the existing back path.
+      }
+    }
+    return this.navigateBackToStreamScreen();
+  },
+
+  syncDesktopPlaybackTools() {
+    if (!Environment.isBrowser()) {
+      return;
+    }
+    const tools = this.uiRefs?.root?.querySelector(".player-desktop-playback-tools");
+    if (!tools) {
+      return;
+    }
+    const { volume, muted } = this.getDesktopVolumeState();
+    const muteButton = tools.querySelector("[data-player-desktop-action='mute']");
+    const muteIcon = tools.querySelector("[data-player-desktop-mute-icon]");
+    const volumeInput = tools.querySelector("[data-player-desktop-volume]");
+    const fullscreenButton = tools.querySelector("[data-player-desktop-action='fullscreen']");
+    const fullscreenIcon = tools.querySelector("[data-player-desktop-fullscreen-icon]");
+    const fullscreen = this.isDesktopPlayerFullscreen();
+    const muteLabel = muted ? "Unmute" : "Mute";
+    muteButton?.setAttribute("aria-label", muteLabel);
+    muteButton?.setAttribute("title", muteLabel);
+    if (muteIcon) {
+      muteIcon.innerHTML = muted ? "&#128263;" : "&#128266;";
+    }
+    if (volumeInput && document.activeElement !== volumeInput) {
+      volumeInput.value = String(Math.round(volume * 100));
+    }
+    const fullscreenLabel = fullscreen ? "Exit fullscreen" : "Enter fullscreen";
+    fullscreenButton?.setAttribute("aria-label", fullscreenLabel);
+    fullscreenButton?.setAttribute("title", fullscreenLabel);
+    if (fullscreenIcon) {
+      fullscreenIcon.innerHTML = fullscreen ? "&#10094;&#10095;" : "&#9974;";
+    }
   },
 
   dismissDesktopPlayerPanelFromPointer(target) {
@@ -5444,7 +5605,8 @@ export const PlayerScreen = {
         "[data-player-error-action], [data-sources-zone], [data-subtitle-style-action], " +
         "[data-subtitle-rail], [data-audio-step], [data-audio-column], [data-speed-index], " +
         "[data-episode-action], [data-episode-stream-action], [data-episode-stream-filter-index], " +
-        "[data-episode-stream-index], [data-episode-season-index], [data-episode-index]"
+        "[data-episode-stream-index], [data-episode-season-index], [data-episode-index], " +
+        "[data-player-desktop-action], [data-player-desktop-volume]"
     );
   },
 
@@ -5452,6 +5614,15 @@ export const PlayerScreen = {
     return Boolean(
       target instanceof Element &&
         target.closest("input, textarea, select, [contenteditable], [contenteditable='true']")
+    );
+  },
+
+  isDesktopPanelInteractiveTarget(target) {
+    return Boolean(
+      target instanceof Element &&
+        target.closest(
+          ".player-modal, .player-sources-panel, .player-episode-panel, [data-player-desktop-volume]"
+        )
     );
   },
 
@@ -15734,7 +15905,12 @@ export const PlayerScreen = {
       (this.embeddedSubtitleLoading && this.canDiscoverEmbeddedSubtitleTracks())
     );
     const showOptionsRail = activeLanguage !== SUBTITLE_LANGUAGE_OFF_KEY || subtitleLoadingVisible;
-    const focusedStyleSide = this.subtitleStyleControlSide === "plus" ? "plus" : "minus";
+    const focusedStyleSide =
+      this.subtitleStyleControlSide === "plus"
+        ? "plus"
+        : this.subtitleStyleControlSide === "reset"
+          ? "reset"
+          : "minus";
     const emptySubtitleOptionsMarkup = subtitleLoadingVisible
       ? `
         <div class="player-dialog-empty player-dialog-loading">
@@ -15783,13 +15959,24 @@ export const PlayerScreen = {
           ${styleItems
             .map(
               (item, index) => `
-            <div class="player-dialog-item player-dialog-style-item${item.disabled ? " disabled" : ""}${this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex ? " focused" : ""}" data-subtitle-rail="style" data-subtitle-index="${index}" aria-disabled="${item.disabled ? "true" : "false"}">
-              <button class="player-dialog-step player-dialog-step-minus${item.disabled ? "" : " focusable"}${!item.disabled && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "minus" ? " focused" : ""}" type="button" data-subtitle-style-action="decrease" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(`${item.label} -`)}"${item.disabled ? " disabled" : ""}>&#8722;</button>
-              <div class="player-dialog-item-center">
-                <div class="player-dialog-item-main">${escapeHtml(item.label)}</div>
-                <div class="player-dialog-item-sub">${escapeHtml(item.value || "")}</div>
-              </div>
-              <button class="player-dialog-step player-dialog-step-plus${item.disabled ? "" : " focusable"}${!item.disabled && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "plus" ? " focused" : ""}" type="button" data-subtitle-style-action="increase" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(`${item.label} +`)}"${item.disabled ? " disabled" : ""}>&#43;</button>
+            <div class="player-dialog-item player-dialog-style-item${item.id === "reset" ? " player-dialog-style-reset" : ""}${item.disabled ? " disabled" : ""}${this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex ? " focused" : ""}" data-subtitle-rail="style" data-subtitle-index="${index}" aria-disabled="${item.disabled ? "true" : "false"}">
+              ${
+                item.id === "reset"
+                  ? `
+                    <div class="player-dialog-item-center">
+                      <div class="player-dialog-item-main">${escapeHtml(item.label)}</div>
+                    </div>
+                    <button class="${Environment.isBrowser() ? "player-dialog-reset-button" : "player-dialog-step player-dialog-step-plus player-dialog-reset"}${item.disabled ? "" : " focusable"}${!item.disabled && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "reset" ? " focused" : ""}" type="button" data-subtitle-style-action="reset" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("subtitle_style_reset_action", {}, "Reset Defaults"))}"${item.disabled ? " disabled" : ""}>${escapeHtml(t("subtitle_style_reset_action", {}, "Reset Defaults"))}</button>
+                  `
+                  : `
+                    <button class="player-dialog-step player-dialog-step-minus${item.disabled ? "" : " focusable"}${!item.disabled && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "minus" ? " focused" : ""}" type="button" data-subtitle-style-action="decrease" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(`${item.label} -`)}"${item.disabled ? " disabled" : ""}>&#8722;</button>
+                    <div class="player-dialog-item-center">
+                      <div class="player-dialog-item-main">${escapeHtml(item.label)}</div>
+                      <div class="player-dialog-item-sub">${escapeHtml(item.value || "")}</div>
+                    </div>
+                    <button class="player-dialog-step player-dialog-step-plus${item.disabled ? "" : " focusable"}${!item.disabled && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "plus" ? " focused" : ""}" type="button" data-subtitle-style-action="increase" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(`${item.label} +`)}"${item.disabled ? " disabled" : ""}>&#43;</button>
+                  `
+              }
             </div>
           `
             )
@@ -15830,6 +16017,8 @@ export const PlayerScreen = {
           0,
           Math.max(0, styleItems.length - 1)
         );
+        this.subtitleStyleControlSide =
+          styleItems[this.subtitleStyleRailIndex]?.id === "reset" ? "reset" : "minus";
       }
       this.renderSubtitleDialog();
       return true;
@@ -15854,6 +16043,8 @@ export const PlayerScreen = {
           0,
           Math.max(0, styleItems.length - 1)
         );
+        this.subtitleStyleControlSide =
+          styleItems[this.subtitleStyleRailIndex]?.id === "reset" ? "reset" : "minus";
       }
       this.renderSubtitleDialog();
       return true;
@@ -18769,10 +18960,9 @@ export const PlayerScreen = {
         this.subtitleOptionRailIndex = index;
       } else {
         this.subtitleStyleRailIndex = index;
+        const action = String(subtitleNode.dataset.subtitleStyleAction || "").toLowerCase();
         this.subtitleStyleControlSide =
-          String(subtitleNode.dataset.subtitleStyleAction || "").toLowerCase() === "increase"
-            ? "plus"
-            : "minus";
+          action === "increase" ? "plus" : action === "reset" ? "reset" : "minus";
       }
       return;
     }
@@ -18879,6 +19069,17 @@ export const PlayerScreen = {
     }
     this.syncPointerFocus(target);
 
+    const desktopAction = target.closest?.("[data-player-desktop-action]");
+    if (desktopAction && Environment.isBrowser()) {
+      this.revealDesktopPlayerControls();
+      if (desktopAction.dataset.playerDesktopAction === "mute") {
+        return this.toggleDesktopMute();
+      }
+      if (desktopAction.dataset.playerDesktopAction === "fullscreen") {
+        return this.toggleDesktopFullscreen();
+      }
+    }
+
     const errorAction = target.closest?.("[data-player-error-action]");
     if (errorAction && this.isStartupErrorVisible()) {
       if (String(errorAction.dataset.playerErrorAction || "") === "back") {
@@ -18930,12 +19131,13 @@ export const PlayerScreen = {
       const styleItem = styleItems[styleIndex];
       if (styleItem && !styleItem.disabled) {
         this.subtitleStyleRailIndex = styleIndex;
-        const side =
-          String(subtitleStep.dataset.subtitleStyleAction || "").toLowerCase() === "increase"
-            ? "plus"
-            : "minus";
+        const action = String(subtitleStep.dataset.subtitleStyleAction || "").toLowerCase();
+        const side = action === "increase" ? "plus" : action === "reset" ? "reset" : "minus";
         this.subtitleStyleControlSide = side;
-        this.adjustSubtitleStyleControl(styleItem.id, this.getSubtitleStyleControlDelta(side));
+        this.adjustSubtitleStyleControl(
+          styleItem.id,
+          action === "reset" ? 0 : this.getSubtitleStyleControlDelta(side)
+        );
       }
       return true;
     }
@@ -19132,6 +19334,12 @@ export const PlayerScreen = {
   async onKeyDown(event) {
     const keyCode = Number(event?.keyCode || 0);
     const isBackKey = isBackEvent(event);
+    // Let the browser consume Escape while the Player owns fullscreen. The
+    // fullscreenchange listener will refresh the button state, while Player
+    // navigation remains untouched until fullscreen has already exited.
+    if (Environment.isBrowser() && isBackKey && this.isDesktopPlayerFullscreen()) {
+      return;
+    }
     if (this.isStartupErrorVisible()) {
       event?.preventDefault?.();
       event?.stopPropagation?.();
@@ -19147,6 +19355,33 @@ export const PlayerScreen = {
       event?.stopPropagation?.();
       event?.stopImmediatePropagation?.();
       this.consumeBackRequest();
+      return;
+    }
+    if (
+      Environment.isBrowser() &&
+      (keyCode === 70 || event?.code === "KeyF" || keyCode === 77 || event?.code === "KeyM")
+    ) {
+      const eventTarget = event?.target instanceof Element ? event.target : document.activeElement;
+      const activeTarget =
+        document.activeElement instanceof Element ? document.activeElement : eventTarget;
+      if (this.isDesktopEditableTarget(eventTarget) || this.isDesktopEditableTarget(activeTarget)) {
+        return;
+      }
+      if (
+        this.isDesktopPanelInteractiveTarget(eventTarget) ||
+        this.isDesktopPanelInteractiveTarget(activeTarget)
+      ) {
+        return;
+      }
+      event?.preventDefault?.();
+      if (event?.repeat) {
+        return;
+      }
+      if (keyCode === 70 || event?.code === "KeyF") {
+        void this.toggleDesktopFullscreen();
+      } else {
+        this.toggleDesktopMute();
+      }
       return;
     }
     if (Environment.isBrowser() && (keyCode === 32 || event?.code === "Space")) {
@@ -19171,6 +19406,35 @@ export const PlayerScreen = {
       }
 
       this.performControlAction("playPause");
+      return;
+    }
+    if (
+      Environment.isBrowser() &&
+      !this.isDialogOpen() &&
+      !this.pauseOverlayVisible &&
+      (keyCode === 37 || keyCode === 38 || keyCode === 39 || keyCode === 40)
+    ) {
+      const eventTarget = event?.target instanceof Element ? event.target : document.activeElement;
+      const activeTarget =
+        document.activeElement instanceof Element ? document.activeElement : eventTarget;
+      // Let native text and range controls keep their own Arrow-key behavior.
+      if (this.isDesktopEditableTarget(eventTarget) || this.isDesktopEditableTarget(activeTarget)) {
+        return;
+      }
+
+      event?.preventDefault?.();
+      this.revealDesktopPlayerControls();
+      if (keyCode === 37 || keyCode === 39) {
+        // Keep the existing target calculation and seek implementation, but
+        // commit it immediately for browser key presses. The delayed preview
+        // is retained for TV remote repeat behavior.
+        this.beginSeekPreview(keyCode === 39 ? 1 : -1, false);
+        this.commitSeekPreview();
+        return;
+      }
+
+      const currentVolume = this.getDesktopVolumeState().volume;
+      this.setDesktopVolume(currentVolume + (keyCode === 38 ? 0.05 : -0.05));
       return;
     }
     if (this.nextEpisodeBackExitArmed) {

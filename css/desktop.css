@@ -1499,7 +1499,17 @@ html.desktop-browser {
   margin-top: 14px;
   padding: 7px 0;
   cursor: pointer;
+  /* player-ui-root is intentionally click-through. Restore hit testing for
+     the existing browser seek bridge while keeping this padded shell as the
+     compact track's 19px mouse target. */
+  pointer-events: auto;
   touch-action: none;
+}
+
+.desktop-browser #player .player-progress-track,
+.desktop-browser #player .player-progress-buffered,
+.desktop-browser #player .player-progress-fill {
+  pointer-events: auto;
 }
 
 .desktop-browser #player .player-progress-track {
@@ -1579,6 +1589,65 @@ html.desktop-browser {
 .desktop-browser #player .player-time-label {
   font-size: 14px;
   color: rgba(255, 255, 255, 0.8);
+}
+
+.desktop-browser #player .player-desktop-playback-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  /* .player-ui-root is intentionally click-through by default. Restore hit
+     testing for these browser-native controls just like .player-control-btn. */
+  pointer-events: auto;
+}
+
+.desktop-browser #player .player-desktop-tool-button {
+  display: inline-flex;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: rgba(18, 18, 22, 0.38);
+  color: rgba(255, 255, 255, 0.94);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.desktop-browser #player .player-desktop-tool-icon {
+  display: block;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.desktop-browser #player .player-desktop-fullscreen-icon {
+  font-size: 20px;
+}
+
+.desktop-browser #player .player-desktop-volume {
+  width: clamp(90px, 8vw, 120px);
+  height: 20px;
+  margin: 0;
+  accent-color: var(--secondary-color);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: auto;
+}
+
+.desktop-browser #player .player-desktop-tool-button:focus-visible,
+.desktop-browser #player .player-desktop-volume:focus-visible {
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.75);
+  outline-offset: 2px;
+}
+
+.desktop-browser #player:fullscreen,
+.desktop-browser #player:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
 }
 
 .desktop-browser #player .player-desktop-back-button {
@@ -1696,6 +1765,17 @@ html.desktop-browser {
   .desktop-browser #player .player-progress-shell:hover .player-progress-track {
     height: 8px;
   }
+
+  .desktop-browser #player .player-desktop-tool-button:hover {
+    border-color: rgba(255, 255, 255, 0.26);
+    background: rgba(255, 255, 255, 0.14);
+  }
+}
+
+@media (max-width: 1000px) {
+  .desktop-browser #player .player-desktop-volume {
+    width: 82px;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1726,6 +1806,20 @@ html.desktop-browser {
     width: 44px;
     min-width: 44px;
     height: 44px;
+  }
+
+  .desktop-browser #player .player-desktop-volume {
+    display: none;
+  }
+
+  .desktop-browser #player .player-desktop-playback-tools {
+    gap: 5px;
+  }
+
+  .desktop-browser #player .player-desktop-tool-button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
   }
 
   .desktop-browser #player .player-sources-panel,
@@ -1918,6 +2012,55 @@ html.desktop-browser {
   border-radius: 9px;
   grid-template-columns: 34px minmax(0, 1fr) 34px;
   column-gap: 7px;
+}
+
+.desktop-browser #player .player-subtitle-style-rail .player-dialog-style-reset {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  box-sizing: border-box;
+}
+
+.desktop-browser #player .player-dialog-style-reset .player-dialog-item-center {
+  flex: 0 1 auto;
+  min-width: 0;
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.desktop-browser #player .player-dialog-reset-button {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: max-content;
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--player-text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  pointer-events: auto;
+  justify-self: end;
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.desktop-browser #player .player-dialog-reset-button.focused,
+.desktop-browser #player .player-dialog-reset-button:focus-visible {
+  border-color: rgb(var(--secondary-color-rgb) / 0.78);
+  background: rgba(255, 255, 255, 0.16);
+  outline: none;
 }
 
 .desktop-browser #player .player-dialog-step,
@@ -2187,7 +2330,8 @@ html.desktop-browser {
   .desktop-browser #player .player-audio-control-card:hover:not(.selected),
   .desktop-browser #player .player-sources-top-btn:hover,
   .desktop-browser #player .player-sources-filter:hover:not(.selected),
-  .desktop-browser #player .player-source-card:hover {
+  .desktop-browser #player .player-source-card:hover,
+  .desktop-browser #player .player-dialog-reset-button:hover {
     border-color: rgba(255, 255, 255, 0.28);
     background: rgba(255, 255, 255, 0.1);
   }
