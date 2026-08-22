@@ -998,6 +998,414 @@ html.desktop-browser {
   }
 }
 
+/* Desktop Stream Selection: retain the existing picker markup and behavior,
+   but scale the two-column TV composition for browser input and density. */
+.desktop-browser #stream {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.desktop-browser #stream .stream-route-shell {
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.desktop-browser #stream .stream-route-backdrop,
+.desktop-browser #stream .stream-route-backdrop-dim,
+.desktop-browser #stream .stream-route-left-gradient,
+.desktop-browser #stream .stream-route-right-gradient {
+  position: absolute;
+  min-height: 100%;
+  pointer-events: none;
+}
+
+.desktop-browser #stream .stream-route-content,
+.desktop-browser #stream .stream-desktop-back-button {
+  pointer-events: auto;
+}
+
+.desktop-browser #stream .stream-route-backdrop-dim {
+  background: rgb(var(--bg-color-rgb) / 0.52);
+}
+
+.desktop-browser #stream .stream-route-left-gradient {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--bg-color-rgb) / 0.94) 0%,
+    rgb(var(--bg-color-rgb) / 0.82) 46%,
+    rgb(var(--bg-color-rgb) / 0.4) 76%,
+    rgb(var(--bg-color-rgb) / 0.16) 100%
+  );
+}
+
+.desktop-browser #stream .stream-route-right-gradient {
+  background: linear-gradient(
+    270deg,
+    rgb(var(--bg-color-rgb) / 0.68) 0%,
+    rgb(var(--bg-color-rgb) / 0.34) 38%,
+    rgb(var(--bg-color-rgb) / 0.06) 100%
+  );
+}
+
+.desktop-browser #stream .stream-route-content {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+  gap: clamp(24px, 3vw, 48px);
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  height: 100%;
+  margin: 0;
+  padding: clamp(32px, 3.4vw, 48px);
+  box-sizing: border-box;
+}
+
+.desktop-browser #stream .stream-route-left,
+.desktop-browser #stream .stream-route-right {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+}
+
+.desktop-browser #stream .stream-route-left {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12vh clamp(12px, 2vw, 32px) 6vh 0;
+}
+
+.desktop-browser #stream .stream-route-left-inner {
+  width: min(100%, 520px);
+  align-items: flex-start;
+  text-align: left;
+}
+
+.desktop-browser #stream .stream-route-logo {
+  width: auto;
+  max-width: min(100%, 500px);
+  max-height: 104px;
+  margin: 0 0 14px;
+  object-position: left center;
+}
+
+.desktop-browser #stream .stream-route-title {
+  margin: 0 0 10px;
+  font-size: clamp(36px, 3vw, 48px);
+  line-height: 1.15;
+}
+
+.desktop-browser #stream .stream-route-episode-code,
+.desktop-browser #stream .stream-route-subtitle,
+.desktop-browser #stream .stream-route-detail-line {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.desktop-browser #stream .stream-route-right {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0;
+}
+
+.desktop-browser #stream .stream-route-chip-wrap {
+  flex: 0 0 auto;
+  height: 42px;
+  margin: 0 0 12px;
+}
+
+.desktop-browser #stream .stream-route-chip-track {
+  gap: 8px;
+  height: 42px;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-padding-inline: 4px;
+}
+
+.desktop-browser #stream .stream-route-chip {
+  min-height: 38px;
+  padding: 0 16px;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(18, 18, 22, 0.68);
+  font-size: 14px;
+  line-height: 1.2;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.desktop-browser #stream .stream-route-chip.selected {
+  background: var(--secondary-color);
+}
+
+.desktop-browser #stream .stream-route-chip.focused,
+.desktop-browser #stream .stream-route-chip:focus-visible {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.48);
+  outline: none;
+}
+
+.desktop-browser #stream .stream-route-chip-spinner {
+  width: 20px;
+  height: 20px;
+}
+
+.desktop-browser #stream .stream-route-panel-shell,
+.desktop-browser #stream .stream-route-panel {
+  min-height: 0;
+  height: 100%;
+}
+
+.desktop-browser #stream .stream-route-panel-shell {
+  flex: 1 1 auto;
+  max-width: 1280px;
+  padding: 16px 14px;
+  border-radius: 18px;
+  background: rgb(var(--bg-elevated-rgb) / 0.18);
+  box-shadow: inset 0 0 0 1px rgb(var(--focus-color-rgb) / 0.05);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  opacity: 1;
+  transform: none;
+  animation: none;
+  overflow: hidden;
+}
+
+.desktop-browser #stream .stream-route-list {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 4px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.32) transparent;
+}
+
+.desktop-browser #stream .stream-route-card-row {
+  gap: 0;
+  margin-bottom: 10px;
+}
+
+.desktop-browser #stream .stream-route-card {
+  min-height: 100px;
+  padding: 15px 18px;
+  gap: 18px;
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(26, 26, 31, 0.82);
+  cursor: pointer;
+  transform: none;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.desktop-browser #stream .stream-route-card.focused,
+.desktop-browser #stream .stream-route-card:focus-visible {
+  border-color: var(--secondary-color);
+  background: rgba(31, 31, 37, 0.94);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.58), 0 8px 22px rgba(0, 0, 0, 0.2);
+  outline: none;
+  transform: none;
+}
+
+.desktop-browser #stream .stream-route-card-heading {
+  font-size: 17px;
+  line-height: 1.28;
+  font-weight: 600;
+}
+
+.desktop-browser #stream .stream-route-card-quality {
+  margin-top: 5px;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.desktop-browser #stream .stream-route-card-badges {
+  gap: 5px;
+  margin: 7px 0 6px;
+}
+
+.desktop-browser #stream .stream-route-card-badges-lazy {
+  height: 26px;
+  min-height: 26px;
+}
+
+.desktop-browser #stream .stream-route-stream-badge,
+.desktop-browser #stream .stream-route-stream-badge.size {
+  min-height: 24px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.desktop-browser #stream .stream-route-stream-badge.image {
+  min-width: 40px;
+  max-width: 104px;
+  padding: 3px 6px;
+}
+
+.desktop-browser #stream .stream-route-stream-badge.image img {
+  max-width: 92px;
+  max-height: 18px;
+}
+
+.desktop-browser #stream .stream-route-card-line {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.desktop-browser #stream .stream-route-card-line.secondary {
+  margin-top: 2px;
+}
+
+.desktop-browser #stream .stream-route-card-side {
+  width: 108px;
+  flex-basis: 108px;
+  gap: 7px;
+}
+
+.desktop-browser #stream .stream-route-addon-badge {
+  width: 44px;
+  height: 44px;
+  border-width: 1px;
+}
+
+.desktop-browser #stream .stream-route-addon-badge span {
+  font-size: 20px;
+}
+
+.desktop-browser #stream .stream-route-addon-name {
+  max-width: 108px;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #stream .stream-route-empty {
+  min-height: 160px;
+  justify-content: flex-start;
+  padding: 28px 0;
+  font-size: 16px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #stream .stream-route-chip:hover:not(.selected) {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+  }
+
+  .desktop-browser #stream .stream-route-card:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(34, 34, 40, 0.94);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+  }
+}
+
+@media (max-width: 960px) {
+  .desktop-browser #stream {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .desktop-browser #stream .stream-route-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .desktop-browser #stream .stream-route-content {
+    position: relative;
+    inset: auto;
+    display: block;
+    height: auto;
+    min-height: 100vh;
+    padding-right: 32px;
+    padding-bottom: 40px;
+    padding-left: 32px;
+  }
+
+  .desktop-browser #stream .stream-route-left {
+    display: block;
+    padding: clamp(86px, 11vw, 112px) 0 0;
+  }
+
+  .desktop-browser #stream .stream-route-left-inner {
+    width: min(100%, 760px);
+  }
+
+  .desktop-browser #stream .stream-route-right {
+    display: block;
+    margin-top: 22px;
+  }
+
+  .desktop-browser #stream .stream-route-chip-wrap,
+  .desktop-browser #stream .stream-route-chip-track {
+    height: auto;
+  }
+
+  .desktop-browser #stream .stream-route-chip-wrap {
+    margin-bottom: 16px;
+  }
+
+  .desktop-browser #stream .stream-route-chip-track {
+    padding-bottom: 8px;
+  }
+
+  .desktop-browser #stream .stream-route-panel-shell,
+  .desktop-browser #stream .stream-route-panel,
+  .desktop-browser #stream .stream-route-list {
+    height: auto;
+    overflow: visible;
+  }
+
+  .desktop-browser #stream .stream-route-panel-shell {
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .desktop-browser #stream .stream-route-list {
+    padding-bottom: 24px;
+  }
+}
+
+@media (max-width: 620px) {
+  .desktop-browser #stream .stream-route-content {
+    padding-right: 20px;
+    padding-bottom: 32px;
+    padding-left: 20px;
+  }
+
+  .desktop-browser #stream .stream-route-card {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .desktop-browser #stream .stream-route-card-side {
+    width: 100%;
+    flex-basis: 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+  }
+
+  .desktop-browser #stream .stream-route-addon-name {
+    max-width: none;
+  }
+}
+
 /* Desktop Detail Step 2: compact the existing lower-section markup without
    changing its data, routing, or TV focus behavior. */
 .desktop-browser #detail .series-insight-section {

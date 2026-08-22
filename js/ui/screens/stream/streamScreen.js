@@ -2383,8 +2383,34 @@ export const StreamScreen = {
         backButton.onclick = () => this.handleStreamBack();
       }
     }
+    this.bindDesktopPointerActions();
     this.bindListScrollState();
     this.hasRenderedStreamRouteShell = true;
+  },
+
+  bindDesktopPointerActions() {
+    if (!Platform.isBrowser() || !this.container || this.boundDesktopPointerActionHandler) {
+      return;
+    }
+    this.boundDesktopPointerActionHandler = (event) => {
+      // onKeyDown already activates the focused TV/D-pad target. Let its
+      // keyboard-generated click pass through without activating it twice.
+      if (event.defaultPrevented || Number(event.detail || 0) === 0) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const actionTarget = target.closest(
+        ".stream-route-chip[data-action='setFilter'], .stream-route-card[data-action]"
+      );
+      if (!(actionTarget instanceof HTMLElement) || !this.container.contains(actionTarget)) {
+        return;
+      }
+      void this.onPointerActivate(actionTarget);
+    };
+    this.container.addEventListener("click", this.boundDesktopPointerActionHandler);
   },
 
   bindListScrollState() {
@@ -2839,6 +2865,10 @@ export const StreamScreen = {
     }
     this.renderedMarkup = null;
     this.boundStreamListNode = null;
+    if (this.boundDesktopPointerActionHandler && this.container) {
+      this.container.removeEventListener("click", this.boundDesktopPointerActionHandler);
+      this.boundDesktopPointerActionHandler = null;
+    }
     this.streamFocusDomCache = null;
     this.focusedElement = null;
     ScreenUtils.hide(this.container);
