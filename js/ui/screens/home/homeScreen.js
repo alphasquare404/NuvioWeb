@@ -135,10 +135,109 @@ export { escapeAttribute, escapeHtml, formatCatalogRowTitle } from "./homeUtils.
 
 const MODERN_SIDEBAR_PILL_AUTO_COLLAPSE_MS = 4000;
 const CW_RELEASE_ALERT_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+const LOCAL_DESKTOP_DEVELOPMENT_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 const HOME_LAZY_IMAGE_SELECTOR =
   ".home-main .content-poster[data-src], .home-main .home-poster-landscape-logo[data-src], .home-main .home-continue-bg[data-src]";
 const HOME_LAZY_IMAGE_ROW_SELECTOR =
   ".home-row, .home-modern-row, .home-grid-section, .home-row-continue";
+
+function isLocalDesktopContinueWatchingPreview() {
+  if (!Platform.isBrowser()) {
+    return false;
+  }
+  try {
+    return LOCAL_DESKTOP_DEVELOPMENT_HOSTS.has(
+      String(globalThis.location?.hostname || "").trim().toLowerCase()
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+// Temporary local-development render data. It deliberately stays out of
+// Continue Watching state, storage, repositories, and API requests.
+function buildDesktopContinueWatchingMockItems(rows = [], limit = 5) {
+  const progressFractions = [0.18, 0.36, 0.54, 0.67, 0.81];
+  const episodeTitles = ["The Beginning", "A New Lead", "After Dark", "The Turning Point", "Final Hour"];
+  const fallbackTitles = ["The Last Signal", "Night Shift", "Paper Kingdom", "After the Storm", "Parallel Lines"];
+  const seenIds = new Set();
+  const mockItems = [];
+
+  for (const row of rows || []) {
+    if (row?.rowKind === "collection") {
+      continue;
+    }
+    const items = Array.isArray(row?.result?.data?.items) ? row.result.data.items : [];
+    for (const item of items) {
+      const normalized = normalizeCatalogItem(item, row?.type || "movie");
+      const contentId = String(normalized?.id || "").trim();
+      const artwork = firstNonEmpty(
+        normalized?.landscapePoster,
+        normalized?.background,
+        normalized?.poster
+      );
+      if (!contentId || !artwork || seenIds.has(contentId)) {
+        continue;
+      }
+
+      const index = mockItems.length;
+      const isSeries = isSeriesTypeForContinueWatching(normalized.type) || index % 2 === 1;
+      const previewType = isSeries ? "series" : "movie";
+      const durationMs = isSeries ? 48 * 60 * 1000 : 118 * 60 * 1000;
+      const progressFraction = progressFractions[index % progressFractions.length];
+      seenIds.add(contentId);
+      mockItems.push({
+        ...normalized,
+        // Empty ids intentionally keep preview cards from opening Details or Player.
+        id: "",
+        contentId: "",
+        type: previewType,
+        apiType: previewType,
+        contentType: previewType,
+        thumbnail: artwork,
+        backdrop: artwork,
+        episodeThumbnail: artwork,
+        durationMs,
+        positionMs: Math.round(durationMs * progressFraction),
+        progressPercent: Math.round(progressFraction * 100),
+        season: isSeries ? 1 : null,
+        episode: isSeries ? index + 1 : null,
+        episodeTitle: isSeries ? episodeTitles[index % episodeTitles.length] : "",
+        isDesktopContinueWatchingMock: true
+      });
+      if (mockItems.length >= limit) {
+        return mockItems;
+      }
+    }
+  }
+
+  while (mockItems.length < limit) {
+    const index = mockItems.length;
+    const isSeries = index % 2 === 1;
+    const durationMs = isSeries ? 48 * 60 * 1000 : 118 * 60 * 1000;
+    const progressFraction = progressFractions[index % progressFractions.length];
+    mockItems.push({
+      id: "",
+      contentId: "",
+      type: isSeries ? "series" : "movie",
+      contentType: isSeries ? "series" : "movie",
+      title: fallbackTitles[index % fallbackTitles.length],
+      poster: "assets/images/splash.png",
+      thumbnail: "assets/images/splash.png",
+      backdrop: "assets/images/splash.png",
+      episodeThumbnail: "assets/images/splash.png",
+      durationMs,
+      positionMs: Math.round(durationMs * progressFraction),
+      progressPercent: Math.round(progressFraction * 100),
+      season: isSeries ? 1 : null,
+      episode: isSeries ? index + 1 : null,
+      episodeTitle: isSeries ? episodeTitles[index % episodeTitles.length] : "",
+      isDesktopContinueWatchingMock: true
+    });
+  }
+
+  return mockItems;
+}
 
 function homePerfNow() {
   return typeof performance !== "undefined" && typeof performance.now === "function"
@@ -7964,7 +8063,9 @@ export const HomeScreen = {
           return;
         }
         if (Platform.isBrowser()) {
-          const track = target.closest(".home-modern-catalogs .home-track");
+          const track = target.closest(
+            ".home-modern-catalogs .home-track, .home-row-continue .home-track"
+          );
           const hasHorizontalWheelIntent =
             Boolean(event.shiftKey) || Math.abs(Number(event.deltaX || 0)) > Math.abs(Number(event.deltaY || 0));
           if (track && this.container?.contains(track) && hasHorizontalWheelIntent) {
@@ -8027,7 +8128,10 @@ export const HomeScreen = {
       this.container.addEventListener("click", this.boundDesktopCatalogDragClickHandler, true);
     }
 
-    this.container.querySelectorAll(".home-modern-catalogs .home-track").forEach((track) => {
+    const desktopCarouselTracks = this.container.querySelectorAll(
+      ".home-modern-catalogs .home-track, .home-row-continue .home-track"
+    );
+    desktopCarouselTracks.forEach((track) => {
       if (track.dataset.desktopDragBound === "true") {
         return;
       }
@@ -8038,7 +8142,10 @@ export const HomeScreen = {
       // This does not affect a normal click on the poster.
       track.addEventListener("dragstart", (event) => {
         const image = event.target;
-        if (image instanceof HTMLImageElement && image.closest(".home-poster-card:not(.home-collection-card)")) {
+        if (
+          image instanceof HTMLImageElement &&
+          image.closest(".home-poster-card:not(.home-collection-card), .home-continue-card")
+        ) {
           event.preventDefault();
         }
       });
@@ -8342,6 +8449,7 @@ export const HomeScreen = {
     );
     this.continueWatchingHydratedFromSnapshot = Boolean(this.continueWatchingDisplay.length);
     this.continueWatchingLoading = false;
+    this.continueWatchingResolved = false;
     this.heroCandidates = [];
     this.heroItem = null;
     this.sidebarProfile = await getLocalSidebarProfileState().catch(() => null);
@@ -8668,6 +8776,7 @@ export const HomeScreen = {
         }
         this.allProgress = Array.isArray(allProgress) ? allProgress : [];
         this.continueWatching = Array.isArray(continueWatching) ? continueWatching : [];
+        this.continueWatchingResolved = true;
         this.watchedItems = await watchedItemsPromise;
         this.watchedTitleIds = buildWatchedTitleIdSet(this.watchedItems);
         if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
@@ -9131,8 +9240,22 @@ export const HomeScreen = {
       (!this.homeHoldFocusLocked && retainedFocusState && retainedFocusState.focusKind === "item"
         ? retainedFocusState
         : null);
+    const realContinueWatchingItems = Array.isArray(this.continueWatchingDisplay)
+      ? this.continueWatchingDisplay
+      : [];
+    const desktopContinueWatchingMockItems =
+      isLocalDesktopContinueWatchingPreview() &&
+      !this.isInitialHomeLoading &&
+      this.continueWatchingResolved &&
+      !this.continueWatchingLoading &&
+      !realContinueWatchingItems.length
+        ? buildDesktopContinueWatchingMockItems(this.rows)
+        : [];
+    const continueWatchingItemsForRender = desktopContinueWatchingMockItems.length
+      ? desktopContinueWatchingMockItems
+      : realContinueWatchingItems;
     const continueWatchingRows = partitionContinueWatchingRows(
-      this.continueWatchingDisplay || [],
+      continueWatchingItemsForRender,
       this.layoutPrefs?.continueWatchingSortMode
     );
     this.continueWatchingRenderedItems = [
@@ -9150,7 +9273,7 @@ export const HomeScreen = {
     const continueWatchingRenderLimit = splitUpcomingEnabled
       ? continueWatchingRows.main.length
       : Math.min(
-          Number(this.continueWatchingDisplay?.length || 0),
+          Number(continueWatchingItemsForRender.length || 0),
           Math.max(
             this.getContinueWatchingRenderBatchSize(),
             continueWatchingFocusIndex >= 0 ? continueWatchingFocusIndex + 1 : 0

@@ -351,6 +351,119 @@ html.desktop-browser {
   cursor: grabbing;
 }
 
+/* Continue Watching keeps its landscape markup, but uses a browser-sized
+   carousel with the same outer gutter as the desktop catalog shelves. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
+  box-sizing: border-box;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  padding-inline: calc(clamp(24px, 2vw, 40px) - 8px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-row-head {
+  padding-left: 8px;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+  --home-track-gap: 14px;
+  margin-left: 0;
+  padding: 12px 8px 8px;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track.is-pointer-dragging {
+  cursor: grabbing;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card {
+  position: relative;
+  z-index: 0;
+  flex: 0 0 clamp(340px, 20vw, 390px);
+  min-width: clamp(340px, 20vw, 390px);
+  max-width: clamp(340px, 20vw, 390px);
+  border-radius: 16px;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-media {
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  transform: scale(1);
+  transform-origin: center bottom;
+  transition:
+    transform 150ms ease-out,
+    box-shadow 150ms ease-out,
+    background-color 120ms ease;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-copy {
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-kicker {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 13px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-title {
+  overflow: hidden;
+  margin-top: 3px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-subtitle {
+  overflow: hidden;
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 13px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-badge {
+  min-height: 22px;
+  padding: 3px 7px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card.focused,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card:focus-visible {
+  z-index: 1;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card.focused .home-continue-media,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card:focus-visible .home-continue-media {
+  box-shadow:
+    0 0 0 2px var(--secondary-color),
+    0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card:hover {
+    z-index: 1;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card:hover .home-continue-media {
+    transform: scale(1.03);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+  }
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card),
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded {
   position: relative;
