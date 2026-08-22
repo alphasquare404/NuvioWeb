@@ -29,6 +29,10 @@ import {
   setModernSidebarPillIconOnly,
   setLegacySidebarExpanded
 } from "../../components/sidebarNavigation.js";
+import {
+  bindDesktopNavigationEvents,
+  renderDesktopNavigation
+} from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 
 const POSTER_HOLD_DELAY_MS = 650;
@@ -138,6 +142,75 @@ function filterStructureSignature(state = {}) {
     Array.isArray(state.availableGenres) && state.availableGenres.length ? "genre" : "no-genre",
     Array.isArray(state.availableYears) && state.availableYears.length ? "year" : "no-year"
   ].join("|");
+}
+
+function isLocalDesktopLibraryPreview() {
+  if (!Platform.isBrowser() || typeof window === "undefined") {
+    return false;
+  }
+  const host = String(window.location?.hostname || "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1";
+}
+
+function previewTitleSortKey(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^(the|an|a)\s+/i, "")
+    .toLowerCase();
+}
+
+function sortDesktopLibraryPreviewItems(items, selectedSortKey) {
+  const byTitleAscending = (left, right) => {
+    const titleResult = previewTitleSortKey(left.name || left.id).localeCompare(
+      previewTitleSortKey(right.name || right.id),
+      undefined,
+      { sensitivity: "base" }
+    );
+    return titleResult || String(left.id).localeCompare(String(right.id), undefined, { sensitivity: "base" });
+  };
+  const byAdded = (left, right, direction) => {
+    const addedResult = direction * (Number(left.listedAt || 0) - Number(right.listedAt || 0));
+    return addedResult || byTitleAscending(left, right);
+  };
+
+  return [...items].sort((left, right) => {
+    if (selectedSortKey === "title_asc") return byTitleAscending(left, right);
+    if (selectedSortKey === "title_desc") return byTitleAscending(right, left);
+    if (selectedSortKey === "added_asc") return byAdded(left, right, 1);
+    return byAdded(left, right, -1);
+  });
+}
+
+// TEMPORARY DEV PREVIEW: render-only data for inspecting the Saved Library UI
+// locally. These items never enter LibraryController or any persistence/sync path.
+function getDesktopLibraryPreviewItems(state = {}) {
+  const posterBaseUrl = "https://image.tmdb.org/t/p/w500";
+  const items = [
+    ["tt1375666", "movie", "Inception", "oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg", 1710115200000],
+    ["tt0816692", "movie", "Interstellar", "gEU2QniE6E77NI6lCU6MxlNBvIx.jpg", 1706745600000],
+    ["tt1160419", "movie", "Dune", "d5NXSklXo0qyIYkgV94XAgMIckC.jpg", 1711929600000],
+    ["tt0468569", "movie", "The Dark Knight", "qJ2tW6WMUDux911r6m7haRef0WH.jpg", 1709251200000],
+    ["tt0133093", "movie", "The Matrix", "f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg", 1714521600000],
+    ["tt4154796", "movie", "Avengers: Endgame", "or06FN3Dka5tukK1e9sl16pB3iy.jpg", 1704067200000],
+    ["tt1630029", "movie", "Avatar: The Way of Water", "t6HIqrRAclMCA60NsSmeqe9RmNV.jpg", 1717200000000],
+    ["tt15239678", "movie", "Dune: Part Two", "1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg", 1719792000000],
+    ["tt0944947", "series", "Game of Thrones", "1XS1oqL89opfnbLl8WnZY1O1uJx.jpg", 1701388800000],
+    ["tt0903747", "series", "Breaking Bad", "ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg", 1712707200000],
+    ["tt4574334", "series", "Stranger Things", "uOOtwVbSr4QDjAGIifLDwpb2Pdl.jpg", 1707955200000],
+    ["tt2861424", "series", "Rick and Morty", "cvhNj9eoRBe5SxjCbQTkh05UP5K.jpg", 1716163200000],
+    ["tt11198330", "series", "House of the Dragon", "7QMsOTMUswlwxJP0rTTZfmz2tX2.jpg", 1718409600000],
+    ["tt7660850", "series", "Succession", "mW9F9Lm1A5Dx7N8V9VQb9JYQWwL.jpg", 1705276800000],
+    ["tt2788316", "series", "The Crown", "1M876KPjulVwppEpldhdc8V4o68.jpg", 1711065600000]
+  ].map(([id, type, name, posterPath, listedAt]) => ({
+    id,
+    type,
+    name,
+    poster: `${posterBaseUrl}/${posterPath}`,
+    background: "",
+    addonBaseUrl: "",
+    listedAt
+  }));
+  return sortDesktopLibraryPreviewItems(items, state.selectedSortKey);
 }
 
 export const LibraryScreen = {
@@ -338,9 +411,14 @@ export const LibraryScreen = {
   },
 
   renderLoading() {
+    const useDesktopNavigation = Platform.isBrowser();
     this.container.innerHTML = `
-      <div class="home-shell library-shell${this.libraryRouteEnterPending ? " library-route-enter" : ""}">
-        ${this.renderSidebar()}
+      <div class="home-shell library-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.libraryRouteEnterPending ? " library-route-enter" : ""}">
+        ${
+          useDesktopNavigation
+            ? renderDesktopNavigation({ selectedRoute: "library", profile: this.sidebarProfile })
+            : this.renderSidebar()
+        }
         <main class="home-main library-main">
           <section class="library-loading-state">
             ${renderLoadingIndicator({ className: "library-loading-spinner" })}
@@ -350,6 +428,9 @@ export const LibraryScreen = {
       </div>
     `;
     this.libraryRouteEnterPending = false;
+    if (useDesktopNavigation) {
+      bindDesktopNavigationEvents(this.container);
+    }
   },
 
   renderSidebar() {
@@ -501,10 +582,19 @@ export const LibraryScreen = {
         </div>
       `;
     }
+    const hasNoRealSavedItems =
+      Array.isArray(state.allItems) &&
+      state.allItems.length === 0 &&
+      Array.isArray(state.visibleItems) &&
+      state.visibleItems.length === 0;
+    const renderedItems =
+      hasNoRealSavedItems && isLocalDesktopLibraryPreview()
+        ? getDesktopLibraryPreviewItems(state)
+        : state.visibleItems;
     return `
       <div id="libraryContentAreaMount">
         ${this.renderActions(state)}
-        ${state.visibleItems.length ? this.renderGrid(state.visibleItems) : this.renderEmptyState()}
+        ${renderedItems.length ? this.renderGrid(renderedItems) : this.renderEmptyState()}
         ${state.transientMessage ? `<div class="library-toast">${escapeHtml(state.transientMessage)}</div>` : ""}
       </div>
     `;
@@ -741,11 +831,15 @@ export const LibraryScreen = {
 
     this.buildGridRows();
     ScreenUtils.indexFocusables(this.container);
-    bindRootSidebarEvents(this.container, {
-      currentRoute: "library",
-      onSelectedAction: () => this.focusMainNode(),
-      onExpandSidebar: () => this.focusSidebarNode()
-    });
+    if (Platform.isBrowser()) {
+      bindDesktopNavigationEvents(this.container);
+    } else {
+      bindRootSidebarEvents(this.container, {
+        currentRoute: "library",
+        onSelectedAction: () => this.focusMainNode(),
+        onExpandSidebar: () => this.focusSidebarNode()
+      });
+    }
     if (this.isModalFocusLocked()) {
       return;
     }
@@ -1017,6 +1111,7 @@ export const LibraryScreen = {
   render() {
     this.cancelScheduledRender();
     this.layoutPrefs = LayoutPreferences.get();
+    const useDesktopNavigation = Platform.isBrowser();
     this.sidebarExpanded = Boolean(this.layoutPrefs?.modernSidebar && this.sidebarExpanded);
     const state = this.controller.getState();
     const expandedPicker = state.expandedPicker || null;
@@ -1040,8 +1135,12 @@ export const LibraryScreen = {
     }
 
     this.container.innerHTML = `
-      <div class="home-shell library-shell${this.libraryRouteEnterPending ? " library-route-enter" : ""}" style="${escapeHtml(libraryStyle)}">
-        ${this.renderSidebar()}
+      <div class="home-shell library-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.libraryRouteEnterPending ? " library-route-enter" : ""}" style="${escapeHtml(libraryStyle)}">
+        ${
+          useDesktopNavigation
+            ? renderDesktopNavigation({ selectedRoute: "library", profile: this.sidebarProfile })
+            : this.renderSidebar()
+        }
         <main class="home-main library-main">
           <section class="library-page">
             <header class="library-page-header">
@@ -1065,11 +1164,15 @@ export const LibraryScreen = {
 
     this.buildGridRows();
     ScreenUtils.indexFocusables(this.container);
-    bindRootSidebarEvents(this.container, {
-      currentRoute: "library",
-      onSelectedAction: () => this.focusMainNode(),
-      onExpandSidebar: () => this.focusSidebarNode()
-    });
+    if (useDesktopNavigation) {
+      bindDesktopNavigationEvents(this.container);
+    } else {
+      bindRootSidebarEvents(this.container, {
+        currentRoute: "library",
+        onSelectedAction: () => this.focusMainNode(),
+        onExpandSidebar: () => this.focusSidebarNode()
+      });
+    }
     if (this.isModalFocusLocked()) {
       return;
     }
@@ -2102,6 +2205,9 @@ export const LibraryScreen = {
   },
 
   async onKeyDown(event) {
+    if (Platform.isBrowser() && event?.target?.closest?.(".desktop-navigation")) {
+      return;
+    }
     if (Environment.isBackEvent(event)) {
       event?.preventDefault?.();
       if (this.closeTopOverlay()) {

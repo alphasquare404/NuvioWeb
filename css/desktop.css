@@ -559,6 +559,305 @@ html.desktop-browser {
   }
 }
 
+/* Desktop Library uses the existing data and controls in a browser-sized page
+   flow, separate from the TV sidebar layout. */
+.desktop-browser .library-shell.desktop-navigation-enabled {
+  display: block;
+  grid-template-columns: none;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled > .library-main {
+  display: block;
+  grid-column: auto;
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  margin: 0;
+  padding: 104px clamp(32px, 2vw, 40px) 64px;
+  box-sizing: border-box;
+  overflow: visible;
+  scroll-padding-top: 104px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header {
+  display: block;
+  margin-bottom: 22px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-title {
+  font-size: clamp(30px, 2.5vw, 40px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-source {
+  margin-top: 6px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row {
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button {
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  background: rgba(26, 26, 29, 0.9);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button.selected,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button.focused,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button:focus-visible {
+  border-color: var(--secondary-color);
+  background: rgb(var(--secondary-color-rgb) / 0.18);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.2);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button:hover {
+    border-color: rgba(255, 255, 255, 0.36);
+    background: rgba(35, 35, 39, 0.96);
+  }
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-groups {
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-row {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-row .library-picker {
+  flex: 0 1 clamp(200px, 18vw, 280px);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor {
+  min-height: 54px;
+  padding: 8px 14px;
+  gap: 12px;
+  border-radius: 14px;
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(26, 26, 29, 0.9);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-title {
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-value {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-chevron {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor.focused,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor:focus-visible,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker.open .library-picker-anchor {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 3px rgb(var(--secondary-color-rgb) / 0.2);
+  background: rgba(35, 35, 39, 0.96);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor:hover {
+    border-color: rgba(255, 255, 255, 0.36);
+    background: rgba(35, 35, 39, 0.96);
+  }
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-menu {
+  top: calc(100% + 6px);
+  max-height: 320px;
+  padding: 4px;
+  border-radius: 14px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-option {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row {
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row .library-action-button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  font-size: 14px;
+  transform: none;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row .library-action-button.focused,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row .library-action-button.background-focused {
+  box-shadow: 0 0 0 2px var(--secondary-color);
+  transform: none;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-wrap {
+  width: 100%;
+  padding-bottom: 48px;
+  overflow: visible;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid {
+  grid-template-columns: repeat(auto-fill, minmax(156px, 190px));
+  gap: 24px 14px;
+  overflow: visible;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  min-width: 0;
+  gap: 0;
+  overflow: visible;
+  transform: none;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-poster {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-width: 1px;
+  border-radius: 14px;
+  transform: scale(1);
+  transform-origin: center bottom;
+  transition:
+    transform 150ms ease-out,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-title {
+  width: 100%;
+  margin-top: 9px;
+  padding: 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card.focused,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card:focus-visible {
+  z-index: 1;
+  transform: none;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card.focused .library-grid-poster,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card:focus-visible .library-grid-poster {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px var(--secondary-color);
+  transform: scale(1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card:hover {
+    z-index: 1;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card:hover .library-grid-poster {
+    transform: scale(1.04);
+    border-color: rgba(255, 255, 255, 0.62);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  }
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-empty-state {
+  min-height: calc(100vh - 280px);
+  padding: 24px 0 64px;
+  box-sizing: border-box;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-empty-icon {
+  width: 72px;
+  height: 72px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-empty-title {
+  margin-top: 18px;
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-empty-subtitle {
+  max-width: 520px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .desktop-browser .library-shell.desktop-navigation-enabled > .library-main {
+    padding-inline: 24px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid {
+    grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .desktop-browser .library-shell.desktop-navigation-enabled > .library-main {
+    padding: 84px 20px 40px;
+    scroll-padding-top: 84px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-row .library-picker {
+    flex-basis: 100%;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid {
+    gap: 20px 12px;
+  }
+}
+
 /* Desktop Search uses the browser navigation component and normal page flow. */
 .desktop-browser .search-screen-shell.desktop-navigation-enabled {
   display: block;
