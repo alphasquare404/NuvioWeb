@@ -404,6 +404,12 @@ export const ProfileSelectionScreen = {
   async loadAvatarCatalog() {
     try {
       this.avatarCatalog = await AvatarRepository.getAvatarCatalog();
+      // Browser Profile Selection intentionally renders before this optional
+      // catalog request completes. Re-render once it is available so every
+      // profile can use the same avatar resolver as the desktop navbar.
+      if (Platform.isBrowser() && Router.getCurrentScreen() === this) {
+        this.render();
+      }
     } catch (error) {
       console.warn("Failed to load avatar catalog", error);
       this.avatarCatalog = [];
@@ -436,7 +442,7 @@ export const ProfileSelectionScreen = {
     if (!normalizedId) {
       return null;
     }
-    return this.avatarImageUrlsById?.[normalizedId] || null;
+    return AvatarRepository.getAvatarImageUrl(normalizedId, this.avatarCatalog);
   },
 
   getEditorSelectedAvatar() {
@@ -535,6 +541,19 @@ export const ProfileSelectionScreen = {
       }
     }
     this.restoreFocus();
+    this.focusDesktopPinInput();
+  },
+
+  focusDesktopPinInput() {
+    if (!Platform.isBrowser() || !this.getRenderedPinOverlayState() || this.isPinOperationInProgress) {
+      return;
+    }
+    const focusInput = () => this.container?.querySelector("[data-role='desktop-pin-input']")?.focus();
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(focusInput);
+    } else {
+      setTimeout(focusInput, 0);
+    }
   },
 
   renderProfileCard(profile) {
@@ -827,16 +846,43 @@ export const ProfileSelectionScreen = {
       support = isSingleEntryMode ? PROFILE_PIN_TEXT.verifying : PROFILE_PIN_TEXT.saving;
     }
 
+    const isDesktopBrowser = Platform.isBrowser();
+    if (isDesktopBrowser && state.type === "unlock" && !this.pinOverlayError && !this.isPinOperationInProgress) {
+      support = "Enter your 4-digit PIN to continue.";
+    }
+
     return `
       <div class="profile-pin-layer${phaseClass}">
         <div class="profile-pin-overlay profile-focusable focusable" data-overlay-root="pin" data-focus-key="pin:root" tabindex="0">
-          <div class="profile-pin-content">
+          <div class="profile-pin-content${isDesktopBrowser ? " profile-pin-desktop-card" : ""}">
+            ${
+              isDesktopBrowser
+                ? `<button class="profile-pin-desktop-back" type="button" data-action="close-pin" aria-label="${escapeHtml(
+                    t("common.back", {}, "Back")
+                  )}">&#8592;</button>`
+                : ""
+            }
             <div class="profile-pin-heading">${escapeHtml(heading)}</div>
-            <div class="profile-pin-box-row" data-role="pin-box-row">${this.renderPinBoxes()}</div>
+            <div class="profile-pin-box-row" data-role="pin-box-row">
+              ${this.renderPinBoxes()}
+              ${
+                isDesktopBrowser
+                  ? `<input class="profile-pin-desktop-input"
+                            data-role="desktop-pin-input"
+                            type="password"
+                            inputmode="numeric"
+                            pattern="[0-9]*"
+                            maxlength="${PROFILE_PIN_LENGTH}"
+                            autocomplete="off"
+                            aria-label="${escapeHtml(t("profile_pin", {}, "4-digit PIN"))}"
+                            value="${escapeHtml(this.pinValue)}"/>`
+                  : ""
+              }
+            </div>
             <div class="profile-pin-support${this.pinOverlayError ? " is-error" : ""}">${escapeHtml(support)}</div>
-            <div class="profile-pin-keypad" aria-label="PIN keypad">${this.renderPinKeypad()}</div>
+            ${isDesktopBrowser ? "" : `<div class="profile-pin-keypad" aria-label="PIN keypad">${this.renderPinKeypad()}</div>`}
             ${isSingleEntryMode ? `<div class="profile-pin-forgot">${escapeHtml(PROFILE_PIN_TEXT.forgot)}</div>` : ""}
-            <div class="profile-pin-back-hint">${escapeHtml(PROFILE_PIN_TEXT.back)}</div>
+            ${isDesktopBrowser ? "" : `<div class="profile-pin-back-hint">${escapeHtml(PROFILE_PIN_TEXT.back)}</div>`}
           </div>
         </div>
       </div>
@@ -863,6 +909,21 @@ export const ProfileSelectionScreen = {
       });
     });
 
+    Array.from(this.container.querySelectorAll(".profile-avatar-image")).forEach((image) => {
+      image.addEventListener(
+        "error",
+        () => {
+          const profileId = image.closest("[data-profile-id]")?.dataset.profileId;
+          const profile = this.getProfileById(profileId);
+          const avatar = image.parentElement;
+          if (avatar && profile) {
+            avatar.textContent = getProfileInitial(profile.name);
+          }
+        },
+        { once: true }
+      );
+    });
+
     Array.from(this.container.querySelectorAll(".profile-overlay-focusable")).forEach((node) => {
       node.addEventListener("focus", () => this.handleFocusableFocus(node));
       node.addEventListener("click", async (event) => {
@@ -883,6 +944,36 @@ export const ProfileSelectionScreen = {
         pinOverlay.focus();
       });
     }
+
+    const desktopPinInput = this.container.querySelector("[data-role='desktop-pin-input']");
+    if (desktopPinInput) {
+      desktopPinInput.addEventListener("click", (event) => event.stopPropagation());
+      desktopPinInput.addEventListener("input", async (event) => {
+        if (this.isPinOperationInProgress) {
+          return;
+        }
+        const value = String(event.target?.value || "")
+          .replace(/\D/g, "")
+          .slice(0, PROFILE_PIN_LENGTH);
+        this.pinValue = value;
+        this.pinOverlayError = "";
+        this.render();
+        await this.handleCompletedPinEntry();
+      });
+      desktopPinInput.addEventListener("keydown", async (event) => {
+        if (event.key !== "Enter" || this.pinValue.length !== PROFILE_PIN_LENGTH) {
+          return;
+        }
+        event.preventDefault();
+        await this.handleCompletedPinEntry();
+      });
+    }
+
+    this.container.querySelector("[data-action='close-pin']")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closePinOverlay();
+    });
 
     Array.from(this.container.querySelectorAll(".profile-pin-key")).forEach((node) => {
       node.addEventListener("focus", () => this.handleFocusableFocus(node));
@@ -1872,6 +1963,14 @@ export const ProfileSelectionScreen = {
   async handlePinOverlayKeyDown(event) {
     const code = Number(event?.keyCode || 0);
     const key = String(event?.key || "");
+    if (Platform.isBrowser() && event?.target?.matches?.("[data-role='desktop-pin-input']")) {
+      if (key === "Escape") {
+        event.preventDefault();
+        this.closePinOverlay();
+        return true;
+      }
+      return false;
+    }
     if (code === 8 || code === 46 || key === "Backspace" || key === "Delete") {
       event?.preventDefault?.();
       if (!this.isPinOperationInProgress && this.pinValue) {
