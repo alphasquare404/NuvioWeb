@@ -166,7 +166,10 @@ async function syncBuild(targetDir) {
     await cp(path.join(distDir, "nuvio.env.js"), path.join(targetDir, "nuvio.env.js"));
   } catch (error) {
     if (error?.code === "ENOENT") {
-      await writeRuntimeEnvScriptFile(path.join(targetDir, "nuvio.env.js"), { rootDir });
+      await writeRuntimeEnvScriptFile(path.join(targetDir, "nuvio.env.js"), {
+        rootDir,
+        includePrivateKeys: true
+      });
       return;
     }
     if (error?.code !== "ENOENT") {

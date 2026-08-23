@@ -18,6 +18,18 @@ const requireConfiguredRuntimeEnv = /^(1|true|yes|on)$/i.test(
   String(process.env.NUVIO_REQUIRE_LOCAL_PROPERTIES || "")
 );
 const debugBundle = /^(1|true|yes|on)$/i.test(String(process.env.NUVIO_DEBUG_BUNDLE || ""));
+const runtimeTargetArg = process.argv
+  .slice(2)
+  .find((arg) => String(arg || "").startsWith("--target="));
+const runtimeTarget = String(runtimeTargetArg || "--target=browser")
+  .slice("--target=".length)
+  .trim()
+  .toLowerCase();
+const supportedRuntimeTargets = new Set(["browser", "webos", "tizen"]);
+if (!supportedRuntimeTargets.has(runtimeTarget)) {
+  throw new Error(`Unsupported build runtime target: ${runtimeTarget || "(empty)"}`);
+}
+const includePrivateRuntimeEnv = runtimeTarget !== "browser";
 const legacyViewport = {
   width: 1920,
   height: 1080,
@@ -480,7 +492,8 @@ async function buildBundle() {
     metafile: true,
     define: {
       "process.env.NODE_ENV": '"production"',
-      __NUVIO_APP_VERSION__: JSON.stringify(version)
+      __NUVIO_APP_VERSION__: JSON.stringify(version),
+      __NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__: JSON.stringify(includePrivateRuntimeEnv)
     }
   });
   if (
@@ -548,7 +561,8 @@ async function runBuild() {
 
     console.log("configuring runtime env from local.properties...");
     const envResult = await writeRuntimeEnvScriptFile(path.join(distDir, "nuvio.env.js"), {
-      rootDir
+      rootDir,
+      includePrivateKeys: includePrivateRuntimeEnv
     });
     const envSourceBaseName = path.basename(envResult.sourcePath || "");
     const usingFallbackEnv =

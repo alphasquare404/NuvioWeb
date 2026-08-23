@@ -24,6 +24,11 @@ export const ENV_PROPERTY_KEYS = [
   "PREMIUMIZE_CLIENT_ID"
 ];
 
+// Browser runtime configuration is downloaded by every visitor, so it must
+// contain only values that are safe to expose to a browser client. Private
+// credentials are emitted only for explicitly targeted native TV builds.
+const PRIVATE_RUNTIME_ENV_KEYS = new Set(["TRAKT_CLIENT_SECRET"]);
+
 const DEFAULT_ENV_VALUES = {
   NUVIO_SUPABASE_URL: "",
   NUVIO_SUPABASE_ANON_KEY: "",
@@ -140,8 +145,13 @@ export async function readEnvProperties({ rootDir, sourcePath = "" } = {}) {
   };
 }
 
-export function buildRuntimeEnvScript(env = {}) {
+export function buildRuntimeEnvScript(env = {}, { includePrivateKeys = false } = {}) {
   const values = normalizeEnvProperties(env);
+  if (!includePrivateKeys) {
+    PRIVATE_RUNTIME_ENV_KEYS.forEach((key) => {
+      delete values[key];
+    });
+  }
   return `(function defineNuvioEnv() {
   var root = typeof globalThis !== "undefined" ? globalThis : window;
   var env = root.__NUVIO_ENV__ || {};
@@ -156,8 +166,15 @@ export function buildRuntimeEnvScript(env = {}) {
 `;
 }
 
-export async function writeRuntimeEnvScriptFile(targetPath, { rootDir, sourcePath = "" } = {}) {
+export async function writeRuntimeEnvScriptFile(
+  targetPath,
+  { rootDir, sourcePath = "", includePrivateKeys = false } = {}
+) {
   const result = await readEnvProperties({ rootDir, sourcePath });
-  await writeFile(targetPath, buildRuntimeEnvScript(result.env), "utf8");
+  await writeFile(
+    targetPath,
+    buildRuntimeEnvScript(result.env, { includePrivateKeys }),
+    "utf8"
+  );
   return result;
 }

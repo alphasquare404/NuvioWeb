@@ -4,6 +4,7 @@ import { LocalStore } from "../../../core/storage/localStore.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { AuthManager } from "../../../core/auth/authManager.js";
 import { I18n } from "../../../i18n/index.js";
+import { Platform } from "../../../platform/index.js";
 
 let pollInterval = null;
 let countdownInterval = null;
@@ -19,10 +20,16 @@ export const AuthQrSignInScreen = {
     this.isMounted = true;
     this.isStartingQr = false;
     this.isLeaving = false;
+    this.isDesktopBrowser = Platform.isBrowser();
     ScreenUtils.show(this.container);
 
     this.container.innerHTML = `
       <div class="qr-layout">
+        ${
+          this.isDesktopBrowser
+            ? '<button type="button" id="qr-browser-back-btn" class="desktop-qr-back-button" aria-label="Back to sign in"><span aria-hidden="true">←</span><span>Back</span></button>'
+            : ""
+        }
         <section class="qr-left-panel">
           <div class="qr-brand-lockup">
             <img src="assets/brand/app_logo_wordmark.png" class="qr-logo" alt="Nuvio" />
@@ -55,6 +62,7 @@ export const AuthQrSignInScreen = {
 
     this.refreshButton = this.container.querySelector("#qr-refresh-btn");
     this.backButton = this.container.querySelector("#qr-back-btn");
+    this.browserBackButton = this.container.querySelector("#qr-browser-back-btn");
     if (this.refreshButton) {
       this.refreshButton.onclick = () => {
         this.handleRefreshAction();
@@ -63,6 +71,11 @@ export const AuthQrSignInScreen = {
     if (this.backButton) {
       this.backButton.onclick = () => {
         this.handleContinueAction();
+      };
+    }
+    if (this.browserBackButton) {
+      this.browserBackButton.onclick = () => {
+        this.handleDesktopBrowserBack();
       };
     }
 
@@ -294,6 +307,26 @@ export const AuthQrSignInScreen = {
     );
   },
 
+  handleDesktopBrowserBack() {
+    if (!this.isDesktopBrowser || this.isLeaving) {
+      return;
+    }
+    this.isLeaving = true;
+    this.updateActionButtons();
+    this.cleanup();
+    // Auth routes intentionally do not enter the Router back-stack. Replace
+    // this route with the existing desktop email/password screen instead of
+    // creating a duplicate auth state or falling through to Home.
+    Router.navigate(
+      "authSignIn",
+      {},
+      {
+        replaceHistory: true,
+        skipStackPush: true
+      }
+    );
+  },
+
   getLeftDescription() {
     if (this.isSignedIn) {
       return I18n.t("auth.qr.leftDescriptionSignedIn");
@@ -361,6 +394,10 @@ export const AuthQrSignInScreen = {
     if (this.backButton) {
       this.backButton.onclick = null;
       this.backButton = null;
+    }
+    if (this.browserBackButton) {
+      this.browserBackButton.onclick = null;
+      this.browserBackButton = null;
     }
     ScreenUtils.hide(this.container);
     this.container = null;

@@ -770,6 +770,43 @@ html.desktop-browser {
   color: #fff;
 }
 
+/* Browser QR remains available as a secondary sign-in option. This control
+   returns to the desktop email/password screen; TV keeps its remote Back flow. */
+.desktop-browser #account .qr-layout {
+  position: relative;
+}
+
+.desktop-browser #account .desktop-qr-back-button {
+  position: absolute;
+  z-index: 2;
+  top: clamp(18px, 3vw, 32px);
+  left: clamp(18px, 3vw, 40px);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.52);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  backdrop-filter: blur(10px);
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.desktop-browser #account .desktop-qr-back-button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.desktop-browser #account .desktop-qr-back-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 3px;
+}
+
 @media (max-width: 480px) {
   .desktop-browser #account .desktop-auth-card {
     border-radius: 16px;

@@ -108,7 +108,8 @@ async function syncBuild(targetAppDir, envSourcePath) {
   if (envSourcePath) {
     await writeRuntimeEnvScriptFile(path.join(targetAppDir, "nuvio.env.js"), {
       rootDir,
-      sourcePath: envSourcePath
+      sourcePath: envSourcePath,
+      includePrivateKeys: true
     });
   } else {
     try {
@@ -117,7 +118,10 @@ async function syncBuild(targetAppDir, envSourcePath) {
       if (error?.code !== "ENOENT") {
         throw error;
       }
-      await writeRuntimeEnvScriptFile(path.join(targetAppDir, "nuvio.env.js"), { rootDir });
+      await writeRuntimeEnvScriptFile(path.join(targetAppDir, "nuvio.env.js"), {
+        rootDir,
+        includePrivateKeys: true
+      });
     }
   }
 }

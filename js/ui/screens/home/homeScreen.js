@@ -8460,6 +8460,8 @@ export const HomeScreen = {
     this.continueWatchingResolved = false;
     this.heroCandidates = [];
     this.heroItem = null;
+    this.desktopHeroSelectionSignature = "";
+    this.desktopFallbackHeroInitialized = false;
     this.sidebarProfile = await getLocalSidebarProfileState().catch(() => null);
     this.render();
     await this.loadData({ background: false });
@@ -8612,7 +8614,7 @@ export const HomeScreen = {
           Array.from(progressiveInitialRows.values()),
           this.collections
         );
-        this.heroCandidates = uniqueById(this.collectHeroCandidates(this.rows));
+        this.refreshHeroCandidates();
         if (!this.heroItem) {
           this.heroItem = this.pickInitialHero();
         }
@@ -8648,7 +8650,7 @@ export const HomeScreen = {
         this.forceInitialContinueWatchingFocus = true;
       }
     }
-    this.heroCandidates = uniqueById(this.collectHeroCandidates(this.rows));
+    this.refreshHeroCandidates();
     if (preserveHomeReturnState) {
       const currentHeroIdentity = buildHeroIdentity(this.heroItem);
       const shouldRestorePreservedHero =
@@ -8722,7 +8724,7 @@ export const HomeScreen = {
                 Array.from(combinedByKey.values()),
                 this.collections
               );
-              this.heroCandidates = uniqueById(this.collectHeroCandidates(this.rows));
+              this.refreshHeroCandidates();
               if (!this.heroItem) {
                 this.heroItem = this.pickInitialHero();
               }
@@ -8739,7 +8741,7 @@ export const HomeScreen = {
             combinedByKey.set(row.homeCatalogKey, row);
           });
           this.rows = this.sortAndFilterRows(Array.from(combinedByKey.values()), this.collections);
-          this.heroCandidates = uniqueById(this.collectHeroCandidates(this.rows));
+          this.refreshHeroCandidates();
           if (!this.heroItem) {
             this.heroItem = this.pickInitialHero();
           }
@@ -8943,6 +8945,25 @@ export const HomeScreen = {
         return continueHero;
       }
     }
+
+    if (Platform.isBrowser()) {
+      const candidates = Array.isArray(this.heroCandidates) ? this.heroCandidates : [];
+      if (!candidates.length) {
+        return null;
+      }
+
+      // With no explicit source selection, choose the initial browser hero
+      // once for this Home initialization. Later renders retain that item and
+      // carousel navigation remains deterministic for the current pool.
+      if (!this.getSelectedHeroCatalogKeys().length && !this.desktopFallbackHeroInitialized) {
+        this.heroIndex = Math.floor(Math.random() * candidates.length);
+        this.desktopFallbackHeroInitialized = true;
+      } else if (!Number.isInteger(this.heroIndex) || this.heroIndex >= candidates.length) {
+        this.heroIndex = 0;
+      }
+      return candidates[this.heroIndex];
+    }
+
     return this.heroCandidates[0] || this.pickHeroItem(this.rows);
   },
 
@@ -9136,7 +9157,7 @@ export const HomeScreen = {
             combinedByKey.set(row.homeCatalogKey, row);
           });
           this.rows = this.sortAndFilterRows(Array.from(combinedByKey.values()), this.collections);
-          this.heroCandidates = uniqueById(this.collectHeroCandidates(this.rows));
+          this.refreshHeroCandidates();
           if (!this.heroItem) {
             this.heroItem = this.pickInitialHero();
           }
@@ -9192,11 +9213,14 @@ export const HomeScreen = {
       !this.heroItem;
     let heroItem = null;
     if (!shouldHoldHeroForContinueWatching) {
-      const rawHeroItem =
-        backFocusHero ||
-        this.heroItem ||
-        this.heroCandidates?.[this.heroIndex] ||
-        this.pickHeroItem(this.rows);
+      const browserHasNoHeroCandidates =
+        Platform.isBrowser() && (!Array.isArray(this.heroCandidates) || !this.heroCandidates.length);
+      const rawHeroItem = browserHasNoHeroCandidates
+        ? null
+        : backFocusHero ||
+          this.heroItem ||
+          this.heroCandidates?.[this.heroIndex] ||
+          this.pickInitialHero();
       heroItem = isCollectionFolderItem(rawHeroItem)
         ? normalizeCollectionFolderItem(rawHeroItem)
         : normalizeCatalogItem(rawHeroItem, "movie");
@@ -10541,16 +10565,55 @@ export const HomeScreen = {
     return null;
   },
 
-  collectHeroCandidates(rows) {
-    const flat = [];
-    const sourceRows = Array.isArray(rows) ? rows : [];
-    const selectedKeys = Array.from(
+  getSelectedHeroCatalogKeys() {
+    return Array.from(
       new Set(
         (this.layoutPrefs?.heroCatalogKeys || [])
           .map((key) => String(key || "").trim())
           .filter(Boolean)
       )
     );
+  },
+
+  refreshHeroCandidates() {
+    this.heroCandidates = uniqueById(this.collectHeroCandidates(this.rows));
+    if (!Platform.isBrowser()) {
+      return;
+    }
+
+    const selectionSignature = this.getSelectedHeroCatalogKeys().join("\u0000");
+    const selectionChanged = selectionSignature !== this.desktopHeroSelectionSignature;
+    this.desktopHeroSelectionSignature = selectionSignature;
+
+    if (selectionChanged) {
+      this.desktopFallbackHeroInitialized = false;
+      this.heroItem = null;
+      this.heroIndex = 0;
+    }
+
+    if (!this.heroCandidates.length) {
+      this.heroItem = null;
+      this.heroIndex = 0;
+      return;
+    }
+
+    const currentHeroIdentity = buildHeroIdentity(this.heroItem);
+    const currentIndex = this.heroCandidates.findIndex(
+      (candidate) => buildHeroIdentity(candidate) === currentHeroIdentity
+    );
+    if (currentIndex >= 0) {
+      this.heroIndex = currentIndex;
+      return;
+    }
+
+    this.heroItem = null;
+    this.heroIndex = 0;
+  },
+
+  collectHeroCandidates(rows) {
+    const flat = [];
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const selectedKeys = this.getSelectedHeroCatalogKeys();
     const eligibleRows = selectedKeys.length
       ? Platform.isBrowser()
         ? selectedKeys
@@ -10573,7 +10636,8 @@ export const HomeScreen = {
   },
 
   async enrichHero(baseHero = null) {
-    const nextBaseHero = baseHero || this.pickHeroItem(this.rows);
+    const nextBaseHero =
+      baseHero || (Platform.isBrowser() ? this.pickInitialHero() : this.pickHeroItem(this.rows));
     const hero = isCollectionFolderItem(nextBaseHero)
       ? normalizeCollectionFolderItem(nextBaseHero)
       : normalizeCatalogItem(nextBaseHero, "movie");

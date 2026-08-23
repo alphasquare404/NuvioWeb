@@ -214,7 +214,8 @@ async function stagePackage({ appId, packageId, version, envSourcePath }) {
   if (envSourcePath) {
     await writeRuntimeEnvScriptFile(path.join(stagingDir, "nuvio.env.js"), {
       rootDir,
-      sourcePath: envSourcePath
+      sourcePath: envSourcePath,
+      includePrivateKeys: true
     });
   } else {
     await cp(path.join(distDir, "nuvio.env.js"), path.join(stagingDir, "nuvio.env.js"));

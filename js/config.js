@@ -1,3 +1,5 @@
+/* global __NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__ */
+
 const runtimeEnv = globalThis.__NUVIO_ENV__ || {};
 
 export const SUPABASE_URL = String(runtimeEnv.NUVIO_SUPABASE_URL || "").trim();
@@ -27,7 +29,12 @@ export const DONATIONS_DONATE_URL = String(runtimeEnv.DONATIONS_DONATE_URL || ""
 export const SPONSOR_NAMES = String(runtimeEnv.SPONSOR_NAMES || "").trim() || "ragmehos.";
 export const TMDB_API_KEY = String(runtimeEnv.TMDB_API_KEY || "").trim();
 export const TRAKT_CLIENT_ID = String(runtimeEnv.TRAKT_CLIENT_ID || "").trim();
-export const TRAKT_CLIENT_SECRET = String(runtimeEnv.TRAKT_CLIENT_SECRET || "").trim();
+// Desktop browser bundles compile this branch out. Native TV package builds
+// explicitly opt in, so their existing Trakt device-auth flow can retain its
+// trusted packaged credential without delivering it to browser clients.
+export const TRAKT_CLIENT_SECRET = __NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__
+  ? String(runtimeEnv.TRAKT_CLIENT_SECRET || "").trim()
+  : "";
 export const TRAKT_API_URL = "https://api.trakt.tv/";
 export const TRAKT_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob";
 export const SIMKL_CLIENT_ID = String(runtimeEnv.SIMKL_CLIENT_ID || "").trim();
