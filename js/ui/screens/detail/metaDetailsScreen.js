@@ -3293,7 +3293,8 @@ export const MetaDetailsScreen = {
   renderCompanySections(meta = {}) {
     const production = this.renderCompanyLogosSection(
       meta.productionCompanies || meta.production_companies || [],
-      t("detail.productionCompanies", {}, "Production")
+      t("detail.productionCompanies", {}, "Production"),
+      { production: true }
     );
     const networks = this.renderCompanyLogosSection(
       meta.networks || [],
@@ -5682,7 +5683,7 @@ export const MetaDetailsScreen = {
     return this.renderPreviewRail(this.moreLikeThisItems, this.params?.itemType || "movie");
   },
 
-  renderCompanyLogosSection(rawCompanies = [], title = "Studios") {
+  renderCompanyLogosSection(rawCompanies = [], title = "Studios", { production = false } = {}) {
     const toLogo = (logo) => {
       const value = String(logo || "").trim();
       if (!value) {
@@ -5701,7 +5702,7 @@ export const MetaDetailsScreen = {
         name: entry?.name || "",
         logo: toLogo(entry?.logo || entry?.logoPath || entry?.logo_path || "")
       }))
-      .filter((entry) => entry.logo || entry.name);
+      .filter((entry) => (production && Platform.isBrowser() ? entry.logo : entry.logo || entry.name));
     if (!companies.length) {
       return "";
     }
@@ -5709,7 +5710,7 @@ export const MetaDetailsScreen = {
       .slice(0, 10)
       .map(
         (company) => `
-      <article class="detail-company-card focusable"
+      <article class="detail-company-card focusable${production ? " detail-production-company-card" : ""}"
                data-company-name="${escapeHtml(company.name || "")}">
         ${company.logo ? `<img src="${company.logo}" alt="${escapeHtml(company.name || "Company")}" loading="lazy" decoding="async" />` : `<span>${escapeHtml(company.name || "")}</span>`}
       </article>
@@ -5717,7 +5718,7 @@ export const MetaDetailsScreen = {
       )
       .join("");
     return `
-      <section class="detail-company-section">
+      <section class="detail-company-section${production ? " detail-production-section" : ""}">
         <h3 class="detail-company-title">${escapeHtml(title)}</h3>
         <div class="detail-company-track" data-scroll-key="company:${escapeHtml(String(title || "").toLowerCase())}">${logos}</div>
       </section>

@@ -2,7 +2,7 @@ import { I18n } from "../../../i18n/index.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { Router } from "../../navigation/router.js";
 
-const SECTIONS = [
+export const LICENSES_ATTRIBUTION_SECTIONS = [
   {
     titleKey: "licenses_attributions_section_app",
     items: [["nuvio", "https://github.com/NuvioMedia/NuvioWeb"]]
@@ -47,7 +47,7 @@ export const LicensesAttributionsScreen = {
       <main class="licenses-screen">
         <header><h1>${escapeHtml(t("licenses_attributions_title", "Licenses & Attribution"))}</h1><p>${escapeHtml(t("licenses_attributions_section_data", "Data & services"))}</p></header>
         <div class="licenses-list">
-          ${SECTIONS.map((section) => `
+          ${LICENSES_ATTRIBUTION_SECTIONS.map((section) => `
             <section><h2>${escapeHtml(t(section.titleKey))}</h2>
               ${section.items.map(([id, url, license], index) => `<button class="license-row focusable" data-url="${escapeHtml(url)}" data-index="${index}"><strong>${escapeHtml(license ? id : t(`licenses_attributions_${id}_title`, id))}</strong><span>${escapeHtml(license || t(`licenses_attributions_${id}_body`, ""))}</span></button>`).join("")}
             </section>`).join("")}

@@ -93,6 +93,16 @@ import { createDesktopHomeCatalogManager } from "../../components/desktopHomeCat
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
+import {
+  DONATIONS_BASE_URL,
+  UNIQUE_CONTRIBUTIONS_BASE_URL
+} from "../../../config.js";
+import {
+  normalizeContributors,
+  normalizeDonationProgress,
+  normalizeSupporterDonations
+} from "../supporters/supportersData.js";
+import { LICENSES_ATTRIBUTION_SECTIONS } from "./licensesAttributionsScreen.js";
 
 const SETTINGS_UI_STATE_KEY = "settingsScreenUiState";
 const SETTINGS_RAIL_SCROLL_TARGET_RATIO = 0.42;
@@ -106,6 +116,33 @@ const PRIVACY_URL = "https://nuvio.tv/privacy-policy";
 
 function isDesktopSettingsBrowser() {
   return Platform.isBrowser();
+}
+
+function normalizeDesktopAboutUrl(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
+}
+
+function desktopContributorsUrl() {
+  const baseUrl = normalizeDesktopAboutUrl(UNIQUE_CONTRIBUTIONS_BASE_URL);
+  return baseUrl ? `${baseUrl}/api/unique-contributions` : "";
+}
+
+async function requestDesktopAboutJson(url, errorMessage) {
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) {
+    throw new Error(`${errorMessage}: ${response.status}`);
+  }
+  return await response.json();
+}
+
+function createDesktopAboutCommunityState() {
+  return {
+    supporters: { loading: false, loaded: false, items: [], error: null, canRetry: false },
+    contributors: { loading: false, loaded: false, items: [], error: null, canRetry: false },
+    donationProgress: null
+  };
 }
 
 function getFusionSourceDisplay(sourceUrl, index = 0) {
@@ -2072,6 +2109,13 @@ function createDefaultExpandedState(sectionId) {
     };
   }
 
+  if (sectionId === "about") {
+    return {
+      supportersContributors: false,
+      licensesAttribution: false
+    };
+  }
+
   return {};
 }
 
@@ -2092,7 +2136,8 @@ function normalizeExpandedSections(value) {
   const source = value && typeof value === "object" ? value : {};
   return {
     layout: normalizeExpandedState("layout", source.layout),
-    playback: normalizeExpandedState("playback", source.playback)
+    playback: normalizeExpandedState("playback", source.playback),
+    about: normalizeExpandedState("about", source.about)
   };
 }
 
@@ -2183,6 +2228,7 @@ export const SettingsScreen = {
     this.streamBadgePreviewSourceUrl = null;
     // Desktop-only, temporary presentation state. Do not persist or sync this.
     this.streamBadgeSourcesExpanded = false;
+    this.desktopAboutCommunityState = this.desktopAboutCommunityState || createDesktopAboutCommunityState();
     this.advancedCacheCleared = false;
     this.optionDialog = this.optionDialog || null;
     this.textDialog = this.textDialog || null;
@@ -7789,12 +7835,151 @@ export const SettingsScreen = {
     `;
   },
 
+  async loadDesktopAboutCommunity(kind, force = false) {
+    if (!isDesktopSettingsBrowser()) return;
+    this.desktopAboutCommunityState =
+      this.desktopAboutCommunityState || createDesktopAboutCommunityState();
+    const state = this.desktopAboutCommunityState[kind];
+    if (!state || state.loading || (!force && state.loaded)) return;
+
+    state.loading = true;
+    state.error = null;
+    state.canRetry = false;
+    await this.render({ refreshModel: false });
+
+    try {
+      if (kind === "supporters") {
+        const baseUrl = normalizeDesktopAboutUrl(DONATIONS_BASE_URL);
+        if (!baseUrl) {
+          throw new Error("Unable to load supporters.");
+        }
+        const data = await requestDesktopAboutJson(
+          `${baseUrl}/api/donations?view=recent`,
+          t("supporters_error_api_http", {}, "Donations API error")
+        );
+        state.items = normalizeSupporterDonations(data?.donations);
+        this.desktopAboutCommunityState.donationProgress = normalizeDonationProgress(
+          data?.monthlyGoal?.progressPercent
+        );
+      } else {
+        const url = desktopContributorsUrl();
+        if (!url) {
+          state.error = "Contributors API is not configured.";
+          state.canRetry = false;
+          state.loaded = true;
+          return;
+        }
+        const data = await requestDesktopAboutJson(
+          url,
+          t("contributors_error_api_http", {}, "Contributors API error")
+        );
+        state.items = normalizeContributors(data?.contributors);
+      }
+      state.loaded = true;
+    } catch (_) {
+      state.error = kind === "supporters" ? "Unable to load supporters." : "Contributors API is not configured.";
+      state.canRetry = kind === "supporters" && Boolean(normalizeDesktopAboutUrl(DONATIONS_BASE_URL));
+      state.loaded = true;
+    } finally {
+      state.loading = false;
+      if (Router.getCurrent() === "settings") {
+        await this.render({ refreshModel: false });
+      }
+    }
+  },
+
+  renderDesktopAboutCommunityList(kind, title) {
+    const state = this.desktopAboutCommunityState?.[kind] || {};
+    if (state.loading) {
+      return `<section class="settings-about-community-group"><h3>${escapeHtml(title)}</h3><p class="settings-about-inline-status">Loading…</p></section>`;
+    }
+    if (state.error) {
+      const retryKey = `about:community:retry:${kind}`;
+      this.actionMap.set(retryKey, () => this.loadDesktopAboutCommunity(kind, true));
+      return `
+        <section class="settings-about-community-group">
+          <h3>${escapeHtml(title)}</h3>
+          <p class="settings-about-inline-status is-error">${escapeHtml(state.error)}</p>
+          ${
+            state.canRetry
+              ? this.renderActionRow({
+                  focusKey: retryKey,
+                  title: t("action_retry", {}, "Retry"),
+                  icon: "",
+                  classes: "settings-about-inline-retry"
+                })
+              : ""
+          }
+        </section>
+      `;
+    }
+    if (!state.loaded || !state.items?.length) {
+      const empty = kind === "supporters" ? "No supporters found yet." : "No contributors found yet.";
+      return `<section class="settings-about-community-group"><h3>${escapeHtml(title)}</h3><p class="settings-about-inline-status">${escapeHtml(empty)}</p></section>`;
+    }
+    const items = state.items
+      .slice(0, 12)
+      .map((item) => {
+        const detail =
+          kind === "contributors"
+            ? `${Number(item.totalContributions || 0)} contributions`
+            : String(item.date || "");
+        return `<li><strong>${escapeHtml(item.name || "")}</strong>${detail ? `<span>${escapeHtml(detail)}</span>` : ""}</li>`;
+      })
+      .join("");
+    return `<section class="settings-about-community-group"><h3>${escapeHtml(title)}</h3><ul class="settings-about-community-list">${items}</ul></section>`;
+  },
+
+  renderDesktopAboutCommunity() {
+    return `<div class="settings-about-inline-community">
+      ${this.renderDesktopAboutCommunityList("supporters", "Supporters")}
+      ${this.renderDesktopAboutCommunityList("contributors", "Contributors")}
+    </div>`;
+  },
+
+  renderDesktopAboutLicenses() {
+    return `<div class="settings-about-inline-licenses">
+      ${LICENSES_ATTRIBUTION_SECTIONS.map(
+        (section) => `
+          <section class="settings-about-license-group">
+            <h3>${escapeHtml(t(section.titleKey, {}, section.titleKey))}</h3>
+            <div class="settings-about-license-list">
+              ${section.items
+                .map(([id, url, license]) => {
+                  const label = license ? id : t(`licenses_attributions_${id}_title`, {}, id);
+                  const detail = license || t(`licenses_attributions_${id}_body`, {}, "");
+                  return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"><strong>${escapeHtml(label)}</strong>${detail ? `<span>${escapeHtml(detail)}</span>` : ""}</a>`;
+                })
+                .join("")}
+            </div>
+          </section>
+        `
+      ).join("")}
+    </div>`;
+  },
+
   renderAboutSection() {
+    const isDesktopBrowser = isDesktopSettingsBrowser();
+    const expanded = this.expandedSections.about || {};
     this.actionMap.set("about:privacy", () => {
       window.open?.(PRIVACY_URL, "_blank");
     });
-    this.actionMap.set("about:supporters", () => Router.navigate("supportersContributors"));
-    this.actionMap.set("about:licenses", () => Router.navigate("licensesAttributions"));
+    if (isDesktopBrowser) {
+      this.actionMap.set("about:supporters:toggle", () => {
+        const wasExpanded = Boolean(this.expandedSections.about?.supportersContributors);
+        this.toggleExpandedSection("about", "supportersContributors");
+        if (!wasExpanded) {
+          void this.loadDesktopAboutCommunity("supporters");
+          void this.loadDesktopAboutCommunity("contributors");
+        }
+      });
+      this.actionMap.set("about:licenses:toggle", () => {
+        this.toggleExpandedSection("about", "licensesAttribution");
+      });
+    } else {
+      this.actionMap.set("about:supporters", () => Router.navigate("supportersContributors"));
+      this.actionMap.set("about:licenses", () => Router.navigate("licensesAttributions"));
+    }
     this.actionMap.set("about:checkUpdates", async () => {
       this.aboutUpdateStatus = t("update_checking", {}, "Checking for updates…");
       await this.render({ refreshModel: false });
@@ -7838,16 +8023,40 @@ export const SettingsScreen = {
             subtitle: t("settings.about.privacyPolicy.subtitle"),
             external: true
           })}
-          ${this.renderActionRow({
-            focusKey: "about:supporters",
-            title: t("settings.about.supporters.title"),
-            subtitle: t("settings.about.supporters.subtitle")
-          })}
-          ${this.renderActionRow({
-            focusKey: "about:licenses",
-            title: t("about_licenses_attributions", {}, "Licenses & Attribution"),
-            subtitle: t("licenses_attributions_section_data", {}, "Data & services")
-          })}
+          ${
+            isDesktopBrowser
+              ? this.renderCollapsibleRow({
+                  focusKey: "about:supporters:toggle",
+                  title: t("settings.about.supporters.title"),
+                  subtitle: t("settings.about.supporters.subtitle"),
+                  expanded: Boolean(expanded.supportersContributors),
+                  bodyHtml: expanded.supportersContributors
+                    ? this.renderDesktopAboutCommunity()
+                    : "",
+                  classes: "settings-collapsible-about"
+                })
+              : this.renderActionRow({
+                  focusKey: "about:supporters",
+                  title: t("settings.about.supporters.title"),
+                  subtitle: t("settings.about.supporters.subtitle")
+                })
+          }
+          ${
+            isDesktopBrowser
+              ? this.renderCollapsibleRow({
+                  focusKey: "about:licenses:toggle",
+                  title: t("about_licenses_attributions", {}, "Licenses & Attribution"),
+                  subtitle: t("licenses_attributions_section_data", {}, "Data & services"),
+                  expanded: Boolean(expanded.licensesAttribution),
+                  bodyHtml: expanded.licensesAttribution ? this.renderDesktopAboutLicenses() : "",
+                  classes: "settings-collapsible-about"
+                })
+              : this.renderActionRow({
+                  focusKey: "about:licenses",
+                  title: t("about_licenses_attributions", {}, "Licenses & Attribution"),
+                  subtitle: t("licenses_attributions_section_data", {}, "Data & services")
+                })
+          }
           ${this.renderActionRow({
             focusKey: "about:debugConsole",
             title: t("about_debug_console_title", {}, "Console debug"),
