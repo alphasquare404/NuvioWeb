@@ -90,6 +90,7 @@ import {
 import { createDesktopAddonManager } from "../../components/desktopAddonManager.js";
 import { createDesktopPluginManager } from "../../components/desktopPluginManager.js";
 import { createDesktopHomeCatalogManager } from "../../components/desktopHomeCatalogManager.js";
+import { createDesktopCollectionManager } from "../../components/desktopCollectionManager.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
@@ -2239,6 +2240,7 @@ export const SettingsScreen = {
     this.pillIconOnly = false;
     this.desktopAddonExpanded = Boolean(this.desktopAddonExpanded);
     this.desktopPluginExpanded = Boolean(this.desktopPluginExpanded);
+    this.desktopCollectionExpanded = Boolean(this.desktopCollectionExpanded);
     this.desktopTrackingExpanded = this.desktopTrackingExpanded || {
       trakt: false,
       simkl: false,
@@ -2251,6 +2253,9 @@ export const SettingsScreen = {
       requestRender: () => this.render({ refreshModel: false })
     });
     this.desktopHomeCatalogManager = this.desktopHomeCatalogManager || createDesktopHomeCatalogManager({
+      requestRender: () => this.render({ refreshModel: false })
+    });
+    this.desktopCollectionManager = this.desktopCollectionManager || createDesktopCollectionManager({
       requestRender: () => this.render({ refreshModel: false })
     });
     const [sidebarProfile, initialModel] = await Promise.all([
@@ -4593,6 +4598,14 @@ export const SettingsScreen = {
       }
       await Router.navigate("plugins");
     });
+    this.actionMap.set("contentDiscovery:collections", async () => {
+      if (!Platform.isBrowser()) return;
+      this.desktopCollectionManager.toggle();
+      this.desktopCollectionExpanded = this.desktopCollectionManager.expanded;
+      if (this.desktopCollectionExpanded) {
+        await this.desktopCollectionManager.load();
+      }
+    });
 
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "contentDiscovery"))}
@@ -4641,6 +4654,18 @@ export const SettingsScreen = {
                     ),
                     leadingIcon: "build"
                   })
+          }
+          ${
+            Platform.isBrowser()
+              ? this.renderCollapsibleRow({
+                  focusKey: "contentDiscovery:collections",
+                  title: "Collections",
+                  subtitle: "Manage custom collections and folders shown on Home.",
+                  expanded: Boolean(this.desktopCollectionExpanded),
+                  bodyHtml: this.desktopCollectionExpanded ? this.desktopCollectionManager?.render() || "" : "",
+                  classes: "settings-collapsible-collections"
+                })
+              : ""
           }
         </div>
       </div>
@@ -8201,6 +8226,9 @@ export const SettingsScreen = {
     }
     if (isDesktopBrowser && this.desktopPluginExpanded && section.id === "contentDiscovery") {
       this.desktopPluginManager.bind(contentSlot);
+    }
+    if (isDesktopBrowser && this.desktopCollectionExpanded && section.id === "contentDiscovery") {
+      this.desktopCollectionManager.bind(contentSlot);
     }
     if (isDesktopBrowser && this.expandedSections?.layout?.homeCatalogs && section.id === "layout") {
       this.desktopHomeCatalogManager.bind(contentSlot);

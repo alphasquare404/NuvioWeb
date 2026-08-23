@@ -23,6 +23,7 @@ import { StreamScreen } from "../screens/stream/streamScreen.js";
 import { CastDetailScreen } from "../screens/cast/castDetailScreen.js";
 import { CatalogSeeAllScreen } from "../screens/catalog/catalogSeeAllScreen.js";
 import { FolderDetailScreen } from "../screens/collection/folderDetailScreen.js";
+import { CollectionEditorScreen, CollectionFolderEditorScreen } from "../screens/collection/collectionEditorScreen.js";
 import { Platform } from "../../platform/index.js";
 import { RouteStateStore } from "./routeStateStore.js";
 import { LocalStore } from "../../core/storage/localStore.js";
@@ -106,7 +107,9 @@ export const Router = {
     stream: StreamScreen,
     castDetail: CastDetailScreen,
     catalogSeeAll: CatalogSeeAllScreen,
-    folderDetail: FolderDetailScreen
+    folderDetail: FolderDetailScreen,
+    collectionEdit: CollectionEditorScreen,
+    collectionFolderEdit: CollectionFolderEditorScreen
   },
 
   getRouteStateKey(routeName, params = {}) {

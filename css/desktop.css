@@ -6062,6 +6062,63 @@ html.desktop-browser {
   color: var(--text-color);
 }
 
+/* Desktop Collection management and editors. */
+.desktop-browser .settings-shell .settings-collapsible-collections .settings-collapsible-body { margin-left: 12px; }
+.desktop-browser .settings-shell .settings-collapsible-collections .settings-subsection-card { background: rgba(255, 255, 255, 0.025); }
+.desktop-browser .desktop-collection-manager { display: grid; gap: 14px; min-width: 0; }
+.desktop-browser .desktop-collection-manager-intro, .desktop-browser .desktop-collection-manager-empty { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.45; }
+.desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-editor-section-heading, .desktop-browser .desktop-collection-editor-row, .desktop-browser .desktop-collection-editor-toggle-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.desktop-browser .desktop-collection-add-form input, .desktop-browser .desktop-collection-editor-card input, .desktop-browser .desktop-collection-source-add select { min-width: 0; height: 42px; padding: 0 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; background: rgba(0,0,0,.24); color: var(--text-color); font: inherit; box-sizing: border-box; }
+.desktop-browser .desktop-collection-add-form input { flex: 1 1 auto; }
+.desktop-browser .desktop-collection-add-form button, .desktop-browser .desktop-collection-editor-section-heading > button, .desktop-browser .desktop-collection-source-add button, .desktop-browser .desktop-collection-editor-actions button { min-height: 38px; padding: 0 13px; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; background: #f4f4f4; color: #151515; font: 600 13px/1 inherit; cursor: pointer; white-space: nowrap; }
+.desktop-browser .desktop-collection-manager-error { margin: -5px 0 0; color: #ff9daa; font-size: 13px; }
+.desktop-browser .desktop-collection-manager-list, .desktop-browser .desktop-collection-editor-list { display: grid; gap: 10px; }
+.desktop-browser .desktop-collection-manager-row, .desktop-browser .desktop-collection-editor-row { padding: 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 13px; background: rgba(255,255,255,.045); }
+.desktop-browser .desktop-collection-manager-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.desktop-browser .desktop-collection-manager-copy { flex: 1 1 auto; min-width: 0; }
+.desktop-browser .desktop-collection-manager-copy h3, .desktop-browser .desktop-collection-manager-copy p, .desktop-browser .desktop-collection-editor-row h3, .desktop-browser .desktop-collection-editor-row p { overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-browser .desktop-collection-manager-copy h3, .desktop-browser .desktop-collection-editor-row h3 { color: var(--text-color); font-size: 15px; line-height: 1.3; }
+.desktop-browser .desktop-collection-manager-copy p, .desktop-browser .desktop-collection-editor-row p { margin-top: 4px; color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
+.desktop-browser .desktop-collection-manager-actions, .desktop-browser .desktop-collection-editor-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+.desktop-browser .desktop-collection-manager-actions button, .desktop-browser .desktop-collection-editor-actions button { min-height: 34px; padding: 0 10px; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; background: rgba(255,255,255,.07); color: var(--text-color); cursor: pointer; font: 600 12px/1 inherit; }
+.desktop-browser .desktop-collection-manager-actions .is-danger, .desktop-browser .desktop-collection-editor-actions .is-danger { color: #ffb1b9; }
+.desktop-browser .desktop-collection-drag-handle { display: inline-grid; flex: 0 0 auto; width: 32px; height: 36px; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.15); border-radius: 9px; background: rgba(255,255,255,.04); color: var(--text-tertiary); cursor: grab; touch-action: pan-y; }
+.desktop-browser .desktop-collection-drag-handle:active { cursor: grabbing; }
+.desktop-browser .desktop-collection-editor-shell { min-height: 100vh; padding: clamp(92px, 10vw, 132px) clamp(32px, 4vw, 64px) 72px; background: #111; color: var(--text-color); box-sizing: border-box; }
+.desktop-browser .desktop-collection-editor-shell > * { width: min(100%, 980px); margin-right: auto; margin-left: auto; }
+.desktop-browser .desktop-collection-editor-back { position: fixed; z-index: 20; top: 24px; left: 28px; display: grid; width: 44px; height: 44px; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; background: rgba(0,0,0,.58); color: #fff; cursor: pointer; backdrop-filter: blur(10px); }
+.desktop-browser .desktop-collection-editor-header { margin-bottom: 26px; }
+.desktop-browser .desktop-collection-editor-header p { margin: 0 0 5px; color: var(--text-secondary); font-size: 14px; }
+.desktop-browser .desktop-collection-editor-header h1 { margin: 0; font-size: clamp(27px,3vw,38px); line-height: 1.1; }
+.desktop-browser .desktop-collection-editor-card, .desktop-browser .desktop-collection-editor-section { display: grid; gap: 18px; padding: 20px; border: 1px solid rgba(255,255,255,.1); border-radius: 17px; background: rgba(255,255,255,.035); box-sizing: border-box; }
+.desktop-browser .desktop-collection-editor-section { margin-top: 18px; }
+.desktop-browser .desktop-collection-editor-card label { display: grid; gap: 8px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.desktop-browser .desktop-collection-backdrop-preview { width: min(100%, 420px); max-height: 150px; border-radius: 11px; object-fit: cover; }
+.desktop-browser .desktop-collection-editor-toggle-row { justify-content: space-between; padding: 4px 0; }
+.desktop-browser .desktop-collection-editor-toggle-row span { display: grid; gap: 4px; }
+.desktop-browser .desktop-collection-editor-toggle-row strong { font-size: 14px; }
+.desktop-browser .desktop-collection-editor-toggle-row small { color: var(--text-secondary); font-size: 12px; }
+.desktop-browser .desktop-collection-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.desktop-browser .desktop-collection-switch span { display: block; width: 42px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.16); cursor: pointer; transition: background .15s ease; }
+.desktop-browser .desktop-collection-switch span::after { width: 18px; height: 18px; margin: 3px; border-radius: 50%; background: white; content: ""; transition: transform .15s ease; }
+.desktop-browser .desktop-collection-switch input:checked + span { background: rgb(var(--secondary-color-rgb) / .9); }
+.desktop-browser .desktop-collection-switch input:checked + span::after { transform: translateX(18px); }
+.desktop-browser .desktop-collection-segmented { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
+.desktop-browser .desktop-collection-segmented legend { width: 100%; margin-bottom: 3px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.desktop-browser .desktop-collection-segmented button { min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; background: rgba(255,255,255,.05); color: var(--text-color); cursor: pointer; }
+.desktop-browser .desktop-collection-segmented button.is-selected { border-color: rgba(255,255,255,.74); background: #f4f4f4; color: #151515; }
+.desktop-browser .desktop-collection-editor-section-heading { justify-content: space-between; }
+.desktop-browser .desktop-collection-editor-section-heading h2 { margin: 0; font-size: 19px; }
+.desktop-browser .desktop-collection-editor-section-heading p { margin: 4px 0 0; color: var(--text-secondary); font-size: 13px; }
+.desktop-browser .desktop-collection-editor-row > div:nth-child(2) { flex: 1 1 auto; min-width: 0; }
+.desktop-browser .desktop-folder-cover { display: grid; flex: 0 0 auto; width: 46px; height: 46px; overflow: hidden; place-items: center; border-radius: 9px; background: rgba(255,255,255,.08); color: var(--text-secondary); }
+.desktop-browser .desktop-folder-cover img { width: 100%; height: 100%; object-fit: cover; }
+.desktop-browser .desktop-collection-source-add { display: flex; gap: 10px; }
+.desktop-browser .desktop-collection-source-add select { flex: 1 1 auto; }
+@media (hover:hover) and (pointer:fine) { .desktop-browser .desktop-collection-manager-row:hover, .desktop-browser .desktop-collection-editor-row:hover { border-color: rgba(255,255,255,.25); background: rgba(255,255,255,.075); } .desktop-browser .desktop-collection-editor-back:hover { background: rgba(255,255,255,.16); } }
+.desktop-browser .desktop-collection-add-form input:focus-visible, .desktop-browser .desktop-collection-editor-card input:focus-visible, .desktop-browser .desktop-collection-editor-back:focus-visible, .desktop-browser .desktop-collection-segmented button:focus-visible, .desktop-browser .desktop-collection-manager-actions button:focus-visible, .desktop-browser .desktop-collection-editor-actions button:focus-visible { outline: 2px solid rgb(var(--secondary-color-rgb) / .9); outline-offset: 2px; }
+@media (max-width: 640px) { .desktop-browser .desktop-collection-editor-shell { padding: 88px 18px 48px; } .desktop-browser .desktop-collection-editor-back { left: 18px; } .desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-editor-section-heading, .desktop-browser .desktop-collection-editor-row { align-items: flex-start; } .desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-source-add { flex-direction: column; } .desktop-browser .desktop-collection-add-form button { width: 100%; } .desktop-browser .desktop-collection-manager-row, .desktop-browser .desktop-collection-editor-row { display: grid; grid-template-columns: auto minmax(0,1fr); } .desktop-browser .desktop-collection-manager-actions, .desktop-browser .desktop-collection-editor-actions { grid-column: 1 / -1; justify-content: flex-end; } }
+
 .desktop-browser .settings-shell .settings-collapsible-home-catalogs .settings-collapsible-body {
   margin-left: 12px;
 }
