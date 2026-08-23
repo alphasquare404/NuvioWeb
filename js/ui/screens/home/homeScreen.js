@@ -63,6 +63,7 @@ import {
 } from "../../components/desktopNavigation.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
 import {
   CW_DAYS_CAP,
   CW_DISPLAY_SNAPSHOT_KEY,
@@ -8177,6 +8178,7 @@ export const HomeScreen = {
         }
         if (!state.dragging) {
           state.dragging = true;
+          this.desktopMediaHoverPreview?.cancelForDrag();
           track.setPointerCapture?.(event.pointerId);
         }
         track.classList.add("is-pointer-dragging");
@@ -8236,6 +8238,43 @@ export const HomeScreen = {
       };
     }
     this.desktopCatalogDragState = null;
+  },
+
+  bindDesktopMediaHoverPreview() {
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+    this.desktopMediaHoverPreview ||= createDesktopMediaHoverPreview({
+      getItem: (node) => this.getPosterItemFromNode(node),
+      openDetail: (node) => this.openDetailFromNode(node),
+      resolveTrailer: (item) => resolveTrailerMetaWithTmdbFallback(item, item?.type || "movie"),
+      resolveMetadata: (item) => this.resolveDesktopHoverPreviewMetadata(item)
+    });
+    this.desktopMediaHoverPreview.bind(this.container);
+  },
+
+  async resolveDesktopHoverPreviewMetadata(item) {
+    const itemId = String(item?.id || "").trim();
+    const itemType = String(item?.type || item?.apiType || "movie").trim() || "movie";
+    if (!itemId) return null;
+    const mdbImdbRatingPromise = withTimeout(
+      mdbListRepository.getImdbRatingForItem(itemId, itemType),
+      3500,
+      null
+    ).catch(() => null);
+    const result = await withTimeout(
+      metaRepository.getMetaFromAllAddons(itemType, itemId),
+      4000,
+      { status: "error", message: "timeout" }
+    ).catch(() => ({ status: "error" }));
+    if (result?.status !== "success" || !result.data) return null;
+    const meta = normalizeCatalogItem({ ...result.data, id: itemId, type: result.data.type || itemType }, itemType);
+    const mdbImdbRating = await mdbImdbRatingPromise;
+    return {
+      ...meta,
+      type: meta.type || itemType,
+      imdbRating: mdbImdbRating != null ? Number(mdbImdbRating).toFixed(1) : resolveImdbRating(meta)
+    };
   },
 
   bindHomeViewportEvents() {
@@ -9516,6 +9555,7 @@ export const HomeScreen = {
       this.bindDesktopHeroDetailsButton();
       this.bindDesktopHeroCarouselControls();
       this.bindDesktopCatalogDragScrolling();
+      this.bindDesktopMediaHoverPreview();
     } else {
       bindRootSidebarEvents(this.container, {
         currentRoute: "home",
@@ -11538,6 +11578,8 @@ export const HomeScreen = {
   },
 
   cleanup() {
+    this.desktopMediaHoverPreview?.destroy();
+    this.desktopMediaHoverPreview = null;
     this.cancelModernSidebarPillAutoCollapse();
     this.cancelPendingContinueWatchingEnter();
     this.cancelPendingContinueWatchingHold();

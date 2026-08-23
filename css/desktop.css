@@ -7195,3 +7195,34 @@ html.desktop-browser {
     padding: 24px 16px 40px;
   }
 }
+
+/* Home desktop hover preview: a document-level portal avoids shelf clipping. */
+.desktop-browser .desktop-media-hover-preview { position: fixed; z-index: 120; overflow: hidden; border: 1px solid rgba(255,255,255,.18); border-radius: 16px; background: rgba(22,22,26,.98); box-shadow: 0 22px 58px rgba(0,0,0,.52); opacity: 0; pointer-events: auto; transform: translateY(8px) scale(.98); transition: opacity 170ms ease, transform 170ms ease; }
+.desktop-browser .desktop-media-hover-preview.is-open { opacity: 1; transform: translateY(0) scale(1); }
+.desktop-browser .desktop-media-hover-preview.is-closing { opacity: 0; pointer-events: none; transform: translateY(5px) scale(.985); }
+.desktop-browser .desktop-media-hover-preview-media { position: relative; isolation: isolate; aspect-ratio: 16 / 9; overflow: hidden; background: #111; }
+.desktop-browser .desktop-media-hover-preview-media > img, .desktop-browser .desktop-media-hover-preview-media > iframe { position: absolute; z-index: 1; inset: 0; display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
+.desktop-browser .desktop-media-hover-preview-youtube-host, .desktop-browser .desktop-media-hover-preview-youtube-host iframe { position: absolute; z-index: 1; inset: 0; display: block; width: 100%; height: 100%; border: 0; }
+.desktop-browser .desktop-media-hover-preview-media-layer { position: absolute; z-index: 2; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 40%, rgba(22,22,26,.86) 100%); }
+.desktop-browser .desktop-media-hover-preview-trailer-controls { position: absolute; z-index: 10; inset: 0; pointer-events: none; }
+.desktop-browser .desktop-media-hover-preview-audio { position: absolute; z-index: 11; right: 10px; bottom: 10px; display: inline-grid; width: 34px; height: 34px; padding: 0; place-items: center; pointer-events: auto; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(0,0,0,.62); color: #fff; cursor: pointer; backdrop-filter: blur(8px); }
+.desktop-browser .desktop-media-hover-preview-audio .material-icons { font-size: 19px; }
+.desktop-browser .desktop-media-hover-preview-audio:hover { background: rgba(40,40,45,.88); }
+.desktop-browser .desktop-media-hover-preview-audio:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.desktop-browser .desktop-media-hover-preview-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, #31313a, #17171b); }
+.desktop-browser .desktop-media-hover-preview-copy { padding: 14px 15px 15px; }
+.desktop-browser .desktop-media-hover-preview-copy h2 { overflow: hidden; margin: 0; color: #fff; font-size: 18px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-browser .desktop-media-hover-preview-meta { overflow: hidden; margin: 6px 0 13px; color: rgba(255,255,255,.63); font-size: 13px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-browser .desktop-media-hover-preview-facts { overflow: hidden; margin: -6px 0 10px; color: rgba(255,255,255,.78); font-size: 12px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-browser .desktop-media-hover-preview-facts span { color: rgba(255,255,255,.42); }
+.desktop-browser .desktop-media-hover-preview-overview { display: -webkit-box; margin: 0 0 13px; overflow: hidden; color: rgba(255,255,255,.72); font-size: 13px; line-height: 1.42; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+.desktop-browser .desktop-media-hover-preview-actions { display: flex; gap: 8px; }
+.desktop-browser .desktop-media-hover-preview-actions button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; font: 600 13px/1 inherit; cursor: pointer; }
+.desktop-browser .desktop-media-hover-preview-actions .material-icons { font-size: 17px; }
+.desktop-browser .desktop-media-hover-preview-primary { background: #f4f4f4; color: #151515; }
+.desktop-browser .desktop-media-hover-preview-secondary { background: rgba(255,255,255,.08); color: #fff; }
+.desktop-browser .desktop-media-hover-preview-actions button:disabled { cursor: default; opacity: .62; }
+.desktop-browser .desktop-media-hover-preview-actions button:focus-visible { outline: 2px solid var(--secondary-color); outline-offset: 2px; }
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.desktop-hover-preview-active .home-poster-frame { transform: none; border-color: transparent; box-shadow: none; }
+@media (hover: hover) and (pointer: fine) { .desktop-browser .desktop-media-hover-preview-actions button:not(:disabled):hover { border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.16); } .desktop-browser .desktop-media-hover-preview-actions .desktop-media-hover-preview-primary:not(:disabled):hover { background: #fff; } }
+@media (max-width: 1100px) { .desktop-browser .desktop-media-hover-preview { max-width: calc(100vw - 32px); } }
