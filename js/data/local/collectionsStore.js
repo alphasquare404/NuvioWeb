@@ -1,6 +1,19 @@
 import { createProfileScopedStore } from "./profileScopedStore.js";
+import { ProfileManager } from "../../core/profile/profileManager.js";
 
 const KEY = "collectionsState";
+const listeners = new Set();
+
+function notifyListeners(profileId, collections) {
+  const snapshot = cloneCollections(collections);
+  listeners.forEach((listener) => {
+    try {
+      listener({ profileId: String(profileId), collections: snapshot });
+    } catch (error) {
+      console.warn("Collection store listener failed", error);
+    }
+  });
+}
 
 export const CollectionPosterShape = {
   POSTER: "POSTER",
@@ -16,6 +29,10 @@ export const CollectionFolderViewMode = {
 
 function stringOrEmpty(value) {
   return String(value || "").trim();
+}
+
+function resolveProfileId(profileId = null) {
+  return String(profileId ?? ProfileManager.getActiveProfileId() ?? "1");
 }
 
 function stringOrNull(value) {
@@ -212,6 +229,9 @@ function normalizeState(value = {}) {
 
 const store = createProfileScopedStore({
   key: KEY,
+  // Collections are user content, not a profile-1 default template.
+  seedFromPrimary: false,
+  legacyMigration: "active",
   normalize: normalizeState,
   merge(current, partial) {
     const next = partial && typeof partial === "object" ? partial : {};
@@ -269,11 +289,21 @@ export const CollectionsStore = {
     return cloneCollections(this.getStateForProfile(profileId).collections);
   },
 
+  subscribe(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  },
+
   replaceForProfile(profileId, collections = [], { silentSync = false } = {}) {
+    const resolvedProfileId = resolveProfileId(profileId);
     const normalized = normalizeState({ collections }).collections;
-    store.replaceForProfile(profileId, { collections: normalized }, { silentSync: true });
+    store.replaceForProfile(resolvedProfileId, { collections: normalized }, { silentSync: true });
+    notifyListeners(resolvedProfileId, normalized);
     if (!silentSync) {
-      queueCollectionSync(profileId);
+      queueCollectionSync(resolvedProfileId);
     }
     return cloneCollections(normalized);
   },

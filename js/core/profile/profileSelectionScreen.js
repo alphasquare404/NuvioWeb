@@ -2,6 +2,7 @@ import { Router } from "../../ui/navigation/router.js";
 import { MAX_PROFILES, ProfileManager } from "../../core/profile/profileManager.js";
 import { ProfileSyncService } from "../../core/profile/profileSyncService.js";
 import { StartupSyncService } from "../../core/profile/startupSyncService.js";
+import { CollectionSyncService } from "../../core/profile/collectionSyncService.js";
 import { ScreenUtils } from "../../ui/navigation/screen.js";
 import { AvatarRepository } from "../../data/remote/supabase/avatarRepository.js";
 import { ThemeManager } from "../../ui/theme/themeManager.js";
@@ -2138,6 +2139,9 @@ export const ProfileSelectionScreen = {
     try {
       await ProfileManager.setActiveProfile(profileId);
       StartupSyncService.enableProfileScopedSync();
+      // Keep a rapid profile switch from resolving Collections against a later
+      // active profile while the broader startup sync is still in flight.
+      void CollectionSyncService.pull(profileId);
       detailWatchedEnrichmentService.invalidateAllCache();
       await I18n.init();
       ThemeManager.apply();

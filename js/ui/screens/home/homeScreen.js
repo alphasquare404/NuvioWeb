@@ -8274,6 +8274,7 @@ export const HomeScreen = {
   async mount(params = {}, navigationContext = {}) {
     const mountStart = HOME_PERF_DEBUG ? homePerfNow() : 0;
     this.container = document.getElementById("home");
+    this.bindCollectionStoreSubscription();
     const restoredRouteFocusState =
       navigationContext?.isBackNavigation && navigationContext?.restoredState?.layoutMode
         ? navigationContext.restoredState
@@ -8470,6 +8471,21 @@ export const HomeScreen = {
       route: "home",
       background: false,
       layoutMode: String(this.layoutMode || "")
+    });
+  },
+
+  bindCollectionStoreSubscription() {
+    if (this.unsubscribeCollectionStoreChanges) return;
+    this.unsubscribeCollectionStoreChanges = CollectionsStore.subscribe(({ profileId }) => {
+      const activeProfileId = String(ProfileManager.getActiveProfileId() || "");
+      if (String(profileId || "") !== activeProfileId || Router.getCurrent() !== "home") {
+        return;
+      }
+      this.collections = CollectionsStore.getForProfile(activeProfileId);
+      const catalogRows = (this.rows || []).filter((row) => row?.rowKind !== "collection");
+      this.rows = this.sortAndFilterRows(catalogRows, this.collections);
+      this.refreshHeroCandidates();
+      this.render();
     });
   },
 
@@ -11528,6 +11544,10 @@ export const HomeScreen = {
     this.clearFocusedPosterFlowState();
     this.collapseFocusedPoster();
     this.clearDesktopCatalogDrag();
+    if (this.unsubscribeCollectionStoreChanges) {
+      this.unsubscribeCollectionStoreChanges();
+      this.unsubscribeCollectionStoreChanges = null;
+    }
     if (this.boundDesktopCatalogDragClickHandler) {
       this.container?.removeEventListener("click", this.boundDesktopCatalogDragClickHandler, true);
       this.boundDesktopCatalogDragClickHandler = null;

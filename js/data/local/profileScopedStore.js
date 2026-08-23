@@ -62,7 +62,7 @@ function normalizeEnvelopeProfiles(profiles = {}, normalize) {
   return normalized;
 }
 
-function readEnvelope(key, normalize) {
+function readEnvelope(key, normalize, { legacyMigration = "all" } = {}) {
   const raw = LocalStore.get(key, null);
   if (isProfileScopedEnvelope(raw)) {
     const next = {
@@ -79,7 +79,7 @@ function readEnvelope(key, normalize) {
     return createEmptyEnvelope();
   }
 
-  const profileIds = getKnownProfileIds();
+  const profileIds = legacyMigration === "active" ? [normalizeProfileId()] : getKnownProfileIds();
   const normalizedLegacy = normalize(cloneValue(raw) || {});
   const migrated = createEmptyEnvelope();
   profileIds.forEach((profileId) => {
@@ -121,14 +121,14 @@ export function hasProfileSettingsCloudSyncPending(profileId = null) {
   return Object.prototype.hasOwnProperty.call(pending, normalizedProfileId);
 }
 
-function ensureProfileValue(key, envelope, normalize, profileId) {
+function ensureProfileValue(key, envelope, normalize, profileId, { seedFromPrimary = true } = {}) {
   const normalizedProfileId = normalizeProfileId(profileId);
   if (Object.prototype.hasOwnProperty.call(envelope.profiles, normalizedProfileId)) {
     return envelope.profiles[normalizedProfileId];
   }
 
   const primaryValue = envelope.profiles["1"];
-  const seed = primaryValue != null ? cloneValue(primaryValue) : normalize({});
+  const seed = seedFromPrimary && primaryValue != null ? cloneValue(primaryValue) : normalize({});
   envelope.profiles[normalizedProfileId] = normalize(seed || {});
   persistEnvelope(key, envelope);
   return envelope.profiles[normalizedProfileId];
@@ -171,7 +171,13 @@ export function queueProfileSettingsCloudSync(
   scheduledSettingsSyncTimers.set(normalizedProfileId, timerId);
 }
 
-export function createProfileScopedStore({ key, normalize, merge }) {
+export function createProfileScopedStore({
+  key,
+  normalize,
+  merge,
+  seedFromPrimary = true,
+  legacyMigration = "all"
+}) {
   const mergeValues =
     typeof merge === "function"
       ? merge
@@ -179,8 +185,10 @@ export function createProfileScopedStore({ key, normalize, merge }) {
 
   return {
     getForProfile(profileId) {
-      const envelope = readEnvelope(key, normalize);
-      return cloneValue(ensureProfileValue(key, envelope, normalize, profileId));
+      const envelope = readEnvelope(key, normalize, { legacyMigration });
+      return cloneValue(
+        ensureProfileValue(key, envelope, normalize, profileId, { seedFromPrimary })
+      );
     },
 
     get() {
@@ -188,7 +196,7 @@ export function createProfileScopedStore({ key, normalize, merge }) {
     },
 
     replaceForProfile(profileId, nextValue, { silentSync = false } = {}) {
-      const envelope = readEnvelope(key, normalize);
+      const envelope = readEnvelope(key, normalize, { legacyMigration });
       const normalizedProfileId = normalizeProfileId(profileId);
       envelope.profiles[normalizedProfileId] = normalize(cloneValue(nextValue) || {});
       persistEnvelope(key, envelope);
@@ -208,7 +216,7 @@ export function createProfileScopedStore({ key, normalize, merge }) {
     },
 
     clearProfile(profileId, { silentSync = false } = {}) {
-      const envelope = readEnvelope(key, normalize);
+      const envelope = readEnvelope(key, normalize, { legacyMigration });
       const normalizedProfileId = normalizeProfileId(profileId);
       delete envelope.profiles[normalizedProfileId];
       persistEnvelope(key, envelope);

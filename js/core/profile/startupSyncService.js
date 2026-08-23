@@ -131,6 +131,7 @@ export const StartupSyncService = {
       return false;
     }
     let didApplyProfileSettings = false;
+    const activeProfileId = ProfileManager.getActiveProfileId();
     for (let attempt = 1; attempt <= MAX_PULL_ATTEMPTS; attempt += 1) {
       try {
         const profiles = await ProfileSyncService.pull();
@@ -153,7 +154,7 @@ export const StartupSyncService = {
         if (!includeProfileScoped) {
           return didApplyProfileSettings;
         }
-        await CollectionSyncService.pull();
+        await CollectionSyncService.pull(activeProfileId);
         await HomeCatalogSettingsSyncService.pull();
         await PluginSyncService.pull();
         await LibrarySyncService.pull();
