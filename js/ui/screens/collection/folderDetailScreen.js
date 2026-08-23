@@ -1,6 +1,7 @@
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { Environment } from "../../../platform/environment.js";
+import { Platform } from "../../../platform/index.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
@@ -36,6 +37,7 @@ const TMDB_BACKDROP_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w1280";
 const TRAKT_PAGE_SIZE = 50;
 const FOLDER_LOADING_ROW_ITEM_COUNT = 6;
 const FOLDER_SOURCE_RENDER_BATCH_MS = 180;
+const collectionAmbientColorCache = new Map();
 const STREAMING_NETWORK_PRESETS = new Map([
   ["netflix", { title: "Netflix", tmdbId: 213 }],
   ["hbo", { title: "HBO", tmdbId: 49 }],
@@ -73,6 +75,73 @@ function firstNonEmpty(...values) {
     }
   }
   return "";
+}
+
+function getCollectionAmbientArtwork(collection = {}, folder = {}) {
+  return firstNonEmpty(
+    collection.backdropImageUrl,
+    folder.heroBackdropUrl,
+    folder.coverImageUrl,
+    folder.titleLogoUrl
+  );
+}
+
+function toAmbientRgb(imageData) {
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let weight = 0;
+  for (let index = 0; index < imageData.length; index += 4) {
+    const alpha = imageData[index + 3];
+    const r = imageData[index];
+    const g = imageData[index + 1];
+    const b = imageData[index + 2];
+    const brightness = (r + g + b) / 3;
+    const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+    if (alpha < 160 || brightness < 24 || brightness > 236 || saturation < 18) continue;
+    const pixelWeight = (saturation / 255) * (0.45 + brightness / 510);
+    red += r * pixelWeight;
+    green += g * pixelWeight;
+    blue += b * pixelWeight;
+    weight += pixelWeight;
+  }
+  if (!weight) return null;
+  return [Math.round(red / weight), Math.round(green / weight), Math.round(blue / weight)];
+}
+
+function extractCollectionAmbientColor(url) {
+  const normalizedUrl = String(url || "").trim();
+  if (!normalizedUrl || typeof Image === "undefined" || typeof document === "undefined") {
+    return Promise.resolve(null);
+  }
+  if (collectionAmbientColorCache.has(normalizedUrl)) {
+    return collectionAmbientColorCache.get(normalizedUrl);
+  }
+  const extraction = new Promise((resolve) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 24;
+        canvas.height = 24;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) {
+          resolve(null);
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(toAmbientRgb(context.getImageData(0, 0, canvas.width, canvas.height).data));
+      } catch (_) {
+        // Cross-origin or canvas failures fall back to the neutral ambient layer.
+        resolve(null);
+      }
+    };
+    image.onerror = () => resolve(null);
+    image.src = normalizedUrl;
+  });
+  collectionAmbientColorCache.set(normalizedUrl, extraction);
+  return extraction;
 }
 
 function toImageUrl(path, kind = "poster") {
@@ -892,9 +961,15 @@ export const FolderDetailScreen = {
     this.navModel = { rows: [] };
     this.tabs = [];
     const preferredHomeLayout = String(this.layoutPrefs?.homeLayout || "classic").toLowerCase();
-    this.viewMode = String(this.collection?.viewMode || "TABBED_GRID").toUpperCase();
+    this.isDesktopBrowser = Platform.isBrowser();
+    const savedViewMode = String(this.collection?.viewMode || "TABBED_GRID").toUpperCase();
+    // Browser collections keep their own information architecture. FOLLOW_LAYOUT
+    // intentionally maps to its non-hero row presentation on desktop.
+    this.viewMode =
+      this.isDesktopBrowser && savedViewMode === "FOLLOW_LAYOUT" ? "ROWS" : savedViewMode;
     this.useHomeFollowLayout =
-      this.viewMode === "FOLLOW_LAYOUT" || preferredHomeLayout === "modern";
+      !this.isDesktopBrowser &&
+      (this.viewMode === "FOLLOW_LAYOUT" || preferredHomeLayout === "modern");
     this.folderRouteEnterPending = true;
     this.heroItem = null;
 
@@ -951,6 +1026,23 @@ export const FolderDetailScreen = {
       loading: false,
       error: ""
     }));
+    if (this.isDesktopBrowser) {
+      sourceTabs.forEach((tab) => {
+        tab.label = String(tab.label || "Catalog")
+          .replace(/\s*[·-]\s*(none|null|undefined)\s*$/i, "")
+          .trim();
+      });
+      const sourceTabLabelCounts = sourceTabs.reduce((counts, tab) => {
+        const label = String(tab.label || "Catalog");
+        counts.set(label, Number(counts.get(label) || 0) + 1);
+        return counts;
+      }, new Map());
+      sourceTabs.forEach((tab) => {
+        if (sourceTabLabelCounts.get(tab.label) > 1) {
+          tab.label = `${tab.label} · ${sourceType(tab.source) === "series" ? "Series" : "Movie"}`;
+        }
+      });
+    }
     this.sourceTabs = sourceTabs;
     this.tabs =
       this.collection.showAllTab !== false && sourceTabs.length > 1
@@ -1057,6 +1149,95 @@ export const FolderDetailScreen = {
 
   getSelectedTab() {
     return this.tabs[this.selectedTabIndex] || null;
+  },
+
+  getDesktopHeaderMetadata() {
+    const collectionTitle = String(this.collection?.title || "").trim();
+    const folderTitle = String(this.folder?.title || "").trim();
+    const sourceTypes = Array.from(
+      new Set(
+        (this.sourceTabs || [])
+          .map((tab) => (sourceType(tab?.source || {}) === "series" ? "Series" : "Movies"))
+          .filter(Boolean)
+      )
+    );
+    return [folderTitle, ...sourceTypes].filter((value, index, values) => {
+      const normalized = String(value || "").trim();
+      return (
+        normalized &&
+        !/^(none|null|undefined)$/i.test(normalized) &&
+        normalized.toLowerCase() !== collectionTitle.toLowerCase() &&
+        values.findIndex((entry) => String(entry || "").toLowerCase() === normalized.toLowerCase()) ===
+          index
+      );
+    });
+  },
+
+  applyDesktopAmbientTheme() {
+    if (!this.isDesktopBrowser || !this.container) return;
+    const artworkUrl = getCollectionAmbientArtwork(this.collection, this.folder);
+    const ambientLayer = this.container.querySelector(".folder-detail-desktop-ambient");
+    if (!ambientLayer) return;
+
+    const cssUrl = artworkUrl.replace(/["\\]/g, "\\$&");
+    ambientLayer.style.setProperty(
+      "--collection-ambient-artwork",
+      artworkUrl ? `url("${cssUrl}")` : "none"
+    );
+    this.ambientArtworkUrl = artworkUrl;
+    void extractCollectionAmbientColor(artworkUrl).then((rgb) => {
+      if (!rgb || this.ambientArtworkUrl !== artworkUrl || !this.container) return;
+      this.container.style.setProperty("--collection-ambient-rgb", rgb.join(" "));
+    });
+  },
+
+  openDetailFromNode(node) {
+    if (!node) return;
+    this.lastFocusedKey = String(node.dataset.focusKey || this.lastFocusedKey || "");
+    Router.navigate("detail", {
+      itemId: node.dataset.itemId || "",
+      itemType: node.dataset.itemType || node.dataset.catalogType || "movie",
+      fallbackTitle: node.dataset.itemTitle || "Untitled",
+      fallbackPoster: node.dataset.posterSrc || "",
+      fallbackBackground: node.dataset.backdropSrc || "",
+      addonBaseUrl: node.dataset.addonBaseUrl || "",
+      addonId: node.dataset.addonId || "",
+      addonName: node.dataset.addonName || "",
+      catalogType: node.dataset.catalogType || node.dataset.itemType || "movie"
+    });
+  },
+
+  bindDesktopBrowserEvents() {
+    if (!this.isDesktopBrowser || !this.container) return;
+    if (this.boundDesktopCollectionClickContainer === this.container) return;
+    if (this.boundDesktopCollectionClickContainer && this.boundDesktopCollectionClickHandler) {
+      this.boundDesktopCollectionClickContainer.removeEventListener(
+        "click",
+        this.boundDesktopCollectionClickHandler
+      );
+    }
+    this.boundDesktopCollectionClickHandler = async (event) => {
+      const target = event?.target?.closest?.(
+        ".folder-detail-desktop-back, .folder-detail-tab, .seeall-card[data-action='openDetail']"
+      );
+      if (!target || !this.container?.contains(target)) return;
+      event.preventDefault?.();
+      if (target.classList.contains("folder-detail-desktop-back")) {
+        this.prepareHomeReturnAnimation();
+        await Router.back();
+        return;
+      }
+      if (target.classList.contains("folder-detail-tab")) {
+        this.selectedTabIndex = Math.max(0, Number(target.dataset.tabIndex || 0));
+        this.lastFocusedKey = `tab:${this.selectedTabIndex}`;
+        this.savedScrollTop = 0;
+        this.render();
+        return;
+      }
+      this.openDetailFromNode(target);
+    };
+    this.container.addEventListener("click", this.boundDesktopCollectionClickHandler);
+    this.boundDesktopCollectionClickContainer = this.container;
   },
 
   buildNavigationModel() {
@@ -1411,15 +1592,36 @@ export const FolderDetailScreen = {
       })
       .join("");
 
+    const desktopHeaderMeta = this.getDesktopHeaderMetadata();
+    const desktopHeaderLogo = String(this.folder?.titleLogoUrl || "").trim();
     this.container.innerHTML =
-      this.viewMode === "TABBED_GRID"
+      this.viewMode === "TABBED_GRID" || this.isDesktopBrowser
         ? `
-          <div class="seeall-shell folder-detail-shell${enterClass}">
+          ${this.isDesktopBrowser ? '<div class="folder-detail-desktop-ambient" aria-hidden="true"></div>' : ""}
+          <div class="seeall-shell folder-detail-shell${this.isDesktopBrowser ? " desktop-folder-detail-shell" : ""}${enterClass}">
           <header class="seeall-header folder-detail-header">
-            <div class="folder-detail-eyebrow">${escapeHtml(this.collection?.title || "Collection")}</div>
-            <h2 class="seeall-title">${escapeHtml(this.folder?.title || "Folder")}</h2>
             ${
-              this.tabs.length > 1
+              this.isDesktopBrowser
+                ? `
+              <button class="folder-detail-desktop-back focusable" type="button" data-action="back" data-focus-key="back" aria-label="Back">
+                <span class="material-icons" aria-hidden="true">arrow_back</span>
+              </button>
+              <div class="folder-detail-desktop-heading" aria-label="${escapeHtml(this.collection?.title || "Collection")}">
+                ${
+                  desktopHeaderLogo
+                    ? `<img class="folder-detail-desktop-logo" src="${escapeHtml(desktopHeaderLogo)}" alt="${escapeHtml(this.collection?.title || "Collection")}" />`
+                    : `<h1>${escapeHtml(this.collection?.title || "Collection")}</h1>`
+                }
+                ${desktopHeaderMeta.length ? `<p>${escapeHtml(desktopHeaderMeta.join(" • "))}</p>` : ""}
+              </div>
+            `
+                : `
+              <div class="folder-detail-eyebrow">${escapeHtml(this.collection?.title || "Collection")}</div>
+              <h2 class="seeall-title">${escapeHtml(this.folder?.title || "Folder")}</h2>
+            `
+            }
+            ${
+              (!this.isDesktopBrowser || this.viewMode === "TABBED_GRID") && this.tabs.length > 1
                 ? `
               <div class="folder-detail-tabs">
                 ${this.tabs
@@ -1438,9 +1640,11 @@ export const FolderDetailScreen = {
                 : ""
             }
           </header>
-          <section class="seeall-grid">
-            ${cards}
-          </section>
+          ${
+            this.viewMode === "TABBED_GRID"
+              ? `<section class="seeall-grid">${cards}</section>`
+              : `<section class="folder-detail-rows desktop-folder-detail-rows">${rowsMarkup}</section>`
+          }
           ${
             selectedTab?.loading
               ? `
@@ -1473,6 +1677,8 @@ export const FolderDetailScreen = {
       `;
 
     ScreenUtils.indexFocusables(this.container);
+    this.bindDesktopBrowserEvents();
+    this.applyDesktopAmbientTheme();
     this.buildNavigationModel();
     this.restoreFocus();
     this.applyHeroToDom();
@@ -1861,6 +2067,11 @@ export const FolderDetailScreen = {
     if (code === 13) {
       event?.preventDefault?.();
       const action = String(current.dataset.action || "");
+      if (action === "back") {
+        this.prepareHomeReturnAnimation();
+        Router.back();
+        return;
+      }
       if (action === "selectTab") {
         this.selectedTabIndex = Math.max(0, Number(current.dataset.tabIndex || 0));
         this.lastFocusedKey = `tab:${this.selectedTabIndex}`;
@@ -1869,18 +2080,7 @@ export const FolderDetailScreen = {
         return;
       }
       if (action === "openDetail") {
-        this.lastFocusedKey = String(current.dataset.focusKey || this.lastFocusedKey || "");
-        Router.navigate("detail", {
-          itemId: current.dataset.itemId || "",
-          itemType: current.dataset.itemType || current.dataset.catalogType || "movie",
-          fallbackTitle: current.dataset.itemTitle || "Untitled",
-          fallbackPoster: current.dataset.posterSrc || "",
-          fallbackBackground: current.dataset.backdropSrc || "",
-          addonBaseUrl: current.dataset.addonBaseUrl || "",
-          addonId: current.dataset.addonId || "",
-          addonName: current.dataset.addonName || "",
-          catalogType: current.dataset.catalogType || current.dataset.itemType || "movie"
-        });
+        this.openDetailFromNode(current);
       }
       return;
     }
@@ -1988,6 +2188,16 @@ export const FolderDetailScreen = {
       }
       this.boundHomeViewport = null;
     }
+    if (this.boundDesktopCollectionClickContainer && this.boundDesktopCollectionClickHandler) {
+      this.boundDesktopCollectionClickContainer.removeEventListener(
+        "click",
+        this.boundDesktopCollectionClickHandler
+      );
+    }
+    this.boundDesktopCollectionClickContainer = null;
+    this.boundDesktopCollectionClickHandler = null;
+    this.ambientArtworkUrl = "";
+    this.container?.style?.removeProperty("--collection-ambient-rgb");
     ScreenUtils.hide(this.container);
   }
 };

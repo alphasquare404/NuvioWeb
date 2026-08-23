@@ -437,6 +437,10 @@ html.desktop-browser {
   -webkit-user-drag: none;
 }
 
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card {
+  cursor: pointer;
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track.is-pointer-dragging {
   cursor: grabbing;
 }
@@ -643,9 +647,365 @@ html.desktop-browser {
   }
 }
 
+/* Collection folders are navigation tiles, not media posters. Their saved
+   tileShape controls their desktop aspect ratio without affecting media cards. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card {
+  position: relative;
+  z-index: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-poster {
+  flex: 0 0 clamp(156px, 9.5vw, 194px);
+  min-width: clamp(156px, 9.5vw, 194px);
+  max-width: clamp(156px, 9.5vw, 194px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-square {
+  flex: 0 0 clamp(164px, 10vw, 204px);
+  min-width: clamp(164px, 10vw, 204px);
+  max-width: clamp(164px, 10vw, 204px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-landscape {
+  flex: 0 0 clamp(280px, 18vw, 360px);
+  min-width: clamp(280px, 18vw, 360px);
+  max-width: clamp(280px, 18vw, 360px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card .home-poster-frame {
+  height: auto;
+  transform: scale(1);
+  transform-origin: center bottom;
+  transition:
+    transform 150ms ease-out,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    background-color 120ms ease;
+}
+
+/* Keep edge tiles fully visible when their visual frame grows on hover. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:first-child .home-poster-frame {
+  transform-origin: left bottom;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:last-child .home-poster-frame {
+  transform-origin: right bottom;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-poster .home-poster-frame {
+  aspect-ratio: 2 / 3;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-square .home-poster-frame {
+  aspect-ratio: 1 / 1;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-landscape .home-poster-frame {
+  aspect-ratio: 16 / 9;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card .home-poster-copy {
+  display: block;
+  min-height: 0;
+  height: auto;
+  padding: 9px 2px 0;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.focused,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:focus-visible {
+  z-index: 1;
+  transform: none;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.focused .home-poster-frame,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:focus-visible .home-poster-frame {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px var(--secondary-color);
+  background-color: var(--focus-bg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:hover {
+    z-index: 1;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:hover .home-poster-frame {
+    transform: scale(1.04);
+    border-color: rgba(255, 255, 255, 0.62);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  }
+}
+
 @media (max-width: 760px) {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
     padding-inline: 20px;
+  }
+}
+
+/* Desktop collections use the existing grid data path instead of the TV/Home hero layout. */
+.desktop-browser #folderDetail {
+  --collection-ambient-rgb: 35 40 52;
+  width: 100%;
+  min-height: 100vh;
+  overflow: visible;
+  position: relative;
+  isolation: isolate;
+  background: var(--bg-color);
+}
+
+.desktop-browser #folderDetail .folder-detail-desktop-ambient {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  width: min(62vw, 1120px);
+  height: min(62vw, 780px);
+  pointer-events: none;
+  opacity: 0.72;
+  background-image:
+    radial-gradient(ellipse at 82% 8%, rgb(var(--collection-ambient-rgb) / 0.42), rgb(var(--collection-ambient-rgb) / 0.14) 34%, transparent 64%),
+    linear-gradient(105deg, var(--bg-color) 4%, rgb(0 0 0 / 0.16) 46%, var(--bg-color) 100%),
+    var(--collection-ambient-artwork, none);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  mask-image: linear-gradient(135deg, transparent 0%, #000 28%, #000 72%, transparent 100%);
+  transition: background-image 260ms ease-out;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+  background: transparent;
+  padding: clamp(92px, 9vw, 132px) clamp(24px, 3.4vw, 64px) 56px;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-header {
+  position: static;
+  z-index: auto;
+  margin: 0 0 30px;
+  padding: 0;
+  background: none;
+  gap: 18px;
+}
+
+.desktop-browser #folderDetail .folder-detail-desktop-back {
+  position: fixed;
+  z-index: 30;
+  top: clamp(20px, 2vw, 32px);
+  left: clamp(20px, 2.4vw, 40px);
+  display: grid;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.54);
+  color: #fff;
+  backdrop-filter: blur(10px);
+}
+
+.desktop-browser #folderDetail .folder-detail-desktop-back .material-icons {
+  font-size: 20px;
+}
+
+.desktop-browser #folderDetail .folder-detail-desktop-back:focus-visible {
+  outline: none;
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.42);
+}
+
+.desktop-browser #folderDetail .folder-detail-desktop-heading {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.desktop-browser #folderDetail .folder-detail-desktop-heading h1 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: clamp(28px, 2.4vw, 38px);
+  font-weight: 650;
+  line-height: 1.12;
+}
+
+.desktop-browser #folderDetail .folder-detail-desktop-logo {
+  display: block;
+  width: auto;
+  max-width: min(260px, 52vw);
+  max-height: 72px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.desktop-browser #folderDetail .folder-detail-desktop-heading p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs {
+  gap: 8px;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tab {
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tab:focus-visible {
+  outline: none;
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-grid {
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  justify-content: stretch;
+  gap: 24px 14px;
+  padding: 8px 0 48px;
+  overflow: visible;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+  cursor: pointer;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card-poster-wrap {
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 14px;
+  transform: scale(1);
+  transform-origin: center bottom;
+  transition:
+    transform 150ms ease-out,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card-poster-image,
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card-poster {
+  border-radius: 12px;
+  -webkit-user-drag: none;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card-title {
+  margin-top: 9px;
+  padding: 0 2px;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card-year {
+  margin-top: 3px;
+  padding: 0 2px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card.focused,
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card:focus-visible {
+  z-index: 1;
+  outline: none;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card.focused .seeall-card-poster-wrap,
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card:focus-visible .seeall-card-poster-wrap {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px var(--secondary-color);
+  transform: scale(1);
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-empty,
+.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-loading {
+  min-height: 160px;
+  padding: 20px 0;
+  font-size: 15px;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-rows {
+  gap: 32px;
+  padding: 8px 0 48px;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-rows .folder-detail-row {
+  gap: 12px;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-rows .folder-detail-row-title {
+  font-size: 20px;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track {
+  gap: 14px;
+  padding: 10px 2px 16px;
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track .seeall-card {
+  flex: 0 0 clamp(156px, 9.5vw, 190px);
+  min-width: clamp(156px, 9.5vw, 190px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #folderDetail .folder-detail-desktop-back:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card:hover {
+    z-index: 1;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card:hover .seeall-card-poster-wrap {
+    transform: scale(1.04);
+    border-color: rgba(255, 255, 255, 0.62);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  }
+}
+
+@media (max-width: 900px) {
+  .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    padding-inline: 24px;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-grid {
+    grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    padding: 88px 20px 40px;
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-back {
+    top: 18px;
+    left: 20px;
   }
 }
 

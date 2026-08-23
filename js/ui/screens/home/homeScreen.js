@@ -2694,7 +2694,7 @@ export function createPosterCardMarkup(
     const tileShape = normalizeCollectionPosterShape(collectionItem.tileShape);
     const shapeClass =
       tileShape === "POSTER"
-        ? ""
+        ? " is-collection-poster"
         : tileShape === "SQUARE"
           ? " is-collection-square"
           : " is-landscape is-collection-landscape";
@@ -2733,7 +2733,7 @@ export function createPosterCardMarkup(
           ${focusGifOverlay}
         </div>
         ${
-          layoutMode !== "modern" && showLabels && !collectionItem.hideTitle
+          (layoutMode !== "modern" || Platform.isBrowser()) && showLabels && !collectionItem.hideTitle
             ? `
           <div class="home-poster-copy">
             <div class="home-poster-title">${escapeHtml(collectionItem.name || collectionItem.collectionTitle || "Collection")}</div>
@@ -8147,7 +8147,7 @@ export const HomeScreen = {
         const image = event.target;
         if (
           image instanceof HTMLImageElement &&
-          image.closest(".home-poster-card:not(.home-collection-card), .home-continue-card")
+          image.closest(".home-poster-card, .home-continue-card")
         ) {
           event.preventDefault();
         }
