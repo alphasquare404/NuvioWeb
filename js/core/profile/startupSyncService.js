@@ -20,6 +20,18 @@ import { I18n } from "../../i18n/index.js";
 const SYNC_INTERVAL_MS = 120000;
 const ADDON_PUSH_DEBOUNCE_MS = 1000;
 const MAX_PULL_ATTEMPTS = 3;
+const STARTUP_SYNC_PERF_DEBUG = Boolean(globalThis.__NUVIO_DEBUG_STARTUP_PERF__);
+
+function syncNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+function logSyncTiming(stage, startedAt) {
+  if (!STARTUP_SYNC_PERF_DEBUG) return;
+  console.info("[startup-perf]", stage, { ms: Number((syncNow() - startedAt).toFixed(2)) });
+}
 
 function sleep(ms) {
   return new Promise((resolve) => {
@@ -131,15 +143,18 @@ export const StartupSyncService = {
       return false;
     }
     let didApplyProfileSettings = false;
+    const syncStartedAt = syncNow();
     const activeProfileId = ProfileManager.getActiveProfileId();
     for (let attempt = 1; attempt <= MAX_PULL_ATTEMPTS; attempt += 1) {
       try {
         const profiles = await ProfileSyncService.pull();
+        logSyncTiming("background-profile-pull", syncStartedAt);
         const profileIds = await collectKnownProfileIds(profiles);
         for (const profileId of profileIds) {
           didApplyProfileSettings =
             (await ProfileSettingsSyncService.pull(profileId)) || didApplyProfileSettings;
         }
+        logSyncTiming("background-profile-settings-pull", syncStartedAt);
         if (didApplyProfileSettings) {
           await I18n.init();
           ThemeManager.apply();
@@ -148,9 +163,11 @@ export const StartupSyncService = {
         await TraktCredentialSyncService.pullFromRemote(ProfileManager.getActiveProfileId());
         await SimklCredentialSyncService.pullFromRemote(ProfileManager.getActiveProfileId());
         await ProviderCredentialSyncService.syncFromRemote(ProfileManager.getActiveProfileId());
+        logSyncTiming("background-credentials-pull", syncStartedAt);
         await SimklSyncService.refresh().catch((error) => {
           console.warn("Simkl automatic refresh failed", error);
         });
+        logSyncTiming("background-simkl-refresh", syncStartedAt);
         if (!includeProfileScoped) {
           return didApplyProfileSettings;
         }
@@ -161,6 +178,7 @@ export const StartupSyncService = {
         await SavedLibrarySyncService.pull();
         await WatchedItemsSyncService.pull();
         await WatchProgressSyncService.pull();
+        logSyncTiming("background-profile-scoped-pull", syncStartedAt);
         return didApplyProfileSettings;
       } catch (error) {
         console.warn(`Startup sync pull failed (attempt ${attempt}/${MAX_PULL_ATTEMPTS})`, error);

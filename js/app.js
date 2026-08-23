@@ -46,6 +46,7 @@ const SIGNED_OUT_ALLOWED_ROUTES = new Set(["trakt"]);
 let hasSelectedProfileThisSession = false;
 let appShellRendered = false;
 let updateCheckStarted = false;
+const STARTUP_PERF_DEBUG = Boolean(globalThis.__NUVIO_DEBUG_STARTUP_PERF__);
 
 const APP_VERSION = typeof __NUVIO_APP_VERSION__ !== "undefined" ? __NUVIO_APP_VERSION__ : "0.0.0";
 
@@ -54,6 +55,20 @@ function markBootStage(stage) {
   if (guard && typeof guard.stage === "function") {
     guard.stage(stage);
   }
+}
+
+function startupNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+function logStartupTiming(stage, startedAt, extra = {}) {
+  if (!STARTUP_PERF_DEBUG) return;
+  console.info("[startup-perf]", stage, {
+    ms: Number((startupNow() - startedAt).toFixed(2)),
+    ...extra
+  });
 }
 
 async function waitForInitialRoute(timeoutMs = 15000) {
@@ -172,6 +187,26 @@ function isAddonRemoteMode() {
 }
 
 async function shouldShowProfileSelection() {
+  const startedAt = startupNow();
+  // Browser profile cards use locally cached metadata immediately. Remote
+  // profile and PIN refreshes continue after the picker becomes visible.
+  if (Platform.isBrowser()) {
+    const profiles = await ProfileManager.getProfiles();
+    const activeProfileId = ProfileManager.getActiveProfileId();
+    void Promise.all([ProfileSyncService.pull(), ProfileSyncService.pullProfileLockStates()])
+      .then(async ([remoteProfiles, pinStates]) => {
+        if (Router.getCurrent() !== "profileSelection") return;
+        const screen = Router.getCurrentScreen();
+        if (!screen) return;
+        screen.profiles = remoteProfiles?.length ? remoteProfiles : await ProfileManager.getProfiles();
+        screen.profilePinEnabled = pinStates || {};
+        screen.activeProfileId = String(ProfileManager.getActiveProfileId() || "1");
+        screen.render?.();
+      })
+      .catch((error) => console.warn("Background profile picker refresh failed", error));
+    logStartupTiming("profile-selection-local-ready", startedAt, { profiles: profiles.length });
+    return { show: profiles.length > 1, pinStates: {} };
+  }
   const [, pinStates] = await Promise.all([
     ProfileSyncService.pull(),
     ProfileSyncService.pullProfileLockStates()
@@ -197,10 +232,13 @@ async function shouldShowProfileSelection() {
     return { show: false, pinStates };
   }
 
-  return { show: profiles.length > 1 || activeProfileHasPin, pinStates };
+  const result = { show: profiles.length > 1 || activeProfileHasPin, pinStates };
+  logStartupTiming("profile-selection-ready", startedAt, { profiles: profiles.length });
+  return result;
 }
 
 async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
+  const startedAt = startupNow();
   hasSelectedProfileThisSession = true;
   const profiles = await ProfileManager.getProfiles();
   const activeProfileId = ProfileManager.getActiveProfileId();
@@ -220,7 +258,9 @@ async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
     });
   }
   const experienceRoute = activeProfile
-    ? await resolveExperienceRoute(activeProfile.id)
+    ? await resolveExperienceRoute(activeProfile.id, {
+        pullRemoteSettings: !Platform.isBrowser()
+      })
     : "home";
   const resumeRoute =
     restoreWebOsRoute && typeof Router.consumeWebOsResumeRoute === "function"
@@ -239,15 +279,18 @@ async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
   void StartupSyncService.requestSyncNow().catch((error) => {
     console.warn("Profile background sync failed", error);
   });
+  logStartupTiming("enter-last-profile-route-mounted", startedAt, { route: experienceRoute });
 }
 
 async function routeAfterAuthentication() {
+  const startedAt = startupNow();
   const profileRoute = await shouldShowProfileSelection();
   if (profileRoute.show) {
     await Router.navigate("profileSelection", {
       skipInitialProfileSync: true,
       profilePinEnabled: profileRoute.pinStates
     });
+    logStartupTiming("route-profile-selection-mounted", startedAt);
     return;
   }
 
@@ -422,6 +465,7 @@ function setupProviderCredentialForegroundLifecycle() {
 }
 
 async function bootstrapApp() {
+  const bootstrapStartedAt = startupNow();
   markBootStage("Rendering application shell");
   renderAppShell();
   appShellRendered = true;
@@ -522,6 +566,7 @@ async function bootstrapApp() {
 
   markBootStage("Checking authentication");
   await AuthManager.bootstrap();
+  logStartupTiming("auth-bootstrap-complete", bootstrapStartedAt);
 }
 
 async function bootstrapAddonRemoteMode() {

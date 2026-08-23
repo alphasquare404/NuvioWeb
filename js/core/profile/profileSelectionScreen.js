@@ -12,6 +12,21 @@ import { detailWatchedEnrichmentService } from "../../data/repository/detailWatc
 import { resolveExperienceRoute } from "./experienceModeRouting.js";
 import { Platform } from "../../platform/index.js";
 
+const PROFILE_SELECTION_PERF_DEBUG = Boolean(globalThis.__NUVIO_DEBUG_STARTUP_PERF__);
+
+function profileSelectionNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+function logProfileSelectionTiming(stage, startedAt) {
+  if (!PROFILE_SELECTION_PERF_DEBUG) return;
+  console.info("[startup-perf]", stage, {
+    ms: Number((profileSelectionNow() - startedAt).toFixed(2))
+  });
+}
+
 const PINNED_AVATAR_CATEGORIES = ["anime", "animation", "tv", "movie", "gaming"];
 const DEFAULT_PROFILE_COLOR = "#f5f5f5";
 const PROFILE_HOLD_DELAY_MS = 650;
@@ -375,6 +390,13 @@ export const ProfileSelectionScreen = {
     this.profilePinEnabled = profilePinEnabled;
     this.lastProfileFocusKey = `profile:${this.activeProfileId || "1"}`;
     globalThis.NuvioBootGuard?.stage?.("Loading profile avatars");
+    if (Platform.isBrowser()) {
+      // Avatar artwork is optional on browser. Do not delay the local-first
+      // picker; the catalog still warms in the background for later use.
+      this.render();
+      void this.loadAvatarCatalog();
+      return;
+    }
     await this.loadAvatarCatalog();
     this.render();
   },
@@ -386,10 +408,6 @@ export const ProfileSelectionScreen = {
       console.warn("Failed to load avatar catalog", error);
       this.avatarCatalog = [];
     }
-    this.avatarImageUrlsById = this.avatarCatalog.reduce((accumulator, avatar) => {
-      accumulator[avatar.id] = avatar.imageUrl;
-      return accumulator;
-    }, {});
   },
 
   getProfileById(profileId) {
@@ -2130,6 +2148,7 @@ export const ProfileSelectionScreen = {
       return;
     }
     this.isActivatingProfile = true;
+    const activationStartedAt = profileSelectionNow();
     this.activatingProfileId = String(profileId);
     const profileCard =
       Array.from(this.container?.querySelectorAll(".profile-card[data-profile-id]") || []).find(
@@ -2146,12 +2165,15 @@ export const ProfileSelectionScreen = {
       await I18n.init();
       ThemeManager.apply();
       I18n.apply();
-      const experienceRoute = await resolveExperienceRoute(profileId);
+      const experienceRoute = await resolveExperienceRoute(profileId, {
+        pullRemoteSettings: !Platform.isBrowser()
+      });
       await Router.navigate(
         experienceRoute,
         experienceRoute === "home" ? { forceReload: true } : {},
         experienceRoute === "home" ? {} : { replaceHistory: true, skipStackPush: true }
       );
+      logProfileSelectionTiming("profile-activation-route-mounted", activationStartedAt);
       void StartupSyncService.requestSyncNow().catch((error) => {
         console.warn("Profile background sync failed", error);
       });

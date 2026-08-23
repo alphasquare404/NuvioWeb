@@ -276,7 +276,6 @@ function getDirectionFromKeyCode(keyCode) {
 async function getLocalSidebarProfileState() {
   const activeProfileId = String(ProfileManager.getActiveProfileId() || "");
   const profiles = await ProfileManager.getProfiles();
-  const avatarCatalog = await AvatarRepository.getAvatarCatalog().catch(() => []);
   const activeProfile =
     profiles.find(
       (profile) => String(profile.id || profile.profileIndex || "1") === activeProfileId
@@ -286,9 +285,9 @@ async function getLocalSidebarProfileState() {
   const name =
     String(activeProfile?.name || t("sidebar.profileFallback")).trim() ||
     t("sidebar.profileFallback");
-  const avatarUrl =
-    activeProfile?.avatarUrl ||
-    AvatarRepository.getAvatarImageUrl(activeProfile?.avatarId, avatarCatalog);
+  // Do not hold the first Home paint behind the optional avatar catalog RPC.
+  // The regular sidebar refresh below resolves catalog avatars in the background.
+  const avatarUrl = activeProfile?.avatarUrl || AvatarRepository.getAvatarImageUrl(activeProfile?.avatarId);
 
   return {
     activeProfileName: name,
@@ -8465,6 +8464,22 @@ export const HomeScreen = {
     this.desktopFallbackHeroInitialized = false;
     this.sidebarProfile = await getLocalSidebarProfileState().catch(() => null);
     this.render();
+    if (Platform.isBrowser()) {
+      // Browser Home paints its local shell immediately. Catalog and optional
+      // remote data continue progressively, so one unavailable addon cannot
+      // make profile activation look frozen.
+      void this.loadData({ background: false }).catch((error) => {
+        console.warn("Home initial background load failed", error);
+      });
+      logHomePerf("mount", {
+        ms: Number((homePerfNow() - mountStart).toFixed(2)),
+        route: "home",
+        background: true,
+        layoutMode: String(this.layoutMode || ""),
+        mode: "browser-local-shell"
+      });
+      return;
+    }
     await this.loadData({ background: false });
     logHomePerf("mount", {
       ms: Number((homePerfNow() - mountStart).toFixed(2)),
