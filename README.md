@@ -138,6 +138,62 @@ Open:
 http://127.0.0.1:8080
 ```
 
+## Self-host with Docker
+
+The Docker image builds the browser target and serves the generated `dist/`
+directory from Nginx. It does not run the development Node server and does not
+include the source tree or `node_modules` in the final image.
+
+### Configure public browser values
+
+Before building, provide browser-public values through your shell environment
+or an untracked `.env` file next to `docker-compose.yml`. The usual required
+values for account sign-in are:
+
+```dotenv
+NUVIO_SUPABASE_URL=https://your-project.supabase.co
+NUVIO_SUPABASE_ANON_KEY=your-browser-anon-key
+```
+
+Optional public values such as `TMDB_API_KEY`, `TRAKT_CLIENT_ID`,
+`SIMKL_CLIENT_ID`, `AVATAR_PUBLIC_BASE_URL`, and metadata endpoint URLs are
+passed as Docker build arguments by `docker-compose.yml` when set.
+
+Never put `TRAKT_CLIENT_SECRET`, Supabase service-role keys, access tokens, or
+other private/native credentials in `.env`, Docker build arguments, or browser
+runtime configuration. The browser build explicitly omits
+`TRAKT_CLIENT_SECRET`; native Tizen and webOS build paths remain separate.
+
+### Start and update
+
+Run these commands on the Docker/self-host server after cloning or updating the
+repository there. Your development machine only needs to commit and push the
+source changes; Docker is not required on it.
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Open `http://SERVER_IP:4173`.
+
+```bash
+# Follow server logs
+docker logs -f nuvioweb
+
+# Stop the application
+docker compose down
+
+# Update an existing checkout
+git pull
+docker compose up -d --build
+```
+
+The container serves HTTP on port `80` and Compose maps it to host port `4173`.
+It can sit behind an external reverse proxy such as Nginx Proxy Manager, Caddy,
+or Traefik for HTTPS and a custom domain; TLS is intentionally not bundled into
+this application container.
+
 ## Project Structure
 
 - `js/` contains app logic, UI screens, platform adapters, and player code.
