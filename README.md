@@ -153,6 +153,9 @@ values for account sign-in are:
 ```dotenv
 NUVIO_SUPABASE_URL=https://your-project.supabase.co
 NUVIO_SUPABASE_ANON_KEY=your-browser-anon-key
+
+# Optional: expose the container on another host port (default: 4173)
+NUVIO_PORT=4174
 ```
 
 Optional public values such as `TMDB_API_KEY`, `TRAKT_CLIENT_ID`,

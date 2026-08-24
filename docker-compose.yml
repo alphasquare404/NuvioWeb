@@ -23,5 +23,5 @@ services:
         SIMKL_APP_NAME: ${SIMKL_APP_NAME:-nuvio}
         PREMIUMIZE_CLIENT_ID: ${PREMIUMIZE_CLIENT_ID:-}
     ports:
-      - "4173:80"
+      - "${NUVIO_PORT:-4173}:80"
     restart: unless-stopped
