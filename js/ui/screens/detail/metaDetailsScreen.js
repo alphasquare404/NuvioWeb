@@ -482,7 +482,10 @@ function extractCast(meta = {}) {
       );
     });
 
-    return primary.map((entry) => {
+    const primaryNames = new Set(
+      primary.map((entry) => normalizeCastValue(entry?.name)).filter(Boolean)
+    );
+    const merged = primary.map((entry) => {
       const normalizedName = normalizeCastValue(entry?.name);
       const normalizedCharacter = normalizeCastValue(entry?.character);
       const exactKey =
@@ -497,6 +500,14 @@ function extractCast(meta = {}) {
         tmdbId: entry?.tmdbId || match?.tmdbId || null
       };
     });
+    supplemental.forEach((entry) => {
+      const normalizedName = normalizeCastValue(entry?.name);
+      if (normalizedName && !primaryNames.has(normalizedName)) {
+        merged.push(entry);
+        primaryNames.add(normalizedName);
+      }
+    });
+    return merged;
   };
   const mapCastEntries = (items = [], mapper) =>
     (Array.isArray(items) ? items : []).map(mapper).filter((entry) => Boolean(entry?.name));
@@ -516,6 +527,26 @@ function extractCast(meta = {}) {
     ),
     tmdbId: entry?.tmdbId || entry?.id || null
   }));
+
+  // Match NuvioDesktop's Stremio metadata parser: app_extras.cast carries the
+  // normalized richer person representation when an addon provides portraits.
+  // It is intentionally generic Stremio metadata, not addon-specific handling.
+  const appExtras = meta?.app_extras;
+  const appExtraCast =
+    appExtras && typeof appExtras === "object" && !Array.isArray(appExtras)
+      ? appExtras.cast
+      : [];
+  const appExtraEntries = mapCastEntries(appExtraCast, (entry) => {
+    if (typeof entry === "string") {
+      return { name: entry, character: "", photo: "", tmdbId: null };
+    }
+    return {
+      name: entry?.name || "",
+      character: entry?.character || "",
+      photo: toPhoto(entry?.photo || ""),
+      tmdbId: null
+    };
+  });
 
   const direct = Array.isArray(meta.cast) ? meta.cast : [];
   const directEntries = mapCastEntries(direct, (entry) => {
@@ -553,12 +584,39 @@ function extractCast(meta = {}) {
     ),
     tmdbId: entry?.id || null
   }));
+  const linkCastEntries = mapCastEntries(
+    (Array.isArray(meta?.links) ? meta.links : []).filter((entry) => {
+      const category = String(entry?.category || "").trim().toLowerCase();
+      return category === "cast" || category === "actor" || category === "actors";
+    }),
+    (entry) => ({
+      name: entry?.name || "",
+      character: "",
+      photo: "",
+      tmdbId: null
+    })
+  );
 
   if (memberEntries.length) {
-    return mergeCastEntries(memberEntries, [...directEntries, ...creditEntries]).slice(0, 18);
+    return mergeCastEntries(memberEntries, [
+      ...appExtraEntries,
+      ...directEntries,
+      ...linkCastEntries,
+      ...creditEntries
+    ]).slice(0, 18);
+  }
+  if (appExtraEntries.length) {
+    return mergeCastEntries(appExtraEntries, [
+      ...directEntries,
+      ...linkCastEntries,
+      ...creditEntries
+    ]).slice(0, 12);
   }
   if (directEntries.length) {
-    return mergeCastEntries(directEntries, creditEntries).slice(0, 12);
+    return mergeCastEntries(directEntries, [...linkCastEntries, ...creditEntries]).slice(0, 12);
+  }
+  if (linkCastEntries.length) {
+    return mergeCastEntries(linkCastEntries, creditEntries).slice(0, 12);
   }
   if (creditEntries.length) {
     return creditEntries.slice(0, 12);
