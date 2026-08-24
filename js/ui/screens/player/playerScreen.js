@@ -4198,11 +4198,12 @@ export const PlayerScreen = {
   },
 
   shouldUseEmbeddedSubtitleTracks() {
-    if (!this.canDiscoverEmbeddedSubtitleTracks() || this.embeddedSubtitleTracks.length <= 0) {
+    if (Environment.isBrowser()) {
+      // Probe results describe embedded streams but cannot be selected by browser playback
+      // until an extraction endpoint or a native TextTrack mapping exists.
       return false;
     }
-
-    return Environment.isWebOS() || this.getTextTracks().length <= 0;
+    return this.canDiscoverEmbeddedSubtitleTracks() && this.embeddedSubtitleTracks.length > 0;
   },
 
   normalizeEmbeddedSubtitleTracks(rawTracks = []) {
@@ -18751,7 +18752,12 @@ export const PlayerScreen = {
       this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, repositorySubtitles);
       if (this.subtitleDialogVisible && this.subtitleDialogTab === "builtIn") {
         const builtInBoundary = this.resolveBuiltInSubtitleBoundary(this.getTextTracks());
-        if (builtInBoundary <= 0 && this.subtitles.length > 0) {
+        const hasUsableBuiltIns = Environment.isBrowser()
+          ? this.getSubtitleEntries("builtIn").some(
+              (entry) => !entry?.disabled && entry?.id !== "subtitle-off"
+            )
+          : builtInBoundary > 0;
+        if (!hasUsableBuiltIns && this.subtitles.length > 0) {
           this.subtitleDialogTab = "addons";
           this.subtitleDialogIndex = 0;
         }
