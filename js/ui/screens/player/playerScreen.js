@@ -2306,6 +2306,8 @@ export const PlayerScreen = {
     this.subtitleFocusedRail = "language";
     this.subtitleDialogScrollMode = "nearest";
     this.subtitleDialogScrollTimer = null;
+    this.cancelSubtitlePointerScrollTransaction?.();
+    this.subtitlePointerScrollTransaction = null;
     this.selectedSubtitleTrackIndex = -1;
     this.selectedEmbeddedSubtitleTrackIndex = -1;
     this.selectedAddonSubtitleId = null;
@@ -14528,6 +14530,9 @@ export const PlayerScreen = {
     }
     this.subtitleDialogScrollTimer = setTimeout(() => {
       this.subtitleDialogScrollTimer = null;
+      if (this.hasActiveSubtitlePointerScrollTransaction()) {
+        return;
+      }
       this.scrollSubtitleDialogIntoView();
     }, 0);
   },
@@ -14559,6 +14564,68 @@ export const PlayerScreen = {
       this.scrollSubtitleRailNodeIntoView(styleNode);
     }
     this.subtitleDialogScrollMode = "nearest";
+  },
+
+  preserveSubtitlePointerOptionScroll(target) {
+    if (!Environment.isBrowser() || !this.subtitleDialogVisible) {
+      return false;
+    }
+    const option = target?.closest?.("[data-subtitle-rail='options']");
+    const rail = option?.closest?.(".player-subtitle-options-rail");
+    if (!(option instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
+      return false;
+    }
+    this.cancelSubtitlePointerScrollTransaction();
+    this.subtitlePointerScrollTransaction = {
+      scrollTop: Number(rail.scrollTop || 0),
+      selectionToken: null,
+      rail: null,
+      removeScrollListener: null
+    };
+    if (this.subtitleDialogScrollTimer) {
+      clearTimeout(this.subtitleDialogScrollTimer);
+      this.subtitleDialogScrollTimer = null;
+    }
+    return true;
+  },
+
+  hasActiveSubtitlePointerScrollTransaction() {
+    return Boolean(Environment.isBrowser() && this.subtitlePointerScrollTransaction);
+  },
+
+  bindSubtitlePointerScrollTransactionRail(rail) {
+    const transaction = this.subtitlePointerScrollTransaction;
+    if (!transaction || !(rail instanceof HTMLElement)) {
+      return;
+    }
+    transaction.removeScrollListener?.();
+    const onScroll = () => {
+      if (this.subtitlePointerScrollTransaction === transaction) {
+        transaction.scrollTop = Number(rail.scrollTop || 0);
+      }
+    };
+    rail.addEventListener("scroll", onScroll, { passive: true });
+    transaction.rail = rail;
+    transaction.removeScrollListener = () => rail.removeEventListener("scroll", onScroll);
+  },
+
+  settleSubtitlePointerScrollTransaction(selectionToken = null) {
+    const transaction = this.subtitlePointerScrollTransaction;
+    if (
+      !transaction ||
+      (selectionToken != null &&
+        transaction.selectionToken != null &&
+        Number(transaction.selectionToken) !== Number(selectionToken))
+    ) {
+      return;
+    }
+    this.cancelSubtitlePointerScrollTransaction();
+  },
+
+  cancelSubtitlePointerScrollTransaction() {
+    const transaction = this.subtitlePointerScrollTransaction;
+    transaction?.removeScrollListener?.();
+    this.subtitlePointerScrollTransaction = null;
   },
 
   getSubtitleOptionsForLanguage(languageKey = this.getSelectedSubtitleLanguageKey()) {
@@ -15514,6 +15581,7 @@ export const PlayerScreen = {
   closeSubtitleDialog() {
     this.flushPersistPlayerPresentationSettings();
     this.subtitleDialogVisible = false;
+    this.cancelSubtitlePointerScrollTransaction();
     this.subtitleFocusedRail = "language";
     this.subtitleStyleControlSide = "minus";
     this.renderSubtitleDialog();
@@ -15647,10 +15715,15 @@ export const PlayerScreen = {
 
   applySubtitleEntry(entry) {
     if (!entry || entry.disabled) {
+      this.cancelSubtitlePointerScrollTransaction();
       return;
     }
     const selectionToken = Number(this.subtitleSelectionToken || 0) + 1;
     this.subtitleSelectionToken = selectionToken;
+    const pointerScrollTransaction = this.subtitlePointerScrollTransaction;
+    if (pointerScrollTransaction) {
+      pointerScrollTransaction.selectionToken = selectionToken;
+    }
     const previousSubtitleSelectionKey = this.getActiveSubtitleSelectionKey();
 
     const isEmbeddedEntry = Object.prototype.hasOwnProperty.call(
@@ -15669,6 +15742,7 @@ export const PlayerScreen = {
       } else {
         this.applyNativeEmbeddedSubtitleTrack(embeddedTrack, targetTrackIndex);
       }
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
 
@@ -15688,6 +15762,7 @@ export const PlayerScreen = {
             })
           : false;
       if (!applied) {
+        this.settleSubtitlePointerScrollTransaction(selectionToken);
         return;
       }
       this.selectedSubtitleTrackIndex = Number.isFinite(targetTrackIndex) ? targetTrackIndex : -1;
@@ -15699,6 +15774,7 @@ export const PlayerScreen = {
       this.refreshSubtitleCueStyles();
       this.renderControlButtons();
       this.renderSubtitleDialog();
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
 
@@ -15709,6 +15785,7 @@ export const PlayerScreen = {
           ? PlayerController.setDashTextTrack(targetTrackIndex)
           : false;
       if (!applied) {
+        this.settleSubtitlePointerScrollTransaction(selectionToken);
         return;
       }
       this.selectedSubtitleTrackIndex = Number.isFinite(targetTrackIndex) ? targetTrackIndex : -1;
@@ -15720,6 +15797,7 @@ export const PlayerScreen = {
       this.refreshSubtitleCueStyles();
       this.renderControlButtons();
       this.renderSubtitleDialog();
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
 
@@ -15730,6 +15808,7 @@ export const PlayerScreen = {
           ? PlayerController.setHlsSubtitleTrack(targetTrackIndex)
           : false;
       if (!applied) {
+        this.settleSubtitlePointerScrollTransaction(selectionToken);
         return;
       }
       this.selectedSubtitleTrackIndex = Number.isFinite(targetTrackIndex) ? targetTrackIndex : -1;
@@ -15741,6 +15820,7 @@ export const PlayerScreen = {
       this.refreshSubtitleCueStyles();
       this.renderControlButtons();
       this.renderSubtitleDialog();
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
 
@@ -15754,6 +15834,7 @@ export const PlayerScreen = {
       this.refreshSubtitleCueStyles();
       this.renderControlButtons();
       this.renderSubtitleDialog();
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
 
@@ -15806,6 +15887,7 @@ export const PlayerScreen = {
       this.refreshSubtitleCueStyles();
       this.renderControlButtons();
       this.renderSubtitleDialog();
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
 
@@ -15835,16 +15917,19 @@ export const PlayerScreen = {
     this.refreshSubtitleCueStyles();
     this.renderControlButtons();
     this.renderSubtitleDialog();
+    this.settleSubtitlePointerScrollTransaction(selectionToken);
   },
 
   async applyFallbackAddonSubtitle(subtitleIndex, selectionToken = this.subtitleSelectionToken) {
     const subtitle = this.subtitles[subtitleIndex];
     if (!subtitle?.url) {
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
     const subtitleId = subtitle.id || subtitle.url || `subtitle-${subtitleIndex}`;
     const isCurrentSelection = () => Number(selectionToken) === Number(this.subtitleSelectionToken);
     if (!isCurrentSelection()) {
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
 
@@ -15868,6 +15953,7 @@ export const PlayerScreen = {
       }
     }
     if (!isCurrentSelection()) {
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
     if (usingAvPlay) {
@@ -15907,6 +15993,7 @@ export const PlayerScreen = {
 
     const video = PlayerController.video;
     if (!video) {
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
 
@@ -15920,6 +16007,7 @@ export const PlayerScreen = {
 
     const resolvedSubtitleUrl = await this.resolveSubtitlePlaybackUrl(subtitle.url);
     if (!isCurrentSelection() || !resolvedSubtitleUrl) {
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
 
@@ -15947,11 +16035,21 @@ export const PlayerScreen = {
       }
       return this.activateMountedExternalSubtitleTrack(track);
     };
-    track.addEventListener("load", activateTrack, { once: true });
+    track.addEventListener(
+      "load",
+      () => {
+        const activated = activateTrack();
+        if (activated) {
+          this.settleSubtitlePointerScrollTransaction(selectionToken);
+        }
+      },
+      { once: true }
+    );
     track.addEventListener(
       "error",
       () => {
         console.warn("Subtitle track failed to load", { subtitleUrl: subtitle.url });
+        this.settleSubtitlePointerScrollTransaction(selectionToken);
       },
       { once: true }
     );
@@ -15986,9 +16084,11 @@ export const PlayerScreen = {
           if (!activated) {
             this.selectedSubtitleTrackIndex = -1;
             this.refreshTrackDialogs();
+            this.settleSubtitlePointerScrollTransaction(selectionToken);
             return;
           }
           this.refreshSubtitleCueStyles();
+          this.settleSubtitlePointerScrollTransaction(selectionToken);
         },
         activationAttempts === 0 ? 80 : 140
       );
@@ -16007,6 +16107,10 @@ export const PlayerScreen = {
       dialog.innerHTML = "";
       return;
     }
+
+    const pointerScrollTransaction = this.hasActiveSubtitlePointerScrollTransaction()
+      ? this.subtitlePointerScrollTransaction
+      : null;
 
     const languages = this.getSubtitleLanguageRailItems();
     this.subtitleLanguageRailIndex = clamp(
@@ -16114,6 +16218,18 @@ export const PlayerScreen = {
         </div>
       </div>
     `;
+    if (pointerScrollTransaction) {
+      const optionRail = dialog.querySelector(".player-subtitle-options-rail");
+      if (optionRail instanceof HTMLElement && !optionRail.classList.contains("hidden")) {
+        const maxScrollTop = Math.max(0, optionRail.scrollHeight - optionRail.clientHeight);
+        optionRail.scrollTop = Math.max(
+          0,
+          Math.min(maxScrollTop, Number(pointerScrollTransaction.scrollTop || 0))
+        );
+        this.bindSubtitlePointerScrollTransactionRail(optionRail);
+      }
+      return;
+    }
     this.scrollSubtitleDialogIntoView();
     this.scheduleSubtitleDialogScrollIntoView();
   },
@@ -19321,6 +19437,7 @@ export const PlayerScreen = {
 
     const subtitleStep = target.closest?.("[data-subtitle-style-action]");
     if (subtitleStep && this.subtitleDialogVisible) {
+      this.cancelSubtitlePointerScrollTransaction();
       const styleItems = this.getSubtitleStyleControls();
       const styleIndex = Number(subtitleStep.dataset.subtitleIndex);
       const styleItem = styleItems[styleIndex];
@@ -19339,7 +19456,15 @@ export const PlayerScreen = {
 
     const subtitleNode = target.closest?.("[data-subtitle-rail]");
     if (subtitleNode && this.subtitleDialogVisible) {
-      return this.handleSubtitleDialogKey({ keyCode: 13 });
+      const isOptionSelection = this.preserveSubtitlePointerOptionScroll(subtitleNode);
+      if (!isOptionSelection) {
+        this.cancelSubtitlePointerScrollTransaction();
+      }
+      const handled = this.handleSubtitleDialogKey({ keyCode: 13 });
+      if (isOptionSelection && !this.subtitlePointerScrollTransaction?.selectionToken) {
+        this.cancelSubtitlePointerScrollTransaction();
+      }
+      return handled;
     }
 
     const audioStep = target.closest?.("[data-audio-step]");
@@ -20230,6 +20355,7 @@ export const PlayerScreen = {
         clearTimeout(this.subtitleDialogScrollTimer);
         this.subtitleDialogScrollTimer = null;
       }
+      this.cancelSubtitlePointerScrollTransaction();
 
       this.clearMediaSessionHandlers();
 
