@@ -2232,6 +2232,9 @@ export const PlayerScreen = {
       { objectFit: "fill", label: t("player_aspect_stretch", {}, "Stretch") }
     ];
 
+    this.hasPrecomputedStreamCandidates = Boolean(
+      Array.isArray(params.streamCandidates) && params.streamCandidates.length
+    );
     this.streamCandidates = this.normalizeStreamCandidates(
       Array.isArray(params.streamCandidates) ? params.streamCandidates : []
     );
@@ -2658,10 +2661,7 @@ export const PlayerScreen = {
       this.syncTrackState();
       this.tickTimer = setInterval(() => this.updateUiTick(), 1000);
       this.startSkipIntervalCheckTimer();
-      this.endedHandler = () => {
-        this.handlePlaybackEnded();
-      };
-      PlayerController.video?.addEventListener("ended", this.endedHandler);
+      this.bindPlayerEndedHandler();
       this.setControlsVisible(true, { focus: true });
     } else {
       this.loadingVisible = false;
@@ -3510,7 +3510,7 @@ export const PlayerScreen = {
   },
 
   normalizeStreamCandidates(streams = []) {
-    return (streams || [])
+    const normalized = (streams || [])
       .map((stream, index) => {
         const streamUrl = stream?.url || stream?.externalUrl || "";
         const streamOrigin = {
@@ -3577,6 +3577,9 @@ export const PlayerScreen = {
           clientResolve: stream.clientResolve || stream.raw?.clientResolve || null,
           debridCacheStatus: stream.debridCacheStatus || null,
           subtitles: Array.isArray(stream.subtitles) ? stream.subtitles : [],
+          addonOrderIndex: Number.isFinite(Number(stream.addonOrderIndex))
+            ? Number(stream.addonOrderIndex)
+            : Number.MAX_SAFE_INTEGER,
           raw: stream
         };
         return DirectDebridResolver.shouldListStream(entry) ||
@@ -3586,6 +3589,10 @@ export const PlayerScreen = {
           : null;
       })
       .filter(Boolean);
+    // Keep the browser player list canonical at its boundary. This is the
+    // same stable identity used by Stream Selection, so route candidates and
+    // refreshed addon results cannot create duplicate logical sources.
+    return Environment.isBrowser() ? mergeStreamItems([], normalized) : normalized;
   },
 
   getCurrentStreamCandidate() {
@@ -3595,6 +3602,15 @@ export const PlayerScreen = {
     const current = this.streamCandidates[this.currentStreamIndex] || null;
     if (current?.url) {
       return current;
+    }
+    const activePlaybackUrl = String(this.activePlaybackUrl || "").trim();
+    if (Environment.isBrowser() && activePlaybackUrl) {
+      return (
+        this.streamCandidates.find((entry) => {
+          const candidateUrl = streamDirectPlaybackUrl(entry);
+          return candidateUrl === activePlaybackUrl || entry?.url === activePlaybackUrl;
+        }) || null
+      );
     }
     return this.streamCandidates.find((entry) => Boolean(entry?.url)) || null;
   },
@@ -9450,6 +9466,61 @@ export const PlayerScreen = {
     this.videoListeners = [];
   },
 
+  bindPlayerEndedHandler() {
+    const video = PlayerController.video;
+    if (!video) {
+      return;
+    }
+    if (this.endedHandler) {
+      video.removeEventListener("ended", this.endedHandler);
+    }
+    this.endedHandler = () => {
+      this.handlePlaybackEnded();
+    };
+    video.addEventListener("ended", this.endedHandler);
+  },
+
+  resetAudioAmplificationForMediaSession() {
+    try {
+      this.audioMediaSource?.disconnect?.();
+    } catch (_) {
+      // A detached media element may already have released its Web Audio source.
+    }
+    try {
+      this.audioGainNode?.disconnect?.();
+    } catch (_) {
+      // Best effort only; the retained context is reused for the fresh video.
+    }
+    this.audioMediaSource = null;
+    this.audioGainNode = null;
+  },
+
+  replaceBrowserMediaSession() {
+    if (!Environment.isBrowser()) {
+      return false;
+    }
+    const oldVideo = PlayerController.video;
+    this.unbindVideoEvents();
+    if (this.endedHandler && oldVideo) {
+      oldVideo.removeEventListener("ended", this.endedHandler);
+    }
+    this.endedHandler = null;
+    this.resetAudioAmplificationForMediaSession();
+    const freshVideo = PlayerController.replaceBrowserVideoElement?.();
+    if (!freshVideo) {
+      this.bindVideoEvents();
+      this.bindPlayerEndedHandler();
+      this.applyAudioAmplification();
+      return false;
+    }
+    this.bindVideoEvents();
+    this.bindPlayerEndedHandler();
+    this.applyAudioAmplification();
+    this.applySubtitlePresentationSettings();
+    this.applyAspectMode({ showToast: false });
+    return true;
+  },
+
   getControlDefinitions() {
     const uiState = this.getPlayerUiState();
     const nextEpisode = this.resolveNextEpisodeInfo();
@@ -11043,6 +11114,14 @@ export const PlayerScreen = {
       return;
     }
 
+    const previousPlaybackUrl = String(this.activePlaybackUrl || "").trim();
+    const shouldReplaceBrowserMediaSession = Boolean(
+      Environment.isBrowser() &&
+        preservePlaybackState &&
+        previousPlaybackUrl &&
+        previousPlaybackUrl !== String(streamUrl).trim()
+    );
+
     const selectedIndex = this.streamCandidates.findIndex((entry) => entry.url === streamUrl);
     if (selectedIndex >= 0) {
       this.currentStreamIndex = selectedIndex;
@@ -11179,6 +11258,8 @@ export const PlayerScreen = {
     this.clearBitmapSubtitleOverlay({ dispose: true });
     this.clearSubtitleCueStyleBindings();
     this.clearMountedExternalSubtitleTracks();
+    const didReplaceBrowserMediaSession =
+      shouldReplaceBrowserMediaSession && this.replaceBrowserMediaSession();
     this.trackDiscoveryInProgress = true;
     this.clearTrackDiscoveryTimer();
     this.trackDiscoveryStartedAt = 0;
@@ -11201,6 +11282,15 @@ export const PlayerScreen = {
       ...this.buildPlaybackContext(sourceCandidate),
       forceEngine
     };
+    const startPlaybackBeforeAncillaryProbes = Boolean(
+      didReplaceBrowserMediaSession && !prioritizeWebOsRemoteMkvPlayback
+    );
+    if (startPlaybackBeforeAncillaryProbes) {
+      this.startPlayerControllerPlayback(this.activePlaybackUrl, playbackContext, {
+        mountToken,
+        sourceCandidate
+      });
+    }
     if (prioritizeWebOsRemoteMkvPlayback) {
       // Claim the remote media request before the companion service probes the
       // same URL. Some providers rate-limit simultaneous Range requests.
@@ -11227,16 +11317,21 @@ export const PlayerScreen = {
           this.initialEmbeddedTrackBootstrapPromise = null;
         }
       });
-      await this.waitForInitialEmbeddedTrackBootstrap();
-      if (!this.isActiveMountToken(mountToken)) {
-        return;
+      // On browser, this request is metadata-only. Waiting here delays the
+      // actual video.play() past the source-card click and can lose user
+      // activation. Native platforms keep their existing warmup behavior.
+      if (!Environment.isBrowser()) {
+        await this.waitForInitialEmbeddedTrackBootstrap();
+        if (!this.isActiveMountToken(mountToken)) {
+          return;
+        }
       }
     }
     this.updateModalBackdrop();
     this.renderSubtitleDialog();
     this.renderAudioDialog();
     this.renderSpeedDialog();
-    if (!prioritizeWebOsRemoteMkvPlayback) {
+    if (!prioritizeWebOsRemoteMkvPlayback && !startPlaybackBeforeAncillaryProbes) {
       this.startPlayerControllerPlayback(this.activePlaybackUrl, playbackContext, {
         mountToken,
         sourceCandidate
@@ -11256,6 +11351,15 @@ export const PlayerScreen = {
     }
     if (!streamCandidate) {
       return;
+    }
+    if (Environment.isBrowser()) {
+      const selectedStreamIdentity = streamMergeKey(streamCandidate);
+      const selectedStreamIndex = this.streamCandidates.findIndex(
+        (entry) => selectedStreamIdentity && streamMergeKey(entry) === selectedStreamIdentity
+      );
+      if (selectedStreamIndex >= 0) {
+        this.currentStreamIndex = selectedStreamIndex;
+      }
     }
     let targetUrl = streamDirectPlaybackUrl(streamCandidate);
     if (!targetUrl) {
@@ -17177,6 +17281,41 @@ export const PlayerScreen = {
     };
   },
 
+  replaceBrowserStreamCandidates(nextStreams = []) {
+    const currentStream = this.getCurrentStreamCandidate();
+    const currentIdentity = streamMergeKey(currentStream);
+    const activePlaybackUrl = String(this.activePlaybackUrl || "").trim();
+    const canonicalStreams = this.normalizeStreamCandidates(nextStreams);
+
+    this.streamCandidates = canonicalStreams;
+
+    const currentIndex = canonicalStreams.findIndex((stream) => {
+      if (currentIdentity && streamMergeKey(stream) === currentIdentity) {
+        return true;
+      }
+      if (!activePlaybackUrl) {
+        return false;
+      }
+      const candidateUrl = streamDirectPlaybackUrl(stream);
+      return candidateUrl === activePlaybackUrl || stream.url === activePlaybackUrl;
+    });
+
+    // A reload only updates the Sources panel. It must never redirect playback
+    // to whichever source happens to occupy the old array index.
+    this.currentStreamIndex =
+      currentIndex >= 0
+        ? currentIndex
+        : activePlaybackUrl
+          ? -1
+          : canonicalStreams.length
+            ? 0
+            : -1;
+
+    if (!this.getSourceFilters().includes(this.sourceFilter)) {
+      this.sourceFilter = "all";
+    }
+  },
+
   openSourcesPanel({ forceReload = false } = {}) {
     this.cancelSeekPreview({ commit: false });
     this.sourcesPanelVisible = true;
@@ -17200,10 +17339,16 @@ export const PlayerScreen = {
     void this.preloadPlayerSourceLogos();
 
     const sourceRequestKey = this.getSourceRequestKey();
-    // The candidates passed into the player are only a snapshot of the addons
-    // that had replied before playback started. Refresh once per video so a
-    // slower addon can still join the in-player list without a manual reload.
-    if (forceReload || !sourceRequestKey || sourceRequestKey !== this.completedSourceRequestKey) {
+    // Stream Selection already passes its normalized/deduped candidates into
+    // the browser player. Keep that canonical list intact until the user asks
+    // to reload. Direct player entries still fetch once as a fallback.
+    const shouldLoadBrowserFallback =
+      !this.hasPrecomputedStreamCandidates &&
+      (!sourceRequestKey || sourceRequestKey !== this.completedSourceRequestKey);
+    const shouldLoadSources = Environment.isBrowser()
+      ? forceReload || shouldLoadBrowserFallback
+      : forceReload || !sourceRequestKey || sourceRequestKey !== this.completedSourceRequestKey;
+    if (shouldLoadSources) {
       this.reloadSources();
     }
   },
@@ -17243,6 +17388,11 @@ export const PlayerScreen = {
     this.sourcesError = "";
     this.renderSourcesPanel();
 
+    // Browser reloads accumulate incremental addon chunks in a temporary
+    // generation, then atomically replace the current canonical list. Native
+    // platforms retain their existing incremental stream-list behavior.
+    let nextCanonicalStreams = [];
+
     const options = {
       itemId: String(this.params?.itemId || ""),
       season: this.params?.season ?? null,
@@ -17255,8 +17405,12 @@ export const PlayerScreen = {
         if (!chunkItems.length) {
           return;
         }
-        this.streamCandidates = mergeStreamItems(this.streamCandidates, chunkItems);
-        this.renderSourcesPanel();
+        if (Environment.isBrowser()) {
+          nextCanonicalStreams = mergeStreamItems(nextCanonicalStreams, chunkItems);
+        } else {
+          this.streamCandidates = mergeStreamItems(this.streamCandidates, chunkItems);
+          this.renderSourcesPanel();
+        }
         void this.preloadPlayerSourceLogos(chunkItems);
       }
     };
@@ -17266,9 +17420,15 @@ export const PlayerScreen = {
       if (token !== this.sourceLoadToken) {
         return;
       }
-      const merged = mergeStreamItems(this.streamCandidates, flattenStreamGroups(result));
-      if (merged.length) {
-        this.streamCandidates = merged;
+      const resultStreams = flattenStreamGroups(result);
+      if (Environment.isBrowser()) {
+        nextCanonicalStreams = mergeStreamItems(nextCanonicalStreams, resultStreams);
+        this.replaceBrowserStreamCandidates(nextCanonicalStreams);
+      } else {
+        const merged = mergeStreamItems(this.streamCandidates, resultStreams);
+        if (merged.length) {
+          this.streamCandidates = merged;
+        }
       }
     } catch (error) {
       if (token === this.sourceLoadToken) {
@@ -17382,8 +17542,12 @@ export const PlayerScreen = {
                 .map((stream, index) => {
                   const focused =
                     this.sourcesFocus.zone === "list" && this.sourcesFocus.index === index;
-                  const isCurrent =
-                    this.streamCandidates[this.currentStreamIndex]?.url === stream.url;
+                  const currentStream = Environment.isBrowser()
+                    ? this.getCurrentStreamCandidate()
+                    : null;
+                  const isCurrent = Environment.isBrowser()
+                    ? Boolean(currentStream) && streamMergeKey(currentStream) === streamMergeKey(stream)
+                    : this.streamCandidates[this.currentStreamIndex]?.url === stream.url;
                   const badges = renderPlayerSourceBadges(stream, badgeSettings);
                   const topBadges = badgePlacement === "TOP" ? badges : "";
                   const bottomBadges = badgePlacement === "BOTTOM" ? badges : "";

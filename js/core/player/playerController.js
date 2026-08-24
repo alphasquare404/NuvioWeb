@@ -159,6 +159,7 @@ export const PlayerController = {
   webOsPlaybackRateRequestToken: 0,
   webOsPlaybackRateCommandPromise: null,
   webOsPlaybackRateReapplyPromise: null,
+  videoElementListeners: [],
 
   isExpectedPlayInterruption(error) {
     const message = String(error?.message || "").toLowerCase();
@@ -4334,23 +4335,26 @@ export const PlayerController = {
     }
   },
 
-  init() {
-    this.video = document.getElementById("videoPlayer");
-    Platform.prepareVideoElement(this.video);
-    this.video.muted = false;
-    this.video.defaultMuted = false;
-    this.video.volume = 1;
-    this.refreshWebOsDeviceInfo();
-    if (!this.viewportSyncHandler) {
-      this.viewportSyncHandler = () => {
-        if (this.isUsingAvPlay()) {
-          this.setAvPlayDisplayRect();
-        }
-      };
-      window.addEventListener("resize", this.viewportSyncHandler);
-    }
+  unbindVideoElementListeners() {
+    this.videoElementListeners.forEach(({ target, eventName, handler }) => {
+      target?.removeEventListener?.(eventName, handler);
+    });
+    this.videoElementListeners = [];
+  },
 
-    this.video.addEventListener("ended", () => {
+  bindVideoElement(video) {
+    if (!video) {
+      return false;
+    }
+    this.unbindVideoElementListeners();
+    this.video = video;
+    Platform.prepareVideoElement(video);
+    const listen = (eventName, handler) => {
+      video.addEventListener(eventName, handler);
+      this.videoElementListeners.push({ target: video, eventName, handler });
+    };
+
+    listen("ended", () => {
       this.isPlaying = false;
       this.syncWebOsPlaybackKeepAwake();
       const context = this.createProgressContext();
@@ -4360,7 +4364,7 @@ export const PlayerController = {
       this.flushProgress(completedMs, durationMs > 0 ? durationMs : completedMs, false, context);
     });
 
-    this.video.addEventListener("error", (e) => {
+    listen("error", (e) => {
       this.isPlaying = false;
       this.syncWebOsPlaybackKeepAwake();
       const customErrorCode = Number(e?.detail?.mediaErrorCode || 0);
@@ -4381,18 +4385,18 @@ export const PlayerController = {
         this.reapplyWebOsPlaybackRate().catch(() => {});
       }
     };
-    this.video.addEventListener("loadedmetadata", syncNativeMediaId);
-    this.video.addEventListener("loadeddata", syncNativeMediaId);
-    this.video.addEventListener("canplay", syncNativeMediaId);
-    this.video.addEventListener("playing", syncNativeMediaId);
-    this.video.addEventListener("seeked", () => {
+    listen("loadedmetadata", syncNativeMediaId);
+    listen("loadeddata", syncNativeMediaId);
+    listen("canplay", syncNativeMediaId);
+    listen("playing", syncNativeMediaId);
+    listen("seeked", () => {
       this.reapplyWebOsPlaybackRate().catch(() => {});
     });
-    this.video.addEventListener("emptied", () => {
+    listen("emptied", () => {
       this.resetNativeMediaState();
     });
 
-    this.video.addEventListener("playing", () => {
+    listen("playing", () => {
       const audioTrackList =
         this.video?.audioTracks || this.video?.webkitAudioTracks || this.video?.mozAudioTracks;
       const audioTrackCount = Number(audioTrackList?.length || 0);
@@ -4411,7 +4415,7 @@ export const PlayerController = {
       }
     });
 
-    this.video.addEventListener("loadedmetadata", () => {
+    listen("loadedmetadata", () => {
       const audioTrackList =
         this.video?.audioTracks || this.video?.webkitAudioTracks || this.video?.mozAudioTracks;
       const audioTrackCount = Number(audioTrackList?.length || 0);
@@ -4429,6 +4433,69 @@ export const PlayerController = {
         this.forceAvPlayFallbackForCurrentSource("native_no_audio_tracks");
       }
     });
+    return true;
+  },
+
+  replaceBrowserVideoElement() {
+    if (!Platform.isBrowser() || !this.video?.parentNode) {
+      return null;
+    }
+    const oldVideo = this.video;
+    const preservedState = {
+      autoplay: Boolean(oldVideo.autoplay),
+      defaultMuted: Boolean(oldVideo.defaultMuted),
+      muted: Boolean(oldVideo.muted),
+      playbackRate: Number(oldVideo.playbackRate || 1),
+      preload: String(oldVideo.preload || "auto"),
+      volume: Number.isFinite(Number(oldVideo.volume)) ? Number(oldVideo.volume) : 1
+    };
+
+    this.playRequestToken = Number(this.playRequestToken || 0) + 1;
+    this.unbindVideoElementListeners();
+    this.teardownAdaptiveInstances();
+    this.teardownAvPlay();
+    try {
+      oldVideo.pause();
+      Array.from(oldVideo.querySelectorAll("source, track")).forEach((node) => node.remove());
+      oldVideo.removeAttribute("src");
+      oldVideo.load();
+    } catch (_) {
+      // A detached browser video can reject cleanup while its request is aborted.
+    }
+    const freshVideo = document.createElement("video");
+    Array.from(oldVideo.attributes).forEach((attribute) => {
+      freshVideo.setAttribute(attribute.name, attribute.value);
+    });
+    freshVideo.autoplay = preservedState.autoplay;
+    freshVideo.defaultMuted = preservedState.defaultMuted;
+    freshVideo.muted = preservedState.muted;
+    freshVideo.preload = preservedState.preload;
+    freshVideo.volume = preservedState.volume;
+    freshVideo.playbackRate = preservedState.playbackRate;
+    oldVideo.replaceWith(freshVideo);
+
+    this.playbackSessionActive = false;
+    this.playbackEngine = "none";
+    this.resetNativeMediaState();
+    this.bindVideoElement(freshVideo);
+    return freshVideo;
+  },
+
+  init() {
+    const initialVideo = document.getElementById("videoPlayer");
+    this.bindVideoElement(initialVideo);
+    this.video.muted = false;
+    this.video.defaultMuted = false;
+    this.video.volume = 1;
+    this.refreshWebOsDeviceInfo();
+    if (!this.viewportSyncHandler) {
+      this.viewportSyncHandler = () => {
+        if (this.isUsingAvPlay()) {
+          this.setAvPlayDisplayRect();
+        }
+      };
+      window.addEventListener("resize", this.viewportSyncHandler);
+    }
 
     if (!this.lifecycleBound) {
       this.lifecycleBound = true;

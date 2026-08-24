@@ -2549,7 +2549,12 @@ export const StreamScreen = {
     if (!selected) {
       return;
     }
-    const playerStreamCandidates = this.getFilteredStreams();
+    // Browser Player → Sources owns its own provider filters. Preserve the
+    // Stream Selection canonical list across navigation instead of passing
+    // only the currently filtered display slice.
+    const playerStreamCandidates = Environment.isBrowser()
+      ? this.streams
+      : this.getFilteredStreams();
     const itemType = normalizeType(this.params?.itemType);
     const startFromBeginning = Boolean(this.params?.startFromBeginning);
     const routeResumeProgress = {
