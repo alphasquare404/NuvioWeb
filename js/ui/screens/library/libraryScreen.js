@@ -144,73 +144,32 @@ function filterStructureSignature(state = {}) {
   ].join("|");
 }
 
-function isLocalDesktopLibraryPreview() {
-  if (!Platform.isBrowser() || typeof window === "undefined") {
-    return false;
-  }
-  const host = String(window.location?.hostname || "").toLowerCase();
-  return host === "localhost" || host === "127.0.0.1";
-}
-
-function previewTitleSortKey(value) {
-  return String(value || "")
+function libraryCardTypeLabel(value) {
+  const key = String(value || "")
     .trim()
-    .replace(/^(the|an|a)\s+/i, "")
     .toLowerCase();
+  const labels = {
+    movie: "Movie",
+    series: "Series",
+    show: "Series",
+    tv: "Series",
+    anime: "Anime"
+  };
+  return labels[key] || "";
 }
 
-function sortDesktopLibraryPreviewItems(items, selectedSortKey) {
-  const byTitleAscending = (left, right) => {
-    const titleResult = previewTitleSortKey(left.name || left.id).localeCompare(
-      previewTitleSortKey(right.name || right.id),
-      undefined,
-      { sensitivity: "base" }
-    );
-    return titleResult || String(left.id).localeCompare(String(right.id), undefined, { sensitivity: "base" });
-  };
-  const byAdded = (left, right, direction) => {
-    const addedResult = direction * (Number(left.listedAt || 0) - Number(right.listedAt || 0));
-    return addedResult || byTitleAscending(left, right);
-  };
-
-  return [...items].sort((left, right) => {
-    if (selectedSortKey === "title_asc") return byTitleAscending(left, right);
-    if (selectedSortKey === "title_desc") return byTitleAscending(right, left);
-    if (selectedSortKey === "added_asc") return byAdded(left, right, 1);
-    return byAdded(left, right, -1);
-  });
+function libraryCardYear(item = {}) {
+  const normalizedYear = Number(item.year);
+  if (Number.isInteger(normalizedYear) && normalizedYear >= 1800 && normalizedYear <= 3000) {
+    return String(normalizedYear);
+  }
+  return String(item.releaseInfo || item.releaseDate || item.released || "").match(
+    /\b(19|20)\d{2}\b/
+  )?.[0] || "";
 }
 
-// TEMPORARY DEV PREVIEW: render-only data for inspecting the Saved Library UI
-// locally. These items never enter LibraryController or any persistence/sync path.
-function getDesktopLibraryPreviewItems(state = {}) {
-  const posterBaseUrl = "https://image.tmdb.org/t/p/w500";
-  const items = [
-    ["tt1375666", "movie", "Inception", "oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg", 1710115200000],
-    ["tt0816692", "movie", "Interstellar", "gEU2QniE6E77NI6lCU6MxlNBvIx.jpg", 1706745600000],
-    ["tt1160419", "movie", "Dune", "d5NXSklXo0qyIYkgV94XAgMIckC.jpg", 1711929600000],
-    ["tt0468569", "movie", "The Dark Knight", "qJ2tW6WMUDux911r6m7haRef0WH.jpg", 1709251200000],
-    ["tt0133093", "movie", "The Matrix", "f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg", 1714521600000],
-    ["tt4154796", "movie", "Avengers: Endgame", "or06FN3Dka5tukK1e9sl16pB3iy.jpg", 1704067200000],
-    ["tt1630029", "movie", "Avatar: The Way of Water", "t6HIqrRAclMCA60NsSmeqe9RmNV.jpg", 1717200000000],
-    ["tt15239678", "movie", "Dune: Part Two", "1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg", 1719792000000],
-    ["tt0944947", "series", "Game of Thrones", "1XS1oqL89opfnbLl8WnZY1O1uJx.jpg", 1701388800000],
-    ["tt0903747", "series", "Breaking Bad", "ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg", 1712707200000],
-    ["tt4574334", "series", "Stranger Things", "uOOtwVbSr4QDjAGIifLDwpb2Pdl.jpg", 1707955200000],
-    ["tt2861424", "series", "Rick and Morty", "cvhNj9eoRBe5SxjCbQTkh05UP5K.jpg", 1716163200000],
-    ["tt11198330", "series", "House of the Dragon", "7QMsOTMUswlwxJP0rTTZfmz2tX2.jpg", 1718409600000],
-    ["tt7660850", "series", "Succession", "mW9F9Lm1A5Dx7N8V9VQb9JYQWwL.jpg", 1705276800000],
-    ["tt2788316", "series", "The Crown", "1M876KPjulVwppEpldhdc8V4o68.jpg", 1711065600000]
-  ].map(([id, type, name, posterPath, listedAt]) => ({
-    id,
-    type,
-    name,
-    poster: `${posterBaseUrl}/${posterPath}`,
-    background: "",
-    addonBaseUrl: "",
-    listedAt
-  }));
-  return sortDesktopLibraryPreviewItems(items, state.selectedSortKey);
+function libraryCardMetadata(item = {}) {
+  return [libraryCardTypeLabel(item.type), libraryCardYear(item)].filter(Boolean).join(" • ");
 }
 
 export const LibraryScreen = {
@@ -582,19 +541,10 @@ export const LibraryScreen = {
         </div>
       `;
     }
-    const hasNoRealSavedItems =
-      Array.isArray(state.allItems) &&
-      state.allItems.length === 0 &&
-      Array.isArray(state.visibleItems) &&
-      state.visibleItems.length === 0;
-    const renderedItems =
-      hasNoRealSavedItems && isLocalDesktopLibraryPreview()
-        ? getDesktopLibraryPreviewItems(state)
-        : state.visibleItems;
     return `
       <div id="libraryContentAreaMount">
         ${this.renderActions(state)}
-        ${renderedItems.length ? this.renderGrid(renderedItems) : this.renderEmptyState()}
+        ${state.visibleItems.length ? this.renderGrid(state.visibleItems) : this.renderEmptyState()}
         ${state.transientMessage ? `<div class="library-toast">${escapeHtml(state.transientMessage)}</div>` : ""}
       </div>
     `;
@@ -867,6 +817,7 @@ export const LibraryScreen = {
             .map((item) => {
               const focusKey = `${item.type}:${item.id}`;
               const isWatched = isTitleItemWatched(item, state.watchedTitleIds);
+              const metadata = Platform.isBrowser() ? libraryCardMetadata(item) : "";
               return `
               <article class="library-grid-card focusable"
                        data-action="openDetail"
@@ -881,6 +832,7 @@ export const LibraryScreen = {
                   ${isWatched ? renderTitleWatchedBadge({ className: "library-watched-badge", iconClassName: "library-watched-badge-svg" }) : ""}
                 </div>
                 <div class="library-grid-title">${escapeHtml(item.name || item.id || "Untitled")}</div>
+                ${metadata ? `<div class="library-grid-meta">${escapeHtml(metadata)}</div>` : ""}
               </article>
             `;
             })
