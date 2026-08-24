@@ -140,7 +140,10 @@ function filterStructureSignature(state = {}) {
   return [
     state.sourceMode === "trakt" ? "trakt" : "local",
     Array.isArray(state.availableGenres) && state.availableGenres.length ? "genre" : "no-genre",
-    Array.isArray(state.availableYears) && state.availableYears.length ? "year" : "no-year"
+    Array.isArray(state.availableYears) && state.availableYears.length ? "year" : "no-year",
+    state.selectedTypeKey !== "__all__" ? "type-filtered" : "type-all",
+    state.selectedGenre ? "genre-filtered" : "genre-all",
+    state.selectedYear ? "year-filtered" : "year-all"
   ].join("|");
 }
 
@@ -520,6 +523,27 @@ export const LibraryScreen = {
     ]
       .filter(Boolean)
       .join("");
+
+    if (Platform.isBrowser()) {
+      const hasActiveFilters =
+        state.selectedTypeKey !== "__all__" || Boolean(state.selectedGenre) || Boolean(state.selectedYear);
+      return `
+        <section class="library-picker-groups library-saved-picker-groups" id="libraryPickerGroupsMount">
+          <div class="library-picker-row library-saved-picker-row">
+            ${primaryPickerMarkup}
+            ${secondaryPickerMarkup}
+            ${
+              hasActiveFilters
+                ? `<button class="library-clear-filters focusable"
+                           data-action="clearLibraryFilters">
+                     ${escapeHtml(t("library_clear_filters", {}, "Clear filters"))}
+                   </button>`
+                : ""
+            }
+          </div>
+        </section>
+      `;
+    }
 
     return `
       <section class="library-picker-groups" id="libraryPickerGroupsMount">
@@ -1419,34 +1443,38 @@ export const LibraryScreen = {
   },
 
   resolvePreferredPickerRowNode(referenceNode = null) {
-    const anchors = Array.from(
-      this.container?.querySelectorAll(".library-picker-row .library-picker-anchor.focusable") || []
-    );
-    if (!anchors.length) {
+    const controls = this.getPickerRowFocusables();
+    if (!controls.length) {
       return null;
     }
     const remembered =
       this.lastMainFocus && this.lastMainFocus.closest?.(".library-picker-row")
         ? this.resolveLastMainFocus()
         : null;
-    return remembered || findNearestNodeByCenterX(referenceNode, anchors) || anchors[0] || null;
+    return remembered || findNearestNodeByCenterX(referenceNode, controls) || controls[0] || null;
+  },
+
+  getPickerRowFocusables() {
+    return Array.from(
+      this.container?.querySelectorAll(
+        ".library-picker-row .library-picker-anchor.focusable, .library-picker-row .library-clear-filters.focusable"
+      ) || []
+    ).filter((node) => !node.disabled);
   },
 
   resolveRelativePickerRowNode(current, direction) {
     if (
       !current ||
-      !current.matches?.(".library-picker-anchor.focusable") ||
+      !current.matches?.(".library-picker-anchor.focusable, .library-clear-filters.focusable") ||
       !current.closest?.(".library-picker-row")
     ) {
       return null;
     }
-    const anchors = Array.from(
-      this.container?.querySelectorAll(".library-picker-row .library-picker-anchor.focusable") || []
-    );
-    if (!anchors.length) {
+    const controls = this.getPickerRowFocusables();
+    if (!controls.length) {
       return null;
     }
-    const rows = groupNodesByRow(anchors);
+    const rows = groupNodesByRow(controls);
     const rowIndex = rows.findIndex((row) => row.nodes.includes(current));
     if (rowIndex < 0) {
       return null;
@@ -1612,7 +1640,7 @@ export const LibraryScreen = {
   handleFilterRowHorizontalNavigation(event, current) {
     if (
       !current ||
-      !current.matches?.(".library-picker-anchor.focusable") ||
+      !current.matches?.(".library-picker-anchor.focusable, .library-clear-filters.focusable") ||
       !current.closest?.(".library-picker-row")
     ) {
       return false;
@@ -1622,19 +1650,17 @@ export const LibraryScreen = {
     if (!delta) {
       return false;
     }
-    const anchors = Array.from(
-      this.container?.querySelectorAll(".library-picker-row .library-picker-anchor.focusable") || []
-    );
-    if (!anchors.length) {
+    const controls = this.getPickerRowFocusables();
+    if (!controls.length) {
       return false;
     }
-    const currentIndex = Math.max(0, anchors.indexOf(current));
-    const nextIndex = Math.max(0, Math.min(anchors.length - 1, currentIndex + delta));
+    const currentIndex = Math.max(0, controls.indexOf(current));
+    const nextIndex = Math.max(0, Math.min(controls.length - 1, currentIndex + delta));
     if (nextIndex === currentIndex) {
       event?.preventDefault?.();
       return true;
     }
-    const target = anchors[nextIndex] || null;
+    const target = controls[nextIndex] || null;
     if (!target) {
       return false;
     }
@@ -1646,7 +1672,7 @@ export const LibraryScreen = {
   handleFilterRowVerticalNavigation(event, current) {
     if (
       !current ||
-      !current.matches?.(".library-picker-anchor.focusable") ||
+      !current.matches?.(".library-picker-anchor.focusable, .library-clear-filters.focusable") ||
       !current.closest?.(".library-picker-row")
     ) {
       return false;
@@ -2023,6 +2049,10 @@ export const LibraryScreen = {
     }
     if (action === "refreshCloudLibrary") {
       await this.controller.refreshCloudLibrary();
+      return;
+    }
+    if (action === "clearLibraryFilters") {
+      this.controller.clearFilters();
       return;
     }
     if (action === "clearCloudSearch") {

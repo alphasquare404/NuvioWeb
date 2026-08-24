@@ -1095,6 +1095,24 @@ export class LibraryController {
     });
   }
 
+  clearFilters() {
+    if (
+      this.state.selectedTypeKey === ALL_KEY &&
+      !this.state.selectedGenre &&
+      !this.state.selectedYear
+    ) {
+      return false;
+    }
+    this.setState({
+      selectedTypeKey: ALL_KEY,
+      selectedGenre: null,
+      selectedYear: null,
+      expandedPicker: null,
+      pickerFocusIndex: 0
+    });
+    return true;
+  }
+
   selectSort(key) {
     this.state = {
       ...this.state,

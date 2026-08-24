@@ -5328,6 +5328,10 @@ html.desktop-browser {
   gap: 10px;
 }
 
+.desktop-browser .library-shell.desktop-navigation-enabled .library-saved-picker-row {
+  align-items: center;
+}
+
 .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-row .library-picker {
   flex: 0 1 clamp(200px, 18vw, 280px);
 }
@@ -5370,10 +5374,46 @@ html.desktop-browser {
   background: rgba(35, 35, 39, 0.96);
 }
 
+.desktop-browser .library-shell.desktop-navigation-enabled .library-clear-filters {
+  flex: 0 0 auto;
+  min-height: 40px;
+  margin-inline-start: auto;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-clear-filters.focused,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-clear-filters:focus-visible {
+  border-color: var(--secondary-color);
+  background: rgb(var(--secondary-color-rgb) / 0.16);
+  color: var(--text-color);
+  box-shadow: 0 0 0 3px rgb(var(--secondary-color-rgb) / 0.2);
+  outline: none;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor:hover {
     border-color: rgba(255, 255, 255, 0.36);
     background: rgba(35, 35, 39, 0.96);
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-clear-filters:hover {
+    border-color: rgba(255, 255, 255, 0.36);
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-color);
   }
 }
 
@@ -5527,6 +5567,10 @@ html.desktop-browser {
 
   .desktop-browser .library-shell.desktop-navigation-enabled .library-grid {
     grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-clear-filters {
+    margin-inline-start: 0;
   }
 }
 
