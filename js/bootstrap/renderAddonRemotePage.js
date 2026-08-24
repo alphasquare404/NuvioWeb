@@ -6,6 +6,7 @@ import { buildOrderedHomeCatalogItems, toDisplayTypeLabel } from "../core/addons
 import { LibrarySyncService } from "../core/profile/librarySyncService.js";
 import { ProfileSettingsSyncService } from "../core/profile/profileSettingsSyncService.js";
 import { HomeCatalogSettingsSyncService } from "../core/profile/homeCatalogSettingsSyncService.js";
+import { setBrowserDocumentTitle } from "../ui/navigation/browserDocumentTitle.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -47,7 +48,7 @@ function clonePrefs(prefs = {}) {
 }
 
 function createShell() {
-  document.title = "Nuvio TV - Manage Addons";
+  setBrowserDocumentTitle("Manage Addons");
   document.body.innerHTML = `
     <div class="addon-remote-shell">
       <style>

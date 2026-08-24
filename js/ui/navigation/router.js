@@ -27,6 +27,7 @@ import { CollectionEditorScreen, CollectionFolderEditorScreen } from "../screens
 import { Platform } from "../../platform/index.js";
 import { RouteStateStore } from "./routeStateStore.js";
 import { LocalStore } from "../../core/storage/localStore.js";
+import { setBrowserRouteTitle } from "./browserDocumentTitle.js";
 
 const ROUTER_PERF_DEBUG = Boolean(
   globalThis.__NUVIO_DEBUG_ROUTER_PERF__ || globalThis.__NUVIO_DEBUG_HOME_PERF__
@@ -352,6 +353,7 @@ export const Router = {
     const Screen = this.routes[routeName];
 
     if (!Screen) {
+      setBrowserRouteTitle("");
       console.error("Route not found:", routeName);
       return;
     }
@@ -380,6 +382,7 @@ export const Router = {
 
     this.current = routeName;
     this.currentParams = targetParams;
+    setBrowserRouteTitle(routeName);
     const navigationContext = this.resolveNavigationContext(routeName, this.currentParams, options);
 
     await Screen.mount(this.currentParams, navigationContext);
@@ -486,6 +489,7 @@ export const Router = {
         this.routes[this.current].cleanup?.();
         this.current = "home";
         this.currentParams = {};
+        setBrowserRouteTitle("home");
         await this.routes.home.mount();
         this.persistWebOsResumeRoute("home", {});
         return;
@@ -507,6 +511,7 @@ export const Router = {
     this.routes[this.current].cleanup?.();
     this.current = previousRoute;
     this.currentParams = previousParams;
+    setBrowserRouteTitle(previousRoute);
     const navigationContext = this.resolveNavigationContext(previousRoute, previousParams, {
       isBackNavigation: true
     });

@@ -46,6 +46,7 @@ import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { I18n } from "../../../i18n/index.js";
 import { Environment } from "../../../platform/environment.js";
 import { Router } from "../../navigation/router.js";
+import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { TrackingScrobbleService } from "../../../data/repository/trackingScrobbleService.js";
@@ -2374,6 +2375,7 @@ export const PlayerScreen = {
     this.speedDialogIndex = Math.max(0, PLAYER_SPEEDS.indexOf(1));
 
     this.episodes = Array.isArray(params.episodes) ? params.episodes : [];
+    this.updateBrowserDocumentTitle();
     this.episodePanelVisible = false;
     const explicitEpisodeIndex = this.episodes.findIndex((entry) => entry.id === params.videoId);
     const fallbackEpisodeIndex = this.episodes.findIndex((entry) => {
@@ -2674,6 +2676,29 @@ export const PlayerScreen = {
 
   isExternalFrameMode() {
     return Boolean(this.externalFrameUrl);
+  },
+
+  updateBrowserDocumentTitle() {
+    const episodeEntry = this.resolvePauseOverlayEpisodeEntry(this.episodes || []);
+    const enrichedMeta = this.pauseOverlayMeta || {};
+    setBrowserMediaTitle({
+      title:
+        this.params?.playerTitle || this.params?.itemTitle || this.params?.title || enrichedMeta.title || "",
+      year:
+        this.params?.playerReleaseYear ||
+        this.params?.releaseYear ||
+        this.params?.year ||
+        enrichedMeta.releaseYear ||
+        "",
+      season: this.params?.season ?? episodeEntry?.season ?? enrichedMeta.season ?? null,
+      episode: this.params?.episode ?? episodeEntry?.episode ?? enrichedMeta.episode ?? null,
+      episodeTitle:
+        this.params?.playerEpisodeTitle ||
+        this.params?.episodeTitle ||
+        episodeEntry?.title ||
+        enrichedMeta.episodeTitle ||
+        ""
+    });
   },
 
   isActiveMountToken(mountToken = null) {
@@ -6851,6 +6876,7 @@ export const PlayerScreen = {
         return;
       }
       this.pauseOverlayMeta = this.buildPauseOverlayMeta(result.data);
+      this.updateBrowserDocumentTitle();
       this.renderPauseOverlay();
     } catch (error) {
       if (requestToken === this.pauseOverlayMetaRequestToken) {

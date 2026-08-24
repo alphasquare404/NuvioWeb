@@ -1,5 +1,6 @@
 ﻿import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
 import { savedLibraryRepository } from "../../../data/repository/savedLibraryRepository.js";
@@ -1712,6 +1713,7 @@ export const MetaDetailsScreen = {
       : null;
     if (this.hydrateFromRouteState(restoredRouteState, params)) {
       this.isLoadingDetail = false;
+      setBrowserMediaTitle({ title: this.meta?.name, year: this.meta?.releaseInfo });
       this.render(this.meta, this.pendingFocusRestore);
       const refreshToken = this.detailLoadToken;
       void this.refreshEpisodePlaybackState()
@@ -1891,6 +1893,7 @@ export const MetaDetailsScreen = {
 
     // Fast first paint with base metadata.
     this.meta = meta;
+    setBrowserMediaTitle({ title: meta?.name, year: meta?.releaseInfo });
     this.episodes = normalizeEpisodes(meta?.videos || []);
     this.castItems = extractCast(meta);
     const progressItemsForDetail = this.resumeProgress
@@ -1943,6 +1946,7 @@ export const MetaDetailsScreen = {
       }
 
       this.meta = enrichedMeta || meta;
+      setBrowserMediaTitle({ title: this.meta?.name, year: this.meta?.releaseInfo });
       this.episodes = normalizeEpisodes(this.meta?.videos || []);
       this.castItems = extractCast(this.meta);
       this.buildEpisodeState(progressItemsForDetail, allWatchedItems);
