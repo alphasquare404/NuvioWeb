@@ -1,8 +1,7 @@
 services:
   nuvioweb:
     container_name: nuvioweb
-    build:
-      context: .
+    image: ghcr.io/alphasquare404/nuvioweb:desktop
     environment:
       NUVIO_SUPABASE_URL: ${NUVIO_SUPABASE_URL:-}
       NUVIO_SUPABASE_ANON_KEY: ${NUVIO_SUPABASE_ANON_KEY:-}

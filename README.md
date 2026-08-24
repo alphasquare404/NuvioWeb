@@ -140,9 +140,10 @@ http://127.0.0.1:8080
 
 ## Self-host with Docker
 
-The Docker image builds the browser target and serves the generated `dist/`
-directory from Nginx. It does not run the development Node server and does not
-include the source tree or `node_modules` in the final image.
+The default Compose deployment pulls the published
+`ghcr.io/alphasquare404/nuvioweb:desktop` image. It serves the browser build
+from Nginx, does not run the development Node server, and does not require a
+local source build on the server.
 
 ### Configure public browser values
 
@@ -180,12 +181,14 @@ The browser build explicitly omits
 
 ### Start and update
 
-Run these commands on the Docker/self-host server after cloning or updating the
-repository there. Your development machine only needs to commit and push the
-source changes; Docker is not required on it.
+Run these commands on the Docker/self-host server. The server only needs this
+Compose file and its local `.env`; it does not need a source checkout to build
+the application. Your development machine only needs to commit and push source
+changes; Docker is not required on it.
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose ps
 ```
 
@@ -198,9 +201,9 @@ docker logs -f nuvioweb
 # Stop the application
 docker compose down
 
-# Update an existing checkout
-git pull
-docker compose up -d --build
+# Update to the newest published desktop image
+docker compose pull
+docker compose up -d
 ```
 
 The container serves HTTP on port `80` and Compose maps it to host port `4173`.
