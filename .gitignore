@@ -4,6 +4,8 @@ favicon.svg
 
 nuvio.env.js
 local.properties
+.env
+.env.*
 local.example.properties
 node_modules/
 *.ipk
