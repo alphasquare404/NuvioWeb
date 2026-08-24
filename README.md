@@ -146,25 +146,36 @@ include the source tree or `node_modules` in the final image.
 
 ### Configure public browser values
 
-Before building, provide browser-public values through your shell environment
-or an untracked `.env` file next to `docker-compose.yml`. The usual required
-values for account sign-in are:
+Provide browser-public values through an untracked `.env` file next to
+`docker-compose.yml`. The required values for account sign-in are:
 
 ```dotenv
 NUVIO_SUPABASE_URL=https://your-project.supabase.co
 NUVIO_SUPABASE_ANON_KEY=your-browser-anon-key
 
+# Optional: enables browser Simkl PIN sign-in
+SIMKL_CLIENT_ID=
+
 # Optional: expose the container on another host port (default: 4173)
 NUVIO_PORT=4174
 ```
 
-Optional public values such as `TMDB_API_KEY`, `TRAKT_CLIENT_ID`,
-`SIMKL_CLIENT_ID`, `AVATAR_PUBLIC_BASE_URL`, and metadata endpoint URLs are
-passed as Docker build arguments by `docker-compose.yml` when set.
+`TRAKT_CLIENT_ID`, `NUVIO_SUPABASE_FALLBACK_URL`, and the existing public
+metadata/avatar/donation endpoint overrides are also supported. Their defaults
+work for most deployments. TMDB remains profile-configurable in Settings rather
+than a required Docker value.
+
+Docker builds a generic browser image. At container startup, an explicit
+public allowlist is written to `nuvio.env.js`, so changing `.env` only requires
+recreating the container, not rebuilding the image:
+
+```bash
+docker compose up -d --force-recreate
+```
 
 Never put `TRAKT_CLIENT_SECRET`, Supabase service-role keys, access tokens, or
-other private/native credentials in `.env`, Docker build arguments, or browser
-runtime configuration. The browser build explicitly omits
+other private/native credentials in `.env` or browser runtime configuration.
+The browser build explicitly omits
 `TRAKT_CLIENT_SECRET`; native Tizen and webOS build paths remain separate.
 
 ### Start and update

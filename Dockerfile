@@ -7,54 +7,16 @@ RUN npm ci
 
 COPY . .
 
-# These values are intentionally browser-public configuration. Do not add
-# native-only credentials such as TRAKT_CLIENT_SECRET to this image.
-ARG NUVIO_SUPABASE_URL=
-ARG NUVIO_SUPABASE_ANON_KEY=
-ARG NUVIO_SUPABASE_FALLBACK_URL=
-ARG TV_LOGIN_WEB_BASE_URL=
-ARG YOUTUBE_PROXY_URL=youtube-proxy.html
-ARG INTRODB_API_URL=https://api.introdb.app/
-ARG IMDB_RATINGS_API_BASE_URL=
-ARG IMDB_TAPFRAME_API_BASE_URL=
-ARG AVATAR_PUBLIC_BASE_URL=
-ARG UNIQUE_CONTRIBUTIONS_BASE_URL=
-ARG DONATIONS_BASE_URL=
-ARG DONATIONS_DONATE_URL=
-ARG SPONSOR_NAMES=ragmehos.
-ARG TMDB_API_KEY=
-ARG TRAKT_CLIENT_ID=
-ARG SIMKL_CLIENT_ID=
-ARG SIMKL_APP_NAME=nuvio
-ARG PREMIUMIZE_CLIENT_ID=
-
-RUN printf '%s\n' \
-      "NUVIO_SUPABASE_URL=${NUVIO_SUPABASE_URL}" \
-      "NUVIO_SUPABASE_ANON_KEY=${NUVIO_SUPABASE_ANON_KEY}" \
-      "NUVIO_SUPABASE_FALLBACK_URL=${NUVIO_SUPABASE_FALLBACK_URL}" \
-      "TV_LOGIN_WEB_BASE_URL=${TV_LOGIN_WEB_BASE_URL}" \
-      "YOUTUBE_PROXY_URL=${YOUTUBE_PROXY_URL}" \
-      "INTRODB_API_URL=${INTRODB_API_URL}" \
-      "IMDB_RATINGS_API_BASE_URL=${IMDB_RATINGS_API_BASE_URL}" \
-      "IMDB_TAPFRAME_API_BASE_URL=${IMDB_TAPFRAME_API_BASE_URL}" \
-      "AVATAR_PUBLIC_BASE_URL=${AVATAR_PUBLIC_BASE_URL}" \
-      "UNIQUE_CONTRIBUTIONS_BASE_URL=${UNIQUE_CONTRIBUTIONS_BASE_URL}" \
-      "DONATIONS_BASE_URL=${DONATIONS_BASE_URL}" \
-      "DONATIONS_DONATE_URL=${DONATIONS_DONATE_URL}" \
-      "SPONSOR_NAMES=${SPONSOR_NAMES}" \
-      "TMDB_API_KEY=${TMDB_API_KEY}" \
-      "TRAKT_CLIENT_ID=${TRAKT_CLIENT_ID}" \
-      "SIMKL_CLIENT_ID=${SIMKL_CLIENT_ID}" \
-      "SIMKL_APP_NAME=${SIMKL_APP_NAME}" \
-      "PREMIUMIZE_CLIENT_ID=${PREMIUMIZE_CLIENT_ID}" \
-      > /tmp/nuvio.properties \
-    && NUVIO_LOCAL_PROPERTIES=/tmp/nuvio.properties NUVIO_REQUIRE_LOCAL_PROPERTIES=1 npm run build \
-    && rm -f /tmp/nuvio.properties
+# Build generic browser assets only. Public deployment values are written to
+# nuvio.env.js by the Nginx runtime entrypoint, never baked into image layers.
+RUN npm run build
 
 FROM nginx:1.27-alpine
 
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
+COPY docker/nginx-entrypoint.d/40-nuvio-env.sh /docker-entrypoint.d/40-nuvio-env.sh
+RUN chmod +x /docker-entrypoint.d/40-nuvio-env.sh
 
 EXPOSE 80
 

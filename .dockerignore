@@ -8,6 +8,7 @@ local.properties
 local.example.properties
 .env
 .env.*
+nuvio.env.js
 *.pem
 *.key
 
