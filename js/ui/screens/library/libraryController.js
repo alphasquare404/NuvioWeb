@@ -19,6 +19,8 @@ import {
 } from "../../../core/cloud/cloudLibraryModels.js";
 import { DebridSettingsStore } from "../../../data/local/debridSettingsStore.js";
 import { LibraryPreferencesStore } from "../../../data/local/libraryPreferencesStore.js";
+import { SavedLibraryStore } from "../../../data/local/savedLibraryStore.js";
+import { ProfileManager } from "../../../core/profile/profileManager.js";
 
 const ALL_KEY = "__all__";
 const MESSAGE_CLEAR_MS = 2400;
@@ -448,6 +450,8 @@ export class LibraryController {
     this.messageTimer = null;
     this.reloadToken = 0;
     this.disposed = false;
+    this.unsubscribeSavedLibrary = null;
+    this.savedLibraryReloadPending = false;
     this.cloudSettingsSignature = cloudLibrarySettingsSignature();
     this.unsubscribeDebridSettings = DebridSettingsStore.subscribe(() => {
       void this.refreshCloudLibraryIfSettingsChanged();
@@ -456,18 +460,60 @@ export class LibraryController {
 
   async init() {
     this.disposed = false;
+    if (!this.unsubscribeSavedLibrary) {
+      this.unsubscribeSavedLibrary = SavedLibraryStore.subscribe((change) => {
+        this.handleSavedLibraryChange(change);
+      });
+    }
     await this.reload();
   }
 
   dispose() {
     this.disposed = true;
     this.reloadToken += 1;
+    this.unsubscribeSavedLibrary?.();
+    this.unsubscribeSavedLibrary = null;
+    this.savedLibraryReloadPending = false;
     this.unsubscribeDebridSettings?.();
     this.unsubscribeDebridSettings = null;
     if (this.messageTimer) {
       clearTimeout(this.messageTimer);
       this.messageTimer = null;
     }
+  }
+
+  handleSavedLibraryChange(change = {}) {
+    const changedProfileId = String(change.profileId || "1");
+    const activeProfileId = String(ProfileManager.getActiveProfileId() || "1");
+    if (
+      this.disposed ||
+      this.savedLibraryReloadPending ||
+      changedProfileId !== activeProfileId ||
+      this.state.viewMode !== LIBRARY_VIEW_MODE.SAVED ||
+      this.state.sourceMode !== LibrarySourceMode.LOCAL
+    ) {
+      return;
+    }
+
+    this.savedLibraryReloadPending = true;
+    void Promise.resolve()
+      .then(async () => {
+        this.savedLibraryReloadPending = false;
+        if (
+          this.disposed ||
+          String(ProfileManager.getActiveProfileId() || "1") !== changedProfileId ||
+          this.state.viewMode !== LIBRARY_VIEW_MODE.SAVED ||
+          this.state.sourceMode !== LibrarySourceMode.LOCAL
+        ) {
+          return;
+        }
+        await this.reload({ preserveOverlay: true });
+      })
+      .catch((error) => {
+        if (!this.disposed) {
+          console.warn("Saved library refresh failed", error);
+        }
+      });
   }
 
   getState() {

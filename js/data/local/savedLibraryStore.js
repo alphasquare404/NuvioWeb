@@ -1,6 +1,25 @@
 import { LocalStore } from "../../core/storage/localStore.js";
 
 const SAVED_LIBRARY_KEY = "savedLibraryItems";
+const changeListeners = new Set();
+
+function itemsSignature(items = []) {
+  return JSON.stringify(items || []);
+}
+
+function notifyChange(profileId, reason) {
+  const change = {
+    profileId: String(profileId || "1"),
+    reason: String(reason || "change")
+  };
+  changeListeners.forEach((listener) => {
+    try {
+      listener(change);
+    } catch (error) {
+      console.warn("Saved library change listener failed", error);
+    }
+  });
+}
 
 function normalizeItem(item = {}, profileId = 1) {
   const updatedAt = Number(item.updatedAt || item.addedAt || Date.now());
@@ -43,6 +62,14 @@ function dedupeAndSort(items = []) {
 }
 
 export const SavedLibraryStore = {
+  subscribe(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    changeListeners.add(listener);
+    return () => changeListeners.delete(listener);
+  },
+
   listAll() {
     const raw = LocalStore.get(SAVED_LIBRARY_KEY, []);
     return dedupeAndSort(Array.isArray(raw) ? raw : []);
@@ -75,7 +102,12 @@ export const SavedLibraryStore = {
       0,
       1000
     );
-    LocalStore.set(SAVED_LIBRARY_KEY, dedupeAndSort(next));
+    const nextItems = dedupeAndSort(next);
+    if (itemsSignature(items) === itemsSignature(nextItems)) {
+      return;
+    }
+    LocalStore.set(SAVED_LIBRARY_KEY, nextItems);
+    notifyChange(pid, "upsert");
   },
 
   findByContentId(contentId, profileId) {
@@ -86,27 +118,56 @@ export const SavedLibraryStore = {
   remove(contentId, profileId) {
     const pid = String(profileId || "1");
     const wanted = String(contentId || "").trim();
-    const next = this.listAll().filter((item) => {
+    const items = this.listAll();
+    const next = items.filter((item) => {
       return String(item.profileId || "1") !== pid || item.contentId !== wanted;
     });
+    if (items.length === next.length) {
+      return;
+    }
     LocalStore.set(SAVED_LIBRARY_KEY, next);
+    notifyChange(pid, "remove");
   },
 
   replaceAll(items = []) {
-    LocalStore.set(SAVED_LIBRARY_KEY, dedupeAndSort(Array.isArray(items) ? items : []));
+    const previousItems = this.listAll();
+    const nextItems = dedupeAndSort(Array.isArray(items) ? items : []);
+    if (itemsSignature(previousItems) === itemsSignature(nextItems)) {
+      return;
+    }
+    LocalStore.set(SAVED_LIBRARY_KEY, nextItems);
+    const profileIds = new Set(
+      [...previousItems, ...nextItems].map((item) => String(item.profileId || "1"))
+    );
+    profileIds.forEach((profileId) => {
+      if (
+        itemsSignature(previousItems.filter((item) => String(item.profileId || "1") === profileId)) !==
+        itemsSignature(nextItems.filter((item) => String(item.profileId || "1") === profileId))
+      ) {
+        notifyChange(profileId, "replaceAll");
+      }
+    });
   },
 
   replaceForProfile(profileId, items = []) {
     const pid = String(profileId || "1");
-    const keepOtherProfiles = this.listAll().filter(
+    const currentItems = this.listAll();
+    const previousProfileItems = currentItems.filter(
+      (item) => String(item.profileId || "1") === pid
+    );
+    const keepOtherProfiles = currentItems.filter(
       (item) => String(item.profileId || "1") !== pid
     );
-    const normalized = (Array.isArray(items) ? items : [])
+    const normalized = dedupeAndSort(
+      (Array.isArray(items) ? items : [])
       .map((item) => normalizeItem(item, pid))
-      .filter((item) => Boolean(item.contentId));
-    LocalStore.set(
-      SAVED_LIBRARY_KEY,
-      dedupeAndSort([...normalized, ...keepOtherProfiles]).slice(0, 1000)
+      .filter((item) => Boolean(item.contentId))
     );
+    const nextItems = dedupeAndSort([...normalized, ...keepOtherProfiles]).slice(0, 1000);
+    if (itemsSignature(previousProfileItems) === itemsSignature(normalized)) {
+      return;
+    }
+    LocalStore.set(SAVED_LIBRARY_KEY, nextItems);
+    notifyChange(pid, "replaceForProfile");
   }
 };
