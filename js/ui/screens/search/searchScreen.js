@@ -883,6 +883,7 @@ export const SearchScreen = {
     this.cancelScheduledRender();
     const queryText = this.query || "";
     const useDesktopNavigation = Platform.isBrowser();
+    const showVoiceSearch = this.voiceSearchSupported && !useDesktopNavigation;
     this.container.innerHTML = `
       <div class="home-shell search-screen-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.searchRouteEnterPending ? " search-route-enter" : ""}">
         ${
@@ -898,7 +899,7 @@ export const SearchScreen = {
         }
         <main class="home-main search-content">
           <h1 class="search-page-heading">${escapeHtml(t("sidebar.search", {}, "Search"))}</h1>
-          <section class="search-header${this.layoutPrefs?.discoverLocation === "in_search" ? "" : " no-discover"}${this.voiceSearchSupported ? "" : " no-voice"}">
+          <section class="search-header${this.layoutPrefs?.discoverLocation === "in_search" ? "" : " no-discover"}${showVoiceSearch ? "" : " no-voice"}">
             ${
               this.layoutPrefs?.discoverLocation === "in_search"
                 ? `
@@ -909,7 +910,7 @@ export const SearchScreen = {
                 : ""
             }
             ${
-              this.voiceSearchSupported
+              showVoiceSearch
                 ? `<button
               class="search-voice-btn focusable${this.voiceSearchActive ? " listening" : ""}"
               data-action="openVoice"

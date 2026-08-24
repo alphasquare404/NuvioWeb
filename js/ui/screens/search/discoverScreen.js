@@ -1537,8 +1537,17 @@ export const DiscoverScreen = {
         <main class="home-main discover-main${enterClass}">
           <div class="seeall-shell discover-seeall-shell">
             <header class="seeall-header discover-header">
-              <h2 class="seeall-title">Discover</h2>
-              <div class="seeall-subtitle" id="discoverContextLabel">${escapeHtml(contextLabel)}</div>
+              ${
+                useDesktopNavigation
+                  ? `<button class="discover-desktop-back-button" type="button" data-action="desktopDiscoverBack" aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
+                      <span class="material-icons" aria-hidden="true">arrow_back</span>
+                    </button>`
+                  : ""
+              }
+              <div class="discover-header-copy">
+                <h2 class="seeall-title">Discover</h2>
+                <div class="seeall-subtitle" id="discoverContextLabel">${escapeHtml(contextLabel)}</div>
+              </div>
             </header>
             <section class="library-picker-row discover-picker-row" id="discoverPickerRow">
               ${this.renderFilterPicker("type", "Type", formatAddonTypeLabel(this.selectedType))}
@@ -1558,6 +1567,9 @@ export const DiscoverScreen = {
     this.buildNavigationModel();
     if (useDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
+      this.container.querySelector('[data-action="desktopDiscoverBack"]')?.addEventListener("click", () => {
+        void Router.back();
+      });
     } else if (showRootSidebar) {
       bindRootSidebarEvents(this.container, {
         currentRoute: "discover",

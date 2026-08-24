@@ -5566,6 +5566,14 @@ html.desktop-browser {
   font-size: 24px;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-discover-btn:hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  }
+}
+
 .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-input-field {
   height: 58px;
   padding: 0 18px;
@@ -5772,7 +5780,52 @@ html.desktop-browser {
 }
 
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   margin-bottom: 22px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
+  min-width: 0;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin-top: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.54);
+  color: var(--text-color);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button .material-icons {
+  font-size: 18px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button:hover {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.42);
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
+  outline-offset: 2px;
 }
 
 .desktop-browser .discover-shell.desktop-navigation-enabled .seeall-title {
@@ -5862,11 +5915,94 @@ html.desktop-browser {
 }
 
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid {
-  grid-template-columns: repeat(auto-fill, minmax(156px, 190px));
-  justify-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
   gap: 24px 14px;
   padding-bottom: 48px;
   overflow: visible;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"] {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 58px;
+  height: 58px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: #fff;
+  color: #111217;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+  transform: none;
+  transform-origin: center;
+  transition: background-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar {
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-cloud-search-shell {
+  min-width: 0;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"].focused,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"].background-focused,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"]:active {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.42);
+  background: #fff;
+  color: #111217;
+  transform: none;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"]:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"]:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+}
+
+.desktop-browser .title-watched-badge {
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28);
+}
+
+.desktop-browser .title-watched-badge-svg {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-browser .library-watched-badge {
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28);
+}
+
+.desktop-browser .library-watched-badge-svg {
+  width: 20px;
+  height: 20px;
+}
+
+.desktop-browser #detail .series-season-row {
+  cursor: grab;
+}
+
+.desktop-browser #detail .series-season-row.is-pointer-dragging,
+.desktop-browser #detail .series-season-row.is-pointer-dragging * {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card {
