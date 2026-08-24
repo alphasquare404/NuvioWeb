@@ -172,7 +172,10 @@ export const WatchedItemsSyncService = {
         remoteItems,
         Number(watchedStateForProfile(profileId).lastSuccessfulPushAt || 0)
       );
-      await watchedItemsRepository.replaceAll(mergedItems);
+      if (resolveProfileId() !== profileId) {
+        return localItems;
+      }
+      await watchedItemsRepository.replaceAll(mergedItems, profileId);
       return mergedItems;
     } catch (error) {
       console.warn("Watched items sync pull failed", error);

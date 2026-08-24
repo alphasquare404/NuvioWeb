@@ -16,6 +16,8 @@ import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { ContinueWatchingPreferences } from "../../../data/local/continueWatchingPreferences.js";
 import { HomeCatalogStore } from "../../../data/local/homeCatalogStore.js";
 import { CollectionsStore, buildCollectionHomeKey } from "../../../data/local/collectionsStore.js";
+import { WatchProgressStore } from "../../../data/local/watchProgressStore.js";
+import { WatchedItemsStore } from "../../../data/local/watchedItemsStore.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
 import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
@@ -8313,6 +8315,7 @@ export const HomeScreen = {
     const mountStart = HOME_PERF_DEBUG ? homePerfNow() : 0;
     this.container = document.getElementById("home");
     this.bindCollectionStoreSubscription();
+    this.bindContinueWatchingStoreSubscriptions();
     const restoredRouteFocusState =
       navigationContext?.isBackNavigation && navigationContext?.restoredState?.layoutMode
         ? navigationContext.restoredState
@@ -8541,6 +8544,123 @@ export const HomeScreen = {
       this.refreshHeroCandidates();
       this.render();
     });
+  },
+
+  bindContinueWatchingStoreSubscriptions() {
+    if (!Platform.isBrowser()) {
+      return;
+    }
+    const handleChange = ({ profileId, reason }) => {
+      // Startup/profile pulls replace a complete scoped snapshot. Ignore the
+      // high-frequency local playback writes; their existing Player/Home paths
+      // already handle immediate UI state without re-running enrichment.
+      if (
+        reason === "replaceForProfile" &&
+        String(profileId || "") === String(ProfileManager.getActiveProfileId() || "")
+      ) {
+        this.scheduleContinueWatchingStoreRefresh();
+      }
+    };
+    if (!this.unsubscribeWatchProgressStoreChanges) {
+      this.unsubscribeWatchProgressStoreChanges = WatchProgressStore.subscribe(handleChange);
+    }
+    if (!this.unsubscribeWatchedItemsStoreChanges) {
+      this.unsubscribeWatchedItemsStoreChanges = WatchedItemsStore.subscribe(handleChange);
+    }
+  },
+
+  scheduleContinueWatchingStoreRefresh() {
+    if (this.continueWatchingStoreRefreshFrame || Router.getCurrent() !== "home") {
+      return;
+    }
+    const profileId = String(ProfileManager.getActiveProfileId() || "");
+    this.continueWatchingStoreRefreshFrame = requestAnimationFrame(() => {
+      this.continueWatchingStoreRefreshFrame = null;
+      if (
+        Router.getCurrent() !== "home" ||
+        profileId !== String(ProfileManager.getActiveProfileId() || "")
+      ) {
+        return;
+      }
+      void this.refreshContinueWatchingFromStore(profileId);
+    });
+  },
+
+  async refreshContinueWatchingFromStore(profileId) {
+    const refreshToken = (this.continueWatchingStoreRefreshToken || 0) + 1;
+    this.continueWatchingStoreRefreshToken = refreshToken;
+    const isCurrent = () =>
+      refreshToken === this.continueWatchingStoreRefreshToken &&
+      Router.getCurrent() === "home" &&
+      String(ProfileManager.getActiveProfileId() || "") === String(profileId || "");
+    const prefs = LayoutPreferences.get();
+    const includeWatchedItemNextUpSeeds =
+      watchProgressRepository.getContinueWatchingSource?.() !== "trakt";
+    try {
+      const [allProgress, continueWatching, watchedItems] = await Promise.all([
+        watchProgressRepository.getAllForContinueWatching(),
+        watchProgressRepository.getRecent(CW_MAX_VISIBLE_ITEMS),
+        watchedItemsRepository.getAll(2000)
+      ]);
+      if (!isCurrent()) {
+        return;
+      }
+      this.allProgress = Array.isArray(allProgress) ? allProgress : [];
+      this.continueWatching = Array.isArray(continueWatching) ? continueWatching : [];
+      this.watchedItems = Array.isArray(watchedItems) ? watchedItems : [];
+      this.watchedTitleIds = buildWatchedTitleIdSet(this.watchedItems);
+      this.continueWatchingResolved = true;
+      this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(
+        this.allProgress,
+        this.continueWatching,
+        this.watchedItems,
+        {
+          applyDaysCap: !includeWatchedItemNextUpSeeds,
+          includeProgressSeeds: !includeWatchedItemNextUpSeeds,
+          includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
+          nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
+        }
+      ).slice(0, CW_MAX_NEXT_UP_LOOKUPS);
+
+      const previousDisplaySignature = buildContinueWatchingSignature(this.continueWatchingDisplay);
+      const shouldShow = Boolean(
+        this.continueWatching.length + this.nextUpProgressCandidates.length
+      );
+      if (!shouldShow) {
+        this.continueWatchingLoading = false;
+        this.continueWatchingDisplay = [];
+        if (previousDisplaySignature) {
+          this.requestBackgroundRender();
+        }
+        return;
+      }
+
+      const enriched = await this.enrichContinueWatching(this.continueWatching, {
+        allProgress: this.allProgress,
+        watchedItems: this.watchedItems,
+        nextUpProgressCandidates: this.nextUpProgressCandidates
+      });
+      if (!isCurrent()) {
+        return;
+      }
+      const strict = buildVisibleContinueWatchingItems(enriched, { requireArtwork: true });
+      const fallback = buildCompleteContinueWatchingDisplay(enriched);
+      const loose = buildVisibleContinueWatchingItems(enriched, { requireArtwork: false });
+      const nextDisplay =
+        strict.length === fallback.length
+          ? strict
+          : loose.length >= fallback.length
+            ? loose
+            : fallback;
+      this.continueWatchingLoading = false;
+      this.continueWatchingDisplay = nextDisplay;
+      this.persistContinueWatchingSnapshot();
+      if (previousDisplaySignature !== buildContinueWatchingSignature(nextDisplay)) {
+        this.requestBackgroundRender();
+      }
+    } catch (error) {
+      console.warn("Continue watching store refresh failed", error);
+    }
   },
 
   async loadData({ background = false, preserveReturnState = false } = {}) {
@@ -11605,6 +11725,20 @@ export const HomeScreen = {
       this.unsubscribeCollectionStoreChanges();
       this.unsubscribeCollectionStoreChanges = null;
     }
+    if (this.unsubscribeWatchProgressStoreChanges) {
+      this.unsubscribeWatchProgressStoreChanges();
+      this.unsubscribeWatchProgressStoreChanges = null;
+    }
+    if (this.unsubscribeWatchedItemsStoreChanges) {
+      this.unsubscribeWatchedItemsStoreChanges();
+      this.unsubscribeWatchedItemsStoreChanges = null;
+    }
+    if (this.continueWatchingStoreRefreshFrame) {
+      cancelAnimationFrame(this.continueWatchingStoreRefreshFrame);
+      this.continueWatchingStoreRefreshFrame = null;
+    }
+    this.continueWatchingStoreRefreshToken = (this.continueWatchingStoreRefreshToken || 0) + 1;
+
     if (this.boundDesktopCatalogDragClickHandler) {
       this.container?.removeEventListener("click", this.boundDesktopCatalogDragClickHandler, true);
       this.boundDesktopCatalogDragClickHandler = null;

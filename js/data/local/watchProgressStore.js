@@ -107,6 +107,18 @@ function dedupeAndSort(items = []) {
 
 let listAllCacheRaw = null;
 let listAllCacheValue = null;
+const changeListeners = new Set();
+
+function notifyChange(profileId, reason) {
+  const payload = { profileId: String(profileId || "1"), reason: String(reason || "update") };
+  changeListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (error) {
+      console.warn("Watch progress store change listener failed", error);
+    }
+  });
+}
 
 function readStoredProgressRaw() {
   try {
@@ -144,6 +156,14 @@ function persistProgressItems(items) {
 }
 
 export const WatchProgressStore = {
+  subscribe(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    changeListeners.add(listener);
+    return () => changeListeners.delete(listener);
+  },
+
   listAll() {
     return loadProgressItems();
   },
@@ -166,6 +186,7 @@ export const WatchProgressStore = {
       ...items.filter((item) => progressKey(item) !== key)
     ]).slice(0, 5000);
     persistProgressItems(next);
+    notifyChange(pid, "upsert");
   },
 
   findByContentId(contentId, profileId) {
@@ -190,6 +211,7 @@ export const WatchProgressStore = {
       return String(item.videoId || "") !== wantedVideoId;
     });
     persistProgressItems(next);
+    notifyChange(pid, "remove");
   },
 
   replaceForProfile(profileId, items = []) {
@@ -202,5 +224,6 @@ export const WatchProgressStore = {
       .filter((item) => Boolean(item.contentId));
     const next = dedupeAndSort([...normalized, ...keepOtherProfiles]).slice(0, 5000);
     persistProgressItems(next);
+    notifyChange(pid, "replaceForProfile");
   }
 };

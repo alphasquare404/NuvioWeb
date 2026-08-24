@@ -234,8 +234,8 @@ class WatchedItemsRepository {
     queueWatchedItemsCloudSync();
   }
 
-  async replaceAll(items) {
-    WatchedItemsStore.replaceForProfile(activeProfileId(), items || []);
+  async replaceAll(items, profileId = activeProfileId()) {
+    WatchedItemsStore.replaceForProfile(profileId, items || []);
   }
 }
 

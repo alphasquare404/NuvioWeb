@@ -1,6 +1,18 @@
 import { LocalStore } from "../../core/storage/localStore.js";
 
 const WATCHED_ITEMS_KEY = "watchedItems";
+const changeListeners = new Set();
+
+function notifyChange(profileId, reason) {
+  const payload = { profileId: String(profileId || "1"), reason: String(reason || "update") };
+  changeListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (error) {
+      console.warn("Watched items store change listener failed", error);
+    }
+  });
+}
 
 function normalizeEpisodeNumber(value) {
   if (value == null || value === "") {
@@ -48,6 +60,14 @@ function dedupeAndSort(items = []) {
 }
 
 export const WatchedItemsStore = {
+  subscribe(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    changeListeners.add(listener);
+    return () => changeListeners.delete(listener);
+  },
+
   listAll() {
     const raw = LocalStore.get(WATCHED_ITEMS_KEY, []);
     return dedupeAndSort(Array.isArray(raw) ? raw : []);
@@ -72,6 +92,7 @@ export const WatchedItemsStore = {
       )
     ]).slice(0, 5000);
     LocalStore.set(WATCHED_ITEMS_KEY, next);
+    notifyChange(pid, "upsert");
   },
 
   remove(contentId, profileId, options = null) {
@@ -94,6 +115,7 @@ export const WatchedItemsStore = {
       return !(entry.season === targetSeason && entry.episode === targetEpisode);
     });
     LocalStore.set(WATCHED_ITEMS_KEY, next);
+    notifyChange(pid, "remove");
   },
 
   replaceForProfile(profileId, items = []) {
@@ -108,5 +130,6 @@ export const WatchedItemsStore = {
       WATCHED_ITEMS_KEY,
       dedupeAndSort([...normalized, ...keepOtherProfiles]).slice(0, 5000)
     );
+    notifyChange(pid, "replaceForProfile");
   }
 };

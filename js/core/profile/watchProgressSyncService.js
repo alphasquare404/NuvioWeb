@@ -517,8 +517,11 @@ export const WatchProgressSyncService = {
       if (!shouldUseSupabaseWatchProgressSync()) {
         return [];
       }
-      const localItems = await watchProgressRepository.getAll();
       const profileId = resolveProfileId();
+      const localItems = await watchProgressRepository.getAll();
+      if (resolveProfileId() !== profileId) {
+        return localItems;
+      }
       const rows = await SupabaseApi.rpc(PULL_RPC, { p_profile_id: profileId }, true);
       const filteredRows = (Array.isArray(rows) ? rows : []).filter((row) => {
         const rowProfile = row?.profile_id ?? row?.profileId ?? null;
@@ -533,11 +536,14 @@ export const WatchProgressSyncService = {
       const snapshotItems = normalizeProgressItems(remoteItems);
       const baselineItems = readBaselineItems(profileId);
       const mergedItems = mergeProgressItems(localItems, snapshotItems, baselineItems);
+      if (resolveProfileId() !== profileId) {
+        return localItems;
+      }
       writeBaselineItems(profileId, snapshotItems);
       lastSuccessfulPushSignature = buildPushSignature(
         buildRemoteProgressEntries(coalesceSyncItems(snapshotItems))
       );
-      await watchProgressRepository.replaceAll(mergedItems);
+      await watchProgressRepository.replaceAll(mergedItems, profileId);
       return mergedItems;
     } catch (error) {
       console.warn("Watch progress sync pull failed", error);

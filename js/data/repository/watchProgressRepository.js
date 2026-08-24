@@ -695,8 +695,8 @@ class WatchProgressRepository {
     return selectedContinueWatchingSource();
   }
 
-  async replaceAll(items) {
-    WatchProgressStore.replaceForProfile(activeProfileId(), items || []);
+  async replaceAll(items, profileId = activeProfileId()) {
+    WatchProgressStore.replaceForProfile(profileId, items || []);
     invalidateContinueWatchingDisplaySnapshot();
   }
 }
