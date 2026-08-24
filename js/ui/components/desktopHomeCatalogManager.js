@@ -1,6 +1,8 @@
 import { AuthManager } from "../../core/auth/authManager.js";
 import { buildOrderedHomeCatalogItems } from "../../core/addons/homeCatalogs.js";
 import { HomeCatalogStore } from "../../data/local/homeCatalogStore.js";
+import { CollectionsStore } from "../../data/local/collectionsStore.js";
+import { LayoutPreferences } from "../../data/local/layoutPreferences.js";
 import { addonRepository } from "../../data/repository/addonRepository.js";
 
 function escapeHtml(value) {
@@ -38,14 +40,34 @@ export function createDesktopHomeCatalogManager({ requestRender } = {}) {
 
   const loadItems = async () => {
     const addons = await addonRepository.getInstalledAddons();
+    const collections = CollectionsStore.get();
     const prefs = HomeCatalogStore.get();
+    const heroCatalogKeys = new Set(
+      (LayoutPreferences.get().heroCatalogKeys || []).map((key) => String(key || "").trim())
+    );
+    const hasExplicitHeroSelection = heroCatalogKeys.size > 0;
+    const collectionsById = new Map(
+      collections.map((collection) => [String(collection?.id || "").trim(), collection])
+    );
     state.items = buildOrderedHomeCatalogItems(
       addons,
-      [],
+      collections,
       prefs.order,
       prefs.disabled,
       prefs.customTitles
-    );
+    ).map((item) => {
+      if (item.isCollection) {
+        return {
+          ...item,
+          pinToTop: Boolean(collectionsById.get(String(item.collectionId || ""))?.pinToTop)
+        };
+      }
+      return {
+        ...item,
+        isHeroSource:
+          !hasExplicitHeroSelection || heroCatalogKeys.has(String(item.key || ""))
+      };
+    });
   };
 
   const saveAndSync = async (writePreferences, verifyLocalSave = null) => {
@@ -93,13 +115,28 @@ export function createDesktopHomeCatalogManager({ requestRender } = {}) {
   };
 
   const renderItem = (item, index) => {
-    const name = String(item?.catalogName || "Catalog");
-    const metadata = [catalogTypeLabel(item?.type), String(item?.addonName || "").trim()]
-      .filter(Boolean)
-      .join(" · ");
+    const isCollection = Boolean(item?.isCollection);
+    const name = String(item?.catalogName || (isCollection ? "Collection" : "Catalog"));
+    const metadata = isCollection
+      ? [
+          "Collection",
+          String(item?.addonName || "").trim(),
+          item?.pinToTop ? "Pinned above catalogs" : ""
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : [
+          catalogTypeLabel(item?.type),
+          String(item?.addonName || "").trim(),
+          item?.isHeroSource ? "Hero source" : "Not in hero"
+        ]
+          .filter(Boolean)
+          .join(" · ");
     const visible = !item?.isDisabled;
     return `
-      <article class="desktop-home-catalog-row${visible ? "" : " is-hidden"}" data-home-catalog-row data-home-catalog-index="${index}">
+      <article class="desktop-home-catalog-row${visible ? "" : " is-hidden"}${isCollection ? " is-collection" : ""}"
+               data-home-catalog-row
+               data-home-catalog-index="${index}">
         <button class="desktop-home-catalog-drag-handle" type="button" data-home-catalog-drag-handle="${index}" aria-label="Reorder ${escapeHtml(name)}" title="Drag to reorder">
           <span class="material-icons" aria-hidden="true">drag_indicator</span>
         </button>
@@ -204,19 +241,21 @@ export function createDesktopHomeCatalogManager({ requestRender } = {}) {
     render() {
       const statusClass = state.statusTone ? ` is-${state.statusTone}` : "";
       const rows = state.isLoading
-        ? '<p class="desktop-home-catalog-empty">Loading home catalogs…</p>'
+        ? '<p class="desktop-home-catalog-empty">Loading catalogs and collections…</p>'
         : state.items.length
           ? state.items.map(renderItem).join("")
-          : '<p class="desktop-home-catalog-empty">No home catalogs available. Install or enable an addon that provides catalogs.</p>';
+          : '<p class="desktop-home-catalog-empty">No catalogs or collections are available for Home.</p>';
       return `
         <div class="desktop-home-catalog-manager">
           <section class="desktop-home-catalog-section" aria-labelledby="desktop-home-catalog-title">
             <div class="desktop-home-catalog-heading">
               <div>
-                <h2 id="desktop-home-catalog-title">Home Catalogs</h2>
-                <p>Reorder catalog rows and choose which ones appear on Home.</p>
+                <h2 id="desktop-home-catalog-title">Catalogs &amp; Collections</h2>
+                <p>Reorder Home rows and choose which catalogs or collections appear.</p>
               </div>
-              <span class="desktop-home-catalog-count">${state.items.length} catalogs</span>
+              <span class="desktop-home-catalog-count">${state.items.length} ${
+                state.items.length === 1 ? "row" : "rows"
+              }</span>
             </div>
             ${state.statusMessage ? `<p class="desktop-home-catalog-status${statusClass}" role="status">${escapeHtml(state.statusMessage)}</p>` : ""}
             <div class="desktop-home-catalog-list">${rows}</div>

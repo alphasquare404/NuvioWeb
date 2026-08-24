@@ -4237,8 +4237,8 @@ export const SettingsScreen = {
           isDesktopBrowser
             ? this.renderCollapsibleRow({
                 focusKey: "layout:toggle:homeCatalogs",
-                title: "Home Catalogs",
-                subtitle: "Reorder catalog rows and choose which ones appear on Home.",
+                title: "Catalogs & Collections",
+                subtitle: "Reorder Home catalog and collection rows.",
                 expanded: Boolean(expanded.homeCatalogs),
                 bodyHtml: expanded.homeCatalogs ? this.desktopHomeCatalogManager?.render() || "" : "",
                 classes: "settings-collapsible-home-catalogs"
