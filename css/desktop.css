@@ -5850,7 +5850,7 @@ html.desktop-browser {
   min-height: 100vh;
   height: auto;
   margin: 0;
-  padding: 104px clamp(32px, 2vw, 40px) 64px;
+  padding: 104px clamp(24px, 2vw, 40px) 64px;
   box-sizing: border-box;
   overflow: visible;
   scroll-padding-top: 104px;
@@ -5868,7 +5868,7 @@ html.desktop-browser {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 22px;
+  margin-bottom: 24px;
 }
 
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
@@ -5931,7 +5931,7 @@ html.desktop-browser {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-filter-shell {

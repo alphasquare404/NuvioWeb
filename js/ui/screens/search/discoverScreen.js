@@ -340,6 +340,7 @@ export const DiscoverScreen = {
     this.selectedGenre = "Default";
     this.items = [];
     this.loading = true;
+    this.lastLoadFailed = false;
 
     this.openPicker = null;
     this.closingPicker = null;
@@ -375,6 +376,7 @@ export const DiscoverScreen = {
       console.error("discoverScreen: Failed to load content", err);
       this.loading = false;
       this.items = [];
+      this.lastLoadFailed = true;
       this.suppressInitialLoadingRenders = false;
       this.requestRender();
     } finally {
@@ -491,13 +493,19 @@ export const DiscoverScreen = {
              `
           )
           .join("")
-      : `<div class="seeall-empty">${escapeHtml(t("catalog_see_all_empty_title", {}, "No items available"))}</div>`;
+      : `<div class="seeall-empty discover-empty-state" role="status" aria-live="polite">${escapeHtml(
+          !selectedCatalog
+            ? t("discover_choose_catalog", {}, "Choose a catalog to start browsing.")
+            : this.lastLoadFailed
+              ? t("discover_load_failed", {}, "Unable to load this catalog.")
+              : t("discover_no_matching_items", {}, "No matching items.")
+        )}</div>`;
   },
 
   renderDiscoverLoadingMarkup() {
     return this.loading
       ? `
-        <div class="seeall-loading">
+        <div class="seeall-loading"${this.items.length ? "" : ' role="status" aria-live="polite"'}>
           ${renderLoadingIndicator()}
           <span>${escapeHtml(t("discover_loading", {}, "Loading..."))}</span>
         </div>
@@ -510,6 +518,7 @@ export const DiscoverScreen = {
     preserveExistingItems = false,
     partialRender = false
   } = {}) {
+    this.loadToken = (this.loadToken || 0) + 1;
     const selectedCatalog = this.getSelectedCatalog();
     this.captureViewState();
     this.nextSkip = 0;
@@ -519,6 +528,7 @@ export const DiscoverScreen = {
     this.lastFocusedDiscoverItemId = "";
     this.pendingRestoreFocus = false;
     this.savedScrollTop = 0;
+    this.lastLoadFailed = false;
     if (!preserveExistingItems) {
       this.items = [];
     }
@@ -597,7 +607,10 @@ export const DiscoverScreen = {
     if (token !== this.loadToken) return;
     if (result.status !== "success") {
       this.loading = false;
-      this.hasMore = false;
+      this.lastLoadFailed = true;
+      // Keep a later document-scroll or keyboard trigger eligible to retry a
+      // pagination failure without replacing already-rendered results.
+      this.hasMore = this.items.length > 0;
       this.preserveViewportOnNextRender = false;
       this.suppressInitialLoadingRenders = false;
       if (partialRender) {
@@ -609,6 +622,7 @@ export const DiscoverScreen = {
     }
 
     const incoming = Array.isArray(result?.data?.items) ? result.data.items : [];
+    this.lastLoadFailed = false;
     let addedCount = 0;
     if (replaceExistingItems) {
       this.items = [];
@@ -656,6 +670,20 @@ export const DiscoverScreen = {
       return false;
     }
     const remaining = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight);
+    return remaining <= 640;
+  },
+
+  shouldAutoLoadMoreFromDocument() {
+    if (this.loading || !this.hasMore) {
+      return false;
+    }
+    const scrollOwner = document.scrollingElement || document.documentElement;
+    if (!scrollOwner) {
+      return false;
+    }
+    const scrollTop = Number(window.scrollY || scrollOwner.scrollTop || 0);
+    const viewportHeight = Number(window.innerHeight || scrollOwner.clientHeight || 0);
+    const remaining = scrollOwner.scrollHeight - (scrollTop + viewportHeight);
     return remaining <= 640;
   },
 
@@ -1135,8 +1163,12 @@ export const DiscoverScreen = {
   },
 
   captureViewState() {
+    if (Platform.isBrowser()) {
+      const scrollOwner = document.scrollingElement || document.documentElement;
+      this.savedScrollTop = Number(window.scrollY || scrollOwner?.scrollTop || 0);
+    }
     const main = this.container?.querySelector(".discover-main");
-    if (main) {
+    if (main && !Platform.isBrowser()) {
       this.savedScrollTop = main.scrollTop;
     }
     const focused =
@@ -1151,6 +1183,11 @@ export const DiscoverScreen = {
   },
 
   restoreScrollState() {
+    if (Platform.isBrowser()) {
+      const top = Math.max(0, Number(this.savedScrollTop || 0));
+      window.scrollTo({ top, behavior: "auto" });
+      return;
+    }
     const main = this.container?.querySelector(".discover-main");
     if (main) {
       this.savedScrollTop = setContainerScrollTop(main, this.savedScrollTop, "auto");
@@ -1290,6 +1327,11 @@ export const DiscoverScreen = {
   },
 
   scrollContentToTop() {
+    if (Platform.isBrowser()) {
+      this.savedScrollTop = 0;
+      window.scrollTo({ top: 0, behavior: "auto" });
+      return;
+    }
     const scroller = this.getContentScroller();
     if (scroller) {
       this.savedScrollTop = setContainerScrollTop(scroller, 0, "auto");
@@ -1624,6 +1666,10 @@ export const DiscoverScreen = {
   },
 
   bindShellEvents() {
+    if (Platform.isBrowser()) {
+      this.bindBrowserDocumentScroll();
+      return;
+    }
     const scroller = this.getContentScroller();
     if (!scroller || scroller.__discoverScrollBound) {
       return;
@@ -1639,6 +1685,23 @@ export const DiscoverScreen = {
       },
       { passive: true }
     );
+  },
+
+  bindBrowserDocumentScroll() {
+    if (this.browserDocumentScrollHandler) {
+      return;
+    }
+    this.browserDocumentScrollHandler = () => {
+      if (!this.container || Router.getCurrent() !== "discover") {
+        return;
+      }
+      const scrollOwner = document.scrollingElement || document.documentElement;
+      this.savedScrollTop = Number(window.scrollY || scrollOwner?.scrollTop || 0);
+      if (this.shouldAutoLoadMoreFromDocument()) {
+        void this.loadNextPage({ preserveViewport: true });
+      }
+    };
+    window.addEventListener("scroll", this.browserDocumentScrollHandler, { passive: true });
   },
 
   bindPointerEvents() {
@@ -1890,6 +1953,10 @@ export const DiscoverScreen = {
 
   cleanup() {
     this.loadToken = (this.loadToken || 0) + 1;
+    if (this.browserDocumentScrollHandler) {
+      window.removeEventListener("scroll", this.browserDocumentScrollHandler);
+      this.browserDocumentScrollHandler = null;
+    }
     this.cancelScheduledRender();
     this.clearClosingPicker();
     this.lastRenderedOpenPicker = null;
