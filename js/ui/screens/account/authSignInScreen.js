@@ -3,6 +3,7 @@ import { ScreenUtils } from "../../navigation/screen.js";
 import { AuthManager } from "../../../core/auth/authManager.js";
 import { I18n } from "../../../i18n/index.js";
 import { Platform } from "../../../platform/index.js";
+import { continueWithoutAccount } from "./authQrSignInScreen.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -104,6 +105,9 @@ export const AuthSignInScreen = {
               ${submitting ? "Signing in…" : "Sign In"}
             </button>
           </form>
+          <button class="desktop-auth-guest" type="button" data-action="continueGuest" ${
+            submitting ? "disabled" : ""
+          }>Continue without account</button>
           <button class="desktop-auth-qr" type="button" data-action="openQr" ${
             submitting ? "disabled" : ""
           }>Sign in with QR</button>
@@ -116,6 +120,9 @@ export const AuthSignInScreen = {
     });
     this.container.querySelector("[data-action='openQr']")?.addEventListener("click", () => {
       Router.navigate("authQrSignIn");
+    });
+    this.container.querySelector("[data-action='continueGuest']")?.addEventListener("click", () => {
+      continueWithoutAccount();
     });
   },
 

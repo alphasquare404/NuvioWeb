@@ -1107,6 +1107,32 @@ html.desktop-browser {
   opacity: 0.58;
 }
 
+.desktop-browser #account .desktop-auth-guest {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font: 500 14px/1.35 inherit;
+  cursor: pointer;
+}
+
+.desktop-browser #account .desktop-auth-guest:hover:not(:disabled) {
+  color: #fff;
+}
+
+.desktop-browser #account .desktop-auth-guest:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.desktop-browser #account .desktop-auth-guest:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .desktop-browser #account .desktop-auth-error {
   margin: -2px 0 0;
   color: #ffaaa6;

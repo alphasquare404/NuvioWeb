@@ -11,6 +11,21 @@ let countdownInterval = null;
 let activeQrSessionId = 0;
 const GUEST_QR_BYPASS_KEY = "skipAuthQrGate";
 
+// Shared by QR and browser email sign-in. This deliberately keeps the existing
+// guest route and storage flags in one place rather than creating a second guest flow.
+export function continueWithoutAccount() {
+  LocalStore.set("hasSeenAuthQrOnFirstLaunch", true);
+  LocalStore.set(GUEST_QR_BYPASS_KEY, true);
+  Router.navigate(
+    "home",
+    {},
+    {
+      replaceHistory: true,
+      skipStackPush: true
+    }
+  );
+}
+
 export const AuthQrSignInScreen = {
   async mount({ onboardingMode = false } = {}) {
     this.container = document.getElementById("account");
@@ -288,7 +303,8 @@ export const AuthQrSignInScreen = {
     this.updateActionButtons();
     LocalStore.set("hasSeenAuthQrOnFirstLaunch", true);
     if (!this.isSignedIn) {
-      LocalStore.set(GUEST_QR_BYPASS_KEY, true);
+      continueWithoutAccount();
+      return;
     } else {
       LocalStore.remove(GUEST_QR_BYPASS_KEY);
     }
@@ -297,14 +313,7 @@ export const AuthQrSignInScreen = {
       Router.back();
       return;
     }
-    Router.navigate(
-      "home",
-      {},
-      {
-        replaceHistory: true,
-        skipStackPush: true
-      }
-    );
+    Router.navigate("home", {}, { replaceHistory: true, skipStackPush: true });
   },
 
   handleDesktopBrowserBack() {
