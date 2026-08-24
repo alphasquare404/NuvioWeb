@@ -1,4 +1,5 @@
 import { I18n } from "../../i18n/index.js";
+import { Platform } from "../../platform/index.js";
 import { NuvioDialog } from "./nuvioDialog.js";
 
 function t(key, fallback) {
@@ -60,7 +61,9 @@ export function buildReleaseNotesContent(notes, documentRef = globalThis.documen
 }
 
 export function showAppUpdatePrompt(update, { documentRef = globalThis.document } = {}) {
-  if (!update || !documentRef?.body) {
+  // This dialog directs users to the TV installer. Browser deployments use
+  // normal web/container updates, while Settings can still show release info.
+  if (Platform.isBrowser() || !update || !documentRef?.body) {
     return null;
   }
 

@@ -80,6 +80,11 @@ async function waitForInitialRoute(timeoutMs = 15000) {
 }
 
 async function checkForAppUpdateOnStartup() {
+  // Browser deployments update through their host/container, not the WebTV
+  // installer. Keep the TV-only update prompt out of normal browser startup.
+  if (Platform.isBrowser()) {
+    return;
+  }
   if (updateCheckStarted) {
     return;
   }
