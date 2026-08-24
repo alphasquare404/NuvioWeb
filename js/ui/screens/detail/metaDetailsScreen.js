@@ -4794,6 +4794,55 @@ export const MetaDetailsScreen = {
     this.syncDetailActionButtons();
   },
 
+  async toggleWatchedFromHero() {
+    const focusRestore = this.captureDetailFocus();
+    const isSeries = isSeriesDetailMeta(this.meta, this.episodes);
+    if (isSeries) {
+      if (this.isMarkedWatched) {
+        await watchedSeriesReconciliationService.unmarkSeriesWatched(this.params?.itemId, {
+          meta: this.meta
+        });
+      } else {
+        await watchedSeriesReconciliationService.markSeriesWatched(
+          this.params?.itemId,
+          this.params?.itemType || this.meta?.type || "series",
+          {
+            meta: this.meta,
+            title: this.meta?.name || this.params?.fallbackTitle || "Untitled"
+          }
+        );
+      }
+    } else if (this.isMarkedWatched) {
+      await watchedItemsRepository.unmark(this.params?.itemId);
+      await watchProgressRepository.removeProgress(this.params?.itemId);
+    } else {
+      await watchedItemsRepository.mark({
+        contentId: this.params?.itemId,
+        contentType: this.params?.itemType || "movie",
+        title: this.meta?.name || this.params?.fallbackTitle || "Untitled",
+        watchedAt: Date.now()
+      });
+      await watchProgressRepository.saveProgress({
+        contentId: this.params?.itemId,
+        contentType: this.params?.itemType || "movie",
+        videoId: null,
+        positionMs: 100,
+        durationMs: 100,
+        updatedAt: Date.now()
+      });
+    }
+    if (!isSeries && this.meta?.ids?.trakt) {
+      const enriched = await detailWatchedEnrichmentService.enrichMovieWatchedState(
+        this.params?.itemId,
+        this.meta.ids.trakt
+      );
+      this.enrichedMovieState = enriched;
+      this.isMarkedWatched = Boolean(enriched?.isWatched);
+    }
+    await this.refreshEpisodePlaybackState();
+    this.render(this.meta, focusRestore);
+  },
+
   cancelPendingPosterHold() {
     if (this.pendingPosterHoldTimer) {
       clearTimeout(this.pendingPosterHoldTimer);
@@ -5887,12 +5936,25 @@ export const MetaDetailsScreen = {
         return;
       }
       const action = String(actionNode.dataset.action || "");
+      if (![
+        "playDefault",
+        "playFromBeginning",
+        "toggleLibrary",
+        "toggleWatched",
+        "toggleTrailer"
+      ].includes(action)) {
+        return;
+      }
       if (action === "playDefault") {
         void this.playDefaultFromHero();
       } else if (action === "playFromBeginning") {
         void this.playDefaultFromHero({ startOver: true });
-      } else {
-        return;
+      } else if (action === "toggleLibrary") {
+        void this.toggleLibraryFromHero();
+      } else if (action === "toggleWatched") {
+        void this.toggleWatchedFromHero();
+      } else if (action === "toggleTrailer") {
+        this.playTrailer({ muted: false, restart: true, initiatedByUser: true });
       }
       event.preventDefault();
     };
@@ -9248,52 +9310,7 @@ export const MetaDetailsScreen = {
     }
 
     if (action === "toggleWatched") {
-      const focusRestore = this.captureDetailFocus();
-      const isSeries = isSeriesDetailMeta(this.meta, this.episodes);
-      if (isSeries) {
-        if (this.isMarkedWatched) {
-          await watchedSeriesReconciliationService.unmarkSeriesWatched(this.params?.itemId, {
-            meta: this.meta
-          });
-        } else {
-          await watchedSeriesReconciliationService.markSeriesWatched(
-            this.params?.itemId,
-            this.params?.itemType || this.meta?.type || "series",
-            {
-              meta: this.meta,
-              title: this.meta?.name || this.params?.fallbackTitle || "Untitled"
-            }
-          );
-        }
-      } else if (this.isMarkedWatched) {
-        await watchedItemsRepository.unmark(this.params?.itemId);
-        await watchProgressRepository.removeProgress(this.params?.itemId);
-      } else {
-        await watchedItemsRepository.mark({
-          contentId: this.params?.itemId,
-          contentType: this.params?.itemType || "movie",
-          title: this.meta?.name || this.params?.fallbackTitle || "Untitled",
-          watchedAt: Date.now()
-        });
-        await watchProgressRepository.saveProgress({
-          contentId: this.params?.itemId,
-          contentType: this.params?.itemType || "movie",
-          videoId: null,
-          positionMs: 100,
-          durationMs: 100,
-          updatedAt: Date.now()
-        });
-      }
-      if (!isSeries && this.meta?.ids?.trakt) {
-        const enriched = await detailWatchedEnrichmentService.enrichMovieWatchedState(
-          this.params?.itemId,
-          this.meta.ids.trakt
-        );
-        this.enrichedMovieState = enriched;
-        this.isMarkedWatched = Boolean(enriched?.isWatched);
-      }
-      await this.refreshEpisodePlaybackState();
-      this.render(this.meta, focusRestore);
+      await this.toggleWatchedFromHero();
       return;
     }
 
