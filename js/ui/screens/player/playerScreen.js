@@ -5210,6 +5210,23 @@ export const PlayerScreen = {
     `;
   },
 
+  scheduleDesktopPlayerViewportSync() {
+    if (!Environment.isBrowser()) {
+      return;
+    }
+    if (this.desktopPlayerViewportSyncFrame) {
+      cancelAnimationFrame(this.desktopPlayerViewportSyncFrame);
+    }
+    // fullscreenchange fires before the browser has necessarily painted the
+    // fullscreen viewport. Reuse the normal aspect-layout method on the next
+    // frame, once #player has its final dimensions.
+    this.desktopPlayerViewportSyncFrame = requestAnimationFrame(() => {
+      this.desktopPlayerViewportSyncFrame = null;
+      this.applyAspectMode({ showToast: false });
+      this.syncDesktopPlaybackTools();
+    });
+  },
+
   bindDesktopPlayerPointerBridge() {
     if (!Environment.isBrowser() || !this.container || this.boundDesktopPlayerClickHandler) {
       return;
@@ -5362,8 +5379,10 @@ export const PlayerScreen = {
     };
     this.container.addEventListener("input", this.boundDesktopPlayerInputHandler);
 
-    this.boundDesktopFullscreenChangeHandler = () => this.syncDesktopPlaybackTools();
+    this.boundDesktopFullscreenChangeHandler = () => this.scheduleDesktopPlayerViewportSync();
     document.addEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
+    this.boundDesktopPlayerResizeHandler = () => this.scheduleDesktopPlayerViewportSync();
+    window.addEventListener("resize", this.boundDesktopPlayerResizeHandler);
     const video = this.getDesktopPlaybackVideo();
     if (video) {
       this.boundDesktopVolumeChangeHandler = () => this.syncDesktopPlaybackTools();
@@ -5382,6 +5401,7 @@ export const PlayerScreen = {
     this.container.removeEventListener("click", this.boundDesktopPlayerClickHandler);
     this.container.removeEventListener("input", this.boundDesktopPlayerInputHandler);
     document.removeEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
+    window.removeEventListener("resize", this.boundDesktopPlayerResizeHandler);
     this.getDesktopPlaybackVideo()?.removeEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
     this.boundDesktopPlayerPointerMoveHandler = null;
     this.boundDesktopPlayerPointerDownHandler = null;
@@ -5390,7 +5410,12 @@ export const PlayerScreen = {
     this.boundDesktopPlayerClickHandler = null;
     this.boundDesktopPlayerInputHandler = null;
     this.boundDesktopFullscreenChangeHandler = null;
+    this.boundDesktopPlayerResizeHandler = null;
     this.boundDesktopVolumeChangeHandler = null;
+    if (this.desktopPlayerViewportSyncFrame) {
+      cancelAnimationFrame(this.desktopPlayerViewportSyncFrame);
+      this.desktopPlayerViewportSyncFrame = null;
+    }
     this.desktopProgressPointer = null;
     this.desktopSuppressProgressClick = false;
     if (this.desktopProgressClickSuppressTimer) {
