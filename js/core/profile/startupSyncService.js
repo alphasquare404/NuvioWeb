@@ -85,7 +85,12 @@ export const StartupSyncService = {
     this.started = true;
     this.profileScopedSyncEnabled = Boolean(profileScopedSyncEnabled);
 
-    this.unsubscribeAddonChanges = addonRepository.onInstalledAddonsChanged(() => {
+    this.unsubscribeAddonChanges = addonRepository.onInstalledAddonsChanged((reason) => {
+      // A completed remote pull updates mounted UI but is not a user mutation.
+      // Scheduling a push here could make temporary defaults authoritative.
+      if (reason === "remote-pull") {
+        return;
+      }
       this.scheduleAddonPush();
     });
 

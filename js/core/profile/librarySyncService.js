@@ -114,7 +114,7 @@ function applyPulledAddons(rows = []) {
   const entries = extractAddonEntries(rows);
   const urls = entries.map((entry) => entry.url).filter(Boolean);
   const currentNames = addonRepository.getAddonDisplayNameOverrides();
-  addonRepository.setAddonDisplayNameOverrides(
+  const displayNamesChanged = addonRepository.setAddonDisplayNameOverrides(
     entries.map((entry) => {
       const cleanUrl = addonRepository.canonicalizeUrl(entry.url);
       return {
@@ -124,8 +124,28 @@ function applyPulledAddons(rows = []) {
     }),
     { replace: true }
   );
-  addonRepository.setAddonEnabledStates(entries, { replace: true });
-  return urls;
+  const enabledStatesChanged = addonRepository.setAddonEnabledStates(entries, { replace: true });
+  return { urls, changed: displayNamesChanged || enabledStatesChanged };
+}
+
+async function isStillActiveAddonProfile(profileId) {
+  return (await resolveAddonProfileId()) === profileId;
+}
+
+async function applyRemoteAddonRows(rows, profileId) {
+  // The active profile can change while a remote pull is in flight. Never
+  // write a completed pull into the newly active profile's local namespace.
+  if (!(await isStillActiveAddonProfile(profileId))) {
+    return null;
+  }
+  const applied = applyPulledAddons(rows);
+  const orderChanged = await addonRepository.setAddonOrder(applied.urls, { silent: true });
+  if (applied.changed || orderChanged) {
+    // Remote hydration must update mounted Home and Addons views, but it is not
+    // a local mutation and must not schedule a write-back push.
+    addonRepository.notifyAddonsChanged("remote-pull");
+  }
+  return applied.urls;
 }
 
 export const LibrarySyncService = {
@@ -151,8 +171,10 @@ export const LibrarySyncService = {
           `user_id=eq.${encodeURIComponent(ownerId)}&profile_id=eq.${profileId}&select=*&order=sort_order.asc`,
           true
         );
-        const addonUrls = applyPulledAddons(addonRows);
-        await addonRepository.setAddonOrder(addonUrls, { silent: true });
+        const addonUrls = await applyRemoteAddonRows(addonRows, profileId);
+        if (addonUrls == null) {
+          return localUrls;
+        }
         recordPullStatus("ok", { count: addonUrls.length });
         return addonUrls;
       } catch (addonsTableError) {
@@ -170,8 +192,10 @@ export const LibrarySyncService = {
           `owner_id=eq.${encodeURIComponent(ownerId)}&select=*&order=position.asc`,
           true
         );
-        const urls = applyPulledAddons(rows);
-        await addonRepository.setAddonOrder(urls, { silent: true });
+        const urls = await applyRemoteAddonRows(rows, profileId);
+        if (urls == null) {
+          return localUrls;
+        }
         recordPullStatus("ok", { count: urls.length });
         return urls;
       } catch (tvTableError) {
@@ -189,8 +213,10 @@ export const LibrarySyncService = {
             { p_profile_id: profileId },
             true
           );
-          const urls = applyPulledAddons(rpcRows);
-          await addonRepository.setAddonOrder(urls, { silent: true });
+          const urls = await applyRemoteAddonRows(rpcRows, profileId);
+          if (urls == null) {
+            return localUrls;
+          }
           recordPullStatus("ok", { count: urls.length });
           return urls;
         } catch (rpcError) {

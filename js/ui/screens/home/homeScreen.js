@@ -138,109 +138,10 @@ export { escapeAttribute, escapeHtml, formatCatalogRowTitle } from "./homeUtils.
 
 const MODERN_SIDEBAR_PILL_AUTO_COLLAPSE_MS = 4000;
 const CW_RELEASE_ALERT_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
-const LOCAL_DESKTOP_DEVELOPMENT_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 const HOME_LAZY_IMAGE_SELECTOR =
   ".home-main .content-poster[data-src], .home-main .home-poster-landscape-logo[data-src], .home-main .home-continue-bg[data-src]";
 const HOME_LAZY_IMAGE_ROW_SELECTOR =
   ".home-row, .home-modern-row, .home-grid-section, .home-row-continue";
-
-function isLocalDesktopContinueWatchingPreview() {
-  if (!Platform.isBrowser()) {
-    return false;
-  }
-  try {
-    return LOCAL_DESKTOP_DEVELOPMENT_HOSTS.has(
-      String(globalThis.location?.hostname || "").trim().toLowerCase()
-    );
-  } catch (_) {
-    return false;
-  }
-}
-
-// Temporary local-development render data. It deliberately stays out of
-// Continue Watching state, storage, repositories, and API requests.
-function buildDesktopContinueWatchingMockItems(rows = [], limit = 5) {
-  const progressFractions = [0.18, 0.36, 0.54, 0.67, 0.81];
-  const episodeTitles = ["The Beginning", "A New Lead", "After Dark", "The Turning Point", "Final Hour"];
-  const fallbackTitles = ["The Last Signal", "Night Shift", "Paper Kingdom", "After the Storm", "Parallel Lines"];
-  const seenIds = new Set();
-  const mockItems = [];
-
-  for (const row of rows || []) {
-    if (row?.rowKind === "collection") {
-      continue;
-    }
-    const items = Array.isArray(row?.result?.data?.items) ? row.result.data.items : [];
-    for (const item of items) {
-      const normalized = normalizeCatalogItem(item, row?.type || "movie");
-      const contentId = String(normalized?.id || "").trim();
-      const artwork = firstNonEmpty(
-        normalized?.landscapePoster,
-        normalized?.background,
-        normalized?.poster
-      );
-      if (!contentId || !artwork || seenIds.has(contentId)) {
-        continue;
-      }
-
-      const index = mockItems.length;
-      const isSeries = isSeriesTypeForContinueWatching(normalized.type) || index % 2 === 1;
-      const previewType = isSeries ? "series" : "movie";
-      const durationMs = isSeries ? 48 * 60 * 1000 : 118 * 60 * 1000;
-      const progressFraction = progressFractions[index % progressFractions.length];
-      seenIds.add(contentId);
-      mockItems.push({
-        ...normalized,
-        // Empty ids intentionally keep preview cards from opening Details or Player.
-        id: "",
-        contentId: "",
-        type: previewType,
-        apiType: previewType,
-        contentType: previewType,
-        thumbnail: artwork,
-        backdrop: artwork,
-        episodeThumbnail: artwork,
-        durationMs,
-        positionMs: Math.round(durationMs * progressFraction),
-        progressPercent: Math.round(progressFraction * 100),
-        season: isSeries ? 1 : null,
-        episode: isSeries ? index + 1 : null,
-        episodeTitle: isSeries ? episodeTitles[index % episodeTitles.length] : "",
-        isDesktopContinueWatchingMock: true
-      });
-      if (mockItems.length >= limit) {
-        return mockItems;
-      }
-    }
-  }
-
-  while (mockItems.length < limit) {
-    const index = mockItems.length;
-    const isSeries = index % 2 === 1;
-    const durationMs = isSeries ? 48 * 60 * 1000 : 118 * 60 * 1000;
-    const progressFraction = progressFractions[index % progressFractions.length];
-    mockItems.push({
-      id: "",
-      contentId: "",
-      type: isSeries ? "series" : "movie",
-      contentType: isSeries ? "series" : "movie",
-      title: fallbackTitles[index % fallbackTitles.length],
-      poster: "assets/images/splash.png",
-      thumbnail: "assets/images/splash.png",
-      backdrop: "assets/images/splash.png",
-      episodeThumbnail: "assets/images/splash.png",
-      durationMs,
-      positionMs: Math.round(durationMs * progressFraction),
-      progressPercent: Math.round(progressFraction * 100),
-      season: isSeries ? 1 : null,
-      episode: isSeries ? index + 1 : null,
-      episodeTitle: isSeries ? episodeTitles[index % episodeTitles.length] : "",
-      isDesktopContinueWatchingMock: true
-    });
-  }
-
-  return mockItems;
-}
 
 function homePerfNow() {
   return typeof performance !== "undefined" && typeof performance.now === "function"
@@ -8315,6 +8216,7 @@ export const HomeScreen = {
     const mountStart = HOME_PERF_DEBUG ? homePerfNow() : 0;
     this.container = document.getElementById("home");
     this.bindCollectionStoreSubscription();
+    this.bindCatalogHydrationSubscriptions();
     this.bindContinueWatchingStoreSubscriptions();
     const restoredRouteFocusState =
       navigationContext?.isBackNavigation && navigationContext?.restoredState?.layoutMode
@@ -8544,6 +8446,46 @@ export const HomeScreen = {
       this.refreshHeroCandidates();
       this.render();
     });
+  },
+
+  bindCatalogHydrationSubscriptions() {
+    if (!Platform.isBrowser()) {
+      return;
+    }
+    if (!this.unsubscribeAddonStoreChanges) {
+      this.unsubscribeAddonStoreChanges = addonRepository.onInstalledAddonsChanged(() => {
+        this.scheduleCatalogHydrationRefresh();
+      });
+    }
+    if (!this.unsubscribeHomeCatalogStoreChanges) {
+      this.unsubscribeHomeCatalogStoreChanges = HomeCatalogStore.subscribe(({ profileId }) => {
+        if (String(profileId || "") === String(ProfileManager.getActiveProfileId() || "")) {
+          this.scheduleCatalogHydrationRefresh();
+        }
+      });
+    }
+  },
+
+  scheduleCatalogHydrationRefresh() {
+    if (this.catalogHydrationRefreshTimer || Router.getCurrent() !== "home") {
+      return;
+    }
+    const profileId = String(ProfileManager.getActiveProfileId() || "");
+    this.catalogHydrationRefreshTimer = setTimeout(() => {
+      this.catalogHydrationRefreshTimer = null;
+      if (
+        Router.getCurrent() !== "home" ||
+        profileId !== String(ProfileManager.getActiveProfileId() || "")
+      ) {
+        return;
+      }
+      // Invalidate in-flight rows built from the pre-hydration default
+      // manifests, then rebuild once from the newly applied profile state.
+      this.homeLoadToken = (this.homeLoadToken || 0) + 1;
+      void this.loadData({ background: true }).catch((error) => {
+        console.warn("Home catalog hydration refresh failed", error);
+      });
+    }, 0);
   },
 
   bindContinueWatchingStoreSubscriptions() {
@@ -9465,17 +9407,7 @@ export const HomeScreen = {
     const realContinueWatchingItems = Array.isArray(this.continueWatchingDisplay)
       ? this.continueWatchingDisplay
       : [];
-    const desktopContinueWatchingMockItems =
-      isLocalDesktopContinueWatchingPreview() &&
-      !this.isInitialHomeLoading &&
-      this.continueWatchingResolved &&
-      !this.continueWatchingLoading &&
-      !realContinueWatchingItems.length
-        ? buildDesktopContinueWatchingMockItems(this.rows)
-        : [];
-    const continueWatchingItemsForRender = desktopContinueWatchingMockItems.length
-      ? desktopContinueWatchingMockItems
-      : realContinueWatchingItems;
+    const continueWatchingItemsForRender = realContinueWatchingItems;
     const continueWatchingRows = partitionContinueWatchingRows(
       continueWatchingItemsForRender,
       this.layoutPrefs?.continueWatchingSortMode
@@ -11725,6 +11657,14 @@ export const HomeScreen = {
       this.unsubscribeCollectionStoreChanges();
       this.unsubscribeCollectionStoreChanges = null;
     }
+    if (this.unsubscribeAddonStoreChanges) {
+      this.unsubscribeAddonStoreChanges();
+      this.unsubscribeAddonStoreChanges = null;
+    }
+    if (this.unsubscribeHomeCatalogStoreChanges) {
+      this.unsubscribeHomeCatalogStoreChanges();
+      this.unsubscribeHomeCatalogStoreChanges = null;
+    }
     if (this.unsubscribeWatchProgressStoreChanges) {
       this.unsubscribeWatchProgressStoreChanges();
       this.unsubscribeWatchProgressStoreChanges = null;
@@ -11738,7 +11678,10 @@ export const HomeScreen = {
       this.continueWatchingStoreRefreshFrame = null;
     }
     this.continueWatchingStoreRefreshToken = (this.continueWatchingStoreRefreshToken || 0) + 1;
-
+    if (this.catalogHydrationRefreshTimer) {
+      clearTimeout(this.catalogHydrationRefreshTimer);
+      this.catalogHydrationRefreshTimer = null;
+    }
     if (this.boundDesktopCatalogDragClickHandler) {
       this.container?.removeEventListener("click", this.boundDesktopCatalogDragClickHandler, true);
       this.boundDesktopCatalogDragClickHandler = null;

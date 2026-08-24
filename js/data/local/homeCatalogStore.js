@@ -1,4 +1,5 @@
 import { createProfileScopedStore } from "./profileScopedStore.js";
+import { ProfileManager } from "../../core/profile/profileManager.js";
 
 const KEY = "homeCatalogPrefs";
 
@@ -54,6 +55,21 @@ const store = createProfileScopedStore({
   key: KEY,
   normalize: normalizeHomeCatalogPrefs
 });
+const changeListeners = new Set();
+
+function notifyChange(profileId, reason) {
+  const payload = {
+    profileId: String(profileId || "1"),
+    reason: String(reason || "update")
+  };
+  changeListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (error) {
+      console.warn("Home catalog store change listener failed", error);
+    }
+  });
+}
 
 function queueHomeCatalogSettingsSync(profileId = null) {
   return import("../../core/profile/homeCatalogSettingsSyncService.js")
@@ -67,6 +83,14 @@ function queueHomeCatalogSettingsSync(profileId = null) {
 }
 
 export const HomeCatalogStore = {
+  subscribe(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    changeListeners.add(listener);
+    return () => changeListeners.delete(listener);
+  },
+
   getForProfile(profileId) {
     return store.getForProfile(profileId);
   },
@@ -88,15 +112,19 @@ export const HomeCatalogStore = {
     ) {
       return Promise.resolve(null);
     }
+    const resolvedProfileId = String(profileId ?? ProfileManager.getActiveProfileId() ?? "1");
     store.replaceForProfile(profileId, next, options);
+    if (!options.silentNotify) {
+      notifyChange(resolvedProfileId, options.reason || "set");
+    }
     if (!options.silentSync) {
       return queueHomeCatalogSettingsSync(profileId);
     }
     return Promise.resolve(null);
   },
 
-  set(partial, { silentSync = false, profileId = null } = {}) {
-    return this.setForProfile(profileId, partial, { silentSync });
+  set(partial, { silentSync = false, silentNotify = false, profileId = null, reason } = {}) {
+    return this.setForProfile(profileId, partial, { silentSync, silentNotify, reason });
   },
 
   isDisabled(key) {
@@ -126,7 +154,7 @@ export const HomeCatalogStore = {
     const missing = unique(keys || []).filter((key) => key && !savedSet.has(key));
     const next = [...saved, ...missing];
     if (!sameArray(current.order, next)) {
-      this.set({ order: next }, { silentSync: true });
+      this.set({ order: next }, { silentSync: true, silentNotify: true });
     }
     return next;
   },

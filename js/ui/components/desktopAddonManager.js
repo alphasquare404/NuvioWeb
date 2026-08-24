@@ -24,7 +24,7 @@ function truncateText(value, maxLength = 220) {
   return text.length <= maxLength ? text : `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
-export function createDesktopAddonManager({ requestRender } = {}) {
+export function createDesktopAddonManager({ requestRender, isActive } = {}) {
   const state = {
     isLoading: false,
     isAdding: false,
@@ -40,6 +40,8 @@ export function createDesktopAddonManager({ requestRender } = {}) {
   const rerender = async () => {
     await requestRender?.();
   };
+
+  let unsubscribeAddonChanges = null;
 
   const setStatus = (message = "", tone = "") => {
     state.statusMessage = message;
@@ -74,6 +76,16 @@ export function createDesktopAddonManager({ requestRender } = {}) {
       state.isLoading = false;
       await rerender();
     }
+  };
+
+  const bindAddonStoreSubscription = () => {
+    if (unsubscribeAddonChanges) return;
+    unsubscribeAddonChanges = addonRepository.onInstalledAddonsChanged(() => {
+      if (typeof isActive === "function" && !isActive()) {
+        return;
+      }
+      void loadAddons();
+    });
   };
 
   const addAddon = async () => {
@@ -334,6 +346,7 @@ export function createDesktopAddonManager({ requestRender } = {}) {
     },
 
     bind(container) {
+      bindAddonStoreSubscription();
       container.querySelector("[data-addon-url]")?.addEventListener("input", (event) => {
         state.addonUrl = String(event.target?.value || "");
         state.addError = "";
@@ -376,6 +389,11 @@ export function createDesktopAddonManager({ requestRender } = {}) {
         return true;
       }
       return false;
+    },
+
+    dispose() {
+      unsubscribeAddonChanges?.();
+      unsubscribeAddonChanges = null;
     }
   };
 }

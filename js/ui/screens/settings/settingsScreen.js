@@ -2247,7 +2247,12 @@ export const SettingsScreen = {
       behavior: false
     };
     this.desktopAddonManager = this.desktopAddonManager || createDesktopAddonManager({
-      requestRender: () => this.render({ refreshModel: false })
+      requestRender: () => this.render({ refreshModel: false }),
+      isActive: () =>
+        Platform.isBrowser() &&
+        this.activeSection === "contentDiscovery" &&
+        Boolean(this.desktopAddonExpanded) &&
+        Boolean(this.container)
     });
     this.desktopPluginManager = this.desktopPluginManager || createDesktopPluginManager({
       requestRender: () => this.render({ refreshModel: false })
@@ -8988,6 +8993,7 @@ export const SettingsScreen = {
     this.stopTraktPolling?.();
     this.stopDesktopSimklPolling?.();
     this.stopDebridDeviceAuth();
+    this.desktopAddonManager?.dispose?.();
     if (this.container && this.handleWheelBound) {
       this.container.removeEventListener("wheel", this.handleWheelBound);
     }

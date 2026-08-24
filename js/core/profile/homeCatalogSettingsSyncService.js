@@ -30,6 +30,10 @@ function resolveProfileId(profileId = null) {
   return 1;
 }
 
+function isActiveProfile(profileId) {
+  return resolveProfileId(profileId) === resolveProfileId(ProfileManager.getActiveProfileId());
+}
+
 function cloneValue(value) {
   if (value == null) {
     return value;
@@ -592,6 +596,11 @@ export const HomeCatalogSettingsSyncService = {
       }
       const localPayload = await buildLocalPayload(resolvedProfileId);
       const remote = await fetchBestRemotePayload(resolvedProfileId, localPayload);
+      // Do not let a profile A response arriving after a switch overwrite
+      // profile B's mounted Home configuration.
+      if (!isActiveProfile(resolvedProfileId)) {
+        return false;
+      }
       if (!remote || !(remote.payload.items || []).length) {
         if (pullToken) {
           this.completedInitialPullTokens.add(pullToken);
