@@ -16,6 +16,7 @@ import { CollectionSyncService } from "./collectionSyncService.js";
 import { HomeCatalogSettingsSyncService } from "./homeCatalogSettingsSyncService.js";
 import { ThemeManager } from "../../ui/theme/themeManager.js";
 import { I18n } from "../../i18n/index.js";
+import { SyncHydrationState, SyncPullResult } from "./syncHydrationState.js";
 
 const SYNC_INTERVAL_MS = 120000;
 const ADDON_PUSH_DEBOUNCE_MS = 1000;
@@ -68,6 +69,7 @@ export const StartupSyncService = {
   started: false,
   intervalId: null,
   inFlight: false,
+  syncRequestedWhileInFlight: false,
   profileScopedSyncEnabled: false,
   addonPushTimer: null,
   addonSyncInFlight: null,
@@ -83,14 +85,16 @@ export const StartupSyncService = {
       return;
     }
     this.started = true;
+    SyncHydrationState.invalidate();
     this.profileScopedSyncEnabled = Boolean(profileScopedSyncEnabled);
 
-    this.unsubscribeAddonChanges = addonRepository.onInstalledAddonsChanged((reason) => {
+    this.unsubscribeAddonChanges = addonRepository.onInstalledAddonsChanged((reason, mutation) => {
       // A completed remote pull updates mounted UI but is not a user mutation.
       // Scheduling a push here could make temporary defaults authoritative.
       if (reason === "remote-pull") {
         return;
       }
+      LibrarySyncService.markLocalMutation(null, mutation);
       this.scheduleAddonPush();
     });
 
@@ -105,6 +109,7 @@ export const StartupSyncService = {
 
   stop() {
     this.started = false;
+    SyncHydrationState.invalidate();
     this.profileScopedSyncEnabled = false;
     if (this.intervalId) {
       clearInterval(this.intervalId);
@@ -124,30 +129,37 @@ export const StartupSyncService = {
 
   enableProfileScopedSync() {
     this.profileScopedSyncEnabled = true;
+    SyncHydrationState.invalidate();
   },
 
   async requestSyncNow({ pushAfterPull = false } = {}) {
     if (!this.started || this.inFlight) {
+      if (this.started && this.inFlight) this.syncRequestedWhileInFlight = true;
       return false;
     }
     this.inFlight = true;
     try {
       const includeProfileScoped = this.profileScopedSyncEnabled;
-      await this.syncPull({ includeProfileScoped });
+      const pullResults = await this.syncPull({ includeProfileScoped });
       if (pushAfterPull && includeProfileScoped) {
-        await this.syncPush();
+        await this.syncPush(pullResults);
       }
       return true;
     } finally {
       this.inFlight = false;
+      if (this.syncRequestedWhileInFlight && this.started) {
+        this.syncRequestedWhileInFlight = false;
+        void this.requestSyncNow({ pushAfterPull: false });
+      }
     }
   },
 
   async syncPull({ includeProfileScoped = this.profileScopedSyncEnabled } = {}) {
     if (!AuthManager.isAuthenticated) {
-      return false;
+      return {};
     }
     let didApplyProfileSettings = false;
+    const pullResults = {};
     const syncStartedAt = syncNow();
     const activeProfileId = ProfileManager.getActiveProfileId();
     for (let attempt = 1; attempt <= MAX_PULL_ATTEMPTS; attempt += 1) {
@@ -174,17 +186,32 @@ export const StartupSyncService = {
         });
         logSyncTiming("background-simkl-refresh", syncStartedAt);
         if (!includeProfileScoped) {
-          return didApplyProfileSettings;
+          return pullResults;
         }
-        await CollectionSyncService.pull(activeProfileId);
+        pullResults.collections = await CollectionSyncService.pull(activeProfileId);
         await HomeCatalogSettingsSyncService.pull();
-        await PluginSyncService.pull();
-        await LibrarySyncService.pull();
+        pullResults.plugins = await PluginSyncService.pull();
+        pullResults.addons = await LibrarySyncService.pull();
         await SavedLibrarySyncService.pull();
         await WatchedItemsSyncService.pull();
         await WatchProgressSyncService.pull();
+        const succeeded = (result) =>
+          result?.result === SyncPullResult.SUCCESS_WITH_DATA ||
+          result?.result === SyncPullResult.SUCCESS_EMPTY;
+        if (succeeded(pullResults.addons) && LibrarySyncService.hasPendingLocalMutation()) {
+          this.scheduleAddonPush();
+        }
+        if (
+          succeeded(pullResults.collections) &&
+          CollectionSyncService.hasPendingLocalMutation(activeProfileId)
+        ) {
+          CollectionSyncService.triggerPush(activeProfileId);
+        }
+        if (succeeded(pullResults.plugins) && PluginSyncService.hasPendingLocalMutation()) {
+          void PluginSyncService.push({ automatic: true });
+        }
         logSyncTiming("background-profile-scoped-pull", syncStartedAt);
-        return didApplyProfileSettings;
+        return pullResults;
       } catch (error) {
         console.warn(`Startup sync pull failed (attempt ${attempt}/${MAX_PULL_ATTEMPTS})`, error);
         if (attempt < MAX_PULL_ATTEMPTS) {
@@ -192,25 +219,26 @@ export const StartupSyncService = {
         }
       }
     }
-    return didApplyProfileSettings;
+    return pullResults;
   },
 
-  async syncPush() {
+  async syncPush(pullResults = {}) {
     if (!AuthManager.isAuthenticated) {
       return;
     }
     try {
-      await ProfileSyncService.push();
-      await ProfileSettingsSyncService.push();
-      await TraktCredentialSyncService.pushCurrentToRemote(ProfileManager.getActiveProfileId());
-      await SimklCredentialSyncService.pushCurrentToRemote(ProfileManager.getActiveProfileId());
-      await CollectionSyncService.push();
-      await HomeCatalogSettingsSyncService.push();
-      await PluginSyncService.push();
-      await LibrarySyncService.push();
-      await SavedLibrarySyncService.push();
-      await WatchedItemsSyncService.push();
-      await WatchProgressSyncService.push();
+      const allow = (result) =>
+        result?.result === SyncPullResult.SUCCESS_WITH_DATA ||
+        result?.result === SyncPullResult.SUCCESS_EMPTY;
+      if (allow(pullResults.collections)) {
+        await CollectionSyncService.push(null, { automatic: true });
+      }
+      if (allow(pullResults.plugins)) {
+        await PluginSyncService.push({ automatic: true });
+      }
+      if (allow(pullResults.addons)) {
+        await LibrarySyncService.push({ automatic: true });
+      }
     } catch (error) {
       console.warn("Startup sync push failed", error);
     }

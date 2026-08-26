@@ -2,9 +2,11 @@ import { AuthManager } from "../auth/authManager.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { PluginRuntime } from "../player/pluginRuntime.js";
 import { ProfileManager } from "./profileManager.js";
+import { SyncHydrationState, SyncPullResult } from "./syncHydrationState.js";
 
 const TABLE = "plugins";
 const PUSH_RPC = "sync_push_plugins";
+const pendingLocalChanges = new Map();
 
 function resolveProfileId() {
   const raw = Number(ProfileManager.getActiveProfileId() || 1);
@@ -125,38 +127,77 @@ function writeLocalSources(sources) {
 }
 
 export const PluginSyncService = {
-  async pull() {
+  recordLocalMutation(profileId = null, before = [], after = []) {
+    const key = String(resolveProfileId(profileId));
+    const existing = pendingLocalChanges.get(key);
+    pendingLocalChanges.set(key, {
+      before: existing?.before || before,
+      after
+    });
+  },
+
+  hasPendingLocalMutation(profileId = null) {
+    return pendingLocalChanges.has(String(resolveProfileId(profileId)));
+  },
+
+  async pull({ context = null } = {}) {
     try {
       if (!AuthManager.isAuthenticated) {
-        return [];
+        return { result: SyncPullResult.FAILED, items: [] };
       }
       const localSources = readLocalSources();
       const profileId = await resolvePluginProfileId();
+      const syncContext = context || (await SyncHydrationState.capture(profileId));
+      if (!(await SyncHydrationState.beginPull(syncContext, "plugins"))) {
+        return { result: SyncPullResult.FAILED, items: localSources };
+      }
       const ownerId = await AuthManager.getEffectiveUserId();
       const rows = await SupabaseApi.select(
         TABLE,
         `user_id=eq.${encodeURIComponent(ownerId)}&profile_id=eq.${profileId}&select=url,name,enabled,sort_order&order=sort_order.asc`,
         true
       );
+      if (!(await SyncHydrationState.isCurrent(syncContext))) {
+        return { result: SyncPullResult.FAILED, items: localSources };
+      }
       const remoteSources = mapRemoteRowsToSources(rows);
       if (!remoteSources.length && localSources.length) {
-        return localSources;
+        await SyncHydrationState.completePull(syncContext, "plugins", SyncPullResult.SUCCESS_EMPTY);
+        return { result: SyncPullResult.SUCCESS_EMPTY, items: localSources };
       }
-      const mergedSources = mergeSources(localSources, remoteSources);
+      let mergedSources = mergeSources(localSources, remoteSources);
+      const pending = pendingLocalChanges.get(String(profileId));
+      if (pending) {
+        const beforeKeys = new Set((pending.before || []).map(sourceKey));
+        const afterByKey = new Map((pending.after || []).map((source) => [sourceKey(source), source]));
+        mergedSources = mergedSources
+          .filter((source) => !beforeKeys.has(sourceKey(source)) || afterByKey.has(sourceKey(source)))
+          .map((source) => afterByKey.get(sourceKey(source)) || source);
+        afterByKey.forEach((source, key) => {
+          if (!mergedSources.some((entry) => sourceKey(entry) === key)) mergedSources.push(source);
+        });
+      }
       writeLocalSources(mergedSources);
-      return mergedSources;
+      const result = remoteSources.length ? SyncPullResult.SUCCESS_WITH_DATA : SyncPullResult.SUCCESS_EMPTY;
+      await SyncHydrationState.completePull(syncContext, "plugins", result);
+      return { result, items: mergedSources };
     } catch (error) {
       console.warn("Plugin sync pull failed", error);
-      return [];
+      return { result: SyncPullResult.FAILED, items: [] };
     }
   },
 
-  async push() {
+  async push({ automatic = false, context = null } = {}) {
     try {
       if (!AuthManager.isAuthenticated) {
         return false;
       }
       const profileId = await resolvePluginProfileId();
+      const syncContext = context || (await SyncHydrationState.capture(profileId));
+      if (automatic && !(await SyncHydrationState.allowsAutomaticPush(syncContext, "plugins"))) {
+        console.info("[Sync] plugins automatic push blocked", { hydration: SyncHydrationState.get(syncContext, "plugins") });
+        return false;
+      }
       const sources = readLocalSources();
       try {
         await SupabaseApi.rpc(
@@ -172,6 +213,7 @@ export const PluginSyncService = {
           },
           true
         );
+        pendingLocalChanges.delete(String(profileId));
         return true;
       } catch (rpcError) {
         if (!shouldTryLegacyTable(rpcError)) {
@@ -200,6 +242,7 @@ export const PluginSyncService = {
           await SupabaseApi.upsert(TABLE, rows, null, true);
         }
       }
+      pendingLocalChanges.delete(String(profileId));
       return true;
     } catch (error) {
       console.warn("Plugin sync push failed", error);

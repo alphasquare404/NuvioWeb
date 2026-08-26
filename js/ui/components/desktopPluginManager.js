@@ -44,7 +44,7 @@ export function createDesktopPluginManager({ requestRender } = {}) {
     state.sources = PluginManager.listPluginSources();
   };
 
-  const syncSources = async () => {
+  const syncSources = async (before = []) => {
     if (!AuthManager.isAuthenticated) {
       setStatus("Saved locally", "warning");
       await rerender();
@@ -62,14 +62,22 @@ export function createDesktopPluginManager({ requestRender } = {}) {
       let synced = true;
       do {
         state.syncPending = false;
-        synced = (await PluginSyncService.push()) && synced;
+        synced =
+          (await PluginSyncService.push({ automatic: true })) && synced;
       } while (state.syncPending);
       return synced;
     };
     state.syncInFlight = run();
     try {
       const synced = await state.syncInFlight;
-      setStatus(synced ? "Synced" : "Sync failed — changes are still saved locally.", synced ? "success" : "error");
+      setStatus(
+        synced
+          ? "Synced"
+          : PluginSyncService.hasPendingLocalMutation()
+            ? "Saved locally — sync will resume after profile hydration."
+            : "Sync failed — changes are still saved locally.",
+        synced ? "success" : PluginSyncService.hasPendingLocalMutation() ? "warning" : "error"
+      );
       await rerender();
       return synced;
     } finally {
@@ -88,6 +96,7 @@ export function createDesktopPluginManager({ requestRender } = {}) {
 
     state.addError = "";
     try {
+      const before = PluginManager.listPluginSources();
       PluginManager.addPluginSource({
         id: createSourceId(),
         name,
@@ -99,7 +108,8 @@ export function createDesktopPluginManager({ requestRender } = {}) {
       loadSources();
       setStatus(`${name} saved locally.`);
       await rerender();
-      await syncSources();
+      PluginSyncService.recordLocalMutation(null, before, PluginManager.listPluginSources());
+      await syncSources(before);
     } catch (error) {
       console.warn("Desktop plugin source add failed", error);
       state.addError = String(error?.message || "Unable to add that plugin source.");
@@ -118,11 +128,13 @@ export function createDesktopPluginManager({ requestRender } = {}) {
   const setSourceEnabled = async (source) => {
     const sourceId = String(source?.id || "");
     if (!sourceId) return;
+    const before = PluginManager.listPluginSources();
     PluginManager.setPluginSourceEnabled(sourceId, source.enabled === false);
     loadSources();
     setStatus(`${source.name || "Plugin source"} ${source.enabled === false ? "enabled" : "disabled"} locally.`);
     await rerender();
-    await syncSources();
+    PluginSyncService.recordLocalMutation(null, before, PluginManager.listPluginSources());
+    await syncSources(before);
   };
 
   const confirmRemove = async () => {
@@ -131,11 +143,13 @@ export function createDesktopPluginManager({ requestRender } = {}) {
     if (!sourceId) return;
     state.removeTarget = null;
     try {
+      const before = PluginManager.listPluginSources();
       PluginManager.removePluginSource(sourceId);
       loadSources();
       setStatus(`${source.name || "Plugin source"} removed locally.`);
       await rerender();
-      await syncSources();
+      PluginSyncService.recordLocalMutation(null, before, PluginManager.listPluginSources());
+      await syncSources(before);
     } catch (error) {
       console.warn("Desktop plugin source removal failed", error);
       setStatus(String(error?.message || "Unable to remove that plugin source."), "error");

@@ -247,9 +247,9 @@ const store = createProfileScopedStore({
   }
 });
 
-function queueCollectionSync(profileId = null) {
+function queueCollectionSync(profileId = null, mutation = null) {
   import("../../core/profile/collectionSyncService.js")
-    .then(({ CollectionSyncService }) => CollectionSyncService.triggerPush(profileId))
+    .then(({ CollectionSyncService }) => CollectionSyncService.triggerPush(profileId, mutation))
     .catch((error) => {
       console.warn("Collection sync enqueue failed", error);
     });
@@ -299,11 +299,12 @@ export const CollectionsStore = {
 
   replaceForProfile(profileId, collections = [], { silentSync = false } = {}) {
     const resolvedProfileId = resolveProfileId(profileId);
+    const previous = this.getForProfile(resolvedProfileId);
     const normalized = normalizeState({ collections }).collections;
     store.replaceForProfile(resolvedProfileId, { collections: normalized }, { silentSync: true });
     notifyListeners(resolvedProfileId, normalized);
     if (!silentSync) {
-      queueCollectionSync(resolvedProfileId);
+      queueCollectionSync(resolvedProfileId, { before: previous, after: normalized });
     }
     return cloneCollections(normalized);
   },

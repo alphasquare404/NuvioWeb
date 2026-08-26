@@ -2,6 +2,7 @@ import { AuthManager } from "../auth/authManager.js";
 import { addonRepository } from "../../data/repository/addonRepository.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { ProfileManager } from "./profileManager.js";
+import { SyncHydrationState, SyncPullResult } from "./syncHydrationState.js";
 
 const ADDONS_TABLE = "addons";
 const TABLE = "tv_addons";
@@ -9,6 +10,7 @@ const TABLE = "tv_addons";
 // Records the outcome of the latest pull so the Addons screen can show a
 // visible sync state on TV.
 let lastPullStatus = { state: "idle", count: 0, error: null, at: 0 };
+const pendingLocalSnapshots = new Map();
 
 function recordPullStatus(state, { count = 0, error = null } = {}) {
   lastPullStatus = {
@@ -148,20 +150,67 @@ async function applyRemoteAddonRows(rows, profileId) {
   return applied.urls;
 }
 
+async function restorePendingAddonAdditions(profileId, remoteUrls = []) {
+  const pending = pendingLocalSnapshots.get(String(ProfileManager.getActiveProfileId() || "1"));
+  if (!pending) return remoteUrls;
+  const beforeUrls = pending.before?.urls || [];
+  const afterUrls = pending.after?.urls || [];
+  const beforeSet = new Set(beforeUrls);
+  const afterSet = new Set(afterUrls);
+  const removedUrls = new Set(beforeUrls.filter((url) => !afterSet.has(url)));
+  const mergedUrls = [
+    ...afterUrls.filter((url) => remoteUrls.includes(url) || !beforeSet.has(url)),
+    ...remoteUrls.filter((url) => !afterSet.has(url) && !removedUrls.has(url))
+  ];
+  await addonRepository.setAddonOrder(mergedUrls, { silent: true });
+  addonRepository.setAddonEnabledStates(
+    mergedUrls
+      .filter((url) => !beforeSet.has(url) || pending.before.enabled?.[url] !== pending.after.enabled?.[url])
+      .map((url) => ({ url, enabled: pending.after.enabled?.[url] !== false })),
+    { replace: false }
+  );
+  addonRepository.setAddonDisplayNameOverrides(
+    mergedUrls
+      .filter((url) => !beforeSet.has(url) || pending.before.names?.[url] !== pending.after.names?.[url])
+      .map((url) => ({ url, name: pending.after.names?.[url] || "" })),
+    { replace: false }
+  );
+  addonRepository.notifyAddonsChanged("remote-pull");
+  return mergedUrls;
+}
+
 export const LibrarySyncService = {
   getLastPullStatus() {
     return lastPullStatus;
   },
 
-  async pull() {
+  markLocalMutation(profileId = null, mutation = null) {
+    const key = String(profileId ?? ProfileManager.getActiveProfileId() ?? "1");
+    const existing = pendingLocalSnapshots.get(key);
+    const after = mutation?.after || addonRepository.getSyncSnapshot();
+    pendingLocalSnapshots.set(key, {
+      before: existing?.before || mutation?.before || addonRepository.getSyncSnapshot(),
+      after
+    });
+  },
+
+  hasPendingLocalMutation(profileId = null) {
+    return pendingLocalSnapshots.has(String(profileId ?? ProfileManager.getActiveProfileId() ?? "1"));
+  },
+
+  async pull({ context = null } = {}) {
     let readError = null;
     try {
       if (!AuthManager.isAuthenticated) {
         recordPullStatus("signed-out");
-        return [];
+        return { result: SyncPullResult.FAILED, items: [] };
       }
       const localUrls = addonRepository.getInstalledAddonUrls();
       const profileId = await resolveAddonProfileId();
+      const syncContext = context || (await SyncHydrationState.capture(profileId));
+      if (!(await SyncHydrationState.beginPull(syncContext, "addons"))) {
+        return { result: SyncPullResult.FAILED, items: localUrls };
+      }
       const ownerId = await AuthManager.getEffectiveUserId();
       let addonTableMissing = false;
 
@@ -171,12 +220,18 @@ export const LibrarySyncService = {
           `user_id=eq.${encodeURIComponent(ownerId)}&profile_id=eq.${profileId}&select=*&order=sort_order.asc`,
           true
         );
+        if (!(await SyncHydrationState.isCurrent(syncContext))) {
+          return { result: SyncPullResult.FAILED, items: localUrls };
+        }
         const addonUrls = await applyRemoteAddonRows(addonRows, profileId);
         if (addonUrls == null) {
-          return localUrls;
+          return { result: SyncPullResult.FAILED, items: localUrls };
         }
         recordPullStatus("ok", { count: addonUrls.length });
-        return addonUrls;
+        const resolvedUrls = await restorePendingAddonAdditions(profileId, addonUrls);
+        const result = resolvedUrls.length ? SyncPullResult.SUCCESS_WITH_DATA : SyncPullResult.SUCCESS_EMPTY;
+        await SyncHydrationState.completePull(syncContext, "addons", result);
+        return { result, items: resolvedUrls };
       } catch (addonsTableError) {
         addonTableMissing = isMissingResourceError(addonsTableError);
         if (!addonTableMissing) {
@@ -192,12 +247,18 @@ export const LibrarySyncService = {
           `owner_id=eq.${encodeURIComponent(ownerId)}&select=*&order=position.asc`,
           true
         );
+        if (!(await SyncHydrationState.isCurrent(syncContext))) {
+          return { result: SyncPullResult.FAILED, items: localUrls };
+        }
         const urls = await applyRemoteAddonRows(rows, profileId);
         if (urls == null) {
-          return localUrls;
+          return { result: SyncPullResult.FAILED, items: localUrls };
         }
         recordPullStatus("ok", { count: urls.length });
-        return urls;
+        const resolvedUrls = await restorePendingAddonAdditions(profileId, urls);
+        const result = resolvedUrls.length ? SyncPullResult.SUCCESS_WITH_DATA : SyncPullResult.SUCCESS_EMPTY;
+        await SyncHydrationState.completePull(syncContext, "addons", result);
+        return { result, items: resolvedUrls };
       } catch (tvTableError) {
         tvTableMissing = isMissingResourceError(tvTableError);
         if (!tvTableMissing) {
@@ -213,12 +274,18 @@ export const LibrarySyncService = {
             { p_profile_id: profileId },
             true
           );
+          if (!(await SyncHydrationState.isCurrent(syncContext))) {
+            return { result: SyncPullResult.FAILED, items: localUrls };
+          }
           const urls = await applyRemoteAddonRows(rpcRows, profileId);
           if (urls == null) {
-            return localUrls;
+            return { result: SyncPullResult.FAILED, items: localUrls };
           }
           recordPullStatus("ok", { count: urls.length });
-          return urls;
+          const resolvedUrls = await restorePendingAddonAdditions(profileId, urls);
+          const result = resolvedUrls.length ? SyncPullResult.SUCCESS_WITH_DATA : SyncPullResult.SUCCESS_EMPTY;
+          await SyncHydrationState.completePull(syncContext, "addons", result);
+          return { result, items: resolvedUrls };
         } catch (rpcError) {
           readError = rpcError;
           console.warn("Addon sync pull RPC failed", rpcError);
@@ -227,26 +294,29 @@ export const LibrarySyncService = {
 
       if (readError) {
         recordPullStatus("error", { count: localUrls.length, error: readError });
+        await SyncHydrationState.completePull(syncContext, "addons", SyncPullResult.FAILED);
       } else {
         recordPullStatus("ok", { count: localUrls.length });
       }
-      if (localUrls.length) {
-        return localUrls;
-      }
-      return [];
+      return { result: SyncPullResult.FAILED, items: localUrls };
     } catch (error) {
       recordPullStatus("error", { error });
       console.warn("Library sync pull failed", error);
-      return [];
+      return { result: SyncPullResult.FAILED, items: [] };
     }
   },
 
-  async push() {
+  async push({ automatic = false, context = null } = {}) {
     try {
       if (!AuthManager.isAuthenticated) {
         return false;
       }
       const profileId = await resolveAddonProfileId();
+      const syncContext = context || (await SyncHydrationState.capture(profileId));
+      if (automatic && !(await SyncHydrationState.allowsAutomaticPush(syncContext, "addons"))) {
+        console.info("[Sync] addons automatic push blocked", { hydration: SyncHydrationState.get(syncContext, "addons") });
+        return false;
+      }
       const urls = addonRepository.getInstalledAddonUrls();
 
       try {
@@ -265,6 +335,7 @@ export const LibrarySyncService = {
           },
           true
         );
+        pendingLocalSnapshots.delete(String(ProfileManager.getActiveProfileId() || "1"));
         return true;
       } catch (rpcError) {
         console.warn("Addon sync push RPC failed, falling back to legacy table", rpcError);
@@ -298,6 +369,7 @@ export const LibrarySyncService = {
             await SupabaseApi.upsert(ADDONS_TABLE, addonRows, null, true);
           }
         }
+        pendingLocalSnapshots.delete(String(ProfileManager.getActiveProfileId() || "1"));
         return true;
       } catch (addonsTableError) {
         if (!isMissingResourceError(addonsTableError)) {
@@ -320,6 +392,7 @@ export const LibrarySyncService = {
         if (rows.length) {
           await SupabaseApi.upsert(TABLE, rows, "owner_id,base_url", true);
         }
+        pendingLocalSnapshots.delete(String(ProfileManager.getActiveProfileId() || "1"));
         return true;
       } catch (tvTableError) {
         console.warn("Addon sync push tv_addons fallback failed", tvTableError);

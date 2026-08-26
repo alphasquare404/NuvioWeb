@@ -448,7 +448,8 @@ class AddonRepository {
       return;
     }
 
-    const current = this.getInstalledAddonUrls();
+    const before = this.getSyncSnapshot();
+    const current = before.urls;
     if (current.includes(clean)) {
       return false;
     }
@@ -460,13 +461,14 @@ class AddonRepository {
     this.setAddonEnabledStates([{ url: clean, enabled: true }], { replace: false });
     this.manifestErrorCache.delete(clean);
     this.invalidateInstalledAddonsCache();
-    this.notifyAddonsChanged("add");
+    this.notifyAddonsChanged("add", { before, after: this.getSyncSnapshot() });
     return true;
   }
 
   async removeAddon(url) {
     const clean = this.normalizeCinemetaUrl(this.canonicalizeUrl(url));
-    const current = this.getInstalledAddonUrls();
+    const before = this.getSyncSnapshot();
+    const current = before.urls;
     const next = current.filter((value) => this.canonicalizeUrl(value) !== clean);
     if (next.length === current.length) {
       return false;
@@ -486,7 +488,7 @@ class AddonRepository {
     this.manifestCache.delete(clean);
     this.manifestErrorCache.delete(clean);
     this.invalidateInstalledAddonsCache();
-    this.notifyAddonsChanged("remove");
+    this.notifyAddonsChanged("remove", { before, after: this.getSyncSnapshot() });
     return true;
   }
 
@@ -511,7 +513,8 @@ class AddonRepository {
     const normalized = (urls || [])
       .map((url) => this.normalizeCinemetaUrl(this.canonicalizeUrl(url)))
       .filter(Boolean);
-    const current = this.getInstalledAddonUrls();
+    const before = this.getSyncSnapshot();
+    const current = before.urls;
     const currentEnabledStates = this.getAddonEnabledStates();
     const nextEnabledStates = normalized.reduce((states, url) => {
       states[url] = currentEnabledStates[url] !== false;
@@ -543,7 +546,7 @@ class AddonRepository {
       this.invalidateInstalledAddonsCache();
     }
     if ((changed || enabledStatesChanged) && !silent) {
-      this.notifyAddonsChanged("reorder");
+      this.notifyAddonsChanged("reorder", { before, after: this.getSyncSnapshot() });
     }
     return changed || enabledStatesChanged;
   }
@@ -558,11 +561,19 @@ class AddonRepository {
     };
   }
 
-  notifyAddonsChanged(reason = "unknown") {
+  getSyncSnapshot() {
+    return {
+      urls: this.getInstalledAddonUrls(),
+      enabled: this.getAddonEnabledStates(),
+      names: this.getAddonDisplayNameOverrides()
+    };
+  }
+
+  notifyAddonsChanged(reason = "unknown", mutation = null) {
     this.invalidateInstalledAddonsCache();
     this.changeListeners.forEach((listener) => {
       try {
-        listener(reason);
+        listener(reason, mutation);
       } catch (error) {
         console.warn("Addon change listener failed", error);
       }
