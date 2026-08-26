@@ -33,6 +33,7 @@ import {
 } from "../../../config.js";
 import { I18n } from "../../../i18n/index.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
+import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { resolveMovieStreamIdentity } from "./movieStreamIdentity.js";
 import {
@@ -3263,6 +3264,7 @@ export const MetaDetailsScreen = {
     }
 
     this.container.innerHTML = `
+      ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "" }) : ""}
       <div class="series-detail-shell${this.getTrailerShellStateClasses()}">
         <div class="series-detail-backdrop" data-backdrop-url="${escapeAttribute(backdrop || "")}"${backdrop ? ` style="background-image:url('${backdrop.replace(/'/g, "%27")}')"` : ""}></div>
         <div class="detail-trailer-layer"></div>
@@ -3587,6 +3589,7 @@ export const MetaDetailsScreen = {
     const heroMarkup = this.renderMovieHeroMarkup(meta);
 
     this.container.innerHTML = `
+      ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "" }) : ""}
       <div class="series-detail-shell movie-detail-shell${this.getTrailerShellStateClasses()}">
         <div class="series-detail-backdrop" data-backdrop-url="${escapeAttribute(backdrop || "")}"${backdrop ? ` style="background-image:url('${backdrop.replace(/'/g, "%27")}')"` : ""}></div>
         <div class="detail-trailer-layer"></div>
@@ -6620,6 +6623,7 @@ export const MetaDetailsScreen = {
       if (backButton) {
         backButton.onclick = () => this.handleDetailBack();
       }
+      bindDesktopNavigationEvents(this.container);
       this.bindDesktopDetailActions();
     }
     if (this.detailScrollHandler) {

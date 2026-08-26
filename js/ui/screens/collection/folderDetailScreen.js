@@ -30,6 +30,7 @@ import {
   renderTitleWatchedBadge
 } from "../../components/watchedTitleBadge.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 
 const TMDB_API_URL = "https://api.themoviedb.org/3";
 const TMDB_POSTER_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342";
@@ -1597,6 +1598,7 @@ export const FolderDetailScreen = {
     this.container.innerHTML =
       this.viewMode === "TABBED_GRID" || this.isDesktopBrowser
         ? `
+          ${this.isDesktopBrowser ? renderDesktopNavigation({ selectedRoute: "" }) : ""}
           ${this.isDesktopBrowser ? '<div class="folder-detail-desktop-ambient" aria-hidden="true"></div>' : ""}
           <div class="seeall-shell folder-detail-shell${this.isDesktopBrowser ? " desktop-folder-detail-shell" : ""}${enterClass}">
           <header class="seeall-header folder-detail-header">
@@ -1677,6 +1679,9 @@ export const FolderDetailScreen = {
       `;
 
     ScreenUtils.indexFocusables(this.container);
+    if (this.isDesktopBrowser) {
+      bindDesktopNavigationEvents(this.container);
+    }
     this.bindDesktopBrowserEvents();
     this.applyDesktopAmbientTheme();
     this.buildNavigationModel();
