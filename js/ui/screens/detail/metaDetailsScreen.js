@@ -35,6 +35,10 @@ import { I18n } from "../../../i18n/index.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import {
+  closeDesktopTrailerModal as closeSharedDesktopTrailerModal,
+  openDesktopTrailerModal as openSharedDesktopTrailerModal
+} from "../../components/desktopTrailerModal.js";
 import { resolveMovieStreamIdentity } from "./movieStreamIdentity.js";
 import {
   posterItemFromNode,
@@ -1102,7 +1106,10 @@ function resolveTrailerTrustedProxyOrigin() {
   return "";
 }
 
-function buildDirectYoutubeEmbedUrl(cleanId = "", { muted = false, loop = true } = {}) {
+function buildDirectYoutubeEmbedUrl(
+  cleanId = "",
+  { muted = false, loop = true, controls = 0 } = {}
+) {
   const videoId = String(cleanId || "").trim();
   if (!videoId || !Environment.isBrowser()) {
     return "";
@@ -1110,7 +1117,7 @@ function buildDirectYoutubeEmbedUrl(cleanId = "", { muted = false, loop = true }
   const params = new URLSearchParams({
     autoplay: "1",
     mute: muted ? "1" : "0",
-    controls: "0",
+    controls: String(controls ? 1 : 0),
     loop: loop ? "1" : "0",
     playsinline: "1",
     rel: "0",
@@ -1129,13 +1136,13 @@ function buildDirectYoutubeEmbedUrl(cleanId = "", { muted = false, loop = true }
   return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
 }
 
-function buildYoutubeEmbedUrl(ytId = "", { muted = false } = {}) {
+function buildYoutubeEmbedUrl(ytId = "", { muted = false, loop = true, controls = 0 } = {}) {
   const cleanId = String(ytId || "").trim();
   if (!cleanId) {
     return "";
   }
   if (shouldUseDirectYoutubeEmbedOnTv()) {
-    return buildDirectYoutubeEmbedUrl(cleanId, { muted });
+    return buildDirectYoutubeEmbedUrl(cleanId, { muted, loop, controls });
   }
   const proxyBase = getYoutubeProxyBaseUrl();
   if (proxyBase) {
@@ -1144,9 +1151,13 @@ function buildYoutubeEmbedUrl(ytId = "", { muted = false } = {}) {
       proxyUrl.searchParams.set("v", cleanId);
       proxyUrl.searchParams.set("autoplay", "1");
       proxyUrl.searchParams.set("muted", muted ? "1" : "0");
-      proxyUrl.searchParams.set("controls", "0");
-      proxyUrl.searchParams.set("loop", "1");
-      proxyUrl.searchParams.set("playlist", cleanId);
+      proxyUrl.searchParams.set("controls", String(controls ? 1 : 0));
+      proxyUrl.searchParams.set("loop", loop ? "1" : "0");
+      if (loop) {
+        proxyUrl.searchParams.set("playlist", cleanId);
+      } else {
+        proxyUrl.searchParams.delete("playlist");
+      }
       proxyUrl.searchParams.set("playsinline", "1");
       proxyUrl.searchParams.set("rel", "0");
       proxyUrl.searchParams.set("cc_load_policy", "0");
@@ -1626,6 +1637,7 @@ export const MetaDetailsScreen = {
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("detail");
     ScreenUtils.show(this.container);
+    this.closeDesktopTrailerModal({ restoreFocus: false });
     this.stopTrailerPlayback({
       keepDom: false,
       restartAutoplay: false,
@@ -1719,6 +1731,7 @@ export const MetaDetailsScreen = {
     this.trailerYoutubeFallbackActive = false;
     this.trailerDomGeneration = 0;
     this.trailerFocusRestore = null;
+    this.desktopTrailerModal = null;
     this.episodeProgressMap = new Map();
     this.resumeProgress = null;
     this.resumeContentIds = [];
@@ -6516,7 +6529,7 @@ export const MetaDetailsScreen = {
       } else if (action === "toggleWatched") {
         void this.toggleWatchedFromHero();
       } else if (action === "toggleTrailer") {
-        this.playTrailer({ muted: false, restart: true, initiatedByUser: true });
+        void this.openDesktopTrailerModal();
       }
       event.preventDefault();
     };
@@ -7599,6 +7612,71 @@ export const MetaDetailsScreen = {
     this.toggleActiveTrailerPlayback();
   },
 
+  closeDesktopTrailerModal({ restoreFocus = true } = {}) {
+    const modal = this.desktopTrailerModal;
+    this.desktopTrailerModalRequestToken = Number(this.desktopTrailerModalRequestToken || 0) + 1;
+    if (!modal) {
+      return false;
+    }
+    this.desktopTrailerModal = null;
+    modal.session?.close?.();
+    closeSharedDesktopTrailerModal({ notify: false });
+    if (
+      restoreFocus &&
+      modal.detailToken === this.detailLoadToken &&
+      this.container?.isConnected
+    ) {
+      this.focusDetailDescriptor(modal.focusRestore);
+    }
+    return true;
+  },
+
+  async openDesktopTrailerModal(source = null, focusRestore = null) {
+    if (!Platform.isBrowser() || !this.container) {
+      return false;
+    }
+    this.closeDesktopTrailerModal({ restoreFocus: false });
+    const detailToken = this.detailLoadToken;
+    const requestToken = Number(this.desktopTrailerModalRequestToken || 0) + 1;
+    this.desktopTrailerModalRequestToken = requestToken;
+    const modalState = {
+      detailToken,
+      requestToken,
+      focusRestore:
+        focusRestore || this.captureDetailFocus() || {
+          selector: '.series-detail-actions [data-action="toggleTrailer"]'
+        },
+      session: null
+    };
+    this.desktopTrailerModal = modalState;
+    const resolvedSource = source || (await this.resolvePreferredTrailerSource(this.meta));
+    if (
+      this.desktopTrailerModal !== modalState ||
+      requestToken !== this.desktopTrailerModalRequestToken ||
+      detailToken !== this.detailLoadToken ||
+      Router.getCurrent() !== "detail"
+    ) {
+      return false;
+    }
+    if (!resolvedSource) {
+      this.closeDesktopTrailerModal({ restoreFocus: false });
+      return false;
+    }
+    modalState.session = openSharedDesktopTrailerModal({
+      source: resolvedSource,
+      title: this.meta?.name || "Trailer",
+      onClose: () => {
+        if (this.desktopTrailerModal === modalState) {
+          this.desktopTrailerModal = null;
+          if (modalState.detailToken === this.detailLoadToken && this.container?.isConnected) {
+            this.focusDetailDescriptor(modalState.focusRestore);
+          }
+        }
+      }
+    });
+    return Boolean(modalState.session);
+  },
+
   syncTrailerDom() {
     const shell = this.container?.querySelector(".series-detail-shell");
     const layer = this.container?.querySelector(".detail-trailer-layer");
@@ -7881,6 +7959,7 @@ export const MetaDetailsScreen = {
   },
 
   stopTrailerPlaybackForNavigation() {
+    this.closeDesktopTrailerModal({ restoreFocus: false });
     this.stopTrailerPlayback({
       keepDom: false,
       restartAutoplay: false,
@@ -9816,7 +9895,11 @@ export const MetaDetailsScreen = {
     }
 
     if (action === "toggleTrailer") {
-      this.playTrailer({ muted: false, restart: true, initiatedByUser: true });
+      if (Platform.isBrowser()) {
+        void this.openDesktopTrailerModal();
+      } else {
+        this.playTrailer({ muted: false, restart: true, initiatedByUser: true });
+      }
       return;
     }
 
@@ -9878,17 +9961,24 @@ export const MetaDetailsScreen = {
     if (action === "openSharedTrailer") {
       const ytId = String(current.dataset.trailerYtId || "").trim();
       if (ytId) {
-        this.trailerSource = {
+        const trailerSource = {
           kind: "youtube",
           ytId,
           embedUrl: buildYoutubeEmbedUrl(ytId, { muted: false })
         };
-        this.playTrailer({
-          muted: false,
-          restart: true,
-          initiatedByUser: true,
-          preserveSource: true
-        });
+        if (Platform.isBrowser()) {
+          void this.openDesktopTrailerModal(trailerSource, {
+            selector: `.detail-trailer-card[data-trailer-index="${Number(current.dataset.trailerIndex || 0)}"]`
+          });
+        } else {
+          this.trailerSource = trailerSource;
+          this.playTrailer({
+            muted: false,
+            restart: true,
+            initiatedByUser: true,
+            preserveSource: true
+          });
+        }
       }
       return;
     }
@@ -10040,7 +10130,11 @@ export const MetaDetailsScreen = {
     const actionTarget = target?.closest?.("[data-action]");
     const action = String(actionTarget?.dataset?.action || "");
     if (action === "toggleTrailer") {
-      this.playTrailer({ muted: false, restart: true, initiatedByUser: true });
+      if (Platform.isBrowser()) {
+        void this.openDesktopTrailerModal();
+      } else {
+        this.playTrailer({ muted: false, restart: true, initiatedByUser: true });
+      }
       return true;
     }
     if (action === "openSharedTrailer") {
@@ -10048,17 +10142,24 @@ export const MetaDetailsScreen = {
       if (!ytId) {
         return false;
       }
-      this.trailerSource = {
+      const trailerSource = {
         kind: "youtube",
         ytId,
         embedUrl: buildYoutubeEmbedUrl(ytId, { muted: false })
       };
-      this.playTrailer({
-        muted: false,
-        restart: true,
-        initiatedByUser: true,
-        preserveSource: true
-      });
+      if (Platform.isBrowser()) {
+        void this.openDesktopTrailerModal(trailerSource, {
+          selector: `.detail-trailer-card[data-trailer-index="${Number(actionTarget.dataset.trailerIndex || 0)}"]`
+        });
+      } else {
+        this.trailerSource = trailerSource;
+        this.playTrailer({
+          muted: false,
+          restart: true,
+          initiatedByUser: true,
+          preserveSource: true
+        });
+      }
       return true;
     }
     return false;
@@ -10100,6 +10201,7 @@ export const MetaDetailsScreen = {
       this.pendingEpisodeNavigationRaf = null;
     }
     this.pendingEpisodeNavigation = null;
+    this.closeDesktopTrailerModal({ restoreFocus: false });
     this.libraryMembershipRefreshToken = (this.libraryMembershipRefreshToken || 0) + 1;
     this.unsubscribeLibrarySource?.();
     this.unsubscribeLibrarySource = null;

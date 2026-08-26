@@ -173,6 +173,112 @@ html.desktop-browser {
   background: rgba(0, 0, 0, 0.68);
 }
 
+.desktop-browser body.detail-trailer-modal-open {
+  overflow: hidden;
+}
+
+.desktop-browser .detail-trailer-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.7);
+  cursor: default;
+}
+
+.desktop-browser .detail-trailer-modal {
+  position: relative;
+  width: min(900px, 86vw, 142.22vh);
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: #000;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58);
+}
+
+.desktop-browser .detail-trailer-modal-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: #000;
+}
+
+.desktop-browser .detail-trailer-modal-frame,
+.desktop-browser .detail-trailer-modal-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+}
+
+.desktop-browser .detail-trailer-modal-loading,
+.desktop-browser .detail-trailer-modal-error {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  background: #090909;
+}
+
+.desktop-browser .detail-trailer-modal-loading .player-loading-spinner-ring {
+  width: 32px;
+  height: 32px;
+}
+
+.desktop-browser .detail-trailer-modal-close {
+  position: absolute;
+  z-index: 2;
+  top: -18px;
+  right: -18px;
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(18, 22, 28, 0.94);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.desktop-browser .detail-trailer-modal-close:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.86);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .detail-trailer-modal-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}
+
+@media (max-width: 700px) {
+  .desktop-browser .detail-trailer-modal-backdrop {
+    padding: 22px;
+  }
+
+  .desktop-browser .detail-trailer-modal-close {
+    top: 10px;
+    right: 10px;
+  }
+}
+
 .desktop-browser .desktop-library-destination-dialog .nuvio-dialog-title {
   font-size: 20px;
   font-weight: 600;
