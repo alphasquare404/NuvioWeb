@@ -5,7 +5,7 @@ import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
 import { savedLibraryRepository } from "../../../data/repository/savedLibraryRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
-import { libraryRepository } from "../../../data/repository/libraryRepository.js";
+import { LibrarySourceMode, libraryRepository } from "../../../data/repository/libraryRepository.js";
 import { detailWatchedEnrichmentService } from "../../../data/repository/detailWatchedEnrichmentService.js";
 import { watchedSeriesReconciliationService } from "../../../data/repository/watchedSeriesReconciliationService.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
@@ -1647,6 +1647,14 @@ export const MetaDetailsScreen = {
     this.streamChooserLoadToken = 0;
     this.isLoadingDetail = true;
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+    this.libraryMembershipRefreshToken = 0;
+    this.unsubscribeLibrarySource?.();
+    this.unsubscribeLibrarySource = null;
+    if (Platform.isBrowser()) {
+      this.unsubscribeLibrarySource = TraktSettingsStore.subscribeLibrarySource(() => {
+        void this.refreshCurrentLibraryMembership();
+      });
+    }
     this.seriesInsightTab = "cast";
     this.movieInsightTab = "cast";
     this.selectedRatingSeason = 0;
@@ -1713,8 +1721,14 @@ export const MetaDetailsScreen = {
       : null;
     if (this.hydrateFromRouteState(restoredRouteState, params)) {
       this.isLoadingDetail = false;
+      if (Platform.isBrowser()) {
+        this.isSavedInLibrary = false;
+      }
       setBrowserMediaTitle({ title: this.meta?.name, year: this.meta?.releaseInfo });
       this.render(this.meta, this.pendingFocusRestore);
+      if (Platform.isBrowser()) {
+        void this.refreshCurrentLibraryMembership();
+      }
       const refreshToken = this.detailLoadToken;
       void this.refreshEpisodePlaybackState()
         .then(() => {
@@ -1883,7 +1897,7 @@ export const MetaDetailsScreen = {
       }
     }
     this.resumeProgress = progress && isWatchProgressInProgress(progress) ? progress : null;
-    this.isSavedInLibrary = isSaved;
+    this.isSavedInLibrary = Platform.isBrowser() ? false : isSaved;
     this.isMarkedWatched = Boolean(
       watchedItem ||
       (progress &&
@@ -1918,6 +1932,9 @@ export const MetaDetailsScreen = {
       this.seriesRatingsBySeason = {};
     }
     this.render(meta);
+    if (Platform.isBrowser()) {
+      void this.refreshCurrentLibraryMembership();
+    }
     this.isLoadingDetail = false;
     this.maybeAutoOpenContinueWatchingStream();
     void this.refreshTrailerSource(meta, token);
@@ -4848,7 +4865,81 @@ export const MetaDetailsScreen = {
     await this.openMovieStreamChooser({ startOver, manualSelection });
   },
 
+  async refreshCurrentLibraryMembership() {
+    if (!Platform.isBrowser() || !this.meta) {
+      return false;
+    }
+    const requestToken = (this.libraryMembershipRefreshToken || 0) + 1;
+    this.libraryMembershipRefreshToken = requestToken;
+    const detailToken = this.detailLoadToken;
+    const item = this.getCurrentLibraryItem();
+    if (!item.itemId) {
+      return false;
+    }
+    const sourceMode = await libraryRepository
+      .getSourceMode()
+      .catch(() => LibrarySourceMode.LOCAL);
+    const snapshot = await libraryRepository
+      .getMembershipSnapshot(item)
+      .catch(() => ({ listMembership: {} }));
+    const currentSourceMode = await libraryRepository
+      .getSourceMode()
+      .catch(() => LibrarySourceMode.LOCAL);
+    if (
+      requestToken !== this.libraryMembershipRefreshToken ||
+      detailToken !== this.detailLoadToken ||
+      sourceMode !== currentSourceMode
+    ) {
+      return false;
+    }
+    const key =
+      sourceMode === LibrarySourceMode.SIMKL
+        ? "simkl:status:plantowatch"
+        : sourceMode === LibrarySourceMode.TRAKT
+          ? "watchlist"
+          : "local";
+    this.isSavedInLibrary = Boolean(snapshot?.listMembership?.[key]);
+    this.syncDetailActionButtons();
+    return this.isSavedInLibrary;
+  },
+
   async toggleLibraryFromHero() {
+    const sourceMode = Platform.isBrowser()
+      ? await libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL)
+      : LibrarySourceMode.LOCAL;
+    if (sourceMode !== LibrarySourceMode.LOCAL) {
+      const item = this.getCurrentLibraryItem();
+      const defaultKey =
+        sourceMode === LibrarySourceMode.SIMKL ? "simkl:status:plantowatch" : "watchlist";
+      try {
+        const tabs = await libraryRepository.getListTabs();
+        const destination = tabs.find(
+          (tab) => tab.key === defaultKey && tab.isMembershipDestination !== false
+        );
+        if (!destination) {
+          return;
+        }
+        const snapshot = await libraryRepository.getMembershipSnapshot(item);
+        const membership = snapshot?.listMembership || {};
+        const desiredMembership =
+          sourceMode === LibrarySourceMode.SIMKL
+            ? Object.fromEntries(
+                tabs
+                  .filter((tab) => tab.isMembershipDestination !== false)
+                  .map((tab) => [
+                    tab.key,
+                    membership[defaultKey] ? false : tab.key === defaultKey
+                  ])
+              )
+            : { [defaultKey]: !membership[defaultKey] };
+        await libraryRepository.applyMembershipChanges(item, { desiredMembership });
+        await this.refreshCurrentLibraryMembership();
+        return;
+      } catch (error) {
+        console.warn("Failed to update library from Detail", error);
+        return;
+      }
+    }
     await savedLibraryRepository.toggle({
       contentId: this.params?.itemId,
       contentType: this.params?.itemType || "movie",
@@ -4856,8 +4947,12 @@ export const MetaDetailsScreen = {
       poster: this.meta?.poster || null,
       background: this.meta?.background || null
     });
-    this.isSavedInLibrary = !this.isSavedInLibrary;
-    this.syncDetailActionButtons();
+    if (Platform.isBrowser()) {
+      await this.refreshCurrentLibraryMembership();
+    } else {
+      this.isSavedInLibrary = !this.isSavedInLibrary;
+      this.syncDetailActionButtons();
+    }
   },
 
   async toggleWatchedFromHero() {
@@ -9542,6 +9637,9 @@ export const MetaDetailsScreen = {
 
   cleanup() {
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+    this.libraryMembershipRefreshToken = (this.libraryMembershipRefreshToken || 0) + 1;
+    this.unsubscribeLibrarySource?.();
+    this.unsubscribeLibrarySource = null;
     this.clearDesktopEpisodeDrag();
     this.clearDesktopSeasonDrag();
     this.cancelPendingEpisodeHold();

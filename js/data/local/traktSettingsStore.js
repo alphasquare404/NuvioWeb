@@ -27,6 +27,17 @@ export const TRAKT_CONTINUE_WATCHING_DAYS_CAP_ALL = 0;
 export const TRAKT_DEFAULT_CONTINUE_WATCHING_DAYS_CAP = 60;
 
 const STORE_KEY = "traktSettings";
+const librarySourceListeners = new Set();
+
+function notifyLibrarySourceChange() {
+  librarySourceListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (error) {
+      console.warn("Library source listener failed", error);
+    }
+  });
+}
 
 function normalizeWatchProgressSource(value) {
   const normalized = String(value || WatchProgressSource.TRAKT).toLowerCase();
@@ -117,10 +128,23 @@ export const TraktSettingsStore = {
   setLibrarySourceMode(mode) {
     // Library Source is a client-local preference. Persist it for this Web
     // browser/profile without scheduling a shared Profile Settings push.
-    return this.set(
+    const previousMode = this.get().librarySourceMode;
+    const next = this.set(
       { librarySourceMode: normalizeLibrarySourceMode(mode) },
       { silentSync: true }
     );
+    if (next.librarySourceMode !== previousMode) {
+      notifyLibrarySourceChange();
+    }
+    return next;
+  },
+
+  subscribeLibrarySource(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    librarySourceListeners.add(listener);
+    return () => librarySourceListeners.delete(listener);
   },
 
   setSimklAnimeIdPreference(preference) {
