@@ -613,6 +613,17 @@ html.desktop-browser {
   cursor: grabbing;
 }
 
+/* Desktop shelves use the mouse drag bridge above, but touch-capable browsers
+   should retain their native horizontal pan behavior. `pan-y` blocks that
+   gesture on iOS/iPadOS even though these tracks overflow horizontally. */
+@media (any-pointer: coarse) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card {
   position: relative;
   z-index: 0;
