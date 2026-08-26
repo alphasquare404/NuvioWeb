@@ -634,6 +634,12 @@ html.desktop-browser {
     background-color 120ms ease;
 }
 
+/* The horizontal track owns clipping; make only its first direct card grow inward. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track > .home-continue-card:first-child .home-continue-media,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track > .home-poster-card:not(.home-collection-card):first-child .home-poster-frame {
+  transform-origin: left bottom;
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-copy {
   left: 14px;
   right: 14px;
@@ -680,6 +686,9 @@ html.desktop-browser {
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition:
+    color 120ms ease,
+    transform 120ms ease;
 }
 
 .desktop-browser .home-screen-shell .home-continue-text-action:focus-visible {
@@ -689,9 +698,19 @@ html.desktop-browser {
 
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser .home-screen-shell .home-continue-text-action:hover {
+    text-decoration: none;
+  }
+
+  .desktop-browser .home-screen-shell .home-continue-title.home-continue-text-action:hover {
     color: #fff;
-    text-decoration: underline;
-    text-underline-offset: 2px;
+    transform: scale(1.03);
+    transform-origin: left center;
+  }
+
+  .desktop-browser .home-screen-shell .home-continue-subtitle.home-continue-text-action:hover {
+    color: rgba(255, 255, 255, 0.84);
+    transform: scale(1.02);
+    transform-origin: left center;
   }
 }
 
