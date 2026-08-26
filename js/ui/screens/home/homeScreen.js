@@ -2201,6 +2201,7 @@ function resolveContinueWatchingBlurNextUp(layoutPrefs) {
 function renderContinueWatchingCard(item, index, options = {}) {
   const normalized = normalizeContinueWatchingItem(item);
   const subtitle = normalized.episodeTitle || "";
+  const browserTextActions = Platform.isBrowser();
   const isNextUp = Boolean(normalized?.isNextUp);
   const hasAired = normalized?.hasAired !== false;
   const useEpisodeThumbnails = options?.useEpisodeThumbnails !== false;
@@ -2264,8 +2265,18 @@ function renderContinueWatchingCard(item, index, options = {}) {
         <span class="home-continue-badge">${escapeHtml(normalized.progressStatus || t("home.continueStatusContinue", {}, "Continue"))}</span>
         <div class="home-continue-copy">
           ${normalized.episodeCode ? `<div class="home-continue-kicker">${escapeHtml(normalized.episodeCode)}</div>` : ""}
-          <div class="home-continue-title">${escapeHtml(normalized.title)}</div>
-          ${subtitle ? `<div class="home-continue-subtitle">${escapeHtml(subtitle)}</div>` : ""}
+          ${
+            browserTextActions
+              ? `<button class="home-continue-title home-continue-text-action" type="button" data-cw-text-action="detail" aria-label="${escapeAttribute(`Open ${normalized.title} details`)}">${escapeHtml(normalized.title)}</button>`
+              : `<div class="home-continue-title">${escapeHtml(normalized.title)}</div>`
+          }
+          ${
+            subtitle
+              ? browserTextActions
+                ? `<button class="home-continue-subtitle home-continue-text-action" type="button" data-cw-text-action="episode" aria-label="${escapeAttribute(`Open ${normalized.title} episode details`)}">${escapeHtml(subtitle)}</button>`
+                : `<div class="home-continue-subtitle">${escapeHtml(subtitle)}</div>`
+              : ""
+          }
         </div>
         <div class="home-continue-progress"><span style="width:${Math.round((normalized.progressFraction || 0) * 100)}%"></span></div>
       </div>
@@ -5250,6 +5261,45 @@ export const HomeScreen = {
     return true;
   },
 
+  openContinueWatchingTextDetails(item, { targetEpisode = false, anchor = null } = {}) {
+    const normalized = normalizeContinueWatchingItem(item);
+    if (!normalized?.contentId) {
+      return false;
+    }
+    const isSeries = isSeriesTypeForContinueWatching(normalized.type);
+    const season = Number(normalized.season);
+    const episode = Number(normalized.episode);
+    const hasEpisodeTarget =
+      targetEpisode &&
+      isSeries &&
+      Number.isInteger(season) &&
+      season >= 0 &&
+      Number.isInteger(episode) &&
+      episode > 0;
+    this.cancelPendingContinueWatchingEnter();
+    if (anchor instanceof HTMLElement) {
+      this.rememberReturnFocusForNode(anchor);
+    }
+    Router.navigate("detail", {
+      itemId: normalized.contentId,
+      itemType: normalized.type || "movie",
+      imdbId: normalized.imdbId || null,
+      tmdbId: normalized.tmdbId || null,
+      traktId: normalized.traktId || null,
+      fallbackTitle: normalized.title || normalized.contentId || "Untitled",
+      fromContinueWatching: true,
+      returnHomeOnBack: true,
+      ...(hasEpisodeTarget
+        ? {
+            targetSeason: season,
+            targetEpisode: episode,
+            targetEpisodeId: normalized.videoId || null
+          }
+        : {})
+    });
+    return true;
+  },
+
   pruneContinueWatchingItem(item) {
     const normalized = normalizeContinueWatchingItem(item);
     const contentId = String(normalized?.contentId || "");
@@ -8024,6 +8074,21 @@ export const HomeScreen = {
     }
     if (!this.boundHomeClickHandler) {
       this.boundHomeClickHandler = (event) => {
+        const textAction = event?.target?.closest?.("[data-cw-text-action]");
+        if (textAction && this.container?.contains(textAction)) {
+          const card = textAction.closest(".home-continue-card");
+          const item = this.getContinueWatchingItemFromNode(card);
+          if (!item) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          this.openContinueWatchingTextDetails(item, {
+            targetEpisode: textAction.dataset.cwTextAction === "episode",
+            anchor: card
+          });
+          return;
+        }
         const target = event?.target?.closest?.(".home-main .focusable");
         if (!target || !this.container?.contains(target)) {
           return;

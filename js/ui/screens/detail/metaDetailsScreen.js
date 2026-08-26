@@ -1632,6 +1632,23 @@ export const MetaDetailsScreen = {
     });
     this.params = params;
     this.isBackNavigation = Boolean(navigationContext?.isBackNavigation);
+    const targetSeason = Number(params?.targetSeason);
+    const targetEpisode = Number(params?.targetEpisode);
+    this.pendingEpisodeNavigation =
+      Platform.isBrowser() &&
+      Number.isInteger(targetSeason) &&
+      targetSeason >= 0 &&
+      Number.isInteger(targetEpisode) &&
+      targetEpisode > 0
+        ? {
+            detailToken: (this.detailLoadToken || 0) + 1,
+            season: targetSeason,
+            episode: targetEpisode,
+            videoId: String(params?.targetEpisodeId || "").trim(),
+            attempts: 0
+          }
+        : null;
+    this.pendingEpisodeNavigationRaf = null;
     this.pendingEpisodeSelection = null;
     this.pendingMovieSelection = null;
     this.episodeHoldMenu = null;
@@ -1654,6 +1671,9 @@ export const MetaDetailsScreen = {
     this.streamChooserLoadToken = 0;
     this.isLoadingDetail = true;
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+    if (this.pendingEpisodeNavigation) {
+      this.pendingEpisodeNavigation.detailToken = this.detailLoadToken;
+    }
     this.libraryMembershipRefreshToken = 0;
     this.unsubscribeLibrarySource?.();
     this.unsubscribeLibrarySource = null;
@@ -1926,6 +1946,7 @@ export const MetaDetailsScreen = {
       this.resumeProgress || progress,
       progressItemsForDetail
     );
+    this.applyPendingEpisodeNavigationSeason();
     this.selectedRatingSeason = this.selectedRatingSeason || this.selectedSeason || 1;
     this.moreLikeThisItems = [];
     this.moreLikeThisSource = null;
@@ -1991,6 +2012,7 @@ export const MetaDetailsScreen = {
         this.resumeProgress || progress,
         progressItemsForDetail
       );
+      this.applyPendingEpisodeNavigationSeason();
       this.selectedRatingSeason = this.selectedRatingSeason || this.selectedSeason || 1;
       this.nextEpisodeToWatch = this.computeNextEpisodeToWatch(this.resumeProgress || progress);
       this.updateRenderedDetailSections(this.meta);
@@ -2441,6 +2463,96 @@ export const MetaDetailsScreen = {
     }
 
     return seasons[0] ?? 1;
+  },
+
+  applyPendingEpisodeNavigationSeason() {
+    const target = this.pendingEpisodeNavigation;
+    if (!target || target.detailToken !== this.detailLoadToken) {
+      return false;
+    }
+    const seasons = this.getAvailableSeasons();
+    if (!seasons.includes(target.season)) {
+      this.pendingEpisodeNavigation = null;
+      return false;
+    }
+    this.selectedSeason = target.season;
+    return true;
+  },
+
+  getPendingEpisodeNavigationIndex() {
+    const target = this.pendingEpisodeNavigation;
+    if (
+      !target ||
+      target.detailToken !== this.detailLoadToken ||
+      Number(this.selectedSeason) !== target.season
+    ) {
+      return null;
+    }
+    const episodes = this.getSelectedSeasonEpisodes();
+    const byVideoId = target.videoId
+      ? episodes.findIndex((episode) => String(episode?.id || "") === target.videoId)
+      : -1;
+    if (byVideoId >= 0) {
+      return byVideoId;
+    }
+    const bySeasonAndEpisode = episodes.findIndex(
+      (episode) =>
+        Number(episode?.season) === target.season && Number(episode?.episode) === target.episode
+    );
+    return bySeasonAndEpisode >= 0 ? bySeasonAndEpisode : null;
+  },
+
+  schedulePendingEpisodeNavigation() {
+    const target = this.pendingEpisodeNavigation;
+    if (!target || target.detailToken !== this.detailLoadToken || !Platform.isBrowser()) {
+      return;
+    }
+    if (this.pendingEpisodeNavigationRaf) {
+      cancelAnimationFrame(this.pendingEpisodeNavigationRaf);
+    }
+    const raf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : setTimeout;
+    this.pendingEpisodeNavigationRaf = raf(() => {
+      this.pendingEpisodeNavigationRaf = null;
+      if (
+        this.pendingEpisodeNavigation !== target ||
+        target.detailToken !== this.detailLoadToken ||
+        Router.getCurrent() !== "detail"
+      ) {
+        return;
+      }
+      const targetIndex = this.getPendingEpisodeNavigationIndex();
+      const track = this.getEpisodeTrackElement();
+      const card =
+        targetIndex != null
+          ? this.container?.querySelector(
+              `.series-episode-card[data-episode-index="${targetIndex}"]`
+            )
+          : null;
+      if (!(track instanceof HTMLElement) || !(card instanceof HTMLElement)) {
+        if (targetIndex != null && target.attempts < 1) {
+          target.attempts += 1;
+          this.refreshEpisodeTrack(null, targetIndex);
+          return;
+        }
+        this.pendingEpisodeNavigation = null;
+        return;
+      }
+      const trackRect = track.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      const maxScrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+      const desiredScrollLeft = Math.max(
+        0,
+        Math.min(
+          maxScrollLeft,
+          track.scrollLeft +
+            (cardRect.left - trackRect.left) +
+            cardRect.width / 2 -
+            track.clientWidth / 2
+        )
+      );
+      track.scrollTo({ left: desiredScrollLeft, behavior: "auto" });
+      this.pendingEpisodeNavigation = null;
+    });
   },
 
   computeNextEpisodeToWatch(progress) {
@@ -3165,7 +3277,7 @@ export const MetaDetailsScreen = {
             <div class="series-season-row" data-scroll-key="season-tabs">${this.renderSeasonButtons()}</div>
           </div>
           <div id="detailEpisodeTrackMount">
-            <div class="series-episode-track" data-scroll-key="episodes:${this.selectedSeason ?? 1}">${this.renderEpisodeCards()}</div>
+            <div class="series-episode-track" data-scroll-key="episodes:${this.selectedSeason ?? 1}">${this.renderEpisodeCards(this.getPendingEpisodeNavigationIndex())}</div>
           </div>
           <div id="detailInsightSectionMount">${this.renderSeriesInsightSection()}</div>
           <div id="detailCommentsSectionMount">${this.renderStandaloneCommentsSection()}</div>
@@ -3182,6 +3294,7 @@ export const MetaDetailsScreen = {
     }
     this._detailHeroMarkup = heroMarkup;
     this.bindDetailChrome();
+    this.schedulePendingEpisodeNavigation();
     this.scheduleEpisodeVirtualizationSync(this.getRememberedEpisodeIndex());
   },
 
@@ -3595,7 +3708,7 @@ export const MetaDetailsScreen = {
 
     const episodeMount = this.container.querySelector("#detailEpisodeTrackMount");
     if (isSeries && episodeMount) {
-      episodeMount.innerHTML = `<div class="series-episode-track" data-scroll-key="episodes:${this.selectedSeason ?? 1}">${this.renderEpisodeCards()}</div>`;
+      episodeMount.innerHTML = `<div class="series-episode-track" data-scroll-key="episodes:${this.selectedSeason ?? 1}">${this.renderEpisodeCards(this.getPendingEpisodeNavigationIndex())}</div>`;
     }
 
     const insightMount = this.container.querySelector("#detailInsightSectionMount");
@@ -3618,6 +3731,7 @@ export const MetaDetailsScreen = {
     ScreenUtils.indexFocusables(this.container);
     this.pendingFocusRestore = focusRestore;
     this.bindDetailChrome();
+    this.schedulePendingEpisodeNavigation();
     this.scheduleEpisodeVirtualizationSync(this.getRememberedEpisodeIndex());
   },
   renderMovieInsightSection(meta) {
@@ -9977,6 +10091,11 @@ export const MetaDetailsScreen = {
 
   cleanup() {
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+    if (this.pendingEpisodeNavigationRaf) {
+      cancelAnimationFrame(this.pendingEpisodeNavigationRaf);
+      this.pendingEpisodeNavigationRaf = null;
+    }
+    this.pendingEpisodeNavigation = null;
     this.libraryMembershipRefreshToken = (this.libraryMembershipRefreshToken || 0) + 1;
     this.unsubscribeLibrarySource?.();
     this.unsubscribeLibrarySource = null;

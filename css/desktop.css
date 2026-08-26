@@ -669,6 +669,32 @@ html.desktop-browser {
   white-space: nowrap;
 }
 
+.desktop-browser .home-screen-shell .home-continue-text-action {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.desktop-browser .home-screen-shell .home-continue-text-action:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.92);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .home-screen-shell .home-continue-text-action:hover {
+    color: #fff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-badge {
   min-height: 22px;
   padding: 3px 7px;
