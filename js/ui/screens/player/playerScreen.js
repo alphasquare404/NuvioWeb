@@ -1376,12 +1376,39 @@ function escapeAttribute(value) {
 
 function cleanPlaybackDiagnosticValue(value, maxLength = 320) {
   const text = String(value ?? "")
+    .replace(/(?:https?|wss?|file|blob|magnet):[^\s"'<>]+/gi, "[redacted]")
+    .replace(
+      /\b(?:authorization|cookie)\s*:\s*[^\s,;]+/gi,
+      (match) => match.replace(/(:\s*)[^\s,;]+$/, "$1[redacted]")
+    )
+    .replace(/\bbearer\s+[^\s,;]+/gi, "Bearer [redacted]")
+    .replace(
+      /\b(?:access[_-]?token|refresh[_-]?token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi,
+      (match) => match.replace(/([:=]\s*)[^\s,;]+$/, "$1[redacted]")
+    )
+    .replace(/([?&](?:token|access_token|refresh_token|apikey|api_key|key)=)[^&\s]+/gi, "$1[redacted]")
     .replace(/\s+/g, " ")
     .trim();
   if (!text) {
     return "";
   }
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function describeSafePlaybackEndpoint(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "[redacted]";
+  }
+  try {
+    const parsed = new URL(raw);
+    const extension = String(parsed.pathname || "")
+      .match(/\.([a-z0-9]{1,12})$/i)?.[1]
+      ?.toLowerCase();
+    return extension ? `${parsed.hostname} • .${extension}` : parsed.hostname || "[redacted]";
+  } catch (_) {
+    return "[redacted]";
+  }
 }
 
 function pushPlaybackDiagnosticLine(lines, label, value, maxLength = 320) {
@@ -6168,7 +6195,7 @@ export const PlayerScreen = {
     );
     pushPlaybackDiagnosticLine(lines, "Reason", reason);
     pushPlaybackDiagnosticLine(lines, "Media code", this.getPlaybackErrorCodeLabel(mediaErrorCode));
-    pushPlaybackDiagnosticLine(lines, "HTTP status", httpStatus);
+    pushPlaybackDiagnosticLine(lines, "HTTP status", httpStatus || "unavailable");
     pushPlaybackDiagnosticLine(lines, "Runtime error", runtimeDetail);
     pushPlaybackDiagnosticLine(
       lines,
@@ -6181,7 +6208,11 @@ export const PlayerScreen = {
     pushPlaybackDiagnosticLine(lines, "HTML media error", mediaError?.message || mediaError?.code);
     pushPlaybackDiagnosticLine(lines, "Video readyState", video?.readyState);
     pushPlaybackDiagnosticLine(lines, "Video networkState", video?.networkState);
-    pushPlaybackDiagnosticLine(lines, "Current src", video?.currentSrc || video?.src, 420);
+    pushPlaybackDiagnosticLine(
+      lines,
+      "Current source",
+      describeSafePlaybackEndpoint(video?.currentSrc || video?.src)
+    );
     pushPlaybackDiagnosticLine(
       lines,
       "Playback engine",
@@ -6189,7 +6220,7 @@ export const PlayerScreen = {
     );
     pushPlaybackDiagnosticLine(lines, "Source", sourceLabel);
     pushPlaybackDiagnosticLine(lines, "Source type", sourceType);
-    pushPlaybackDiagnosticLine(lines, "URL", activeUrl, 420);
+    pushPlaybackDiagnosticLine(lines, "Source endpoint", describeSafePlaybackEndpoint(activeUrl));
     pushPlaybackDiagnosticLine(lines, "Proxy header names", headerNames);
     pushPlaybackDiagnosticLine(lines, "Resolver status", resolverStatus);
     pushPlaybackDiagnosticLine(lines, "Resolver detail", resolverDetail);
@@ -6199,11 +6230,11 @@ export const PlayerScreen = {
       pushPlaybackDiagnosticLine(lines, "EngineFS base", engineFs.baseUrlKind);
       pushPlaybackDiagnosticLine(
         lines,
-        "EngineFS playbackUrl",
-        engineFs.playbackUrl || engineFs.url,
-        420
+        "EngineFS endpoint",
+        describeSafePlaybackEndpoint(
+          engineFs.playbackUrl || engineFs.url || engineFs.publicPlaybackUrl
+        )
       );
-      pushPlaybackDiagnosticLine(lines, "EngineFS publicUrl", engineFs.publicPlaybackUrl, 420);
     }
     return lines;
   },

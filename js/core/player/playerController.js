@@ -4370,13 +4370,16 @@ export const PlayerController = {
       const customErrorCode = Number(e?.detail?.mediaErrorCode || 0);
       const nativeErrorCode = Number(this.video?.error?.code || 0);
       const mediaErrorCode = customErrorCode || nativeErrorCode || this.getLastPlaybackErrorCode();
-      console.error("Video error:", {
+      const diagnostic = {
         event: e?.type || "error",
         mediaErrorCode,
         avplayError: e?.detail?.avplayError || "",
-        currentSrc: this.video?.currentSrc || this.video?.src || "",
         playbackEngine: this.playbackEngine
-      });
+      };
+      if (!Platform.isBrowser()) {
+        diagnostic.currentSrc = this.video?.currentSrc || this.video?.src || "";
+      }
+      console.error("Video error:", diagnostic);
     });
 
     const syncNativeMediaId = (event) => {

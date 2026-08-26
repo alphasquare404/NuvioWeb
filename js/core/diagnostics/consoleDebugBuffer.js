@@ -10,8 +10,23 @@ let installed = false;
 let originalWarn = null;
 let originalError = null;
 
+function redactSensitiveText(value) {
+  return String(value ?? "")
+    .replace(/(?:https?|wss?|file|blob|magnet):[^\s"'<>]+/gi, "[redacted]")
+    .replace(
+      /\b(?:authorization|cookie)\s*:\s*[^\s,;]+/gi,
+      (match) => match.replace(/(:\s*)[^\s,;]+$/, "$1[redacted]")
+    )
+    .replace(/\bbearer\s+[^\s,;]+/gi, "Bearer [redacted]")
+    .replace(
+      /\b(?:access[_-]?token|refresh[_-]?token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi,
+      (match) => match.replace(/([:=]\s*)[^\s,;]+$/, "$1[redacted]")
+    )
+    .replace(/([?&](?:token|access_token|refresh_token|apikey|api_key|key)=)[^&\s]+/gi, "$1[redacted]");
+}
+
 function truncate(value, maxLength) {
-  const text = String(value ?? "");
+  const text = redactSensitiveText(value);
   if (text.length <= maxLength) {
     return text;
   }
