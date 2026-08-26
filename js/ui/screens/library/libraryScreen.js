@@ -7,6 +7,7 @@ import { I18n } from "../../../i18n/index.js";
 import {
   LibraryController,
   LIBRARY_PRIVACY_OPTIONS,
+  LIBRARY_PRESENTATION_MODE,
   LIBRARY_VIEW_MODE
 } from "./libraryController.js";
 import { renderContentFilterPicker } from "../../components/filterPicker.js";
@@ -138,7 +139,8 @@ function groupNodesByRow(nodes = [], tolerance = 28) {
 
 function filterStructureSignature(state = {}) {
   return [
-    state.sourceMode === "trakt" ? "trakt" : "local",
+    state.sourceMode || "local",
+    state.presentationMode || LIBRARY_PRESENTATION_MODE.FLAT,
     Array.isArray(state.availableGenres) && state.availableGenres.length ? "genre" : "no-genre",
     Array.isArray(state.availableYears) && state.availableYears.length ? "year" : "no-year",
     state.selectedTypeKey !== "__all__" ? "type-filtered" : "type-all",
@@ -289,6 +291,7 @@ export const LibraryScreen = {
     this.lastPrivacyFocus = "private";
     this.partialContentRefresh = null;
     this.pendingHydrationState = null;
+    this.pendingPresentationModeScroll = false;
 
     this.render();
     this.bindEvents();
@@ -415,7 +418,7 @@ export const LibraryScreen = {
         : picker === "cloud_type"
           ? state.selectedCloudType || "__all__"
           : picker === "list"
-        ? state.selectedListKey
+        ? state.selectedListKey || "__all__"
         : picker === "type"
           ? state.selectedTypeKey
           : picker === "genre"
@@ -474,10 +477,12 @@ export const LibraryScreen = {
       `;
     }
     const primaryPickerMarkup = [
-      state.sourceMode === "trakt"
+      state.sourceMode === "trakt" || (Platform.isBrowser() && state.sourceMode === "simkl")
         ? this.renderPicker(
             "list",
-            t("library_filter_list", {}, "List"),
+            state.sourceMode === "simkl"
+              ? t("library_filter_status", {}, "Status")
+              : t("library_filter_list", {}, "List"),
             this.controller.getSelectedListLabel(),
             this.controller.getPickerOptions("list"),
             "library-picker-flex"
@@ -529,6 +534,7 @@ export const LibraryScreen = {
         state.selectedTypeKey !== "__all__" || Boolean(state.selectedGenre) || Boolean(state.selectedYear);
       return `
         <section class="library-picker-groups library-saved-picker-groups" id="libraryPickerGroupsMount">
+          ${this.renderPresentationToggle(state)}
           <div class="library-picker-row library-saved-picker-row">
             ${primaryPickerMarkup}
             ${secondaryPickerMarkup}
@@ -555,6 +561,28 @@ export const LibraryScreen = {
     `;
   },
 
+  renderPresentationToggle(state) {
+    if (state.sourceMode !== "simkl") return "";
+    return `
+      <div class="library-presentation-toggle" role="group" aria-label="Library presentation">
+        <button class="library-presentation-button focusable${
+          state.presentationMode === LIBRARY_PRESENTATION_MODE.FLAT ? " selected" : ""
+        }"
+                data-action="selectLibraryPresentationMode" data-presentation-mode="flat"
+                aria-pressed="${state.presentationMode === LIBRARY_PRESENTATION_MODE.FLAT}">
+          Flat
+        </button>
+        <button class="library-presentation-button focusable${
+          state.presentationMode === LIBRARY_PRESENTATION_MODE.GROUPED ? " selected" : ""
+        }"
+                data-action="selectLibraryPresentationMode" data-presentation-mode="grouped"
+                aria-pressed="${state.presentationMode === LIBRARY_PRESENTATION_MODE.GROUPED}">
+          Grouped
+        </button>
+      </div>
+    `;
+  },
+
   renderLibraryContentArea(state) {
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       return `
@@ -568,7 +596,15 @@ export const LibraryScreen = {
     return `
       <div id="libraryContentAreaMount">
         ${this.renderActions(state)}
-        ${state.visibleItems.length ? this.renderGrid(state.visibleItems) : this.renderEmptyState()}
+        ${
+          state.visibleItems.length
+            ? Platform.isBrowser() &&
+              state.sourceMode === "simkl" &&
+              state.presentationMode === LIBRARY_PRESENTATION_MODE.GROUPED
+              ? this.renderGroupedLibraryContent()
+              : this.renderGrid(state.visibleItems)
+            : this.renderEmptyState()
+        }
         ${state.transientMessage ? `<div class="library-toast">${escapeHtml(state.transientMessage)}</div>` : ""}
       </div>
     `;
@@ -1280,6 +1316,9 @@ export const LibraryScreen = {
     if (node.dataset.action === "togglePicker" && node.dataset.picker) {
       return `.library-picker-anchor[data-picker="${selectorValue(node.dataset.picker)}"]`;
     }
+    if (node.dataset.action === "selectLibraryPresentationMode" && node.dataset.presentationMode) {
+      return `.library-presentation-button[data-presentation-mode="${selectorValue(node.dataset.presentationMode)}"]`;
+    }
     if (node.dataset.action) {
       return `.focusable[data-action="${selectorValue(node.dataset.action)}"]`;
     }
@@ -1350,7 +1389,9 @@ export const LibraryScreen = {
       selector = `.library-picker-anchor[data-picker="${selectorValue(this.pendingPickerRestore)}"]`;
     } else if (this.pendingCloudSearchFocus) {
       selector = ".library-cloud-search-input.focusable";
-    } else if (this.lastMainFocus?.matches?.(".library-picker-anchor")) {
+    } else if (
+      this.lastMainFocus?.matches?.(".library-picker-anchor, .library-presentation-button")
+    ) {
       selector = this.getMainFocusSelector(this.lastMainFocus);
     } else if (state.lastFocusedPosterKey) {
       selector = `.library-grid-card[data-focus-key="${selectorValue(state.lastFocusedPosterKey)}"]`;
@@ -1377,6 +1418,10 @@ export const LibraryScreen = {
       return;
     }
     this.setFocusedNode(target);
+    if (this.pendingPresentationModeScroll && Platform.isBrowser()) {
+      this.pendingPresentationModeScroll = false;
+      this.scrollPresentationControlsIntoView();
+    }
     if (this.pendingCloudSearchFocus) {
       this.pendingCloudSearchFocus = false;
     }
@@ -1386,6 +1431,16 @@ export const LibraryScreen = {
     if (this.pendingActionRestore && target === actionRestoreTarget) {
       this.pendingActionRestore = null;
     }
+  },
+
+  scrollPresentationControlsIntoView() {
+    const header = this.container?.querySelector(".library-page-header");
+    if (!(header instanceof HTMLElement)) {
+      return;
+    }
+    const navbarOffset = 88;
+    const top = Math.max(0, window.scrollY + header.getBoundingClientRect().top - navbarOffset);
+    window.scrollTo({ top, left: 0, behavior: "auto" });
   },
 
   getFocusScopeSelector() {
@@ -1452,6 +1507,27 @@ export const LibraryScreen = {
         ? this.resolveLastMainFocus()
         : null;
     return remembered || findNearestNodeByCenterX(referenceNode, controls) || controls[0] || null;
+  },
+
+  renderGroupedLibraryContent() {
+    const groups = this.controller.getGroupedItems();
+    if (!groups.length) {
+      return this.renderGrid(this.controller.getState().visibleItems);
+    }
+    return `
+      <div class="library-grouped-content">
+        ${groups
+          .map(
+            (group) => `
+              <section class="library-status-section">
+                <h2 class="library-status-heading">${escapeHtml(group.title)}</h2>
+                ${this.renderGrid(group.items)}
+              </section>
+            `
+          )
+          .join("")}
+      </div>
+    `;
   },
 
   getPickerRowFocusables() {
@@ -2045,6 +2121,11 @@ export const LibraryScreen = {
     }
     if (action === "selectLibraryViewMode") {
       await this.controller.selectViewMode(String(node.dataset.viewMode || "saved"));
+      return;
+    }
+    if (action === "selectLibraryPresentationMode") {
+      this.pendingPresentationModeScroll = true;
+      this.controller.selectPresentationMode(String(node.dataset.presentationMode || "flat"));
       return;
     }
     if (action === "refreshCloudLibrary") {

@@ -21,12 +21,17 @@ import { DebridSettingsStore } from "../../../data/local/debridSettingsStore.js"
 import { LibraryPreferencesStore } from "../../../data/local/libraryPreferencesStore.js";
 import { SavedLibraryStore } from "../../../data/local/savedLibraryStore.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
+import { Platform } from "../../../platform/index.js";
+import { SimklSyncService } from "../../../data/repository/simklSyncService.js";
+import { TraktSettingsStore } from "../../../data/local/traktSettingsStore.js";
 
 const ALL_KEY = "__all__";
 const MESSAGE_CLEAR_MS = 2400;
 const SYNC_LOADING_MIN_MS = 700;
 const LEADING_ARTICLE_REGEX = /^(the|an|a)\s+/i;
 export const LIBRARY_VIEW_MODE = { SAVED: "saved", CLOUD: "cloud" };
+export const LIBRARY_PRESENTATION_MODE = { FLAT: "flat", GROUPED: "grouped" };
+const SIMKL_GROUP_STATUS_ORDER = ["watching", "plantowatch", "completed", "hold", "dropped"];
 
 export const LIBRARY_SORT_OPTIONS = [
   {
@@ -65,6 +70,9 @@ let persistedLibraryViewMode = LIBRARY_VIEW_MODE.SAVED;
 function makeInitialState() {
   return {
     viewMode: persistedLibraryViewMode,
+    presentationMode: Platform.isBrowser()
+      ? LibraryPreferencesStore.getBrowserPresentationMode()
+      : LIBRARY_PRESENTATION_MODE.FLAT,
     sourceMode: LibrarySourceMode.LOCAL,
     allItems: [],
     visibleItems: [],
@@ -451,6 +459,7 @@ export class LibraryController {
     this.reloadToken = 0;
     this.disposed = false;
     this.unsubscribeSavedLibrary = null;
+    this.unsubscribeLibrarySource = null;
     this.savedLibraryReloadPending = false;
     this.cloudSettingsSignature = cloudLibrarySettingsSignature();
     this.unsubscribeDebridSettings = DebridSettingsStore.subscribe(() => {
@@ -465,6 +474,13 @@ export class LibraryController {
         this.handleSavedLibraryChange(change);
       });
     }
+    if (Platform.isBrowser() && !this.unsubscribeLibrarySource) {
+      this.unsubscribeLibrarySource = TraktSettingsStore.subscribeLibrarySource(() => {
+        if (!this.disposed) {
+          void this.reload({ preserveOverlay: true });
+        }
+      });
+    }
     await this.reload();
   }
 
@@ -473,6 +489,8 @@ export class LibraryController {
     this.reloadToken += 1;
     this.unsubscribeSavedLibrary?.();
     this.unsubscribeSavedLibrary = null;
+    this.unsubscribeLibrarySource?.();
+    this.unsubscribeLibrarySource = null;
     this.savedLibraryReloadPending = false;
     this.unsubscribeDebridSettings?.();
     this.unsubscribeDebridSettings = null;
@@ -621,14 +639,23 @@ export class LibraryController {
     }
 
     const persistedListKey = LibraryPreferencesStore.getLastSelectedListKey();
+    const persistedSimklStatusKey = LibraryPreferencesStore.getBrowserSimklStatusKey();
     const nextSelectedListKey =
-      sourceMode !== LibrarySourceMode.LOCAL
+      sourceMode === LibrarySourceMode.TRAKT ||
+      (sourceMode === LibrarySourceMode.SIMKL && !Platform.isBrowser())
         ? this.state.selectedListKey &&
           listTabs.some((item) => item.key === this.state.selectedListKey)
           ? this.state.selectedListKey
           : listTabs.some((item) => item.key === persistedListKey)
             ? persistedListKey
             : listTabs[0]?.key || null
+        : sourceMode === LibrarySourceMode.SIMKL
+          ? this.state.selectedListKey &&
+            listTabs.some((item) => item.key === this.state.selectedListKey)
+            ? this.state.selectedListKey
+            : listTabs.some((item) => item.key === persistedSimklStatusKey)
+              ? persistedSimklStatusKey
+              : null
         : null;
 
     const availableSortOptions =
@@ -755,6 +782,13 @@ export class LibraryController {
   }
 
   getSelectedListLabel() {
+    if (
+      Platform.isBrowser() &&
+      this.state.sourceMode === LibrarySourceMode.SIMKL &&
+      !this.state.selectedListKey
+    ) {
+      return t("library_type_all", {}, "All");
+    }
     return (
       this.state.listTabs.find((item) => item.key === this.state.selectedListKey)?.title || "Select"
     );
@@ -827,6 +861,12 @@ export class LibraryController {
       ];
     }
     if (picker === "list") {
+      if (Platform.isBrowser() && this.state.sourceMode === LibrarySourceMode.SIMKL) {
+        return [
+          { value: ALL_KEY, label: t("library_type_all", {}, "All") },
+          ...this.state.listTabs.map((item) => ({ value: item.key, label: item.title }))
+        ];
+      }
       return this.state.listTabs.map((item) => ({ value: item.key, label: item.title }));
     }
     if (picker === "type") {
@@ -869,8 +909,8 @@ export class LibraryController {
           ? this.state.selectedCloudProviderId || ALL_KEY
           : picker === "cloud_type"
             ? this.state.selectedCloudType || ALL_KEY
-            : picker === "list"
-          ? this.state.selectedListKey
+          : picker === "list"
+          ? this.state.selectedListKey || ALL_KEY
           : picker === "type"
             ? this.state.selectedTypeKey
             : picker === "genre"
@@ -937,7 +977,11 @@ export class LibraryController {
       return;
     }
     if (picker === "list") {
-      this.selectList(option.value);
+      this.selectList(
+        this.state.sourceMode === LibrarySourceMode.SIMKL && option.value === ALL_KEY
+          ? null
+          : option.value
+      );
       return;
     }
     if (picker === "type") {
@@ -1062,6 +1106,16 @@ export class LibraryController {
   }
 
   selectList(key) {
+    if (Platform.isBrowser() && this.state.sourceMode === LibrarySourceMode.SIMKL) {
+      const selectedListKey = String(key || "").trim() || null;
+      LibraryPreferencesStore.setBrowserSimklStatusKey(selectedListKey);
+      this.setState({
+        selectedListKey,
+        expandedPicker: null,
+        pickerFocusIndex: 0
+      });
+      return;
+    }
     LibraryPreferencesStore.setLastSelectedListKey(key);
     this.setState({
       selectedListKey: key,
@@ -1093,6 +1147,31 @@ export class LibraryController {
       expandedPicker: null,
       pickerFocusIndex: 0
     });
+  }
+
+  selectPresentationMode(mode) {
+    if (!Platform.isBrowser()) return;
+    const presentationMode =
+      mode === LIBRARY_PRESENTATION_MODE.GROUPED
+        ? LIBRARY_PRESENTATION_MODE.GROUPED
+        : LIBRARY_PRESENTATION_MODE.FLAT;
+    LibraryPreferencesStore.setBrowserPresentationMode(presentationMode);
+    this.setState({ presentationMode, expandedPicker: null });
+  }
+
+  getGroupedItems() {
+    if (this.state.sourceMode !== LibrarySourceMode.SIMKL) return [];
+    const definitions = SimklSyncService.statusDefinitions || [];
+    return SIMKL_GROUP_STATUS_ORDER.map((status) =>
+      definitions.find((definition) => definition.status === status)
+    )
+      .filter(Boolean)
+      .map((definition) => ({
+        key: definition.key,
+        title: definition.title,
+        items: this.state.visibleItems.filter((item) => item.listKeys?.includes(definition.key))
+      }))
+      .filter((group) => group.items.length);
   }
 
   clearFilters() {

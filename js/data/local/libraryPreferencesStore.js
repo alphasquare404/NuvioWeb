@@ -9,8 +9,15 @@ function normalizeProfileId(profileId = null) {
 
 function normalizeState(value = {}) {
   const lastSelectedListKey = String(value?.lastSelectedListKey || "").trim();
+  const browserSimklStatusKey = String(value?.browserSimklStatusKey || "").trim();
   return {
-    lastSelectedListKey: lastSelectedListKey || null
+    lastSelectedListKey: lastSelectedListKey || null,
+    browserPresentationMode: value?.browserPresentationMode === "grouped" ? "grouped" : "flat",
+    browserSimklStatusKey: /^simkl:status:(watching|plantowatch|completed|hold|dropped)$/.test(
+      browserSimklStatusKey
+    )
+      ? browserSimklStatusKey
+      : null
   };
 }
 
@@ -31,7 +38,38 @@ export const LibraryPreferencesStore = {
     }
     const normalizedProfileId = normalizeProfileId(profileId);
     const all = readAll();
-    all[normalizedProfileId] = normalizeState({ lastSelectedListKey: normalizedListKey });
+    all[normalizedProfileId] = normalizeState({
+      ...all[normalizedProfileId],
+      lastSelectedListKey: normalizedListKey
+    });
+    LocalStore.set(KEY, all);
+  },
+
+  getBrowserPresentationMode(profileId = null) {
+    return normalizeState(readAll()[normalizeProfileId(profileId)]).browserPresentationMode;
+  },
+
+  setBrowserPresentationMode(mode, profileId = null) {
+    const normalizedProfileId = normalizeProfileId(profileId);
+    const all = readAll();
+    all[normalizedProfileId] = normalizeState({
+      ...all[normalizedProfileId],
+      browserPresentationMode: mode === "grouped" ? "grouped" : "flat"
+    });
+    LocalStore.set(KEY, all);
+  },
+
+  getBrowserSimklStatusKey(profileId = null) {
+    return normalizeState(readAll()[normalizeProfileId(profileId)]).browserSimklStatusKey;
+  },
+
+  setBrowserSimklStatusKey(statusKey, profileId = null) {
+    const normalizedProfileId = normalizeProfileId(profileId);
+    const all = readAll();
+    all[normalizedProfileId] = normalizeState({
+      ...all[normalizedProfileId],
+      browserSimklStatusKey: statusKey
+    });
     LocalStore.set(KEY, all);
   }
 };

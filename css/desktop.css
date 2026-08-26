@@ -5483,6 +5483,52 @@ html.desktop-browser {
   align-items: center;
 }
 
+.desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: fit-content;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  background: rgba(26, 26, 29, 0.9);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button.selected {
+  background: rgb(var(--secondary-color-rgb) / 0.2);
+  color: var(--text-color);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button.focused,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button:focus-visible {
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.55);
+  outline: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button:hover:not(.selected) {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-color);
+  }
+}
+
 .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-row .library-picker {
   flex: 0 1 clamp(200px, 18vw, 280px);
 }
@@ -5609,8 +5655,30 @@ html.desktop-browser {
   overflow: visible;
 }
 
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grouped-content {
+  display: grid;
+  gap: 38px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-status-section {
+  min-width: 0;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-status-heading {
+  margin: 0 0 14px;
+  color: var(--text-color);
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-status-section .library-grid-wrap {
+  padding-bottom: 0;
+}
+
 .desktop-browser .library-shell.desktop-navigation-enabled .library-grid {
-  grid-template-columns: repeat(auto-fill, minmax(156px, 190px));
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
   gap: 24px 14px;
   overflow: visible;
 }
