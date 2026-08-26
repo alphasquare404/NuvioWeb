@@ -115,7 +115,12 @@ export const TraktSettingsStore = {
   },
 
   setLibrarySourceMode(mode) {
-    return this.set({ librarySourceMode: normalizeLibrarySourceMode(mode) });
+    // Library Source is a client-local preference. Persist it for this Web
+    // browser/profile without scheduling a shared Profile Settings push.
+    return this.set(
+      { librarySourceMode: normalizeLibrarySourceMode(mode) },
+      { silentSync: true }
+    );
   },
 
   setSimklAnimeIdPreference(preference) {

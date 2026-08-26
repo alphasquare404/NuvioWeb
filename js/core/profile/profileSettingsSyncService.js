@@ -38,6 +38,9 @@ const PUSH_RPC = "sync_push_profile_settings_blob";
 const TV_SETTINGS_SYNC_PLATFORM = "tv";
 const DESKTOP_SETTINGS_SYNC_PLATFORM = "desktop";
 const CACHE_KEY = "profileSettingsSyncCache";
+// This is a Desktop-owned opaque payload. Web preserves it when writing shared
+// settings, but never reads or mutates its client-local Library Source.
+const DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE = "trakt_settings_payload";
 const EXCLUDED_PROFILE_KEYS = {
   layout_settings: new Set(["search_discover_enabled"]),
   player_settings: new Set(["audio_amplification_db", "persist_audio_amplification"]),
@@ -50,7 +53,10 @@ const EXCLUDED_PROFILE_KEYS = {
     "stream_show_badges",
     "show_stream_badges"
   ]),
-  animeskip_settings: new Set(["animeskip_client_id"])
+  animeskip_settings: new Set(["animeskip_client_id"]),
+  // Library Source is intentionally profile-local to each client. Do not let
+  // one client's preferred source alter another client's library behavior.
+  trakt_settings: new Set(["library_source_mode"])
 };
 
 export function profileSettingsExcludedKeys(featureName) {
@@ -123,9 +129,16 @@ function normalizeBlob(blob = {}) {
     version: Number(blob?.version || 1) || 1,
     features: Object.entries(features).reduce((accumulator, [featureName, featureValue]) => {
       const normalizedFeatureName = String(featureName || "").trim();
-      if (!normalizedFeatureName || !isPlainObject(featureValue)) {
+      if (!normalizedFeatureName) {
         return accumulator;
       }
+      if (normalizedFeatureName === DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE) {
+        if (typeof featureValue === "string") {
+          accumulator[normalizedFeatureName] = featureValue;
+        }
+        return accumulator;
+      }
+      if (!isPlainObject(featureValue)) return accumulator;
       accumulator[normalizedFeatureName] = cloneValue(featureValue) || {};
       return accumulator;
     }, {})
@@ -497,24 +510,6 @@ function normalizeTraktWatchProgressSourceForWeb(value) {
     .trim()
     .toUpperCase();
   if (normalized === "NUVIO_SYNC") return "nuvio_sync";
-  if (normalized === "SIMKL") return "simkl";
-  return "trakt";
-}
-
-function normalizeTraktLibrarySourceForAndroid(value) {
-  const normalized = String(value || "trakt")
-    .trim()
-    .toLowerCase();
-  if (normalized === "local") return "LOCAL";
-  if (normalized === "simkl") return "SIMKL";
-  return "TRAKT";
-}
-
-function normalizeTraktLibrarySourceForWeb(value) {
-  const normalized = String(value || "")
-    .trim()
-    .toUpperCase();
-  if (normalized === "LOCAL") return "local";
   if (normalized === "SIMKL") return "simkl";
   return "trakt";
 }
@@ -1676,7 +1671,6 @@ const FEATURE_ADAPTERS = {
         watch_progress_source: normalizeTraktWatchProgressSourceForAndroid(
           settings.watchProgressSource
         ),
-        library_source_mode: normalizeTraktLibrarySourceForAndroid(settings.librarySourceMode),
         simkl_anime_id_preference: String(settings.simklAnimeIdPreference || "imdb").toUpperCase(),
         more_like_this_source: String(settings.moreLikeThisSource || "trakt").toUpperCase()
       };
@@ -1698,11 +1692,6 @@ const FEATURE_ADAPTERS = {
       if (stringOrNull(raw.watch_progress_source)) {
         projected.watch_progress_source = normalizeTraktWatchProgressSourceForAndroid(
           raw.watch_progress_source
-        );
-      }
-      if (stringOrNull(raw.library_source_mode)) {
-        projected.library_source_mode = normalizeTraktLibrarySourceForAndroid(
-          raw.library_source_mode
         );
       }
       if (stringOrNull(raw.simkl_anime_id_preference)) {
@@ -1735,9 +1724,6 @@ const FEATURE_ADAPTERS = {
         partial.watchProgressSource = normalizeTraktWatchProgressSourceForWeb(
           raw.watch_progress_source
         );
-      }
-      if (stringOrNull(raw.library_source_mode)) {
-        partial.librarySourceMode = normalizeTraktLibrarySourceForWeb(raw.library_source_mode);
       }
       if (stringOrNull(raw.simkl_anime_id_preference)) {
         partial.simklAnimeIdPreference = String(raw.simkl_anime_id_preference).toLowerCase();
@@ -2057,6 +2043,12 @@ function buildOutgoingBlob(profileId, baseBlob = null) {
     };
     EXCLUDED_PROFILE_KEYS[featureName]?.forEach((key) => delete nextFeatures[featureName][key]);
   });
+
+  const desktopTraktSettingsPayload =
+    normalizedBase.features[DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE];
+  if (typeof desktopTraktSettingsPayload === "string") {
+    nextFeatures[DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE] = desktopTraktSettingsPayload;
+  }
 
   return normalizeBlob({
     version: 1,
