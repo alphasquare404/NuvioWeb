@@ -7727,13 +7727,7 @@ html.desktop-browser {
 .desktop-browser .desktop-media-hover-preview.is-closing { opacity: 0; pointer-events: none; transform: translateY(5px) scale(.985); }
 .desktop-browser .desktop-media-hover-preview-media { position: relative; isolation: isolate; aspect-ratio: 16 / 9; overflow: hidden; background: #111; }
 .desktop-browser .desktop-media-hover-preview-media > img, .desktop-browser .desktop-media-hover-preview-media > iframe { position: absolute; z-index: 1; inset: 0; display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
-.desktop-browser .desktop-media-hover-preview-youtube-host, .desktop-browser .desktop-media-hover-preview-youtube-host iframe { position: absolute; z-index: 1; inset: 0; display: block; width: 100%; height: 100%; border: 0; }
 .desktop-browser .desktop-media-hover-preview-media-layer { position: absolute; z-index: 2; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 40%, rgba(22,22,26,.86) 100%); }
-.desktop-browser .desktop-media-hover-preview-trailer-controls { position: absolute; z-index: 10; inset: 0; pointer-events: none; }
-.desktop-browser .desktop-media-hover-preview-audio { position: absolute; z-index: 11; right: 10px; bottom: 10px; display: inline-grid; width: 34px; height: 34px; padding: 0; place-items: center; pointer-events: auto; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(0,0,0,.62); color: #fff; cursor: pointer; backdrop-filter: blur(8px); }
-.desktop-browser .desktop-media-hover-preview-audio .material-icons { font-size: 19px; }
-.desktop-browser .desktop-media-hover-preview-audio:hover { background: rgba(40,40,45,.88); }
-.desktop-browser .desktop-media-hover-preview-audio:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .desktop-browser .desktop-media-hover-preview-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, #31313a, #17171b); }
 .desktop-browser .desktop-media-hover-preview-copy { padding: 14px 15px 15px; }
 .desktop-browser .desktop-media-hover-preview-copy h2 { overflow: hidden; margin: 0; color: #fff; font-size: 18px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }

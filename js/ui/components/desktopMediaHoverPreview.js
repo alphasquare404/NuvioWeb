@@ -1,7 +1,5 @@
 const HOVER_DELAY_MS = 3000;
 const CLOSE_GRACE_MS = 160;
-const YOUTUBE_IFRAME_API_URL = "https://www.youtube.com/iframe_api";
-let youtubeIframeApiPromise = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -27,52 +25,22 @@ function formatGenres(genres) {
     : "";
 }
 
-function logAudioDebug(marker, details = {}) {
-  if (globalThis.__NUVIO_HOVER_PREVIEW_DEBUG__ !== true) return;
-  console.info(`[hover-preview] audio ${marker}`, details);
-}
-
-function getBrowserOrigin() {
-  const origin = String(globalThis.location?.origin || "").trim();
-  return /^https?:\/\//i.test(origin) ? origin : "";
-}
-
-function loadYoutubeIframeApi() {
-  if (globalThis.YT?.Player) return Promise.resolve(globalThis.YT);
-  if (youtubeIframeApiPromise) return youtubeIframeApiPromise;
-
-  youtubeIframeApiPromise = new Promise((resolve, reject) => {
-    const previousReady = globalThis.onYouTubeIframeAPIReady;
-    let settled = false;
-    let timeoutId = 0;
-    const settle = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutId);
-      callback(value);
-    };
-    globalThis.onYouTubeIframeAPIReady = (...args) => {
-      try { previousReady?.(...args); } catch (_) {}
-      settle(resolve, globalThis.YT);
-    };
-    const existingScript = document.querySelector(`script[src="${YOUTUBE_IFRAME_API_URL}"]`);
-    const script = existingScript || document.createElement("script");
-    if (!existingScript) {
-      script.src = YOUTUBE_IFRAME_API_URL;
-      script.async = true;
-      document.head.append(script);
-    }
-    script.addEventListener("error", () => settle(reject, new Error("youtube-iframe-api-load-failed")), {
-      once: true
-    });
-    timeoutId = setTimeout(
-      () => settle(reject, new Error("youtube-iframe-api-timeout")),
-      15000
-    );
+function buildYoutubeViewerUrl(videoId) {
+  const cleanId = String(videoId || "").trim();
+  if (!cleanId) return "";
+  const params = new URLSearchParams({
+    autoplay: "1",
+    mute: "1",
+    controls: "1",
+    fs: "1",
+    playsinline: "1",
+    enablejsapi: "1",
+    rel: "0"
   });
-  return youtubeIframeApiPromise;
+  const origin = String(globalThis.location?.origin || "").trim();
+  if (/^https?:\/\//i.test(origin)) params.set("origin", origin);
+  return `https://www.youtube.com/embed/${encodeURIComponent(cleanId)}?${params.toString()}`;
 }
-
 export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTrailer, resolveMetadata } = {}) {
   let homeContainer = null;
   let sourceNode = null;
@@ -95,119 +63,23 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
     trailerPlayerCleanup.get(previewNode)?.();
     trailerPlayerCleanup.delete(previewNode);
   };
-  const mountTrailer = (node, item, source) => {
+  const mountTrailerViewer = (node, item, source) => {
     const media = node.querySelector(".desktop-media-hover-preview-media");
-    if (!media || !source?.ytId) return;
-    media.innerHTML = `<div class="desktop-media-hover-preview-youtube-host" aria-label="${escapeHtml(item.name || "Media")} trailer"></div><div class="desktop-media-hover-preview-trailer-controls"><button type="button" class="desktop-media-hover-preview-audio" data-hover-preview-audio aria-label="Unmute trailer" title="Unmute trailer" disabled><span class="material-icons" aria-hidden="true">volume_off</span></button></div>`;
-    const host = media.querySelector(".desktop-media-hover-preview-youtube-host");
-    const audioButton = media.querySelector("[data-hover-preview-audio]");
-    let muted = true;
-    let playerReady = false;
-    let disposed = false;
-    let player = null;
-    const setTrailerMutedState = (nextMuted, reason) => {
-      muted = Boolean(nextMuted);
-      const label = muted ? "Unmute trailer" : "Mute trailer";
-      audioButton.setAttribute("aria-label", label);
-      audioButton.title = label;
-      audioButton.querySelector(".material-icons").textContent = muted ? "volume_off" : "volume_up";
-      logAudioDebug(`audio state -> ${muted ? "muted" : "unmuted"} [${reason}]`, {
-        muted,
-        volume: Number(player?.getVolume?.() || 0)
-      });
-    };
-    setTrailerMutedState(true, "initial");
+    const frameUrl = buildYoutubeViewerUrl(source?.ytId);
+    if (!media || !frameUrl) return;
+    const frame = document.createElement("iframe");
+    frame.className = "desktop-media-hover-preview-youtube-viewer";
+    frame.src = frameUrl;
+    frame.title = `${item.name || "Media"} trailer`;
+    frame.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+    frame.referrerPolicy = "origin-when-cross-origin";
+    frame.allowFullscreen = true;
+    media.replaceChildren(frame);
     trailerPlayerCleanup.set(node, () => {
-      disposed = true;
-      playerReady = false;
-      audioButton.disabled = true;
-      try { player?.stopVideo?.(); } catch (_) {}
-      try { player?.destroy?.(); } catch (_) {}
-      player = null;
-      setTrailerMutedState(true, "cleanup");
+      try { frame.src = "about:blank"; } catch (_) {}
+      frame.removeAttribute("src");
+      frame.remove();
     });
-    audioButton?.addEventListener("pointerdown", (event) => {
-      event.stopPropagation();
-      const rect = audioButton.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const topElement = document.elementFromPoint(centerX, centerY);
-      logAudioDebug("pointerdown", {
-        topElement: topElement?.className || topElement?.tagName || "none",
-        topElementIsButton: topElement === audioButton || audioButton.contains(topElement)
-      });
-    });
-    audioButton?.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!playerReady || !player) return;
-      const before = { muted: Boolean(player.isMuted()), volume: Number(player.getVolume()) };
-      logAudioDebug("before audio toggle", before);
-      if (muted) {
-        player.setVolume(100);
-        player.unMute();
-        setTrailerMutedState(false, "user click");
-      } else {
-        player.mute();
-        setTrailerMutedState(true, "user click");
-      }
-      setTimeout(() => {
-        if (!disposed && playerReady && player) {
-          logAudioDebug("after audio toggle", {
-            muted: Boolean(player.isMuted()),
-            volume: Number(player.getVolume())
-          });
-        }
-      }, 100);
-    });
-    void loadYoutubeIframeApi()
-      .then((YT) => {
-        if (disposed || previewNode !== node || !host) return;
-        player = new YT.Player(host, {
-          videoId: source.ytId,
-          playerVars: {
-            autoplay: 1,
-            enablejsapi: 1,
-            controls: 0,
-            loop: 1,
-            playlist: source.ytId,
-            playsinline: 1,
-            rel: 0,
-            modestbranding: 1,
-            origin: getBrowserOrigin()
-          },
-          events: {
-            onReady: (event) => {
-              if (disposed || previewNode !== node) return;
-              player = event.target;
-              const iframe = player.getIframe?.();
-              if (iframe instanceof HTMLIFrameElement) {
-                iframe.allow = "autoplay; encrypted-media; picture-in-picture";
-                iframe.allowFullscreen = true;
-              }
-              player.mute();
-              player.setVolume(100);
-              player.playVideo();
-              playerReady = true;
-              // We explicitly mute at startup. Do not replace this known state
-              // with YouTube's early isMuted() result before a user action.
-              setTrailerMutedState(true, "player ready");
-              audioButton.disabled = false;
-              logAudioDebug("youtube ready", { muted, volume: Number(player.getVolume()) });
-            },
-            onError: () => {
-              if (disposed) return;
-              audioButton.title = "Trailer controls unavailable";
-              audioButton.setAttribute("aria-label", "Trailer controls unavailable");
-            }
-          }
-        });
-      })
-      .catch(() => {
-        if (disposed) return;
-        audioButton.title = "Trailer controls unavailable";
-        audioButton.setAttribute("aria-label", "Trailer controls unavailable");
-      });
   };
   const close = () => {
     cancelOpen(); cancelClose(); generation += 1;
@@ -224,7 +96,8 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
   const position = (card) => {
     if (!previewNode || !card?.isConnected) return;
     const rect = card.getBoundingClientRect();
-    const width = Math.min(450, Math.max(320, window.innerWidth - 32));
+    const availableWidth = window.innerWidth - 32;
+    const width = availableWidth >= 480 ? Math.min(520, availableWidth) : Math.max(320, availableWidth);
     const left = Math.max(16, Math.min(rect.left, window.innerWidth - width - 16));
     const height = previewNode.offsetHeight || 370;
     // Start at the source poster and only move as much as viewport bounds require.
@@ -273,8 +146,8 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
       let source = trailerCache.get(key);
       if (!source) { source = await resolveTrailer?.(item); if (source) trailerCache.set(key, source); }
       if (token !== generation || previewNode !== node) return;
-      if (!source?.embedUrl) { button.textContent = "Trailer unavailable"; return; }
-      mountTrailer(node, item, source);
+      if (!source?.ytId) { button.textContent = "Trailer unavailable"; return; }
+      mountTrailerViewer(node, item, source);
     });
     const metadataKey = `${String(item.type || item.apiType || "movie").toLowerCase()}:${item.id}`;
     const metadataPromise = metadataCache.get(metadataKey) || resolveMetadata?.(item);
@@ -303,8 +176,8 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
             let source = trailerCache.get(key);
             if (!source) { source = await resolveTrailer?.(enrichedItem); if (source) trailerCache.set(key, source); }
             if (token !== generation || previewNode !== node) return;
-            if (!source?.embedUrl) { button.textContent = "Trailer unavailable"; return; }
-            mountTrailer(node, enrichedItem, source);
+            if (!source?.ytId) { button.textContent = "Trailer unavailable"; return; }
+            mountTrailerViewer(node, enrichedItem, source);
           });
         })
         .catch(() => {});
