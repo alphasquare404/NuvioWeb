@@ -4011,12 +4011,17 @@ export const HomeScreen = {
 
   startHeroRotation() {
     this.stopHeroRotation();
-    if (this.layoutMode === "modern" || this.isPerformanceConstrained()) {
+    if ((this.layoutMode === "modern" && !Platform.isBrowser()) || this.isPerformanceConstrained()) {
+      return;
+    }
+    if (Platform.isBrowser() && document.hidden) {
       return;
     }
     if (!Array.isArray(this.heroCandidates) || this.heroCandidates.length <= 1) {
       return;
     }
+    const firstDelay = Platform.isBrowser() ? 5000 : HERO_ROTATE_FIRST_DELAY_MS;
+    const interval = Platform.isBrowser() ? 5000 : HERO_ROTATE_INTERVAL_MS;
     this.heroRotateTimeout = setTimeout(() => {
       if (!this.container?.querySelector(".home-hero-card.focusable.focused")) {
         this.rotateHero(1);
@@ -4025,8 +4030,8 @@ export const HomeScreen = {
         if (!this.container?.querySelector(".home-hero-card.focusable.focused")) {
           this.rotateHero(1);
         }
-      }, HERO_ROTATE_INTERVAL_MS);
-    }, HERO_ROTATE_FIRST_DELAY_MS);
+      }, interval);
+    }, firstDelay);
   },
 
   rotateHero(step = 1) {
@@ -9872,6 +9877,7 @@ export const HomeScreen = {
       bindDesktopNavigationEvents(this.container);
       this.bindDesktopHeroDetailsButton();
       this.bindDesktopHeroCarouselControls();
+      this.bindDesktopHeroRotationVisibility();
       this.bindDesktopCatalogDragScrolling();
       this.bindDesktopMediaHoverPreview();
     } else {
@@ -11144,6 +11150,15 @@ export const HomeScreen = {
     };
   },
 
+  bindDesktopHeroRotationVisibility() {
+    if (!Platform.isBrowser() || this.desktopHeroVisibilityHandler) return;
+    this.desktopHeroVisibilityHandler = () => {
+      if (document.hidden) this.stopHeroRotation();
+      else if (!document.body.classList.contains("detail-trailer-modal-open")) this.startHeroRotation();
+    };
+    document.addEventListener("visibilitychange", this.desktopHeroVisibilityHandler);
+  },
+
   bindDesktopHeroCarouselControls() {
     if (!Platform.isBrowser()) {
       return;
@@ -11174,10 +11189,12 @@ export const HomeScreen = {
         const direction = String(button.dataset.heroDirection || "");
         if (direction === "previous") {
           this.rotateHero(-1);
+          this.startHeroRotation();
           return;
         }
         if (direction === "next") {
           this.rotateHero(1);
+          this.startHeroRotation();
           return;
         }
         const targetIndex = Number(button.dataset.heroIndex);
@@ -11185,6 +11202,7 @@ export const HomeScreen = {
           return;
         }
         this.rotateHero(targetIndex - Number(this.heroIndex || 0));
+        this.startHeroRotation();
       };
       heroCard.append(carousel);
     }
@@ -11916,6 +11934,10 @@ export const HomeScreen = {
     this.cancelModernCameraFollow({ stopAnimations: true });
     this.endModernVerticalFastScroll({ land: false });
     this.stopHeroRotation();
+    if (this.desktopHeroVisibilityHandler) {
+      document.removeEventListener("visibilitychange", this.desktopHeroVisibilityHandler);
+      this.desktopHeroVisibilityHandler = null;
+    }
     this.cancelPendingHeroFocus();
     this.cancelFocusedPosterFlow();
     this.clearFocusedPosterFlowState();
