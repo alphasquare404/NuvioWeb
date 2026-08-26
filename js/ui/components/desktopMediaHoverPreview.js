@@ -41,7 +41,8 @@ function buildYoutubeViewerUrl(videoId) {
   if (/^https?:\/\//i.test(origin)) params.set("origin", origin);
   return `https://www.youtube.com/embed/${encodeURIComponent(cleanId)}?${params.toString()}`;
 }
-export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTrailer, resolveMetadata } = {}) {
+
+export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTrailer, resolveMetadata, getLibraryMembership, toggleLibrary, openLibraryDestinationMenu, subscribeLibrarySource } = {}) {
   let homeContainer = null;
   let sourceNode = null;
   let previewNode = null;
@@ -51,6 +52,11 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
   const trailerCache = new Map();
   const metadataCache = new Map();
   const trailerPlayerCleanup = new WeakMap();
+  let unsubscribeLibrarySource = null;
+  let libraryHoldTimer = 0;
+  let libraryHold = null;
+  let suppressLibraryClick = false;
+  let libraryRequestToken = 0;
 
   const isSourceCard = (node) =>
     node instanceof HTMLElement &&
@@ -83,6 +89,7 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
   };
   const close = () => {
     cancelOpen(); cancelClose(); generation += 1;
+    libraryRequestToken += 1;
     sourceNode?.classList?.remove("desktop-hover-preview-active");
     sourceNode = null;
     if (!previewNode) return;
@@ -120,7 +127,69 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
       ${meta ? `<p class="desktop-media-hover-preview-meta">${escapeHtml(meta)}</p>` : ""}
       ${rating || genres ? `<p class="desktop-media-hover-preview-facts">${[rating, genres ? escapeHtml(genres) : ""].filter(Boolean).join("<span aria-hidden=\"true\"> • </span>")}</p>` : ""}
       ${overview ? `<p class="desktop-media-hover-preview-overview">${escapeHtml(overview)}</p>` : ""}
-      <div class="desktop-media-hover-preview-actions"><button type="button" class="desktop-media-hover-preview-primary" data-hover-preview-details><span class="material-icons">info</span>View Details</button><button type="button" class="desktop-media-hover-preview-secondary" data-hover-preview-trailer><span class="material-icons">play_arrow</span>Play Trailer</button></div>`;
+      <div class="desktop-media-hover-preview-actions"><button type="button" class="desktop-media-hover-preview-primary" data-hover-preview-details><span class="material-icons">info</span>View Details</button><button type="button" class="desktop-media-hover-preview-secondary" data-hover-preview-trailer><span class="material-icons">play_arrow</span>Play Trailer</button><button type="button" class="desktop-media-hover-preview-library" data-hover-preview-library aria-label="Add to Library" title="Add to Library"><span class="material-icons">add</span></button></div>`;
+  };
+  const refreshLibraryButton = async (node, item, token) => {
+    const button = node?.querySelector?.("[data-hover-preview-library]");
+    if (!button || !getLibraryMembership) return;
+    button.disabled = true;
+    const requestToken = ++libraryRequestToken;
+    const membership = await getLibraryMembership(item).catch(() => null);
+    if (token !== generation || requestToken !== libraryRequestToken || previewNode !== node || !membership) return;
+    const saved = Boolean(membership.isSaved);
+    button.innerHTML = `<span class="material-icons">${saved ? "check" : "add"}</span>`;
+    button.setAttribute("aria-label", saved ? "Remove from Library" : "Add to Library");
+    button.title = saved ? "Remove from Library" : "Add to Library";
+    button.disabled = false;
+  };
+  const bindActions = (node, item, token) => {
+    node.querySelector("[data-hover-preview-details]")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const card = sourceNode;
+      if (!card?.isConnected) return;
+      openDetail?.(card);
+    });
+    node.querySelector("[data-hover-preview-trailer]")?.addEventListener("click", async (event) => {
+      event.preventDefault(); event.stopPropagation();
+      const button = event.currentTarget; button.disabled = true; button.textContent = "Loading trailer…";
+      const key = `${item.type || "movie"}:${item.id}`;
+      let source = trailerCache.get(key);
+      if (!source) { source = await resolveTrailer?.(item); if (source) trailerCache.set(key, source); }
+      if (token !== generation || previewNode !== node) return;
+      if (!source?.ytId) { button.textContent = "Trailer unavailable"; return; }
+      mountTrailerViewer(node, item, source);
+    });
+    node.querySelector("[data-hover-preview-library]")?.addEventListener("click", async (event) => {
+      event.preventDefault(); event.stopPropagation();
+      const button = event.currentTarget;
+      if (suppressLibraryClick) { suppressLibraryClick = false; return; }
+      if (!toggleLibrary || button.disabled) return;
+      button.disabled = true;
+      await toggleLibrary(item).catch(() => {});
+      await refreshLibraryButton(node, item, token);
+    });
+    const libraryButton = node.querySelector("[data-hover-preview-library]");
+    libraryButton?.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "mouse" || Number(event.button) !== 0) return;
+      libraryHold = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, triggered: false };
+      libraryHoldTimer = setTimeout(() => {
+        if (!libraryHold || libraryHold.pointerId !== event.pointerId) return;
+        libraryHold.triggered = true; suppressLibraryClick = true;
+        void openLibraryDestinationMenu?.(item, () => refreshLibraryButton(node, item, token));
+      }, 550);
+    });
+    const stopHold = (event) => {
+      if (!libraryHold || event.pointerId !== libraryHold.pointerId) return;
+      clearTimeout(libraryHoldTimer); libraryHoldTimer = 0; libraryHold = null;
+    };
+    libraryButton?.addEventListener("pointerup", stopHold);
+    libraryButton?.addEventListener("pointercancel", stopHold);
+    libraryButton?.addEventListener("pointermove", (event) => {
+      if (!libraryHold || event.pointerId !== libraryHold.pointerId || libraryHold.triggered) return;
+      if (Math.hypot(event.clientX - libraryHold.x, event.clientY - libraryHold.y) > 10) stopHold(event);
+    });
+    void refreshLibraryButton(node, item, token);
   };
   const render = (card) => {
     const item = getItem?.(card);
@@ -138,17 +207,7 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
     document.body.append(node); previewNode = node; position(card); requestAnimationFrame(() => node.classList.add("is-open"));
     node.addEventListener("pointerenter", cancelClose);
     node.addEventListener("pointerleave", (event) => { if (!sourceNode?.contains(event.relatedTarget)) scheduleClose(); });
-    node.querySelector("[data-hover-preview-details]")?.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); close(); openDetail?.(card); });
-    node.querySelector("[data-hover-preview-trailer]")?.addEventListener("click", async (event) => {
-      event.preventDefault(); event.stopPropagation();
-      const button = event.currentTarget; button.disabled = true; button.textContent = "Loading trailer…";
-      const key = `${item.type || "movie"}:${item.id}`;
-      let source = trailerCache.get(key);
-      if (!source) { source = await resolveTrailer?.(item); if (source) trailerCache.set(key, source); }
-      if (token !== generation || previewNode !== node) return;
-      if (!source?.ytId) { button.textContent = "Trailer unavailable"; return; }
-      mountTrailerViewer(node, item, source);
-    });
+    bindActions(node, item, token);
     const metadataKey = `${String(item.type || item.apiType || "movie").toLowerCase()}:${item.id}`;
     const metadataPromise = metadataCache.get(metadataKey) || resolveMetadata?.(item);
     if (metadataPromise) {
@@ -165,20 +224,7 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
           };
           renderCopy(node, enrichedItem, subtitle);
           position(card);
-          // Rebind actions after the copy refresh without changing the activation path.
-          node.querySelector("[data-hover-preview-details]")?.addEventListener("click", (event) => {
-            event.preventDefault(); event.stopPropagation(); close(); openDetail?.(card);
-          });
-          node.querySelector("[data-hover-preview-trailer]")?.addEventListener("click", async (event) => {
-            event.preventDefault(); event.stopPropagation();
-            const button = event.currentTarget; button.disabled = true; button.textContent = "Loading trailer…";
-            const key = `${item.type || "movie"}:${item.id}`;
-            let source = trailerCache.get(key);
-            if (!source) { source = await resolveTrailer?.(enrichedItem); if (source) trailerCache.set(key, source); }
-            if (token !== generation || previewNode !== node) return;
-            if (!source?.ytId) { button.textContent = "Trailer unavailable"; return; }
-            mountTrailerViewer(node, enrichedItem, source);
-          });
+          bindActions(node, enrichedItem, token);
         })
         .catch(() => {});
     }
@@ -210,10 +256,14 @@ export function createDesktopMediaHoverPreview({ getItem, openDetail, resolveTra
     homeContainer?.removeEventListener("pointerover", onPointerOver); homeContainer?.removeEventListener("pointerout", onPointerOut); homeContainer?.removeEventListener("pointerdown", onPointerDown);
     document.removeEventListener("keydown", onKeyDown); window.removeEventListener("resize", onViewportChange); window.removeEventListener("scroll", onViewportChange, true);
     homeContainer = null; close();
+    unsubscribeLibrarySource?.(); unsubscribeLibrarySource = null;
   };
   const bind = (container) => {
     if (!canUseHoverPreview() || homeContainer === container) return;
     destroy(); homeContainer = container;
+    unsubscribeLibrarySource = subscribeLibrarySource?.(() => {
+      if (previewNode && sourceNode) void refreshLibraryButton(previewNode, getItem?.(sourceNode), generation);
+    }) || null;
     homeContainer.addEventListener("pointerover", onPointerOver); homeContainer.addEventListener("pointerout", onPointerOut); homeContainer.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown); window.addEventListener("resize", onViewportChange, { passive: true }); window.addEventListener("scroll", onViewportChange, true);
   };

@@ -7970,6 +7970,7 @@ html.desktop-browser {
 .desktop-browser .desktop-media-hover-preview-actions .material-icons { font-size: 17px; }
 .desktop-browser .desktop-media-hover-preview-primary { background: #f4f4f4; color: #151515; }
 .desktop-browser .desktop-media-hover-preview-secondary { background: rgba(255,255,255,.08); color: #fff; }
+.desktop-browser .desktop-media-hover-preview-library { width: 36px; padding: 0 !important; background: rgba(0,0,0,.34); color: #fff; }
 .desktop-browser .desktop-media-hover-preview-actions button:disabled { cursor: default; opacity: .62; }
 .desktop-browser .desktop-media-hover-preview-actions button:focus-visible { outline: 2px solid var(--secondary-color); outline-offset: 2px; }
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.desktop-hover-preview-active .home-poster-frame { transform: none; border-color: transparent; box-shadow: none; }
