@@ -126,7 +126,7 @@ export const Router = {
     }
   },
 
-  captureCurrentRouteState() {
+  captureCurrentRouteState(nextRoute = null) {
     if (!this.current) {
       return;
     }
@@ -139,7 +139,7 @@ export const Router = {
       return;
     }
     try {
-      RouteStateStore.set(key, screen.captureRouteState());
+      RouteStateStore.set(key, screen.captureRouteState({ nextRoute }));
     } catch (error) {
       console.warn("Failed to capture route state", this.current, error);
     }
@@ -156,7 +156,8 @@ export const Router = {
       restoredState: !shouldClear && key ? RouteStateStore.get(key) : null,
       routeStateKey: key,
       fromHistory: Boolean(options?.fromHistory),
-      isBackNavigation: Boolean(options?.isBackNavigation)
+      isBackNavigation: Boolean(options?.isBackNavigation),
+      previousRoute: String(options?.previousRoute || "")
     };
   },
 
@@ -367,7 +368,7 @@ export const Router = {
     const previousRoute = this.current;
     const shouldSkipPush = skipStackPush || NON_BACKSTACK_ROUTES.has(previousRoute);
     if (this.current && this.current !== routeName) {
-      this.captureCurrentRouteState();
+      this.captureCurrentRouteState(routeName);
       this.routes[this.current].cleanup?.();
       if (!shouldSkipPush) {
         this.stack.push({
@@ -376,14 +377,17 @@ export const Router = {
         });
       }
     } else if (this.current === routeName) {
-      this.captureCurrentRouteState();
+      this.captureCurrentRouteState(routeName);
       this.routes[this.current].cleanup?.();
     }
 
     this.current = routeName;
     this.currentParams = targetParams;
     setBrowserRouteTitle(routeName);
-    const navigationContext = this.resolveNavigationContext(routeName, this.currentParams, options);
+    const navigationContext = this.resolveNavigationContext(routeName, this.currentParams, {
+      ...options,
+      previousRoute
+    });
 
     await Screen.mount(this.currentParams, navigationContext);
     this.completeRouteReturnBackGuard(routeReturnBackGuardNavigationId);
@@ -486,11 +490,15 @@ export const Router = {
 
     if (this.stack.length === 0) {
       if (this.current && this.current !== "home" && this.routes.home) {
+        const departingRoute = this.current;
         this.routes[this.current].cleanup?.();
         this.current = "home";
         this.currentParams = {};
         setBrowserRouteTitle("home");
-        await this.routes.home.mount();
+        await this.routes.home.mount({}, {
+          isBackNavigation: true,
+          previousRoute: departingRoute
+        });
         this.persistWebOsResumeRoute("home", {});
         return;
       }
@@ -507,13 +515,15 @@ export const Router = {
       return;
     }
 
-    this.captureCurrentRouteState();
+    const departingRoute = this.current;
+    this.captureCurrentRouteState(previousRoute);
     this.routes[this.current].cleanup?.();
     this.current = previousRoute;
     this.currentParams = previousParams;
     setBrowserRouteTitle(previousRoute);
     const navigationContext = this.resolveNavigationContext(previousRoute, previousParams, {
-      isBackNavigation: true
+      isBackNavigation: true,
+      previousRoute: departingRoute
     });
 
     await this.routes[previousRoute].mount(previousParams, navigationContext);

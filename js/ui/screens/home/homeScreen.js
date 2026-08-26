@@ -138,6 +138,14 @@ export { escapeAttribute, escapeHtml, formatCatalogRowTitle } from "./homeUtils.
 
 const MODERN_SIDEBAR_PILL_AUTO_COLLAPSE_MS = 4000;
 const CW_RELEASE_ALERT_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+const BROWSER_HOME_DRILL_DOWN_ROUTES = new Set(["detail", "folderDetail"]);
+const BROWSER_HOME_GLOBAL_ROUTES = new Set([
+  "search",
+  "library",
+  "settings",
+  "profileSelection"
+]);
+
 const HOME_LAZY_IMAGE_SELECTOR =
   ".home-main .content-poster[data-src], .home-main .home-poster-landscape-logo[data-src], .home-main .home-continue-bg[data-src]";
 const HOME_LAZY_IMAGE_ROW_SELECTOR =
@@ -2783,8 +2791,19 @@ export const HomeScreen = {
     return "home";
   },
 
-  captureRouteState() {
-    return this.captureCurrentContentFocusState() || this.captureCurrentFocusState();
+  captureRouteState({ nextRoute } = {}) {
+    const route = String(nextRoute || "");
+    const isBrowserDrillDown = BROWSER_HOME_DRILL_DOWN_ROUTES.has(route);
+    if (
+      Platform.isBrowser() &&
+      !isBrowserDrillDown
+    ) {
+      this.clearStoredReturnFocusState();
+      this.savedFocusStates = {};
+      return null;
+    }
+    const state = this.captureCurrentContentFocusState() || this.captureCurrentFocusState();
+    return state;
   },
 
   captureCurrentFocusState() {
@@ -2850,7 +2869,7 @@ export const HomeScreen = {
 
     return {
       layoutMode,
-      mainScrollTop: viewport.scrollTop,
+      mainScrollTop: this.getHomeVerticalScrollTop(),
       rowKey,
       itemIndex,
       focusKind,
@@ -2916,7 +2935,7 @@ export const HomeScreen = {
 
     return {
       layoutMode,
-      mainScrollTop: viewport.scrollTop,
+      mainScrollTop: this.getHomeVerticalScrollTop(),
       rowKey: String(section?.dataset?.rowKey || ""),
       itemIndex,
       focusKind,
@@ -3003,10 +3022,9 @@ export const HomeScreen = {
       return false;
     }
 
-    const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-    viewport.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(focusState.mainScrollTop || 0)));
+    this.setHomeVerticalScrollTop(Number(focusState.mainScrollTop || 0));
     this.setFocusedNode(target, { suppressDelegatedFocus: true });
-    viewport.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(focusState.mainScrollTop || 0)));
+    this.setHomeVerticalScrollTop(Number(focusState.mainScrollTop || 0));
     this.lastMainFocus = target;
     this.rememberMainRowFocus(target);
     this.syncFocusedCollectionCardState();
@@ -3120,8 +3138,7 @@ export const HomeScreen = {
       }
     });
 
-    const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-    viewport.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(focusState.mainScrollTop || 0)));
+    this.setHomeVerticalScrollTop(Number(focusState.mainScrollTop || 0));
 
     const targetNodes = this.getNavigationRowNodes(focusState.rowKey);
     if (this.isRestoringFocusFromBack && focusState.rowKey && !targetNodes.length) {
@@ -3168,8 +3185,7 @@ export const HomeScreen = {
       }
     });
 
-    const maxScrollTop = Math.max(0, main.scrollHeight - main.clientHeight);
-    main.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(focusState.mainScrollTop || 0)));
+    this.setHomeVerticalScrollTop(Number(focusState.mainScrollTop || 0));
 
     let target = null;
     if (focusState.focusKind === "hero") {
@@ -3592,6 +3608,84 @@ export const HomeScreen = {
     return this.layoutMode === "modern"
       ? this.container?.querySelector(".home-modern-rows-viewport")
       : this.container?.querySelector(".home-main");
+  },
+
+  getHomeVerticalScrollOwner() {
+    if (Platform.isBrowser()) {
+      const candidates = [document.scrollingElement, document.body, document.documentElement]
+        .filter((element, index, list) => element && list.indexOf(element) === index);
+      return (
+        candidates.find(
+          (element) => Number(element.scrollHeight || 0) > Number(element.clientHeight || 0) + 1
+        ) || candidates[0] || null
+      );
+    }
+    return this.getHomeViewport();
+  },
+
+  getHomeVerticalScrollTop() {
+    return Number(this.getHomeVerticalScrollOwner()?.scrollTop || 0);
+  },
+
+  setHomeVerticalScrollTop(value = 0) {
+    const owner = this.getHomeVerticalScrollOwner();
+    if (!owner) {
+      return;
+    }
+    const maxScrollTop = Math.max(0, Number(owner.scrollHeight || 0) - Number(owner.clientHeight || 0));
+    owner.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(value || 0)));
+  },
+
+  schedulePendingBrowserHomeScrollRestore() {
+    const requestedScrollTop = Number(this.pendingBrowserHomeReturnScrollTop);
+    if (
+      !Platform.isBrowser() ||
+      !Number.isFinite(requestedScrollTop) ||
+      this.browserHomeReturnScrollRestoreFrame
+    ) {
+      return;
+    }
+    const restore = () => {
+      this.browserHomeReturnScrollRestoreFrame = 0;
+      if (Router.getCurrent() !== "home") {
+        return;
+      }
+      this.setHomeVerticalScrollTop(requestedScrollTop);
+      const actualScrollTop = this.getHomeVerticalScrollTop();
+      if (Math.abs(actualScrollTop - requestedScrollTop) <= 1) {
+        this.pendingBrowserHomeReturnScrollTop = null;
+      }
+    };
+    this.browserHomeReturnScrollRestoreFrame = requestAnimationFrame(() => {
+      restore();
+      if (Number.isFinite(Number(this.pendingBrowserHomeReturnScrollTop))) {
+        this.browserHomeReturnScrollRestoreFrame = requestAnimationFrame(restore);
+      }
+    });
+  },
+
+  scheduleInitialBrowserScrollNormalization() {
+    if (
+      !Platform.isBrowser() ||
+      !this.browserHomeInitialScrollNormalizationPending ||
+      this.browserHomeInitialScrollNormalizationFrame
+    ) {
+      return;
+    }
+    this.browserHomeInitialScrollNormalizationPending = false;
+    this.browserHomeInitialScrollNormalizationFrame = requestAnimationFrame(() => {
+      this.browserHomeInitialScrollNormalizationFrame = 0;
+      if (Router.getCurrent() !== "home") {
+        return;
+      }
+      this.browserHomeScrollInitialized = true;
+      this.setHomeVerticalScrollTop(0);
+      requestAnimationFrame(() => {
+        if (Router.getCurrent() === "home") {
+          this.setHomeVerticalScrollTop(0);
+        }
+      });
+    });
   },
 
   isLegacyTvRuntime() {
@@ -4176,6 +4270,17 @@ export const HomeScreen = {
     focusWithoutAutoScroll(target);
   },
 
+  setInitialHomeFocus() {
+    if (!Platform.isBrowser()) {
+      return ScreenUtils.setInitialFocus(this.container, this.getInitialFocusSelector());
+    }
+    const target = this.container?.querySelector(this.getInitialFocusSelector()) || null;
+    if (!target) {
+      return null;
+    }
+    return this.setFocusedNode(target, { suppressDelegatedFocus: true });
+  },
+
   getCurrentFocusedNode() {
     if (this.currentFocusedNode && this.container?.contains(this.currentFocusedNode)) {
       return this.currentFocusedNode;
@@ -4455,7 +4560,7 @@ export const HomeScreen = {
         .filter(([key]) => key)
     );
     return {
-      mainScrollTop: Number(viewport.scrollTop || 0),
+      mainScrollTop: this.getHomeVerticalScrollTop(),
       trackStates
     };
   },
@@ -4472,8 +4577,7 @@ export const HomeScreen = {
         track.scrollLeft = Number(scrollLeft || 0);
       }
     });
-    const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-    viewport.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(state.mainScrollTop || 0)));
+    this.setHomeVerticalScrollTop(Number(state.mainScrollTop || 0));
     return true;
   },
 
@@ -8218,24 +8322,46 @@ export const HomeScreen = {
     this.bindCollectionStoreSubscription();
     this.bindCatalogHydrationSubscriptions();
     this.bindContinueWatchingStoreSubscriptions();
+    const browserDrillDownReturn = Boolean(
+      Platform.isBrowser() &&
+        navigationContext?.isBackNavigation &&
+        BROWSER_HOME_DRILL_DOWN_ROUTES.has(String(navigationContext?.previousRoute || ""))
+    );
+    const shouldRestoreHomeReturnState = Platform.isBrowser()
+      ? browserDrillDownReturn
+      : Boolean(navigationContext?.isBackNavigation);
+    const browserGlobalHomeEntry = Boolean(
+      Platform.isBrowser() &&
+        BROWSER_HOME_GLOBAL_ROUTES.has(String(navigationContext?.previousRoute || ""))
+    );
     const restoredRouteFocusState =
-      navigationContext?.isBackNavigation && navigationContext?.restoredState?.layoutMode
+      shouldRestoreHomeReturnState && navigationContext?.restoredState?.layoutMode
         ? navigationContext.restoredState
         : null;
-    const storedReturnFocusState = navigationContext?.isBackNavigation
+    const storedReturnFocusState = shouldRestoreHomeReturnState
       ? this.pendingBackFocusState || this.readStoredReturnFocusState()
       : null;
     const returnFocusState = restoredRouteFocusState || storedReturnFocusState;
+    this.pendingBrowserHomeReturnScrollTop = browserDrillDownReturn &&
+      Number.isFinite(Number(returnFocusState?.mainScrollTop))
+      ? Number(returnFocusState.mainScrollTop)
+      : null;
+    this.browserHomeInitialScrollNormalizationPending = Boolean(
+      Platform.isBrowser() &&
+      !shouldRestoreHomeReturnState &&
+      (!this.browserHomeScrollInitialized || browserGlobalHomeEntry) &&
+      !returnFocusState?.layoutMode
+    );
     ScreenUtils.show(this.container);
     this.ensureDelegatedEventsBound();
     this.sidebarExpanded = false;
     this.sidebarOpenedByBack = false;
     this.pillIconOnly = Boolean(
-      navigationContext?.isBackNavigation && returnFocusState?.focusKind !== "sidebar"
+      shouldRestoreHomeReturnState && returnFocusState?.focusKind !== "sidebar"
     );
     this.cancelModernSidebarPillAutoCollapse();
     this.homeRouteEnterPending = !(
-      navigationContext?.isBackNavigation || returnFocusState?.layoutMode
+      shouldRestoreHomeReturnState || returnFocusState?.layoutMode
     );
     this.destroyHomeHoldDialog();
     this.unlockHomeHoldFocus();
@@ -8250,14 +8376,17 @@ export const HomeScreen = {
     this.continueWatchingLoading = false;
     if (returnFocusState?.layoutMode) {
       this.pendingBackFocusState = returnFocusState;
-    } else if (!navigationContext?.isBackNavigation) {
+    } else if (!shouldRestoreHomeReturnState) {
       this.clearStoredReturnFocusState();
+      if (Platform.isBrowser()) {
+        this.savedFocusStates = {};
+      }
     }
     this.isRestoringFocusFromBack = Boolean(
-      navigationContext?.isBackNavigation || returnFocusState?.layoutMode
+      shouldRestoreHomeReturnState && returnFocusState?.layoutMode
     );
     this.suppressInitialContinueWatchingFocus = Boolean(
-      navigationContext?.isBackNavigation || returnFocusState?.layoutMode
+      shouldRestoreHomeReturnState && returnFocusState?.layoutMode
     );
     if (navigationContext?.restoredState?.layoutMode) {
       this.savedFocusStates = {
@@ -8322,7 +8451,7 @@ export const HomeScreen = {
       if (restoredFocus) {
         this.isRestoringFocusFromBack = false;
       } else {
-        ScreenUtils.setInitialFocus(this.container, this.getInitialFocusSelector());
+        this.setInitialHomeFocus();
       }
       this.syncFocusedCollectionCardState();
       if (this.layoutMode === "grid") {
@@ -8373,7 +8502,7 @@ export const HomeScreen = {
       this.loadData({
         background: true,
         preserveReturnState: Boolean(
-          navigationContext?.isBackNavigation || returnFocusState?.layoutMode
+          shouldRestoreHomeReturnState || returnFocusState?.layoutMode
         )
       }).catch((error) => {
         console.warn("Home background refresh failed", error);
@@ -9690,7 +9819,7 @@ export const HomeScreen = {
         this.ensureTrackHorizontalVisibility(target);
         this.ensureMainVerticalVisibility(target);
       } else {
-        ScreenUtils.setInitialFocus(this.container, this.getInitialFocusSelector());
+        this.setInitialHomeFocus();
         const current = this.container.querySelector(".home-main .focusable.focused");
         if (current && this.isMainNode(current)) {
           this.lastMainFocus = current;
@@ -9736,7 +9865,7 @@ export const HomeScreen = {
       !this.homeHoldFocusLocked &&
       !backFocusState
     ) {
-      ScreenUtils.setInitialFocus(this.container, this.getInitialFocusSelector());
+      this.setInitialHomeFocus();
       const current = this.container.querySelector(".home-main .focusable.focused");
       if (current && this.isMainNode(current)) {
         this.lastMainFocus = current;
@@ -9765,6 +9894,8 @@ export const HomeScreen = {
     this.scheduleHomeTruncationUpdate();
     this.scheduleHomeLazyImageHydration(null, { refreshIndex: true });
     this.scheduleReturnFocusRestore();
+    this.schedulePendingBrowserHomeScrollRestore();
+    this.scheduleInitialBrowserScrollNormalization();
     const mountedRows = Number(this.navModel?.rows?.length || 0);
     const mountedCards = Number(
       (this.navModel?.rows || []).reduce((total, rowNodes) => total + rowNodes.length, 0)
@@ -11700,6 +11831,14 @@ export const HomeScreen = {
     if (this.homeTruncationFrame) {
       cancelAnimationFrame(this.homeTruncationFrame);
       this.homeTruncationFrame = null;
+    }
+    if (this.browserHomeInitialScrollNormalizationFrame) {
+      cancelAnimationFrame(this.browserHomeInitialScrollNormalizationFrame);
+      this.browserHomeInitialScrollNormalizationFrame = null;
+    }
+    if (this.browserHomeReturnScrollRestoreFrame) {
+      cancelAnimationFrame(this.browserHomeReturnScrollRestoreFrame);
+      this.browserHomeReturnScrollRestoreFrame = null;
     }
     if (this.homeLazyImageHydrationRaf) {
       cancelAnimationFrame(this.homeLazyImageHydrationRaf);
