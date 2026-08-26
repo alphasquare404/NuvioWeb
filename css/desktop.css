@@ -159,6 +159,147 @@ html.desktop-browser {
   --home-content-start: 0px;
 }
 
+.desktop-browser .nuvio-dialog-panel.desktop-library-destination-dialog {
+  width: min(410px, calc(100vw - 32px));
+  max-width: min(440px, calc(100vw - 32px));
+  max-height: min(70vh, 520px);
+  padding: 20px;
+  border-radius: 16px;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.desktop-browser .nuvio-dialog-backdrop.desktop-library-destination-backdrop {
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.desktop-browser .desktop-library-destination-dialog .nuvio-dialog-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.desktop-browser .desktop-library-destination-dialog .nuvio-dialog-subtitle {
+  margin-top: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.desktop-browser .desktop-library-destination-dialog .nuvio-dialog-error {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.desktop-browser .nuvio-dialog-actions.desktop-library-destination-actions {
+  min-height: 0;
+  max-height: none;
+  flex: 1 1 auto;
+  gap: 5px;
+  padding: 2px 2px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.32) transparent;
+}
+
+.desktop-browser .desktop-library-destination-provider {
+  margin: 8px 2px 1px;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+}
+
+.desktop-browser .desktop-library-destination-provider:first-child {
+  margin-top: 1px;
+}
+
+.desktop-browser .desktop-library-destination-actions .desktop-library-destination-button,
+.desktop-browser .desktop-library-destination-actions .desktop-library-destination-confirm-button {
+  min-height: 46px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--detail-text-primary);
+  font-size: 14px;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  transform: none;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.desktop-browser .desktop-library-destination-actions .desktop-library-destination-button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.desktop-browser .desktop-library-destination-actions .desktop-library-destination-button.selected {
+  border-color: rgb(var(--secondary-color-rgb) / 0.52);
+  background: rgb(var(--secondary-color-rgb) / 0.18);
+  color: var(--detail-text-primary);
+}
+
+.desktop-browser .desktop-library-destination-actions .nuvio-dialog-button-check {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.desktop-browser .desktop-library-destination-actions .desktop-library-destination-default-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.desktop-browser .desktop-library-destination-actions .nuvio-dialog-button-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.desktop-browser .desktop-library-destination-actions .nuvio-dialog-button.focused,
+.desktop-browser .desktop-library-destination-actions .nuvio-dialog-button:focus-visible {
+  border-color: rgb(var(--secondary-color-rgb) / 0.72);
+  background: rgb(var(--secondary-color-rgb) / 0.24);
+  color: var(--detail-text-primary);
+  transform: none;
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.7);
+  outline-offset: 1px;
+}
+
+.desktop-browser .desktop-library-destination-actions .nuvio-dialog-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .desktop-library-destination-actions .nuvio-dialog-button:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.32);
+  }
+
+  .desktop-browser
+    .desktop-library-destination-actions
+    .desktop-library-destination-button.selected:not(:disabled):hover {
+    background: rgb(var(--secondary-color-rgb) / 0.24);
+  }
+}
+
 /* Home uses a browser-only top navigation component instead of the TV sidebar. */
 .desktop-browser .home-screen-shell.desktop-navigation-enabled {
   display: block;
@@ -1377,6 +1518,16 @@ html.desktop-browser {
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgb(18 22 28 / 0.76);
   font-size: 18px;
+}
+
+/* The TV focus state changes selected circle actions to black text. Keep the
+ * desktop library icon legible against this browser-specific dark action tile. */
+.desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"],
+.desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"]:hover,
+.desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"]:active,
+.desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"]:focus-visible,
+.desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"].focused {
+  color: var(--detail-text-primary);
 }
 
 .desktop-browser #detail .series-btn-svg {

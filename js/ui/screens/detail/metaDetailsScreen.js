@@ -51,6 +51,8 @@ const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const EPISODE_HOLD_DELAY_MS = 650;
 const POSTER_HOLD_DELAY_MS = 650;
 const HERO_HOLD_DELAY_MS = 650;
+const DESKTOP_LIBRARY_HOLD_DELAY_MS = 550;
+const DESKTOP_LIBRARY_HOLD_MOVE_TOLERANCE_PX = 10;
 const DETAIL_PROGRESS_END_THRESHOLD = WATCH_PROGRESS_COMPLETED_THRESHOLD;
 const TRAKT_COMMENTS_LIMIT = 100;
 const DETAIL_SCROLL_STIFFNESS = 180;
@@ -1636,6 +1638,11 @@ export const MetaDetailsScreen = {
     this.seasonHoldMenu = null;
     this.heroPlayMenu = null;
     this.libraryListMenu = null;
+    this.desktopLibraryDestinationMenu = null;
+    this.desktopLibraryHoldTimer = null;
+    this.desktopLibraryPointerHold = null;
+    this.desktopLibraryLongPressTriggered = false;
+    this.desktopLibraryClickResetTimer = null;
     this.detailHoldDialog = null;
     this.posterOptionsController = null;
     this.posterOptionsFocusRestore = null;
@@ -4674,6 +4681,244 @@ export const MetaDetailsScreen = {
     return true;
   },
 
+  getDesktopLibrarySourceLabel(sourceMode) {
+    if (sourceMode === LibrarySourceMode.SIMKL) {
+      return "Simkl";
+    }
+    if (sourceMode === LibrarySourceMode.TRAKT) {
+      return "Trakt";
+    }
+    return "Nuvio";
+  },
+
+  getDesktopLibraryDefaultKey(sourceMode) {
+    if (sourceMode === LibrarySourceMode.SIMKL) {
+      return "simkl:status:plantowatch";
+    }
+    return sourceMode === LibrarySourceMode.TRAKT ? "watchlist" : "local";
+  },
+
+  decorateDesktopLibraryDestinationDialog() {
+    if (!Platform.isBrowser() || !this.detailHoldDialog?._panel) {
+      return;
+    }
+    this.detailHoldDialog._backdrop?.classList.add("desktop-library-destination-backdrop");
+    const actions = this.detailHoldDialog._panel.querySelector(
+      ".desktop-library-destination-actions"
+    );
+    if (!(actions instanceof HTMLElement)) {
+      return;
+    }
+    Array.from(actions.querySelectorAll(".desktop-library-destination-button")).forEach(
+      (button) => {
+        if (!(button instanceof HTMLButtonElement)) {
+          return;
+        }
+        if (button.classList.contains("is-provider-start")) {
+          const providerLabel = document.createElement("div");
+          providerLabel.className = "desktop-library-destination-provider";
+          providerLabel.textContent = String(button.dataset.providerLabel || "");
+          actions.insertBefore(providerLabel, button);
+        }
+        if (button.classList.contains("is-default")) {
+          const badge = document.createElement("span");
+          badge.className = "desktop-library-destination-default-badge";
+          badge.textContent = "Default";
+          badge.setAttribute("aria-hidden", "true");
+          button.appendChild(badge);
+          button.setAttribute(
+            "aria-label",
+            `${String(button.querySelector(".nuvio-dialog-button-label")?.textContent || "")} — Default library destination`
+          );
+        }
+      }
+    );
+  },
+
+  isDesktopLibraryDestinationCompatible(tab, item) {
+    const supported = Array.isArray(tab?.supportedContentTypes) ? tab.supportedContentTypes : [];
+    if (!supported.length) {
+      return true;
+    }
+    const type = String(item?.itemType || item?.type || "movie").toLowerCase();
+    return supported.includes(["series", "show", "tv"].includes(type) ? "series" : "movie");
+  },
+
+  async buildDesktopLibraryDestinationMenu() {
+    const item = this.getCurrentLibraryItem();
+    if (!item.itemId) {
+      return null;
+    }
+    const [defaultSourceMode, sourceModes] = await Promise.all([
+      libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL),
+      libraryRepository.getAvailableSourceModes().catch(() => [LibrarySourceMode.LOCAL])
+    ]);
+    const sourceEntries = await Promise.all(
+      sourceModes.map(async (sourceMode) => {
+        const tabs = (
+          sourceMode === LibrarySourceMode.LOCAL
+            ? [{ key: "local", title: t("detail.library", {}, "Library"), type: "local" }]
+            : await libraryRepository.getListTabs({ sourceMode }).catch(() => [])
+        ).filter(
+          (tab) =>
+            tab.isMembershipDestination !== false &&
+            this.isDesktopLibraryDestinationCompatible(tab, item)
+        );
+        const snapshot = await libraryRepository
+          .getMembershipSnapshot(item, { sourceMode })
+          .catch(() => ({ listMembership: {} }));
+        return {
+          sourceMode,
+          tabs,
+          membership: Object.fromEntries(
+            tabs.map((tab) => [tab.key, Boolean(snapshot?.listMembership?.[tab.key])])
+          )
+        };
+      })
+    );
+    return {
+      item,
+      defaultSourceMode,
+      sourceEntries,
+      error: "",
+      destructiveRemovalDestination: null
+    };
+  },
+
+  mountDesktopLibraryDestinationDialog() {
+    const menu = this.desktopLibraryDestinationMenu;
+    if (!menu) {
+      return false;
+    }
+    const focusRestore = { selector: ".series-detail-actions [data-action='toggleLibrary']" };
+    const buttons = menu.sourceEntries.flatMap((entry) =>
+      entry.tabs.map((tab, index) => {
+        const isDefault =
+          entry.sourceMode === menu.defaultSourceMode &&
+          tab.key === this.getDesktopLibraryDefaultKey(entry.sourceMode);
+        return {
+          key: `desktopLibraryDestination:${entry.sourceMode}:${tab.key}`,
+          label: tab.title || tab.key,
+          selected: Boolean(entry.membership?.[tab.key]),
+          className: `desktop-library-destination-button desktop-library-destination-source-${entry.sourceMode}${
+            index === 0 ? " is-provider-start" : ""
+          }${isDefault ? " is-default" : ""}`,
+          onAction: () => {
+            void this.activateDesktopLibraryDestination(entry.sourceMode, tab.key);
+          }
+        };
+      })
+    );
+    if (menu.destructiveRemovalDestination) {
+      buttons.push({
+        key: "confirmDesktopLibraryDestinationRemoval",
+        label: "Remove status and clear Simkl history",
+        className: "desktop-library-destination-confirm-button",
+        onAction: () => {
+          const destination = menu.destructiveRemovalDestination;
+          void this.activateDesktopLibraryDestination(destination.sourceMode, destination.key, {
+            destructiveRemovalConfirmed: true
+          });
+        }
+      });
+    }
+    this.destroyDetailHoldDialog();
+    this.detailHoldDialog = new NuvioDialog({
+      title: t("detail.addToLibrary", {}, "Add to Library"),
+      subtitle: "Choose a destination for this item",
+      error: menu.error || null,
+      widthVw: 32,
+      suppressEnterUntilKeyUp: true,
+      buttons,
+      panelClassName: "desktop-library-destination-dialog",
+      actionsClassName: "desktop-library-destination-actions",
+      onDismiss: () => {
+        this.detailHoldDialog = null;
+        this.desktopLibraryDestinationMenu = null;
+        this.focusDetailDescriptor(focusRestore);
+      }
+    }).mount(document.body);
+    const sourceEntries = menu.sourceEntries;
+    Array.from(this.detailHoldDialog?._buttonEls || []).forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+      const sourceEntry = sourceEntries.find((entry) =>
+        button.dataset.key.startsWith(`desktopLibraryDestination:${entry.sourceMode}:`)
+      );
+      if (sourceEntry) {
+        button.dataset.providerLabel = this.getDesktopLibrarySourceLabel(sourceEntry.sourceMode);
+      }
+    });
+    this.decorateDesktopLibraryDestinationDialog();
+    return true;
+  },
+
+  async openDesktopLibraryDestinationMenu() {
+    const detailToken = this.detailLoadToken;
+    const menu = await this.buildDesktopLibraryDestinationMenu();
+    if (
+      detailToken !== this.detailLoadToken ||
+      !this.container ||
+      !menu ||
+      !menu.sourceEntries.some((entry) => entry.tabs.length)
+    ) {
+      return false;
+    }
+    this.heroPlayMenu = null;
+    this.libraryListMenu = null;
+    this.desktopLibraryDestinationMenu = menu;
+    return this.mountDesktopLibraryDestinationDialog();
+  },
+
+  getDesktopLibraryDesiredMembership(sourceEntry, key) {
+    const membership = sourceEntry?.membership || {};
+    if (sourceEntry?.sourceMode === LibrarySourceMode.SIMKL) {
+      const isSelected = Boolean(membership[key]);
+      return Object.fromEntries(
+        sourceEntry.tabs.map((tab) => [tab.key, isSelected ? false : tab.key === key])
+      );
+    }
+    return {
+      ...membership,
+      [key]: !membership[key]
+    };
+  },
+
+  async activateDesktopLibraryDestination(
+    sourceMode,
+    key,
+    { destructiveRemovalConfirmed = false } = {}
+  ) {
+    const menu = this.desktopLibraryDestinationMenu;
+    const sourceEntry = menu?.sourceEntries?.find((entry) => entry.sourceMode === sourceMode);
+    if (!menu || !sourceEntry || !sourceEntry.tabs.some((tab) => tab.key === key)) {
+      return false;
+    }
+    const desiredMembership = this.getDesktopLibraryDesiredMembership(sourceEntry, key);
+    try {
+      await libraryRepository.applyMembershipChanges(
+        menu.item,
+        { desiredMembership },
+        { sourceMode, destructiveRemovalConfirmed }
+      );
+      this.desktopLibraryDestinationMenu = null;
+      this.destroyDetailHoldDialog();
+      await this.refreshCurrentLibraryMembership();
+      this.focusDetailDescriptor({ selector: ".series-detail-actions [data-action='toggleLibrary']" });
+      return true;
+    } catch (error) {
+      console.warn("Failed to update selected library destination", error);
+      menu.destructiveRemovalDestination =
+        error?.code === "SIMKL_DESTRUCTIVE_REMOVAL_REQUIRED" ? { sourceMode, key } : null;
+      menu.error = menu.destructiveRemovalDestination
+        ? "Removing this Simkl status will also clear watched history or a rating. Confirm only if that is intended."
+        : t("detail_lists_save_failed", {}, "Could not save list changes.");
+      this.mountDesktopLibraryDestinationDialog();
+      return false;
+    }
+  },
+
   isEpisodeHoldTarget(node) {
     return Boolean(node?.matches?.(".series-episode-card.focusable"));
   },
@@ -4782,14 +5027,15 @@ export const MetaDetailsScreen = {
   },
 
   closeHeroMenus({ restoreFocus = true } = {}) {
-    if (!this.heroPlayMenu && !this.libraryListMenu) {
+    if (!this.heroPlayMenu && !this.libraryListMenu && !this.desktopLibraryDestinationMenu) {
       return false;
     }
-    const focusDescriptor = this.libraryListMenu
+    const focusDescriptor = this.libraryListMenu || this.desktopLibraryDestinationMenu
       ? { selector: ".series-detail-actions [data-action='toggleLibrary']" }
       : { selector: ".series-detail-actions [data-action='playDefault']" };
     this.heroPlayMenu = null;
     this.libraryListMenu = null;
+    this.desktopLibraryDestinationMenu = null;
     this.destroyDetailHoldDialog();
     if (restoreFocus) {
       this.focusDetailDescriptor(focusDescriptor);
@@ -6139,6 +6385,11 @@ export const MetaDetailsScreen = {
       ].includes(action)) {
         return;
       }
+      if (action === "toggleLibrary" && this.desktopLibraryLongPressTriggered) {
+        this.desktopLibraryLongPressTriggered = false;
+        event.preventDefault();
+        return;
+      }
       if (action === "playDefault") {
         void this.playDefaultFromHero();
       } else if (action === "playFromBeginning") {
@@ -6153,6 +6404,95 @@ export const MetaDetailsScreen = {
       event.preventDefault();
     };
     this.container.addEventListener("click", this.boundDesktopDetailActionHandler);
+    this.boundDesktopLibraryPointerDownHandler = (event) => {
+      if (event.pointerType !== "mouse" || Number(event.button) !== 0) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : null;
+      const actionNode = target?.closest(".series-detail-actions [data-action='toggleLibrary']");
+      if (!(actionNode instanceof HTMLElement) || !this.container?.contains(actionNode)) {
+        return;
+      }
+      this.cancelDesktopLibraryHold({ resetSuppression: true });
+      const hold = {
+        pointerId: event.pointerId,
+        actionNode,
+        startX: Number(event.clientX || 0),
+        startY: Number(event.clientY || 0),
+        triggered: false
+      };
+      this.desktopLibraryPointerHold = hold;
+      this.desktopLibraryHoldTimer = setTimeout(() => {
+        this.desktopLibraryHoldTimer = null;
+        if (
+          this.desktopLibraryPointerHold !== hold ||
+          !hold.actionNode.isConnected ||
+          !this.container?.contains(hold.actionNode)
+        ) {
+          return;
+        }
+        hold.triggered = true;
+        this.desktopLibraryLongPressTriggered = true;
+        void this.openDesktopLibraryDestinationMenu();
+      }, DESKTOP_LIBRARY_HOLD_DELAY_MS);
+    };
+    this.boundDesktopLibraryPointerMoveHandler = (event) => {
+      const hold = this.desktopLibraryPointerHold;
+      if (!hold || event.pointerId !== hold.pointerId || hold.triggered) {
+        return;
+      }
+      const distance = Math.hypot(
+        Number(event.clientX || 0) - hold.startX,
+        Number(event.clientY || 0) - hold.startY
+      );
+      if (distance > DESKTOP_LIBRARY_HOLD_MOVE_TOLERANCE_PX) {
+        this.cancelDesktopLibraryHold();
+      }
+    };
+    this.boundDesktopLibraryPointerUpHandler = (event) => {
+      const hold = this.desktopLibraryPointerHold;
+      if (!hold || event.pointerId !== hold.pointerId) {
+        return;
+      }
+      const wasLongPress = hold.triggered;
+      this.cancelDesktopLibraryHold();
+      if (wasLongPress) {
+        clearTimeout(this.desktopLibraryClickResetTimer);
+        this.desktopLibraryClickResetTimer = setTimeout(() => {
+          this.desktopLibraryLongPressTriggered = false;
+          this.desktopLibraryClickResetTimer = null;
+        }, 0);
+      }
+    };
+    this.boundDesktopLibraryPointerCancelHandler = (event) => {
+      if (event.pointerId === this.desktopLibraryPointerHold?.pointerId) {
+        this.cancelDesktopLibraryHold({ resetSuppression: true });
+      }
+    };
+    this.boundDesktopLibraryPointerLeaveHandler = (event) => {
+      const hold = this.desktopLibraryPointerHold;
+      if (hold && event.pointerId === hold.pointerId && !hold.triggered) {
+        this.cancelDesktopLibraryHold();
+      }
+    };
+    this.container.addEventListener("pointerdown", this.boundDesktopLibraryPointerDownHandler);
+    this.container.addEventListener("pointermove", this.boundDesktopLibraryPointerMoveHandler);
+    this.container.addEventListener("pointerleave", this.boundDesktopLibraryPointerLeaveHandler);
+    window.addEventListener("pointerup", this.boundDesktopLibraryPointerUpHandler, true);
+    window.addEventListener("pointercancel", this.boundDesktopLibraryPointerCancelHandler, true);
+  },
+
+  cancelDesktopLibraryHold({ resetSuppression = false } = {}) {
+    if (this.desktopLibraryHoldTimer) {
+      clearTimeout(this.desktopLibraryHoldTimer);
+      this.desktopLibraryHoldTimer = null;
+    }
+    this.desktopLibraryPointerHold = null;
+    if (resetSuppression) {
+      clearTimeout(this.desktopLibraryClickResetTimer);
+      this.desktopLibraryClickResetTimer = null;
+      this.desktopLibraryLongPressTriggered = false;
+    }
   },
 
   bindDetailChrome() {
@@ -7660,7 +8000,7 @@ export const MetaDetailsScreen = {
       this.closePosterOptionsMenu();
       return true;
     }
-    if (this.heroPlayMenu || this.libraryListMenu) {
+    if (this.heroPlayMenu || this.libraryListMenu || this.desktopLibraryDestinationMenu) {
       this.closeHeroMenus();
       return true;
     }
@@ -9646,6 +9986,7 @@ export const MetaDetailsScreen = {
     this.cancelPendingSeasonHold();
     this.cancelPendingPosterHold();
     this.cancelPendingHeroHold();
+    this.cancelDesktopLibraryHold({ resetSuppression: true });
     this.posterOptionsController?.destroy?.({ restoreFocus: false });
     this.posterOptionsController = null;
     this.posterOptionsFocusRestore = null;
@@ -9654,6 +9995,7 @@ export const MetaDetailsScreen = {
     this.seasonHoldMenu = null;
     this.heroPlayMenu = null;
     this.libraryListMenu = null;
+    this.desktopLibraryDestinationMenu = null;
     if (this.episodeVirtualSyncRaf) {
       cancelAnimationFrame(this.episodeVirtualSyncRaf);
       this.episodeVirtualSyncRaf = null;
@@ -9707,6 +10049,28 @@ export const MetaDetailsScreen = {
       this.container.removeEventListener("click", this.boundDesktopDetailActionHandler);
       this.boundDesktopDetailActionHandler = null;
     }
+    if (this.container) {
+      if (this.boundDesktopLibraryPointerDownHandler) {
+        this.container.removeEventListener("pointerdown", this.boundDesktopLibraryPointerDownHandler);
+      }
+      if (this.boundDesktopLibraryPointerMoveHandler) {
+        this.container.removeEventListener("pointermove", this.boundDesktopLibraryPointerMoveHandler);
+      }
+      if (this.boundDesktopLibraryPointerLeaveHandler) {
+        this.container.removeEventListener("pointerleave", this.boundDesktopLibraryPointerLeaveHandler);
+      }
+    }
+    if (this.boundDesktopLibraryPointerUpHandler) {
+      window.removeEventListener("pointerup", this.boundDesktopLibraryPointerUpHandler, true);
+    }
+    if (this.boundDesktopLibraryPointerCancelHandler) {
+      window.removeEventListener("pointercancel", this.boundDesktopLibraryPointerCancelHandler, true);
+    }
+    this.boundDesktopLibraryPointerDownHandler = null;
+    this.boundDesktopLibraryPointerMoveHandler = null;
+    this.boundDesktopLibraryPointerUpHandler = null;
+    this.boundDesktopLibraryPointerCancelHandler = null;
+    this.boundDesktopLibraryPointerLeaveHandler = null;
     this.desktopEpisodeDragClickSuppression = null;
     this.desktopSeasonDragClickSuppression = null;
     if (this.trailerProxyMessageHandler) {

@@ -703,6 +703,17 @@ class LibraryRepository {
     return LibrarySourceMode.TRAKT;
   }
 
+  async getAvailableSourceModes() {
+    const sourceModes = [LibrarySourceMode.LOCAL];
+    if (SimklAuthService.isAuthenticated()) {
+      sourceModes.push(LibrarySourceMode.SIMKL);
+    }
+    if (await TraktAuthService.getValidAccessToken().catch(() => null)) {
+      sourceModes.push(LibrarySourceMode.TRAKT);
+    }
+    return sourceModes;
+  }
+
   async getListTabs({ sourceMode = null } = {}) {
     const resolvedSourceMode = sourceMode || (await this.getSourceMode());
     if (resolvedSourceMode === LibrarySourceMode.LOCAL) {
@@ -747,22 +758,25 @@ class LibraryRepository {
     return hydrateEntries(items, options);
   }
 
-  async getMembershipSnapshot(item) {
-    const sourceMode = await this.getSourceMode();
-    if (sourceMode === LibrarySourceMode.LOCAL) {
+  async getMembershipSnapshot(item, { sourceMode = null } = {}) {
+    const resolvedSourceMode = sourceMode || (await this.getSourceMode());
+    if (resolvedSourceMode === LibrarySourceMode.LOCAL) {
       const exists = await savedLibraryRepository.isSaved(item.itemId || item.id || "");
       return { listMembership: { local: exists } };
     }
-    if (sourceMode === LibrarySourceMode.SIMKL) {
+    if (resolvedSourceMode === LibrarySourceMode.SIMKL) {
       return SimklSyncService.getMembershipSnapshot(item);
     }
-    const [entries, listTabs] = await Promise.all([this.getItems(), this.getListTabs()]);
+    const [entries, listTabs] = await Promise.all([
+      this.getItems({ sourceMode: resolvedSourceMode }),
+      this.getListTabs({ sourceMode: resolvedSourceMode })
+    ]);
     return membershipMapFromEntries(entries, listTabs)(item);
   }
 
   async applyMembershipChanges(item, changes, options = {}) {
-    const sourceMode = await this.getSourceMode();
-    if (sourceMode === LibrarySourceMode.LOCAL) {
+    const resolvedSourceMode = options.sourceMode || (await this.getSourceMode());
+    if (resolvedSourceMode === LibrarySourceMode.LOCAL) {
       const shouldSave = Object.values(changes?.desiredMembership || {}).some(Boolean);
       if (shouldSave) {
         await savedLibraryRepository.save(normalizeSavedItem(item));
@@ -771,13 +785,15 @@ class LibraryRepository {
       }
       return;
     }
-    if (sourceMode === LibrarySourceMode.SIMKL) {
+    if (resolvedSourceMode === LibrarySourceMode.SIMKL) {
       await SimklSyncService.applyMembershipChanges(item, changes, options);
       return;
     }
 
     const desiredMembership = changes?.desiredMembership || {};
-    const currentSnapshot = await this.getMembershipSnapshot(item);
+    const currentSnapshot = await this.getMembershipSnapshot(item, {
+      sourceMode: resolvedSourceMode
+    });
     let remoteState = await readRemoteState();
 
     for (const [listKey, desired] of Object.entries(desiredMembership)) {
