@@ -3408,6 +3408,13 @@ html.desktop-browser {
   padding-top: 10px;
   padding-bottom: 14px;
   scrollbar-width: none;
+  touch-action: pan-y;
+}
+
+.desktop-browser #detail .detail-morelike-track.is-pointer-dragging,
+.desktop-browser #detail .detail-morelike-track.is-pointer-dragging * {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .desktop-browser #detail .detail-morelike-card {

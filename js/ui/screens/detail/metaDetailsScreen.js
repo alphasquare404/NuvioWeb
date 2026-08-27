@@ -6124,7 +6124,7 @@ export const MetaDetailsScreen = {
           .filter(Boolean)
           .join(" • ");
         return `
-        <article class="detail-morelike-card detail-trailer-card focusable"
+        <article class="detail-morelike-card detail-trailer-card focusable"${Platform.isBrowser() ? ' role="button"' : ""}
                  data-action="openSharedTrailer"
                  data-trailer-index="${index}"
                  data-trailer-yt-id="${escapeHtml(ytId)}">
@@ -6237,14 +6237,24 @@ export const MetaDetailsScreen = {
     if (!Array.isArray(items) || !items.length) {
       return "";
     }
+    const useTmdbRecommendationPoster =
+      String(railKey || "").startsWith("morelike:") && this.moreLikeThisSource === "tmdb";
     const cards = items
       .map((rawItem) => {
         const item = normalizePreviewItem(rawItem, fallbackType);
         const year = extractPreviewYear(item.releaseInfo);
-        const primaryImage = item.landscapePoster || item.poster || "";
-        const fallbackImage = item.poster && item.poster !== primaryImage ? item.poster : "";
+        // TMDB recommendations provide distinct portrait and backdrop paths. The
+        // desktop recommendation rail is a poster rail, so never substitute a
+        // backdrop for a missing TMDB poster.
+        const primaryImage = useTmdbRecommendationPoster
+          ? item.poster || ""
+          : item.landscapePoster || item.poster || "";
+        const fallbackImage =
+          !useTmdbRecommendationPoster && item.poster && item.poster !== primaryImage
+            ? item.poster
+            : "";
         return `
-      <article class="detail-morelike-card focusable"
+      <article class="detail-morelike-card focusable"${Platform.isBrowser() ? ' role="button"' : ""}
            data-action="openMoreLikeDetail"
            data-item-id="${item.id}"
            data-item-type="${item.type || this.params?.itemType || "movie"}"
@@ -6360,6 +6370,56 @@ export const MetaDetailsScreen = {
     });
   },
 
+  bindDesktopPreviewRailDragScrolling() {
+    const tracks = Array.from(
+      this.container?.querySelectorAll(".detail-morelike-track") || []
+    );
+    tracks.forEach((track) => {
+      this.bindDesktopHorizontalRailDragScrolling({
+        track,
+        stateKey: "desktopPreviewRailDragState",
+        suppressionKey: "desktopPreviewRailDragClickSuppression",
+        clickHandlerKey: "boundDesktopPreviewRailDragClickHandler",
+        bindingKey: "desktopPreviewRailDragBound",
+        enableKeyboardActivation: true,
+        cardSelector:
+          ".detail-trailer-card[data-action='openSharedTrailer'], .detail-morelike-card[data-action='openMoreLikeDetail']",
+        onActivate: (card) => {
+          const action = String(card.dataset.action || "");
+          if (action === "openMoreLikeDetail") {
+            this.openMoreLikeDetailFromNode(card);
+            return;
+          }
+          if (action !== "openSharedTrailer") {
+            return;
+          }
+          const ytId = String(card.dataset.trailerYtId || "").trim();
+          if (!ytId) {
+            return;
+          }
+          void this.openDesktopTrailerModal(
+            {
+              kind: "youtube",
+              ytId,
+              embedUrl: buildYoutubeEmbedUrl(ytId, { muted: false })
+            },
+            {
+              selector: `.detail-trailer-card[data-trailer-index="${Number(card.dataset.trailerIndex || 0)}"]`
+            }
+          );
+        }
+      });
+    });
+  },
+
+  clearDesktopPreviewRailDrag({ suppressClick = false } = {}) {
+    this.clearDesktopHorizontalRailDrag({
+      stateKey: "desktopPreviewRailDragState",
+      suppressionKey: "desktopPreviewRailDragClickSuppression",
+      suppressClick
+    });
+  },
+
   clearDesktopSeasonDrag({ suppressClick = false } = {}) {
     this.clearDesktopHorizontalRailDrag({
       stateKey: "desktopSeasonDragState",
@@ -6375,7 +6435,8 @@ export const MetaDetailsScreen = {
     clickHandlerKey,
     bindingKey,
     cardSelector,
-    onActivate
+    onActivate,
+    enableKeyboardActivation = false
   }) {
     if (!Platform.isBrowser() || !this.container || !(track instanceof HTMLElement)) {
       return;
@@ -6474,6 +6535,22 @@ export const MetaDetailsScreen = {
         onActivate?.(card);
       }
     });
+    if (enableKeyboardActivation) {
+      track.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        const card = target.closest(cardSelector);
+        if (card instanceof HTMLElement && track.contains(card)) {
+          event.preventDefault();
+          onActivate?.(card);
+        }
+      });
+    }
   },
 
   clearDesktopHorizontalRailDrag({ stateKey, suppressionKey, suppressClick = false } = {}) {
@@ -6673,6 +6750,7 @@ export const MetaDetailsScreen = {
       this.episodeTrackScrollHandler = null;
     }
     this.bindDesktopSeasonDragScrolling();
+    this.bindDesktopPreviewRailDragScrolling();
     if (this.detailFocusHandler) {
       this.container.removeEventListener("focusin", this.detailFocusHandler, true);
     }
@@ -10165,6 +10243,10 @@ export const MetaDetailsScreen = {
       }
       return true;
     }
+    if (action === "openMoreLikeDetail") {
+      this.openMoreLikeDetailFromNode(actionTarget);
+      return true;
+    }
     return false;
   },
 
@@ -10210,6 +10292,7 @@ export const MetaDetailsScreen = {
     this.unsubscribeLibrarySource = null;
     this.clearDesktopEpisodeDrag();
     this.clearDesktopSeasonDrag();
+    this.clearDesktopPreviewRailDrag();
     this.cancelPendingEpisodeHold();
     this.cancelPendingSeasonHold();
     this.cancelPendingPosterHold();
