@@ -1173,15 +1173,17 @@ function buildYoutubeEmbedUrl(ytId = "", { muted = false, loop = true, controls 
   const params = new URLSearchParams({
     autoplay: "1",
     mute: muted ? "1" : "0",
-    controls: "0",
-    loop: "1",
-    playlist: cleanId,
+    controls: String(controls ? 1 : 0),
+    loop: loop ? "1" : "0",
     playsinline: "1",
     rel: "0",
     modestbranding: "1",
     cc_load_policy: "0",
     enablejsapi: "1"
   });
+  if (loop) {
+    params.set("playlist", cleanId);
+  }
   const origin = String(globalThis?.location?.origin || "").trim();
   if (/^https?:\/\//i.test(origin)) {
     params.set("origin", origin);
@@ -5324,6 +5326,7 @@ export const MetaDetailsScreen = {
       background: this.meta?.background || null
     });
     if (Platform.isBrowser()) {
+      bindDesktopNavigationEvents(this.container);
       await this.refreshCurrentLibraryMembership();
     } else {
       this.isSavedInLibrary = !this.isSavedInLibrary;
