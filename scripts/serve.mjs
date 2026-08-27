@@ -24,6 +24,7 @@ const mimeTypes = {
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".m3u8": "application/vnd.apple.mpegurl",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".mp4": "video/mp4",
   ".png": "image/png",
   ".jpg": "image/jpeg",

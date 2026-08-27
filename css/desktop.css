@@ -12,6 +12,14 @@ body.desktop-browser {
   font-size: 16px;
 }
 
+/* Browser-only foundation for later responsive work on notched displays. */
+html.desktop-browser {
+  --browser-safe-area-top: env(safe-area-inset-top, 0px);
+  --browser-safe-area-right: env(safe-area-inset-right, 0px);
+  --browser-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --browser-safe-area-left: env(safe-area-inset-left, 0px);
+}
+
 html.desktop-browser {
   scroll-behavior: smooth;
 }
