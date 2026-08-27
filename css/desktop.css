@@ -20,6 +20,25 @@ html.desktop-browser {
   --browser-safe-area-left: env(safe-area-inset-left, 0px);
 }
 
+/* In an installed iOS PWA, the visual canvas can be taller than the dynamic
+   content viewport. Keep the shared visual root large enough to paint behind
+   the status bar; individual screen content continues to use safe-area-aware
+   spacing and dynamic viewport rules below. */
+@supports (height: 100lvh) {
+  @media (display-mode: standalone) {
+    html.desktop-browser {
+      width: max(100%, 100lvw);
+      min-height: max(100%, 100lvh);
+      height: max(100%, 100lvh);
+    }
+
+    body.desktop-browser,
+    .desktop-browser #app {
+      min-height: 100%;
+    }
+  }
+}
+
 html.desktop-browser {
   scroll-behavior: smooth;
 }
