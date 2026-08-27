@@ -62,8 +62,12 @@ export const ExperienceModeSelectionScreen = {
       ScreenUtils.setInitialFocus(this.container);
       return;
     }
-    LayoutPreferences.setForProfile(profileId, { homeLayout: "modern", hasChosenLayout: true });
-    ExperienceModeStore.setForProfile(profileId, { mode: "ESSENTIAL" });
+    LayoutPreferences.setForProfile(
+      profileId,
+      { homeLayout: "modern", hasChosenLayout: true },
+      { syncSource: "onboarding" }
+    );
+    ExperienceModeStore.setForProfile(profileId, { mode: "ESSENTIAL" }, { syncSource: "onboarding" });
     await ProfileSettingsSyncService.push(profileId);
     const addons = await addonRepository.getInstalledAddons().catch(() => []);
     await Router.navigate(addons.length ? "home" : "essentialAddonSetup", {}, {
@@ -74,8 +78,12 @@ export const ExperienceModeSelectionScreen = {
 
   async chooseLayout(layout) {
     const profileId = ProfileManager.getActiveProfileId();
-    LayoutPreferences.setForProfile(profileId, { homeLayout: layout, hasChosenLayout: true });
-    ExperienceModeStore.setForProfile(profileId, { mode: "ADVANCED" });
+    LayoutPreferences.setForProfile(
+      profileId,
+      { homeLayout: layout, hasChosenLayout: true },
+      { syncSource: "onboarding" }
+    );
+    ExperienceModeStore.setForProfile(profileId, { mode: "ADVANCED" }, { syncSource: "onboarding" });
     await ProfileSettingsSyncService.push(profileId);
     await Router.navigate("home", { forceReload: true }, { replaceHistory: true, skipStackPush: true });
   },

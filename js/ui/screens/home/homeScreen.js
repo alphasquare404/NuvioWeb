@@ -8464,6 +8464,7 @@ export const HomeScreen = {
     this.bindCollectionStoreSubscription();
     this.bindCatalogHydrationSubscriptions();
     this.bindContinueWatchingStoreSubscriptions();
+    this.bindLayoutPreferencesSubscription();
     const browserDrillDownReturn = Boolean(
       Platform.isBrowser() &&
         navigationContext?.isBackNavigation &&
@@ -8782,6 +8783,32 @@ export const HomeScreen = {
     }
   },
 
+  bindLayoutPreferencesSubscription() {
+    if (!Platform.isBrowser()) {
+      return;
+    }
+    const profileId = String(ProfileManager.getActiveProfileId() || "");
+    this.observedShowUnairedNextUp =
+      LayoutPreferences.getForProfile(profileId).showUnairedNextUp !== false;
+    if (this.unsubscribeLayoutPreferencesChanges) {
+      return;
+    }
+    this.unsubscribeLayoutPreferencesChanges = LayoutPreferences.subscribe(({ profileId, value }) => {
+      if (
+        Router.getCurrent() !== "home" ||
+        String(profileId || "") !== String(ProfileManager.getActiveProfileId() || "")
+      ) {
+        return;
+      }
+      const showUnairedNextUp = value?.showUnairedNextUp !== false;
+      if (showUnairedNextUp === this.observedShowUnairedNextUp) {
+        return;
+      }
+      this.observedShowUnairedNextUp = showUnairedNextUp;
+      this.scheduleContinueWatchingStoreRefresh();
+    });
+  },
+
   scheduleContinueWatchingStoreRefresh() {
     if (this.continueWatchingStoreRefreshFrame || Router.getCurrent() !== "home") {
       return;
@@ -8807,6 +8834,7 @@ export const HomeScreen = {
       Router.getCurrent() === "home" &&
       String(ProfileManager.getActiveProfileId() || "") === String(profileId || "");
     const prefs = LayoutPreferences.get();
+    this.layoutPrefs = prefs;
     const includeWatchedItemNextUpSeeds =
       watchProgressRepository.getContinueWatchingSource?.() !== "trakt";
     try {
@@ -11963,6 +11991,11 @@ export const HomeScreen = {
       this.unsubscribeWatchedItemsStoreChanges();
       this.unsubscribeWatchedItemsStoreChanges = null;
     }
+    if (this.unsubscribeLayoutPreferencesChanges) {
+      this.unsubscribeLayoutPreferencesChanges();
+      this.unsubscribeLayoutPreferencesChanges = null;
+    }
+    this.observedShowUnairedNextUp = null;
     if (this.continueWatchingStoreRefreshFrame) {
       cancelAnimationFrame(this.continueWatchingStoreRefreshFrame);
       this.continueWatchingStoreRefreshFrame = null;

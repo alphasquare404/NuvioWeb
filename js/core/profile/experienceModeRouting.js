@@ -15,14 +15,21 @@ export async function resolveExperienceRoute(profileId, { pullRemoteSettings = t
   let experience = ExperienceModeStore.getForProfile(profileId);
   const layout = LayoutPreferences.getForProfile(profileId);
   if (!experience.mode && layout.hasChosenLayout) {
-    experience = ExperienceModeStore.setForProfile(profileId, { mode: "ADVANCED" });
-    await ProfileSettingsSyncService.push(profileId);
+    experience = ExperienceModeStore.setForProfile(
+      profileId,
+      { mode: "ADVANCED" },
+      { syncSource: "bootstrap" }
+    );
   }
 
   // The desktop browser has one supported Home experience. New browser profiles
   // should enter it directly; TV platforms retain the existing layout chooser.
   if (!experience.mode && Platform.isBrowser()) {
-    experience = ExperienceModeStore.setForProfile(profileId, { mode: "ADVANCED" });
+    experience = ExperienceModeStore.setForProfile(
+      profileId,
+      { mode: "ADVANCED" },
+      { syncSource: "bootstrap" }
+    );
   }
 
   if (!experience.mode) {

@@ -36,7 +36,11 @@ export const EssentialAddonSetupScreen = {
 
   async finish(skipped) {
     const profileId = ProfileManager.getActiveProfileId();
-    ExperienceModeStore.setForProfile(profileId, { addonSetupSkipped: skipped });
+    ExperienceModeStore.setForProfile(
+      profileId,
+      { addonSetupSkipped: skipped },
+      { syncSource: "onboarding" }
+    );
     await ProfileSettingsSyncService.push(profileId);
     if (skipped) {
       await Router.navigate("home", { forceReload: true }, { replaceHistory: true, skipStackPush: true });

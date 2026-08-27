@@ -94,7 +94,22 @@ export const TrackPreferencesStore = {
       entries.length = MAX_ENTRIES;
     }
     writeEntries(profileId, entries);
-    queueProfileSettingsCloudSync(profileId);
+    queueProfileSettingsCloudSync(profileId, undefined, {
+      source: "user",
+      storeKey: "trackPreferences",
+      replay(targetProfileId) {
+        const targetEntries = readEntries(targetProfileId).filter(
+          (entry) => entry.contentId !== normalizedContentId
+        );
+        targetEntries.unshift({
+          contentId: normalizedContentId,
+          audio: normalizedAudio,
+          updatedAtMs: Date.now()
+        });
+        writeEntries(targetProfileId, targetEntries.slice(0, MAX_ENTRIES));
+        return true;
+      }
+    });
   },
 
   exportFeaturePayload(profileId = activeProfileId()) {

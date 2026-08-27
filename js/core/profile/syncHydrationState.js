@@ -8,6 +8,7 @@ export const SyncPullResult = Object.freeze({
 });
 
 const states = new Map();
+const pendingSettingsMutations = new Map();
 let generation = 0;
 
 function normalizeProfileId(profileId = null) {
@@ -19,12 +20,17 @@ function stateFor(context, domain) {
   return states.get(`${context.userId}:${context.profileId}:${domain}`) || "unknown";
 }
 
+function pendingSettingsKey(profileId) {
+  return `${generation}:${normalizeProfileId(profileId)}`;
+}
+
 export const SyncHydrationState = {
   invalidate() {
     generation += 1;
     // A new auth/profile generation must never inherit authorization from an
     // earlier hydration, even when it resolves to the same user/profile key.
     states.clear();
+    pendingSettingsMutations.clear();
     return generation;
   },
 
@@ -82,5 +88,28 @@ export const SyncHydrationState = {
   async allowsAutomaticPush(context, domain) {
     if (!(await this.isCurrent(context))) return false;
     return ["hydrated", "remote-empty"].includes(this.get(context, domain));
+  },
+
+  // Settings are stored in one remote blob, but most UI writes target a
+  // single profile-scoped store. Keep those small local intentions separate
+  // from bootstrap defaults so a pull can restore remote state first.
+  recordPendingSettingsMutation(profileId, mutation) {
+    if (!mutation || ["bootstrap", "default", "remote-pull"].includes(mutation.source)) {
+      return;
+    }
+    const key = pendingSettingsKey(profileId);
+    const entries = pendingSettingsMutations.get(key) || [];
+    entries.push({ ...mutation });
+    pendingSettingsMutations.set(key, entries);
+  },
+
+  getPendingSettingsMutations(context) {
+    if (!context) return [];
+    return [...(pendingSettingsMutations.get(pendingSettingsKey(context.profileId)) || [])];
+  },
+
+  clearPendingSettingsMutations(context) {
+    if (!context) return;
+    pendingSettingsMutations.delete(pendingSettingsKey(context.profileId));
   }
 };

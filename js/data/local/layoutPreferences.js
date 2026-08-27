@@ -183,5 +183,9 @@ export const LayoutPreferences = {
     const result = store.set(partial, options);
     applyCardDepthPresentation(store.get());
     return result;
+  },
+
+  subscribe(listener) {
+    return store.subscribe(listener);
   }
 };

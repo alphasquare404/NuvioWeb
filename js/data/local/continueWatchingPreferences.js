@@ -42,7 +42,17 @@ function writeForProfile(profileId, state) {
   const all = readAll();
   all[pid] = normalizeState(state);
   writeAll(all);
-  queueProfileSettingsCloudSync(pid);
+  const intendedState = normalizeState(all[pid]);
+  queueProfileSettingsCloudSync(pid, undefined, {
+    source: "user",
+    storeKey: "continueWatchingPreferences",
+    replay(targetProfileId) {
+      const targetAll = readAll();
+      targetAll[String(targetProfileId || "1")] = intendedState;
+      writeAll(targetAll);
+      return true;
+    }
+  });
   return all[pid];
 }
 
@@ -56,7 +66,19 @@ export const ContinueWatchingPreferences = {
     const all = readAll();
     all[pid] = normalizeState({ dismissedNextUpKeys: Array.isArray(keys) ? keys : [] });
     writeAll(all);
-    if (!silentSync) queueProfileSettingsCloudSync(pid);
+    if (!silentSync) {
+      const intendedState = normalizeState(all[pid]);
+      queueProfileSettingsCloudSync(pid, undefined, {
+        source: "user",
+        storeKey: "continueWatchingPreferences",
+        replay(targetProfileId) {
+          const targetAll = readAll();
+          targetAll[String(targetProfileId || "1")] = intendedState;
+          writeAll(targetAll);
+          return true;
+        }
+      });
+    }
     return all[pid];
   },
 

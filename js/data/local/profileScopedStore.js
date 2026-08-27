@@ -1,5 +1,6 @@
 import { LocalStore } from "../../core/storage/localStore.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
+import { SyncHydrationState } from "../../core/profile/syncHydrationState.js";
 
 const PROFILE_SCOPED_VERSION = 1;
 const PROFILES_KEY = "profiles";
@@ -8,6 +9,7 @@ const SETTINGS_SYNC_PENDING_KEY = "profileSettingsSyncPendingProfiles";
 
 const scheduledSettingsSyncTimers = new Map();
 const settingsSyncInFlightByProfile = new Map();
+const scopedStoreReplayers = new Map();
 
 function normalizeProfileId(profileId) {
   const raw = String(profileId ?? ProfileManager.getActiveProfileId() ?? "1").trim();
@@ -136,10 +138,15 @@ function ensureProfileValue(key, envelope, normalize, profileId, { seedFromPrima
 
 export function queueProfileSettingsCloudSync(
   profileId = null,
-  delayMs = SETTINGS_SYNC_DEBOUNCE_MS
+  delayMs = SETTINGS_SYNC_DEBOUNCE_MS,
+  mutation = null
 ) {
   const normalizedProfileId = normalizeProfileId(profileId);
   markProfileSettingsCloudSyncPending(normalizedProfileId);
+  SyncHydrationState.recordPendingSettingsMutation(normalizedProfileId, mutation);
+  // Capture the scope at scheduling time. A delayed mutation is safe only for
+  // the same authenticated user/profile generation that initiated it.
+  const scheduledContext = SyncHydrationState.capture(normalizedProfileId);
   if (scheduledSettingsSyncTimers.has(normalizedProfileId)) {
     clearTimeout(scheduledSettingsSyncTimers.get(normalizedProfileId));
   }
@@ -152,7 +159,13 @@ export function queueProfileSettingsCloudSync(
       }
       const pushPromise = import("../../core/profile/profileSettingsSyncService.js")
         .then(({ ProfileSettingsSyncService }) =>
-          ProfileSettingsSyncService.push(normalizedProfileId)
+          scheduledContext.then((context) =>
+            ProfileSettingsSyncService.push(normalizedProfileId, {
+              automatic: true,
+              context,
+              requireActiveProfile: true
+            })
+          )
         )
         .catch((error) => {
           console.warn("Profile settings sync enqueue failed", error);
@@ -171,6 +184,12 @@ export function queueProfileSettingsCloudSync(
   scheduledSettingsSyncTimers.set(normalizedProfileId, timerId);
 }
 
+export function replayProfileSettingsMutation(profileId, mutation) {
+  const replay = scopedStoreReplayers.get(String(mutation?.storeKey || "").trim());
+  if (!replay || !mutation) return false;
+  return replay(normalizeProfileId(profileId), mutation);
+}
+
 export function createProfileScopedStore({
   key,
   normalize,
@@ -178,12 +197,31 @@ export function createProfileScopedStore({
   seedFromPrimary = true,
   legacyMigration = "all"
 }) {
+  const listeners = new Set();
   const mergeValues =
     typeof merge === "function"
       ? merge
       : (current, partial) => ({ ...(current || {}), ...(partial || {}) });
 
-  return {
+  const emitChange = (profileId, previousValue, value, metadata = {}) => {
+    if (JSON.stringify(previousValue) === JSON.stringify(value)) {
+      return;
+    }
+    listeners.forEach((listener) => {
+      try {
+        listener({
+          profileId: normalizeProfileId(profileId),
+          previousValue: cloneValue(previousValue),
+          value: cloneValue(value),
+          ...metadata
+        });
+      } catch (error) {
+        console.warn("Profile-scoped store listener failed", error);
+      }
+    });
+  };
+
+  const store = {
     getForProfile(profileId) {
       const envelope = readEnvelope(key, normalize, { legacyMigration });
       return cloneValue(
@@ -195,34 +233,90 @@ export function createProfileScopedStore({
       return this.getForProfile(normalizeProfileId());
     },
 
-    replaceForProfile(profileId, nextValue, { silentSync = false } = {}) {
+    replaceForProfile(profileId, nextValue, { silentSync = false, syncSource = "user", mutation } = {}) {
       const envelope = readEnvelope(key, normalize, { legacyMigration });
       const normalizedProfileId = normalizeProfileId(profileId);
-      envelope.profiles[normalizedProfileId] = normalize(cloneValue(nextValue) || {});
+      const previousValue = Object.prototype.hasOwnProperty.call(envelope.profiles, normalizedProfileId)
+        ? cloneValue(envelope.profiles[normalizedProfileId])
+        : normalize({});
+      const value = normalize(cloneValue(nextValue) || {});
+      envelope.profiles[normalizedProfileId] = value;
       persistEnvelope(key, envelope);
+      emitChange(normalizedProfileId, previousValue, value, {
+        reason: mutation?.operation || "replace",
+        silentSync: Boolean(silentSync),
+        syncSource
+      });
       if (!silentSync) {
-        queueProfileSettingsCloudSync(normalizedProfileId);
+        queueProfileSettingsCloudSync(normalizedProfileId, SETTINGS_SYNC_DEBOUNCE_MS, {
+          storeKey: key,
+          operation: mutation?.operation || "replace",
+          value: cloneValue(envelope.profiles[normalizedProfileId]),
+          partial: cloneValue(mutation?.partial),
+          source: syncSource
+        });
       }
-      return cloneValue(envelope.profiles[normalizedProfileId]);
+      return cloneValue(value);
     },
 
-    setForProfile(profileId, partial, { silentSync = false } = {}) {
+    setForProfile(profileId, partial, { silentSync = false, syncSource = "user" } = {}) {
       const current = this.getForProfile(profileId);
-      return this.replaceForProfile(profileId, mergeValues(current, partial), { silentSync });
+      return this.replaceForProfile(profileId, mergeValues(current, partial), {
+        silentSync,
+        syncSource,
+        mutation: { operation: "set", partial: cloneValue(partial) }
+      });
     },
 
     set(partial, options = {}) {
       return this.setForProfile(normalizeProfileId(options.profileId), partial, options);
     },
 
-    clearProfile(profileId, { silentSync = false } = {}) {
+    clearProfile(profileId, { silentSync = false, syncSource = "user" } = {}) {
       const envelope = readEnvelope(key, normalize, { legacyMigration });
       const normalizedProfileId = normalizeProfileId(profileId);
+      const previousValue = Object.prototype.hasOwnProperty.call(envelope.profiles, normalizedProfileId)
+        ? cloneValue(envelope.profiles[normalizedProfileId])
+        : null;
       delete envelope.profiles[normalizedProfileId];
       persistEnvelope(key, envelope);
-      if (!silentSync) {
-        queueProfileSettingsCloudSync(normalizedProfileId);
+      if (previousValue != null) {
+        emitChange(normalizedProfileId, previousValue, null, {
+          reason: "clear",
+          silentSync: Boolean(silentSync),
+          syncSource
+        });
       }
+      if (!silentSync) {
+        queueProfileSettingsCloudSync(normalizedProfileId, SETTINGS_SYNC_DEBOUNCE_MS, {
+          storeKey: key,
+          operation: "clear",
+          source: syncSource
+        });
+      }
+    },
+
+    subscribe(listener) {
+      if (typeof listener !== "function") {
+        return () => {};
+      }
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     }
   };
+
+  scopedStoreReplayers.set(key, (profileId, mutation) => {
+    if (mutation.operation === "clear") {
+      store.clearProfile(profileId, { silentSync: true });
+      return true;
+    }
+    if (mutation.operation === "set" && mutation.partial && typeof mutation.partial === "object") {
+      store.setForProfile(profileId, mutation.partial, { silentSync: true });
+      return true;
+    }
+    store.replaceForProfile(profileId, mutation.value, { silentSync: true });
+    return true;
+  });
+
+  return store;
 }

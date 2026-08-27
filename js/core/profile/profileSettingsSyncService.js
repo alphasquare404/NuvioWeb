@@ -28,10 +28,18 @@ import { ProfileManager } from "./profileManager.js";
 import { Platform } from "../../platform/index.js";
 import {
   clearProfileSettingsCloudSyncPending,
-  hasProfileSettingsCloudSyncPending
+  hasProfileSettingsCloudSyncPending,
+  replayProfileSettingsMutation
 } from "../../data/local/profileScopedStore.js";
+import { SyncHydrationState, SyncPullResult } from "./syncHydrationState.js";
 import { normalizeSubtitleVerticalOffset } from "../player/subtitleVerticalOffset.js";
 import { isFastHorizontalNavigationEnabled } from "../../platform/sharedKeys.js";
+import {
+  DESKTOP_CONTINUE_WATCHING_SETTINGS_PAYLOAD_FEATURE,
+  desktopContinueWatchingShowUnairedNextUp,
+  isMeaningfulDesktopContinueWatchingSettingsPayload,
+  patchDesktopContinueWatchingSettingsPayload
+} from "./profileSettingsContinueWatchingBridge.js";
 
 const PULL_RPC = "sync_pull_profile_settings_blob";
 const PUSH_RPC = "sync_push_profile_settings_blob";
@@ -41,6 +49,8 @@ const CACHE_KEY = "profileSettingsSyncCache";
 // This is a Desktop-owned opaque payload. Web preserves it when writing shared
 // settings, but never reads or mutates its client-local Library Source.
 const DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE = "trakt_settings_payload";
+// Desktop owns this JSON-string payload. Browser only bridges the one shared
+// show_unaired_next_up boolean and otherwise preserves it as opaque data.
 const EXCLUDED_PROFILE_KEYS = {
   layout_settings: new Set(["search_discover_enabled"]),
   player_settings: new Set(["audio_amplification_db", "persist_audio_amplification"]),
@@ -96,6 +106,13 @@ function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function isDesktopOpaqueSettingsPayloadFeature(featureName) {
+  return [
+    DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE,
+    DESKTOP_CONTINUE_WATCHING_SETTINGS_PAYLOAD_FEATURE
+  ].includes(featureName);
+}
+
 function isEncodedPreferenceValue(value) {
   return (
     isPlainObject(value) &&
@@ -132,7 +149,7 @@ function normalizeBlob(blob = {}) {
       if (!normalizedFeatureName) {
         return accumulator;
       }
-      if (normalizedFeatureName === DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE) {
+      if (isDesktopOpaqueSettingsPayloadFeature(normalizedFeatureName)) {
         if (typeof featureValue === "string") {
           accumulator[normalizedFeatureName] = featureValue;
         }
@@ -1994,6 +2011,20 @@ const FEATURE_ADAPTERS = {
 };
 
 const SUPPORTED_FEATURE_NAMES = Object.keys(FEATURE_ADAPTERS);
+const PROFILE_SETTINGS_FEATURE_FOR_STORE = Object.freeze({
+  themeSettings: "theme_settings",
+  layoutPreferences: "layout_settings",
+  experienceMode: "experience_settings",
+  playerSettings: "player_settings",
+  trackPreferences: "track_preference",
+  tmdbSettings: "tmdb_settings",
+  mdbListSettings: "mdblist_settings",
+  traktSettings: "trakt_settings",
+  continueWatchingPreferences: "trakt_settings",
+  animeSkipSettings: "animeskip_settings",
+  streamBadgeSettings: "stream_badge_settings",
+  debridSettings: "debrid_settings"
+});
 
 function buildComparableFeaturesFromBlob(blob = {}) {
   return SUPPORTED_FEATURE_NAMES.reduce((accumulator, featureName) => {
@@ -2023,8 +2054,21 @@ function buildComparableSignatureFromLocal(profileId) {
   return stableStringify(buildComparableFeaturesFromLocal(profileId));
 }
 
-function buildOutgoingBlob(profileId, baseBlob = null) {
+function buildOutgoingBlob(
+  profileId,
+  baseBlob = null,
+  { dirtyStoreKeys = null } = {}
+) {
   const normalizedBase = normalizeBlob(baseBlob || {});
+  const hasRemoteSettings = hasUsableRemoteProfileSettings(normalizedBase);
+  const dirtyFeatures =
+    dirtyStoreKeys == null
+      ? null
+      : new Set(
+          Array.from(dirtyStoreKeys)
+            .map((key) => PROFILE_SETTINGS_FEATURE_FOR_STORE[String(key || "").trim()])
+            .filter(Boolean)
+        );
   const nextFeatures = Object.entries(normalizedBase.features).reduce(
     (accumulator, [featureName, featurePayload]) => {
       if (!SUPPORTED_FEATURE_NAMES.includes(featureName)) return accumulator;
@@ -2037,6 +2081,11 @@ function buildOutgoingBlob(profileId, baseBlob = null) {
   );
 
   SUPPORTED_FEATURE_NAMES.forEach((featureName) => {
+    // Once a non-empty remote blob has hydrated, preserve unrelated feature
+    // payloads. A current-session mutation only owns the feature it touched.
+    if (hasRemoteSettings && dirtyFeatures && !dirtyFeatures.has(featureName)) {
+      return;
+    }
     nextFeatures[featureName] = {
       ...(nextFeatures[featureName] || {}),
       ...encodeFeaturePayload(FEATURE_ADAPTERS[featureName].export(profileId), featureName)
@@ -2048,6 +2097,26 @@ function buildOutgoingBlob(profileId, baseBlob = null) {
     normalizedBase.features[DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE];
   if (typeof desktopTraktSettingsPayload === "string") {
     nextFeatures[DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE] = desktopTraktSettingsPayload;
+  }
+
+  const desktopContinueWatchingSettingsPayload =
+    normalizedBase.features[DESKTOP_CONTINUE_WATCHING_SETTINGS_PAYLOAD_FEATURE];
+  const shouldPatchDesktopContinueWatchingPayload =
+    isDesktopBrowserProfileSettings() &&
+    (!hasRemoteSettings ||
+      dirtyFeatures == null ||
+      dirtyFeatures.has("layout_settings"));
+  if (
+    typeof desktopContinueWatchingSettingsPayload === "string" ||
+    shouldPatchDesktopContinueWatchingPayload
+  ) {
+    nextFeatures[DESKTOP_CONTINUE_WATCHING_SETTINGS_PAYLOAD_FEATURE] =
+      shouldPatchDesktopContinueWatchingPayload
+        ? patchDesktopContinueWatchingSettingsPayload(
+            desktopContinueWatchingSettingsPayload,
+            LayoutPreferences.getForProfile(profileId).showUnairedNextUp !== false
+          )
+        : desktopContinueWatchingSettingsPayload;
   }
 
   return normalizeBlob({
@@ -2078,11 +2147,18 @@ async function pullRemoteBlob(profileId, platform = getProfileSettingsSyncPlatfo
   return extractBlobFromResponse(response);
 }
 
-function hasUsableRemoteProfileSettings(blob) {
-  return SUPPORTED_FEATURE_NAMES.some((featureName) => {
-    const featurePayload = blob?.features?.[featureName];
-    return isPlainObject(featurePayload) && Object.keys(featurePayload).length > 0;
-  });
+export function hasUsableRemoteProfileSettings(blob) {
+  return (
+    SUPPORTED_FEATURE_NAMES.some((featureName) => {
+      const featurePayload = blob?.features?.[featureName];
+      return isPlainObject(featurePayload) && Object.keys(featurePayload).length > 0;
+    }) ||
+    Boolean(String(blob?.features?.[DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE] || "").trim()) ||
+    (isDesktopBrowserProfileSettings() &&
+      isMeaningfulDesktopContinueWatchingSettingsPayload(
+        blob?.features?.[DESKTOP_CONTINUE_WATCHING_SETTINGS_PAYLOAD_FEATURE]
+      ))
+  );
 }
 
 function importRemoteBlob(profileId, blob, platform) {
@@ -2090,7 +2166,15 @@ function importRemoteBlob(profileId, blob, platform) {
 
   const remoteSignature = buildComparableSignatureFromBlob(blob);
   const localSignature = buildComparableSignatureFromLocal(profileId);
-  if (remoteSignature === localSignature) {
+  const desktopShowUnairedNextUp = isDesktopBrowserProfileSettings()
+    ? desktopContinueWatchingShowUnairedNextUp(
+        blob?.features?.[DESKTOP_CONTINUE_WATCHING_SETTINGS_PAYLOAD_FEATURE]
+      )
+    : null;
+  const shouldProjectDesktopContinueWatching =
+    desktopShowUnairedNextUp != null &&
+    LayoutPreferences.getForProfile(profileId).showUnairedNextUp !== desktopShowUnairedNextUp;
+  if (remoteSignature === localSignature && !shouldProjectDesktopContinueWatching) {
     return false;
   }
 
@@ -2109,46 +2193,127 @@ function applyRemoteBlob(profileId, blob) {
       applied = true;
     }
   });
+  const desktopShowUnairedNextUp = isDesktopBrowserProfileSettings()
+    ? desktopContinueWatchingShowUnairedNextUp(
+        blob?.features?.[DESKTOP_CONTINUE_WATCHING_SETTINGS_PAYLOAD_FEATURE]
+      )
+    : null;
+  if (desktopShowUnairedNextUp != null) {
+    // When a remote blob carries both representations, the Desktop payload is
+    // authoritative for this shared field. Desktop reads that payload, while
+    // browser continues to maintain its layout_settings representation.
+    LayoutPreferences.setForProfile(
+      profileId,
+      { showUnairedNextUp: desktopShowUnairedNextUp },
+      { silentSync: true }
+    );
+    applied = true;
+  }
   return applied;
+}
+
+function replayPendingLocalSettings(profileId, mutations = []) {
+  return mutations.reduce(
+    (didReplay, mutation) => {
+      if (typeof mutation?.replay === "function") {
+        return mutation.replay(profileId) || didReplay;
+      }
+      return replayProfileSettingsMutation(profileId, mutation) || didReplay;
+    },
+    false
+  );
+}
+
+async function canUseSettingsContext(context, profileId, { requireActiveProfile = false } = {}) {
+  if (!context || String(context.profileId) !== String(profileId)) return false;
+  if (requireActiveProfile && String(context.profileId) !== String(context.activeProfileId)) {
+    return false;
+  }
+  return SyncHydrationState.isCurrent(context);
 }
 
 export const ProfileSettingsSyncService = {
   async pull(profileId = null) {
+    const resolvedProfileId = resolveProfileId(profileId);
+    const syncContext = await SyncHydrationState.capture(resolvedProfileId);
     try {
-      if (!AuthManager.isAuthenticated) {
+      if (!AuthManager.isAuthenticated || !syncContext) {
         return false;
       }
-      const resolvedProfileId = resolveProfileId(profileId);
-      if (hasProfileSettingsCloudSyncPending(resolvedProfileId)) {
-        await this.push(resolvedProfileId);
+      if (!(await SyncHydrationState.beginPull(syncContext, "profile-settings"))) {
         return false;
       }
       const platform = getProfileSettingsSyncPlatform();
       const blob = await pullRemoteBlob(resolvedProfileId, platform);
+      if (!(await canUseSettingsContext(syncContext, resolvedProfileId))) return false;
       if (hasUsableRemoteProfileSettings(blob)) {
-        return importRemoteBlob(resolvedProfileId, blob, platform);
+        const didApply = importRemoteBlob(resolvedProfileId, blob, platform);
+        if (!(await SyncHydrationState.completePull(syncContext, "profile-settings", SyncPullResult.SUCCESS_WITH_DATA))) {
+          return false;
+        }
+        const mutations = SyncHydrationState.getPendingSettingsMutations(syncContext);
+        const didReplay = replayPendingLocalSettings(resolvedProfileId, mutations);
+        if (mutations.length) {
+          await this.push(resolvedProfileId, {
+            automatic: true,
+            context: syncContext,
+            migration: true
+          });
+        } else {
+          // Bootstrap/default writes are intentionally discarded when remote
+          // data exists; they must never turn local defaults into authority.
+          clearProfileSettingsCloudSyncPending(resolvedProfileId);
+        }
+        return didApply || didReplay;
       }
 
-      if (!isDesktopBrowserProfileSettings()) {
+      if (isDesktopBrowserProfileSettings()) {
+        // Older browser builds shared the TV namespace. Read it only when the
+        // Desktop namespace is missing or empty, then migrate the recovered
+        // settings by pushing to Desktop. The legacy TV blob is never written.
+        const legacyBlob = await pullRemoteBlob(resolvedProfileId, TV_SETTINGS_SYNC_PLATFORM);
+        if (!(await canUseSettingsContext(syncContext, resolvedProfileId))) return false;
+        if (hasUsableRemoteProfileSettings(legacyBlob)) {
+          const didApply = importRemoteBlob(
+            resolvedProfileId,
+            legacyBlob,
+            TV_SETTINGS_SYNC_PLATFORM
+          );
+          if (
+            !(await SyncHydrationState.completePull(
+              syncContext,
+              "profile-settings",
+              SyncPullResult.SUCCESS_WITH_DATA
+            ))
+          ) {
+            return false;
+          }
+          const mutations = SyncHydrationState.getPendingSettingsMutations(syncContext);
+          const didReplay = replayPendingLocalSettings(resolvedProfileId, mutations);
+          // This is an intentional desktop namespace migration after a
+          // successful legacy read, never a pre-hydration fallback write.
+          await this.push(resolvedProfileId, { automatic: true, context: syncContext });
+          return didApply || didReplay;
+        }
+      }
+
+      if (
+        !(await SyncHydrationState.completePull(
+          syncContext,
+          "profile-settings",
+          SyncPullResult.SUCCESS_EMPTY
+        ))
+      ) {
         return false;
       }
-
-      // Older browser builds shared the TV namespace. Read it only when the
-      // Desktop namespace is missing or empty, then migrate the recovered
-      // settings by pushing to Desktop. The legacy TV blob is never written.
-      const legacyBlob = await pullRemoteBlob(resolvedProfileId, TV_SETTINGS_SYNC_PLATFORM);
-      if (!hasUsableRemoteProfileSettings(legacyBlob)) {
-        return false;
+      // A confirmed empty remote scope intentionally preserves local defaults
+      // and any real local changes. They can now be synchronized safely.
+      if (hasProfileSettingsCloudSyncPending(resolvedProfileId)) {
+        await this.push(resolvedProfileId, { automatic: true, context: syncContext });
       }
-
-      const didApplyLegacySettings = importRemoteBlob(
-        resolvedProfileId,
-        legacyBlob,
-        TV_SETTINGS_SYNC_PLATFORM
-      );
-      await this.push(resolvedProfileId);
-      return didApplyLegacySettings;
+      return false;
     } catch (error) {
+      await SyncHydrationState.completePull(syncContext, "profile-settings", SyncPullResult.FAILED);
       if (shouldTreatAsMissingResource(error)) {
         return false;
       }
@@ -2157,15 +2322,39 @@ export const ProfileSettingsSyncService = {
     }
   },
 
-  async push(profileId = null) {
+  async push(
+    profileId = null,
+    { automatic = true, context = null, requireActiveProfile = false, migration = false } = {}
+  ) {
     try {
       if (!AuthManager.isAuthenticated) {
         return false;
       }
       const resolvedProfileId = resolveProfileId(profileId);
+      const syncContext = context || (await SyncHydrationState.capture(resolvedProfileId));
+      if (!(await canUseSettingsContext(syncContext, resolvedProfileId, { requireActiveProfile }))) {
+        return false;
+      }
+      if (!(await SyncHydrationState.allowsAutomaticPush(syncContext, "profile-settings"))) {
+        return false;
+      }
+      if (
+        automatic &&
+        !migration &&
+        !hasProfileSettingsCloudSyncPending(resolvedProfileId) &&
+        !SyncHydrationState.getPendingSettingsMutations(syncContext).length
+      ) {
+        return false;
+      }
       const platform = getProfileSettingsSyncPlatform();
       const remoteBlob = await pullRemoteBlob(resolvedProfileId, platform);
-      const blob = buildOutgoingBlob(String(resolvedProfileId), remoteBlob);
+      if (!(await canUseSettingsContext(syncContext, resolvedProfileId, { requireActiveProfile }))) {
+        return false;
+      }
+      const mutations = SyncHydrationState.getPendingSettingsMutations(syncContext);
+      const blob = buildOutgoingBlob(String(resolvedProfileId), remoteBlob, {
+        dirtyStoreKeys: migration ? null : mutations.map((mutation) => mutation.storeKey)
+      });
       await SupabaseApi.rpc(
         PUSH_RPC,
         {
@@ -2175,8 +2364,12 @@ export const ProfileSettingsSyncService = {
         },
         true
       );
+      if (!(await canUseSettingsContext(syncContext, resolvedProfileId, { requireActiveProfile }))) {
+        return false;
+      }
       setCachedBlob(resolvedProfileId, blob, platform);
       clearProfileSettingsCloudSyncPending(resolvedProfileId);
+      SyncHydrationState.clearPendingSettingsMutations(syncContext);
       return true;
     } catch (error) {
       if (shouldTreatAsMissingResource(error)) {
