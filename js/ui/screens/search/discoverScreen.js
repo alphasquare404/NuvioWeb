@@ -1582,7 +1582,7 @@ export const DiscoverScreen = {
               ${
                 useDesktopNavigation
                   ? `<button class="discover-desktop-back-button" type="button" data-action="desktopDiscoverBack" aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-                      <span class="material-icons" aria-hidden="true">arrow_back</span>
+                      <span class="material-icons" aria-hidden="true">chevron_left</span>
                     </button>`
                   : ""
               }

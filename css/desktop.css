@@ -147,7 +147,7 @@ html.desktop-browser {
   min-height: 100vh;
   height: auto;
   margin-left: 0;
-  padding: 32px clamp(24px, 4vw, 64px) 56px;
+  padding: 32px var(--browser-page-gutter) 56px;
   overflow: visible;
 }
 
@@ -7991,3 +7991,270 @@ html.desktop-browser {
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.desktop-hover-preview-active .home-poster-frame { transform: none; border-color: transparent; box-shadow: none; }
 @media (hover: hover) and (pointer: fine) { .desktop-browser .desktop-media-hover-preview-actions button:not(:disabled):hover { border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.16); } .desktop-browser .desktop-media-hover-preview-actions .desktop-media-hover-preview-primary:not(:disabled):hover { background: #fff; } }
 @media (max-width: 1100px) { .desktop-browser .desktop-media-hover-preview { max-width: calc(100vw - 32px); } }
+
+/* Browser responsive shell foundation. Individual screen layouts continue to own
+   their content; these rules only establish shared viewport, navigation, and
+   overlay boundaries for tablet and phone browsers. */
+html.desktop-browser {
+  --browser-page-gutter: clamp(24px, 4vw, 64px);
+  --browser-shell-min-height: 100vh;
+  --browser-overlay-inset: 32px;
+}
+
+body.desktop-browser {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+@supports (min-height: 100dvh) {
+  html.desktop-browser {
+    --browser-shell-min-height: 100dvh;
+  }
+
+  .desktop-browser #app,
+  .desktop-browser .screen:not(#player),
+  .desktop-browser .home-shell,
+  .desktop-browser .search-screen-shell,
+  .desktop-browser .discover-shell,
+  .desktop-browser .settings-shell,
+  .desktop-browser .home-shell.library-shell,
+  .desktop-browser #profileSelection,
+  .desktop-browser .profile-screen,
+  .desktop-browser .profile-main-layer {
+    min-height: var(--browser-shell-min-height);
+  }
+}
+
+.desktop-browser .desktop-navigation {
+  top: calc(20px + var(--browser-safe-area-top));
+  left: calc(50% + (var(--browser-safe-area-left) - var(--browser-safe-area-right)) / 2);
+  max-width: calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 32px);
+}
+
+.desktop-browser .detail-trailer-modal-backdrop {
+  padding:
+    calc(var(--browser-overlay-inset) + var(--browser-safe-area-top))
+    calc(var(--browser-overlay-inset) + var(--browser-safe-area-right))
+    calc(var(--browser-overlay-inset) + var(--browser-safe-area-bottom))
+    calc(var(--browser-overlay-inset) + var(--browser-safe-area-left));
+}
+
+@media (max-width: 1024px) {
+  html.desktop-browser {
+    --browser-page-gutter: 24px;
+    --browser-overlay-inset: 20px;
+  }
+
+  .desktop-browser .desktop-navigation-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser .desktop-navigation-item {
+    min-height: 44px;
+    font-size: clamp(13px, 1.6vw, 14px);
+  }
+
+  .desktop-browser .detail-trailer-modal {
+    width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 40px), 142.22vh);
+  }
+}
+
+@media (max-width: 600px) {
+  html.desktop-browser {
+    --browser-page-gutter: 16px;
+    --browser-overlay-inset: 12px;
+  }
+
+  .desktop-browser .desktop-navigation {
+    top: calc(8px + var(--browser-safe-area-top));
+    max-width: calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 16px);
+  }
+
+  .desktop-browser .desktop-navigation-scroll {
+    max-width: none;
+    padding: 4px;
+    gap: 2px;
+  }
+
+  .desktop-browser .desktop-navigation-item {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+    gap: 0;
+  }
+
+  .desktop-browser .desktop-navigation-label {
+    display: none;
+  }
+
+  .desktop-browser .desktop-navigation-avatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .desktop-browser .detail-trailer-modal {
+    width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+    max-height: calc(100vh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
+  }
+
+  .desktop-browser .detail-trailer-modal-close {
+    top: 8px;
+    right: 8px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .desktop-browser .nuvio-dialog-backdrop {
+    padding:
+      calc(12px + var(--browser-safe-area-top))
+      calc(12px + var(--browser-safe-area-right))
+      calc(12px + var(--browser-safe-area-bottom))
+      calc(12px + var(--browser-safe-area-left));
+    box-sizing: border-box;
+  }
+
+  .desktop-browser .nuvio-dialog-panel {
+    box-sizing: border-box;
+    max-width: calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px) !important;
+    max-height: calc(100vh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
+    overflow-y: auto;
+  }
+
+  .desktop-browser .nuvio-dialog-button {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 16px;
+    line-height: 20px;
+  }
+
+  .desktop-browser .nuvio-dialog-button.focused,
+  .desktop-browser .nuvio-dialog-button.nuvio-dialog-button-danger.focused,
+  .desktop-browser .nuvio-dialog-button.poster-list-picker-list-button.selected.focused,
+  .desktop-browser .nuvio-dialog-button.poster-list-picker-list-button.focused {
+    transform: none;
+  }
+}
+
+@supports (height: 100dvh) {
+  @media (max-width: 600px) {
+    .desktop-browser .detail-trailer-modal,
+    .desktop-browser .nuvio-dialog-panel {
+      max-height: calc(100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
+    }
+  }
+}
+
+@media (max-width: 600px) and (max-height: 500px) {
+  .desktop-browser .detail-trailer-modal {
+    width: min(72vw, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .desktop-browser .desktop-navigation-item {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Phone browser rhythm: page content starts below the floating navigation
+   instead of maintaining individual desktop-oriented top offsets. */
+@media (max-width: 600px) {
+  html.desktop-browser {
+    --browser-mobile-control-size: 44px;
+    --browser-mobile-nav-clearance: calc(var(--browser-safe-area-top) + 68px);
+    --browser-mobile-section-gap: 24px;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card { min-height: min(70dvh, 580px); height: min(70dvh, 580px); }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy { width: min(100%, 520px); max-width: min(100%, 520px); padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 28px; gap: 8px; }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-logo { max-height: 82px; }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-title-text { font-size: clamp(30px, 9vw, 40px); }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary { gap: 6px; font-size: 13px; }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description { font-size: 14px; line-height: 1.42; }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel { right: var(--browser-page-gutter); bottom: 18px; }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs { gap: var(--browser-mobile-section-gap); padding-inline: var(--browser-page-gutter); }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue { padding-inline: calc(var(--browser-page-gutter) - 8px); }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-track { padding-block: 8px 6px; }
+
+  .desktop-browser #detail .series-detail-backdrop,
+  .desktop-browser #detail .series-detail-vignette,
+  .desktop-browser #detail .detail-hero-section { min-height: min(72dvh, 620px); height: min(72dvh, 620px); }
+  .desktop-browser #detail .detail-hero-section { padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 28px; }
+  .desktop-browser #detail .series-detail-title { font-size: clamp(30px, 8.5vw, 40px); }
+  .desktop-browser #detail .detail-meta-row { gap: 7px; }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell { padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 40px; }
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs,
+  .desktop-browser .settings-shell .settings-sidebar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pan-y; }
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs::-webkit-scrollbar,
+  .desktop-browser .settings-shell .settings-sidebar::-webkit-scrollbar { display: none; }
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tab { flex: 0 0 auto; white-space: nowrap; }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled > .search-content,
+  .desktop-browser .library-shell.desktop-navigation-enabled > .library-main,
+  .desktop-browser .settings-shell .settings-workspace { padding-top: var(--browser-mobile-nav-clearance); }
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled > .search-content { padding-inline: var(--browser-page-gutter); padding-bottom: calc(40px + var(--browser-safe-area-bottom)); }
+  .desktop-browser .library-shell.desktop-navigation-enabled > .library-main { padding-inline: var(--browser-page-gutter); padding-bottom: calc(40px + var(--browser-safe-area-bottom)); }
+  .desktop-browser .settings-shell .settings-workspace { padding-inline: var(--browser-page-gutter); padding-bottom: calc(40px + var(--browser-safe-area-bottom)); }
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-track { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; touch-action: pan-x pan-y; }
+
+  .desktop-browser .settings-shell .settings-sidebar {
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
+    padding: 8px;
+    border-radius: 16px;
+  }
+  .desktop-browser .settings-shell .settings-nav-item { flex: 0 0 auto; min-height: var(--browser-mobile-control-size); }
+  .desktop-browser .settings-shell .settings-account-card,
+  .desktop-browser .settings-shell .settings-account-list,
+  .desktop-browser .settings-shell .settings-account-status-card,
+  .desktop-browser .settings-shell .settings-account-sync-overview { min-width: 0; width: 100%; }
+  .desktop-browser .settings-shell .settings-account-status-card { align-items: flex-start; padding: 14px; gap: 10px; }
+  .desktop-browser .settings-shell .settings-account-status-label { flex: 0 0 auto; font-size: 14px; line-height: 1.3; }
+  .desktop-browser .settings-shell .settings-account-status-value { min-width: 0; font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
+  .desktop-browser .settings-shell .settings-account-sync-overview { padding: 12px; }
+  .desktop-browser .settings-shell .settings-account-sync-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding: 10px; }
+  .desktop-browser .settings-shell .settings-account-sync-total-label { width: auto; flex: none; font-size: 16px; }
+  .desktop-browser .settings-shell .settings-account-profile-name { width: auto; margin-left: 0; font-size: 15px; }
+  .desktop-browser .settings-shell .settings-account-sync-stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+  .desktop-browser .settings-shell .settings-account-stat { min-width: 0; }
+  .desktop-browser .settings-shell .settings-account-stat strong { font-size: 15px; }
+  .desktop-browser .settings-shell .settings-account-stat small { overflow: hidden; font-size: 10px; text-overflow: ellipsis; }
+  .desktop-browser .settings-shell .settings-account-action-button { min-height: 64px; padding: 14px; gap: 12px; }
+  .desktop-browser .settings-shell .settings-account-button-icon { font-size: 28px; }
+  .desktop-browser .settings-shell .settings-account-button-title { font-size: 17px; }
+  .desktop-browser .settings-shell .settings-account-button-subtitle { font-size: 13px; }
+  .desktop-browser .settings-shell .settings-account-signout-button { min-height: 52px; padding: 12px 14px; }
+  .desktop-browser .settings-shell .settings-account-signout-label { font-size: 16px; }
+
+  /* Legacy fixed-height browser shells use 100vh, which leaves a standalone
+     iOS viewport tail when the dynamic viewport is shorter. */
+  .desktop-browser #stream,
+  .desktop-browser #stream .stream-route-shell,
+  .desktop-browser #player { height: 100dvh; }
+
+  .desktop-browser #detail .detail-desktop-back-button,
+  .desktop-browser #folderDetail .folder-detail-desktop-back,
+  .desktop-browser #stream .stream-desktop-back-button,
+  .desktop-browser #player .player-desktop-back-button,
+  .desktop-browser .profile-desktop-back-button,
+  .desktop-browser .profile-pin-desktop-back,
+  .desktop-browser #account .desktop-qr-back-button,
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button,
+  .desktop-browser #debugConsole .debug-console-back { top: calc(8px + var(--browser-safe-area-top)); left: calc(8px + var(--browser-safe-area-left)); width: var(--browser-mobile-control-size); min-width: var(--browser-mobile-control-size); height: var(--browser-mobile-control-size); min-height: var(--browser-mobile-control-size); }
+}
+
+/* One browser-only chevron treatment for nested route back actions. */
+.desktop-browser .detail-desktop-back-button .material-icons,
+.desktop-browser .folder-detail-desktop-back .material-icons,
+.desktop-browser .stream-desktop-back-button .material-icons,
+.desktop-browser .player-desktop-back-button .material-icons,
+.desktop-browser .profile-desktop-back-button .material-icons,
+.desktop-browser .profile-pin-desktop-back .material-icons,
+.desktop-browser .desktop-qr-back-button .material-icons { font-size: 24px; line-height: 1; }

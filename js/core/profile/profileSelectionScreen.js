@@ -492,7 +492,7 @@ export const ProfileSelectionScreen = {
           isDesktopBrowser && this.isManagementMode
             ? `<button class="profile-desktop-back-button" type="button" data-action="close-management" aria-label="${escapeHtml(
                 t("common.back", {}, "Back")
-              )}">&#8592;</button>`
+              )}"><span class="material-icons" aria-hidden="true">chevron_left</span></button>`
             : ""
         }
         <div class="profile-main-layer"${isPinActive ? ' aria-hidden="true"' : ""}>
@@ -859,7 +859,7 @@ export const ProfileSelectionScreen = {
               isDesktopBrowser
                 ? `<button class="profile-pin-desktop-back" type="button" data-action="close-pin" aria-label="${escapeHtml(
                     t("common.back", {}, "Back")
-                  )}">&#8592;</button>`
+                  )}"><span class="material-icons" aria-hidden="true">chevron_left</span></button>`
                 : ""
             }
             <div class="profile-pin-heading">${escapeHtml(heading)}</div>

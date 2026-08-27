@@ -1606,7 +1606,7 @@ export const FolderDetailScreen = {
               this.isDesktopBrowser
                 ? `
               <button class="folder-detail-desktop-back focusable" type="button" data-action="back" data-focus-key="back" aria-label="Back">
-                <span class="material-icons" aria-hidden="true">arrow_back</span>
+                <span class="material-icons" aria-hidden="true">chevron_left</span>
               </button>
               <div class="folder-detail-desktop-heading" aria-label="${escapeHtml(this.collection?.title || "Collection")}">
                 ${

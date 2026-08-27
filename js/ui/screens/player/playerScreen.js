@@ -5254,7 +5254,7 @@ export const PlayerScreen = {
     return `
       <button class="player-desktop-back-button" type="button" data-player-desktop-back
               aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-        <span aria-hidden="true">&#8592;</span>
+        <span class="material-icons" aria-hidden="true">chevron_left</span>
       </button>
     `;
   },

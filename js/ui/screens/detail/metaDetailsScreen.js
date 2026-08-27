@@ -3260,7 +3260,7 @@ export const MetaDetailsScreen = {
     return `
       <button class="detail-desktop-back-button" type="button" data-detail-back
               aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-        <span aria-hidden="true">&#8592;</span>
+        <span class="material-icons" aria-hidden="true">chevron_left</span>
       </button>
     `;
   },

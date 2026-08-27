@@ -914,7 +914,7 @@ export const StreamScreen = {
     return `
       <button class="stream-desktop-back-button" type="button" data-stream-desktop-back
               aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-        <span aria-hidden="true">&#8592;</span>
+        <span class="material-icons" aria-hidden="true">chevron_left</span>
       </button>
     `;
   },
