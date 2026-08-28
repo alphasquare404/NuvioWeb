@@ -66,6 +66,7 @@ import {
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
+import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { TraktSettingsStore } from "../../../data/local/traktSettingsStore.js";
 import {
   CW_DAYS_CAP,
@@ -9922,6 +9923,12 @@ export const HomeScreen = {
 
     this.buildNavigationModel();
     this.bindHomeViewportEvents();
+    if (Platform.isBrowser()) {
+      this.browserCardTouchIntentCleanup?.();
+      this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+        cardSelector: ".home-content-card[data-action='openDetail'], .home-content-card[data-action='openCollection'], .home-continue-title-link, .home-continue-episode-link"
+      });
+    }
     this.setupContinueWatchingProgressiveRendering();
     if (this.layoutMode === "modern") {
       this.setupModernTrackScrollPagination();
@@ -11947,6 +11954,8 @@ export const HomeScreen = {
   },
 
   cleanup() {
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = null;
     this.desktopMediaHoverPreview?.destroy();
     this.desktopMediaHoverPreview = null;
     this.cancelModernSidebarPillAutoCollapse();

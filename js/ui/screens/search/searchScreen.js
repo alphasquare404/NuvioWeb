@@ -35,6 +35,7 @@ import {
   renderTitleWatchedBadge
 } from "../../components/watchedTitleBadge.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { filterReleasedItems } from "../../../core/util/releaseInfoUtils.js";
 import {
   buildSearchScheduleIndices,
@@ -580,6 +581,12 @@ export const SearchScreen = {
     this.buildNavigationModel();
     this.bindActionEvents();
     this.bindDesktopSearchShelfInteractions();
+    if (Platform.isBrowser()) {
+      this.browserCardTouchIntentCleanup?.();
+      this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+        cardSelector: ".search-result-card[data-action='openDetail']"
+      });
+    }
     input.value = this.query || "";
     input.focus?.();
     this.focusNode(this.container?.querySelector(".focusable.focused") || null, input);
@@ -2205,6 +2212,8 @@ export const SearchScreen = {
   },
 
   cleanup() {
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = null;
     this.cancelScheduledRender();
     this.clearDesktopSearchShelfDrag();
     if (this.boundDesktopSearchDragClickHandler) {

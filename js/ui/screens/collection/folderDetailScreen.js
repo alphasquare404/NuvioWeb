@@ -31,6 +31,7 @@ import {
 } from "../../components/watchedTitleBadge.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
+import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 
 const TMDB_API_URL = "https://api.themoviedb.org/3";
 const TMDB_POSTER_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342";
@@ -1238,6 +1239,12 @@ export const FolderDetailScreen = {
       this.openDetailFromNode(target);
     };
     this.container.addEventListener("click", this.boundDesktopCollectionClickHandler);
+    if (Platform.isBrowser()) {
+      this.browserCardTouchIntentCleanup?.();
+      this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+        cardSelector: ".seeall-card[data-action='openDetail']"
+      });
+    }
     this.boundDesktopCollectionClickContainer = this.container;
   },
 
@@ -2186,6 +2193,8 @@ export const FolderDetailScreen = {
   },
 
   cleanup() {
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = null;
     this.cancelScheduledRender();
     if (this.useHomeFollowLayout) {
       HomeScreen.cancelModernCameraFollow.call(this, { stopAnimations: true });

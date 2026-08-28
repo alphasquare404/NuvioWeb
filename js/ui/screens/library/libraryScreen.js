@@ -35,6 +35,7 @@ import {
   renderDesktopNavigation
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 
 const POSTER_HOLD_DELAY_MS = 650;
 const PICKER_MENU_EXIT_MS = 160;
@@ -307,6 +308,12 @@ export const LibraryScreen = {
       return;
     }
     this.container.__libraryEventsBound = true;
+    if (Platform.isBrowser()) {
+      this.browserCardTouchIntentCleanup?.();
+      this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+        cardSelector: ".library-grid-card[data-action='openDetail']"
+      });
+    }
 
     this.container.addEventListener("click", async (event) => {
       const target = event.target?.closest?.(
@@ -2411,6 +2418,8 @@ export const LibraryScreen = {
   },
 
   cleanup() {
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = null;
     this.cancelScheduledRender();
     this.clearClosingPicker();
     this.lastRenderedExpandedPicker = null;

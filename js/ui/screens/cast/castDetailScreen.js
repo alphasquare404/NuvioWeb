@@ -12,6 +12,7 @@ import {
   PosterOptionsDialogController
 } from "../../components/posterOptionsMenu.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w780";
@@ -366,6 +367,12 @@ export const CastDetailScreen = {
     `;
     ScreenUtils.indexFocusables(this.container);
     this.bindBrowserPersonActions();
+    if (Platform.isBrowser()) {
+      this.browserCardTouchIntentCleanup?.();
+      this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+        cardSelector: ".cast-credit-card[data-action='openDetail']"
+      });
+    }
     bindDesktopNavigationEvents(this.container);
   },
 
@@ -604,6 +611,8 @@ export const CastDetailScreen = {
   },
 
   cleanup() {
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = null;
     this.loadToken = (this.loadToken || 0) + 1;
     this.cancelPendingPosterHold();
     this.posterOptionsController?.destroy?.({ restoreFocus: false });

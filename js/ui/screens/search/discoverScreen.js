@@ -35,6 +35,7 @@ import {
   renderDesktopNavigation
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 
 const POSTER_HOLD_DELAY_MS = 650;
 const PICKER_MENU_EXIT_MS = 160;
@@ -1646,6 +1647,12 @@ export const DiscoverScreen = {
   },
 
   bindCardEvents() {
+    if (Platform.isBrowser()) {
+      this.browserCardTouchIntentCleanup?.();
+      this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+        cardSelector: ".discover-card[data-action='openDetail']"
+      });
+    }
     this.container?.querySelectorAll(".seeall-card.focusable").forEach((node) => {
       if (node.__boundDiscoverCardHandlers) return;
       node.__boundDiscoverCardHandlers = true;
@@ -1952,6 +1959,8 @@ export const DiscoverScreen = {
   },
 
   cleanup() {
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = null;
     this.loadToken = (this.loadToken || 0) + 1;
     if (this.browserDocumentScrollHandler) {
       window.removeEventListener("scroll", this.browserDocumentScrollHandler);

@@ -35,6 +35,7 @@ import { I18n } from "../../../i18n/index.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import {
   closeDesktopTrailerModal as closeSharedDesktopTrailerModal,
   openDesktopTrailerModal as openSharedDesktopTrailerModal
@@ -6800,6 +6801,10 @@ export const MetaDetailsScreen = {
       this.bindDesktopDetailActions();
       this.bindDesktopInsightTabActions();
       this.bindDesktopCastPersonActions();
+      this.browserCardTouchIntentCleanup?.();
+      this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+        cardSelector: ".movie-cast-card[data-action='openCastPerson'], .series-episode-card[data-action='openEpisodeStreams'], .detail-trailer-card[data-action='openSharedTrailer'], .detail-morelike-card[data-action='openMoreLikeDetail']"
+      });
     }
     if (this.detailScrollHandler) {
       content.removeEventListener("scroll", this.detailScrollHandler);
@@ -10362,6 +10367,8 @@ export const MetaDetailsScreen = {
   },
 
   cleanup() {
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = null;
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
     if (this.pendingEpisodeNavigationRaf) {
       cancelAnimationFrame(this.pendingEpisodeNavigationRaf);
