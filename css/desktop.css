@@ -2313,6 +2313,39 @@ html.desktop-browser {
   opacity: 0;
 }
 
+.desktop-browser #player .player-gesture-feedback {
+  position: absolute;
+  top: 50%;
+  z-index: 24;
+  min-width: 64px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: rgba(12, 12, 15, 0.72);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.desktop-browser #player .player-gesture-feedback[data-side="left"] {
+  left: 16%;
+}
+
+.desktop-browser #player .player-gesture-feedback[data-side="right"] {
+  left: 84%;
+}
+
+.desktop-browser #player .player-gesture-feedback[data-side="center"] {
+  left: 50%;
+}
+
+.desktop-browser #player .player-gesture-feedback.hidden {
+  display: none;
+}
+
 .desktop-browser #player .player-controls-top {
   margin-top: 2px;
   color: rgba(255, 255, 255, 0.96);

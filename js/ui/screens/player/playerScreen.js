@@ -48,6 +48,7 @@ import { Environment } from "../../../platform/environment.js";
 import { Router } from "../../navigation/router.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindBrowserPlayerGestures } from "../../components/browserPlayerGestures.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { TrackingScrobbleService } from "../../../data/repository/trackingScrobbleService.js";
 import { WebOsEngineFsResolver } from "../../../core/p2p/webosEngineFsResolver.js";
@@ -5167,6 +5168,7 @@ export const PlayerScreen = {
         <div id="playerSkipIntro" class="player-skip-intro hidden"></div>
 
         <div id="playerAspectToast" class="player-aspect-toast hidden"></div>
+        <div id="playerGestureFeedback" class="player-gesture-feedback hidden" aria-live="polite"></div>
 
         <div id="playerHtmlSubtitles" class="player-html-subtitles hidden" aria-hidden="true"></div>
         <canvas id="playerBitmapSubtitles" class="player-bitmap-subtitles hidden" aria-hidden="true"></canvas>
@@ -5469,6 +5471,12 @@ export const PlayerScreen = {
       this.boundDesktopVolumeChangeHandler = () => this.syncDesktopPlaybackTools();
       video.addEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
     }
+    this.browserPlayerGestureCleanup?.();
+    this.browserPlayerGestureCleanup = bindBrowserPlayerGestures(this.container, {
+      isInteractiveTarget: (target) => !this.isDesktopVideoAreaClick(target),
+      onSeek: (zone) => this.seekBrowserPlayerGesture(zone),
+      onHoldChange: (active) => this.setBrowserPlayerGestureHold(active)
+    });
   },
 
   unbindDesktopPlayerPointerBridge() {
@@ -5484,6 +5492,8 @@ export const PlayerScreen = {
     document.removeEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
     window.removeEventListener("resize", this.boundDesktopPlayerResizeHandler);
     this.getDesktopPlaybackVideo()?.removeEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
+    this.browserPlayerGestureCleanup?.();
+    this.browserPlayerGestureCleanup = null;
     this.boundDesktopPlayerPointerMoveHandler = null;
     this.boundDesktopPlayerPointerDownHandler = null;
     this.boundDesktopPlayerPointerUpHandler = null;
@@ -5538,6 +5548,51 @@ export const PlayerScreen = {
       ".player-torrent-overlay"
     ].join(", ");
     return !target.closest(blockedSelector);
+  },
+
+  seekBrowserPlayerGesture(zone) {
+    const direction = zone === "left" ? -1 : zone === "right" ? 1 : 0;
+    if (!direction) return false;
+    const current = Number(this.getPlaybackCurrentSeconds() || 0);
+    const duration = Number(this.getPlaybackDurationSeconds() || 0);
+    let target = Math.max(0, current + direction * 10);
+    if (Number.isFinite(duration) && duration > 0) target = Math.min(target, duration);
+    const didSeek = this.seekPlaybackSeconds(target);
+    if (didSeek) this.showBrowserPlayerGestureFeedback(direction < 0 ? "−10s" : "+10s", zone);
+    return didSeek;
+  },
+
+  setBrowserPlayerGestureHold(active) {
+    if (active) {
+      if (this.browserGesturePreviousPlaybackRate != null) return;
+      this.browserGesturePreviousPlaybackRate = this.getPlaybackSpeed();
+      void this.applyPlaybackSpeed(2);
+      this.showBrowserPlayerGestureFeedback("2x", "center", { persistent: true });
+      return;
+    }
+    const previous = this.browserGesturePreviousPlaybackRate;
+    this.browserGesturePreviousPlaybackRate = null;
+    if (previous != null) void this.applyPlaybackSpeed(previous);
+    this.hideBrowserPlayerGestureFeedback();
+  },
+
+  showBrowserPlayerGestureFeedback(label, side = "center", { persistent = false } = {}) {
+    const feedback = this.uiRefs?.gestureFeedback;
+    if (!feedback) return;
+    if (this.browserGestureFeedbackTimer) clearTimeout(this.browserGestureFeedbackTimer);
+    feedback.textContent = label;
+    feedback.dataset.side = side;
+    feedback.classList.remove("hidden");
+    if (!persistent) {
+      this.browserGestureFeedbackTimer = setTimeout(() => this.hideBrowserPlayerGestureFeedback(), 720);
+    }
+  },
+
+  hideBrowserPlayerGestureFeedback() {
+    if (this.browserGestureFeedbackTimer) clearTimeout(this.browserGestureFeedbackTimer);
+    this.browserGestureFeedbackTimer = null;
+    const feedback = this.uiRefs?.gestureFeedback;
+    if (feedback) feedback.classList.add("hidden");
   },
 
   getDesktopPlaybackVideo() {
@@ -5765,6 +5820,7 @@ export const PlayerScreen = {
           parentalGuide: uiRoot.querySelector("#playerParentalGuide"),
           skipIntro: uiRoot.querySelector("#playerSkipIntro"),
           aspectToast: uiRoot.querySelector("#playerAspectToast"),
+          gestureFeedback: uiRoot.querySelector("#playerGestureFeedback"),
           htmlSubtitles: uiRoot.querySelector("#playerHtmlSubtitles"),
           bitmapSubtitles: uiRoot.querySelector("#playerBitmapSubtitles"),
           seekOverlay: uiRoot.querySelector("#playerSeekOverlay"),
