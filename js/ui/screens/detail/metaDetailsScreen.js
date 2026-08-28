@@ -592,6 +592,23 @@ function extractCast(meta = {}) {
     ),
     tmdbId: entry?.id || null
   }));
+  // Browser Person Detail can use TMDB's stable crew IDs as well as cast IDs.
+  // Keep the established TV cast rail unchanged.
+  const crewEntries = Platform.isBrowser()
+    ? mapCastEntries(
+        (Array.isArray(meta?.credits?.crew) ? meta.credits.crew : []).filter((entry) =>
+          ["director", "creator", "writer", "writing"].includes(
+            String(entry?.job || entry?.department || "").trim().toLowerCase()
+          )
+        ),
+        (entry) => ({
+          name: entry?.name || "",
+          character: entry?.job || entry?.department || "",
+          photo: toPhoto(entry?.profile_path || entry?.photo || ""),
+          tmdbId: entry?.id || null
+        })
+      )
+    : [];
   const linkCastEntries = mapCastEntries(
     (Array.isArray(meta?.links) ? meta.links : []).filter((entry) => {
       const category = String(entry?.category || "").trim().toLowerCase();
@@ -610,24 +627,26 @@ function extractCast(meta = {}) {
       ...appExtraEntries,
       ...directEntries,
       ...linkCastEntries,
-      ...creditEntries
+      ...creditEntries,
+      ...crewEntries
     ]).slice(0, 18);
   }
   if (appExtraEntries.length) {
     return mergeCastEntries(appExtraEntries, [
       ...directEntries,
       ...linkCastEntries,
-      ...creditEntries
+      ...creditEntries,
+      ...crewEntries
     ]).slice(0, 12);
   }
   if (directEntries.length) {
-    return mergeCastEntries(directEntries, [...linkCastEntries, ...creditEntries]).slice(0, 12);
+    return mergeCastEntries(directEntries, [...linkCastEntries, ...creditEntries, ...crewEntries]).slice(0, 12);
   }
   if (linkCastEntries.length) {
-    return mergeCastEntries(linkCastEntries, creditEntries).slice(0, 12);
+    return mergeCastEntries(linkCastEntries, [...creditEntries, ...crewEntries]).slice(0, 12);
   }
-  if (creditEntries.length) {
-    return creditEntries.slice(0, 12);
+  if (creditEntries.length || crewEntries.length) {
+    return [...creditEntries, ...crewEntries].slice(0, 12);
   }
 
   return [];
@@ -3880,11 +3899,18 @@ export const MetaDetailsScreen = {
     const className = kind === "movie" ? "movie-cast-track" : "series-cast-track";
     const cards = this.castItems
       .slice(0, 18)
-      .map(
-        (person) => `
-      <article class="movie-cast-card focusable series-cast-card"
-               data-action="openCastDetail"
-               data-cast-id="${person.tmdbId || ""}"
+      .map((person) => {
+        const tmdbPersonId = String(person?.tmdbId || "").trim();
+        const browserPersonNavigation =
+          Platform.isBrowser() &&
+          TmdbSettingsStore.get().enabled &&
+          TmdbSettingsStore.get().useCredits !== false &&
+          /^\d+$/.test(tmdbPersonId);
+        const isInteractive = !Platform.isBrowser() || browserPersonNavigation;
+        return `
+      <article class="movie-cast-card series-cast-card${isInteractive ? " focusable" : ""}"
+               ${isInteractive ? 'data-action="openCastDetail" role="button"' : ""}
+               data-cast-id="${escapeAttribute(tmdbPersonId)}"
                data-cast-key="${escapeHtml(String(person.tmdbId || `${person.name || ""}:${person.character || ""}`))}"
                data-cast-name="${escapeHtml(person.name || "")}"
                data-cast-role="${escapeHtml(person.character || "")}"
@@ -3899,8 +3925,8 @@ export const MetaDetailsScreen = {
         <div class="movie-cast-name">${escapeHtml(person.name || "")}</div>
         <div class="movie-cast-role">${escapeHtml(person.character || "")}</div>
       </article>
-    `
-      )
+    `;
+      })
       .join("");
     return `<div class="${className}" data-scroll-key="cast:${kind}">${cards}</div>`;
   },
@@ -6692,6 +6718,28 @@ export const MetaDetailsScreen = {
     window.addEventListener("pointercancel", this.boundDesktopLibraryPointerCancelHandler, true);
   },
 
+  bindDesktopCastPersonActions() {
+    if (!Platform.isBrowser() || !this.container || this.boundDesktopCastPersonActionHandler) {
+      return;
+    }
+    this.boundDesktopCastPersonActionHandler = (event) => {
+      const target = event?.target;
+      if (!(target instanceof Element)) return;
+      const personNode = target.closest(".series-cast-card[data-action='openCastDetail']");
+      if (!(personNode instanceof HTMLElement) || !this.container.contains(personNode)) return;
+      const personId = String(personNode.dataset.castId || "").trim();
+      if (!/^\d+$/.test(personId)) return;
+      Router.navigate("castDetail", {
+        castId: personId,
+        castName: personNode.dataset.castName || "",
+        castRole: personNode.dataset.castRole || "",
+        castPhoto: personNode.dataset.castPhoto || ""
+      });
+      event.preventDefault();
+    };
+    this.container.addEventListener("click", this.boundDesktopCastPersonActionHandler);
+  },
+
   cancelDesktopLibraryHold({ resetSuppression = false } = {}) {
     if (this.desktopLibraryHoldTimer) {
       clearTimeout(this.desktopLibraryHoldTimer);
@@ -6718,6 +6766,7 @@ export const MetaDetailsScreen = {
       }
       bindDesktopNavigationEvents(this.container);
       this.bindDesktopDetailActions();
+      this.bindDesktopCastPersonActions();
     }
     if (this.detailScrollHandler) {
       content.removeEventListener("scroll", this.detailScrollHandler);
@@ -10359,6 +10408,10 @@ export const MetaDetailsScreen = {
     if (this.boundDesktopDetailActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopDetailActionHandler);
       this.boundDesktopDetailActionHandler = null;
+    }
+    if (this.boundDesktopCastPersonActionHandler && this.container) {
+      this.container.removeEventListener("click", this.boundDesktopCastPersonActionHandler);
+      this.boundDesktopCastPersonActionHandler = null;
     }
     if (this.container) {
       if (this.boundDesktopLibraryPointerDownHandler) {

@@ -1,8 +1,12 @@
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { setBrowserDocumentTitle } from "../../navigation/browserDocumentTitle.js";
 import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
 import { Environment } from "../../../platform/environment.js";
+import { Platform } from "../../../platform/index.js";
 import { I18n } from "../../../i18n/index.js";
+import { TmdbPersonService, calculatePersonAge, sortPersonCreditsByLatest, sortPersonCreditsByPopularity } from "../../../core/tmdb/tmdbPersonService.js";
+import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import {
   posterItemFromNode,
   PosterOptionsDialogController
@@ -109,6 +113,24 @@ export const CastDetailScreen = {
   async loadCastDetails() {
     const token = this.loadToken;
     try {
+      if (Platform.isBrowser()) {
+        const personId = String(this.params?.castId || this.params?.personId || "").trim();
+        if (!TmdbPersonService.isAvailable() || !/^\d+$/.test(personId)) {
+          this.renderError("Person details are unavailable.");
+          return;
+        }
+        const person = await TmdbPersonService.fetchPerson({ personId });
+        if (token !== this.loadToken) return;
+        if (!person?.id) {
+          this.renderError("Person profile not found.");
+          return;
+        }
+        this.person = person;
+        this.credits = person.credits || [];
+        setBrowserDocumentTitle(person.name || "Person");
+        this.render();
+        return;
+      }
       const settings = TmdbSettingsStore.get();
       const apiKey = getEffectiveTmdbApiKey();
       if (!apiKey) {
@@ -169,6 +191,16 @@ export const CastDetailScreen = {
   },
 
   renderLoading() {
+    if (Platform.isBrowser()) {
+      this.container.innerHTML = `
+        <div class="browser-person-detail-shell">
+          ${renderDesktopNavigation({ selectedRoute: "" })}
+          <div class="browser-person-detail-status">${renderLoadingIndicator()}<span>Loading person details…</span></div>
+        </div>
+      `;
+      bindDesktopNavigationEvents(this.container);
+      return;
+    }
     this.container.innerHTML = `
       <div class="cast-detail-shell">
         <div class="cast-detail-loading">
@@ -180,6 +212,18 @@ export const CastDetailScreen = {
   },
 
   renderError(message) {
+    if (Platform.isBrowser()) {
+      this.container.innerHTML = `
+        <div class="browser-person-detail-shell">
+          ${renderDesktopNavigation({ selectedRoute: "" })}
+          <div class="browser-person-detail-status is-error"><p>${escapeHtml(message)}</p><button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}"><span class="material-icons" aria-hidden="true">chevron_left</span></button></div>
+        </div>
+      `;
+      ScreenUtils.indexFocusables(this.container);
+      this.bindBrowserPersonActions();
+      bindDesktopNavigationEvents(this.container);
+      return;
+    }
     this.container.innerHTML = `
       <div class="cast-detail-shell">
         <div class="cast-detail-error">${message}</div>
@@ -192,6 +236,12 @@ export const CastDetailScreen = {
 
   getCreditSections() {
     const allCredits = uniqueCredits(this.credits);
+    if (Platform.isBrowser()) {
+      return [
+        { key: "popular", title: t("person_popular", {}, "Popular"), items: sortPersonCreditsByPopularity(allCredits) },
+        { key: "latest", title: t("person_latest", {}, "Latest"), items: sortPersonCreditsByLatest(allCredits) }
+      ].filter((section) => section.items.length);
+    }
     const today = todayIsoDate();
     const popular = [...allCredits].sort((left, right) => right.popularity - left.popularity);
     const latest = allCredits
@@ -213,17 +263,18 @@ export const CastDetailScreen = {
   },
 
   renderCreditCard(item) {
+    const title = item.title || item.name || "Untitled";
     return `
       <article class="cast-credit-card focusable"
                data-action="openDetail"
                data-item-id="${escapeAttribute(item.itemId)}"
                data-item-type="${escapeAttribute(item.type)}"
-               data-item-title="${escapeAttribute(item.name)}"
+               data-item-title="${escapeAttribute(title)}"
                data-poster-src="${escapeAttribute(item.poster || "")}"
                data-backdrop-src="${escapeAttribute(item.poster || "")}">
         <div class="cast-credit-poster"${item.poster ? ` style="background-image:url('${escapeAttribute(item.poster)}')"` : ""}></div>
-        <div class="cast-credit-title">${escapeHtml(item.name)}</div>
-        <div class="cast-credit-subtitle">${escapeHtml(item.subtitle || item.type)}</div>
+        <div class="cast-credit-title">${escapeHtml(title)}</div>
+        <div class="cast-credit-subtitle">${escapeHtml(item.role || item.subtitle || item.type)}</div>
       </article>
     `;
   },
@@ -246,6 +297,10 @@ export const CastDetailScreen = {
   },
 
   render() {
+    if (Platform.isBrowser()) {
+      this.renderBrowserPersonDetail();
+      return;
+    }
     const person = this.person || {};
     const creditsHtml = this.renderCreditSections();
 
@@ -277,6 +332,58 @@ export const CastDetailScreen = {
     ScreenUtils.indexFocusables(this.container);
     ScreenUtils.setInitialFocus(this.container, ".cast-credit-card.focusable");
     this.syncFocusedCardScroll({ instant: true });
+  },
+
+  renderBrowserPersonDetail() {
+    const person = this.person || {};
+    const age = calculatePersonAge(person.birthday, person.deathday);
+    const birth = person.birthday
+      ? `Born ${escapeHtml(person.birthday)}${age != null ? ` (${age})` : ""}`
+      : "";
+    const avatar = person.profile
+      ? `<img src="${escapeAttribute(person.profile)}" alt="" loading="eager" decoding="async" onerror="this.hidden=true" />`
+      : `<span aria-hidden="true">${escapeHtml(String(person.name || "?").slice(0, 1).toUpperCase())}</span>`;
+    this.container.innerHTML = `
+      <div class="browser-person-detail-shell">
+        ${renderDesktopNavigation({ selectedRoute: "" })}
+        <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
+          <span class="material-icons" aria-hidden="true">chevron_left</span>
+        </button>
+        <div class="browser-person-detail-layout">
+          <aside class="browser-person-detail-profile">
+            <div class="browser-person-detail-avatar">${avatar}</div>
+            <h1>${escapeHtml(person.name || "Unknown")}</h1>
+            <dl class="browser-person-detail-facts">
+              ${birth ? `<div><dt>Born</dt><dd>${birth}</dd></div>` : ""}
+              ${person.placeOfBirth ? `<div><dt>Place of birth</dt><dd>${escapeHtml(person.placeOfBirth)}</dd></div>` : ""}
+              <div><dt>Credits</dt><dd>${Number(this.credits?.length || 0)}</dd></div>
+            </dl>
+            <section class="browser-person-detail-biography"><h2>Biography</h2><p>${escapeHtml(person.biography || "No biography available.")}</p></section>
+          </aside>
+          <main class="browser-person-detail-credits">${this.renderCreditSections()}</main>
+        </div>
+      </div>
+    `;
+    ScreenUtils.indexFocusables(this.container);
+    this.bindBrowserPersonActions();
+    bindDesktopNavigationEvents(this.container);
+  },
+
+  bindBrowserPersonActions() {
+    if (this.boundBrowserPersonActionHandler || !this.container) return;
+    this.boundBrowserPersonActionHandler = (event) => {
+      const target = event.target instanceof Element ? event.target.closest("[data-action]") : null;
+      if (!(target instanceof HTMLElement) || !this.container.contains(target)) return;
+      if (target.dataset.action === "back") {
+        Router.back();
+      } else if (target.dataset.action === "openDetail") {
+        this.openDetailFromNode(target);
+      } else {
+        return;
+      }
+      event.preventDefault();
+    };
+    this.container.addEventListener("click", this.boundBrowserPersonActionHandler);
   },
 
   syncFocusedCardScroll({ instant = false } = {}) {
@@ -502,6 +609,10 @@ export const CastDetailScreen = {
     this.posterOptionsController?.destroy?.({ restoreFocus: false });
     this.posterOptionsController = null;
     this.posterOptionsFocusRestore = null;
+    if (this.boundBrowserPersonActionHandler && this.container) {
+      this.container.removeEventListener("click", this.boundBrowserPersonActionHandler);
+      this.boundBrowserPersonActionHandler = null;
+    }
     ScreenUtils.hide(this.container);
   }
 };

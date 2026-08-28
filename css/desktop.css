@@ -1589,7 +1589,8 @@ html.desktop-browser {
   overflow: visible;
 }
 
-.desktop-browser #detail .detail-desktop-back-button {
+.desktop-browser #detail .detail-desktop-back-button,
+.desktop-browser #castDetail .detail-desktop-back-button {
   position: fixed;
   z-index: 30;
   top: clamp(16px, 2vw, 24px);
@@ -1613,7 +1614,8 @@ html.desktop-browser {
   transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
 }
 
-.desktop-browser #detail .detail-desktop-back-button:focus-visible {
+.desktop-browser #detail .detail-desktop-back-button:focus-visible,
+.desktop-browser #castDetail .detail-desktop-back-button:focus-visible {
   border-color: rgba(255, 255, 255, 0.42);
   box-shadow: none;
   outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
@@ -1742,7 +1744,8 @@ html.desktop-browser {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser #detail .detail-desktop-back-button:hover {
+  .desktop-browser #detail .detail-desktop-back-button:hover,
+  .desktop-browser #castDetail .detail-desktop-back-button:hover {
     border-color: transparent;
     background: rgba(255, 255, 255, 0.14);
   }
@@ -1835,7 +1838,8 @@ html.desktop-browser {
     padding-inline: 20px;
   }
 
-  .desktop-browser #detail .detail-desktop-back-button {
+  .desktop-browser #detail .detail-desktop-back-button,
+  .desktop-browser #castDetail .detail-desktop-back-button {
     top: 18px;
     left: 20px;
     width: 40px;
@@ -8153,6 +8157,213 @@ body.desktop-browser {
   .desktop-browser .nuvio-dialog-button.poster-list-picker-list-button.selected.focused,
   .desktop-browser .nuvio-dialog-button.poster-list-picker-list-button.focused {
     transform: none;
+  }
+}
+
+/* Browser/PWA person detail. TV keeps the existing cast-detail presentation. */
+.desktop-browser #castDetail .browser-person-detail-shell {
+  min-height: max(100dvh, 100vh);
+  box-sizing: border-box;
+  padding: 34px clamp(24px, 4vw, 64px) 72px;
+  color: var(--detail-text-primary, var(--text-color));
+  background:
+    radial-gradient(70% 55% at 78% 0%, rgb(var(--secondary-color-rgb) / 0.16), transparent 68%),
+    var(--detail-bg, var(--bg-color));
+}
+
+.desktop-browser #castDetail .browser-person-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(238px, 304px) minmax(0, 1fr);
+  gap: clamp(34px, 5vw, 76px);
+  width: min(100%, 1480px);
+  margin: 28px auto 0;
+}
+
+.desktop-browser #castDetail .browser-person-detail-status {
+  display: grid;
+  min-height: 52dvh;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  color: var(--detail-text-secondary, rgba(255, 255, 255, 0.74));
+  text-align: center;
+}
+
+.desktop-browser #castDetail .browser-person-detail-status.is-error p {
+  margin: 0;
+  font-size: 18px;
+}
+
+.desktop-browser #castDetail .browser-person-detail-profile {
+  min-width: 0;
+}
+
+.desktop-browser #castDetail .browser-person-detail-avatar {
+  display: grid;
+  width: min(100%, 272px);
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 64px;
+  font-weight: 700;
+}
+
+.desktop-browser #castDetail .browser-person-detail-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.desktop-browser #castDetail .browser-person-detail-profile h1 {
+  margin: 20px 0 14px;
+  font-size: clamp(30px, 3vw, 44px);
+  line-height: 1.08;
+}
+
+.desktop-browser #castDetail .browser-person-detail-facts {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+}
+
+.desktop-browser #castDetail .browser-person-detail-facts div {
+  display: grid;
+  gap: 3px;
+}
+
+.desktop-browser #castDetail .browser-person-detail-facts dt {
+  color: var(--detail-text-muted, rgba(255, 255, 255, 0.64));
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.desktop-browser #castDetail .browser-person-detail-facts dd {
+  margin: 0;
+  color: var(--detail-text-primary, #fff);
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography {
+  margin-top: 28px;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography h2,
+.desktop-browser #castDetail .browser-person-detail-credits .cast-detail-section-title {
+  margin: 0 0 12px;
+  font-size: clamp(23px, 2vw, 32px);
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography p {
+  margin: 0;
+  color: var(--detail-text-secondary, rgba(255, 255, 255, 0.76));
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.desktop-browser #castDetail .browser-person-detail-credits {
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.desktop-browser #castDetail .browser-person-detail-credits .cast-credit-section + .cast-credit-section {
+  margin-top: 42px;
+}
+
+.desktop-browser #castDetail .browser-person-detail-credits .cast-credit-track {
+  gap: 16px;
+  padding: 4px 2px 18px;
+  scroll-snap-type: x proximity;
+  touch-action: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.desktop-browser #castDetail .browser-person-detail-credits .cast-credit-card {
+  flex: 0 0 168px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+
+.desktop-browser #castDetail .browser-person-detail-credits .cast-credit-poster {
+  margin-bottom: 9px;
+  border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.desktop-browser #castDetail .browser-person-detail-credits .cast-credit-title {
+  min-height: 0;
+  font-size: 16px;
+}
+
+.desktop-browser #castDetail .browser-person-detail-credits .cast-credit-subtitle {
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.desktop-browser #castDetail .browser-person-detail-credits .cast-credit-card:focus-visible {
+  outline: 3px solid var(--detail-focus-ring, rgba(255, 255, 255, 0.82));
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #castDetail .browser-person-detail-credits .cast-credit-card:hover .cast-credit-poster {
+    transform: scale(1.025);
+  }
+}
+
+@media (max-width: 700px) {
+  .desktop-browser #castDetail .browser-person-detail-shell {
+    min-height: max(100dvh, 100vh);
+    padding: calc(var(--browser-mobile-nav-clearance) + env(safe-area-inset-top)) var(--browser-page-gutter) calc(34px + env(safe-area-inset-bottom));
+  }
+  .desktop-browser #castDetail .browser-person-detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+    margin-top: 20px;
+  }
+  .desktop-browser #castDetail .browser-person-detail-profile {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    column-gap: 18px;
+    align-items: start;
+  }
+  .desktop-browser #castDetail .browser-person-detail-avatar {
+    width: 112px;
+    grid-row: span 2;
+    font-size: 36px;
+  }
+  .desktop-browser #castDetail .browser-person-detail-profile h1 {
+    margin: 2px 0 10px;
+    font-size: 30px;
+  }
+  .desktop-browser #castDetail .browser-person-detail-facts {
+    gap: 7px;
+  }
+  .desktop-browser #castDetail .browser-person-detail-biography {
+    grid-column: 1 / -1;
+    margin-top: 24px;
+  }
+  .desktop-browser #castDetail .browser-person-detail-credits {
+    margin: 0 calc(-1 * var(--browser-page-gutter));
+  }
+  .desktop-browser #castDetail .browser-person-detail-credits .cast-detail-section-title {
+    padding: 0 var(--browser-page-gutter);
+  }
+  .desktop-browser #castDetail .browser-person-detail-credits .cast-credit-track {
+    padding: 4px var(--browser-page-gutter) 18px;
+  }
+  .desktop-browser #castDetail .browser-person-detail-credits .cast-credit-card {
+    flex-basis: clamp(132px, 38vw, 164px);
   }
 }
 
