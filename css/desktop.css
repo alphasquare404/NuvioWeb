@@ -8686,3 +8686,218 @@ body.desktop-browser {
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* Library and Settings share the browser shell, but their touch controls need
+   independent, contained layouts below desktop widths. */
+@media (max-width: 600px) {
+  .desktop-browser .library-shell.desktop-navigation-enabled > .library-main {
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) calc(40px + var(--browser-safe-area-bottom));
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-page-header {
+    margin-bottom: 18px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-page-title {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-toggle {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row::-webkit-scrollbar,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row::-webkit-scrollbar,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-toggle::-webkit-scrollbar {
+    display: none;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row .library-action-button {
+    flex: 0 0 auto;
+    min-height: 44px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-groups {
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-row,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-saved-picker-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-row .library-picker,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-clear-filters {
+    width: 100%;
+    min-width: 0;
+    margin-inline: 0;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-clear-filters {
+    min-height: 56px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(42vw, 168px), 1fr));
+    gap: 24px 12px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grouped-content {
+    gap: 30px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-status-heading {
+    margin-bottom: 12px;
+    font-size: clamp(21px, 6vw, 25px);
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid-title {
+    display: -webkit-box;
+    min-height: 2.6em;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    text-overflow: ellipsis;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-empty-state {
+    min-height: min(42dvh, 340px);
+    padding-block: 28px;
+  }
+
+  .desktop-browser .settings-shell .settings-workspace {
+    gap: 18px;
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) calc(40px + var(--browser-safe-area-bottom));
+  }
+
+  .desktop-browser .settings-shell .settings-sidebar-frame {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .desktop-browser .settings-shell .settings-sidebar {
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
+    border-radius: 16px;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-item {
+    min-height: 44px;
+    padding-inline: 14px;
+    white-space: nowrap;
+  }
+
+  .desktop-browser .settings-shell .settings-content,
+  .desktop-browser .settings-shell .settings-group-card,
+  .desktop-browser .settings-shell .settings-subsection-card,
+  .desktop-browser .settings-shell .settings-row-copy {
+    min-width: 0;
+  }
+
+  .desktop-browser .settings-shell .settings-content-header {
+    gap: 5px;
+  }
+
+  .desktop-browser .settings-shell .settings-title {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+
+  .desktop-browser .settings-shell .settings-action-row,
+  .desktop-browser .settings-shell .settings-toggle-row,
+  .desktop-browser .settings-shell .settings-collapsible-trigger {
+    min-height: 60px;
+    padding: 10px 12px;
+  }
+
+  .desktop-browser .settings-shell .settings-row-title,
+  .desktop-browser .settings-shell .settings-row-subtitle,
+  .desktop-browser .settings-shell .settings-row-value,
+  .desktop-browser .settings-shell .settings-account-status-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .desktop-browser .settings-shell .settings-account-sync-stats {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .desktop-browser .settings-shell .settings-account-stat small {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .desktop-browser .settings-shell .settings-theme-row {
+    gap: 10px;
+    padding-bottom: 8px;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .desktop-browser .settings-shell .settings-theme-card {
+    flex-basis: clamp(104px, 30vw, 132px);
+    width: clamp(104px, 30vw, 132px);
+  }
+
+  .desktop-browser .settings-shell .settings-layout-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(42vw, 168px), 1fr));
+    gap: 12px;
+  }
+
+  .desktop-browser .settings-shell .settings-dialog-backdrop {
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+
+  .desktop-browser .settings-shell .settings-dialog,
+  .desktop-browser .settings-shell .settings-text-dialog,
+  .desktop-browser .settings-shell .settings-p2p-consent-dialog {
+    max-height: min(78dvh, 680px);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+@media (min-width: 601px) and (max-width: 1023px) {
+  .desktop-browser .library-shell.desktop-navigation-enabled > .library-main {
+    padding: calc(var(--browser-safe-area-top) + 92px) clamp(28px, 4vw, 44px) 52px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid {
+    grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
+    gap: 28px 16px;
+  }
+
+  .desktop-browser .settings-shell .settings-workspace {
+    padding: calc(var(--browser-safe-area-top) + 92px) clamp(28px, 4vw, 44px) 52px;
+  }
+
+  .desktop-browser .settings-shell .settings-sidebar {
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .desktop-browser .settings-shell .settings-theme-card {
+    flex-basis: clamp(128px, 18vw, 156px);
+    width: clamp(128px, 18vw, 156px);
+  }
+}
