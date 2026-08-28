@@ -5300,13 +5300,26 @@ export const PlayerScreen = {
     if (this.desktopPlayerViewportSyncFrame) {
       cancelAnimationFrame(this.desktopPlayerViewportSyncFrame);
     }
+    if (this.desktopPlayerViewportSyncFollowupFrame) {
+      cancelAnimationFrame(this.desktopPlayerViewportSyncFollowupFrame);
+      this.desktopPlayerViewportSyncFollowupFrame = null;
+    }
     // fullscreenchange fires before the browser has necessarily painted the
-    // fullscreen viewport. Reuse the normal aspect-layout method on the next
-    // frame, once #player has its final dimensions.
-    this.desktopPlayerViewportSyncFrame = requestAnimationFrame(() => {
-      this.desktopPlayerViewportSyncFrame = null;
+    // fullscreen viewport. Mobile orientation changes can likewise publish a
+    // resize before #player has received its final dynamic viewport bounds.
+    // Reuse the existing aspect path once immediately and once on the next
+    // paint without changing playback state or writing a separate layout model.
+    const syncLayout = () => {
       this.applyAspectMode({ showToast: false });
       this.syncDesktopPlaybackTools();
+    };
+    this.desktopPlayerViewportSyncFrame = requestAnimationFrame(() => {
+      this.desktopPlayerViewportSyncFrame = null;
+      syncLayout();
+      this.desktopPlayerViewportSyncFollowupFrame = requestAnimationFrame(() => {
+        this.desktopPlayerViewportSyncFollowupFrame = null;
+        syncLayout();
+      });
     });
   },
 
@@ -5466,6 +5479,14 @@ export const PlayerScreen = {
     document.addEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
     this.boundDesktopPlayerResizeHandler = () => this.scheduleDesktopPlayerViewportSync();
     window.addEventListener("resize", this.boundDesktopPlayerResizeHandler);
+    this.boundDesktopPlayerOrientationChangeHandler = () => this.scheduleDesktopPlayerViewportSync();
+    window.addEventListener("orientationchange", this.boundDesktopPlayerOrientationChangeHandler);
+    this.desktopPlayerVisualViewport = window.visualViewport || null;
+    this.boundDesktopPlayerVisualViewportResizeHandler = () => this.scheduleDesktopPlayerViewportSync();
+    this.desktopPlayerVisualViewport?.addEventListener(
+      "resize",
+      this.boundDesktopPlayerVisualViewportResizeHandler
+    );
     const video = this.getDesktopPlaybackVideo();
     if (video) {
       this.boundDesktopVolumeChangeHandler = () => this.syncDesktopPlaybackTools();
@@ -5491,6 +5512,11 @@ export const PlayerScreen = {
     this.container.removeEventListener("input", this.boundDesktopPlayerInputHandler);
     document.removeEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
     window.removeEventListener("resize", this.boundDesktopPlayerResizeHandler);
+    window.removeEventListener("orientationchange", this.boundDesktopPlayerOrientationChangeHandler);
+    this.desktopPlayerVisualViewport?.removeEventListener(
+      "resize",
+      this.boundDesktopPlayerVisualViewportResizeHandler
+    );
     this.getDesktopPlaybackVideo()?.removeEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
     this.browserPlayerGestureCleanup?.();
     this.browserPlayerGestureCleanup = null;
@@ -5502,10 +5528,17 @@ export const PlayerScreen = {
     this.boundDesktopPlayerInputHandler = null;
     this.boundDesktopFullscreenChangeHandler = null;
     this.boundDesktopPlayerResizeHandler = null;
+    this.boundDesktopPlayerOrientationChangeHandler = null;
+    this.boundDesktopPlayerVisualViewportResizeHandler = null;
+    this.desktopPlayerVisualViewport = null;
     this.boundDesktopVolumeChangeHandler = null;
     if (this.desktopPlayerViewportSyncFrame) {
       cancelAnimationFrame(this.desktopPlayerViewportSyncFrame);
       this.desktopPlayerViewportSyncFrame = null;
+    }
+    if (this.desktopPlayerViewportSyncFollowupFrame) {
+      cancelAnimationFrame(this.desktopPlayerViewportSyncFollowupFrame);
+      this.desktopPlayerViewportSyncFollowupFrame = null;
     }
     this.desktopProgressPointer = null;
     this.desktopSuppressProgressClick = false;
