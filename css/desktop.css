@@ -1192,9 +1192,22 @@ html.desktop-browser {
 
 .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs {
   gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
   min-height: 38px;
   padding: 8px 14px;
   font-size: 14px;
