@@ -8901,3 +8901,453 @@ body.desktop-browser {
     width: clamp(128px, 18vw, 156px);
   }
 }
+
+/* Browser/PWA Stream Selection and Player: keep the shared TV markup and
+   behavior, while giving touch viewports their own safe-area-aware geometry. */
+@media (max-width: 1023px) {
+  .desktop-browser #stream,
+  .desktop-browser #stream .stream-route-shell {
+    min-height: 100dvh;
+  }
+
+  .desktop-browser #stream .stream-route-content {
+    min-height: 100dvh;
+    padding-top: calc(var(--browser-safe-area-top) + 76px);
+    padding-right: max(24px, var(--browser-safe-area-right));
+    padding-bottom: calc(32px + var(--browser-safe-area-bottom));
+    padding-left: max(24px, var(--browser-safe-area-left));
+  }
+
+  .desktop-browser #stream .stream-route-left {
+    padding-top: 0;
+  }
+
+  .desktop-browser #stream .stream-route-title,
+  .desktop-browser #stream .stream-route-subtitle,
+  .desktop-browser #stream .stream-route-detail-line,
+  .desktop-browser #stream .stream-route-card-heading,
+  .desktop-browser #stream .stream-route-card-line,
+  .desktop-browser #stream .stream-route-addon-name {
+    overflow-wrap: anywhere;
+  }
+
+  .desktop-browser #stream .stream-route-card-copy {
+    min-width: 0;
+  }
+
+  .desktop-browser #stream .stream-route-list {
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .desktop-browser #player,
+  .desktop-browser #player:fullscreen,
+  .desktop-browser #player:-webkit-full-screen {
+    width: 100vw;
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  .desktop-browser #player .player-loading-spinner {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+  }
+
+  .desktop-browser #player .player-startup-error-overlay {
+    padding:
+      max(24px, calc(24px + var(--browser-safe-area-top)))
+      max(24px, calc(24px + var(--browser-safe-area-right)))
+      max(24px, calc(24px + var(--browser-safe-area-bottom)))
+      max(24px, calc(24px + var(--browser-safe-area-left)));
+  }
+
+  .desktop-browser #player .player-sources-panel,
+  .desktop-browser #player .player-episode-panel {
+    max-height: 100dvh;
+    padding-top: calc(18px + var(--browser-safe-area-top));
+    padding-right: max(18px, var(--browser-safe-area-right));
+    padding-bottom: calc(18px + var(--browser-safe-area-bottom));
+    padding-left: 18px;
+  }
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #stream .stream-route-content {
+    padding-top: calc(var(--browser-safe-area-top) + 68px);
+    padding-right: max(16px, var(--browser-safe-area-right));
+    padding-bottom: calc(24px + var(--browser-safe-area-bottom));
+    padding-left: max(16px, var(--browser-safe-area-left));
+  }
+
+  .desktop-browser #stream .stream-route-left-inner {
+    width: 100%;
+  }
+
+  .desktop-browser #stream .stream-route-logo {
+    max-width: min(100%, 330px);
+    max-height: 76px;
+    margin-bottom: 10px;
+  }
+
+  .desktop-browser #stream .stream-route-title {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: clamp(28px, 8vw, 36px);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .desktop-browser #stream .stream-route-right {
+    margin-top: 16px;
+  }
+
+  .desktop-browser #stream .stream-route-chip-track {
+    gap: 7px;
+    padding: 2px 0 10px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+  }
+
+  .desktop-browser #stream .stream-route-chip {
+    min-height: 42px;
+    padding-inline: 14px;
+  }
+
+  .desktop-browser #stream .stream-route-card-row {
+    margin-bottom: 12px;
+  }
+
+  .desktop-browser #stream .stream-route-card {
+    min-height: 0;
+    padding: 14px;
+    gap: 12px;
+    touch-action: pan-y;
+  }
+
+  .desktop-browser #stream .stream-route-card-heading {
+    display: -webkit-box;
+    font-size: 16px;
+    line-height: 1.3;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .desktop-browser #stream .stream-route-card-quality {
+    margin-top: 4px;
+    font-size: 14px;
+  }
+
+  .desktop-browser #stream .stream-route-card-line {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .desktop-browser #stream .stream-route-card-side {
+    min-height: 44px;
+    gap: 8px;
+  }
+
+  .desktop-browser #stream .stream-route-addon-badge {
+    width: 42px;
+    height: 42px;
+  }
+
+  .desktop-browser #stream .stream-route-empty {
+    min-height: min(36dvh, 240px);
+    padding: 20px 0;
+    font-size: 15px;
+    overflow-wrap: anywhere;
+  }
+
+  .desktop-browser #player #playerUiRoot {
+    --player-controls-x: max(12px, var(--browser-safe-area-left));
+    --player-controls-y: max(10px, var(--browser-safe-area-top));
+    --player-action-controls-open-bottom: calc(132px + var(--browser-safe-area-bottom));
+    --player-html-subtitle-font-size: clamp(20px, 5.5vw, 28px);
+  }
+
+  .desktop-browser #player .player-controls-overlay {
+    padding:
+      max(10px, var(--browser-safe-area-top))
+      max(12px, var(--browser-safe-area-right))
+      max(12px, var(--browser-safe-area-bottom))
+      max(12px, var(--browser-safe-area-left));
+  }
+
+  .desktop-browser #player .player-controls-gradient-top {
+    height: min(22dvh, 160px);
+  }
+
+  .desktop-browser #player .player-controls-gradient-bottom {
+    height: min(42dvh, 300px);
+  }
+
+  .desktop-browser #player .player-controls-top {
+    max-width: min(42vw, 180px);
+  }
+
+  .desktop-browser #player .player-clock {
+    font-size: 16px;
+  }
+
+  .desktop-browser #player .player-ends-at {
+    font-size: 12px;
+  }
+
+  .desktop-browser #player .player-meta {
+    max-width: min(100%, 34rem);
+  }
+
+  .desktop-browser #player .player-title {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: clamp(21px, 6vw, 26px);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .desktop-browser #player .player-subtitle,
+  .desktop-browser #player .player-meta-tertiary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .desktop-browser #player .player-progress-shell {
+    margin-top: 8px;
+    padding: 12px 0;
+    touch-action: none;
+  }
+
+  .desktop-browser #player .player-progress-track {
+    height: 6px;
+  }
+
+  .desktop-browser #player .player-desktop-back-button {
+    top: calc(8px + var(--browser-safe-area-top));
+    left: calc(8px + var(--browser-safe-area-left));
+  }
+
+  .desktop-browser #player .player-html-subtitle-default {
+    right: max(4vw, calc(var(--browser-safe-area-right) + 12px));
+    bottom: calc(68px + var(--browser-safe-area-bottom));
+    left: max(4vw, calc(var(--browser-safe-area-left) + 12px));
+  }
+
+  .desktop-browser #player .player-subtitle-modal,
+  .desktop-browser #player .player-audio-modal,
+  .desktop-browser #player .player-speed-modal {
+    left: max(12px, var(--browser-safe-area-left));
+    bottom: max(12px, var(--browser-safe-area-bottom));
+    width: calc(100vw - max(12px, var(--browser-safe-area-left)) - max(12px, var(--browser-safe-area-right)));
+    max-height: calc(100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
+  }
+
+  .desktop-browser #player .player-subtitle-modal,
+  .desktop-browser #player .player-audio-modal {
+    height: min(78dvh, calc(100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px));
+  }
+
+  .desktop-browser #player .player-subtitle-modal {
+    padding: 12px;
+  }
+
+  .desktop-browser #player .player-audio-modal,
+  .desktop-browser #player .player-speed-modal {
+    padding: 14px;
+  }
+
+  .desktop-browser #player .player-sources-panel,
+  .desktop-browser #player .player-episode-panel {
+    width: min(100vw, 440px);
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 14px 0 0 14px;
+  }
+
+  .desktop-browser #player .player-sources-header,
+  .desktop-browser #player .player-episode-panel-header {
+    align-items: flex-start;
+  }
+
+  .desktop-browser #player .player-sources-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .desktop-browser #player .player-sources-top-btn {
+    min-height: 44px;
+  }
+
+  .desktop-browser #player .player-source-current-meta,
+  .desktop-browser #player .player-source-title,
+  .desktop-browser #player .player-source-desc,
+  .desktop-browser #player .player-source-addon {
+    overflow-wrap: anywhere;
+  }
+
+  .desktop-browser #player .player-parental-guide {
+    top: calc(58px + var(--browser-safe-area-top));
+    left: max(16px, calc(var(--browser-safe-area-left) + 16px));
+    max-width: calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 32px);
+  }
+}
+
+/* Portrait phones use a deliberate two-part toolbar: a stable action row with
+   fullscreen, then time below the timeline. Less-frequent actions live in the
+   existing More state rather than changing the primary row's geometry. */
+@media (max-width: 600px) and (orientation: portrait) {
+  .desktop-browser #player .player-controls-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    grid-template-areas:
+      "time time"
+      "buttons fullscreen";
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 6px;
+    min-width: 0;
+    padding: 2px 0 0;
+  }
+
+  .desktop-browser #player .player-control-buttons {
+    grid-area: buttons;
+    display: flex;
+    min-width: 0;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .desktop-browser #player .player-control-btn {
+    flex: 0 1 38px;
+    width: 38px;
+    min-width: 0;
+    height: 38px;
+  }
+
+  .desktop-browser #player .player-control-btn.is-primary {
+    flex-basis: 42px;
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+  }
+
+  .desktop-browser #player .player-desktop-playback-tools {
+    display: contents;
+  }
+
+  .desktop-browser #player .player-desktop-playback-tools [data-player-desktop-action="mute"] {
+    display: none;
+  }
+
+  .desktop-browser #player .player-desktop-playback-tools [data-player-desktop-action="fullscreen"] {
+    grid-area: fullscreen;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .desktop-browser #player .player-time-label {
+    grid-area: time;
+    justify-self: end;
+    min-width: 0;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .desktop-browser #player .player-mobile-more-panel {
+    position: absolute;
+    right: max(12px, var(--browser-safe-area-right));
+    bottom: calc(96px + var(--browser-safe-area-bottom));
+    z-index: 35;
+    width: min(260px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 14px;
+    background: rgba(24, 24, 29, 0.97);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+    box-sizing: border-box;
+    pointer-events: auto;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .desktop-browser #player .player-mobile-more-panel.hidden {
+    display: none;
+  }
+
+  .desktop-browser #player .player-mobile-more-title {
+    margin: 0 2px 8px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .desktop-browser #player .player-mobile-more-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .desktop-browser #player .player-mobile-more-action {
+    display: inline-flex;
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    height: auto;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.94);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.1;
+    pointer-events: auto;
+  }
+
+  .desktop-browser #player .player-mobile-more-action .player-control-icon {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 600px) and (max-height: 500px) {
+  .desktop-browser #player #playerUiRoot {
+    --player-action-controls-open-bottom: calc(104px + var(--browser-safe-area-bottom));
+  }
+
+  .desktop-browser #player .player-controls-overlay {
+    padding-top: max(8px, var(--browser-safe-area-top));
+    padding-bottom: max(8px, var(--browser-safe-area-bottom));
+  }
+
+  .desktop-browser #player .player-meta {
+    max-width: min(54vw, 560px);
+  }
+
+  .desktop-browser #player .player-title {
+    font-size: clamp(18px, 3.3vw, 24px);
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+
+  .desktop-browser #player .player-progress-shell {
+    padding-block: 9px;
+  }
+}

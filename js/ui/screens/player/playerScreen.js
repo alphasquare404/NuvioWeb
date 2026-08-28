@@ -5187,6 +5187,7 @@ export const PlayerScreen = {
         <div id="playerSubtitleDialog" class="player-modal player-subtitle-modal hidden"></div>
         <div id="playerAudioDialog" class="player-modal player-audio-modal hidden"></div>
         <div id="playerSpeedDialog" class="player-modal player-speed-modal hidden"></div>
+        <div id="playerMobileMorePanel" class="player-mobile-more-panel hidden"></div>
         <div id="playerSourcesPanel" class="player-sources-panel hidden"></div>
 
         <div id="playerControlsOverlay" class="player-controls-overlay">
@@ -5279,6 +5280,15 @@ export const PlayerScreen = {
         </button>
       </div>
     `;
+  },
+
+  isCompactBrowserPlayerToolbar() {
+    return Boolean(
+      Environment.isBrowser() &&
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(max-width: 600px) and (orientation: portrait)").matches
+    );
   },
 
   scheduleDesktopPlayerViewportSync() {
@@ -5616,32 +5626,38 @@ export const PlayerScreen = {
     if (!Environment.isBrowser()) {
       return;
     }
-    const tools = this.uiRefs?.root?.querySelector(".player-desktop-playback-tools");
-    if (!tools) {
+    const tools = Array.from(
+      this.uiRefs?.root?.querySelectorAll(
+        ".player-desktop-playback-tools, .player-mobile-more-panel"
+      ) || []
+    );
+    if (!tools.length) {
       return;
     }
     const { volume, muted } = this.getDesktopVolumeState();
-    const muteButton = tools.querySelector("[data-player-desktop-action='mute']");
-    const muteIcon = tools.querySelector("[data-player-desktop-mute-icon]");
-    const volumeInput = tools.querySelector("[data-player-desktop-volume]");
-    const fullscreenButton = tools.querySelector("[data-player-desktop-action='fullscreen']");
-    const fullscreenIcon = tools.querySelector("[data-player-desktop-fullscreen-icon]");
     const fullscreen = this.isDesktopPlayerFullscreen();
     const muteLabel = muted ? "Unmute" : "Mute";
-    muteButton?.setAttribute("aria-label", muteLabel);
-    muteButton?.setAttribute("title", muteLabel);
-    if (muteIcon) {
-      muteIcon.innerHTML = muted ? "&#128263;" : "&#128266;";
-    }
-    if (volumeInput && document.activeElement !== volumeInput) {
-      volumeInput.value = String(Math.round(volume * 100));
-    }
     const fullscreenLabel = fullscreen ? "Exit fullscreen" : "Enter fullscreen";
-    fullscreenButton?.setAttribute("aria-label", fullscreenLabel);
-    fullscreenButton?.setAttribute("title", fullscreenLabel);
-    if (fullscreenIcon) {
-      fullscreenIcon.innerHTML = fullscreen ? "&#10094;&#10095;" : "&#9974;";
-    }
+    tools.forEach((toolRoot) => {
+      const muteButton = toolRoot.querySelector("[data-player-desktop-action='mute']");
+      const muteIcon = toolRoot.querySelector("[data-player-desktop-mute-icon]");
+      const volumeInput = toolRoot.querySelector("[data-player-desktop-volume]");
+      const fullscreenButton = toolRoot.querySelector("[data-player-desktop-action='fullscreen']");
+      const fullscreenIcon = toolRoot.querySelector("[data-player-desktop-fullscreen-icon]");
+      muteButton?.setAttribute("aria-label", muteLabel);
+      muteButton?.setAttribute("title", muteLabel);
+      if (muteIcon) {
+        muteIcon.innerHTML = muted ? "&#128263;" : "&#128266;";
+      }
+      if (volumeInput && document.activeElement !== volumeInput) {
+        volumeInput.value = String(Math.round(volume * 100));
+      }
+      fullscreenButton?.setAttribute("aria-label", fullscreenLabel);
+      fullscreenButton?.setAttribute("title", fullscreenLabel);
+      if (fullscreenIcon) {
+        fullscreenIcon.innerHTML = fullscreen ? "&#10094;&#10095;" : "&#9974;";
+      }
+    });
   },
 
   dismissDesktopPlayerPanelFromPointer(target) {
@@ -5761,6 +5777,7 @@ export const PlayerScreen = {
           subtitleDialog: uiRoot.querySelector("#playerSubtitleDialog"),
           audioDialog: uiRoot.querySelector("#playerAudioDialog"),
           speedDialog: uiRoot.querySelector("#playerSpeedDialog"),
+          mobileMorePanel: uiRoot.querySelector("#playerMobileMorePanel"),
           sourcesPanel: uiRoot.querySelector("#playerSourcesPanel"),
           controlsOverlay: uiRoot.querySelector("#playerControlsOverlay"),
           controlsBottom: uiRoot.querySelector(".player-controls-bottom"),
@@ -9583,6 +9600,7 @@ export const PlayerScreen = {
   getControlDefinitions() {
     const uiState = this.getPlayerUiState();
     const nextEpisode = this.resolveNextEpisodeInfo();
+    const compactBrowserToolbar = this.isCompactBrowserPlayerToolbar();
     const base = [
       {
         action: "playPause",
@@ -9634,11 +9652,13 @@ export const PlayerScreen = {
 
     base.push({
       action: "more",
-      label: this.moreActionsVisible ? "<" : ">",
-      title: t("player_more_actions_title", {}, "More Actions")
+      label: ">",
+      title: this.moreActionsVisible && compactBrowserToolbar
+        ? t("common_close", {}, "Close more actions")
+        : t("player_more_actions_title", {}, "More Actions")
     });
 
-    if (!this.moreActionsVisible) {
+    if (!this.moreActionsVisible || compactBrowserToolbar) {
       return base;
     }
 
@@ -9662,6 +9682,43 @@ export const PlayerScreen = {
       },
       { action: "backFromMore", label: "<", title: t("player_go_back", {}, "Back") }
     ];
+  },
+
+  renderCompactBrowserMorePanel() {
+    const panel = this.uiRefs?.mobileMorePanel;
+    if (!panel) {
+      return;
+    }
+    const visible = this.isCompactBrowserPlayerToolbar() && this.moreActionsVisible;
+    panel.classList.toggle("hidden", !visible);
+    if (!visible) {
+      panel.innerHTML = "";
+      return;
+    }
+
+    const { muted } = this.getDesktopVolumeState();
+    const speedAvailable = this.getPlaybackSpeedOptions().length > 1;
+    panel.innerHTML = `
+      <div class="player-mobile-more-title">${escapeHtml(t("player_more_actions_title", {}, "More Actions"))}</div>
+      <div class="player-mobile-more-actions" role="group" aria-label="${escapeHtml(t("player_more_actions_title", {}, "More Actions"))}">
+        <button class="player-mobile-more-action" type="button" data-player-desktop-action="mute"
+                title="${escapeHtml(muted ? "Unmute" : "Mute")}" aria-label="${escapeHtml(muted ? "Unmute" : "Mute")}">
+          <span class="player-desktop-tool-icon" data-player-desktop-mute-icon aria-hidden="true">${muted ? "&#128263;" : "&#128266;"}</span>
+          <span>${escapeHtml(muted ? "Unmute" : "Mute")}</span>
+        </button>
+        ${
+          speedAvailable
+            ? `<button class="player-mobile-more-action player-control-btn" type="button" data-action="speed" title="${escapeHtml(t("player_playback_speed", {}, "Playback speed"))}">
+                <span>${escapeHtml(`${this.getPlaybackSpeed().toFixed(this.getPlaybackSpeed() % 1 ? 2 : 0)}x`)}</span>
+              </button>`
+            : ""
+        }
+        <button class="player-mobile-more-action player-control-btn" type="button" data-action="aspect" title="${escapeHtml(t("player_more_aspect_ratio", {}, "Aspect Ratio"))}">
+          <span class="player-control-icon player-control-icon-mask" style="-webkit-mask-image:url('assets/icons/ic_player_aspect_ratio.svg');mask-image:url('assets/icons/ic_player_aspect_ratio.svg');" aria-hidden="true"></span>
+          <span>${escapeHtml(t("player_more_aspect_ratio", {}, "Aspect Ratio"))}</span>
+        </button>
+      </div>
+    `;
   },
 
   getControlRenderSignature(controls = this.getControlDefinitions()) {
@@ -9773,6 +9830,7 @@ export const PlayerScreen = {
       }
     }
     this.syncSkipIntroFocusState();
+    this.renderCompactBrowserMorePanel();
     this.renderNextEpisodeCard();
     this.syncPlayerOverlayLayoutState();
     this.renderBitmapSubtitleAtCurrentTime();
@@ -19240,11 +19298,14 @@ export const PlayerScreen = {
 
     if (action === "more") {
       this.stickyProgressFocus = false;
-      this.moreActionsVisible = true;
+      const compactBrowserToolbar = this.isCompactBrowserPlayerToolbar();
+      this.moreActionsVisible = compactBrowserToolbar ? !this.moreActionsVisible : true;
       this.controlFocusZone = "buttons";
       this.controlFocusIndex = Math.max(
         0,
-        this.getControlDefinitions().findIndex((entry) => entry.action === "speed")
+        this.getControlDefinitions().findIndex((entry) =>
+          entry.action === (compactBrowserToolbar ? "more" : "speed")
+        )
       );
       this.renderControlButtons();
       return;
@@ -19263,11 +19324,19 @@ export const PlayerScreen = {
     }
 
     if (action === "speed") {
+      if (this.isCompactBrowserPlayerToolbar()) {
+        this.moreActionsVisible = false;
+        this.renderControlButtons();
+      }
       this.openSpeedDialog();
       return;
     }
 
     if (action === "aspect") {
+      if (this.isCompactBrowserPlayerToolbar()) {
+        this.moreActionsVisible = false;
+        this.renderControlButtons();
+      }
       this.cycleAspectMode();
       return;
     }
@@ -19441,7 +19510,9 @@ export const PlayerScreen = {
     if (desktopAction && Environment.isBrowser()) {
       this.revealDesktopPlayerControls();
       if (desktopAction.dataset.playerDesktopAction === "mute") {
-        return this.toggleDesktopMute();
+        const toggled = await this.toggleDesktopMute();
+        this.renderCompactBrowserMorePanel();
+        return toggled;
       }
       if (desktopAction.dataset.playerDesktopAction === "fullscreen") {
         return this.toggleDesktopFullscreen();
