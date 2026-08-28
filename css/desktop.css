@@ -8051,6 +8051,7 @@ html.desktop-browser {
 .desktop-browser .desktop-media-hover-preview-actions button:disabled { cursor: default; opacity: .62; }
 .desktop-browser .desktop-media-hover-preview-actions button:focus-visible { outline: 2px solid var(--secondary-color); outline-offset: 2px; }
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.desktop-hover-preview-active .home-poster-frame { transform: none; border-color: transparent; box-shadow: none; }
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card.desktop-hover-preview-active .search-result-poster-wrap { transform: none; border-color: transparent; box-shadow: none; }
 @media (hover: hover) and (pointer: fine) { .desktop-browser .desktop-media-hover-preview-actions button:not(:disabled):hover { border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.16); } .desktop-browser .desktop-media-hover-preview-actions .desktop-media-hover-preview-primary:not(:disabled):hover { background: #fff; } }
 @media (max-width: 1100px) { .desktop-browser .desktop-media-hover-preview { max-width: calc(100vw - 32px); } }
 

@@ -3,6 +3,7 @@ import { ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
+import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import { Platform } from "../../../platform/index.js";
@@ -36,6 +37,13 @@ import {
 } from "../../components/watchedTitleBadge.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
+import {
+  getDesktopMediaLibraryMembership,
+  openDesktopMediaLibraryDestinationMenu,
+  subscribeDesktopMediaLibrarySource,
+  toggleDesktopMediaLibraryMembership
+} from "../../components/desktopMediaLibraryActions.js";
 import { filterReleasedItems } from "../../../core/util/releaseInfoUtils.js";
 import {
   buildSearchScheduleIndices,
@@ -54,6 +62,29 @@ const SEARCH_CATALOG_TIMEOUT_MS_CONSTRAINED = 6500;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function resolveYoutubeId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
+  const match = raw.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/i);
+  return match?.[1] || "";
+}
+
+function resolveTrailerSource(meta = {}) {
+  const entries = [
+    ...(Array.isArray(meta.trailers) ? meta.trailers : []),
+    ...(Array.isArray(meta.videos) ? meta.videos : [])
+  ];
+  for (const entry of entries) {
+    const ytId = resolveYoutubeId(
+      entry?.ytId || entry?.youtubeId || entry?.source || entry?.url || entry?.link
+    );
+    if (ytId) return { kind: "youtube", ytId };
+  }
+  const ytId = resolveYoutubeId(Array.isArray(meta.trailerYtIds) ? meta.trailerYtIds[0] : "");
+  return ytId ? { kind: "youtube", ytId } : null;
 }
 
 function escapeHtml(value) {
@@ -581,6 +612,7 @@ export const SearchScreen = {
     this.buildNavigationModel();
     this.bindActionEvents();
     this.bindDesktopSearchShelfInteractions();
+    this.bindDesktopMediaHoverPreview();
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -959,6 +991,7 @@ export const SearchScreen = {
     this.bindSearchInputEvents();
     this.bindActionEvents();
     this.bindDesktopSearchShelfInteractions();
+    this.bindDesktopMediaHoverPreview();
     const input = this.container.querySelector("#searchInput");
     input?.blur?.();
     this.restoreScrollState();
@@ -1091,6 +1124,61 @@ export const SearchScreen = {
         }
       });
     });
+  },
+
+  getDesktopHoverPreviewItem(node) {
+    if (!node?.matches?.(".search-result-card.focusable[data-action='openDetail']")) {
+      return null;
+    }
+    return {
+      id: String(node.dataset.itemId || "").trim(),
+      type: node.dataset.itemType || node.dataset.catalogType || "movie",
+      name: node.dataset.itemTitle || "Untitled",
+      poster: node.dataset.posterSrc || "",
+      background: node.dataset.backdropSrc || "",
+      backdrop: node.dataset.backdropSrc || ""
+    };
+  },
+
+  async resolveDesktopHoverPreviewMetadata(item) {
+    const itemId = String(item?.id || "").trim();
+    const itemType = String(item?.type || item?.apiType || "movie").trim() || "movie";
+    if (!itemId) return null;
+    const result = await withTimeout(
+      metaRepository.getMetaFromAllAddons(itemType, itemId),
+      4000,
+      { status: "error", message: "timeout" }
+    ).catch(() => ({ status: "error" }));
+    if (result?.status !== "success" || !result.data) return null;
+    const meta = result.data;
+    return {
+      ...meta,
+      id: itemId,
+      type: meta.type || itemType,
+      name: meta.name || meta.title || item.name,
+      description: meta.description || meta.overview || "",
+      imdbRating: meta.imdbRating ?? meta.imdb_rating ?? meta.rating ?? null,
+      genres: Array.isArray(meta.genres) ? meta.genres : []
+    };
+  },
+
+  bindDesktopMediaHoverPreview() {
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+    this.desktopMediaHoverPreview ||= createDesktopMediaHoverPreview({
+      getItem: (node) => this.getDesktopHoverPreviewItem(node),
+      openDetail: (node) => this.openDetailFromNode(node),
+      resolveTrailer: (item) => resolveTrailerSource(item),
+      resolveMetadata: (item) => this.resolveDesktopHoverPreviewMetadata(item),
+      getLibraryMembership: getDesktopMediaLibraryMembership,
+      toggleLibrary: toggleDesktopMediaLibraryMembership,
+      openLibraryDestinationMenu: openDesktopMediaLibraryDestinationMenu,
+      subscribeLibrarySource: subscribeDesktopMediaLibrarySource,
+      cardSelector: ".search-results-track .search-result-card.focusable[data-action='openDetail']",
+      subtitleSelector: ".search-result-date"
+    });
+    this.desktopMediaHoverPreview.bind(this.container);
   },
 
   clearDesktopSearchShelfDrag({ suppressClick = false } = {}) {
@@ -2212,6 +2300,8 @@ export const SearchScreen = {
   },
 
   cleanup() {
+    this.desktopMediaHoverPreview?.destroy();
+    this.desktopMediaHoverPreview = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.cancelScheduledRender();
