@@ -3491,7 +3491,7 @@ html.desktop-browser {
   padding-top: 10px;
   padding-bottom: 14px;
   scrollbar-width: none;
-  touch-action: pan-y;
+  touch-action: pan-x pan-y;
 }
 
 .desktop-browser #detail .detail-morelike-track.is-pointer-dragging,
@@ -6205,7 +6205,7 @@ html.desktop-browser {
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: pan-y;
+  touch-action: pan-x pan-y;
 }
 
 .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-track.is-pointer-dragging {
