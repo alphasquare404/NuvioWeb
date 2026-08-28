@@ -4011,7 +4011,10 @@ export const HomeScreen = {
 
   startHeroRotation() {
     this.stopHeroRotation();
-    if ((this.layoutMode === "modern" && !Platform.isBrowser()) || this.isPerformanceConstrained()) {
+    if (
+      (this.layoutMode === "modern" && !Platform.isBrowser()) ||
+      (!Platform.isBrowser() && this.isPerformanceConstrained())
+    ) {
       return;
     }
     if (Platform.isBrowser() && document.hidden) {
