@@ -9686,7 +9686,8 @@ export const HomeScreen = {
     const classicGradientClass = this.layoutMode === "classic" && this.layoutPrefs?.classicFocusGradientEnabled
       ? " home-classic-focus-gradient"
       : "";
-    const layoutClass = `home-layout-${this.layoutMode}${modernLandscapeLayoutClass}${modernHeroFullScreenBackdropClass}${modernSidebarLayoutClass}${depthClass}${classicGradientClass}`;
+    const heroVisibilityClass = showHeroSection ? "" : " home-hero-disabled";
+    const layoutClass = `home-layout-${this.layoutMode}${heroVisibilityClass}${modernLandscapeLayoutClass}${modernHeroFullScreenBackdropClass}${modernSidebarLayoutClass}${depthClass}${classicGradientClass}`;
     const sizingStyle = [
       this.layoutMode === "modern" ? buildModernHomeSizingStyle(this.layoutPrefs) : "",
       `--card-depth-edge:${Number(this.layoutPrefs?.cardDepthEdgeStrength ?? 28) / 100}`,

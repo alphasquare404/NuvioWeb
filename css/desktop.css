@@ -450,6 +450,12 @@ html.desktop-browser {
   padding: 0;
 }
 
+/* With a Hero, its layout box naturally clears the fixed browser navigation.
+   When the Hero is disabled, retain that clearance for the first Home rail. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-hero-disabled .home-route-content {
+  padding-top: var(--browser-home-no-hero-top, calc(var(--browser-safe-area-top) + 92px));
+}
+
 /* The browser hero is a full-bleed, cinematic section while rows retain their
    existing rendering and card dimensions below it. */
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero {
@@ -8471,6 +8477,10 @@ body.desktop-browser {
     --browser-mobile-control-size: 44px;
     --browser-mobile-nav-clearance: calc(var(--browser-safe-area-top) + 68px);
     --browser-mobile-section-gap: 24px;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-hero-disabled .home-route-content {
+    --browser-home-no-hero-top: var(--browser-mobile-nav-clearance);
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card,
