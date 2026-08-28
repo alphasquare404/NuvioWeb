@@ -8488,3 +8488,201 @@ body.desktop-browser {
 .desktop-browser .profile-desktop-back-button .material-icons,
 .desktop-browser .profile-pin-desktop-back .material-icons,
 .desktop-browser .desktop-qr-back-button .material-icons { font-size: 24px; line-height: 1; }
+
+/* Search and Collection keep their browser shell on touch devices, with
+   native horizontal rails and phone-scale spacing. TV layouts are unaffected. */
+@media (max-width: 600px) {
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled > .search-content {
+    padding-top: var(--browser-mobile-nav-clearance);
+    padding-right: var(--browser-page-gutter);
+    padding-left: var(--browser-page-gutter);
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading {
+    margin-bottom: 12px;
+    font-size: clamp(28px, 8vw, 34px);
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header,
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover,
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-voice {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover.no-voice {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-discover-btn,
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-voice-btn,
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-input-field {
+    height: 52px;
+    min-height: 52px;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-input-field {
+    min-width: 0;
+    padding-inline: 16px;
+    font-size: 17px;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-row {
+    margin-bottom: 28px;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-title,
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-subtitle {
+    padding-inline: 0;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-title {
+    font-size: clamp(23px, 6.8vw, 28px);
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-track {
+    --search-desktop-card-width: clamp(142px, 39vw, 168px);
+    gap: 12px;
+    margin-right: calc(-1 * var(--browser-page-gutter));
+    margin-left: calc(-1 * var(--browser-page-gutter));
+    padding: 8px var(--browser-page-gutter) 16px;
+    cursor: auto;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-name {
+    display: -webkit-box;
+    min-height: 2.6em;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    text-overflow: ellipsis;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-date {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-empty-state-idle,
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-empty-state-results,
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-loading {
+    min-height: min(42dvh, 340px);
+    padding-block: 28px;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    min-height: 100dvh;
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) calc(40px + var(--browser-safe-area-bottom));
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-header {
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-heading {
+    gap: 7px;
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-heading h1 {
+    font-size: clamp(27px, 8vw, 34px);
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-logo {
+    max-width: min(280px, 72vw);
+    max-height: 76px;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs {
+    width: calc(100% + var(--browser-page-gutter) + var(--browser-page-gutter));
+    margin-inline: calc(-1 * var(--browser-page-gutter));
+    padding: 2px var(--browser-page-gutter) 10px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tab {
+    flex: 0 0 auto;
+    min-height: 42px;
+    white-space: nowrap;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(42vw, 168px), 1fr));
+    gap: 24px 12px;
+    padding-bottom: 36px;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card-title {
+    display: -webkit-box;
+    min-height: 2.6em;
+    overflow: hidden;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-rows {
+    gap: 28px;
+    padding-bottom: 36px;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-rows .folder-detail-row-title {
+    font-size: clamp(22px, 6.5vw, 27px);
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track {
+    gap: 12px;
+    margin-inline: calc(-1 * var(--browser-page-gutter));
+    padding: 8px var(--browser-page-gutter) 16px;
+    cursor: auto;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track .seeall-card {
+    flex-basis: clamp(142px, 39vw, 168px);
+    min-width: clamp(142px, 39vw, 168px);
+  }
+}
+
+@media (min-width: 601px) and (max-width: 1023px) {
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled > .search-content {
+    padding: calc(var(--browser-safe-area-top) + 92px) clamp(28px, 4vw, 44px) 52px;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-track {
+    --search-desktop-card-width: clamp(172px, 23vw, 210px);
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    padding: calc(var(--browser-safe-area-top) + 96px) clamp(28px, 4vw, 44px) 52px;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-grid {
+    grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
+    gap: 28px 16px;
+  }
+
+  .desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track {
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
+}

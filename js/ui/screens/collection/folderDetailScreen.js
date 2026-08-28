@@ -1683,10 +1683,17 @@ export const FolderDetailScreen = {
       bindDesktopNavigationEvents(this.container);
     }
     this.bindDesktopBrowserEvents();
+    this.syncBrowserSelectedTabIntoView();
     this.applyDesktopAmbientTheme();
     this.buildNavigationModel();
     this.restoreFocus();
     this.applyHeroToDom();
+  },
+
+  syncBrowserSelectedTabIntoView() {
+    if (!this.isDesktopBrowser) return;
+    const selectedTab = this.container?.querySelector(".folder-detail-tab.is-selected");
+    selectedTab?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   },
 
   renderFollowLayout() {
