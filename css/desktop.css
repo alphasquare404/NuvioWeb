@@ -8803,6 +8803,349 @@ body.desktop-browser {
   }
 }
 
+/* Detail keeps its browser composition on narrow screens, with dedicated
+   phone-scale rails and typography rather than inheriting TV-sized geometry. */
+@media (max-width: 600px) {
+  .desktop-browser #detail .series-detail-backdrop,
+  .desktop-browser #detail .series-detail-vignette,
+  .desktop-browser #detail .detail-hero-section {
+    min-height: min(68dvh, 580px);
+    height: min(68dvh, 580px);
+  }
+
+  .desktop-browser #detail .detail-hero-section {
+    padding:
+      var(--browser-mobile-nav-clearance)
+      var(--browser-page-gutter)
+      24px;
+  }
+
+  .desktop-browser #detail .detail-hero-brand {
+    min-height: 0;
+  }
+
+  .desktop-browser #detail .series-detail-logo {
+    width: auto;
+    max-width: min(76vw, 320px);
+    max-height: min(19vw, 86px);
+    margin-bottom: 12px;
+  }
+
+  .desktop-browser #detail .series-detail-title {
+    max-width: 100%;
+    margin-bottom: 10px;
+    font-size: clamp(30px, 8.5vw, 38px);
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+  }
+
+  .desktop-browser #detail .detail-desktop-back-button {
+    top: calc(8px + var(--browser-safe-area-top));
+    left: calc(8px + var(--browser-safe-area-left));
+    width: var(--browser-mobile-control-size);
+    min-width: var(--browser-mobile-control-size);
+    height: var(--browser-mobile-control-size);
+    min-height: var(--browser-mobile-control-size);
+  }
+
+  .desktop-browser #detail .detail-hero-body,
+  .desktop-browser #detail .series-detail-support,
+  .desktop-browser #detail .series-detail-description {
+    width: min(100%, 38rem);
+    max-width: 100%;
+  }
+
+  .desktop-browser #detail .series-detail-actions {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .desktop-browser #detail .series-primary-btn {
+    height: 46px;
+    min-height: 46px;
+    padding-inline: 18px;
+  }
+
+  .desktop-browser #detail .series-circle-btn {
+    flex-basis: 44px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .desktop-browser #detail .series-detail-support {
+    margin-bottom: 8px;
+    font-size: 15px;
+    line-height: 1.42;
+    overflow-wrap: anywhere;
+  }
+
+  .desktop-browser #detail .detail-ratings-row {
+    gap: 8px 10px;
+    margin-bottom: 10px;
+  }
+
+  .desktop-browser #detail .detail-rating-item {
+    font-size: 13px;
+  }
+
+  .desktop-browser #detail .series-detail-description {
+    margin-bottom: 12px;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  .desktop-browser #detail .detail-meta-stack {
+    gap: 7px;
+  }
+
+  .desktop-browser #detail .detail-meta-row {
+    column-gap: 8px;
+    row-gap: 7px;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .desktop-browser #detail .detail-meta-row.secondary {
+    font-size: 13px;
+  }
+
+  .desktop-browser #detail .detail-meta-row > span {
+    min-width: 0;
+  }
+
+  .desktop-browser #detail .detail-meta-dot {
+    flex: 0 0 1px;
+  }
+
+  .desktop-browser #detail .series-insight-section {
+    margin-top: 28px;
+  }
+
+  .desktop-browser #detail .series-insight-tabs {
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px var(--browser-page-gutter) 10px;
+    scrollbar-width: none;
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser #detail .series-insight-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .desktop-browser #detail .series-insight-tab,
+  .desktop-browser #detail .series-insight-divider {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .desktop-browser #detail .series-insight-tab {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 15px;
+  }
+
+  .desktop-browser #detail .movie-cast-track,
+  .desktop-browser #detail .series-cast-track {
+    gap: 12px;
+    padding: 8px var(--browser-page-gutter) 14px;
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser #detail .movie-cast-card,
+  .desktop-browser #detail .series-cast-card {
+    flex-basis: 94px;
+    width: 94px;
+  }
+
+  .desktop-browser #detail .movie-cast-avatar {
+    width: 80px;
+    height: 80px;
+    margin-bottom: 7px;
+  }
+
+  .desktop-browser #detail .movie-cast-name {
+    font-size: 14px;
+  }
+
+  .desktop-browser #detail .movie-cast-role {
+    margin-top: 2px;
+    font-size: 12px;
+  }
+
+  .desktop-browser #detail .series-season-row {
+    gap: 8px;
+    padding: 14px var(--browser-page-gutter) 8px;
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser #detail .series-episode-track {
+    gap: 12px;
+    padding: 10px var(--browser-page-gutter) 18px;
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser #detail .series-episode-card {
+    flex-basis: clamp(248px, 70vw, 290px);
+    width: clamp(248px, 70vw, 290px);
+  }
+
+  .desktop-browser #detail .series-episode-copy {
+    padding: 12px 12px 14px;
+  }
+
+  .desktop-browser #detail .series-episode-overview {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .desktop-browser #detail .detail-morelike-track,
+  .desktop-browser #detail .detail-company-track {
+    gap: 12px;
+    padding-right: var(--browser-page-gutter);
+    padding-left: var(--browser-page-gutter);
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser #detail .detail-morelike-card {
+    flex-basis: clamp(138px, 40vw, 164px);
+    width: clamp(138px, 40vw, 164px);
+  }
+
+  .desktop-browser #detail .detail-trailer-card {
+    flex-basis: clamp(240px, 70vw, 300px);
+    width: clamp(240px, 70vw, 300px);
+  }
+
+  .desktop-browser #detail .detail-morelike-name {
+    font-size: 14px;
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .desktop-browser #detail .detail-morelike-type {
+    font-size: 12px;
+  }
+
+  .desktop-browser #detail .detail-company-section,
+  .desktop-browser #detail .detail-comments-section {
+    margin-top: 28px;
+  }
+
+  .desktop-browser #detail .detail-company-title,
+  .desktop-browser #detail .detail-comments-heading {
+    padding-inline: var(--browser-page-gutter);
+    font-size: 24px;
+  }
+
+  .desktop-browser #detail .detail-company-card {
+    flex-basis: clamp(180px, 56vw, 220px);
+    width: clamp(180px, 56vw, 220px);
+    height: 84px;
+  }
+
+  .desktop-browser #detail .series-detail-content {
+    padding-bottom: calc(44px + var(--browser-safe-area-bottom));
+  }
+}
+
+/* Tablets keep a roomier, desktop-like Detail page while retaining touch-first
+   horizontal rails and safe viewport gutters. */
+@media (min-width: 601px) and (max-width: 1023px) {
+  .desktop-browser #detail {
+    --detail-tablet-gutter: clamp(24px, 4vw, 36px);
+  }
+
+  .desktop-browser #detail .series-detail-backdrop,
+  .desktop-browser #detail .series-detail-vignette,
+  .desktop-browser #detail .detail-hero-section {
+    min-height: min(68dvh, 720px);
+  }
+
+  .desktop-browser #detail .detail-hero-section {
+    padding: calc(var(--browser-safe-area-top) + 92px) var(--detail-tablet-gutter) 34px;
+  }
+
+  .desktop-browser #detail .detail-hero-body {
+    width: min(68%, 620px);
+  }
+
+  .desktop-browser #detail .series-detail-logo {
+    max-width: min(58vw, 420px);
+    max-height: 104px;
+  }
+
+  .desktop-browser #detail .series-detail-title {
+    font-size: clamp(36px, 5.5vw, 48px);
+  }
+
+  .desktop-browser #detail .series-insight-tabs,
+  .desktop-browser #detail .movie-cast-track,
+  .desktop-browser #detail .series-cast-track,
+  .desktop-browser #detail .series-season-row,
+  .desktop-browser #detail .series-episode-track,
+  .desktop-browser #detail .detail-morelike-track,
+  .desktop-browser #detail .detail-company-track {
+    padding-right: var(--detail-tablet-gutter);
+    padding-left: var(--detail-tablet-gutter);
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .desktop-browser #detail .series-insight-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .desktop-browser #detail .series-insight-tab,
+  .desktop-browser #detail .series-insight-divider {
+    flex: 0 0 auto;
+  }
+
+  .desktop-browser #detail .movie-cast-card,
+  .desktop-browser #detail .series-cast-card {
+    flex-basis: 104px;
+    width: 104px;
+  }
+
+  .desktop-browser #detail .movie-cast-avatar {
+    width: 88px;
+    height: 88px;
+  }
+
+  .desktop-browser #detail .series-episode-card {
+    flex-basis: clamp(300px, 42vw, 340px);
+    width: clamp(300px, 42vw, 340px);
+  }
+
+  .desktop-browser #detail .detail-morelike-card {
+    flex-basis: clamp(170px, 24vw, 204px);
+    width: clamp(170px, 24vw, 204px);
+  }
+
+  .desktop-browser #detail .detail-trailer-card {
+    flex-basis: clamp(300px, 44vw, 380px);
+    width: clamp(300px, 44vw, 380px);
+  }
+}
+
 /* One browser-only chevron treatment for nested route back actions. */
 .desktop-browser .detail-desktop-back-button .material-icons,
 .desktop-browser .folder-detail-desktop-back .material-icons,

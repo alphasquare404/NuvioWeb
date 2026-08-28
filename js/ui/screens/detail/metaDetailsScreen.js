@@ -6718,6 +6718,38 @@ export const MetaDetailsScreen = {
     window.addEventListener("pointercancel", this.boundDesktopLibraryPointerCancelHandler, true);
   },
 
+  bindDesktopInsightTabActions() {
+    if (!Platform.isBrowser() || !this.container || this.boundDesktopInsightTabActionHandler) {
+      return;
+    }
+    this.boundDesktopInsightTabActionHandler = (event) => {
+      const target = event?.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const tabNode = target.closest(".series-insight-tabs .series-insight-tab[data-action]");
+      if (!(tabNode instanceof HTMLElement) || !this.container.contains(tabNode)) {
+        return;
+      }
+      const action = String(tabNode.dataset.action || "");
+      const tab = String(tabNode.dataset.tab || "");
+      if (!tab) {
+        return;
+      }
+      const normalizedTab = ["cast", "ratings", "morelike", "trailer", "collection"].includes(tab)
+        ? tab
+        : "cast";
+      if (action === "setSeriesInsightTab" && normalizedTab !== this.seriesInsightTab) {
+        this.seriesInsightTab = normalizedTab;
+        this.updateRenderedDetailSections(this.meta);
+      } else if (action === "setMovieInsightTab" && normalizedTab !== this.movieInsightTab) {
+        this.movieInsightTab = normalizedTab;
+        this.updateRenderedDetailSections(this.meta);
+      }
+    };
+    this.container.addEventListener("click", this.boundDesktopInsightTabActionHandler);
+  },
+
   bindDesktopCastPersonActions() {
     if (!Platform.isBrowser() || !this.container || this.boundDesktopCastPersonActionHandler) {
       return;
@@ -6766,6 +6798,7 @@ export const MetaDetailsScreen = {
       }
       bindDesktopNavigationEvents(this.container);
       this.bindDesktopDetailActions();
+      this.bindDesktopInsightTabActions();
       this.bindDesktopCastPersonActions();
     }
     if (this.detailScrollHandler) {
@@ -10408,6 +10441,10 @@ export const MetaDetailsScreen = {
     if (this.boundDesktopDetailActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopDetailActionHandler);
       this.boundDesktopDetailActionHandler = null;
+    }
+    if (this.boundDesktopInsightTabActionHandler && this.container) {
+      this.container.removeEventListener("click", this.boundDesktopInsightTabActionHandler);
+      this.boundDesktopInsightTabActionHandler = null;
     }
     if (this.boundDesktopCastPersonActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopCastPersonActionHandler);
