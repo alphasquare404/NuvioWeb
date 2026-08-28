@@ -36,6 +36,17 @@ import {
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
+import {
+  getDesktopMediaLibraryMembership,
+  openDesktopMediaLibraryDestinationMenu,
+  subscribeDesktopMediaLibrarySource,
+  toggleDesktopMediaLibraryMembership
+} from "../../components/desktopMediaLibraryActions.js";
+import {
+  resolveDesktopMediaPreviewMetadata,
+  resolveDesktopMediaTrailerSource
+} from "../../components/desktopMediaPreviewData.js";
 
 const POSTER_HOLD_DELAY_MS = 650;
 const PICKER_MENU_EXIT_MS = 160;
@@ -384,6 +395,7 @@ export const LibraryScreen = {
 
   renderLoading() {
     const useDesktopNavigation = Platform.isBrowser();
+    this.desktopMediaHoverPreview?.cancelForDrag?.();
     this.container.innerHTML = `
       <div class="home-shell library-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.libraryRouteEnterPending ? " library-route-enter" : ""}">
         ${
@@ -843,6 +855,7 @@ export const LibraryScreen = {
 
     const contentMount = this.container.querySelector("#libraryContentAreaMount");
     if (contentMount instanceof HTMLElement) {
+      this.desktopMediaHoverPreview?.cancelForDrag?.();
       contentMount.outerHTML = this.renderLibraryContentArea(state);
     }
 
@@ -857,6 +870,7 @@ export const LibraryScreen = {
         onExpandSidebar: () => this.focusSidebarNode()
       });
     }
+    this.bindDesktopMediaHoverPreview();
     if (this.isModalFocusLocked()) {
       return;
     }
@@ -907,6 +921,39 @@ export const LibraryScreen = {
         </div>
       </section>
     `;
+  },
+
+  getDesktopHoverPreviewItem(node) {
+    if (!node?.matches?.(".library-grid-card.focusable[data-action='openDetail']")) {
+      return null;
+    }
+    return {
+      id: String(node.dataset.itemId || "").trim(),
+      type: node.dataset.itemType || "movie",
+      name: node.dataset.itemTitle || "Untitled",
+      poster: node.dataset.posterSrc || "",
+      background: node.dataset.backdropSrc || "",
+      backdrop: node.dataset.backdropSrc || ""
+    };
+  },
+
+  bindDesktopMediaHoverPreview() {
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+    this.desktopMediaHoverPreview ||= createDesktopMediaHoverPreview({
+      getItem: (node) => this.getDesktopHoverPreviewItem(node),
+      openDetail: (node) => this.activateNode(node),
+      resolveTrailer: resolveDesktopMediaTrailerSource,
+      resolveMetadata: resolveDesktopMediaPreviewMetadata,
+      getLibraryMembership: getDesktopMediaLibraryMembership,
+      toggleLibrary: toggleDesktopMediaLibraryMembership,
+      openLibraryDestinationMenu: openDesktopMediaLibraryDestinationMenu,
+      subscribeLibrarySource: subscribeDesktopMediaLibrarySource,
+      cardSelector: ".library-grid-card.focusable[data-action='openDetail']",
+      subtitleSelector: ".library-grid-meta"
+    });
+    this.desktopMediaHoverPreview.bind(this.container);
   },
 
   renderEmptyState() {
@@ -1153,6 +1200,7 @@ export const LibraryScreen = {
       return;
     }
 
+    this.desktopMediaHoverPreview?.cancelForDrag?.();
     this.container.innerHTML = `
       <div class="home-shell library-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.libraryRouteEnterPending ? " library-route-enter" : ""}" style="${escapeHtml(libraryStyle)}">
         ${
@@ -1192,6 +1240,7 @@ export const LibraryScreen = {
         onExpandSidebar: () => this.focusSidebarNode()
       });
     }
+    this.bindDesktopMediaHoverPreview();
     if (this.isModalFocusLocked()) {
       return;
     }
@@ -2418,6 +2467,8 @@ export const LibraryScreen = {
   },
 
   cleanup() {
+    this.desktopMediaHoverPreview?.destroy();
+    this.desktopMediaHoverPreview = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.cancelScheduledRender();
