@@ -28,6 +28,7 @@ import { Platform } from "../../platform/index.js";
 import { RouteStateStore } from "./routeStateStore.js";
 import { LocalStore } from "../../core/storage/localStore.js";
 import { setBrowserRouteTitle } from "./browserDocumentTitle.js";
+import { bindBrowserPullToRefresh } from "../components/browserPullToRefresh.js";
 
 const ROUTER_PERF_DEBUG = Boolean(
   globalThis.__NUVIO_DEBUG_ROUTER_PERF__ || globalThis.__NUVIO_DEBUG_HOME_PERF__
@@ -46,6 +47,30 @@ function logRouterPerf(stage, data = {}) {
   try {
     console.info(`[router-perf] ${stage}`, data);
   } catch (_) {}
+}
+
+function getBrowserPullRefreshHandler(routeName, screen) {
+  switch (routeName) {
+    case "home":
+      return () => screen.loadData?.({ background: true, preserveReturnState: true });
+    case "search":
+      return () => screen.reloadRows?.();
+    case "discover":
+      return () => screen.reloadItems?.({ preserveExistingItems: true });
+    case "library":
+      return () => screen.controller?.refreshNow?.();
+    case "detail":
+      return () => screen.loadDetail?.();
+    case "castDetail":
+      return () => screen.loadCastDetails?.();
+    case "folderDetail":
+      return async () => {
+        const sourceTabs = (screen.tabs || []).filter((tab) => !tab?.isAllTab);
+        await Promise.all(sourceTabs.map((tab) => screen.loadTab?.(screen.tabs.indexOf(tab))));
+      };
+    default:
+      return null;
+  }
 }
 
 const NON_BACKSTACK_ROUTES = new Set([
@@ -367,6 +392,8 @@ export const Router = {
     // Cleanup current
     const previousRoute = this.current;
     const shouldSkipPush = skipStackPush || NON_BACKSTACK_ROUTES.has(previousRoute);
+    this.browserPullToRefreshCleanup?.();
+    this.browserPullToRefreshCleanup = null;
     if (this.current && this.current !== routeName) {
       this.captureCurrentRouteState(routeName);
       this.routes[this.current].cleanup?.();
@@ -404,6 +431,15 @@ export const Router = {
     // navigation is stale and must not write an extra history entry.
     if (this.current !== routeName || this.currentParams !== targetParams) {
       return;
+    }
+
+    const pullRefreshHandler = Platform.isBrowser()
+      ? getBrowserPullRefreshHandler(routeName, Screen)
+      : null;
+    if (pullRefreshHandler) {
+      this.browserPullToRefreshCleanup = bindBrowserPullToRefresh({
+        onRefresh: pullRefreshHandler
+      });
     }
 
     if (bootGuard && typeof bootGuard.ready === "function") {

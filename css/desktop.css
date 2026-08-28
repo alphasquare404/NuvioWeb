@@ -8415,6 +8415,49 @@ body.desktop-browser {
   }
 }
 
+.browser-pull-to-refresh {
+  --pull-distance: 0px;
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(25, 25, 29, 0.94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% + var(--pull-distance)));
+  transition: opacity 150ms ease, transform 180ms ease, background-color 150ms ease;
+}
+
+.browser-pull-to-refresh.is-visible {
+  opacity: 1;
+}
+
+.browser-pull-to-refresh.is-ready {
+  background: rgba(56, 56, 62, 0.97);
+}
+
+.browser-pull-to-refresh.is-refreshing .browser-pull-to-refresh-icon {
+  animation: browser-pull-to-refresh-spin 750ms linear infinite;
+}
+
+@keyframes browser-pull-to-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (hover: none), (pointer: coarse) {
   .desktop-browser .desktop-navigation-item {
     -webkit-tap-highlight-color: transparent;
