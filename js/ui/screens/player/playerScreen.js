@@ -5268,6 +5268,7 @@ export const PlayerScreen = {
     }
     const { volume, muted } = this.getDesktopVolumeState();
     const volumePercent = Math.round(volume * 100);
+    const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
     return `
       <div class="player-desktop-playback-tools" aria-label="Playback controls">
         <button class="player-desktop-tool-button" type="button" data-player-desktop-action="mute"
@@ -5276,6 +5277,14 @@ export const PlayerScreen = {
         </button>
         <input class="player-desktop-volume" type="range" min="0" max="100" step="1"
                value="${volumePercent}" data-player-desktop-volume aria-label="Volume" />
+        ${
+          pictureInPictureAvailable
+            ? `<button class="player-desktop-tool-button" type="button" data-player-desktop-action="picture-in-picture"
+                  title="Enter Picture-in-Picture" aria-label="Enter Picture-in-Picture">
+                <span class="player-desktop-tool-icon material-icons" data-player-desktop-picture-in-picture-icon aria-hidden="true">picture_in_picture_alt</span>
+              </button>`
+            : ""
+        }
         <button class="player-desktop-tool-button" type="button" data-player-desktop-action="fullscreen"
                 title="Enter fullscreen" aria-label="Enter fullscreen">
           <span class="player-desktop-tool-icon player-desktop-fullscreen-icon" data-player-desktop-fullscreen-icon aria-hidden="true">&#9974;</span>
@@ -5491,6 +5500,10 @@ export const PlayerScreen = {
     if (video) {
       this.boundDesktopVolumeChangeHandler = () => this.syncDesktopPlaybackTools();
       video.addEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
+      this.boundDesktopPictureInPictureChangeHandler = () => this.syncDesktopPlaybackTools();
+      video.addEventListener("enterpictureinpicture", this.boundDesktopPictureInPictureChangeHandler);
+      video.addEventListener("leavepictureinpicture", this.boundDesktopPictureInPictureChangeHandler);
+      video.addEventListener("webkitpresentationmodechanged", this.boundDesktopPictureInPictureChangeHandler);
     }
     this.browserPlayerGestureCleanup?.();
     this.browserPlayerGestureCleanup = bindBrowserPlayerGestures(this.container, {
@@ -5518,6 +5531,18 @@ export const PlayerScreen = {
       this.boundDesktopPlayerVisualViewportResizeHandler
     );
     this.getDesktopPlaybackVideo()?.removeEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
+    this.getDesktopPlaybackVideo()?.removeEventListener(
+      "enterpictureinpicture",
+      this.boundDesktopPictureInPictureChangeHandler
+    );
+    this.getDesktopPlaybackVideo()?.removeEventListener(
+      "leavepictureinpicture",
+      this.boundDesktopPictureInPictureChangeHandler
+    );
+    this.getDesktopPlaybackVideo()?.removeEventListener(
+      "webkitpresentationmodechanged",
+      this.boundDesktopPictureInPictureChangeHandler
+    );
     this.browserPlayerGestureCleanup?.();
     this.browserPlayerGestureCleanup = null;
     this.boundDesktopPlayerPointerMoveHandler = null;
@@ -5532,6 +5557,7 @@ export const PlayerScreen = {
     this.boundDesktopPlayerVisualViewportResizeHandler = null;
     this.desktopPlayerVisualViewport = null;
     this.boundDesktopVolumeChangeHandler = null;
+    this.boundDesktopPictureInPictureChangeHandler = null;
     if (this.desktopPlayerViewportSyncFrame) {
       cancelAnimationFrame(this.desktopPlayerViewportSyncFrame);
       this.desktopPlayerViewportSyncFrame = null;
@@ -5680,6 +5706,109 @@ export const PlayerScreen = {
     return Boolean(Environment.isBrowser() && document.fullscreenElement === this.container);
   },
 
+  isStandardPictureInPictureSupported() {
+    if (!Environment.isBrowser() || typeof document === "undefined") {
+      return false;
+    }
+    return (
+      document.pictureInPictureEnabled !== false &&
+      typeof HTMLVideoElement !== "undefined" &&
+      typeof HTMLVideoElement.prototype.requestPictureInPicture === "function" &&
+      typeof document.exitPictureInPicture === "function"
+    );
+  },
+
+  getSafariPictureInPictureCapability() {
+    const video = this.getDesktopPlaybackVideo();
+    if (!Environment.isBrowser() || !(video instanceof HTMLVideoElement)) {
+      return null;
+    }
+    if (typeof video.webkitSetPresentationMode !== "function") {
+      return null;
+    }
+    try {
+      return typeof video.webkitSupportsPresentationMode !== "function"
+        ? true
+        : Boolean(video.webkitSupportsPresentationMode("picture-in-picture"));
+    } catch (_) {
+      return false;
+    }
+  },
+
+  isSafariPictureInPictureSupported() {
+    return this.getSafariPictureInPictureCapability() === true;
+  },
+
+  isDesktopPictureInPictureSupported() {
+    const safariCapability = this.getSafariPictureInPictureCapability();
+    // When WebKit exposes an element-level support probe, it is more precise
+    // than document.pictureInPictureEnabled in installed Safari web apps.
+    if (safariCapability !== null) {
+      return safariCapability;
+    }
+    return this.isStandardPictureInPictureSupported();
+  },
+
+  isDesktopPlayerPictureInPicture() {
+    const video = this.getDesktopPlaybackVideo();
+    if (!video) {
+      return false;
+    }
+    if (this.isStandardPictureInPictureSupported() && document.pictureInPictureElement === video) {
+      return true;
+    }
+    return this.isSafariPictureInPictureSupported() && video.webkitPresentationMode === "picture-in-picture";
+  },
+
+  async exitDesktopPictureInPicture() {
+    const video = this.getDesktopPlaybackVideo();
+    if (!video || !this.isDesktopPlayerPictureInPicture()) {
+      return false;
+    }
+    if (this.isStandardPictureInPictureSupported() && document.pictureInPictureElement === video) {
+      await document.exitPictureInPicture();
+    } else if (this.isSafariPictureInPictureSupported()) {
+      video.webkitSetPresentationMode("inline");
+    }
+    return true;
+  },
+
+  async toggleDesktopPictureInPicture() {
+    const video = this.getDesktopPlaybackVideo();
+    if (!this.isDesktopPictureInPictureSupported() || !video || video.disablePictureInPicture) {
+      this.syncDesktopPlaybackTools();
+      return false;
+    }
+
+    try {
+      if (this.isDesktopPlayerPictureInPicture()) {
+        await this.exitDesktopPictureInPicture();
+      } else if (this.isStandardPictureInPictureSupported()) {
+        try {
+          await video.requestPictureInPicture();
+        } catch (initialError) {
+          // Chromium may reject PiP while this page owns fullscreen. Preserve
+          // fullscreen unless the browser actually requires an exit first.
+          if (!document.fullscreenElement) {
+            throw initialError;
+          }
+          await document.exitFullscreen?.();
+          await video.requestPictureInPicture();
+        }
+      } else {
+        video.webkitSetPresentationMode("picture-in-picture");
+      }
+      this.revealDesktopPlayerControls();
+      this.syncDesktopPlaybackTools();
+      this.renderCompactBrowserMorePanel();
+      return true;
+    } catch (_) {
+      this.syncDesktopPlaybackTools();
+      this.renderCompactBrowserMorePanel();
+      return false;
+    }
+  },
+
   async toggleDesktopFullscreen() {
     if (!Environment.isBrowser() || !this.container) {
       return false;
@@ -5688,6 +5817,9 @@ export const PlayerScreen = {
       if (this.isDesktopPlayerFullscreen()) {
         await document.exitFullscreen?.();
       } else {
+        if (this.isDesktopPlayerPictureInPicture()) {
+          await this.exitDesktopPictureInPicture();
+        }
         await this.container.requestFullscreen?.();
       }
       this.revealDesktopPlayerControls();
@@ -5724,14 +5856,25 @@ export const PlayerScreen = {
     }
     const { volume, muted } = this.getDesktopVolumeState();
     const fullscreen = this.isDesktopPlayerFullscreen();
+    const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
+    const pictureInPictureActive = this.isDesktopPlayerPictureInPicture();
     const muteLabel = muted ? "Unmute" : "Mute";
     const fullscreenLabel = fullscreen ? "Exit fullscreen" : "Enter fullscreen";
+    const pictureInPictureLabel = pictureInPictureActive
+      ? "Exit Picture-in-Picture"
+      : "Enter Picture-in-Picture";
     tools.forEach((toolRoot) => {
       const muteButton = toolRoot.querySelector("[data-player-desktop-action='mute']");
       const muteIcon = toolRoot.querySelector("[data-player-desktop-mute-icon]");
       const volumeInput = toolRoot.querySelector("[data-player-desktop-volume]");
       const fullscreenButton = toolRoot.querySelector("[data-player-desktop-action='fullscreen']");
       const fullscreenIcon = toolRoot.querySelector("[data-player-desktop-fullscreen-icon]");
+      const pictureInPictureButton = toolRoot.querySelector(
+        "[data-player-desktop-action='picture-in-picture']"
+      );
+      const pictureInPictureIcon = toolRoot.querySelector(
+        "[data-player-desktop-picture-in-picture-icon]"
+      );
       muteButton?.setAttribute("aria-label", muteLabel);
       muteButton?.setAttribute("title", muteLabel);
       if (muteIcon) {
@@ -5744,6 +5887,20 @@ export const PlayerScreen = {
       fullscreenButton?.setAttribute("title", fullscreenLabel);
       if (fullscreenIcon) {
         fullscreenIcon.innerHTML = fullscreen ? "&#10094;&#10095;" : "&#9974;";
+      }
+      if (pictureInPictureButton) {
+        pictureInPictureButton.hidden = !pictureInPictureAvailable;
+        pictureInPictureButton.disabled =
+          !pictureInPictureAvailable ||
+          !this.getDesktopPlaybackVideo() ||
+          this.getDesktopPlaybackVideo().disablePictureInPicture;
+        pictureInPictureButton.setAttribute("aria-label", pictureInPictureLabel);
+        pictureInPictureButton.setAttribute("title", pictureInPictureLabel);
+      }
+      if (pictureInPictureIcon) {
+        pictureInPictureIcon.textContent = pictureInPictureActive
+          ? "picture_in_picture"
+          : "picture_in_picture_alt";
       }
     });
   },
@@ -9787,6 +9944,7 @@ export const PlayerScreen = {
 
     const { muted } = this.getDesktopVolumeState();
     const speedAvailable = this.getPlaybackSpeedOptions().length > 1;
+    const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
     panel.innerHTML = `
       <div class="player-mobile-more-title">${escapeHtml(t("player_more_actions_title", {}, "More Actions"))}</div>
       <div class="player-mobile-more-actions" role="group" aria-label="${escapeHtml(t("player_more_actions_title", {}, "More Actions"))}">
@@ -9795,6 +9953,14 @@ export const PlayerScreen = {
           <span class="player-desktop-tool-icon" data-player-desktop-mute-icon aria-hidden="true">${muted ? "&#128263;" : "&#128266;"}</span>
           <span>${escapeHtml(muted ? "Unmute" : "Mute")}</span>
         </button>
+        ${
+          pictureInPictureAvailable
+            ? `<button class="player-mobile-more-action player-mobile-more-icon-action" type="button" data-player-desktop-action="picture-in-picture"
+                  title="Enter Picture-in-Picture" aria-label="Enter Picture-in-Picture">
+                <span class="player-desktop-tool-icon material-icons" data-player-desktop-picture-in-picture-icon aria-hidden="true">picture_in_picture_alt</span>
+              </button>`
+            : ""
+        }
         ${
           speedAvailable
             ? `<button class="player-mobile-more-action player-control-btn" type="button" data-action="speed" title="${escapeHtml(t("player_playback_speed", {}, "Playback speed"))}">
@@ -19606,6 +19772,9 @@ export const PlayerScreen = {
       if (desktopAction.dataset.playerDesktopAction === "fullscreen") {
         return this.toggleDesktopFullscreen();
       }
+      if (desktopAction.dataset.playerDesktopAction === "picture-in-picture") {
+        return this.toggleDesktopPictureInPicture();
+      }
     }
 
     const errorAction = target.closest?.("[data-player-error-action]");
@@ -20464,6 +20633,9 @@ export const PlayerScreen = {
   cleanup() {
     try {
       this.playerRouteActive = false;
+      if (this.isDesktopPlayerPictureInPicture()) {
+        void this.exitDesktopPictureInPicture().catch(() => {});
+      }
       this.unbindDesktopPlayerPointerBridge();
       this.playerMountToken = Number(this.playerMountToken || 0) + 1;
       this.nextEpisodeLaunchToken = Number(this.nextEpisodeLaunchToken || 0) + 1;

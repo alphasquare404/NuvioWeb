@@ -10271,7 +10271,8 @@ body.desktop-browser {
     display: contents;
   }
 
-  .desktop-browser #player .player-desktop-playback-tools [data-player-desktop-action="mute"] {
+  .desktop-browser #player .player-desktop-playback-tools [data-player-desktop-action="mute"],
+  .desktop-browser #player .player-desktop-playback-tools [data-player-desktop-action="picture-in-picture"] {
     display: none;
   }
 
