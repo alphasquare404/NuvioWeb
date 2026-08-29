@@ -9134,6 +9134,30 @@ body.desktop-browser {
   }
 }
 
+/* Tablet portrait benefits from a denser rail than the broad tablet defaults,
+   while short tablet landscapes need both compact cards and enough room below
+   the floating navigation for the Hero copy. iPad landscape (1024px and up)
+   continues to use the unchanged desktop composition. */
+@media (min-width: 601px) and (max-width: 1023px) and (orientation: portrait) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern {
+    --browser-home-tablet-poster-width: clamp(164px, 21vw, 184px);
+    --browser-home-tablet-continue-width: clamp(320px, 48vw, 390px);
+  }
+}
+
+@media (min-width: 601px) and (max-width: 1023px) and (orientation: landscape) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern {
+    --browser-home-tablet-poster-width: clamp(156px, 19vw, 184px);
+    --browser-home-tablet-continue-width: clamp(300px, 42vw, 380px);
+  }
+}
+
+@media (min-width: 601px) and (max-width: 1023px) and (orientation: landscape) and (max-height: 500px) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+    padding-top: calc(var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 12px);
+  }
+}
+
 /* Detail keeps its browser composition on narrow screens, with dedicated
    phone-scale rails and typography rather than inheriting TV-sized geometry. */
 @media (max-width: 600px) {
