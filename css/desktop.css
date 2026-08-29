@@ -18,6 +18,9 @@ html.desktop-browser {
   --browser-safe-area-right: env(safe-area-inset-right, 0px);
   --browser-safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --browser-safe-area-left: env(safe-area-inset-left, 0px);
+  --browser-floating-nav-top: calc(20px + var(--browser-safe-area-top));
+  --browser-floating-nav-height: 52px;
+  --browser-floating-back-control-size: 44px;
 }
 
 /* In an installed iOS PWA, the visual canvas can be taller than the dynamic
@@ -1135,7 +1138,10 @@ html.desktop-browser {
 .desktop-browser #folderDetail .folder-detail-desktop-back {
   position: fixed;
   z-index: 30;
-  top: clamp(20px, 2vw, 32px);
+  top: calc(
+    var(--browser-floating-nav-top) +
+      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+  );
   left: clamp(20px, 2.4vw, 40px);
   display: grid;
   width: 44px;
@@ -1612,7 +1618,10 @@ html.desktop-browser {
 .desktop-browser #castDetail .detail-desktop-back-button {
   position: fixed;
   z-index: 30;
-  top: clamp(16px, 2vw, 24px);
+  top: calc(
+    var(--browser-floating-nav-top) +
+      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+  );
   left: clamp(20px, 3.4vw, 64px);
   display: inline-flex;
   width: 44px;
@@ -1644,7 +1653,10 @@ html.desktop-browser {
 .desktop-browser #stream .stream-desktop-back-button {
   position: fixed;
   z-index: 30;
-  top: clamp(16px, 2vw, 24px);
+  top: calc(
+    var(--browser-floating-nav-top) +
+      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+  );
   left: clamp(20px, 3.4vw, 64px);
   display: inline-flex;
   width: 44px;
@@ -2562,7 +2574,10 @@ html.desktop-browser {
 .desktop-browser #player .player-desktop-back-button {
   position: fixed;
   z-index: 50;
-  top: clamp(16px, 2vw, 24px);
+  top: calc(
+    var(--browser-floating-nav-top) +
+      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+  );
   left: clamp(20px, 3vw, 48px);
   display: inline-flex;
   width: 44px;
@@ -4329,7 +4344,10 @@ html.desktop-browser {
 .desktop-browser .profile-desktop-back-button {
   position: fixed;
   z-index: 30;
-  top: clamp(16px, 2vw, 24px);
+  top: calc(
+    var(--browser-floating-nav-top) +
+      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+  );
   left: clamp(20px, 3.4vw, 64px);
   display: inline-flex;
   width: 44px;
@@ -8103,7 +8121,7 @@ body.desktop-browser {
 }
 
 .desktop-browser .desktop-navigation {
-  top: calc(20px + var(--browser-safe-area-top));
+  top: var(--browser-floating-nav-top);
   left: calc(50% + (var(--browser-safe-area-left) - var(--browser-safe-area-right)) / 2);
   max-width: calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 32px);
 }
@@ -8120,6 +8138,7 @@ body.desktop-browser {
   html.desktop-browser {
     --browser-page-gutter: 24px;
     --browser-overlay-inset: 20px;
+    --browser-floating-nav-height: 56px;
   }
 
   .desktop-browser .desktop-navigation-scroll {
@@ -8141,10 +8160,12 @@ body.desktop-browser {
   html.desktop-browser {
     --browser-page-gutter: 16px;
     --browser-overlay-inset: 12px;
+    --browser-floating-nav-top: calc(8px + var(--browser-safe-area-top));
+    --browser-floating-nav-height: 52px;
   }
 
   .desktop-browser .desktop-navigation {
-    top: calc(8px + var(--browser-safe-area-top));
+    top: var(--browser-floating-nav-top);
     max-width: calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 16px);
   }
 
@@ -8570,15 +8591,27 @@ body.desktop-browser {
   .desktop-browser #stream .stream-route-shell,
   .desktop-browser #player { height: 100dvh; }
 
-  .desktop-browser #detail .detail-desktop-back-button,
-  .desktop-browser #folderDetail .folder-detail-desktop-back,
-  .desktop-browser #stream .stream-desktop-back-button,
-  .desktop-browser #player .player-desktop-back-button,
-  .desktop-browser .profile-desktop-back-button,
   .desktop-browser .profile-pin-desktop-back,
   .desktop-browser #account .desktop-qr-back-button,
   .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button,
   .desktop-browser #debugConsole .debug-console-back { top: calc(8px + var(--browser-safe-area-top)); left: calc(8px + var(--browser-safe-area-left)); width: var(--browser-mobile-control-size); min-width: var(--browser-mobile-control-size); height: var(--browser-mobile-control-size); min-height: var(--browser-mobile-control-size); }
+
+  .desktop-browser #detail .detail-desktop-back-button,
+  .desktop-browser #castDetail .detail-desktop-back-button,
+  .desktop-browser #folderDetail .folder-detail-desktop-back,
+  .desktop-browser #stream .stream-desktop-back-button,
+  .desktop-browser #player .player-desktop-back-button,
+  .desktop-browser .profile-desktop-back-button {
+    top: calc(
+      var(--browser-floating-nav-top) +
+        (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+    );
+    left: calc(8px + var(--browser-safe-area-left));
+    width: var(--browser-mobile-control-size);
+    min-width: var(--browser-mobile-control-size);
+    height: var(--browser-mobile-control-size);
+    min-height: var(--browser-mobile-control-size);
+  }
 }
 
 /* Phone Home keeps the desktop browser composition, but uses a deliberate
@@ -8941,7 +8974,10 @@ body.desktop-browser {
   }
 
   .desktop-browser #detail .detail-desktop-back-button {
-    top: calc(8px + var(--browser-safe-area-top));
+    top: calc(
+      var(--browser-floating-nav-top) +
+        (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+    );
     left: calc(8px + var(--browser-safe-area-left));
     width: var(--browser-mobile-control-size);
     min-width: var(--browser-mobile-control-size);
@@ -9898,7 +9934,10 @@ body.desktop-browser {
   }
 
   .desktop-browser #player .player-desktop-back-button {
-    top: calc(8px + var(--browser-safe-area-top));
+    top: calc(
+      var(--browser-floating-nav-top) +
+        (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+    );
     left: calc(8px + var(--browser-safe-area-left));
   }
 
