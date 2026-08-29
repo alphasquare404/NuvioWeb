@@ -373,6 +373,7 @@ export const ProfileSelectionScreen = {
     this.suppressedFocusClick = null;
     this.avatarCatalog = [];
     this.lastKeyboardActivation = null;
+    this.isBrowserKeyboardFocusVisible = false;
     this.suppressHoldMenuEnterUntilKeyUp = false;
     this.isActivatingProfile = false;
     this.activatingProfileId = "";
@@ -485,9 +486,13 @@ export const ProfileSelectionScreen = {
       ? ` is-pin-${escapeHtml(this.pinOverlayPhase || "open")}`
       : "";
     const compactGridScreenClass = totalItems >= 5 ? " profile-screen-compact-grid" : "";
+    const browserKeyboardFocusClass =
+      isDesktopBrowser && this.isBrowserKeyboardFocusVisible
+        ? " profile-browser-keyboard-focus"
+        : "";
 
     this.container.innerHTML = `
-      <div class="profile-screen${pinScreenPhaseClass}${compactGridScreenClass}">
+      <div class="profile-screen${pinScreenPhaseClass}${compactGridScreenClass}${browserKeyboardFocusClass}">
         ${
           isDesktopBrowser && this.isManagementMode
             ? `<button class="profile-desktop-back-button" type="button" data-action="close-management" aria-label="${escapeHtml(
@@ -901,6 +906,13 @@ export const ProfileSelectionScreen = {
   },
 
   bindEvents() {
+    if (Platform.isBrowser()) {
+      const profileScreen = this.container.querySelector(".profile-screen");
+      const clearBrowserKeyboardFocus = () => this.setBrowserKeyboardFocusVisible(false);
+      profileScreen?.addEventListener("pointerdown", clearBrowserKeyboardFocus, { capture: true });
+      profileScreen?.addEventListener("pointermove", clearBrowserKeyboardFocus, { capture: true });
+    }
+
     const gridCards = Array.from(this.container.querySelectorAll(".profile-card"));
     gridCards.forEach((card) => {
       card.addEventListener("focus", () => this.handleFocusableFocus(card));
@@ -1067,6 +1079,16 @@ export const ProfileSelectionScreen = {
     if (category) {
       node.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
     }
+  },
+
+  setBrowserKeyboardFocusVisible(enabled) {
+    if (!Platform.isBrowser()) {
+      return;
+    }
+    this.isBrowserKeyboardFocusVisible = Boolean(enabled);
+    this.container
+      ?.querySelector(".profile-screen")
+      ?.classList.toggle("profile-browser-keyboard-focus", this.isBrowserKeyboardFocusVisible);
   },
 
   restoreFocus() {
@@ -2288,6 +2310,7 @@ export const ProfileSelectionScreen = {
     if (!this.container) {
       return;
     }
+    this.setBrowserKeyboardFocusVisible(true);
     if (this.isActivatingProfile) {
       event?.preventDefault?.();
       return;

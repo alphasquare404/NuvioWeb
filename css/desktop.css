@@ -4233,13 +4233,22 @@ html.desktop-browser {
   transition: none;
 }
 
-.desktop-browser .profile-card.focused,
-.desktop-browser .profile-card:focus-visible {
+.desktop-browser .profile-card.focusable:focus-visible {
   transform: none;
-  border-color: var(--focus-color) !important;
-  background: rgb(var(--secondary-color-rgb) / 0.08);
-  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.2) !important;
-  outline: none;
+  border-color: transparent !important;
+  background: transparent;
+  box-shadow: none !important;
+  outline: none !important;
+  outline-offset: 0;
+}
+
+.desktop-browser .profile-screen.profile-browser-keyboard-focus .profile-card:focus {
+  transform: none;
+  border-color: transparent !important;
+  background: rgb(var(--secondary-color-rgb) / 0.14);
+  box-shadow: none !important;
+  outline: none !important;
+  outline-offset: 0;
 }
 
 .desktop-browser .profile-card.focused .profile-avatar-ring,
