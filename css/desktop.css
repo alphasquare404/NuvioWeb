@@ -5820,6 +5820,9 @@ html.desktop-browser {
     overflow-y: hidden;
     padding: 8px;
     scrollbar-width: none;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
   }
 
   .desktop-browser .settings-shell .settings-sidebar::-webkit-scrollbar {
@@ -9288,7 +9291,7 @@ body.desktop-browser {
     overflow-y: hidden;
     padding: 4px var(--browser-page-gutter) 10px;
     scrollbar-width: none;
-    touch-action: auto;
+    touch-action: pan-x pan-y;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
   }
@@ -9342,7 +9345,7 @@ body.desktop-browser {
   .desktop-browser #detail .series-season-row {
     gap: 8px;
     padding: 14px var(--browser-page-gutter) 8px;
-    touch-action: auto;
+    touch-action: pan-x pan-y;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
   }
@@ -9470,6 +9473,11 @@ body.desktop-browser {
   .desktop-browser #detail .series-insight-tabs {
     flex-wrap: nowrap;
     overflow-x: auto;
+    touch-action: pan-x pan-y;
+  }
+
+  .desktop-browser #detail .series-season-row {
+    touch-action: pan-x pan-y;
   }
 
   .desktop-browser #detail .series-insight-tab,

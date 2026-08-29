@@ -48,6 +48,7 @@ import { ProfileManager } from "../../../core/profile/profileManager.js";
 import { AuthManager } from "../../../core/auth/authManager.js";
 import { SupabaseApi } from "../../../data/remote/supabase/supabaseApi.js";
 import { Platform } from "../../../platform/index.js";
+import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import { isFastHorizontalNavigationEnabled } from "../../../platform/sharedKeys.js";
 import { CW_DISPLAY_SNAPSHOT_KEY, CW_ENRICHMENT_CACHE_KEY } from "../home/homeConstants.js";
 import { I18n } from "../../../i18n/index.js";
@@ -2204,6 +2205,12 @@ export const SettingsScreen = {
     if (!this.handleClickBound) {
       this.handleClickBound = this.handleClickEvent.bind(this);
       this.container.addEventListener("click", this.handleClickBound);
+    }
+    if (Platform.isBrowser()) {
+      this.browserHorizontalTabScrollCleanup?.();
+      this.browserHorizontalTabScrollCleanup = bindBrowserHorizontalTabScroll(this.container, [
+        { rowSelector: ".settings-sidebar", tabSelector: ".settings-nav-item" }
+      ]);
     }
     this.settingsRouteEnterPending = true;
     const persistedUiState = readSettingsUiState();
@@ -8990,6 +8997,8 @@ export const SettingsScreen = {
 
   cleanup() {
     this.persistUiState();
+    this.browserHorizontalTabScrollCleanup?.();
+    this.browserHorizontalTabScrollCleanup = null;
     this.stopTraktPolling?.();
     this.stopDesktopSimklPolling?.();
     this.stopDebridDeviceAuth();

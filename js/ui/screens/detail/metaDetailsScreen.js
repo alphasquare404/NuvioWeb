@@ -36,6 +36,7 @@ import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
   closeDesktopTrailerModal as closeSharedDesktopTrailerModal,
@@ -6807,6 +6808,17 @@ export const MetaDetailsScreen = {
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
         cardSelector: ".movie-cast-card[data-action='openCastPerson'], .series-episode-card[data-action='openEpisodeStreams'], .detail-trailer-card[data-action='openSharedTrailer'], .detail-morelike-card[data-action='openMoreLikeDetail']"
       });
+      this.browserHorizontalTabScrollCleanup?.();
+      this.browserHorizontalTabScrollCleanup = bindBrowserHorizontalTabScroll(this.container, [
+        {
+          rowSelector: ".series-insight-tabs",
+          tabSelector: ".series-insight-tab[data-action]"
+        },
+        {
+          rowSelector: ".series-season-row",
+          tabSelector: ".series-season-btn[data-action='selectSeason']"
+        }
+      ]);
     }
     if (this.detailScrollHandler) {
       content.removeEventListener("scroll", this.detailScrollHandler);
@@ -10371,6 +10383,8 @@ export const MetaDetailsScreen = {
   cleanup() {
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.browserHorizontalTabScrollCleanup?.();
+    this.browserHorizontalTabScrollCleanup = null;
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
     if (this.pendingEpisodeNavigationRaf) {
       cancelAnimationFrame(this.pendingEpisodeNavigationRaf);

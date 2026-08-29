@@ -36,6 +36,7 @@ import {
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
 import {
   getDesktopMediaLibraryMembership,
@@ -324,6 +325,14 @@ export const LibraryScreen = {
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
         cardSelector: ".library-grid-card[data-action='openDetail']"
       });
+      this.browserHorizontalTabScrollCleanup?.();
+      this.browserHorizontalTabScrollCleanup = bindBrowserHorizontalTabScroll(this.container, [
+        { rowSelector: ".library-view-mode-row", tabSelector: ".library-view-mode-button" },
+        {
+          rowSelector: ".library-presentation-toggle",
+          tabSelector: ".library-presentation-button"
+        }
+      ]);
     }
 
     this.container.addEventListener("click", async (event) => {
@@ -2471,6 +2480,8 @@ export const LibraryScreen = {
     this.desktopMediaHoverPreview = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.browserHorizontalTabScrollCleanup?.();
+    this.browserHorizontalTabScrollCleanup = null;
     this.cancelScheduledRender();
     this.clearClosingPicker();
     this.lastRenderedExpandedPicker = null;
