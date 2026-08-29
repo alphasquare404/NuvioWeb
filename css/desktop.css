@@ -1701,6 +1701,26 @@ html.desktop-browser {
   margin-bottom: 14px;
 }
 
+.desktop-browser #detail .detail-offline-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(118, 224, 164, 0.38);
+  border-radius: 999px;
+  background: rgb(20 72 45 / 0.72);
+  color: #d8ffe7;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.desktop-browser #detail .detail-offline-indicator .material-icons {
+  font-size: 17px;
+}
+
 .desktop-browser #detail .series-primary-btn {
   box-sizing: border-box;
   width: auto;
@@ -3980,6 +4000,26 @@ html.desktop-browser {
 }
 
 .desktop-browser #detail .series-episode-status.complete {
+  font-size: 17px;
+}
+
+.desktop-browser #detail .series-episode-offline-status {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(118, 224, 164, 0.48);
+  border-radius: 50%;
+  background: rgb(20 72 45 / 0.84);
+  color: #d8ffe7;
+  pointer-events: none;
+}
+
+.desktop-browser #detail .series-episode-offline-status .material-icons {
   font-size: 17px;
 }
 

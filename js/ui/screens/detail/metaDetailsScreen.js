@@ -49,6 +49,12 @@ import {
 } from "../../components/posterOptionsMenu.js";
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
 import {
+  createOfflineMediaId,
+  isBrowserOfflineDownloadSupported,
+  listOfflineDownloads,
+  subscribeToOfflineDownloads
+} from "../../../core/offline/browserOfflineDownloads.js";
+import {
   WATCH_PROGRESS_COMPLETED_THRESHOLD,
   getWatchProgressFraction,
   isWatchProgressInProgress,
@@ -1715,10 +1721,21 @@ export const MetaDetailsScreen = {
     this.libraryMembershipRefreshToken = 0;
     this.unsubscribeLibrarySource?.();
     this.unsubscribeLibrarySource = null;
+    this.offlineDownloadStatusRefreshToken = (this.offlineDownloadStatusRefreshToken || 0) + 1;
+    this.offlineMovieDownloaded = false;
+    this.offlineEpisodeMediaIds = new Set();
+    this.unsubscribeOfflineDownloads?.();
+    this.unsubscribeOfflineDownloads = null;
     if (Platform.isBrowser()) {
       this.unsubscribeLibrarySource = TraktSettingsStore.subscribeLibrarySource(() => {
         void this.refreshCurrentLibraryMembership();
       });
+      if (isBrowserOfflineDownloadSupported()) {
+        this.unsubscribeOfflineDownloads = subscribeToOfflineDownloads(() => {
+          void this.refreshOfflineDownloadStatus();
+        });
+        void this.refreshOfflineDownloadStatus();
+      }
     }
     this.seriesInsightTab = "cast";
     this.movieInsightTab = "cast";
@@ -1794,6 +1811,7 @@ export const MetaDetailsScreen = {
       this.render(this.meta, this.pendingFocusRestore);
       if (Platform.isBrowser()) {
         void this.refreshCurrentLibraryMembership();
+        void this.refreshOfflineDownloadStatus();
       }
       const refreshToken = this.detailLoadToken;
       void this.refreshEpisodePlaybackState()
@@ -2001,6 +2019,7 @@ export const MetaDetailsScreen = {
     this.render(meta);
     if (Platform.isBrowser()) {
       void this.refreshCurrentLibraryMembership();
+      void this.refreshOfflineDownloadStatus();
     }
     this.isLoadingDetail = false;
     this.maybeAutoOpenContinueWatchingStream();
@@ -3181,6 +3200,65 @@ export const MetaDetailsScreen = {
     return merged;
   },
 
+  getOfflineMovieMediaId() {
+    const { itemId } = resolveMovieStreamIdentity(this.meta || {}, this.params || {});
+    return createOfflineMediaId({ contentType: "movie", mediaId: itemId });
+  },
+
+  getOfflineSeriesId() {
+    return String(this.params?.itemId || this.meta?.id || "").trim();
+  },
+
+  async refreshOfflineDownloadStatus() {
+    if (!Platform.isBrowser() || !isBrowserOfflineDownloadSupported()) {
+      return;
+    }
+    const requestToken = (this.offlineDownloadStatusRefreshToken || 0) + 1;
+    this.offlineDownloadStatusRefreshToken = requestToken;
+    const downloads = await listOfflineDownloads().catch(() => []);
+    if (requestToken !== this.offlineDownloadStatusRefreshToken || !this.container) {
+      return;
+    }
+
+    const completedDownloads = (downloads || []).filter(
+      (download) => download?.status === "completed"
+    );
+    const movieMediaId = this.getOfflineMovieMediaId();
+    const nextMovieDownloaded = Boolean(
+      movieMediaId &&
+        completedDownloads.some(
+          (download) =>
+            download?.contentType === "movie" &&
+            String(download?.mediaIdentity || createOfflineMediaId(download)).trim() === movieMediaId
+        )
+    );
+    const seriesId = this.getOfflineSeriesId();
+    const nextEpisodeMediaIds = new Set();
+    if (seriesId) {
+      completedDownloads.forEach((download) => {
+        if (download?.contentType !== "episode" || String(download?.seriesId || "").trim() !== seriesId) {
+          return;
+        }
+        const mediaIdentity = String(download?.mediaIdentity || createOfflineMediaId(download)).trim();
+        if (mediaIdentity) {
+          nextEpisodeMediaIds.add(mediaIdentity);
+        }
+      });
+    }
+
+    const episodeStatusChanged =
+      nextEpisodeMediaIds.size !== (this.offlineEpisodeMediaIds?.size || 0) ||
+      [...nextEpisodeMediaIds].some((mediaIdentity) => !this.offlineEpisodeMediaIds?.has(mediaIdentity));
+    if (!episodeStatusChanged && nextMovieDownloaded === this.offlineMovieDownloaded) {
+      return;
+    }
+    this.offlineMovieDownloaded = nextMovieDownloaded;
+    this.offlineEpisodeMediaIds = nextEpisodeMediaIds;
+    if (this.meta) {
+      this.updateRenderedDetailSections(this.meta);
+    }
+  },
+
   render(meta, focusRestore = undefined) {
     if (this._sectionsUpdateRaf) {
       const cancelRaf =
@@ -3378,6 +3456,11 @@ export const MetaDetailsScreen = {
           </button>
         `
         : "";
+    const isMovie = !isSeriesDetailMeta(meta, this.episodes);
+    const downloadedIndicator =
+      Platform.isBrowser() && isMovie && this.offlineMovieDownloaded
+        ? `<span class="detail-offline-indicator" role="status"><span class="material-icons" aria-hidden="true">download</span>${escapeHtml(t("offline.downloaded", {}, "Downloaded"))}</span>`
+        : "";
     return `
       <section class="detail-hero-section">
         <div class="detail-hero-brand">
@@ -3396,6 +3479,7 @@ export const MetaDetailsScreen = {
             </button>
             ${showWatchedButton ? `<button class="series-circle-btn focusable${this.isMarkedWatched ? " is-selected" : ""}" data-action="toggleWatched" aria-label="${escapeAttribute(this.isMarkedWatched ? t("common.markUnwatched", {}, "Mark Unwatched") : t("common.markWatched", {}, "Mark Watched"))}">${renderWatchedGlyph(this.isMarkedWatched)}</button>` : ""}
             ${trailerButton}
+            ${downloadedIndicator}
           </div>
           ${this.renderResumeIndicator()}
           ${creditLine ? `<p class="series-detail-support">${escapeHtml(creditPrefix)}: ${escapeHtml(creditLine)}</p>` : ""}
@@ -4170,6 +4254,15 @@ export const MetaDetailsScreen = {
     const rating = resolveEpisodeImdbRating(episode, this.seriesRatingsBySeason);
     const dateLabel = formatEpisodeCardDate(episode.released || "");
     const isUnavailable = episode.available === false;
+    const offlineEpisodeMediaId = createOfflineMediaId({
+      contentType: "episode",
+      seriesId: this.getOfflineSeriesId(),
+      seasonNumber: episode.season,
+      episodeNumber: episode.episode
+    });
+    const isDownloaded = Boolean(
+      offlineEpisodeMediaId && this.offlineEpisodeMediaIds?.has(offlineEpisodeMediaId)
+    );
     const metaParts = [
       episode.runtimeMinutes > 0 ? renderEpisodeRuntimeLabel(episode.runtimeMinutes) : "",
       rating != null
@@ -4188,6 +4281,7 @@ export const MetaDetailsScreen = {
           <div class="series-episode-image${shouldBlur ? " is-blurred" : ""}"${episode.thumbnail ? ` data-thumb="${escapeHtml(episode.thumbnail)}"` : ""}></div>
           <div class="series-episode-overlay"></div>
           ${isWatched ? `<div class="series-episode-status complete">${renderWatchedBadgeGlyph()}</div>` : progressRatio < 0.02 ? `<div class="series-episode-status idle"></div>` : ""}
+          ${Platform.isBrowser() && isDownloaded ? `<span class="series-episode-offline-status" role="img" aria-label="${escapeAttribute(t("offline.downloaded", {}, "Downloaded"))}"><span class="material-icons" aria-hidden="true">download</span></span>` : ""}
           ${isUnavailable ? `<div class="series-episode-unavailable">${escapeHtml(t("episodes_unavailable", {}, "Unavailable").toUpperCase())}</div>` : ""}
           <div class="series-episode-copy">
             <div class="series-episode-badge">${escapeHtml(t("episodes_episode", {}, "Episode").toUpperCase())} ${Number(episode.episode || 0)}</div>
@@ -10395,6 +10489,9 @@ export const MetaDetailsScreen = {
     this.libraryMembershipRefreshToken = (this.libraryMembershipRefreshToken || 0) + 1;
     this.unsubscribeLibrarySource?.();
     this.unsubscribeLibrarySource = null;
+    this.offlineDownloadStatusRefreshToken = (this.offlineDownloadStatusRefreshToken || 0) + 1;
+    this.unsubscribeOfflineDownloads?.();
+    this.unsubscribeOfflineDownloads = null;
     this.clearDesktopEpisodeDrag();
     this.clearDesktopSeasonDrag();
     this.clearDesktopPreviewRailDrag();
