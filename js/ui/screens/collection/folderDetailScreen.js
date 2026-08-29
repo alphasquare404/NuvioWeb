@@ -32,6 +32,7 @@ import {
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 
 const TMDB_API_URL = "https://api.themoviedb.org/3";
 const TMDB_POSTER_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342";
@@ -964,6 +965,7 @@ export const FolderDetailScreen = {
     this.tabs = [];
     const preferredHomeLayout = String(this.layoutPrefs?.homeLayout || "classic").toLowerCase();
     this.isDesktopBrowser = Platform.isBrowser();
+    this.sidebarProfile = this.isDesktopBrowser ? await getSidebarProfileState().catch(() => null) : null;
     const savedViewMode = String(this.collection?.viewMode || "TABBED_GRID").toUpperCase();
     // Browser collections keep their own information architecture. FOLLOW_LAYOUT
     // intentionally maps to its non-hero row presentation on desktop.
@@ -1605,7 +1607,11 @@ export const FolderDetailScreen = {
     this.container.innerHTML =
       this.viewMode === "TABBED_GRID" || this.isDesktopBrowser
         ? `
-          ${this.isDesktopBrowser ? renderDesktopNavigation({ selectedRoute: "" }) : ""}
+          ${
+            this.isDesktopBrowser
+              ? renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })
+              : ""
+          }
           ${this.isDesktopBrowser ? '<div class="folder-detail-desktop-ambient" aria-hidden="true"></div>' : ""}
           <div class="seeall-shell folder-detail-shell${this.isDesktopBrowser ? " desktop-folder-detail-shell" : ""}${enterClass}">
           <header class="seeall-header folder-detail-header">

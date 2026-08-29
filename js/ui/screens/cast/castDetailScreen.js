@@ -7,6 +7,7 @@ import { Platform } from "../../../platform/index.js";
 import { I18n } from "../../../i18n/index.js";
 import { TmdbPersonService, calculatePersonAge, sortPersonCreditsByLatest, sortPersonCreditsByPopularity } from "../../../core/tmdb/tmdbPersonService.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
+import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
   posterItemFromNode,
   PosterOptionsDialogController
@@ -81,6 +82,7 @@ export const CastDetailScreen = {
   async mount(params = {}) {
     this.container = document.getElementById("castDetail");
     ScreenUtils.show(this.container);
+    this.sidebarProfile = Platform.isBrowser() ? await getSidebarProfileState().catch(() => null) : null;
     this.params = params || {};
     this.loadToken = (this.loadToken || 0) + 1;
     this.person = null;
@@ -195,7 +197,7 @@ export const CastDetailScreen = {
     if (Platform.isBrowser()) {
       this.container.innerHTML = `
         <div class="browser-person-detail-shell">
-          ${renderDesktopNavigation({ selectedRoute: "" })}
+          ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
           <div class="browser-person-detail-status">${renderLoadingIndicator()}<span>Loading person details…</span></div>
         </div>
       `;
@@ -216,7 +218,7 @@ export const CastDetailScreen = {
     if (Platform.isBrowser()) {
       this.container.innerHTML = `
         <div class="browser-person-detail-shell">
-          ${renderDesktopNavigation({ selectedRoute: "" })}
+          ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
           <div class="browser-person-detail-status is-error"><p>${escapeHtml(message)}</p><button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}"><span class="material-icons" aria-hidden="true">chevron_left</span></button></div>
         </div>
       `;
@@ -346,7 +348,7 @@ export const CastDetailScreen = {
       : `<span aria-hidden="true">${escapeHtml(String(person.name || "?").slice(0, 1).toUpperCase())}</span>`;
     this.container.innerHTML = `
       <div class="browser-person-detail-shell">
-        ${renderDesktopNavigation({ selectedRoute: "" })}
+        ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
         <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
           <span class="material-icons" aria-hidden="true">chevron_left</span>
         </button>

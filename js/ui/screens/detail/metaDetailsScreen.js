@@ -36,6 +36,7 @@ import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
   closeDesktopTrailerModal as closeSharedDesktopTrailerModal,
   openDesktopTrailerModal as openSharedDesktopTrailerModal
@@ -1659,6 +1660,7 @@ export const MetaDetailsScreen = {
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("detail");
     ScreenUtils.show(this.container);
+    this.sidebarProfile = Platform.isBrowser() ? await getSidebarProfileState().catch(() => null) : null;
     this.closeDesktopTrailerModal({ restoreFocus: false });
     this.stopTrailerPlayback({
       keepDom: false,
@@ -3299,7 +3301,7 @@ export const MetaDetailsScreen = {
     }
 
     this.container.innerHTML = `
-      ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "" }) : ""}
+      ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile }) : ""}
       <div class="series-detail-shell${this.getTrailerShellStateClasses()}">
         <div class="series-detail-backdrop" data-backdrop-url="${escapeAttribute(backdrop || "")}"${backdrop ? ` style="background-image:url('${backdrop.replace(/'/g, "%27")}')"` : ""}></div>
         <div class="detail-trailer-layer"></div>
@@ -3624,7 +3626,7 @@ export const MetaDetailsScreen = {
     const heroMarkup = this.renderMovieHeroMarkup(meta);
 
     this.container.innerHTML = `
-      ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "" }) : ""}
+      ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile }) : ""}
       <div class="series-detail-shell movie-detail-shell${this.getTrailerShellStateClasses()}">
         <div class="series-detail-backdrop" data-backdrop-url="${escapeAttribute(backdrop || "")}"${backdrop ? ` style="background-image:url('${backdrop.replace(/'/g, "%27")}')"` : ""}></div>
         <div class="detail-trailer-layer"></div>
