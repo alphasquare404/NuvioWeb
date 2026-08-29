@@ -48,6 +48,12 @@ import {
   resolveDesktopMediaPreviewMetadata,
   resolveDesktopMediaTrailerSource
 } from "../../components/desktopMediaPreviewData.js";
+import {
+  isBrowserOfflineDownloadSupported,
+  listDownloadedMovies,
+  listDownloadedSeries,
+  subscribeToOfflineDownloads
+} from "../../../core/offline/browserOfflineDownloads.js";
 
 const POSTER_HOLD_DELAY_MS = 650;
 const PICKER_MENU_EXIT_MS = 160;
@@ -187,7 +193,53 @@ function libraryCardYear(item = {}) {
 }
 
 function libraryCardMetadata(item = {}) {
-  return [libraryCardTypeLabel(item.type), libraryCardYear(item)].filter(Boolean).join(" • ");
+  return [
+    libraryCardTypeLabel(item.type),
+    item.offlineEpisodeCount
+      ? `${item.offlineEpisodeCount} downloaded ${item.offlineEpisodeCount === 1 ? "episode" : "episodes"}`
+      : "",
+    libraryCardYear(item)
+  ]
+    .filter(Boolean)
+    .join(" • ");
+}
+
+function offlineDetailId(download = {}) {
+  const directId = String(
+    download.mediaId || download.movieId || download.seriesId || download.itemId || ""
+  ).trim();
+  if (directId) return directId;
+  const mediaIdentity = String(download.mediaIdentity || "").trim();
+  const match = mediaIdentity.match(/^(?:movie|episode)-(.+?)(?:-s\d+-e\d+)?$/);
+  return match?.[1] || String(download.downloadId || "").trim();
+}
+
+function offlineMovieCard(download = {}) {
+  const itemId = offlineDetailId(download);
+  return {
+    id: itemId,
+    type: "movie",
+    name: String(download.title || itemId || "Downloaded movie").trim(),
+    poster: String(download.poster || "").trim(),
+    background: String(download.backdrop || "").trim(),
+    year: download.year,
+    offlineItem: true
+  };
+}
+
+function offlineSeriesCard(group = {}) {
+  const representative = group.episodes?.[0] || {};
+  const itemId = String(group.seriesId || offlineDetailId(representative)).trim();
+  return {
+    id: itemId,
+    type: "series",
+    name: String(group.title || representative.seriesTitle || itemId || "Downloaded series").trim(),
+    poster: String(group.poster || representative.poster || "").trim(),
+    background: String(group.backdrop || representative.backdrop || "").trim(),
+    year: representative.year,
+    offlineItem: true,
+    offlineEpisodeCount: Array.isArray(group.episodes) ? group.episodes.length : 0
+  };
 }
 
 export const LibraryScreen = {
@@ -305,9 +357,21 @@ export const LibraryScreen = {
     this.partialContentRefresh = null;
     this.pendingHydrationState = null;
     this.pendingPresentationModeScroll = false;
+    this.downloadedView = false;
+    this.downloadedType = "movies";
+    this.downloadedPickerOpen = false;
+    this.downloadedPickerFocusIndex = 0;
+    this.downloadedLibrary = { supported: false, loading: false, movies: [], series: [] };
+    this.offlineDownloadsUnsubscribe = null;
 
     this.render();
     this.bindEvents();
+    if (Platform.isBrowser()) {
+      this.offlineDownloadsUnsubscribe = subscribeToOfflineDownloads(() => {
+        void this.refreshDownloadedLibrary();
+      });
+      void this.refreshDownloadedLibrary();
+    }
     await controller.init();
     if (this.controller !== controller || Router.getCurrent() !== "library") {
       return;
@@ -367,6 +431,61 @@ export const LibraryScreen = {
       } else if (target.matches(".library-cloud-search-input[data-cloud-search]")) {
         this.controller.setCloudSearchQuery(target.value);
       }
+    });
+
+  },
+
+  isDownloadedView() {
+    return Platform.isBrowser() && this.downloadedView === true;
+  },
+
+  async refreshDownloadedLibrary() {
+    if (!Platform.isBrowser() || !this.container) return;
+    const request = (this.downloadedLibraryRequest || 0) + 1;
+    this.downloadedLibraryRequest = request;
+    this.downloadedLibrary = { ...this.downloadedLibrary, loading: true };
+    this.requestRender();
+    const supported = isBrowserOfflineDownloadSupported();
+    const [movies, series] = supported
+      ? await Promise.all([listDownloadedMovies(), listDownloadedSeries()]).catch(() => [[], []])
+      : [[], []];
+    if (
+      this.downloadedLibraryRequest !== request ||
+      !this.container ||
+      Router.getCurrent() !== "library"
+    ) {
+      return;
+    }
+    this.downloadedLibrary = { supported, loading: false, movies, series };
+    this.requestRender();
+  },
+
+  getDownloadedTypeOptions() {
+    return [
+      { value: "movies", label: "Movies" },
+      { value: "series", label: "Series" }
+    ];
+  },
+
+  renderDownloadedTypePicker() {
+    const options = this.getDownloadedTypeOptions();
+    const selectedIndex = Math.max(
+      0,
+      options.findIndex((option) => option.value === this.downloadedType)
+    );
+    return renderContentFilterPicker({
+      picker: "downloaded_type",
+      title: t("library_filter_type", {}, "Type"),
+      value: options[selectedIndex]?.label || "Movies",
+      options: this.downloadedPickerOpen ? options : [],
+      open: this.downloadedPickerOpen,
+      focusIndex: this.downloadedPickerFocusIndex,
+      selectedIndex,
+      widthClass: "library-picker-flex",
+      targetOptionClass: "library-picker-option-target",
+      anchorAction: "toggleDownloadedTypePicker",
+      optionAction: "selectDownloadedTypeOption",
+      optionFocusable: true
     });
   },
 
@@ -475,6 +594,13 @@ export const LibraryScreen = {
   },
 
   renderPickerGroups(state) {
+    if (this.isDownloadedView()) {
+      return `
+        <section class="library-picker-groups library-downloaded-picker-groups" id="libraryPickerGroupsMount">
+          <div class="library-picker-row">${this.renderDownloadedTypePicker()}</div>
+        </section>
+      `;
+    }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       const providerLabel =
         state.availableCloudProviders.find(
@@ -612,6 +738,9 @@ export const LibraryScreen = {
   },
 
   renderLibraryContentArea(state) {
+    if (this.isDownloadedView()) {
+      return `<div id="libraryContentAreaMount">${this.renderDownloadedLibraryContent()}</div>`;
+    }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       return `
         <div id="libraryContentAreaMount">
@@ -641,16 +770,42 @@ export const LibraryScreen = {
   renderViewModeTabs(state) {
     return `
       <div class="library-view-mode-row">
-        <button class="library-view-mode-button focusable${state.viewMode === LIBRARY_VIEW_MODE.SAVED ? " selected" : ""}"
+        <button class="library-view-mode-button focusable${!this.isDownloadedView() && state.viewMode === LIBRARY_VIEW_MODE.SAVED ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="saved">
           ${escapeHtml(t("library_source_saved", {}, "Saved"))}
         </button>
-        <button class="library-view-mode-button focusable${state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
+        <button class="library-view-mode-button focusable${!this.isDownloadedView() && state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="cloud">
           ${escapeHtml(t("library_source_cloud", {}, "Cloud"))}
         </button>
+        ${
+          Platform.isBrowser()
+            ? `<button class="library-view-mode-button focusable${this.isDownloadedView() ? " selected" : ""}"
+                       data-action="selectDownloadedLibraryView" data-view-mode="downloaded">
+                 Downloaded
+               </button>`
+            : ""
+        }
       </div>
     `;
+  },
+
+  renderDownloadedLibraryContent() {
+    const downloads = this.downloadedLibrary || {};
+    if (downloads.loading) {
+      return `<section class="library-empty-state">${renderLoadingIndicator({ size: "medium" })}<p class="library-empty-subtitle">Loading downloads</p></section>`;
+    }
+    if (!downloads.supported) {
+      return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">Downloads unavailable</h3><p class="library-empty-subtitle">This browser does not support local offline downloads.</p></section>`;
+    }
+    const items = this.downloadedType === "series"
+      ? (downloads.series || []).map(offlineSeriesCard)
+      : (downloads.movies || []).map(offlineMovieCard);
+    if (!items.length) {
+      const label = this.downloadedType === "series" ? "series" : "movies";
+      return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">No downloaded ${label}</h3><p class="library-empty-subtitle">Completed downloads will appear here and remain available offline.</p></section>`;
+    }
+    return this.renderGrid(items);
   },
 
   renderCloudActions(state) {
@@ -850,7 +1005,7 @@ export const LibraryScreen = {
 
     const sourceNode = this.container.querySelector("#libraryPageSource");
     if (sourceNode instanceof HTMLElement) {
-      sourceNode.textContent = this.controller.getSourceLabel();
+      sourceNode.textContent = this.isDownloadedView() ? "Downloaded" : this.controller.getSourceLabel();
     }
 
     const pickerMount = this.container.querySelector("#libraryPickerGroupsMount");
@@ -917,6 +1072,7 @@ export const LibraryScreen = {
                        data-poster-src="${escapeHtml(item.poster || "")}"
                        data-backdrop-src="${escapeHtml(item.background || "")}"
                        data-addon-base-url="${escapeHtml(item.addonBaseUrl || "")}"
+                       data-offline-item="${item.offlineItem ? "true" : "false"}"
                        data-focus-key="${escapeHtml(focusKey)}">
                 <div class="library-grid-poster${item.poster ? "" : " placeholder"}"${item.poster ? ` style="background-image:url('${escapeHtml(item.poster)}')"` : ""}>
                   ${isWatched ? renderTitleWatchedBadge({ className: "library-watched-badge", iconClassName: "library-watched-badge-svg" }) : ""}
@@ -942,7 +1098,10 @@ export const LibraryScreen = {
       name: node.dataset.itemTitle || "Untitled",
       poster: node.dataset.posterSrc || "",
       background: node.dataset.backdropSrc || "",
-      backdrop: node.dataset.backdropSrc || ""
+      backdrop: node.dataset.backdropSrc || "",
+      skipRemotePreviewMetadata: node.dataset.offlineItem === "true",
+      allowTrailer: node.dataset.offlineItem !== "true",
+      allowLibraryActions: node.dataset.offlineItem !== "true"
     };
   },
 
@@ -1200,7 +1359,7 @@ export const LibraryScreen = {
     const posterWidth = 252;
     const posterRadius = 24;
     const libraryStyle = `--library-poster-width:${posterWidth}px;--library-poster-height:${Math.round(posterWidth * 1.5)}px;--library-poster-radius:${posterRadius}px;`;
-    if (state.isLoading || state.isSyncing) {
+    if ((state.isLoading || state.isSyncing) && !this.isDownloadedView()) {
       this.renderLoading();
       ScreenUtils.indexFocusables(this.container);
       if (!this.layoutPrefs?.modernSidebar) {
@@ -1221,7 +1380,7 @@ export const LibraryScreen = {
           <section class="library-page">
             <header class="library-page-header">
               <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
-              <div class="library-page-source" id="libraryPageSource">${escapeHtml(this.controller.getSourceLabel())}</div>
+              <div class="library-page-source" id="libraryPageSource">${escapeHtml(this.isDownloadedView() ? "Downloaded" : this.controller.getSourceLabel())}</div>
             </header>
 
             ${this.renderViewModeTabs(state)}
@@ -1424,6 +1583,7 @@ export const LibraryScreen = {
       !state.showDeleteConfirm &&
       !state.showManageDialog &&
       !state.cloudFilePickerItem &&
+      !this.downloadedPickerOpen &&
       !state.expandedPicker;
     if (sidebarActive) {
       const sidebarNode =
@@ -1448,6 +1608,8 @@ export const LibraryScreen = {
         : ".library-manage-dialog .focusable";
     } else if (state.cloudFilePickerItem) {
       selector = ".library-cloud-file-dialog .focusable";
+    } else if (this.downloadedPickerOpen) {
+      selector = `.library-picker.open .library-picker-option[data-picker="downloaded_type"][data-option-index="${this.downloadedPickerFocusIndex}"]`;
     } else if (state.expandedPicker) {
       selector = `.library-picker.open .library-picker-option[data-option-index="${Number(state.pickerFocusIndex || 0)}"]`;
     } else if (this.pendingPickerRestore) {
@@ -2106,6 +2268,11 @@ export const LibraryScreen = {
     if (this.closePosterOptionsMenu()) {
       return true;
     }
+    if (this.downloadedPickerOpen) {
+      this.downloadedPickerOpen = false;
+      this.requestRender();
+      return true;
+    }
     if (state.expandedPicker) {
       this.pendingPickerRestore = state.expandedPicker;
       this.controller.closePicker();
@@ -2184,8 +2351,37 @@ export const LibraryScreen = {
       this.controller.togglePicker(picker);
       return;
     }
+    if (action === "toggleDownloadedTypePicker") {
+      const options = this.getDownloadedTypeOptions();
+      this.downloadedPickerOpen = !this.downloadedPickerOpen;
+      this.downloadedPickerFocusIndex = Math.max(
+        0,
+        options.findIndex((option) => option.value === this.downloadedType)
+      );
+      this.requestRender();
+      return;
+    }
+    if (action === "selectDownloadedTypeOption") {
+      const option = this.getDownloadedTypeOptions()[Number(node.dataset.optionIndex || 0)];
+      if (option) {
+        this.downloadedType = option.value;
+      }
+      this.downloadedPickerOpen = false;
+      this.downloadedPickerFocusIndex = 0;
+      this.requestRender();
+      return;
+    }
     if (action === "selectLibraryViewMode") {
+      this.downloadedView = false;
+      this.downloadedPickerOpen = false;
       await this.controller.selectViewMode(String(node.dataset.viewMode || "saved"));
+      return;
+    }
+    if (action === "selectDownloadedLibraryView") {
+      this.downloadedView = true;
+      this.downloadedPickerOpen = false;
+      this.controller.closePicker();
+      this.requestRender();
       return;
     }
     if (action === "selectLibraryPresentationMode") {
@@ -2379,7 +2575,32 @@ export const LibraryScreen = {
       state.showDeleteConfirm ||
       state.showManageDialog ||
       state.cloudFilePickerItem ||
+      this.downloadedPickerOpen ||
       state.expandedPicker;
+
+    if (this.downloadedPickerOpen) {
+      if (code === 38 || code === 40) {
+        const options = this.getDownloadedTypeOptions();
+        const delta = code === 38 ? -1 : 1;
+        this.downloadedPickerFocusIndex = Math.max(
+          0,
+          Math.min(options.length - 1, this.downloadedPickerFocusIndex + delta)
+        );
+        event?.preventDefault?.();
+        this.requestRender();
+        return;
+      }
+      if (code === 13) {
+        event?.preventDefault?.();
+        await this.activateNode({
+          dataset: {
+            action: "selectDownloadedTypeOption",
+            optionIndex: String(this.downloadedPickerFocusIndex)
+          }
+        });
+        return;
+      }
+    }
 
     if (!sidebarLocked && code === 13 && this.isPosterHoldTarget(current)) {
       event?.preventDefault?.();
@@ -2493,6 +2714,9 @@ export const LibraryScreen = {
     this.suppressHoldMenuEnterUntilKeyUp = false;
     this.gridRows = [];
     this.pendingHydrationState = null;
+    this.offlineDownloadsUnsubscribe?.();
+    this.offlineDownloadsUnsubscribe = null;
+    this.downloadedLibraryRequest = (this.downloadedLibraryRequest || 0) + 1;
     this.controller?.dispose?.();
     this.controller = null;
     ScreenUtils.hide(this.container);

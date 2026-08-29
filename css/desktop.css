@@ -2091,6 +2091,50 @@ html.desktop-browser {
   transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
+.desktop-browser #stream .stream-route-offline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 8px 2px 0;
+}
+
+.desktop-browser #stream .stream-route-offline-action,
+.desktop-browser #stream .stream-route-offline-progress {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 8px;
+  background: rgb(20 20 24 / 0.72);
+  color: var(--text-color);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.desktop-browser #stream .stream-route-offline-action {
+  cursor: pointer;
+}
+
+.desktop-browser #stream .stream-route-offline-action.download {
+  border-color: rgb(var(--secondary-color-rgb) / 0.55);
+}
+
+.desktop-browser #stream .stream-route-offline-action.secondary {
+  color: var(--text-secondary);
+}
+
+.desktop-browser #stream .stream-route-offline-progress {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.desktop-browser #stream .stream-route-offline-action:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+}
+
 .desktop-browser #stream .stream-route-card.focused,
 .desktop-browser #stream .stream-route-card:focus-visible {
   border-color: var(--secondary-color);

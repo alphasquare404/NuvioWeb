@@ -49,6 +49,19 @@ import {
 } from "../../../core/streams/streamBadgeRules.js";
 import { normalizeMathematicalAlphanumericSymbols } from "../../../core/streams/streamDisplayText.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import {
+  canResolveBrowserOfflineDownload,
+  cancelBrowserOfflineDownload,
+  createOfflineDownloadId,
+  deleteBrowserOfflineDownload,
+  getBrowserOfflineFile,
+  getOfflineDownload,
+  initializeBrowserOfflineDownloads,
+  isBrowserOfflineDownloadSupported,
+  listOfflineDownloadsForMedia,
+  startBrowserOfflineDownload,
+  subscribeToOfflineDownloads
+} from "../../../core/offline/browserOfflineDownloads.js";
 
 const STREAM_BADGE_LIMIT = 9;
 // Number of rows on each side of the focused source to keep badge-hydrated.
@@ -997,6 +1010,28 @@ export const StreamScreen = {
     this.webOsNativePlayerAppId = "";
     this.nativePlayerPendingStreamId = "";
     this.nativePlayerRequestToken = 0;
+    this.offlineDownloadsSupported = false;
+    this.offlineDownloadMetadata = new Map();
+    this.offlineLocalCopies = [];
+    this.offlineDownloadsUnsubscribe?.();
+    this.offlineDownloadsUnsubscribe = null;
+    if (Environment.isBrowser() && isBrowserOfflineDownloadSupported()) {
+      void initializeBrowserOfflineDownloads()
+        .then((capabilities) => {
+          if (token !== this.loadToken || Router.getCurrent() !== "stream") return;
+          this.offlineDownloadsSupported = capabilities.supported === true;
+          if (this.offlineDownloadsSupported) {
+            this.offlineDownloadsUnsubscribe = subscribeToOfflineDownloads(() => {
+              void this.refreshOfflineDownloadMetadata();
+            });
+            void this.refreshOfflineDownloadMetadata();
+          }
+          this.requestRender();
+        })
+        .catch(() => {
+          // Offline storage is optional. Streaming remains available.
+        });
+    }
     if (this.releaseImageProxyReadyListener) {
       this.releaseImageProxyReadyListener();
       this.releaseImageProxyReadyListener = null;
@@ -1079,6 +1114,8 @@ export const StreamScreen = {
     this.loading = true;
     this.error = "";
     this.streams = [];
+    this.offlineDownloadMetadata = new Map();
+    this.offlineLocalCopies = [];
     this.addonFilter = "all";
     this.focusState = { zone: "filter", index: 0 };
     this.listScrollTop = 0;
@@ -1190,6 +1227,7 @@ export const StreamScreen = {
         return;
       }
       this.streams = mergeStreamItems(this.streams, chunkStreams);
+      void this.refreshOfflineDownloadMetadata();
       this.scheduleDebridPreparation();
       markSuccessfulSources(
         groups.map((group) => ({
@@ -1272,6 +1310,7 @@ export const StreamScreen = {
         }
         this.streams = mergeStreamItems(this.streams, missingStreams);
       }
+      void this.refreshOfflineDownloadMetadata();
       this.scheduleDebridPreparation();
       markSuccessfulSources(this.streams.map((stream) => stream.addonName));
       if (this.streams.length && showAddonLogo) {
@@ -2194,6 +2233,89 @@ export const StreamScreen = {
     `;
   },
 
+  getOfflineDownloadContext(stream = {}) {
+    const itemType = normalizeType(this.params?.itemType);
+    const isEpisode = itemType === "series" || itemType === "tv";
+    return {
+      contentType: isEpisode ? "episode" : "movie",
+      itemType,
+      itemId: this.params?.itemId || this.params?.tmdbId || this.params?.imdbId || "",
+      mediaId: this.params?.itemId || this.params?.tmdbId || this.params?.imdbId || "",
+      tmdbId: this.params?.tmdbId || this.params?.tmdb_id || "",
+      imdbId: this.params?.imdbId || "",
+      seriesId: isEpisode ? this.params?.itemId || this.params?.tmdbId || this.params?.imdbId || "" : "",
+      seriesTitle: isEpisode ? this.params?.itemTitle || this.params?.playerTitle || "" : "",
+      season: this.params?.season,
+      episode: this.params?.episode,
+      videoId: this.params?.videoId || "",
+      title: isEpisode
+        ? this.params?.episodeTitle || this.params?.itemTitle || this.params?.playerTitle || ""
+        : this.params?.itemTitle || this.params?.playerTitle || "",
+      year: this.params?.year || this.params?.releaseYear || this.params?.releaseInfo || "",
+      poster: this.params?.poster || this.params?.posterUrl || "",
+      backdrop: this.getBackdropUrl() || "",
+      sourceName: stream.addonName || "",
+      filename: stream.behaviorHints?.filename || stream.raw?.behaviorHints?.filename || "",
+      mimeType: this.resolveStreamMimeType(stream),
+      stream
+    };
+  },
+
+  getOfflineDownloadId(stream = {}) {
+    return createOfflineDownloadId(this.getOfflineDownloadContext(stream));
+  },
+
+  async refreshOfflineDownloadMetadata() {
+    if (!this.offlineDownloadsSupported || !Array.isArray(this.streams)) return;
+    const entries = await Promise.all(
+      this.streams.map(async (stream) => {
+        const downloadId = this.getOfflineDownloadId(stream);
+        return [downloadId, downloadId ? await getOfflineDownload(downloadId) : null];
+      })
+    );
+    this.offlineDownloadMetadata = new Map(entries.filter(([downloadId]) => Boolean(downloadId)));
+    this.offlineLocalCopies = await listOfflineDownloadsForMedia(this.getOfflineDownloadContext());
+    this.requestRender();
+  },
+
+  renderOfflineDownloadActions(stream = {}) {
+    if (!Environment.isBrowser() || !this.offlineDownloadsSupported) return "";
+    const context = this.getOfflineDownloadContext(stream);
+    const downloadId = createOfflineDownloadId(context);
+    if (!downloadId) return "";
+    const download = this.offlineDownloadMetadata?.get(downloadId) || null;
+    const status = String(download?.status || "idle");
+    const button = (action, icon, label, className = "") =>
+      this.renderOfflineButton(action, icon, label, stream.id, className);
+    if (status === "downloading") {
+      const total = Number(download?.totalBytes || 0);
+      const current = Number(download?.downloadedBytes || 0);
+      const progressLabel = total > 0
+        ? `${Math.min(100, Math.round((current / total) * 100))}%`
+        : formatBytes(current) || "Downloading";
+      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(progressLabel)}</span>${button("cancel", "×", "Cancel", "secondary")}</div>`;
+    }
+    if (status === "completed") {
+      return `<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
+    }
+    if (!canResolveBrowserOfflineDownload(stream, context)) return "";
+    return `<div class="stream-route-offline-actions">${button("download", status === "failed" ? "↻" : "↓", status === "failed" ? "Retry Download" : "Download", "download")}</div>`;
+  },
+
+  renderOfflineCopyRow(download = {}) {
+    const isMatched = this.streams.some(
+      (stream) => this.getOfflineDownloadId(stream) === String(download.downloadId || "")
+    );
+    if (isMatched) return "";
+    const quality = String(download.quality || download.filename || "Offline media");
+    const size = formatBytes(download.downloadedBytes || download.totalBytes) || "";
+    return `<div class="stream-route-card-row stream-route-offline-copy"><article class="stream-route-card stream-route-offline-card"><div class="stream-route-card-copy"><div class="stream-route-card-heading">OFFLINE COPY</div><div class="stream-route-card-quality">${escapeHtml([quality, size].filter(Boolean).join(" • "))}</div><div class="stream-route-card-line secondary">${escapeHtml(download.sourceName || "Downloaded")}</div></div><div class="stream-route-offline-actions">${this.renderOfflineButton("playOfflineCopy", "▶", "Play Offline", download.downloadId)}${this.renderOfflineButton("deleteOfflineCopy", "⌫", "Delete Offline", download.downloadId, "secondary")}</div></article></div>`;
+  },
+
+  renderOfflineButton(action, icon, label, streamId = "", className = "") {
+    return `<button type="button" class="stream-route-offline-action ${className}" data-offline-action="${action}" data-stream-id="${escapeHtml(streamId)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${escapeHtml(icon)}</button>`;
+  },
+
   renderStreamCard(stream, index, streamBadgesEnabled = true, badgeSettings = null) {
     const headline = getStreamHeadline(stream);
     const quality = getStreamQuality(stream);
@@ -2249,6 +2371,7 @@ export const StreamScreen = {
             ${bottomBadges || ""}
           </div>
           ${addonIdentity}
+          ${this.renderOfflineDownloadActions(stream)}
         </article>
       </div>
     `;
@@ -2315,6 +2438,13 @@ export const StreamScreen = {
       body = `<div class="stream-route-empty">${escapeHtml(this.error)}</div>`;
     } else if (!filtered.length) {
       body = `<div class="stream-route-empty">No sources found for this filter.</div>`;
+    }
+    const offlineCopies = (this.offlineLocalCopies || [])
+      .map((download) => this.renderOfflineCopyRow(download))
+      .filter(Boolean)
+      .join("");
+    if (offlineCopies) {
+      body = `${offlineCopies}${body}`;
     }
 
     const routeContent = this.autoResumeUiActive
@@ -2384,6 +2514,7 @@ export const StreamScreen = {
       }
     }
     this.bindDesktopPointerActions();
+    this.bindOfflineDownloadActions();
     this.bindListScrollState();
     this.hasRenderedStreamRouteShell = true;
   },
@@ -2411,6 +2542,22 @@ export const StreamScreen = {
       void this.onPointerActivate(actionTarget);
     };
     this.container.addEventListener("click", this.boundDesktopPointerActionHandler);
+  },
+
+  bindOfflineDownloadActions() {
+    if (!Environment.isBrowser() || !this.container) return;
+    this.container.querySelectorAll("[data-offline-action]").forEach((button) => {
+      if (!(button instanceof HTMLButtonElement) || button.dataset.offlineBound === "true") return;
+      button.dataset.offlineBound = "true";
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void this.handleOfflineDownloadAction(
+          String(button.dataset.offlineAction || ""),
+          String(button.dataset.streamId || "")
+        );
+      });
+    });
   },
 
   bindListScrollState() {
@@ -2541,18 +2688,74 @@ export const StreamScreen = {
       });
   },
 
-  async playStream(streamId) {
+  async startOfflineDownload(streamId) {
+    const stream = this.streams.find((entry) => entry.id === streamId);
+    if (!stream) return;
+    const context = this.getOfflineDownloadContext(stream);
+    try {
+      await startBrowserOfflineDownload(context);
+    } catch (_) {
+      this.showStreamToast("Could not download this source.");
+    }
+  },
+
+  async playOfflineDownload(streamId) {
+    const stream = this.streams.find((entry) => entry.id === streamId);
+    if (!stream) return;
+    return this.playOfflineDownloadById(this.getOfflineDownloadId(stream), stream);
+  },
+
+  async playOfflineDownloadById(downloadId, stream = null) {
+    const offline = await getBrowserOfflineFile(downloadId);
+    if (!offline) {
+      this.showStreamToast("Offline file is unavailable.");
+      await this.refreshOfflineDownloadMetadata();
+      return;
+    }
+    const offlineObjectUrl = URL.createObjectURL(offline.file);
+    try {
+      const source = stream || { id: `offline-${downloadId}`, addonName: offline.download.sourceName || "Offline" };
+      await this.playStream(source.id, { offlineObjectUrl, offlineDownload: offline.download, offlineStream: source });
+    } catch (_) {
+      URL.revokeObjectURL(offlineObjectUrl);
+      this.showStreamToast("Could not play the offline file.");
+    }
+  },
+
+  async handleOfflineDownloadAction(action, streamId) {
+    if (action === "playOfflineCopy") return this.playOfflineDownloadById(streamId);
+    if (action === "deleteOfflineCopy") return deleteBrowserOfflineDownload(streamId);
+    const stream = this.streams.find((entry) => entry.id === streamId);
+    if (!stream) return;
+    const downloadId = this.getOfflineDownloadId(stream);
+    if (action === "download") return this.startOfflineDownload(streamId);
+    if (action === "cancel") return cancelBrowserOfflineDownload(downloadId);
+    if (action === "playOffline") return this.playOfflineDownload(streamId);
+    if (action === "deleteOffline") return deleteBrowserOfflineDownload(downloadId);
+  },
+
+  async playStream(streamId, { offlineObjectUrl = "", offlineDownload = null, offlineStream = null } = {}) {
     this.cancelAutoPlayCountdown();
     this.cancelAutoPlaySelectionWait();
     const filtered = this.getFilteredStreams();
-    const selected = filtered.find((stream) => stream.id === streamId) || filtered[0];
+    const selected = offlineStream || filtered.find((stream) => stream.id === streamId) || filtered[0];
     if (!selected) {
       return;
     }
     // Browser Player → Sources owns its own provider filters. Preserve the
     // Stream Selection canonical list across navigation instead of passing
     // only the currently filtered display slice.
-    const playerStreamCandidates = Environment.isBrowser()
+    const playerStreamCandidates = offlineObjectUrl
+      ? [
+          {
+            ...selected,
+            url: offlineObjectUrl,
+            externalUrl: null,
+            sourceType: offlineDownload?.mimeType || selected.sourceType,
+            mimeType: offlineDownload?.mimeType || selected.mimeType
+          }
+        ]
+      : Environment.isBrowser()
       ? this.streams
       : this.getFilteredStreams();
     const itemType = normalizeType(this.params?.itemType);
@@ -2586,8 +2789,8 @@ export const StreamScreen = {
       resumeDurationMs = Number(resumeProgress?.durationMs || 0) || resumeDurationMs;
     }
 
-    Router.navigate("player", {
-      streamUrl: selected.url || selected.externalUrl || null,
+    return Router.navigate("player", {
+      streamUrl: offlineObjectUrl || selected.url || selected.externalUrl || null,
       itemId: this.params?.itemId || null,
       itemType: itemType || "movie",
       imdbId: this.params?.imdbId || null,
@@ -2639,7 +2842,9 @@ export const StreamScreen = {
       nextEpisodeSeason: this.params?.nextEpisodeSeason ?? null,
       nextEpisodeEpisode: this.params?.nextEpisodeEpisode ?? null,
       nextEpisodeTitle: this.params?.nextEpisodeTitle || "",
-      nextEpisodeReleased: this.params?.nextEpisodeReleased || ""
+      nextEpisodeReleased: this.params?.nextEpisodeReleased || "",
+      offlineObjectUrl: offlineObjectUrl || null,
+      offlineDownloadId: offlineDownload?.downloadId || null
     });
   },
 
@@ -2852,6 +3057,8 @@ export const StreamScreen = {
   cleanup() {
     this.cancelAutoPlayCountdown();
     this.cancelAutoPlaySelectionWait();
+    this.offlineDownloadsUnsubscribe?.();
+    this.offlineDownloadsUnsubscribe = null;
     this.loadToken = (this.loadToken || 0) + 1;
     this.playResolveToken = Number(this.playResolveToken || 0) + 1;
     this.nativePlayerRequestToken = Number(this.nativePlayerRequestToken || 0) + 1;

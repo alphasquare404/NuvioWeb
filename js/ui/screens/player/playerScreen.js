@@ -2230,6 +2230,7 @@ export const PlayerScreen = {
       }
     }
     this.params = params;
+    this.offlineObjectUrl = Environment.isBrowser() ? String(params.offlineObjectUrl || "") : "";
     this.trackPreferenceContentId = this.getTrackPreferenceContentId();
     this.rememberedAudioTrackPreference = TrackPreferencesStore.getAudio(
       this.trackPreferenceContentId
@@ -11463,6 +11464,23 @@ export const PlayerScreen = {
     }
   },
 
+  releaseOfflineObjectUrl() {
+    const objectUrl = String(this.offlineObjectUrl || "");
+    this.offlineObjectUrl = "";
+    if (
+      !objectUrl ||
+      !Environment.isBrowser() ||
+      typeof globalThis.URL?.revokeObjectURL !== "function"
+    ) {
+      return;
+    }
+    try {
+      globalThis.URL.revokeObjectURL(objectUrl);
+    } catch (_) {
+      // Object URL cleanup is best effort and must never interrupt playback teardown.
+    }
+  },
+
   async playStreamByUrl(
     streamUrl,
     {
@@ -11484,6 +11502,10 @@ export const PlayerScreen = {
     }
     if (!streamUrl) {
       return;
+    }
+
+    if (this.offlineObjectUrl && String(streamUrl) !== this.offlineObjectUrl) {
+      this.releaseOfflineObjectUrl();
     }
 
     const previousPlaybackUrl = String(this.activePlaybackUrl || "").trim();
@@ -20633,6 +20655,7 @@ export const PlayerScreen = {
   cleanup() {
     try {
       this.playerRouteActive = false;
+      this.releaseOfflineObjectUrl();
       if (this.isDesktopPlayerPictureInPicture()) {
         void this.exitDesktopPictureInPicture().catch(() => {});
       }
