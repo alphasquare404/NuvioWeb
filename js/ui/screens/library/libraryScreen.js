@@ -50,10 +50,24 @@ import {
 } from "../../components/desktopMediaPreviewData.js";
 import {
   isBrowserOfflineDownloadSupported,
+  listOfflineDownloads,
   listDownloadedMovies,
   listDownloadedSeries,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
+import {
+  cancelQueuedBrowserOfflineDownload,
+  moveBrowserOfflineDownloadDown,
+  moveBrowserOfflineDownloadToBottom,
+  moveBrowserOfflineDownloadToTop,
+  moveBrowserOfflineDownloadUp,
+  pauseQueuedBrowserOfflineDownload,
+  resumeQueuedBrowserOfflineDownload
+} from "../../../core/offline/browserOfflineDownloadQueue.js";
+import {
+  listManageableBrowserOfflineDownloads,
+  orderQueuedBrowserOfflineDownloads
+} from "../../../core/offline/browserOfflineDownloadQueueState.js";
 
 const POSTER_HOLD_DELAY_MS = 650;
 const PICKER_MENU_EXIT_MS = 160;
@@ -242,6 +256,29 @@ function offlineSeriesCard(group = {}) {
   };
 }
 
+function formatOfflineBytes(value) {
+  const bytes = Number(value || 0);
+  if (!(bytes > 0)) return "0 B";
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+  return `${Math.round(bytes / 1e3)} KB`;
+}
+
+function managerEpisodeLabel(download = {}) {
+  const season = download.seasonNumber ?? download.season;
+  const episode = download.episodeNumber ?? download.episode;
+  if (season == null || episode == null) return "";
+  const code = `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
+  const episodeTitle = download.episodeTitle || download.title;
+  return [code, episodeTitle].filter(Boolean).join(" · ");
+}
+
+function managerSourceLabel(download = {}) {
+  return [download.quality || download.resolution || "", download.sourceName || download.addonName || ""]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export const LibraryScreen = {
   clearClosingPicker() {
     if (this.closingPickerTimer) {
@@ -362,15 +399,17 @@ export const LibraryScreen = {
     this.downloadedPickerOpen = false;
     this.downloadedPickerFocusIndex = 0;
     this.downloadedLibrary = { supported: false, loading: false, movies: [], series: [] };
+    this.downloadManagerView = false;
+    this.downloadManagerJobs = [];
     this.offlineDownloadsUnsubscribe = null;
 
     this.render();
     this.bindEvents();
     if (Platform.isBrowser()) {
       this.offlineDownloadsUnsubscribe = subscribeToOfflineDownloads(() => {
-        void this.refreshDownloadedLibrary();
+        void this.refreshOfflineLibraryViews();
       });
-      void this.refreshDownloadedLibrary();
+      void this.refreshOfflineLibraryViews();
     }
     await controller.init();
     if (this.controller !== controller || Router.getCurrent() !== "library") {
@@ -437,6 +476,26 @@ export const LibraryScreen = {
 
   isDownloadedView() {
     return Platform.isBrowser() && this.downloadedView === true;
+  },
+
+  isDownloadManagerView() {
+    return Platform.isBrowser() && this.downloadManagerView === true;
+  },
+
+  hasManageableDownloads() {
+    return this.downloadManagerJobs.length > 0;
+  },
+
+  async refreshOfflineLibraryViews() {
+    if (!Platform.isBrowser() || !this.container) return;
+    const jobs = await listOfflineDownloads().catch(() => []);
+    if (!this.container || Router.getCurrent() !== "library") return;
+    this.downloadManagerJobs = listManageableBrowserOfflineDownloads(jobs);
+    if (this.downloadManagerView && !this.hasManageableDownloads()) {
+      this.downloadManagerView = false;
+      this.downloadedView = true;
+    }
+    void this.refreshDownloadedLibrary();
   },
 
   async refreshDownloadedLibrary() {
@@ -594,6 +653,7 @@ export const LibraryScreen = {
   },
 
   renderPickerGroups(state) {
+    if (this.isDownloadManagerView()) return "";
     if (this.isDownloadedView()) {
       return `
         <section class="library-picker-groups library-downloaded-picker-groups" id="libraryPickerGroupsMount">
@@ -738,6 +798,9 @@ export const LibraryScreen = {
   },
 
   renderLibraryContentArea(state) {
+    if (this.isDownloadManagerView()) {
+      return `<div id="libraryContentAreaMount">${this.renderDownloadManagerContent()}</div>`;
+    }
     if (this.isDownloadedView()) {
       return `<div id="libraryContentAreaMount">${this.renderDownloadedLibraryContent()}</div>`;
     }
@@ -786,8 +849,56 @@ export const LibraryScreen = {
                </button>`
             : ""
         }
+        ${
+          Platform.isBrowser() && this.hasManageableDownloads()
+            ? `<button class="library-view-mode-button focusable${this.isDownloadManagerView() ? " selected" : ""}"
+                       data-action="selectDownloadManagerLibraryView" data-view-mode="download-manager">
+                 Download Manager${this.downloadManagerJobs.length ? ` <span class="library-download-manager-count">${this.downloadManagerJobs.length}</span>` : ""}
+               </button>`
+            : ""
+        }
       </div>
     `;
+  },
+
+  renderDownloadManagerContent() {
+    const jobs = this.downloadManagerJobs || [];
+    if (!jobs.length) {
+      return `<section class="library-empty-state"><h3 class="library-empty-title">No active downloads</h3><p class="library-empty-subtitle">Completed downloads are available in Downloaded.</p></section>`;
+    }
+    const queued = orderQueuedBrowserOfflineDownloads(jobs);
+    const groups = [
+      ["Downloading", jobs.filter((job) => job.status === "downloading")],
+      ["Queued", queued],
+      ["Paused / Interrupted", jobs.filter((job) => ["paused", "interrupted"].includes(job.status))],
+      ["Failed", jobs.filter((job) => job.status === "failed")]
+    ];
+    return `<section class="library-download-manager" aria-label="Download Manager">${groups
+      .filter(([, entries]) => entries.length)
+      .map(([title, entries]) => `<section class="library-download-manager-section"><h2>${title}</h2>${entries
+        .map((job, index) => this.renderDownloadManagerCard(job, title === "Queued" ? index + 1 : null))
+        .join("")}</section>`)
+      .join("")}</section>`;
+  },
+
+  renderDownloadManagerCard(download = {}, queuePosition = null) {
+    const total = Number(download.totalBytes || 0);
+    const current = Number(download.downloadedBytes || 0);
+    const progress = total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
+    const title = download.seriesTitle || download.title || "Offline download";
+    const episode = managerEpisodeLabel(download);
+    const source = managerSourceLabel(download);
+    const action = (name, icon, label) => `<button class="library-download-manager-action focusable" data-action="${name}" data-download-id="${escapeHtml(download.downloadId)}" aria-label="${label}" title="${label}"><span class="material-icons" aria-hidden="true">${icon}</span></button>`;
+    const status = String(download.status || "");
+    let actions = "";
+    if (status === "downloading") actions = action("pauseOfflineDownload", "pause", "Pause") + action("cancelOfflineDownload", "close", "Cancel");
+    if (status === "queued") actions = action("moveOfflineDownloadTop", "vertical_align_top", "Move to top") + action("moveOfflineDownloadUp", "keyboard_arrow_up", "Move up") + action("moveOfflineDownloadDown", "keyboard_arrow_down", "Move down") + action("moveOfflineDownloadBottom", "vertical_align_bottom", "Move to bottom") + action("cancelOfflineDownload", "close", "Cancel");
+    if (["paused", "interrupted", "failed"].includes(status)) actions = action("resumeOfflineDownload", status === "failed" ? "refresh" : "play_arrow", status === "failed" ? "Retry" : "Resume") + action("cancelOfflineDownload", "delete", "Delete partial download");
+    return `<article class="library-download-manager-card">
+      ${download.poster ? `<img class="library-download-manager-poster" src="${escapeHtml(download.poster)}" alt="" />` : `<div class="library-download-manager-poster library-download-manager-poster-placeholder" aria-hidden="true"><span class="material-icons">download</span></div>`}
+      <div class="library-download-manager-copy"><strong>${escapeHtml(title)}</strong>${episode ? `<span>${escapeHtml(episode)}</span>` : ""}${source ? `<span>${escapeHtml(source)}</span>` : ""}${status === "queued" ? `<span>Queued #${queuePosition}</span>` : `<span>${escapeHtml(status)}${total ? ` · ${formatOfflineBytes(current)} / ${formatOfflineBytes(total)} (${progress}%)` : ""}</span>`}${status === "downloading" ? `<div class="library-download-manager-progress" aria-label="${progress}% downloaded"><i style="width:${progress}%"></i></div>` : ""}${download.error ? `<small>${escapeHtml(download.error)}</small>` : ""}</div>
+      <div class="library-download-manager-actions">${actions}</div>
+    </article>`;
   },
 
   renderDownloadedLibraryContent() {
@@ -2373,15 +2484,46 @@ export const LibraryScreen = {
     }
     if (action === "selectLibraryViewMode") {
       this.downloadedView = false;
+      this.downloadManagerView = false;
       this.downloadedPickerOpen = false;
       await this.controller.selectViewMode(String(node.dataset.viewMode || "saved"));
       return;
     }
     if (action === "selectDownloadedLibraryView") {
       this.downloadedView = true;
+      this.downloadManagerView = false;
       this.downloadedPickerOpen = false;
       this.controller.closePicker();
       this.requestRender();
+      return;
+    }
+    if (action === "selectDownloadManagerLibraryView") {
+      if (!this.hasManageableDownloads()) {
+        this.downloadedView = true;
+        this.downloadManagerView = false;
+      } else {
+        this.downloadedView = false;
+        this.downloadManagerView = true;
+      }
+      this.downloadedPickerOpen = false;
+      this.controller.closePicker();
+      this.requestRender();
+      return;
+    }
+    if (action.startsWith("moveOfflineDownload") || ["pauseOfflineDownload", "resumeOfflineDownload", "cancelOfflineDownload"].includes(action)) {
+      const downloadId = String(node.dataset.downloadId || "");
+      if (!downloadId) return;
+      const operations = {
+        moveOfflineDownloadTop: moveBrowserOfflineDownloadToTop,
+        moveOfflineDownloadUp: moveBrowserOfflineDownloadUp,
+        moveOfflineDownloadDown: moveBrowserOfflineDownloadDown,
+        moveOfflineDownloadBottom: moveBrowserOfflineDownloadToBottom,
+        pauseOfflineDownload: pauseQueuedBrowserOfflineDownload,
+        resumeOfflineDownload: resumeQueuedBrowserOfflineDownload,
+        cancelOfflineDownload: cancelQueuedBrowserOfflineDownload
+      };
+      await operations[action]?.(downloadId);
+      await this.refreshOfflineLibraryViews();
       return;
     }
     if (action === "selectLibraryPresentationMode") {

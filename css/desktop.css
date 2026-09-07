@@ -7240,6 +7240,126 @@ html.desktop-browser {
   line-height: 1.4;
 }
 
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-count {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: rgb(var(--secondary-color-rgb) / 0.3);
+  place-items: center;
+  font-size: 11px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager {
+  display: grid;
+  gap: 28px;
+  padding-bottom: 48px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-section {
+  display: grid;
+  gap: 10px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-section h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-card {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 13px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(26, 26, 29, 0.88);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-poster {
+  width: 52px;
+  height: 70px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-poster-placeholder {
+  display: grid;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  place-items: center;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-copy strong,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-copy span,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-copy strong {
+  color: var(--text-color);
+  font-size: 15px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-copy small {
+  color: #ef8f8f;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-progress {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--secondary-color);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 180px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-action {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-color);
+  place-items: center;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-action:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+}
+
 @media (max-width: 900px) {
   .desktop-browser .library-shell.desktop-navigation-enabled > .library-main {
     padding-inline: 24px;
@@ -10800,6 +10920,33 @@ body.desktop-browser {
   .desktop-browser .library-shell.desktop-navigation-enabled .library-empty-state {
     min-height: min(42dvh, 340px);
     padding-block: 28px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager {
+    gap: 22px;
+    padding-bottom: 28px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-card {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 10px;
+    padding: 9px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-poster {
+    width: 46px;
+    height: 62px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-action {
+    width: 44px;
+    height: 44px;
   }
 
   .desktop-browser .settings-shell .settings-workspace {

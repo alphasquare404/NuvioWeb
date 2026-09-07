@@ -21,10 +21,15 @@ import {
 import { subtitleRepository } from "../../data/repository/subtitleRepository.js";
 import {
   MAX_CONCURRENT_DOWNLOADS,
-  orderQueuedBrowserOfflineDownloads
+  orderQueuedBrowserOfflineDownloads,
+  reorderQueuedBrowserOfflineDownloads
 } from "./browserOfflineDownloadQueueState.js";
 
-export { MAX_CONCURRENT_DOWNLOADS, orderQueuedBrowserOfflineDownloads } from "./browserOfflineDownloadQueueState.js";
+export {
+  MAX_CONCURRENT_DOWNLOADS,
+  orderQueuedBrowserOfflineDownloads,
+  reorderQueuedBrowserOfflineDownloads
+} from "./browserOfflineDownloadQueueState.js";
 
 let initialized = false;
 let initializing = null;
@@ -260,6 +265,35 @@ export async function resumeQueuedBrowserOfflineDownload(downloadId, input = nul
   });
   void scheduleBrowserOfflineDownloads();
   return queued;
+}
+
+async function reorderQueuedBrowserOfflineDownload(downloadId, position) {
+  await initializeBrowserOfflineDownloadQueue();
+  const downloads = await listOfflineDownloads();
+  const ordered = reorderQueuedBrowserOfflineDownloads(downloads, downloadId, position);
+  if (!ordered.some((download) => download.downloadId === downloadId)) return null;
+  await Promise.all(
+    ordered.map((download, index) =>
+      updateBrowserOfflineDownload(download.downloadId, { queueSequence: index + 1 })
+    )
+  );
+  return ordered;
+}
+
+export function moveBrowserOfflineDownloadUp(downloadId) {
+  return reorderQueuedBrowserOfflineDownload(downloadId, "up");
+}
+
+export function moveBrowserOfflineDownloadDown(downloadId) {
+  return reorderQueuedBrowserOfflineDownload(downloadId, "down");
+}
+
+export function moveBrowserOfflineDownloadToTop(downloadId) {
+  return reorderQueuedBrowserOfflineDownload(downloadId, "top");
+}
+
+export function moveBrowserOfflineDownloadToBottom(downloadId) {
+  return reorderQueuedBrowserOfflineDownload(downloadId, "bottom");
 }
 
 export async function pauseQueuedBrowserOfflineDownload(downloadId) {
