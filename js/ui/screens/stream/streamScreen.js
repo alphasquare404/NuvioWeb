@@ -50,19 +50,23 @@ import {
 import { normalizeMathematicalAlphanumericSymbols } from "../../../core/streams/streamDisplayText.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import {
-  canResolveBrowserOfflineDownload,
-  cancelBrowserOfflineDownload,
+  canQueueBrowserOfflineDownload,
   createOfflineDownloadId,
   deleteBrowserOfflineDownload,
   getBrowserOfflineFile,
   getOfflineDownload,
-  initializeBrowserOfflineDownloads,
   isBrowserOfflineDownloadSupported,
+  listOfflineDownloads,
   listOfflineDownloadsForMedia,
-  pauseBrowserOfflineDownload,
-  startBrowserOfflineDownload,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
+import {
+  cancelQueuedBrowserOfflineDownload,
+  enqueueBrowserOfflineDownload,
+  initializeBrowserOfflineDownloadQueue,
+  pauseQueuedBrowserOfflineDownload,
+  resumeQueuedBrowserOfflineDownload
+} from "../../../core/offline/browserOfflineDownloadQueue.js";
 
 const STREAM_BADGE_LIMIT = 9;
 // Number of rows on each side of the focused source to keep badge-hydrated.
@@ -1017,7 +1021,7 @@ export const StreamScreen = {
     this.offlineDownloadsUnsubscribe?.();
     this.offlineDownloadsUnsubscribe = null;
     if (Environment.isBrowser() && isBrowserOfflineDownloadSupported()) {
-      void initializeBrowserOfflineDownloads()
+      void initializeBrowserOfflineDownloadQueue()
         .then((capabilities) => {
           if (token !== this.loadToken || Router.getCurrent() !== "stream") return;
           this.offlineDownloadsSupported = capabilities.supported === true;
@@ -2268,6 +2272,19 @@ export const StreamScreen = {
 
   async refreshOfflineDownloadMetadata() {
     if (!this.offlineDownloadsSupported || !Array.isArray(this.streams)) return;
+    const allDownloads = await listOfflineDownloads();
+    const queued = allDownloads
+      .filter((download) => download?.status === "queued")
+      .sort(
+        (left, right) =>
+          Number(left.queueSequence || Number.MAX_SAFE_INTEGER) -
+            Number(right.queueSequence || Number.MAX_SAFE_INTEGER) ||
+          Number(left.queuedAt || 0) - Number(right.queuedAt || 0)
+      );
+    this.offlineQueuePositions = new Map(
+      queued.map((download, index) => [String(download.downloadId || ""), index + 1])
+    );
+    this.hasActiveOfflineDownload = allDownloads.some((download) => download?.status === "downloading");
     const entries = await Promise.all(
       this.streams.map(async (stream) => {
         const downloadId = this.getOfflineDownloadId(stream);
@@ -2294,16 +2311,21 @@ export const StreamScreen = {
       const progressLabel = total > 0
         ? `${Math.min(100, Math.round((current / total) * 100))}%`
         : formatBytes(current) || "Downloading";
-      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(progressLabel)}</span>${button("pause", "Ⅱ", "Pause", "secondary")}<span class="stream-route-offline-notice">Keep Nuvio open for reliable downloading</span></div>`;
+      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(progressLabel)}</span>${button("pause", "Ⅱ", "Pause", "secondary")}${button("cancel", "×", "Cancel", "secondary")}</div>`;
+    }
+    if (status === "queued") {
+      const position = this.offlineQueuePositions?.get(downloadId);
+      const label = position ? `⌛ Queued · #${position}` : "⌛ Queued";
+      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(label)}</span>${button("cancel", "×", "Cancel", "secondary")}</div>`;
     }
     if (status === "completed") {
       return `<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
     }
     if (["paused", "interrupted", "failed"].includes(status)) {
       const label = status === "paused" ? "Paused" : status === "interrupted" ? "Interrupted" : "Retry";
-      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(label)}</span>${button("resume", "▶", "Resume", "download")}</div>`;
+      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(label)}</span>${button("resume", "▶", status === "failed" ? "Retry" : "Resume", "download")}${button("cancel", "×", "Delete", "secondary")}</div>`;
     }
-    if (!canResolveBrowserOfflineDownload(stream, context)) return "";
+    if (!canQueueBrowserOfflineDownload(context)) return "";
     return `<div class="stream-route-offline-actions">${button("download", status === "failed" ? "↻" : "↓", status === "failed" ? "Retry Download" : "Download", "download")}</div>`;
   },
 
@@ -2484,6 +2506,7 @@ export const StreamScreen = {
         <div class="stream-route-right-gradient"></div>
         ${this.renderDesktopBackButton()}
         ${routeContent}
+        ${this.renderOfflineDownloadNotice()}
         ${this.renderContinueWatchingResumeOverlay()}
         ${this.renderAutoPlayOverlay()}
       </div>
@@ -2547,6 +2570,11 @@ export const StreamScreen = {
       void this.onPointerActivate(actionTarget);
     };
     this.container.addEventListener("click", this.boundDesktopPointerActionHandler);
+  },
+
+  renderOfflineDownloadNotice() {
+    if (!Environment.isBrowser() || !this.hasActiveOfflineDownload) return "";
+    return `<div class="stream-route-offline-global-notice" aria-live="polite">Keep Nuvio open for reliable downloading</div>`;
   },
 
   bindOfflineDownloadActions() {
@@ -2698,7 +2726,7 @@ export const StreamScreen = {
     if (!stream) return;
     const context = this.getOfflineDownloadContext(stream);
     try {
-      await startBrowserOfflineDownload(context);
+      await enqueueBrowserOfflineDownload(context);
     } catch (_) {
       this.showStreamToast("Could not download this source.");
     }
@@ -2734,9 +2762,9 @@ export const StreamScreen = {
     if (!stream) return;
     const downloadId = this.getOfflineDownloadId(stream);
     if (action === "download") return this.startOfflineDownload(streamId);
-    if (action === "resume") return this.startOfflineDownload(streamId);
-    if (action === "pause") return pauseBrowserOfflineDownload(downloadId);
-    if (action === "cancel") return cancelBrowserOfflineDownload(downloadId);
+    if (action === "resume") return resumeQueuedBrowserOfflineDownload(downloadId, this.getOfflineDownloadContext(stream));
+    if (action === "pause") return pauseQueuedBrowserOfflineDownload(downloadId);
+    if (action === "cancel") return cancelQueuedBrowserOfflineDownload(downloadId);
     if (action === "playOffline") return this.playOfflineDownload(streamId);
     if (action === "deleteOffline") return deleteBrowserOfflineDownload(downloadId);
   },

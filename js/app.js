@@ -23,6 +23,7 @@ import { I18n } from "./i18n/index.js";
 import { getLatestAppUpdate } from "./core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "./ui/components/appUpdatePrompt.js";
 import { resolveExperienceRoute } from "./core/profile/experienceModeRouting.js";
+import { initializeBrowserOfflineDownloadQueue } from "./core/offline/browserOfflineDownloadQueue.js";
 
 // These legacy Web-only overrides are no longer user settings. Navigation now
 // uses the stable grid algorithm and simulator detection automatically.
@@ -486,6 +487,9 @@ async function bootstrapApp() {
   markBootStage("Initializing navigation");
   Router.init();
   PlayerController.init();
+  if (isDesktopBrowser) {
+    void initializeBrowserOfflineDownloadQueue().catch(() => {});
+  }
 
   FocusEngine.init();
   setupProviderCredentialForegroundLifecycle();

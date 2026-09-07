@@ -269,6 +269,84 @@ function buildMetadata(input, downloadId, fileName) {
   };
 }
 
+function safeTrackerSources(sources = []) {
+  return (Array.isArray(sources) ? sources : [])
+    .map((source) => {
+      const value = text(source);
+      if (!value || value.toLowerCase().startsWith("dht:")) return value;
+      try {
+        const url = new URL(value.replace(/^tracker:/i, ""));
+        return `${url.protocol}//${url.host}${url.pathname}`;
+      } catch (_) {
+        return "";
+      }
+    })
+    .filter(Boolean);
+}
+
+function safeQueuedStreamDescriptor(stream = {}) {
+  const resolve = stream.clientResolve || stream.raw?.clientResolve || {};
+  const hints = stream.behaviorHints || stream.raw?.behaviorHints || {};
+  return {
+    addonId: text(stream.addonId),
+    addonName: text(stream.addonName),
+    infoHash: text(stream.infoHash || resolve.infoHash),
+    fileIdx: stream.fileIdx ?? resolve.fileIdx ?? null,
+    quality: text(stream.quality || stream.qualityValue),
+    url: safeQueueDirectUrl(stream),
+    behaviorHints: {
+      filename: text(hints.filename || resolve.filename),
+      videoSize: Number(hints.videoSize || stream.videoSize || 0) || null
+    },
+    clientResolve: {
+      type: text(resolve.type),
+      service: text(resolve.service),
+      isCached: resolve.isCached === true,
+      infoHash: text(resolve.infoHash || stream.infoHash),
+      fileIdx: resolve.fileIdx ?? stream.fileIdx ?? null,
+      filename: text(resolve.filename || hints.filename),
+      torrentName: text(resolve.torrentName || stream.title || stream.name),
+      sources: safeTrackerSources(resolve.sources || stream.sources)
+    }
+  };
+}
+
+function safeQueueDirectUrl(stream = {}) {
+  const value = directUrlForStream(stream);
+  try {
+    const url = new URL(value);
+    // Signed browser links normally carry credentials in query parameters. Only
+    // retain a plain static URL that can safely survive an application restart.
+    return url.search || url.hash || url.username || url.password ? "" : url.toString();
+  } catch (_) {
+    return "";
+  }
+}
+
+function queuedRequestForInput(input = {}) {
+  return {
+    contentType: text(input.contentType),
+    itemType: text(input.itemType),
+    itemId: text(input.itemId),
+    mediaId: text(input.mediaId),
+    tmdbId: text(input.tmdbId),
+    imdbId: text(input.imdbId),
+    seriesId: text(input.seriesId),
+    seriesTitle: text(input.seriesTitle),
+    season: input.season ?? null,
+    episode: input.episode ?? null,
+    videoId: text(input.videoId),
+    title: text(input.title),
+    year: text(input.year),
+    poster: text(input.poster),
+    backdrop: text(input.backdrop),
+    sourceName: text(input.sourceName),
+    filename: text(input.filename),
+    mimeType: text(input.mimeType),
+    stream: safeQueuedStreamDescriptor(input.stream)
+  };
+}
+
 function directUrlForStream(stream = {}) {
   const candidates = [stream.url, stream.externalUrl, stream.raw?.url, stream.raw?.externalUrl];
   return candidates.find(
@@ -340,8 +418,8 @@ export async function initializeBrowserOfflineDownloads() {
           })
         )
       );
-      const interrupted = (await listAllDownloads()).filter((download) =>
-        ["downloading", "queued"].includes(String(download?.status || ""))
+      const interrupted = (await listAllDownloads()).filter(
+        (download) => download?.status === "downloading"
       );
       await Promise.all(
         interrupted.map(async (download) => {
@@ -433,6 +511,51 @@ export function subscribeToOfflineDownloads(listener) {
   if (typeof listener !== "function") return () => {};
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+export function canQueueBrowserOfflineDownload(input = {}) {
+  const stream = input.stream || {};
+  return Boolean(
+    createOfflineDownloadId(input) &&
+      canResolveBrowserOfflineDownload(stream, {
+        season: input.season ?? null,
+        episode: input.episode ?? null
+      })
+  );
+}
+
+export async function createQueuedBrowserOfflineDownload(input = {}, queueSequence) {
+  const capabilities = await initializeBrowserOfflineDownloads();
+  if (!capabilities.supported) throw new Error("Offline downloads are unavailable in this browser.");
+  if (!canQueueBrowserOfflineDownload(input)) {
+    throw new Error("This source cannot be queued safely in the browser.");
+  }
+  const downloadId = createOfflineDownloadId(input);
+  const existing = await readDownload(downloadId);
+  if (["completed", "downloading", "queued"].includes(String(existing?.status || ""))) {
+    return { status: "existing", download: existing };
+  }
+  const metadata = {
+    ...buildMetadata(input, downloadId, existing?.fileName || fileNameForDownload(downloadId)),
+    ...(existing || {}),
+    downloadId,
+    mediaIdentity: createOfflineMediaId(input),
+    sourceFingerprint: createOfflineSourceFingerprint(input),
+    status: "queued",
+    completedAt: null,
+    error: "",
+    queueSequence: Number(queueSequence),
+    queuedAt: now(),
+    queueRequest: queuedRequestForInput(input)
+  };
+  await writeDownload(metadata);
+  return { status: "queued", download: metadata };
+}
+
+export async function updateBrowserOfflineDownload(downloadId, patch = {}) {
+  const current = await readDownload(downloadId);
+  if (!current) return null;
+  return writeDownload({ ...current, ...patch, downloadId });
 }
 
 export async function startBrowserOfflineDownload(input = {}) {
@@ -551,7 +674,7 @@ export async function startBrowserOfflineDownload(input = {}) {
       await writable.close();
       writable = null;
       completed = true;
-      metadata = { ...metadata, status: "completed", completedAt: now() };
+      metadata = { ...metadata, status: "completed", completedAt: now(), queueSequence: null, queuedAt: null };
       await writeDownload(metadata);
       return { status: "completed", download: metadata };
     } catch (error) {
@@ -569,6 +692,8 @@ export async function startBrowserOfflineDownload(input = {}) {
           ...metadata,
           status: "paused",
           completedAt: null,
+          queueSequence: null,
+          queuedAt: null,
           downloadedBytes: await getOpfsFileSize(metadata.fileName).catch(() => metadata.downloadedBytes || 0),
           error: ""
         };
@@ -584,6 +709,8 @@ export async function startBrowserOfflineDownload(input = {}) {
         ...metadata,
         status: "failed",
         completedAt: null,
+        queueSequence: null,
+        queuedAt: null,
         downloadedBytes: await getOpfsFileSize(metadata.fileName).catch(() => metadata.downloadedBytes || 0),
         error: "Download failed"
       };
