@@ -363,7 +363,7 @@ export const LibraryScreen = {
     this.requestRender();
   },
 
-  async mount() {
+  async mount(params = {}) {
     this.container = document.getElementById("library");
     ScreenUtils.show(this.container);
     const controller = new LibraryController((state, change) =>
@@ -399,7 +399,7 @@ export const LibraryScreen = {
     this.downloadedPickerOpen = false;
     this.downloadedPickerFocusIndex = 0;
     this.downloadedLibrary = { supported: false, loading: false, movies: [], series: [] };
-    this.downloadManagerView = false;
+    this.downloadManagerView = Boolean(params?.downloadManager);
     this.downloadManagerJobs = [];
     this.offlineDownloadsUnsubscribe = null;
 

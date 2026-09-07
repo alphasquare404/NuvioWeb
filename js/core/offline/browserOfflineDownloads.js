@@ -16,6 +16,7 @@ import {
   isOfflineSubtitleTextLoadable,
   offlineSubtitleExtension
 } from "./offlineSubtitleIdentity.js";
+import { summarizeBrowserOfflineStorage } from "./browserOfflineStorageState.js";
 
 export {
   createOfflineMediaId,
@@ -259,6 +260,18 @@ async function getOpfsFileSize(fileName) {
   if (!fileName) return 0;
   try {
     const directory = await getDownloadsDirectory(false);
+    const file = await (await directory.getFileHandle(fileName)).getFile();
+    return Number(file?.size || 0) || 0;
+  } catch (error) {
+    if (error?.name === "NotFoundError") return 0;
+    throw error;
+  }
+}
+
+async function getOfflineSubtitleFileSize(fileName) {
+  if (!fileName) return 0;
+  try {
+    const directory = await getSubtitlesDirectory(false);
     const file = await (await directory.getFileHandle(fileName)).getFile();
     return Number(file?.size || 0) || 0;
   } catch (error) {
@@ -534,9 +547,6 @@ export async function initializeBrowserOfflineDownloads() {
       let persistent = false;
       try {
         persistent = (await storage.persisted?.()) === true;
-        if (!persistent && typeof storage.persist === "function") {
-          persistent = (await storage.persist()) === true;
-        }
       } catch (_) {
         // Persistence is best effort; OPFS remains usable when the browser declines.
       }
@@ -788,6 +798,79 @@ export async function listDownloadedMovies() {
 
 export async function listDownloadedSeries() {
   return groupDownloadedSeries(await listOfflineDownloads());
+}
+
+export async function getBrowserOfflineStorageSummary() {
+  const supported = isBrowserOfflineDownloadSupported();
+  if (!supported) return { supported: false };
+  const [downloads, subtitles] = await Promise.all([listAllDownloads(), listAllOfflineSubtitles()]);
+  const measuredDownloads = await Promise.all(
+    downloads.map(async (download) => ({
+      download,
+      bytes: await getOpfsFileSize(download.fileName).catch(() => 0)
+    }))
+  );
+  const measuredSubtitles = await Promise.all(
+    subtitles.map(async (subtitle) => ({
+      subtitle,
+      bytes: await getOfflineSubtitleFileSize(subtitle.opfsFileName).catch(() => 0)
+    }))
+  );
+  const summary = summarizeBrowserOfflineStorage(
+    downloads,
+    subtitles,
+    new Map(measuredDownloads.map(({ download, bytes }) => [download.downloadId, bytes])),
+    new Map(measuredSubtitles.map(({ subtitle, bytes }) => [subtitle.subtitleId, bytes]))
+  );
+  let estimate = {};
+  let persistent = null;
+  try {
+    estimate = (await globalThis.navigator.storage.estimate?.()) || {};
+    persistent = typeof globalThis.navigator.storage.persisted === "function"
+      ? await globalThis.navigator.storage.persisted()
+      : null;
+  } catch (_) {}
+  return {
+    supported: true,
+    ...summary,
+    usage: Number.isFinite(Number(estimate.usage)) ? Number(estimate.usage) : null,
+    quota: Number.isFinite(Number(estimate.quota)) ? Number(estimate.quota) : null,
+    persistent,
+    canRequestPersistent: typeof globalThis.navigator.storage.persist === "function",
+  };
+}
+
+export async function requestBrowserOfflinePersistentStorage() {
+  if (!isBrowserOfflineDownloadSupported() || typeof globalThis.navigator.storage.persist !== "function") return null;
+  return (await globalThis.navigator.storage.persist()) === true;
+}
+
+function assertNoActiveOfflineDownloads(downloads = []) {
+  if (downloads.some((download) => download.status === "downloading" || activeDownloads.has(download.downloadId))) {
+    throw new Error("Pause or finish the active download before cleaning offline storage.");
+  }
+}
+
+export async function deleteBrowserOfflineIncompleteDownloads() {
+  const downloads = await listAllDownloads();
+  assertNoActiveOfflineDownloads(downloads);
+  const incomplete = downloads.filter((download) => download.status !== "completed");
+  await Promise.all(incomplete.map((download) => deleteBrowserOfflineDownload(download.downloadId)));
+  return incomplete.length;
+}
+
+export async function deleteAllBrowserOfflineSubtitles() {
+  const subtitles = await listAllOfflineSubtitles();
+  await Promise.all(subtitles.map((subtitle) => deleteBrowserOfflineSubtitle(subtitle.subtitleId)));
+  notify({ downloadId: "offline-subtitles", status: "changed" });
+  return subtitles.length;
+}
+
+export async function deleteAllBrowserOfflineMedia() {
+  const downloads = await listAllDownloads();
+  assertNoActiveOfflineDownloads(downloads);
+  await Promise.all(downloads.map((download) => deleteBrowserOfflineDownload(download.downloadId)));
+  return downloads.length;
 }
 
 export function subscribeToOfflineDownloads(listener) {

@@ -7360,6 +7360,28 @@ html.desktop-browser {
   outline-offset: 2px;
 }
 
+.desktop-browser .settings-shell .settings-download-summary .settings-action-row {
+  min-height: 52px;
+}
+
+.desktop-browser .settings-shell .settings-download-summary .settings-row-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.desktop-browser .settings-shell .settings-download-destructive .settings-row-title,
+.desktop-browser .settings-shell .settings-download-destructive .settings-row-leading-icon {
+  color: #ef9292;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser .settings-shell .settings-download-summary .settings-row-value {
+    max-width: 46vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 @media (max-width: 900px) {
   .desktop-browser .library-shell.desktop-navigation-enabled > .library-main {
     padding-inline: 24px;

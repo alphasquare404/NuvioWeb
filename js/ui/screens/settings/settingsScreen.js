@@ -105,6 +105,14 @@ import {
   normalizeSupporterDonations
 } from "../supporters/supportersData.js";
 import { LICENSES_ATTRIBUTION_SECTIONS } from "./licensesAttributionsScreen.js";
+import {
+  deleteAllBrowserOfflineMedia,
+  deleteAllBrowserOfflineSubtitles,
+  deleteBrowserOfflineIncompleteDownloads,
+  getBrowserOfflineStorageSummary,
+  requestBrowserOfflinePersistentStorage,
+  subscribeToOfflineDownloads
+} from "../../../core/offline/browserOfflineDownloads.js";
 
 const SETTINGS_UI_STATE_KEY = "settingsScreenUiState";
 const SETTINGS_RAIL_SCROLL_TARGET_RATIO = 0.42;
@@ -747,6 +755,11 @@ const SECTION_META = [
     subtitleKey: "settings.sections.playback.subtitle"
   },
   {
+    id: "downloads",
+    label: "Downloads",
+    subtitle: "Offline storage, queue, and cleanup"
+  },
+  {
     id: "trakt",
     labelKey: "settings_tracking_title",
     subtitleKey: "settings_tracking_subtitle"
@@ -772,6 +785,7 @@ const SECTION_ICONS = {
   plugins: "build",
   integration: "link",
   streams: "style",
+  downloads: "download",
   advanced: "tune",
   trakt: "trakt",
   about: "info"
@@ -811,6 +825,14 @@ function formatSettingsVersionLabel(value) {
 
 function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
+}
+
+function formatOfflineStorageBytes(value) {
+  const bytes = Number(value || 0);
+  if (!(bytes > 0)) return "0 B";
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+  return `${Math.round(bytes / 1e3)} KB`;
 }
 
 function escapeHtml(value) {
@@ -1864,6 +1886,7 @@ function getVisibleSections(model) {
     if (section.id === "account" || section.id === "profiles") {
       return isPrimaryProfileActive;
     }
+    if (section.id === "downloads") return Platform.isBrowser();
     return true;
   });
 }
@@ -2276,6 +2299,14 @@ export const SettingsScreen = {
     ]);
     this.sidebarProfile = sidebarProfile;
     this.model = initialModel;
+    if (Platform.isBrowser()) {
+      this.offlineDownloadsUnsubscribe?.();
+      this.offlineDownloadsUnsubscribe = subscribeToOfflineDownloads(() => {
+        if (this.container && Router.getCurrent() === "settings" && this.activeSection === "downloads") {
+          void this.render();
+        }
+      });
+    }
     await this.render({ refreshModel: false });
   },
 
@@ -2349,9 +2380,12 @@ export const SettingsScreen = {
   async collectModel() {
     const authState = AuthManager.getAuthState();
     this.ensureAccountSyncOverview(authState);
-    const [addons, profiles] = await Promise.all([
+    const [addons, profiles, downloads] = await Promise.all([
       addonRepository.getInstalledAddons(),
-      ProfileManager.getProfiles()
+      ProfileManager.getProfiles(),
+      Platform.isBrowser()
+        ? getBrowserOfflineStorageSummary().catch(() => ({ supported: false }))
+        : Promise.resolve(null)
     ]);
     const activeProfileId = ProfileManager.getActiveProfileId();
     const pluginSources = PluginManager.listPluginSources();
@@ -2383,7 +2417,8 @@ export const SettingsScreen = {
       fastHorizontalNavigation: isFastHorizontalNavigationEnabled(),
       authState,
       accountSyncOverview: this.accountSyncOverview || null,
-      accountSyncOverviewLoading: Boolean(this.accountSyncOverviewPromise)
+      accountSyncOverviewLoading: Boolean(this.accountSyncOverviewPromise),
+      downloads
     };
   },
 
@@ -8105,6 +8140,83 @@ export const SettingsScreen = {
     `;
   },
 
+  renderDownloadsSection(model) {
+    const downloads = model.downloads || { supported: false };
+    if (!downloads.supported) {
+      return `${this.renderSectionHeader(SECTION_META.find((item) => item.id === "downloads"))}<div class="settings-group-card"><div class="settings-stack"><p class="settings-row-subtitle">Offline downloads are unavailable in this browser.</p></div></div>`;
+    }
+    const count = (status) => Number(downloads.statusCounts?.[status] || 0);
+    const persistent = downloads.persistent === true ? "Enabled" : downloads.persistent === false ? "Not enabled" : "Unsupported";
+    const queueTotal = count("downloading") + count("queued") + count("paused") + count("interrupted") + count("failed");
+    this.actionMap.set("downloads:requestPersistent", async () => {
+      await requestBrowserOfflinePersistentStorage();
+    });
+    this.actionMap.set("downloads:manage", async () => {
+      await Router.navigate("library", { downloadManager: true });
+    });
+    this.actionMap.set("downloads:deleteIncomplete", () => this.confirmOfflineCleanup({
+      title: "Delete incomplete downloads?", message: "Paused, interrupted, and failed partial downloads will be removed.", action: deleteBrowserOfflineIncompleteDownloads, focusKey: "downloads:deleteIncomplete"
+    }));
+    this.actionMap.set("downloads:deleteSubtitles", () => this.confirmOfflineCleanup({
+      title: "Delete downloaded subtitles?", message: "Downloaded video files will be kept.", action: deleteAllBrowserOfflineSubtitles, focusKey: "downloads:deleteSubtitles"
+    }));
+    this.actionMap.set("downloads:deleteMedia", () => this.confirmOfflineCleanup({
+      title: "Delete all downloaded media?", message: "All offline videos and their downloaded subtitles will be removed.", action: deleteAllBrowserOfflineMedia, focusKey: "downloads:deleteMedia"
+    }));
+    this.actionMap.set("downloads:clearAll", () => this.confirmOfflineCleanup({
+      title: "Clear all offline data?", message: "All Nuvio offline downloads, partial files, queue entries, and subtitles will be removed.", action: async () => { await deleteAllBrowserOfflineMedia(); await deleteAllBrowserOfflineSubtitles(); }, focusKey: "downloads:clearAll"
+    }));
+    return `
+      ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "downloads"))}
+      ${this.downloadCleanupMessage ? `<div class="settings-text-dialog-message">${escapeHtml(this.downloadCleanupMessage)}</div>` : ""}
+      <div class="settings-group-heading"><div class="settings-group-title">Storage</div></div>
+      <div class="settings-group-card"><div class="settings-stack settings-download-summary">
+        ${this.renderActionRow({ focusKey: "downloads:offlineMedia", title: "Offline media", value: formatOfflineStorageBytes(downloads.mediaBytes), icon: null, disabled: true })}
+        ${this.renderActionRow({ focusKey: "downloads:subtitles", title: "Subtitles", value: formatOfflineStorageBytes(downloads.subtitleBytes), icon: null, disabled: true })}
+        ${this.renderActionRow({ focusKey: "downloads:partial", title: "Partial downloads", value: formatOfflineStorageBytes(downloads.partialBytes), icon: null, disabled: true })}
+        ${this.renderActionRow({ focusKey: "downloads:total", title: "Nuvio offline data", value: formatOfflineStorageBytes(downloads.totalOfflineBytes), icon: null, disabled: true })}
+        ${this.renderActionRow({ focusKey: "downloads:quota", title: "Browser quota", value: downloads.quota ? `${formatOfflineStorageBytes(downloads.usage)} / ${formatOfflineStorageBytes(downloads.quota)}` : "Unavailable", icon: null, disabled: true })}
+        ${this.renderActionRow({ focusKey: "downloads:persistent", title: "Persistent storage", value: persistent, icon: null, disabled: true })}
+        ${downloads.persistent !== true && downloads.canRequestPersistent ? this.renderActionRow({ focusKey: "downloads:requestPersistent", title: "Request Persistent Storage", subtitle: "Ask this browser to retain offline downloads more reliably.", leadingIcon: "save" }) : ""}
+      </div></div>
+      <div class="settings-group-heading"><div class="settings-group-title">Library</div></div>
+      <div class="settings-group-card"><div class="settings-stack settings-download-summary">
+        ${this.renderActionRow({ focusKey: "downloads:library", title: "Downloaded library", value: `${downloads.movies} Movies · ${downloads.series} Series · ${downloads.episodes} Episodes`, icon: null, disabled: true })}
+        ${this.renderActionRow({ focusKey: "downloads:subtitleCount", title: "Local subtitles", value: String(downloads.subtitles), icon: null, disabled: true })}
+      </div></div>
+      <div class="settings-group-heading"><div class="settings-group-title">Queue</div></div>
+      <div class="settings-group-card"><div class="settings-stack settings-download-summary">
+        ${this.renderActionRow({ focusKey: "downloads:queue", title: "Download queue", value: `${count("downloading")} Downloading · ${count("queued")} Queued · ${count("paused") + count("interrupted")} Paused · ${count("failed")} Failed`, icon: null, disabled: true })}
+        ${this.renderActionRow({ focusKey: "downloads:manage", title: "Manage Downloads", subtitle: queueTotal ? "Open the Library Download Manager." : "No active downloads. Open Downloaded.", leadingIcon: "download" })}
+      </div></div>
+      <div class="settings-group-heading"><div class="settings-group-title">Cleanup</div></div>
+      <div class="settings-group-card"><div class="settings-stack settings-download-cleanup">
+        ${this.renderActionRow({ focusKey: "downloads:deleteIncomplete", title: "Delete incomplete downloads", subtitle: "Remove paused, interrupted, and failed partial files.", leadingIcon: "delete", classes: "settings-download-destructive" })}
+        ${this.renderActionRow({ focusKey: "downloads:deleteSubtitles", title: "Delete downloaded subtitles", subtitle: "Keep offline video downloads.", leadingIcon: "delete", classes: "settings-download-destructive" })}
+        ${this.renderActionRow({ focusKey: "downloads:deleteMedia", title: "Delete all downloaded media", subtitle: "Remove offline videos and associated subtitles.", leadingIcon: "delete", classes: "settings-download-destructive" })}
+        ${this.renderActionRow({ focusKey: "downloads:clearAll", title: "Clear all offline data", subtitle: "Remove all Nuvio offline files and queue metadata.", leadingIcon: "delete", classes: "settings-download-destructive" })}
+      </div></div>`;
+  },
+
+  confirmOfflineCleanup({ title, message, action, focusKey }) {
+    this.openOptionDialog({
+      title,
+      message,
+      options: [{ id: "cancel", label: "Cancel" }, { id: "confirm", label: "Delete" }],
+      selectedId: "cancel",
+      returnFocusKey: focusKey,
+      onSelect: async (option) => {
+        if (option.id !== "confirm") return;
+        try {
+          await action();
+          this.downloadCleanupMessage = "";
+        } catch (error) {
+          this.downloadCleanupMessage = String(error?.message || "Could not clean offline storage.");
+        }
+      }
+    });
+  },
+
   renderSection(section, model) {
     if (section.id === "account") return this.renderAccountSection(model);
     if (section.id === "profiles") return this.renderProfilesSection(model);
@@ -8115,6 +8227,7 @@ export const SettingsScreen = {
     if (section.id === "integration") return this.renderIntegrationSection(model);
     if (section.id === "streams") return this.renderStreamsSection(model);
     if (section.id === "playback") return this.renderPlaybackSection(model);
+    if (section.id === "downloads") return this.renderDownloadsSection(model);
     if (section.id === "trakt") return this.renderTraktLauncher(model);
     if (section.id === "advanced") return this.renderAdvancedSection(model);
     return this.renderAboutSection(model);
@@ -8997,6 +9110,8 @@ export const SettingsScreen = {
 
   cleanup() {
     this.persistUiState();
+    this.offlineDownloadsUnsubscribe?.();
+    this.offlineDownloadsUnsubscribe = null;
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
     this.stopTraktPolling?.();
