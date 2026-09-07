@@ -6,6 +6,15 @@ import {
   groupDownloadedMovies,
   groupDownloadedSeries
 } from "./offlineDownloadIdentity.js";
+import {
+  createOfflineSubtitleFingerprint,
+  createOfflineSubtitleId,
+  decodeOfflineSubtitleBytes,
+  detectOfflineSubtitleFormat,
+  isOfflineSubtitleFormatSupported,
+  isOfflineSubtitleTextLoadable,
+  offlineSubtitleExtension
+} from "./offlineSubtitleIdentity.js";
 
 export {
   createOfflineMediaId,
@@ -14,11 +23,21 @@ export {
   groupDownloadedMovies,
   groupDownloadedSeries
 } from "./offlineDownloadIdentity.js";
+export {
+  createOfflineSubtitleFingerprint,
+  createOfflineSubtitleId,
+  decodeOfflineSubtitleBytes,
+  detectOfflineSubtitleFormat,
+  isOfflineSubtitleFormatSupported,
+  isOfflineSubtitleTextLoadable
+} from "./offlineSubtitleIdentity.js";
 
 const DATABASE_NAME = "nuvio-offline-downloads";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const DOWNLOAD_STORE = "downloads";
+const SUBTITLE_STORE = "subtitles";
 const OPFS_DIRECTORY_NAME = "nuvio-downloads";
+const OPFS_SUBTITLE_DIRECTORY_NAME = "subtitles";
 const PROGRESS_PERSIST_INTERVAL_MS = 750;
 
 const listeners = new Set();
@@ -36,6 +55,15 @@ function text(value) {
 
 function safeIdentityPart(value) {
   return text(value).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function safePublicUrl(value) {
+  try {
+    const url = new URL(text(value));
+    return `${url.protocol}//${url.host}${url.pathname}`;
+  } catch (_) {
+    return "";
+  }
 }
 
 function isHttpUrl(value) {
@@ -96,6 +124,9 @@ function openDatabase() {
         if (!database.objectStoreNames.contains(DOWNLOAD_STORE)) {
           database.createObjectStore(DOWNLOAD_STORE, { keyPath: "downloadId" });
         }
+        if (!database.objectStoreNames.contains(SUBTITLE_STORE)) {
+          database.createObjectStore(SUBTITLE_STORE, { keyPath: "subtitleId" });
+        }
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error("Could not open offline storage."));
@@ -119,6 +150,24 @@ async function withStore(mode, callback) {
     transaction.oncomplete = () => resolve(result?.result ?? result);
     transaction.onerror = () => reject(transaction.error || result?.error || new Error("Offline storage failed."));
     transaction.onabort = () => reject(transaction.error || new Error("Offline storage aborted."));
+  });
+}
+
+async function withSubtitleStore(mode, callback) {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(SUBTITLE_STORE, mode);
+    const store = transaction.objectStore(SUBTITLE_STORE);
+    let result;
+    try {
+      result = callback(store);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => resolve(result?.result ?? result);
+    transaction.onerror = () => reject(transaction.error || result?.error || new Error("Offline subtitle storage failed."));
+    transaction.onabort = () => reject(transaction.error || new Error("Offline subtitle storage aborted."));
   });
 }
 
@@ -151,9 +200,47 @@ async function removeMetadata(downloadId) {
   notify({ downloadId, status: "idle" });
 }
 
+async function listAllOfflineSubtitles() {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const request = database.transaction(SUBTITLE_STORE, "readonly").objectStore(SUBTITLE_STORE).getAll();
+    request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+    request.onerror = () => reject(request.error || new Error("Could not list offline subtitles."));
+  });
+}
+
+async function readOfflineSubtitle(subtitleId) {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const request = database.transaction(SUBTITLE_STORE, "readonly").objectStore(SUBTITLE_STORE).get(subtitleId);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("Could not read offline subtitle."));
+  });
+}
+
+async function writeOfflineSubtitle(subtitle) {
+  await withSubtitleStore("readwrite", (store) => store.put(subtitle));
+  return subtitle;
+}
+
 async function getDownloadsDirectory(create = true) {
   const root = await globalThis.navigator.storage.getDirectory();
   return root.getDirectoryHandle(OPFS_DIRECTORY_NAME, { create });
+}
+
+async function getSubtitlesDirectory(create = true) {
+  const downloads = await getDownloadsDirectory(create);
+  return downloads.getDirectoryHandle(OPFS_SUBTITLE_DIRECTORY_NAME, { create });
+}
+
+async function removeOfflineSubtitleFile(fileName) {
+  if (!fileName) return;
+  try {
+    const directory = await getSubtitlesDirectory(false);
+    await directory.removeEntry(fileName);
+  } catch (error) {
+    if (error?.name !== "NotFoundError") throw error;
+  }
 }
 
 async function removeOpfsFile(fileName) {
@@ -265,7 +352,9 @@ function buildMetadata(input, downloadId, fileName) {
     downloadedBytes: 0,
     totalBytes: null,
     opfsPath: `${OPFS_DIRECTORY_NAME}/${fileName}`,
-    fileName
+    fileName,
+    offlineSubtitle: safeOfflineSubtitleDescriptor(input.offlineSubtitle),
+    offlineSubtitleStatus: input.offlineSubtitle ? "pending" : "none"
   };
 }
 
@@ -323,6 +412,20 @@ function safeQueueDirectUrl(stream = {}) {
   }
 }
 
+function safeOfflineSubtitleDescriptor(subtitle = null) {
+  if (!subtitle || typeof subtitle !== "object") return null;
+  const fingerprint = text(subtitle.fingerprint || createOfflineSubtitleFingerprint(subtitle));
+  if (!fingerprint) return null;
+  return {
+    addonId: text(subtitle.addonId),
+    fingerprint,
+    lang: text(subtitle.lang || subtitle.language),
+    fileName: text(subtitle.fileName || subtitle.filename),
+    forced: subtitle.forced === true,
+    sdh: subtitle.sdh === true || subtitle.hearingImpaired === true
+  };
+}
+
 function queuedRequestForInput(input = {}) {
   return {
     contentType: text(input.contentType),
@@ -343,6 +446,7 @@ function queuedRequestForInput(input = {}) {
     sourceName: text(input.sourceName),
     filename: text(input.filename),
     mimeType: text(input.mimeType),
+    offlineSubtitle: safeOfflineSubtitleDescriptor(input.offlineSubtitle),
     stream: safeQueuedStreamDescriptor(input.stream)
   };
 }
@@ -499,6 +603,148 @@ export async function listOfflineDownloadsForMedia(input = {}) {
   );
 }
 
+export async function listOfflineSubtitles(input = {}) {
+  if (!isBrowserOfflineDownloadSupported()) return [];
+  const mediaIdentity = text(input.mediaIdentity || createOfflineMediaId(input));
+  const offlineCopyId = text(input.offlineCopyId || input.downloadId);
+  return (await listAllOfflineSubtitles()).filter((subtitle) =>
+    subtitle?.status === "completed" &&
+    (!mediaIdentity || subtitle.mediaIdentity === mediaIdentity) &&
+    (!offlineCopyId || subtitle.offlineCopyId === offlineCopyId)
+  );
+}
+
+export async function getOfflineSubtitle(subtitleId) {
+  if (!subtitleId || !isBrowserOfflineDownloadSupported()) return null;
+  return readOfflineSubtitle(subtitleId);
+}
+
+export async function downloadBrowserOfflineSubtitle(input = {}) {
+  const track = input.track || {};
+  if (!isBrowserOfflineDownloadSupported()) {
+    throw new Error("Offline subtitles are unavailable in this browser.");
+  }
+  if (!isHttpUrl(track.url)) {
+    throw new Error("This subtitle format cannot be downloaded.");
+  }
+  const mediaIdentity = text(input.mediaIdentity || createOfflineMediaId(input));
+  const offlineCopyId = text(input.offlineCopyId || input.downloadId);
+  if (!mediaIdentity || !offlineCopyId) {
+    throw new Error("A completed offline video copy is required.");
+  }
+  const fingerprint = createOfflineSubtitleFingerprint(track);
+  const subtitleId = createOfflineSubtitleId({ mediaIdentity, fingerprint });
+  if (!subtitleId) throw new Error("Could not identify subtitle.");
+  const existing = await readOfflineSubtitle(subtitleId);
+  if (existing?.status === "completed") return existing;
+
+  const declaredFormat = offlineSubtitleExtension(track);
+  const baseMetadata = {
+    subtitleId,
+    mediaIdentity,
+    offlineCopyId,
+    sourceFingerprint: text(input.sourceFingerprint),
+    fingerprint,
+    status: "downloading",
+    createdAt: existing?.createdAt || now(),
+    completedAt: null,
+    lang: text(track.lang || track.language) || "unknown",
+    addonName: text(track.addonName || track.provider) || "Subtitle",
+    addonLogo: safePublicUrl(track.addonLogo),
+    // Provider IDs are often derived from a signed URL. The local subtitle
+    // identity is sufficient for selection, so retain no remote identifier.
+    displayId: "",
+    fileName: text(track.fileName || track.filename),
+    extension: declaredFormat,
+    format: "",
+    opfsPath: "",
+    opfsFileName: "",
+    byteLength: 0,
+    error: ""
+  };
+  await writeOfflineSubtitle(baseMetadata);
+  let writtenFileName = "";
+  try {
+    const response = await fetch(track.url, {
+      headers: input.requestHeaders && typeof input.requestHeaders === "object" ? input.requestHeaders : undefined
+    });
+    if (!response.ok) throw new Error(`Subtitle download failed (${response.status})`);
+    const sourceBytes = await response.arrayBuffer();
+    const decoded = decodeOfflineSubtitleBytes(sourceBytes);
+    const body = decoded.text;
+    const detectedFormat = detectOfflineSubtitleFormat(body);
+    const loadable = isOfflineSubtitleTextLoadable(body);
+    if (!body.trim()) throw new Error("Subtitle download was empty.");
+    if (!loadable) {
+      const reason = detectedFormat === "ass" ? "ASS/SSA subtitle playback is unsupported." : "Subtitle response is not a supported text track.";
+      throw new Error(reason);
+    }
+    const extension = detectedFormat;
+    const fileName = `${safeIdentityPart(subtitleId) || "subtitle"}.${extension}`;
+    writtenFileName = fileName;
+    const bytes = new Blob([sourceBytes], { type: "text/plain" });
+    const directory = await getSubtitlesDirectory(true);
+    const writable = await (await directory.getFileHandle(fileName, { create: true })).createWritable();
+    await writable.write(bytes);
+    await writable.close();
+    const completed = await writeOfflineSubtitle({
+      ...baseMetadata,
+      status: "completed",
+      completedAt: now(),
+      extension,
+      format: detectedFormat,
+      opfsPath: `${OPFS_DIRECTORY_NAME}/${OPFS_SUBTITLE_DIRECTORY_NAME}/${fileName}`,
+      opfsFileName: fileName,
+      byteLength: bytes.size,
+      mimeType: detectedFormat === "vtt" ? "text/vtt" : "text/plain",
+      encoding: decoded.encoding
+    });
+    return completed;
+  } catch (error) {
+    await removeOfflineSubtitleFile(writtenFileName).catch(() => {});
+    await writeOfflineSubtitle({
+      ...baseMetadata,
+      status: "failed",
+      error: text(error?.message || "Subtitle download failed")
+    });
+    throw error;
+  }
+}
+
+export async function getBrowserOfflineSubtitleFile(subtitleId) {
+  const subtitle = await getOfflineSubtitle(subtitleId);
+  if (subtitle?.status !== "completed" || !subtitle.opfsFileName) return null;
+  try {
+    const directory = await getSubtitlesDirectory(false);
+    const file = await (await directory.getFileHandle(subtitle.opfsFileName)).getFile();
+    return { subtitle, file };
+  } catch (_) {
+    await writeOfflineSubtitle({
+      ...subtitle,
+      status: "failed",
+      completedAt: null,
+      error: "Offline subtitle file is unavailable"
+    }).catch(() => {});
+    return null;
+  }
+}
+
+export async function deleteBrowserOfflineSubtitle(subtitleId) {
+  const subtitle = await getOfflineSubtitle(subtitleId);
+  if (!subtitle) return;
+  await removeOfflineSubtitleFile(subtitle.opfsFileName);
+  await withSubtitleStore("readwrite", (store) => store.delete(subtitleId));
+}
+
+async function deleteOfflineSubtitlesForCopy(downloadId) {
+  const subtitles = await listAllOfflineSubtitles();
+  await Promise.all(
+    subtitles
+      .filter((subtitle) => subtitle?.offlineCopyId === downloadId)
+      .map((subtitle) => deleteBrowserOfflineSubtitle(subtitle.subtitleId))
+  );
+}
+
 export async function listDownloadedMovies() {
   return groupDownloadedMovies(await listOfflineDownloads());
 }
@@ -544,6 +790,9 @@ export async function createQueuedBrowserOfflineDownload(input = {}, queueSequen
     status: "queued",
     completedAt: null,
     error: "",
+    offlineSubtitle: safeOfflineSubtitleDescriptor(input.offlineSubtitle),
+    offlineSubtitleStatus: input.offlineSubtitle ? "pending" : "none",
+    offlineSubtitleError: "",
     queueSequence: Number(queueSequence),
     queuedAt: now(),
     queueRequest: queuedRequestForInput(input)
@@ -755,6 +1004,7 @@ export async function deleteBrowserOfflineDownload(downloadId) {
   if (!downloadId) return;
   await cancelBrowserOfflineDownload(downloadId);
   const download = await getOfflineDownload(downloadId);
+  await deleteOfflineSubtitlesForCopy(downloadId);
   if (download?.fileName) await removeOpfsFile(download.fileName);
   await removeMetadata(downloadId);
 }

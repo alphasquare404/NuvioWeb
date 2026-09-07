@@ -53,9 +53,13 @@ import {
   renderBrowserSourceCardContent
 } from "../../components/browserStreamSourceCard.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { NuvioDialog } from "../../components/nuvioDialog.js";
+import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
+import { subtitleRepository } from "../../../data/repository/subtitleRepository.js";
 import {
   canQueueBrowserOfflineDownload,
   createOfflineDownloadId,
+  createOfflineSubtitleFingerprint,
   deleteBrowserOfflineDownload,
   getBrowserOfflineFile,
   getOfflineDownload,
@@ -2747,9 +2751,126 @@ export const StreamScreen = {
   async startOfflineDownload(streamId) {
     const stream = this.streams.find((entry) => entry.id === streamId);
     if (!stream) return;
-    const context = this.getOfflineDownloadContext(stream);
+    if (!Environment.isBrowser()) return;
+    this.openOfflineDownloadOptions(stream);
+  },
+
+  closeOfflineDownloadOptions() {
+    this.offlineDownloadOptionsDialog?.destroy?.();
+    this.offlineDownloadOptionsDialog = null;
+    this.offlineDownloadOptionsState = null;
+  },
+
+  async discoverOfflineDownloadSubtitles(context = {}) {
+    const type = context.itemType === "tv" ? "series" : context.itemType;
+    const id = context.imdbId || context.itemId || context.mediaId;
+    if (!type || !id) return [];
+    return subtitleRepository.getSubtitles(type, id, context.videoId || null, {
+      season: context.season,
+      episode: context.episode,
+      title: context.title,
+      year: context.year
+    });
+  },
+
+  createOfflineSubtitleDescriptor(subtitle = null) {
+    if (!subtitle) return null;
+    return {
+      addonId: String(subtitle.addonId || ""),
+      fingerprint: createOfflineSubtitleFingerprint(subtitle),
+      lang: String(subtitle.lang || subtitle.language || ""),
+      fileName: String(subtitle.fileName || subtitle.filename || ""),
+      forced: subtitle.forced === true,
+      sdh: subtitle.sdh === true || subtitle.hearingImpaired === true
+    };
+  },
+
+  renderOfflineDownloadOptionsContent(state) {
+    const content = document.createElement("div");
+    content.className = "stream-download-options";
+    const source = state.stream || {};
+    const sourceDisplay = normalizeSourceForDisplay(source);
+    const quality = sourceDisplay.quality;
+    const size = formatBytes(source.behaviorHints?.videoSize || source.raw?.behaviorHints?.videoSize || source.videoSize);
+    content.innerHTML = `<div class="stream-download-options-source">${escapeHtml([quality, size].filter(Boolean).join(" · ") || "Selected source")}<span>${escapeHtml(sourceDisplay.addonName || source.addonName || "")}</span></div><div class="stream-download-options-label">Subtitles</div>`;
+    const list = document.createElement("div");
+    list.className = "stream-download-subtitle-list";
+    const addOption = (index, subtitle = null) => {
+      const display = subtitle ? normalizeSubtitleForDisplay(subtitle) : null;
+      const selected = state.selectedIndex === index || (!subtitle && state.selectedIndex == null);
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = `stream-download-subtitle-option${selected ? " selected" : ""}`;
+      option.setAttribute("aria-pressed", String(selected));
+      option.innerHTML = subtitle
+        ? `<span class="stream-download-subtitle-provider">${escapeHtml(display.provider)}</span><strong>${escapeHtml(display.language)}</strong><span class="stream-download-subtitle-meta" title="${escapeHtml(display.meta)}">${escapeHtml(display.meta)}</span><span class="stream-download-subtitle-check">${selected ? "&#10003;" : ""}</span>`
+        : `<strong>${state.loading ? "Loading subtitles…" : "No subtitle"}</strong><span class="stream-download-subtitle-check">${selected ? "&#10003;" : ""}</span>`;
+      option.disabled = Boolean(state.loading);
+      option.addEventListener("click", () => {
+        state.selectedIndex = subtitle ? index : null;
+        this.showOfflineDownloadOptions(state);
+      });
+      list.appendChild(option);
+    };
+    addOption(null);
+    (state.subtitles || []).forEach((subtitle, index) => addOption(index, subtitle));
+    content.appendChild(list);
+    if (state.error) {
+      const unavailable = document.createElement("div");
+      unavailable.className = "stream-download-options-unavailable";
+      unavailable.textContent = "Subtitles unavailable — video can still be downloaded.";
+      content.appendChild(unavailable);
+    }
+    return content;
+  },
+
+  showOfflineDownloadOptions(state) {
+    this.offlineDownloadOptionsDialog?.destroy?.();
+    this.offlineDownloadOptionsDialog = new NuvioDialog({
+      title: "Download Options",
+      widthVw: 34,
+      panelClassName: "stream-download-options-dialog",
+      actionsClassName: "stream-download-options-actions",
+      content: () => this.renderOfflineDownloadOptionsContent(state),
+      buttons: [
+        { label: "Cancel", className: "season-download-secondary-action", onAction: () => this.closeOfflineDownloadOptions() },
+        { label: "Download", selected: true, onAction: () => void this.confirmOfflineDownloadOptions(state) }
+      ],
+      onDismiss: () => this.closeOfflineDownloadOptions()
+    });
+    this.offlineDownloadOptionsDialog.mount(document.body);
+  },
+
+  async openOfflineDownloadOptions(stream) {
+    const state = {
+      stream,
+      context: this.getOfflineDownloadContext(stream),
+      subtitles: [],
+      selectedIndex: null,
+      loading: true,
+      error: false
+    };
+    this.offlineDownloadOptionsState = state;
+    this.showOfflineDownloadOptions(state);
     try {
-      await enqueueBrowserOfflineDownload(context);
+      state.subtitles = await this.discoverOfflineDownloadSubtitles(state.context);
+    } catch (_) {
+      state.error = true;
+    } finally {
+      state.loading = false;
+      if (this.offlineDownloadOptionsState === state) this.showOfflineDownloadOptions(state);
+    }
+  },
+
+  async confirmOfflineDownloadOptions(state = this.offlineDownloadOptionsState) {
+    if (!state?.context) return;
+    const selectedSubtitle = Number.isInteger(state.selectedIndex) ? state.subtitles[state.selectedIndex] : null;
+    try {
+      await enqueueBrowserOfflineDownload({
+        ...state.context,
+        offlineSubtitle: this.createOfflineSubtitleDescriptor(selectedSubtitle)
+      });
+      this.closeOfflineDownloadOptions();
     } catch (_) {
       this.showStreamToast("Could not download this source.");
     }
@@ -3113,6 +3234,7 @@ export const StreamScreen = {
   },
 
   cleanup() {
+    this.closeOfflineDownloadOptions?.();
     this.cancelAutoPlayCountdown();
     this.cancelAutoPlaySelectionWait();
     this.offlineDownloadsUnsubscribe?.();

@@ -7,6 +7,14 @@ import {
   groupDownloadedMovies,
   groupDownloadedSeries
 } from "./offlineDownloadIdentity.js";
+import {
+  createOfflineSubtitleFingerprint,
+  createOfflineSubtitleId,
+  decodeOfflineSubtitleBytes,
+  detectOfflineSubtitleFormat,
+  isOfflineSubtitleTextLoadable,
+  isOfflineSubtitleFormatSupported
+} from "./offlineSubtitleIdentity.js";
 
 test("offline media and copy identities keep source fingerprints separate", () => {
   assert.equal(
@@ -86,4 +94,47 @@ test("downloaded movie copies collapse to one movie card", () => {
     movies.map((movie) => movie.downloadId),
     ["newer-copy", "other-movie"]
   );
+});
+
+test("offline subtitle identity is stable, media-scoped, and excludes signed URL queries", () => {
+  const track = {
+    id: "english-main",
+    url: "https://subtitles.example/file.srt?token=secret-value",
+    lang: "en",
+    addonName: "Example subtitles",
+    fileName: "Example.S01E01.srt"
+  };
+  const fingerprint = createOfflineSubtitleFingerprint(track);
+  assert.equal(fingerprint.includes("secret-value"), false);
+  assert.match(fingerprint, /https:\/\/subtitles\.example\/file\.srt/);
+  assert.notEqual(
+    createOfflineSubtitleId({ mediaIdentity: "movie-tt1", fingerprint }),
+    createOfflineSubtitleId({ mediaIdentity: "episode-tt1-s1-e1", fingerprint })
+  );
+  assert.equal(isOfflineSubtitleFormatSupported(track), true);
+  assert.equal(isOfflineSubtitleFormatSupported({ url: "https://example.test/subtitle.txt" }), false);
+});
+
+test("offline subtitle validation accepts Player-loadable VTT and SRT only", () => {
+  assert.equal(detectOfflineSubtitleFormat("WEBVTT\n\n00:00.000 --> 00:01.000\nHello"), "vtt");
+  assert.equal(detectOfflineSubtitleFormat("1\n00:00:00,000 --> 00:00:01,000\nHello"), "srt");
+  assert.equal(
+    detectOfflineSubtitleFormat("[Script Info]\nTitle: Example\n[Events]\nDialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Hello"),
+    "ass"
+  );
+  assert.equal(isOfflineSubtitleTextLoadable("WEBVTT\n\n00:00.000 --> 00:01.000\nHello"), true);
+  assert.equal(isOfflineSubtitleTextLoadable("<html><body>Not a subtitle</body></html>"), false);
+  assert.equal(
+    isOfflineSubtitleTextLoadable("[Script Info]\n[Events]\nDialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Hello"),
+    false
+  );
+});
+
+test("offline subtitle decoding honors UTF-16 BOMs before format detection", () => {
+  const text = "1\r\n00:00:00,000 --> 00:00:01,000\r\nHello";
+  const bytes = new TextEncoder().encode(text);
+  const utf16le = new Uint8Array([0xff, 0xfe, ...Array.from(bytes).flatMap((value) => [value, 0])]);
+  const decoded = decodeOfflineSubtitleBytes(utf16le);
+  assert.equal(decoded.encoding, "utf-16le");
+  assert.equal(detectOfflineSubtitleFormat(decoded.text), "srt");
 });

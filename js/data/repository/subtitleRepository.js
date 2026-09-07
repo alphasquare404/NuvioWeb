@@ -163,8 +163,15 @@ class SubtitleRepository {
             `${subtitle.lang || "unk"}-${this.makeDeterministicId(subtitle.url || "")}`,
           url: subtitle.url,
           lang: subtitle.lang || "unknown",
+          addonId: addon.id || "",
           addonName: addon.displayName,
-          addonLogo: addon.logo
+          addonLogo: addon.logo,
+          fileName: subtitle.fileName || subtitle.filename || subtitle.name || "",
+          forced: subtitle.forced === true || subtitle.isForced === true,
+          sdh:
+            subtitle.sdh === true ||
+            subtitle.hearingImpaired === true ||
+            subtitle.hearing_impaired === true
         }))
         .filter((subtitle) => Boolean(subtitle.url));
 

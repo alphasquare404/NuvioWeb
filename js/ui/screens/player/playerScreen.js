@@ -49,6 +49,16 @@ import { Router } from "../../navigation/router.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserPlayerGestures } from "../../components/browserPlayerGestures.js";
+import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
+import {
+  createOfflineSubtitleFingerprint,
+  decodeOfflineSubtitleBytes,
+  detectOfflineSubtitleFormat,
+  getBrowserOfflineSubtitleFile,
+  getOfflineDownload,
+  isOfflineSubtitleTextLoadable,
+  listOfflineSubtitles
+} from "../../../core/offline/browserOfflineDownloads.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { TrackingScrobbleService } from "../../../data/repository/trackingScrobbleService.js";
 import { WebOsEngineFsResolver } from "../../../core/p2p/webosEngineFsResolver.js";
@@ -2231,6 +2241,7 @@ export const PlayerScreen = {
     }
     this.params = params;
     this.offlineObjectUrl = Environment.isBrowser() ? String(params.offlineObjectUrl || "") : "";
+    this.offlineDownloadId = Environment.isBrowser() ? String(params.offlineDownloadId || "") : "";
     this.trackPreferenceContentId = this.getTrackPreferenceContentId();
     this.rememberedAudioTrackPreference = TrackPreferencesStore.getAudio(
       this.trackPreferenceContentId
@@ -2324,6 +2335,9 @@ export const PlayerScreen = {
     this.engineFsCleanupInFlight = new Set();
 
     this.subtitles = [];
+    this.remoteSubtitleCandidates = [];
+    this.offlineSubtitleObjectUrls = [];
+    this.offlineSubtitleTracks = [];
     this.embeddedSubtitleTracks = [];
     this.nextEpisodeTransitionMeta = null;
     this.subtitleDialogVisible = false;
@@ -4437,7 +4451,10 @@ export const PlayerScreen = {
           url: subtitle.url,
           lang: subtitle.lang || "unknown",
           addonName: candidate?.addonName || "Stream",
-          addonLogo: candidate?.addonLogo || null
+          addonLogo: candidate?.addonLogo || null,
+          fileName: subtitle.fileName || subtitle.filename || subtitle.name || "",
+          forced: subtitle.forced === true || subtitle.isForced === true,
+          sdh: subtitle.sdh === true || subtitle.hearingImpaired === true
         }));
     };
 
@@ -4462,9 +4479,12 @@ export const PlayerScreen = {
       if (!subtitle?.url) {
         return;
       }
-      const key = `${String(subtitle.url).trim()}::${String(subtitle.lang || "")
-        .trim()
-        .toLowerCase()}`;
+      const key = String(
+        subtitle.offlineSubtitleId ||
+          subtitle.offlineFingerprint ||
+          createOfflineSubtitleFingerprint(subtitle) ||
+          `${String(subtitle.url).trim()}::${String(subtitle.lang || "").trim().toLowerCase()}`
+      );
       if (seen.has(key)) {
         return;
       }
@@ -4473,6 +4493,88 @@ export const PlayerScreen = {
     });
     return merged;
   },
+
+  releaseOfflineSubtitleObjectUrls() {
+    (this.offlineSubtitleObjectUrls || []).forEach((url) => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (_) {
+        // Best effort during Player lifecycle changes.
+      }
+    });
+    this.offlineSubtitleObjectUrls = [];
+    this.offlineSubtitleTracks = [];
+  },
+
+  async loadOfflineSubtitleTracks() {
+    if (!Environment.isBrowser() || !this.offlineDownloadId) return [];
+    const offlineDownload = await getOfflineDownload(this.offlineDownloadId);
+    if (offlineDownload?.status !== "completed") return [];
+    const subtitles = await listOfflineSubtitles({
+      mediaIdentity: offlineDownload.mediaIdentity,
+      offlineCopyId: offlineDownload.downloadId
+    });
+    const existingTracks = new Map(
+      (this.offlineSubtitleTracks || []).map((track) => [track.offlineSubtitleId, track])
+    );
+    const tracks = [];
+    for (const subtitle of subtitles) {
+      const existing = existingTracks.get(subtitle.subtitleId);
+      if (existing?.url) {
+        tracks.push(existing);
+        continue;
+      }
+      const offlineFile = await getBrowserOfflineSubtitleFile(subtitle.subtitleId);
+      if (!offlineFile?.file) {
+        continue;
+      }
+      const body = decodeOfflineSubtitleBytes(await offlineFile.file.arrayBuffer()).text;
+      const detectedFormat = detectOfflineSubtitleFormat(body);
+      if (!isOfflineSubtitleTextLoadable(body)) {
+        continue;
+      }
+      const normalizedText = this.normalizeExternalSubtitleText(
+        body,
+        `offline.${detectedFormat || subtitle.extension || "vtt"}`,
+        subtitle.mimeType || ""
+      );
+      const parsedCues = this.parseSubtitleCues(normalizedText);
+      if (!parsedCues.length) {
+        continue;
+      }
+      const url = this.createSubtitleObjectUrl(
+        body,
+        `offline.${detectedFormat || subtitle.extension || "vtt"}`,
+        subtitle.mimeType || "",
+        this.offlineSubtitleObjectUrls
+      );
+      tracks.push({
+        id: subtitle.displayId || subtitle.subtitleId,
+        url,
+        lang: subtitle.lang || "unknown",
+        addonName: subtitle.addonName || "Downloaded",
+        addonLogo: subtitle.addonLogo || null,
+        fileName: subtitle.fileName || "",
+        offlineSubtitleId: subtitle.subtitleId,
+        offlineFingerprint: subtitle.fingerprint,
+        isOffline: true
+      });
+    }
+    const activeIds = new Set(tracks.map((track) => track.offlineSubtitleId));
+    (this.offlineSubtitleTracks || []).forEach((track) => {
+      if (!activeIds.has(track.offlineSubtitleId) && track.url) {
+        try {
+          URL.revokeObjectURL(track.url);
+        } catch (_) {
+          // Best effort after deleting a local track.
+        }
+      }
+    });
+    this.offlineSubtitleTracks = tracks;
+    this.offlineSubtitleObjectUrls = tracks.map((track) => track.url).filter(Boolean);
+    return tracks;
+  },
+
 
   getCurrentStreamRequestHeaders(streamCandidate = this.getCurrentStreamCandidate()) {
     const requestHeaders =
@@ -11651,6 +11753,7 @@ export const PlayerScreen = {
     this.selectedEmbeddedAudioTrackIndex = -1;
     this.clearBitmapSubtitleOverlay({ dispose: true });
     this.clearSubtitleCueStyleBindings();
+    this.releaseOfflineSubtitleObjectUrls();
     this.clearMountedExternalSubtitleTracks();
     const didReplaceBrowserMediaSession =
       shouldReplaceBrowserMediaSession && this.replaceBrowserMediaSession();
@@ -13349,17 +13452,21 @@ export const PlayerScreen = {
     return value.includes(".srt") || value.includes("format=srt");
   },
 
-  createSubtitleObjectUrl(body, sourceUrl = "", contentType = "") {
+  normalizeExternalSubtitleText(body, sourceUrl = "", contentType = "") {
     const normalizedContentType = String(contentType || "").toLowerCase();
     const shouldConvertToVtt =
       this.isLikelySrtSubtitleUrl(sourceUrl) ||
       normalizedContentType.includes("subrip") ||
       (!normalizedContentType.includes("vtt") && !/^\s*WEBVTT/i.test(body));
-    const vttText = shouldConvertToVtt
+    return shouldConvertToVtt
       ? this.convertSrtToVtt(body)
       : this.applySubtitleAssAlignmentToVtt(body);
+  },
+
+  createSubtitleObjectUrl(body, sourceUrl = "", contentType = "", objectUrlCollection = this.externalSubtitleObjectUrls) {
+    const vttText = this.normalizeExternalSubtitleText(body, sourceUrl, contentType);
     const objectUrl = URL.createObjectURL(new Blob([vttText], { type: "text/vtt" }));
-    this.externalSubtitleObjectUrls.push(objectUrl);
+    objectUrlCollection.push(objectUrl);
     return objectUrl;
   },
 
@@ -14694,15 +14801,14 @@ export const PlayerScreen = {
       const languageLabel = subtitleLanguageLabel(languageKey);
       const track = entry.track || entry;
       const isForced = isForcedAddonSubtitle(track);
-      const trackId = cleanDisplayText(track?.id);
-      const normalizedTrackId = normalizeSubtitleLanguageKey(trackId);
-      const meta = trackId && normalizedTrackId !== languageKey ? trackId : "";
+      const display = normalizeSubtitleForDisplay(track);
+      const meta = display.meta;
       options.push({
         id: entry.id,
         languageKey,
         languageLabel,
-        title: languageLabel,
-        sourceLabel: entry.secondary || track?.addonName || t("subtitle_tab_addons", {}, "Addons"),
+        title: display.language || languageLabel,
+        sourceLabel: display.provider || entry.secondary || t("subtitle_tab_addons", {}, "Addons"),
         meta,
         secondary: meta,
         selected: Boolean(entry.selected),
@@ -16413,6 +16519,21 @@ export const PlayerScreen = {
     video.appendChild(track);
     this.externalTrackNodes.push(track);
 
+    const failOfflineSubtitleLoad = () => {
+      if (!subtitle.isOffline || !isCurrentSelection()) {
+        return;
+      }
+      this.clearMountedExternalSubtitleTracks();
+      this.clearHtmlSubtitleOverlay();
+      this.selectedAddonSubtitleId = null;
+      this.selectedSubtitleTrackIndex = -1;
+      this.selectedEmbeddedSubtitleTrackIndex = -1;
+      this.selectedManifestSubtitleTrackId = null;
+      this.refreshSubtitleCueStyles();
+      this.renderControlButtons();
+      this.renderSubtitleDialog();
+    };
+
     try {
       if (track.track) {
         track.track.mode = "hidden";
@@ -16430,6 +16551,12 @@ export const PlayerScreen = {
     track.addEventListener(
       "load",
       () => {
+        const mountedCueCount = this.getSubtitleCueArray(track.track?.cues).length;
+        if (subtitle.isOffline && !mountedCueCount) {
+          failOfflineSubtitleLoad();
+          this.settleSubtitlePointerScrollTransaction(selectionToken);
+          return;
+        }
         const activated = activateTrack();
         if (activated) {
           this.settleSubtitlePointerScrollTransaction(selectionToken);
@@ -16440,7 +16567,8 @@ export const PlayerScreen = {
     track.addEventListener(
       "error",
       () => {
-        console.warn("Subtitle track failed to load", { subtitleUrl: subtitle.url });
+        failOfflineSubtitleLoad();
+        console.warn("Subtitle track failed to load");
         this.settleSubtitlePointerScrollTransaction(selectionToken);
       },
       { once: true }
@@ -19372,7 +19500,8 @@ export const PlayerScreen = {
     const sidecarSubtitles = this.collectStreamSidecarSubtitles();
     const subtitleLookup = this.buildSubtitleLookupContext();
     try {
-      this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, []);
+      const offlineSubtitles = await this.loadOfflineSubtitleTracks().catch(() => []);
+      this.subtitles = this.mergeSubtitleCandidates(offlineSubtitles, sidecarSubtitles);
       this.refreshTrackDialogs();
 
       let repositorySubtitles = [];
@@ -19421,7 +19550,8 @@ export const PlayerScreen = {
         });
       }
 
-      this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, repositorySubtitles);
+      this.remoteSubtitleCandidates = this.mergeSubtitleCandidates(sidecarSubtitles, repositorySubtitles);
+      this.subtitles = this.mergeSubtitleCandidates(offlineSubtitles, this.remoteSubtitleCandidates);
       if (this.subtitleDialogVisible && this.subtitleDialogTab === "builtIn") {
         const builtInBoundary = this.resolveBuiltInSubtitleBoundary(this.getTextTracks());
         const hasUsableBuiltIns = Environment.isBrowser()
@@ -19437,7 +19567,8 @@ export const PlayerScreen = {
       this.refreshTrackDialogs();
     } catch (error) {
       console.error("Subtitle attach failed", error);
-      this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, []);
+      this.remoteSubtitleCandidates = this.mergeSubtitleCandidates(sidecarSubtitles, []);
+      this.subtitles = this.mergeSubtitleCandidates(this.offlineSubtitleTracks, this.remoteSubtitleCandidates);
       this.refreshTrackDialogs();
     } finally {
       if (requestToken === this.subtitleLoadToken) {
@@ -20656,6 +20787,7 @@ export const PlayerScreen = {
     try {
       this.playerRouteActive = false;
       this.releaseOfflineObjectUrl();
+      this.releaseOfflineSubtitleObjectUrls();
       if (this.isDesktopPlayerPictureInPicture()) {
         void this.exitDesktopPictureInPicture().catch(() => {});
       }

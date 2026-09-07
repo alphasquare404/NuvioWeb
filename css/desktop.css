@@ -3004,6 +3004,191 @@ html.desktop-browser {
   font-size: 16px;
 }
 
+.desktop-browser .stream-download-options-dialog {
+  width: min(520px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px) !important;
+  max-height: calc(100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
+  padding: 18px 20px;
+  overflow: hidden;
+}
+
+.desktop-browser .stream-download-options-dialog .nuvio-dialog-title {
+  margin-bottom: 12px;
+  font-size: clamp(22px, 3.5vw, 28px);
+  line-height: 1.14;
+}
+
+.desktop-browser .stream-download-options {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.desktop-browser .stream-download-options-source {
+  display: grid;
+  gap: 2px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.desktop-browser .stream-download-options-source span,
+.desktop-browser .stream-download-options-unavailable {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.desktop-browser .stream-download-options-label {
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+}
+
+.desktop-browser .stream-download-options-select {
+  width: 100%;
+  min-height: 42px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #fff;
+  padding: 0 12px;
+  font: inherit;
+}
+
+.desktop-browser .stream-download-options-select:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.desktop-browser .stream-download-subtitle-list {
+  display: grid;
+  max-height: min(42dvh, 360px);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  gap: 8px;
+  padding: 2px 3px 3px 0;
+  scrollbar-width: thin;
+}
+
+.desktop-browser .stream-download-subtitle-option {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 76px;
+  padding: 10px 38px 10px 12px;
+  border: 1px solid rgb(255 255 255 / 0.13);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.055);
+  color: var(--detail-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  align-content: center;
+  gap: 3px;
+}
+
+.desktop-browser .stream-download-subtitle-option.selected {
+  border-color: rgb(var(--secondary-color-rgb) / 0.7);
+  background: rgb(var(--secondary-color-rgb) / 0.2);
+}
+
+.desktop-browser .stream-download-subtitle-option:focus-visible {
+  outline: 2px solid var(--detail-focus-ring);
+  outline-offset: 1px;
+}
+
+.desktop-browser .stream-download-subtitle-option strong {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .stream-download-subtitle-provider,
+.desktop-browser .stream-download-subtitle-meta {
+  overflow: hidden;
+  color: rgb(255 255 255 / 0.63);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.desktop-browser .stream-download-subtitle-provider {
+  order: -1;
+  font-size: 11px;
+}
+
+.desktop-browser .stream-download-subtitle-meta {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.desktop-browser .stream-download-subtitle-check {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  color: var(--detail-text-primary);
+  transform: translateY(-50%);
+}
+
+.desktop-browser .stream-download-options-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.desktop-browser .stream-download-options-actions .nuvio-dialog-button {
+  width: auto;
+  min-height: 46px;
+  flex: 1 1 0;
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-size: 14px;
+  line-height: 1.2;
+  text-align: center;
+  transform: none;
+}
+
+.desktop-browser .stream-download-options-actions .season-download-secondary-action {
+  border-color: rgb(255 255 255 / 0.18);
+  background: rgb(255 255 255 / 0.07);
+  color: rgb(255 255 255 / 0.86);
+}
+
+.desktop-browser .stream-download-options-actions .nuvio-dialog-button.selected {
+  border-color: rgb(var(--secondary-color-rgb) / 0.68);
+  background: rgb(var(--secondary-color-rgb) / 0.28);
+}
+
+@media (max-width: 480px) {
+  .desktop-browser .stream-download-options-dialog {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px) !important;
+    padding: 16px;
+  }
+
+  .desktop-browser .stream-download-subtitle-list {
+    max-height: min(40dvh, 330px);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .stream-download-subtitle-option:hover {
+    border-color: rgb(255 255 255 / 0.3);
+    background: rgb(255 255 255 / 0.12);
+  }
+}
+
 .desktop-browser #player .player-subtitle-style-rail {
   gap: 7px;
 }
