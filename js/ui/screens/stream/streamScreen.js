@@ -59,6 +59,7 @@ import {
   initializeBrowserOfflineDownloads,
   isBrowserOfflineDownloadSupported,
   listOfflineDownloadsForMedia,
+  pauseBrowserOfflineDownload,
   startBrowserOfflineDownload,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
@@ -2293,10 +2294,14 @@ export const StreamScreen = {
       const progressLabel = total > 0
         ? `${Math.min(100, Math.round((current / total) * 100))}%`
         : formatBytes(current) || "Downloading";
-      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(progressLabel)}</span>${button("cancel", "×", "Cancel", "secondary")}</div>`;
+      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(progressLabel)}</span>${button("pause", "Ⅱ", "Pause", "secondary")}<span class="stream-route-offline-notice">Keep Nuvio open for reliable downloading</span></div>`;
     }
     if (status === "completed") {
       return `<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
+    }
+    if (["paused", "interrupted", "failed"].includes(status)) {
+      const label = status === "paused" ? "Paused" : status === "interrupted" ? "Interrupted" : "Retry";
+      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(label)}</span>${button("resume", "▶", "Resume", "download")}</div>`;
     }
     if (!canResolveBrowserOfflineDownload(stream, context)) return "";
     return `<div class="stream-route-offline-actions">${button("download", status === "failed" ? "↻" : "↓", status === "failed" ? "Retry Download" : "Download", "download")}</div>`;
@@ -2729,6 +2734,8 @@ export const StreamScreen = {
     if (!stream) return;
     const downloadId = this.getOfflineDownloadId(stream);
     if (action === "download") return this.startOfflineDownload(streamId);
+    if (action === "resume") return this.startOfflineDownload(streamId);
+    if (action === "pause") return pauseBrowserOfflineDownload(downloadId);
     if (action === "cancel") return cancelBrowserOfflineDownload(downloadId);
     if (action === "playOffline") return this.playOfflineDownload(streamId);
     if (action === "deleteOffline") return deleteBrowserOfflineDownload(downloadId);

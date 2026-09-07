@@ -2115,6 +2115,7 @@ html.desktop-browser {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 8px 2px 0;
 }
@@ -2148,6 +2149,14 @@ html.desktop-browser {
   border-color: transparent;
   background: transparent;
   color: var(--text-secondary);
+}
+
+.desktop-browser #stream .stream-route-offline-notice {
+  flex: 0 0 100%;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: right;
 }
 
 .desktop-browser #stream .stream-route-offline-action:focus-visible {

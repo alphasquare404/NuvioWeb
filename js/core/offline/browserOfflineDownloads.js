@@ -166,6 +166,71 @@ async function removeOpfsFile(fileName) {
   }
 }
 
+async function getOpfsFileSize(fileName) {
+  if (!fileName) return 0;
+  try {
+    const directory = await getDownloadsDirectory(false);
+    const file = await (await directory.getFileHandle(fileName)).getFile();
+    return Number(file?.size || 0) || 0;
+  } catch (error) {
+    if (error?.name === "NotFoundError") return 0;
+    throw error;
+  }
+}
+
+function parsedContentRange(response) {
+  const value = text(response?.headers?.get?.("content-range"));
+  const match = value.match(/^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i);
+  if (!match) return null;
+  return {
+    start: Number(match[1]),
+    end: Number(match[2]),
+    total: match[3] === "*" ? null : Number(match[3])
+  };
+}
+
+function totalBytesFromResponse(response, offset = 0) {
+  const range = parsedContentRange(response);
+  if (Number.isFinite(range?.total) && range.total > 0) {
+    return range.total;
+  }
+  const length = Number(response?.headers?.get?.("content-length"));
+  return Number.isFinite(length) && length > 0 ? length + Math.max(0, offset) : null;
+}
+
+function getRangeValidation(response, offset, expectedTotalBytes = null) {
+  if (!response?.body) return { valid: false, reason: "missing-response-body" };
+  if (offset <= 0) {
+    return response?.ok
+      ? { valid: true, reason: "full-response" }
+      : { valid: false, reason: `failed-full-response-${response?.status || "unavailable"}` };
+  }
+  const range = parsedContentRange(response);
+  if (response?.status !== 206) {
+    return { valid: false, reason: `expected-206-received-${response?.status || "unavailable"}` };
+  }
+  if (range && range.start !== offset) {
+    return { valid: false, reason: `content-range-start-${range.start}-does-not-match-${offset}` };
+  }
+  if (range) return { valid: true, reason: "matching-content-range" };
+
+  // Content-Range is not CORS-safelisted. Some valid cross-origin CDNs return
+  // 206 but do not expose that header to fetch(), even while Content-Length is
+  // readable. A retained copy is safe to append only when the original total is
+  // known and the returned byte count is exactly the expected remainder.
+  const expectedTotal = Number(expectedTotalBytes);
+  const contentLength = Number(response?.headers?.get?.("content-length"));
+  if (
+    Number.isFinite(expectedTotal) &&
+    expectedTotal > offset &&
+    Number.isFinite(contentLength) &&
+    contentLength === expectedTotal - offset
+  ) {
+    return { valid: true, reason: "matching-206-remaining-content-length" };
+  }
+  return { valid: false, reason: "missing-or-invalid-content-range" };
+}
+
 function buildMetadata(input, downloadId, fileName) {
   const contentType = normalizeContentType(input.contentType || input.itemType);
   const seriesId = text(input.seriesId || input.itemId || input.mediaId);
@@ -275,16 +340,17 @@ export async function initializeBrowserOfflineDownloads() {
           })
         )
       );
-      const interrupted = (await listAllDownloads()).filter(
-        (download) => download?.status === "downloading"
+      const interrupted = (await listAllDownloads()).filter((download) =>
+        ["downloading", "queued"].includes(String(download?.status || ""))
       );
       await Promise.all(
         interrupted.map(async (download) => {
-          await removeOpfsFile(download.fileName).catch(() => {});
+          const downloadedBytes = await getOpfsFileSize(download.fileName).catch(() => 0);
           await writeDownload({
             ...download,
-            status: "failed",
+            status: "interrupted",
             completedAt: null,
+            downloadedBytes,
             error: "Download interrupted"
           });
         })
@@ -300,11 +366,18 @@ export async function initializeBrowserOfflineDownloads() {
   return initializationPromise;
 }
 
-export async function resolveBrowserOfflineDownloadSource(stream = {}, context = {}) {
+export async function resolveBrowserOfflineDownloadSource(
+  stream = {},
+  context = {},
+  { preferResolver = false } = {}
+) {
   const directUrl = directUrlForStream(stream);
-  if (directUrl) return resolvedStreamMetadata(stream, { stream: { url: directUrl } });
   const resolverContext = { season: context.season ?? null, episode: context.episode ?? null };
-  if (!DirectDebridResolver.canResolveStream(stream, resolverContext)) {
+  const canResolve = DirectDebridResolver.canResolveStream(stream, resolverContext);
+  if (directUrl && (!preferResolver || !canResolve)) {
+    return resolvedStreamMetadata(stream, { stream: { url: directUrl } });
+  }
+  if (!canResolve) {
     throw new Error("This source cannot be downloaded in the browser.");
   }
   const result = await DirectDebridResolver.resolve(stream, resolverContext);
@@ -371,40 +444,104 @@ export async function startBrowserOfflineDownload(input = {}) {
   if (existing?.status === "completed") return { status: "already-completed", download: existing };
   if (activeDownloads.has(downloadId)) return activeDownloads.get(downloadId).promise;
 
-  const fileName = fileNameForDownload(downloadId);
+  const initialMetadata = buildMetadata(input, downloadId, existing?.fileName || fileNameForDownload(downloadId));
+  if (
+    existing &&
+    (existing.mediaIdentity !== initialMetadata.mediaIdentity ||
+      existing.sourceFingerprint !== initialMetadata.sourceFingerprint)
+  ) {
+    throw new Error("The current source does not match this offline copy.");
+  }
   const controller = new AbortController();
-  const task = { controller, promise: null };
+  const task = { controller, pauseRequested: false, cancelRequested: false, promise: null };
   task.promise = (async () => {
     let writable = null;
-    let metadata = buildMetadata(input, downloadId, fileName);
+    let metadata = {
+      ...initialMetadata,
+      ...(existing || {}),
+      downloadId,
+      mediaIdentity: initialMetadata.mediaIdentity,
+      sourceFingerprint: initialMetadata.sourceFingerprint,
+      status: "queued",
+      completedAt: null,
+      error: ""
+    };
     let completed = false;
     let lastPersistAt = 0;
     try {
-      const resolved = await resolveBrowserOfflineDownloadSource(input.stream, input);
+      const retainedBytes = await getOpfsFileSize(metadata.fileName).catch(() => 0);
+      metadata.downloadedBytes = retainedBytes;
+      await writeDownload({ ...metadata });
+
+      let offset = retainedBytes;
+      let resolved = await resolveBrowserOfflineDownloadSource(input.stream, input, {
+        preferResolver: offset > 0
+      });
+      const resolvedSourceFingerprint = createOfflineSourceFingerprint(resolved);
+      if (offset > 0 && resolvedSourceFingerprint !== metadata.sourceFingerprint) {
+        throw new Error("The resolved source no longer matches the retained offline copy.");
+      }
       metadata = {
         ...metadata,
         filename: text(
           input.filename || resolved.behaviorHints?.filename || resolved.raw?.behaviorHints?.filename
         ),
-        mimeType: text(resolved.mimeType) || metadata.mimeType
+        mimeType: text(resolved.mimeType) || metadata.mimeType,
+        status: "downloading"
       };
       await writeDownload(metadata);
-      const response = await globalThis.fetch(resolved.url, { signal: controller.signal });
-      if (!response.ok || !response.body) {
-        throw new Error(`Download request failed (${response.status || "unavailable"}).`);
+
+      const fetchResponse = async (source, rangeOffset) => {
+        const headers = rangeOffset > 0 ? { Range: `bytes=${rangeOffset}-` } : undefined;
+        return globalThis.fetch(source.url, { signal: controller.signal, headers });
+      };
+      let response = await fetchResponse(resolved, offset);
+      let rangeValidation = getRangeValidation(response, offset, metadata.totalBytes);
+      if (offset > 0 && [401, 403].includes(Number(response?.status || 0))) {
+        // Resolved URLs can expire. Re-resolve from the current stream descriptor,
+        // never from a persisted signed URL, before deciding whether to restart.
+        resolved = await resolveBrowserOfflineDownloadSource(input.stream, input, {
+          preferResolver: true
+        });
+        const refreshedSourceFingerprint = createOfflineSourceFingerprint(resolved);
+        if (refreshedSourceFingerprint !== metadata.sourceFingerprint) {
+          throw new Error("The re-resolved source no longer matches the retained offline copy.");
+        }
+        response = await fetchResponse(resolved, offset);
+        rangeValidation = getRangeValidation(response, offset, metadata.totalBytes);
       }
-      const total = Number(response.headers.get("content-length"));
-      metadata.totalBytes = Number.isFinite(total) && total > 0 ? total : null;
+
+      if (offset > 0 && !rangeValidation.valid) {
+        await response?.body?.cancel?.().catch(() => {});
+        // A full response to a range request would corrupt the retained partial
+        // file if appended. Discard only after detecting that safe resume is
+        // impossible, then restart the same verified copy from byte zero.
+        await removeOpfsFile(metadata.fileName);
+        offset = 0;
+        metadata = { ...metadata, downloadedBytes: 0, totalBytes: null, status: "downloading" };
+        await writeDownload(metadata);
+        response = await fetchResponse(resolved, 0);
+        rangeValidation = getRangeValidation(response, 0, metadata.totalBytes);
+      }
+      if (!response?.ok || !rangeValidation.valid) {
+        throw new Error(`Download request failed (${response?.status || "unavailable"}).`);
+      }
+
+      metadata.totalBytes = totalBytesFromResponse(response, offset);
       const directory = await getDownloadsDirectory(true);
-      const fileHandle = await directory.getFileHandle(fileName, { create: true });
-      writable = await fileHandle.createWritable();
+      const fileHandle = await directory.getFileHandle(metadata.fileName, { create: true });
+      writable = await fileHandle.createWritable({ keepExistingData: offset > 0 });
+      if (offset > 0) {
+        await writable.seek(offset);
+      }
       const reader = response.body.getReader();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         if (value) {
           await writable.write(value);
-          metadata.downloadedBytes += value.byteLength;
+          metadata.downloadedBytes = offset + value.byteLength;
+          offset = metadata.downloadedBytes;
           if (now() - lastPersistAt >= PROGRESS_PERSIST_INTERVAL_MS) {
             lastPersistAt = now();
             await writeDownload({ ...metadata });
@@ -419,14 +556,37 @@ export async function startBrowserOfflineDownload(input = {}) {
       return { status: "completed", download: metadata };
     } catch (error) {
       try {
-        if (writable) await writable.abort();
+        if (writable && task.pauseRequested) {
+          await writable.close();
+          writable = null;
+        } else if (writable) {
+          await writable.abort();
+          writable = null;
+        }
       } catch (_) {}
-      await removeOpfsFile(fileName).catch(() => {});
-      if (error?.name === "AbortError") {
+      if (task.pauseRequested) {
+        metadata = {
+          ...metadata,
+          status: "paused",
+          completedAt: null,
+          downloadedBytes: await getOpfsFileSize(metadata.fileName).catch(() => metadata.downloadedBytes || 0),
+          error: ""
+        };
+        await writeDownload(metadata).catch(() => {});
+        return { status: "paused", download: metadata };
+      }
+      if (task.cancelRequested || error?.name === "AbortError") {
+        await removeOpfsFile(metadata.fileName).catch(() => {});
         await removeMetadata(downloadId).catch(() => {});
         return { status: "cancelled", downloadId };
       }
-      const failed = { ...metadata, status: "failed", completedAt: null, error: "Download failed" };
+      const failed = {
+        ...metadata,
+        status: "failed",
+        completedAt: null,
+        downloadedBytes: await getOpfsFileSize(metadata.fileName).catch(() => metadata.downloadedBytes || 0),
+        error: "Download failed"
+      };
       await writeDownload(failed).catch(() => {});
       throw error;
     } finally {
@@ -445,6 +605,18 @@ export async function startBrowserOfflineDownload(input = {}) {
 export async function cancelBrowserOfflineDownload(downloadId) {
   const active = activeDownloads.get(downloadId);
   if (!active) return false;
+  active.cancelRequested = true;
+  active.controller.abort();
+  try {
+    await active.promise;
+  } catch (_) {}
+  return true;
+}
+
+export async function pauseBrowserOfflineDownload(downloadId) {
+  const active = activeDownloads.get(downloadId);
+  if (!active) return false;
+  active.pauseRequested = true;
   active.controller.abort();
   try {
     await active.promise;
