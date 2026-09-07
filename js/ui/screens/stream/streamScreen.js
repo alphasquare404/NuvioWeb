@@ -48,6 +48,10 @@ import {
   normalizeStreamBadgeRules
 } from "../../../core/streams/streamBadgeRules.js";
 import { normalizeMathematicalAlphanumericSymbols } from "../../../core/streams/streamDisplayText.js";
+import {
+  normalizeSourceForDisplay,
+  renderBrowserSourceCardContent
+} from "../../components/browserStreamSourceCard.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import {
   canQueueBrowserOfflineDownload,
@@ -2344,6 +2348,25 @@ export const StreamScreen = {
   },
 
   renderStreamCard(stream, index, streamBadgesEnabled = true, badgeSettings = null) {
+    if (Platform.isBrowser()) {
+      const sourceModel = normalizeSourceForDisplay(stream, {
+        badgeSettings,
+        streamBadgesEnabled,
+        addonLogoLookup: this.addonLogoLookup
+      });
+      return `
+        <div class="stream-route-card-row" data-stream-row="${index}">
+          <article class="stream-route-card stream-route-card-action focusable${this.isCardActionFocused(index, "play") ? " focused" : ""}"
+                   data-action="playStream"
+                   data-card-action="play"
+                   data-stream-id="${escapeHtml(stream.id)}"
+                   data-stream-row="${index}">
+            ${renderBrowserSourceCardContent(sourceModel)}
+            ${this.renderOfflineDownloadActions(stream)}
+          </article>
+        </div>
+      `;
+    }
     const headline = getStreamHeadline(stream);
     const quality = getStreamQuality(stream);
     const lazyBadges =

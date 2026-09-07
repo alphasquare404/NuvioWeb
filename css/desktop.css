@@ -3905,6 +3905,429 @@ html.desktop-browser {
   transform: none;
 }
 
+.desktop-browser #detail .series-season-download-row {
+  display: flex;
+  padding: 0 clamp(20px, 3.4vw, 64px) 12px;
+}
+
+.desktop-browser #detail .series-season-download-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgb(var(--secondary-color-rgb) / 0.38);
+  border-radius: 999px;
+  background: rgb(var(--secondary-color-rgb) / 0.12);
+  color: var(--detail-text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.desktop-browser #detail .series-season-download-action .material-icons {
+  font-size: 17px;
+}
+
+.desktop-browser #detail .series-season-download-action:focus-visible {
+  outline: 2px solid var(--detail-focus-ring);
+  outline-offset: 2px;
+}
+
+.desktop-browser .nuvio-dialog-panel.season-download-dialog {
+  width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+  max-width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+  max-height: min(74dvh, 600px);
+  padding: 20px;
+  gap: 10px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.desktop-browser .season-download-dialog .nuvio-dialog-title {
+  font-size: 21px;
+  line-height: 1.2;
+  font-weight: 650;
+}
+
+.desktop-browser .season-download-dialog .nuvio-dialog-subtitle {
+  margin-top: -2px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.desktop-browser .season-download-dialog-content {
+  min-width: 0;
+  max-height: min(42dvh, 330px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.desktop-browser .season-download-summary,
+.desktop-browser .season-download-progress {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.desktop-browser .season-download-progress {
+  color: var(--detail-text-primary);
+}
+
+.desktop-browser .season-download-episode-list {
+  display: grid;
+  gap: 6px;
+}
+
+.desktop-browser .season-download-episode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(124px, 44%);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.045);
+  color: var(--detail-text-primary);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.desktop-browser .season-download-episode > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .season-download-select-source {
+  min-width: 0;
+  min-height: 36px;
+  overflow: hidden;
+  padding: 7px 9px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.07);
+  color: var(--detail-text-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.15;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.desktop-browser .season-download-select-source:focus-visible {
+  outline: 2px solid var(--detail-focus-ring);
+  outline-offset: 1px;
+}
+
+.desktop-browser .season-download-dialog .nuvio-dialog-actions {
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+.desktop-browser .season-download-dialog .season-download-source-picker-actions {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(48dvh, 390px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+.desktop-browser .season-download-dialog .nuvio-dialog-button {
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.075);
+  color: var(--detail-text-primary);
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: left;
+  transform: none;
+}
+
+.desktop-browser .season-download-dialog .nuvio-dialog-button-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .season-download-dialog .nuvio-dialog-button.focused,
+.desktop-browser .season-download-dialog .nuvio-dialog-button:focus-visible {
+  border-color: rgb(var(--secondary-color-rgb) / 0.7);
+  background: rgb(var(--secondary-color-rgb) / 0.22);
+  color: var(--detail-text-primary);
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.42);
+  outline-offset: 1px;
+  transform: none;
+}
+
+.desktop-browser .season-download-dialog .season-download-queue-action {
+  border-color: rgb(var(--secondary-color-rgb) / 0.66);
+  background: rgb(var(--secondary-color-rgb) / 0.28);
+  font-weight: 650;
+}
+
+.desktop-browser .season-download-dialog .season-download-source-option {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  border-color: rgb(255 255 255 / 0.1);
+  border-radius: 14px;
+  background: rgb(26 26 31 / 0.82);
+}
+
+.desktop-browser .season-download-dialog .season-download-source-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.desktop-browser .season-download-dialog .season-download-source-card.without-addon {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.desktop-browser .season-download-source-card .stream-route-card-copy {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.desktop-browser .season-download-source-card .stream-route-card-heading {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--detail-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .season-download-source-card .stream-route-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+  min-width: 0;
+}
+
+.desktop-browser .season-download-source-card .stream-route-stream-badge {
+  max-width: 100%;
+  min-height: 20px;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.28);
+  color: var(--detail-text-primary);
+  font-size: 11px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .season-download-source-card .stream-route-card-line {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .season-download-source-card .stream-route-card-side {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 6px;
+  border-left: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.desktop-browser .season-download-source-card .stream-route-addon-badge {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 50%;
+  color: var(--detail-text-primary);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.desktop-browser .season-download-source-card .stream-route-addon-badge img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.desktop-browser .season-download-source-card .stream-route-addon-name {
+  width: 100%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser .season-download-dialog .season-download-source-option.selected {
+  border-color: rgb(var(--secondary-color-rgb) / 0.58);
+  background: rgb(var(--secondary-color-rgb) / 0.12);
+}
+
+.desktop-browser .season-download-dialog .season-download-source-option .nuvio-dialog-button-check {
+  width: 18px;
+  height: 18px;
+  flex-basis: 18px;
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  right: 6px;
+}
+
+.desktop-browser .season-download-dialog .season-download-source-picker-actions .season-download-secondary-action {
+  align-self: flex-start;
+  width: fit-content;
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 8px;
+}
+
+.desktop-browser .season-download-dialog .season-download-secondary-action {
+  min-height: 36px;
+  color: var(--text-secondary);
+}
+
+.desktop-browser .season-download-dialog .season-download-disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .season-download-select-source:hover,
+  .desktop-browser .season-download-dialog .nuvio-dialog-button:hover {
+    border-color: rgb(255 255 255 / 0.3);
+    background: rgb(255 255 255 / 0.12);
+  }
+
+  .desktop-browser .season-download-dialog .season-download-queue-action:hover {
+    background: rgb(var(--secondary-color-rgb) / 0.38);
+  }
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #detail .series-season-download-row {
+    padding-right: var(--browser-page-gutter);
+    padding-left: var(--browser-page-gutter);
+  }
+
+  .desktop-browser .nuvio-dialog-panel.season-download-dialog {
+    max-height: min(78dvh, 560px);
+    padding: 16px;
+    gap: 9px;
+  }
+
+  .desktop-browser .season-download-dialog .nuvio-dialog-title {
+    font-size: 19px;
+  }
+
+  .desktop-browser .season-download-dialog .nuvio-dialog-subtitle {
+    font-size: 12px;
+  }
+
+  .desktop-browser .season-download-dialog-content {
+    max-height: min(48dvh, 380px);
+  }
+
+  .desktop-browser .season-download-episode {
+    grid-template-columns: minmax(0, 1fr) minmax(118px, 43%);
+    padding: 8px;
+  }
+
+  .desktop-browser .season-download-select-source,
+  .desktop-browser .season-download-dialog .nuvio-dialog-button {
+    min-height: 44px;
+  }
+
+  .desktop-browser .season-download-dialog .nuvio-dialog-button {
+    font-size: 13px;
+  }
+
+  .desktop-browser .season-download-dialog .season-download-source-card {
+    grid-template-columns: minmax(0, 1fr) 72px;
+    min-height: 0;
+  }
+
+  .desktop-browser .season-download-source-card .stream-route-card-copy {
+    padding: 9px 10px;
+  }
+
+  .desktop-browser .season-download-source-card .stream-route-card-heading {
+    font-size: 14px;
+  }
+
+  .desktop-browser .season-download-source-card .stream-route-stream-badge {
+    min-height: 19px;
+    padding-inline: 5px;
+    font-size: 10px;
+  }
+
+  .desktop-browser .season-download-source-card .stream-route-card-side {
+    padding-inline: 5px;
+  }
+
+  .desktop-browser .season-download-source-card .stream-route-addon-badge {
+    width: 30px;
+    height: 30px;
+  }
+
+  .desktop-browser .season-download-source-card .stream-route-addon-name {
+    font-size: 10px;
+  }
+
+  .desktop-browser .season-download-dialog .season-download-source-picker-actions {
+    max-height: min(54dvh, 430px);
+  }
+
+  .desktop-browser .season-download-dialog .season-download-source-picker-actions .season-download-secondary-action {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 380px) {
+  .desktop-browser .season-download-episode {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desktop-browser .season-download-select-source {
+    width: 100%;
+  }
+}
+
 .desktop-browser #detail .series-episode-track {
   gap: 14px;
   padding: 12px clamp(20px, 3.4vw, 64px) 16px;

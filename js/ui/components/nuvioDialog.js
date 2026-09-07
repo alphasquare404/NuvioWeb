@@ -162,11 +162,19 @@ export class NuvioDialog {
           (btn.selected ? " selected" : "") +
           (btn.className ? ` ${btn.className}` : "");
         this._setButtonSelected(el, Boolean(btn.selected));
-        const label = document.createElement("span");
-        label.className = "nuvio-dialog-button-label";
-        label.textContent = btn.label;
-        el.appendChild(label);
+        if (typeof btn.content === "function") {
+          const customContent = btn.content(el);
+          if (customContent?.nodeType) el.appendChild(customContent);
+        } else {
+          const label = document.createElement("span");
+          label.className = "nuvio-dialog-button-label";
+          label.textContent = btn.label;
+          el.appendChild(label);
+        }
         el.dataset.key = btn.key || String(i);
+        const accessibleLabel = btn.ariaLabel || btn.label;
+        if (accessibleLabel) el.setAttribute("aria-label", accessibleLabel);
+        if (btn.title || btn.label) el.title = btn.title || btn.label;
         el.addEventListener("click", () => {
           if (btn.onAction) btn.onAction();
         });

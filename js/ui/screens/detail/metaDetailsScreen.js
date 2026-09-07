@@ -4,6 +4,7 @@ import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
 import { savedLibraryRepository } from "../../../data/repository/savedLibraryRepository.js";
+import { streamRepository } from "../../../data/repository/streamRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
 import { LibrarySourceMode, libraryRepository } from "../../../data/repository/libraryRepository.js";
 import { detailWatchedEnrichmentService } from "../../../data/repository/detailWatchedEnrichmentService.js";
@@ -33,6 +34,10 @@ import {
 } from "../../../config.js";
 import { I18n } from "../../../i18n/index.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
+import {
+  normalizeSourceForDisplay,
+  renderBrowserSourceCardContent
+} from "../../components/browserStreamSourceCard.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
@@ -50,10 +55,19 @@ import {
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
 import {
   createOfflineMediaId,
+  canQueueBrowserOfflineDownload,
   isBrowserOfflineDownloadSupported,
   listOfflineDownloads,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
+import { enqueueBrowserOfflineDownload } from "../../../core/offline/browserOfflineDownloadQueue.js";
+import {
+  enqueueSeasonDownloadSelections,
+  firstEligibleSeasonDownloadStream,
+  flattenSeasonDownloadStreams,
+  getMissingSeasonEpisodes,
+  prepareAutomaticSeasonDownloads
+} from "./seasonOfflineDownload.js";
 import {
   WATCH_PROGRESS_COMPLETED_THRESHOLD,
   getWatchProgressFraction,
@@ -1705,6 +1719,8 @@ export const MetaDetailsScreen = {
     this.desktopLibraryLongPressTriggered = false;
     this.desktopLibraryClickResetTimer = null;
     this.detailHoldDialog = null;
+    this.seasonDownloadDialog = null;
+    this.seasonDownloadFlow = null;
     this.posterOptionsController = null;
     this.posterOptionsFocusRestore = null;
     this.pendingPosterHoldTarget = null;
@@ -3392,7 +3408,7 @@ export const MetaDetailsScreen = {
           ${this.renderDesktopBackButton()}
           <div id="detailHeroSection">${heroMarkup}</div>
           <div id="detailSeasonRowMount">
-            <div class="series-season-row" data-scroll-key="season-tabs">${this.renderSeasonButtons()}</div>
+            ${this.renderSeasonControls()}
           </div>
           <div id="detailEpisodeTrackMount">
             <div class="series-episode-track" data-scroll-key="episodes:${this.selectedSeason ?? 1}">${this.renderEpisodeCards(this.getPendingEpisodeNavigationIndex())}</div>
@@ -3828,7 +3844,7 @@ export const MetaDetailsScreen = {
 
     const seasonMount = this.container.querySelector("#detailSeasonRowMount");
     if (isSeries && seasonMount) {
-      seasonMount.innerHTML = `<div class="series-season-row" data-scroll-key="season-tabs">${this.renderSeasonButtons()}</div>`;
+      seasonMount.innerHTML = this.renderSeasonControls();
     }
 
     const episodeMount = this.container.querySelector("#detailEpisodeTrackMount");
@@ -4080,6 +4096,373 @@ export const MetaDetailsScreen = {
       `
       )
       .join("");
+  },
+
+  renderSeasonControls() {
+    return `
+      <div class="series-season-row" data-scroll-key="season-tabs">${this.renderSeasonButtons()}</div>
+      ${this.renderSeasonDownloadAction()}
+    `;
+  },
+
+  renderSeasonDownloadAction() {
+    if (!Platform.isBrowser() || !isBrowserOfflineDownloadSupported()) return "";
+    const episodes = this.getSelectedSeasonEpisodes();
+    if (!episodes.length) return "";
+    const completed = episodes.filter((episode) =>
+      this.offlineEpisodeMediaIds?.has(this.getEpisodeOfflineMediaId(episode))
+    ).length;
+    const label = completed === episodes.length
+      ? t("offline.seasonDownloaded", {}, "Season downloaded")
+      : completed > 0
+        ? `${completed} / ${episodes.length} ${t("offline.downloaded", {}, "Downloaded")}`
+        : t("offline.downloadSeason", {}, "Download Season");
+    return `
+      <div class="series-season-download-row">
+        <button type="button" class="series-season-download-action focusable" data-action="downloadSeason"
+                aria-label="${escapeAttribute(t("offline.downloadSeason", {}, "Download Season"))}">
+          <span class="material-icons" aria-hidden="true">download</span>
+          <span>${escapeHtml(label)}</span>
+        </button>
+      </div>
+    `;
+  },
+
+  getEpisodeOfflineMediaId(episode = {}) {
+    return createOfflineMediaId({
+      contentType: "episode",
+      seriesId: this.getOfflineSeriesId(),
+      seasonNumber: episode.season,
+      episodeNumber: episode.episode
+    });
+  },
+
+  getSeasonDownloadCandidates() {
+    return getMissingSeasonEpisodes({
+      episodes: this.getSelectedSeasonEpisodes(),
+      completedMediaIds: this.offlineEpisodeMediaIds || new Set(),
+      createMediaId: (episode) => this.getEpisodeOfflineMediaId(episode)
+    });
+  },
+
+  createSeasonOfflineDownloadContext(episode = {}, stream = {}) {
+    const seriesId = this.getOfflineSeriesId();
+    return {
+      contentType: "episode",
+      itemType: "series",
+      itemId: seriesId,
+      mediaId: seriesId,
+      tmdbId: resolveMetaTmdbId(this.meta || {}, this.params || {}),
+      imdbId: resolveMetaImdbId(this.meta || {}, this.params || {}),
+      seriesId,
+      seriesTitle: this.meta?.name || this.params?.fallbackTitle || seriesId,
+      season: Number(episode.season),
+      episode: Number(episode.episode),
+      episodeId: String(episode.id || ""),
+      videoId: String(episode.id || ""),
+      title: episode.title || `Episode ${Number(episode.episode || 0)}`,
+      year: this.meta?.releaseInfo || this.meta?.year || "",
+      poster: episode.thumbnail || this.meta?.poster || "",
+      backdrop: this.meta?.background || this.meta?.poster || "",
+      sourceName: stream.addonName || "",
+      filename: stream.behaviorHints?.filename || stream.raw?.behaviorHints?.filename || stream.title || "",
+      mimeType: stream.mimeType || stream.raw?.mimeType || "",
+      stream
+    };
+  },
+
+  getSeasonDownloadSourceLabel(stream = {}, { includeFilename = false } = {}) {
+    const bytes = Number(stream.behaviorHints?.videoSize || stream.videoSize || 0);
+    const size = bytes >= 1024 * 1024 * 1024
+      ? `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+      : bytes >= 1024 * 1024
+        ? `${Math.round(bytes / (1024 * 1024))} MB`
+        : "";
+    const filename = String(stream.behaviorHints?.filename || stream.title || stream.name || "").trim();
+    return [
+      stream.addonName || "Source",
+      stream.quality || stream.qualityValue || "Video",
+      stream.sourceType || stream.mimeType || "",
+      size,
+      ...(includeFilename && filename ? [filename] : [])
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  },
+
+  async resolveSeasonEpisodeStreams(episode = {}) {
+    return streamRepository.getStreamsFromAllAddons("series", String(episode.id || ""), {
+      itemId: this.getOfflineSeriesId(),
+      season: Number(episode.season),
+      episode: Number(episode.episode)
+    });
+  },
+
+  closeSeasonDownloadDialog({ cancelPreparation = true } = {}) {
+    if (cancelPreparation && this.seasonDownloadFlow) this.seasonDownloadFlow.cancelled = true;
+    this.seasonDownloadDialog?.destroy?.();
+    this.seasonDownloadDialog = null;
+    if (cancelPreparation) this.seasonDownloadFlow = null;
+  },
+
+  showSeasonDownloadDialog({ title, subtitle = "", content = null, buttons = [], actionsClassName = "" } = {}) {
+    this.seasonDownloadDialog?.destroy?.();
+    this.seasonDownloadDialog = new NuvioDialog({
+      title,
+      subtitle,
+      widthVw: 90,
+      panelClassName: "season-download-dialog",
+      actionsClassName,
+      content,
+      buttons,
+      onDismiss: () => {
+        this.seasonDownloadDialog = null;
+        if (this.seasonDownloadFlow?.preparing) this.seasonDownloadFlow.cancelled = true;
+        this.seasonDownloadFlow = null;
+      }
+    }).mount(document.body);
+  },
+
+  createSeasonDownloadSummaryContent(flow, { manual = false } = {}) {
+    const content = document.createElement("div");
+    content.className = "season-download-dialog-content";
+    const total = Number(flow?.totalEpisodes || 0);
+    const downloaded = Number(flow?.downloadedEpisodes || 0);
+    const remaining = Number(flow?.candidates?.length || 0);
+    content.innerHTML = `
+      <p class="season-download-summary">${escapeHtml(`${total} episodes · ${downloaded} already downloaded · ${remaining} to process`)}</p>
+      ${flow?.preparing ? `<p class="season-download-progress" aria-live="polite">Finding sources… ${Number(flow.preparedCount || 0)} / ${remaining}</p>` : ""}
+    `;
+    if (!manual) return content;
+    const list = document.createElement("div");
+    list.className = "season-download-episode-list";
+    (flow?.candidates || []).forEach((episode) => {
+      const selected = flow.selections.get(String(episode.id || ""));
+      const row = document.createElement("div");
+      row.className = "season-download-episode";
+      const title = episode.title || `Episode ${Number(episode.episode || 0)}`;
+      row.innerHTML = `<span><strong>S${Number(episode.season)}E${Number(episode.episode)}</strong> ${escapeHtml(title)}</span>`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "season-download-select-source";
+      const sourceLabel = selected
+        ? this.getSeasonDownloadSourceLabel(selected.stream)
+        : "Select Source";
+      const fullSourceLabel = selected
+        ? this.getSeasonDownloadSourceLabel(selected.stream, { includeFilename: true })
+        : "";
+      button.textContent = sourceLabel;
+      if (fullSourceLabel) button.title = fullSourceLabel;
+      button.setAttribute(
+        "aria-label",
+        `${selected ? "Change" : "Select"} source for ${title}${fullSourceLabel ? `: ${fullSourceLabel}` : ""}`
+      );
+      button.addEventListener("click", () => void this.openManualSeasonSourcePicker(episode));
+      row.appendChild(button);
+      list.appendChild(row);
+    });
+    content.appendChild(list);
+    return content;
+  },
+
+  async openSeasonDownloadDialog() {
+    if (!Platform.isBrowser() || !isBrowserOfflineDownloadSupported()) return;
+    if (globalThis.navigator?.onLine === false) {
+      this.showSeasonDownloadDialog({
+        title: t("offline.downloadSeason", {}, "Download Season"),
+        subtitle: "Sources unavailable while offline",
+        buttons: [{ label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }]
+      });
+      return;
+    }
+    await this.refreshOfflineDownloadStatus();
+    const episodes = this.getSelectedSeasonEpisodes();
+    const candidates = this.getSeasonDownloadCandidates();
+    const season = Number(this.selectedSeason || 0);
+    const flow = {
+      season,
+      totalEpisodes: episodes.length,
+      downloadedEpisodes: episodes.length - candidates.length,
+      candidates,
+      selections: new Map(),
+      preparing: false,
+      preparedCount: 0,
+      cancelled: false
+    };
+    this.seasonDownloadFlow = flow;
+    if (!candidates.length) {
+      this.showSeasonDownloadDialog({
+        title: `Download ${season === 0 ? "Specials" : `Season ${season}`}`,
+        subtitle: "Season already downloaded",
+        buttons: [{ label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }]
+      });
+      return;
+    }
+    this.showSeasonDownloadModeDialog(flow);
+  },
+
+  showSeasonDownloadModeDialog(flow = this.seasonDownloadFlow) {
+    if (!flow || flow.cancelled) return;
+    const seasonLabel = flow.season === 0 ? "Specials" : `Season ${flow.season}`;
+    this.showSeasonDownloadDialog({
+      title: `Download ${seasonLabel}`,
+      subtitle: "Choose mode",
+      content: () => this.createSeasonDownloadSummaryContent(flow),
+      buttons: [
+        {
+          label: "Automatic",
+          className: "season-download-mode-action",
+          onAction: () => void this.startAutomaticSeasonDownload(flow)
+        },
+        {
+          label: "Choose Sources",
+          className: "season-download-mode-action",
+          onAction: () => this.showManualSeasonDownloadDialog(flow)
+        },
+        { label: t("common.cancel", {}, "Cancel"), className: "season-download-secondary-action", onAction: () => this.closeSeasonDownloadDialog() }
+      ]
+    });
+  },
+
+  async startAutomaticSeasonDownload(flow = this.seasonDownloadFlow) {
+    if (!flow || flow.preparing) return;
+    flow.preparing = true;
+    flow.preparedCount = 0;
+    this.showSeasonDownloadDialog({
+      title: `Download ${flow.season === 0 ? "Specials" : `Season ${flow.season}`}`,
+      subtitle: "Automatic",
+      content: () => this.createSeasonDownloadSummaryContent(flow),
+      buttons: [{ label: t("common.cancel", {}, "Cancel"), className: "season-download-secondary-action", onAction: () => this.closeSeasonDownloadDialog() }]
+    });
+    const prepared = await prepareAutomaticSeasonDownloads({
+      episodes: flow.candidates,
+      concurrency: 3,
+      resolveStreams: (episode) => this.resolveSeasonEpisodeStreams(episode),
+      buildContext: (episode, stream) => this.createSeasonOfflineDownloadContext(episode, stream),
+      canQueue: canQueueBrowserOfflineDownload,
+      isCancelled: () => flow.cancelled,
+      onProgress: ({ completed }) => {
+        flow.preparedCount = completed;
+        if (!flow.cancelled) this.showSeasonDownloadDialog({
+          title: `Download ${flow.season === 0 ? "Specials" : `Season ${flow.season}`}`,
+          subtitle: "Automatic",
+          content: () => this.createSeasonDownloadSummaryContent(flow),
+          buttons: [{ label: t("common.cancel", {}, "Cancel"), onAction: () => this.closeSeasonDownloadDialog() }]
+        });
+      }
+    });
+    if (flow.cancelled) return;
+    flow.preparing = false;
+    const selected = prepared.filter((entry) => entry.status === "selected");
+    const outcomes = await enqueueSeasonDownloadSelections(selected, enqueueBrowserOfflineDownload);
+    if (flow.cancelled) return;
+    const added = outcomes.filter((entry) => !entry.error).length;
+    const skipped = flow.candidates.length - selected.length + outcomes.filter((entry) => entry.error).length;
+    this.closeSeasonDownloadDialog({ cancelPreparation: false });
+    this.seasonDownloadFlow = null;
+    this.showSeasonDownloadResult(added, skipped);
+  },
+
+  showManualSeasonDownloadDialog(flow = this.seasonDownloadFlow) {
+    if (!flow || flow.cancelled) return;
+    const selectedCount = flow.selections.size;
+    this.showSeasonDownloadDialog({
+      title: `Download ${flow.season === 0 ? "Specials" : `Season ${flow.season}`}`,
+      subtitle: "Choose one source per episode",
+      content: () => this.createSeasonDownloadSummaryContent(flow, { manual: true }),
+      buttons: [
+        {
+          label: `Add ${selectedCount} to Queue`,
+          onAction: () => void this.addManualSeasonDownloads(flow),
+          className: `season-download-queue-action${selectedCount ? "" : " season-download-disabled"}`
+        },
+        { label: t("common.cancel", {}, "Cancel"), className: "season-download-secondary-action", onAction: () => this.closeSeasonDownloadDialog() }
+      ]
+    });
+  },
+
+  async openManualSeasonSourcePicker(episode = {}) {
+    const flow = this.seasonDownloadFlow;
+    if (!flow || flow.cancelled) return;
+    this.showSeasonDownloadDialog({
+      title: `S${Number(episode.season)}E${Number(episode.episode)}`,
+      subtitle: "Finding sources…",
+      buttons: [{ label: t("common.cancel", {}, "Cancel"), className: "season-download-secondary-action", onAction: () => this.closeSeasonDownloadDialog() }]
+    });
+    let streams = [];
+    try {
+      streams = flattenSeasonDownloadStreams(await this.resolveSeasonEpisodeStreams(episode));
+    } catch (_) {}
+    if (flow.cancelled) return;
+    const eligible = streams.filter((stream) =>
+      canQueueBrowserOfflineDownload(this.createSeasonOfflineDownloadContext(episode, stream))
+    );
+    const selectedStreamId = String(flow.selections.get(String(episode.id || ""))?.stream?.id || "");
+    const buttons = eligible.map((stream) => {
+      const sourceModel = normalizeSourceForDisplay(stream);
+      const sourceLabel = sourceModel.accessibleLabel || this.getSeasonDownloadSourceLabel(stream, { includeFilename: true });
+      return {
+        label: sourceLabel,
+        title: sourceLabel,
+        ariaLabel: sourceLabel,
+        selected: selectedStreamId !== "" && selectedStreamId === String(stream.id || ""),
+        className: "season-download-source-option",
+        content: () => {
+          const card = document.createElement("span");
+          card.className = `season-download-source-card${sourceModel.showAddonLogo ? "" : " without-addon"}`;
+          card.innerHTML = renderBrowserSourceCardContent(sourceModel);
+          return card;
+        },
+        onAction: () => {
+          const selected = firstEligibleSeasonDownloadStream(
+            [stream],
+            (entry) => this.createSeasonOfflineDownloadContext(episode, entry),
+            canQueueBrowserOfflineDownload
+          );
+          if (selected) flow.selections.set(String(episode.id || ""), { episode, ...selected });
+          this.showManualSeasonDownloadDialog(flow);
+        }
+      };
+    });
+    this.showSeasonDownloadDialog({
+      title: `S${Number(episode.season)}E${Number(episode.episode)}`,
+      subtitle: episode.title || "Select a downloadable source",
+      content: eligible.length
+        ? null
+        : () => {
+            const message = document.createElement("p");
+            message.className = "season-download-summary";
+            message.textContent = "No downloadable sources available.";
+            return message;
+          },
+      buttons: [
+        ...buttons,
+        { label: t("common.back", {}, "Back"), className: "season-download-secondary-action", onAction: () => this.showManualSeasonDownloadDialog(flow) }
+      ],
+      actionsClassName: "season-download-source-picker-actions"
+    });
+  },
+
+  async addManualSeasonDownloads(flow = this.seasonDownloadFlow) {
+    if (!flow || !flow.selections.size) return;
+    const ordered = flow.candidates
+      .map((episode) => flow.selections.get(String(episode.id || "")))
+      .filter(Boolean);
+    const outcomes = await enqueueSeasonDownloadSelections(ordered, enqueueBrowserOfflineDownload);
+    if (flow.cancelled) return;
+    const added = outcomes.filter((entry) => !entry.error).length;
+    const skipped = flow.candidates.length - ordered.length + outcomes.filter((entry) => entry.error).length;
+    this.closeSeasonDownloadDialog({ cancelPreparation: false });
+    this.seasonDownloadFlow = null;
+    this.showSeasonDownloadResult(added, skipped);
+  },
+
+  showSeasonDownloadResult(added = 0, skipped = 0) {
+    this.showSeasonDownloadDialog({
+      title: t("offline.downloadSeason", {}, "Download Season"),
+      subtitle: `${added} episode${added === 1 ? "" : "s"} added to download queue${skipped ? ` · ${skipped} skipped` : ""}`,
+      buttons: [{ label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }]
+    });
   },
 
   getSelectedSeasonEpisodes() {
@@ -6898,6 +7281,10 @@ export const MetaDetailsScreen = {
       this.bindDesktopDetailActions();
       this.bindDesktopInsightTabActions();
       this.bindDesktopCastPersonActions();
+      const seasonDownloadButton = this.container?.querySelector("[data-action='downloadSeason']");
+      if (seasonDownloadButton instanceof HTMLButtonElement) {
+        seasonDownloadButton.onclick = () => void this.openSeasonDownloadDialog();
+      }
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
         cardSelector: ".movie-cast-card[data-action='openCastPerson'], .series-episode-card[data-action='openEpisodeStreams'], .detail-trailer-card[data-action='openSharedTrailer'], .detail-morelike-card[data-action='openMoreLikeDetail']"
@@ -10189,6 +10576,11 @@ export const MetaDetailsScreen = {
       return;
     }
 
+    if (action === "downloadSeason" && Platform.isBrowser()) {
+      this.openSeasonDownloadDialog();
+      return;
+    }
+
     if (action === "setSeriesInsightTab") {
       const tab = String(current.dataset.tab || "cast");
       if (tab !== this.seriesInsightTab) {
@@ -10504,6 +10896,7 @@ export const MetaDetailsScreen = {
     this.posterOptionsController = null;
     this.posterOptionsFocusRestore = null;
     this.destroyDetailHoldDialog();
+    this.closeSeasonDownloadDialog();
     this.episodeHoldMenu = null;
     this.seasonHoldMenu = null;
     this.heroPlayMenu = null;
