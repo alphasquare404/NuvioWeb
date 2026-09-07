@@ -55,3 +55,19 @@ test("manual selections enqueue sequentially after existing queue jobs", async (
   assert.deepEqual(queued, ["movie-a", "movie-b", "s1e1", "s1e3"]);
   assert.equal(firstEligibleSeasonDownloadStream([{ id: "no" }, { id: "yes" }], (stream) => stream, (stream) => stream.id === "yes").stream.id, "yes");
 });
+
+test("automatic season contexts preserve all-subtitle descriptors per episode", async () => {
+  const prepared = await prepareAutomaticSeasonDownloads({
+    episodes: [episodes[1]],
+    resolveStreams: async () => ({ status: "success", data: [{ streams: [{ id: "good" }] }] }),
+    buildContext: (episode, stream) => ({
+      episode,
+      stream,
+      offlineSubtitleMode: "all",
+      offlineSubtitleDescriptors: [{ fingerprint: `${episode.id}-en` }, { fingerprint: `${episode.id}-id` }]
+    }),
+    canQueue: () => true
+  });
+  assert.equal(prepared[0].context.offlineSubtitleMode, "all");
+  assert.equal(prepared[0].context.offlineSubtitleDescriptors.length, 2);
+});

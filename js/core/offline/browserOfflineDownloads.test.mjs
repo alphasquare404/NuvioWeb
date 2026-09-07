@@ -138,3 +138,27 @@ test("offline subtitle decoding honors UTF-16 BOMs before format detection", () 
   assert.equal(decoded.encoding, "utf-16le");
   assert.equal(detectOfflineSubtitleFormat(decoded.text), "srt");
 });
+
+test("offline all-subtitle selection persists deduped safe descriptors", () => {
+  const tracks = [
+    { id: "english", url: "https://subs.example/en.srt?token=one", lang: "en", addonId: "a" },
+    { id: "english", url: "https://subs.example/en.srt?token=two", lang: "en", addonId: "a" },
+    { id: "indonesian", url: "https://subs.example/id.vtt?token=three", lang: "id", addonId: "a" }
+  ];
+  const seen = new Set();
+  const descriptors = tracks
+    .map((track) => ({ fingerprint: createOfflineSubtitleFingerprint(track), lang: track.lang, addonId: track.addonId }))
+    .filter((descriptor) => !seen.has(descriptor.fingerprint) && seen.add(descriptor.fingerprint));
+  assert.equal(descriptors.length, 2);
+  assert.equal(descriptors.some((descriptor) => descriptor.fingerprint.includes("token=")), false);
+  assert.equal(descriptors[0].lang, "en");
+});
+
+test("offline subtitle fingerprints retain distinct releases from one provider and normalize signed ids", () => {
+  const base = { addonName: "AIOStreams", lang: "eng", url: "https://subs.example/file.srt?token=secret" };
+  const releaseA = createOfflineSubtitleFingerprint({ ...base, id: "https://api.example/a?token=one", fileName: "Release.A.srt" });
+  const releaseB = createOfflineSubtitleFingerprint({ ...base, id: "https://api.example/b?token=two", fileName: "Release.B.srt" });
+  assert.notEqual(releaseA, releaseB);
+  assert.equal(releaseA.includes("token="), false);
+  assert.equal(releaseB.includes("token="), false);
+});

@@ -11,6 +11,7 @@ import {
   createOfflineSubtitleId,
   decodeOfflineSubtitleBytes,
   detectOfflineSubtitleFormat,
+  getOfflineSubtitleIdentityParts,
   isOfflineSubtitleFormatSupported,
   isOfflineSubtitleTextLoadable,
   offlineSubtitleExtension
@@ -28,6 +29,7 @@ export {
   createOfflineSubtitleId,
   decodeOfflineSubtitleBytes,
   detectOfflineSubtitleFormat,
+  getOfflineSubtitleIdentityParts,
   isOfflineSubtitleFormatSupported,
   isOfflineSubtitleTextLoadable
 } from "./offlineSubtitleIdentity.js";
@@ -319,6 +321,7 @@ function getRangeValidation(response, offset, expectedTotalBytes = null) {
 }
 
 function buildMetadata(input, downloadId, fileName) {
+  const subtitleSelection = getOfflineSubtitleSelection(input);
   const contentType = normalizeContentType(input.contentType || input.itemType);
   const seriesId = text(input.seriesId || input.itemId || input.mediaId);
   const seasonNumber = Number(input.seasonNumber ?? input.season);
@@ -353,8 +356,11 @@ function buildMetadata(input, downloadId, fileName) {
     totalBytes: null,
     opfsPath: `${OPFS_DIRECTORY_NAME}/${fileName}`,
     fileName,
-    offlineSubtitle: safeOfflineSubtitleDescriptor(input.offlineSubtitle),
-    offlineSubtitleStatus: input.offlineSubtitle ? "pending" : "none"
+    offlineSubtitle: subtitleSelection.descriptors[0] || null,
+    offlineSubtitleMode: subtitleSelection.mode,
+    offlineSubtitleLanguage: text(input.offlineSubtitleLanguage),
+    offlineSubtitleDescriptors: subtitleSelection.descriptors,
+    offlineSubtitleStatus: subtitleSelection.descriptors.length ? "pending" : "none"
   };
 }
 
@@ -419,6 +425,8 @@ function safeOfflineSubtitleDescriptor(subtitle = null) {
   return {
     addonId: text(subtitle.addonId),
     fingerprint,
+    providerSubtitleId: text(subtitle.providerSubtitleId),
+    urlIdentity: text(subtitle.urlIdentity),
     lang: text(subtitle.lang || subtitle.language),
     fileName: text(subtitle.fileName || subtitle.filename),
     forced: subtitle.forced === true,
@@ -426,7 +434,33 @@ function safeOfflineSubtitleDescriptor(subtitle = null) {
   };
 }
 
+function normalizeOfflineSubtitleMode(value, descriptors = []) {
+  const mode = text(value).toLowerCase();
+  if (["none", "preferred", "all", "language", "specific"].includes(mode)) return mode;
+  return descriptors.length ? "specific" : "none";
+}
+
+export function getSafeOfflineSubtitleDescriptors(values = []) {
+  const seen = new Set();
+  return (Array.isArray(values) ? values : [values])
+    .map((subtitle) => safeOfflineSubtitleDescriptor(subtitle))
+    .filter((subtitle) => {
+      if (!subtitle || seen.has(subtitle.fingerprint)) return false;
+      seen.add(subtitle.fingerprint);
+      return true;
+    });
+}
+
+export function getOfflineSubtitleSelection(input = {}) {
+  const descriptors = getSafeOfflineSubtitleDescriptors(
+    input.offlineSubtitleDescriptors || input.offlineSubtitles || input.offlineSubtitle
+  );
+  const mode = normalizeOfflineSubtitleMode(input.offlineSubtitleMode || input.subtitleMode, descriptors);
+  return { mode, descriptors: mode === "none" ? [] : descriptors };
+}
+
 function queuedRequestForInput(input = {}) {
+  const subtitleSelection = getOfflineSubtitleSelection(input);
   return {
     contentType: text(input.contentType),
     itemType: text(input.itemType),
@@ -446,7 +480,10 @@ function queuedRequestForInput(input = {}) {
     sourceName: text(input.sourceName),
     filename: text(input.filename),
     mimeType: text(input.mimeType),
-    offlineSubtitle: safeOfflineSubtitleDescriptor(input.offlineSubtitle),
+    offlineSubtitle: subtitleSelection.descriptors[0] || null,
+    offlineSubtitleMode: subtitleSelection.mode,
+    offlineSubtitleLanguage: text(input.offlineSubtitleLanguage),
+    offlineSubtitleDescriptors: subtitleSelection.descriptors,
     stream: safeQueuedStreamDescriptor(input.stream)
   };
 }
@@ -781,6 +818,7 @@ export async function createQueuedBrowserOfflineDownload(input = {}, queueSequen
   if (["completed", "downloading", "queued"].includes(String(existing?.status || ""))) {
     return { status: "existing", download: existing };
   }
+  const subtitleSelection = getOfflineSubtitleSelection(input);
   const metadata = {
     ...buildMetadata(input, downloadId, existing?.fileName || fileNameForDownload(downloadId)),
     ...(existing || {}),
@@ -790,8 +828,11 @@ export async function createQueuedBrowserOfflineDownload(input = {}, queueSequen
     status: "queued",
     completedAt: null,
     error: "",
-    offlineSubtitle: safeOfflineSubtitleDescriptor(input.offlineSubtitle),
-    offlineSubtitleStatus: input.offlineSubtitle ? "pending" : "none",
+    offlineSubtitle: subtitleSelection.descriptors[0] || null,
+    offlineSubtitleMode: subtitleSelection.mode,
+    offlineSubtitleLanguage: text(input.offlineSubtitleLanguage),
+    offlineSubtitleDescriptors: subtitleSelection.descriptors,
+    offlineSubtitleStatus: subtitleSelection.descriptors.length ? "pending" : "none",
     offlineSubtitleError: "",
     queueSequence: Number(queueSequence),
     queuedAt: now(),

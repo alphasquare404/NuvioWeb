@@ -3009,6 +3009,13 @@ html.desktop-browser {
   max-width: calc(100vw - 24px) !important;
   max-height: calc(100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
   padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.desktop-browser .nuvio-dialog-panel.stream-download-options-dialog {
   overflow: hidden;
 }
 
@@ -3019,10 +3026,21 @@ html.desktop-browser {
 }
 
 .desktop-browser .stream-download-options {
-  display: grid;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   gap: 8px;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
+}
+
+.desktop-browser .stream-download-subtitle-controls {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 }
 
 .desktop-browser .stream-download-options-source {
@@ -3065,13 +3083,74 @@ html.desktop-browser {
 
 .desktop-browser .stream-download-subtitle-list {
   display: grid;
-  max-height: min(42dvh, 360px);
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   gap: 8px;
   padding: 2px 3px 3px 0;
   scrollbar-width: thin;
+}
+
+.desktop-browser .stream-download-subtitle-language-heading {
+  flex: 0 0 100%;
+  margin-top: 4px;
+  color: rgb(255 255 255 / 0.78);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.desktop-browser .stream-download-subtitle-option + .stream-download-subtitle-language-heading {
+  margin-top: 10px;
+}
+
+.desktop-browser .stream-download-subtitle-language-boxes {
+  flex: 0 0 100%;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px 0 5px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.desktop-browser .stream-download-subtitle-language-box {
+  flex: 0 0 auto;
+  min-height: 44px;
+  border: 1px solid rgb(255 255 255 / 0.15);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.055);
+  color: rgb(255 255 255 / 0.82);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.desktop-browser .stream-download-subtitle-language-box.selected,
+.desktop-browser .stream-download-subtitle-mode.selected {
+  border-color: rgb(var(--secondary-color-rgb) / 0.7);
+  background: rgb(var(--secondary-color-rgb) / 0.2);
+}
+
+.desktop-browser .stream-download-subtitle-language-box:focus-visible {
+  outline: 2px solid var(--detail-focus-ring);
+  outline-offset: 1px;
+}
+
+.desktop-browser .stream-download-subtitle-mode {
+  flex: 1 1 calc(33.333% - 6px);
+  min-width: 0;
+  min-height: 44px;
+}
+
+.desktop-browser .stream-download-subtitle-language-all {
+  flex-basis: 100%;
+  margin-top: 2px;
 }
 
 .desktop-browser .stream-download-subtitle-option {
@@ -3170,6 +3249,161 @@ html.desktop-browser {
   background: rgb(var(--secondary-color-rgb) / 0.28);
 }
 
+/* Download Options is a browser sheet: controls and actions stay visible while
+   only the selected-language track rail takes the remaining scroll space. */
+.desktop-browser .stream-download-options-dialog {
+  gap: 12px;
+  width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+  max-width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+}
+
+.desktop-browser .download-options-header {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 7px;
+  min-width: 0;
+}
+
+.desktop-browser .download-options-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.desktop-browser .browser-offline-subtitle-picker {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.desktop-browser .download-options-modes .stream-download-subtitle-mode {
+  min-height: 46px;
+  padding: 8px 28px 8px 10px;
+}
+
+.desktop-browser .download-options-modes .stream-download-subtitle-mode strong {
+  font-size: 13px;
+}
+
+.desktop-browser .download-options-language-bar {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 5px;
+  min-width: 0;
+}
+
+.desktop-browser .download-options-language-bar .stream-download-subtitle-language-heading {
+  margin: 0;
+}
+
+.desktop-browser .download-options-language-bar .stream-download-subtitle-language-boxes {
+  padding: 1px 0 2px;
+}
+
+.desktop-browser .download-options-language-action {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.desktop-browser .download-options-language-action .stream-download-subtitle-language-all {
+  width: auto;
+  min-height: 44px;
+  margin: 0;
+  padding: 7px 32px 7px 11px;
+}
+
+.desktop-browser .download-options-track-list {
+  min-height: 0;
+  padding: 1px 3px 3px 0;
+}
+
+.desktop-browser .download-options-track-list .stream-download-subtitle-option {
+  min-height: 64px;
+  padding: 7px 34px 7px 11px;
+  gap: 2px;
+}
+
+.desktop-browser .download-options-track-list .stream-download-subtitle-meta {
+  line-height: 1.25;
+}
+
+@media (orientation: landscape) and (min-width: 601px), (orientation: landscape) and (max-height: 650px) {
+  .desktop-browser .stream-download-options-dialog {
+    width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+    max-width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+    padding: 14px 18px;
+    gap: 8px;
+  }
+
+  .desktop-browser .stream-download-options-dialog .nuvio-dialog-title {
+    margin-bottom: 0;
+    font-size: 21px;
+  }
+
+  .desktop-browser .stream-download-options {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.38fr) minmax(0, 0.62fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 16px;
+    row-gap: 8px;
+  }
+
+  .desktop-browser .download-options-header {
+    grid-column: 1 / -1;
+  }
+
+  .desktop-browser .download-options-modes,
+  .desktop-browser .download-options-language-bar,
+  .desktop-browser .download-options-language-action {
+    grid-column: 1;
+    align-self: start;
+  }
+
+  .desktop-browser .download-options-track-list {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+  }
+
+  .desktop-browser .download-options-modes {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .desktop-browser .download-options-modes .stream-download-subtitle-mode {
+    min-height: 40px;
+  }
+
+  .desktop-browser .download-options-track-list .stream-download-subtitle-option {
+    min-height: 58px;
+  }
+
+  .desktop-browser .stream-download-options {
+    display: flex;
+  }
+
+  .desktop-browser .browser-offline-subtitle-picker {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.38fr) minmax(0, 0.62fr);
+    grid-template-rows: minmax(0, 1fr);
+    column-gap: 16px;
+  }
+
+  .desktop-browser .browser-offline-subtitle-picker .download-options-modes,
+  .desktop-browser .browser-offline-subtitle-picker .download-options-language-bar,
+  .desktop-browser .browser-offline-subtitle-picker .download-options-language-action {
+    grid-column: 1;
+    align-self: start;
+  }
+
+  .desktop-browser .browser-offline-subtitle-picker .download-options-track-list {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+  }
+}
+
 @media (max-width: 480px) {
   .desktop-browser .stream-download-options-dialog {
     width: calc(100vw - 20px);
@@ -3177,8 +3411,58 @@ html.desktop-browser {
     padding: 16px;
   }
 
-  .desktop-browser .stream-download-subtitle-list {
-    max-height: min(40dvh, 330px);
+  .desktop-browser .stream-download-options-dialog .nuvio-dialog-title {
+    margin-bottom: 6px;
+    font-size: 22px;
+  }
+
+  .desktop-browser .stream-download-subtitle-option {
+    min-height: 64px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .desktop-browser .stream-download-subtitle-mode {
+    min-height: 44px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 650px) {
+  .desktop-browser .stream-download-options-dialog {
+    width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+    max-width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+    padding: 12px 16px;
+  }
+
+  .desktop-browser .stream-download-options-dialog .nuvio-dialog-title {
+    margin-bottom: 5px;
+    font-size: 21px;
+  }
+
+  .desktop-browser .stream-download-options {
+    gap: 6px;
+  }
+
+  .desktop-browser .stream-download-subtitle-controls {
+    gap: 6px;
+  }
+
+  .desktop-browser .stream-download-subtitle-option {
+    min-height: 52px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  .desktop-browser .stream-download-subtitle-mode {
+    min-height: 40px;
+  }
+
+  .desktop-browser .stream-download-options-actions {
+    margin-top: 6px;
+  }
+
+  .desktop-browser .stream-download-options-actions .nuvio-dialog-button {
+    min-height: 42px;
   }
 }
 

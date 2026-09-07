@@ -55,11 +55,17 @@ import {
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
+import {
+  createBrowserOfflineSubtitlePicker,
+  createBrowserOfflineSubtitleSnapshot
+} from "../../components/browserOfflineSubtitlePicker.js";
 import { subtitleRepository } from "../../../data/repository/subtitleRepository.js";
 import {
   canQueueBrowserOfflineDownload,
   createOfflineDownloadId,
   createOfflineSubtitleFingerprint,
+  getOfflineSubtitleIdentityParts,
+  getSafeOfflineSubtitleDescriptors,
   deleteBrowserOfflineDownload,
   getBrowserOfflineFile,
   getOfflineDownload,
@@ -2773,11 +2779,26 @@ export const StreamScreen = {
     });
   },
 
+  getPreferredOfflineDownloadSubtitle(subtitles = []) {
+    const settings = PlayerSettingsStore.get();
+    const preferred = String(settings.subtitleStyle?.preferredLanguage || settings.subtitleLanguage || "off")
+      .trim()
+      .toLowerCase();
+    if (!preferred || preferred === "off") return null;
+    return (subtitles || []).find((subtitle) => {
+      const language = String(subtitle.lang || subtitle.language || "").toLowerCase();
+      return language === preferred || language.startsWith(`${preferred}-`);
+    }) || null;
+  },
+
   createOfflineSubtitleDescriptor(subtitle = null) {
     if (!subtitle) return null;
+    const identity = getOfflineSubtitleIdentityParts(subtitle);
     return {
       addonId: String(subtitle.addonId || ""),
       fingerprint: createOfflineSubtitleFingerprint(subtitle),
+      providerSubtitleId: identity.providerSubtitleId,
+      urlIdentity: identity.urlIdentity,
       lang: String(subtitle.lang || subtitle.language || ""),
       fileName: String(subtitle.fileName || subtitle.filename || ""),
       forced: subtitle.forced === true,
@@ -2785,36 +2806,42 @@ export const StreamScreen = {
     };
   },
 
+  createOfflineSubtitleSelection(mode = "none", subtitles = []) {
+    const descriptors = getSafeOfflineSubtitleDescriptors(
+      (Array.isArray(subtitles) ? subtitles : [subtitles]).map((subtitle) =>
+        this.createOfflineSubtitleDescriptor(subtitle)
+      )
+    );
+    return {
+      offlineSubtitleMode: mode,
+      offlineSubtitleDescriptors: mode === "none" ? [] : descriptors,
+      offlineSubtitle: mode === "specific" ? descriptors[0] || null : null
+    };
+  },
+
   renderOfflineDownloadOptionsContent(state) {
     const content = document.createElement("div");
     content.className = "stream-download-options";
     const source = state.stream || {};
+    const snapshot = state.subtitleSnapshot || [];
     const sourceDisplay = normalizeSourceForDisplay(source);
     const quality = sourceDisplay.quality;
     const size = formatBytes(source.behaviorHints?.videoSize || source.raw?.behaviorHints?.videoSize || source.videoSize);
-    content.innerHTML = `<div class="stream-download-options-source">${escapeHtml([quality, size].filter(Boolean).join(" · ") || "Selected source")}<span>${escapeHtml(sourceDisplay.addonName || source.addonName || "")}</span></div><div class="stream-download-options-label">Subtitles</div>`;
-    const list = document.createElement("div");
-    list.className = "stream-download-subtitle-list";
-    const addOption = (index, subtitle = null) => {
-      const display = subtitle ? normalizeSubtitleForDisplay(subtitle) : null;
-      const selected = state.selectedIndex === index || (!subtitle && state.selectedIndex == null);
-      const option = document.createElement("button");
-      option.type = "button";
-      option.className = `stream-download-subtitle-option${selected ? " selected" : ""}`;
-      option.setAttribute("aria-pressed", String(selected));
-      option.innerHTML = subtitle
-        ? `<span class="stream-download-subtitle-provider">${escapeHtml(display.provider)}</span><strong>${escapeHtml(display.language)}</strong><span class="stream-download-subtitle-meta" title="${escapeHtml(display.meta)}">${escapeHtml(display.meta)}</span><span class="stream-download-subtitle-check">${selected ? "&#10003;" : ""}</span>`
-        : `<strong>${state.loading ? "Loading subtitles…" : "No subtitle"}</strong><span class="stream-download-subtitle-check">${selected ? "&#10003;" : ""}</span>`;
-      option.disabled = Boolean(state.loading);
-      option.addEventListener("click", () => {
-        state.selectedIndex = subtitle ? index : null;
+    const header = document.createElement("div");
+    header.className = "download-options-header";
+    header.innerHTML = `<div class="stream-download-options-source">${escapeHtml([quality, size].filter(Boolean).join(" · ") || "Selected source")}<span>${escapeHtml(sourceDisplay.addonName || source.addonName || "")}</span></div><div class="stream-download-options-label">Subtitles</div>`;
+    content.appendChild(header);
+    const picker = createBrowserOfflineSubtitlePicker({
+      snapshot,
+      selection: state,
+      preferredLabel: state.preferredLabel,
+      loading: state.loading,
+      onSelect: (next) => {
+        Object.assign(state, next);
         this.showOfflineDownloadOptions(state);
-      });
-      list.appendChild(option);
-    };
-    addOption(null);
-    (state.subtitles || []).forEach((subtitle, index) => addOption(index, subtitle));
-    content.appendChild(list);
+      }
+    });
+    content.appendChild(picker);
     if (state.error) {
       const unavailable = document.createElement("div");
       unavailable.className = "stream-download-options-unavailable";
@@ -2846,7 +2873,11 @@ export const StreamScreen = {
       stream,
       context: this.getOfflineDownloadContext(stream),
       subtitles: [],
+      subtitleSnapshot: [],
+      selectedMode: "none",
       selectedIndex: null,
+      preferredLabel: "",
+      selectedLanguage: "",
       loading: true,
       error: false
     };
@@ -2854,6 +2885,12 @@ export const StreamScreen = {
     this.showOfflineDownloadOptions(state);
     try {
       state.subtitles = await this.discoverOfflineDownloadSubtitles(state.context);
+      state.subtitleSnapshot = createBrowserOfflineSubtitleSnapshot(
+        state.subtitles,
+        (subtitle) => this.createOfflineSubtitleDescriptor(subtitle)
+      );
+      const preferred = this.getPreferredOfflineDownloadSubtitle(state.subtitleSnapshot.map((entry) => entry.subtitle));
+      state.preferredLabel = preferred ? normalizeSubtitleForDisplay(preferred).language : "";
     } catch (_) {
       state.error = true;
     } finally {
@@ -2864,11 +2901,26 @@ export const StreamScreen = {
 
   async confirmOfflineDownloadOptions(state = this.offlineDownloadOptionsState) {
     if (!state?.context) return;
-    const selectedSubtitle = Number.isInteger(state.selectedIndex) ? state.subtitles[state.selectedIndex] : null;
+    const snapshot = state.subtitleSnapshot || [];
+    const selectedSubtitle = Number.isInteger(state.selectedIndex) ? snapshot[state.selectedIndex]?.subtitle : null;
+    const preferredSubtitle = this.getPreferredOfflineDownloadSubtitle(snapshot.map((entry) => entry.subtitle));
+    const languageSubtitles = snapshot
+      .filter((entry) => entry.language === state.selectedLanguage)
+      .map((entry) => entry.subtitle);
+    const selection =
+      state.selectedMode === "all"
+        ? this.createOfflineSubtitleSelection("all", snapshot.map((entry) => entry.subtitle))
+        : state.selectedMode === "language"
+          ? { ...this.createOfflineSubtitleSelection("language", languageSubtitles), offlineSubtitleLanguage: state.selectedLanguage }
+        : state.selectedMode === "preferred"
+          ? this.createOfflineSubtitleSelection("preferred", preferredSubtitle)
+          : state.selectedMode === "specific"
+            ? this.createOfflineSubtitleSelection("specific", selectedSubtitle)
+            : this.createOfflineSubtitleSelection("none");
     try {
       await enqueueBrowserOfflineDownload({
         ...state.context,
-        offlineSubtitle: this.createOfflineSubtitleDescriptor(selectedSubtitle)
+        ...selection
       });
       this.closeOfflineDownloadOptions();
     } catch (_) {

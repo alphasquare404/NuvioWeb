@@ -160,7 +160,7 @@ class SubtitleRepository {
         .map((subtitle) => ({
           id:
             subtitle.id ||
-            `${subtitle.lang || "unk"}-${this.makeDeterministicId(subtitle.url || "")}`,
+            `${subtitle.lang || "unk"}-${this.makeDeterministicId(this.safeSubtitleUrlIdentity(subtitle.url || ""))}`,
           url: subtitle.url,
           lang: subtitle.lang || "unknown",
           addonId: addon.id || "",
@@ -186,6 +186,15 @@ class SubtitleRepository {
     }
 
     return merged;
+  }
+
+  safeSubtitleUrlIdentity(value = "") {
+    try {
+      const url = new URL(String(value || ""));
+      return `${url.protocol}//${url.host}${url.pathname}`;
+    } catch (_) {
+      return String(value || "").split(/[?#]/, 1)[0];
+    }
   }
 
   isSubtitleResource(name) {

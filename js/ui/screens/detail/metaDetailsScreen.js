@@ -39,6 +39,11 @@ import {
   normalizeSourceForDisplay,
   renderBrowserSourceCardContent
 } from "../../components/browserStreamSourceCard.js";
+import {
+  createBrowserOfflineSubtitlePicker,
+  createBrowserOfflineSubtitleSnapshot
+} from "../../components/browserOfflineSubtitlePicker.js";
+import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
@@ -58,6 +63,9 @@ import {
   createOfflineMediaId,
   canQueueBrowserOfflineDownload,
   createOfflineSubtitleFingerprint,
+  getOfflineSubtitleIdentityParts,
+  getSafeOfflineSubtitleDescriptors,
+  isOfflineSubtitleFormatSupported,
   isBrowserOfflineDownloadSupported,
   listOfflineDownloads,
   subscribeToOfflineDownloads
@@ -4175,14 +4183,41 @@ export const MetaDetailsScreen = {
 
   createSeasonOfflineSubtitleDescriptor(subtitle = null) {
     if (!subtitle) return null;
+    const identity = getOfflineSubtitleIdentityParts(subtitle);
     return {
       addonId: String(subtitle.addonId || ""),
       fingerprint: createOfflineSubtitleFingerprint(subtitle),
+      providerSubtitleId: identity.providerSubtitleId,
+      urlIdentity: identity.urlIdentity,
       lang: String(subtitle.lang || subtitle.language || ""),
       fileName: String(subtitle.fileName || subtitle.filename || ""),
       forced: subtitle.forced === true,
       sdh: subtitle.sdh === true || subtitle.hearingImpaired === true
     };
+  },
+
+  createSeasonOfflineSubtitleSelection(mode = "none", subtitles = []) {
+    const descriptors = getSafeOfflineSubtitleDescriptors(
+      (Array.isArray(subtitles) ? subtitles : [subtitles]).map((subtitle) =>
+        this.createSeasonOfflineSubtitleDescriptor(subtitle)
+      )
+    );
+    return {
+      offlineSubtitleMode: mode,
+      offlineSubtitleDescriptors: mode === "none" ? [] : descriptors,
+      offlineSubtitle: mode === "specific" ? descriptors[0] || null : null
+    };
+  },
+
+  createSeasonOfflineSubtitleSnapshot(subtitles = []) {
+    const seen = new Set();
+    return (subtitles || []).filter((subtitle) => {
+      if (!isOfflineSubtitleFormatSupported(subtitle)) return false;
+      const descriptor = this.createSeasonOfflineSubtitleDescriptor(subtitle);
+      if (!descriptor?.fingerprint || seen.has(descriptor.fingerprint)) return false;
+      seen.add(descriptor.fingerprint);
+      return true;
+    });
   },
 
   async discoverSeasonEpisodeSubtitles(episode = {}) {
@@ -4238,13 +4273,13 @@ export const MetaDetailsScreen = {
     if (cancelPreparation) this.seasonDownloadFlow = null;
   },
 
-  showSeasonDownloadDialog({ title, subtitle = "", content = null, buttons = [], actionsClassName = "" } = {}) {
+  showSeasonDownloadDialog({ title, subtitle = "", content = null, buttons = [], actionsClassName = "", panelClassName = "season-download-dialog" } = {}) {
     this.seasonDownloadDialog?.destroy?.();
     this.seasonDownloadDialog = new NuvioDialog({
       title,
       subtitle,
       widthVw: 90,
-      panelClassName: "season-download-dialog",
+      panelClassName,
       actionsClassName,
       content,
       buttons,
@@ -4278,11 +4313,18 @@ export const MetaDetailsScreen = {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "season-download-select-source";
+      const subtitleLabel = selected?.subtitleMode === "all"
+        ? "All subtitles"
+        : selected?.subtitleMode === "language"
+          ? `All ${selected?.context?.offlineSubtitleLanguage || "subtitles"}`
+          : selected?.subtitleMode === "preferred"
+            ? "Preferred"
+            : selected?.subtitle?.lang || "None";
       const sourceLabel = selected
-        ? `${this.getSeasonDownloadSourceLabel(selected.stream)} · Subtitle: ${selected.subtitle?.lang || "None"}`
+        ? `${this.getSeasonDownloadSourceLabel(selected.stream)} · Subtitle: ${subtitleLabel}`
         : "Select Source";
       const fullSourceLabel = selected
-        ? `${this.getSeasonDownloadSourceLabel(selected.stream, { includeFilename: true })} · Subtitle: ${selected.subtitle?.lang || "None"}`
+        ? `${this.getSeasonDownloadSourceLabel(selected.stream, { includeFilename: true })} · Subtitle: ${subtitleLabel}`
         : "";
       button.textContent = sourceLabel;
       if (fullSourceLabel) button.title = fullSourceLabel;
@@ -4345,12 +4387,17 @@ export const MetaDetailsScreen = {
         {
           label: "Automatic",
           className: "season-download-mode-action",
-          onAction: () => void this.startAutomaticSeasonDownload(flow, { preferredSubtitles: false })
+          onAction: () => void this.startAutomaticSeasonDownload(flow, { subtitleMode: "none" })
         },
         {
           label: "Automatic + Preferred Subtitle",
           className: "season-download-mode-action",
-          onAction: () => void this.startAutomaticSeasonDownload(flow, { preferredSubtitles: true })
+          onAction: () => void this.startAutomaticSeasonDownload(flow, { subtitleMode: "preferred" })
+        },
+        {
+          label: "Automatic + All Subtitles",
+          className: "season-download-mode-action",
+          onAction: () => void this.startAutomaticSeasonDownload(flow, { subtitleMode: "all" })
         },
         {
           label: "Choose Sources",
@@ -4362,7 +4409,7 @@ export const MetaDetailsScreen = {
     });
   },
 
-  async startAutomaticSeasonDownload(flow = this.seasonDownloadFlow, { preferredSubtitles = false } = {}) {
+  async startAutomaticSeasonDownload(flow = this.seasonDownloadFlow, { subtitleMode = "none" } = {}) {
     if (!flow || flow.preparing) return;
     flow.preparing = true;
     flow.preparedCount = 0;
@@ -4392,14 +4439,18 @@ export const MetaDetailsScreen = {
     if (flow.cancelled) return;
     flow.preparing = false;
     const selected = prepared.filter((entry) => entry.status === "selected");
-    if (preferredSubtitles) {
+    if (subtitleMode !== "none") {
       await Promise.all(
         selected.map(async (selection) => {
           try {
-            const subtitle = this.getPreferredSeasonSubtitle(
+            const subtitles = this.createSeasonOfflineSubtitleSnapshot(
               await this.discoverSeasonEpisodeSubtitles(selection.episode)
             );
-            if (subtitle) selection.context.offlineSubtitle = this.createSeasonOfflineSubtitleDescriptor(subtitle);
+            const chosen = subtitleMode === "all" ? subtitles : this.getPreferredSeasonSubtitle(subtitles);
+            Object.assign(
+              selection.context,
+              this.createSeasonOfflineSubtitleSelection(subtitleMode, chosen)
+            );
           } catch (_) {
             // A missing preferred subtitle must not prevent the video queue entry.
           }
@@ -4504,41 +4555,78 @@ export const MetaDetailsScreen = {
     });
     let subtitles = [];
     try {
-      subtitles = await this.discoverSeasonEpisodeSubtitles(episode);
+      subtitles = this.createSeasonOfflineSubtitleSnapshot(
+        await this.discoverSeasonEpisodeSubtitles(episode)
+      );
     } catch (_) {}
     if (flow.cancelled) return;
-    const content = document.createElement("div");
-    content.className = "season-download-subtitle-picker";
-    const select = document.createElement("select");
-    select.className = "stream-download-options-select";
-    select.setAttribute("aria-label", "Subtitle for this episode");
-    select.innerHTML = `<option value="">No subtitle</option>${subtitles.map((subtitle, index) => `<option value="${index}">${escapeHtml([subtitle.lang || "Unknown", subtitle.addonName, subtitle.fileName, subtitle.forced ? "Forced" : "", subtitle.sdh ? "SDH" : ""].filter(Boolean).join(" · "))}</option>`).join("")}`;
-    content.appendChild(select);
-    this.showSeasonDownloadDialog({
-      title: `S${Number(episode.season)}E${Number(episode.episode)}`,
-      subtitle: episode.title || "Optional subtitle",
-      content: () => content,
-      buttons: [
-        {
-          label: "Use Selection",
-          selected: true,
-          onAction: () => {
-            const subtitle = select.value === "" ? null : subtitles[Number(select.value)];
-            flow.selections.set(String(episode.id || ""), {
-              episode,
-              ...selected,
-              context: {
-                ...selected.context,
-                offlineSubtitle: this.createSeasonOfflineSubtitleDescriptor(subtitle)
-              },
-              subtitle
-            });
-            this.showManualSeasonDownloadDialog(flow);
-          }
-        },
-        { label: t("common.back", {}, "Back"), className: "season-download-secondary-action", onAction: () => this.openManualSeasonSourcePicker(episode) }
-      ]
-    });
+    const snapshot = createBrowserOfflineSubtitleSnapshot(
+      subtitles,
+      (subtitle) => this.createSeasonOfflineSubtitleDescriptor(subtitle)
+    );
+    const preferred = this.getPreferredSeasonSubtitle(snapshot.map((entry) => entry.subtitle));
+    const pickerState = { selectedMode: "none", selectedIndex: null, selectedLanguage: "" };
+    const showPicker = () => {
+      const sourceDisplay = normalizeSourceForDisplay(selected.stream || {});
+      const content = document.createElement("div");
+      content.className = "stream-download-options";
+      const header = document.createElement("div");
+      header.className = "download-options-header";
+      header.innerHTML = `<div class="stream-download-options-source">${escapeHtml([`S${Number(episode.season)}E${Number(episode.episode)}`, episode.title || "", sourceDisplay.quality || ""].filter(Boolean).join(" · "))}<span>${escapeHtml(sourceDisplay.addonName || selected.stream?.addonName || "")}</span></div><div class="stream-download-options-label">Subtitles</div>`;
+      content.appendChild(header);
+      content.appendChild(createBrowserOfflineSubtitlePicker({
+        snapshot,
+        selection: pickerState,
+        preferredLabel: preferred ? normalizeSubtitleForDisplay(preferred).language : "",
+        onSelect: (next) => {
+          Object.assign(pickerState, next);
+          showPicker();
+        }
+      }));
+      this.showSeasonDownloadDialog({
+        title: "Choose Subtitle",
+        subtitle: "",
+        content: () => content,
+        panelClassName: "stream-download-options-dialog",
+        actionsClassName: "stream-download-options-actions",
+        buttons: [
+          {
+            label: "Use Selection",
+            selected: true,
+            onAction: () => {
+              const selectedSubtitle = Number.isInteger(pickerState.selectedIndex)
+                ? snapshot[pickerState.selectedIndex]?.subtitle
+                : null;
+              const languageSubtitles = snapshot
+                .filter((entry) => entry.language === pickerState.selectedLanguage)
+                .map((entry) => entry.subtitle);
+              const chosen = pickerState.selectedMode === "all"
+                ? snapshot.map((entry) => entry.subtitle)
+                : pickerState.selectedMode === "language"
+                  ? languageSubtitles
+                  : pickerState.selectedMode === "preferred"
+                    ? preferred
+                    : selectedSubtitle;
+              const subtitleSelection = this.createSeasonOfflineSubtitleSelection(pickerState.selectedMode, chosen);
+              flow.selections.set(String(episode.id || ""), {
+                episode,
+                ...selected,
+                subtitleMode: pickerState.selectedMode,
+                context: {
+                  ...selected.context,
+                  ...subtitleSelection,
+                  ...(pickerState.selectedMode === "language" ? { offlineSubtitleLanguage: pickerState.selectedLanguage } : {})
+                },
+                subtitle: selectedSubtitle
+              });
+              this.showManualSeasonDownloadDialog(flow);
+            }
+          },
+          { label: t("common.back", {}, "Back"), className: "season-download-secondary-action", onAction: () => this.openManualSeasonSourcePicker(episode) }
+        ]
+      });
+    };
+    showPicker();
   },
 
   async addManualSeasonDownloads(flow = this.seasonDownloadFlow) {

@@ -26,6 +26,29 @@ function safeUrlIdentity(value) {
   }
 }
 
+function safeSubtitleProviderId(value) {
+  const raw = text(value);
+  if (!raw) return "";
+  const safeUrl = safeUrlIdentity(raw);
+  return safeUrl || raw.split(/[?#]/, 1)[0];
+}
+
+function normalizedSubtitleFilename(track = {}) {
+  return text(track.fileName || track.filename).toLowerCase().replace(/\s+/g, " ");
+}
+
+export function getOfflineSubtitleIdentityParts(track = {}) {
+  return {
+    providerSubtitleId: safeSubtitleProviderId(track.id),
+    urlIdentity: safeUrlIdentity(track.url),
+    language: text(track.lang || track.language).toLowerCase(),
+    provider: text(track.addonName || track.provider),
+    fileName: normalizedSubtitleFilename(track),
+    forced: track.forced === true || track.isForced === true,
+    sdh: track.sdh === true || track.hearingImpaired === true
+  };
+}
+
 function subtitleExtension(track = {}) {
   const candidate = `${track?.fileName || ""} ${safeUrlIdentity(track?.url || "")}`.toLowerCase();
   const match = candidate.match(/\.(vtt|srt|ass|ssa)(?:$|\s)/i);
@@ -74,14 +97,15 @@ export function isOfflineSubtitleTextLoadable(content = "") {
 }
 
 export function createOfflineSubtitleFingerprint(track = {}) {
+  const identity = getOfflineSubtitleIdentityParts(track);
   return [
-    text(track.id),
-    safeUrlIdentity(track.url),
-    text(track.lang || track.language).toLowerCase(),
-    text(track.addonName || track.provider),
-    text(track.fileName || track.filename),
-    track.forced ? "forced" : "",
-    track.sdh || track.hearingImpaired ? "sdh" : ""
+    identity.providerSubtitleId,
+    identity.urlIdentity,
+    identity.language,
+    identity.provider,
+    identity.fileName,
+    identity.forced ? "forced" : "",
+    identity.sdh ? "sdh" : ""
   ].join("|");
 }
 
