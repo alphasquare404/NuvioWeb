@@ -18,6 +18,11 @@ import {
 } from "./offlineSubtitleIdentity.js";
 import { summarizeBrowserOfflineStorage } from "./browserOfflineStorageState.js";
 import { createOfflineDisplaySnapshot, mergeOfflineDisplaySnapshot } from "./offlineDisplaySnapshot.js";
+import {
+  createBrowserOfflineDownloadRequestInit,
+  getBrowserOfflineResumePlan,
+  writeBrowserOfflineDownloadResponse
+} from "./browserOfflineDownloadResume.js";
 
 export {
   createOfflineMediaId,
@@ -380,39 +385,6 @@ function totalBytesFromResponse(response, offset = 0) {
   return Number.isFinite(length) && length > 0 ? length + Math.max(0, offset) : null;
 }
 
-function getRangeValidation(response, offset, expectedTotalBytes = null) {
-  if (!response?.body) return { valid: false, reason: "missing-response-body" };
-  if (offset <= 0) {
-    return response?.ok
-      ? { valid: true, reason: "full-response" }
-      : { valid: false, reason: `failed-full-response-${response?.status || "unavailable"}` };
-  }
-  const range = parsedContentRange(response);
-  if (response?.status !== 206) {
-    return { valid: false, reason: `expected-206-received-${response?.status || "unavailable"}` };
-  }
-  if (range && range.start !== offset) {
-    return { valid: false, reason: `content-range-start-${range.start}-does-not-match-${offset}` };
-  }
-  if (range) return { valid: true, reason: "matching-content-range" };
-
-  // Content-Range is not CORS-safelisted. Some valid cross-origin CDNs return
-  // 206 but do not expose that header to fetch(), even while Content-Length is
-  // readable. A retained copy is safe to append only when the original total is
-  // known and the returned byte count is exactly the expected remainder.
-  const expectedTotal = Number(expectedTotalBytes);
-  const contentLength = Number(response?.headers?.get?.("content-length"));
-  if (
-    Number.isFinite(expectedTotal) &&
-    expectedTotal > offset &&
-    Number.isFinite(contentLength) &&
-    contentLength === expectedTotal - offset
-  ) {
-    return { valid: true, reason: "matching-206-remaining-content-length" };
-  }
-  return { valid: false, reason: "missing-or-invalid-content-range" };
-}
-
 function buildMetadata(input, downloadId, fileName) {
   const subtitleSelection = getOfflineSubtitleSelection(input);
   const contentType = normalizeContentType(input.contentType || input.itemType);
@@ -452,7 +424,10 @@ function buildMetadata(input, downloadId, fileName) {
     filename: text(input.filename),
     mimeType: text(input.mimeType) || "video/mp4",
     downloadedBytes: 0,
-    totalBytes: null,
+    // Stream metadata is the durable total when a cross-origin response hides
+    // Content-Length. It lets a later 206 range response pass the exact
+    // remainder validation without ever appending an ambiguous response.
+    totalBytes: Number(input.stream?.behaviorHints?.videoSize || input.stream?.videoSize || input.videoSize || 0) || null,
     opfsPath: `${OPFS_DIRECTORY_NAME}/${fileName}`,
     fileName,
     offlineSubtitle: subtitleSelection.descriptors[0] || null,
@@ -1059,6 +1034,7 @@ export async function startBrowserOfflineDownload(input = {}) {
     let metadata = {
       ...initialMetadata,
       ...(existing || {}),
+      totalBytes: Number(existing?.totalBytes || initialMetadata.totalBytes || 0) || null,
       downloadId,
       mediaIdentity: initialMetadata.mediaIdentity,
       sourceFingerprint: initialMetadata.sourceFingerprint,
@@ -1069,7 +1045,12 @@ export async function startBrowserOfflineDownload(input = {}) {
     let completed = false;
     let lastPersistAt = 0;
     try {
-      const retainedBytes = await getOpfsFileSize(metadata.fileName).catch(() => 0);
+      let retainedBytes = await getOpfsFileSize(metadata.fileName).catch(() => 0);
+      const knownOriginalTotal = Number(metadata.totalBytes);
+      if (knownOriginalTotal > 0 && retainedBytes > knownOriginalTotal) {
+        await removeOpfsFile(metadata.fileName);
+        retainedBytes = 0;
+      }
       metadata.downloadedBytes = retainedBytes;
       await writeDownload({ ...metadata });
 
@@ -1092,11 +1073,20 @@ export async function startBrowserOfflineDownload(input = {}) {
       await writeDownload(metadata);
 
       const fetchResponse = async (source, rangeOffset) => {
-        const headers = rangeOffset > 0 ? { Range: `bytes=${rangeOffset}-` } : undefined;
-        return globalThis.fetch(source.url, { signal: controller.signal, headers });
+        const requestInit = createBrowserOfflineDownloadRequestInit(controller.signal, rangeOffset);
+        return {
+          rangeHeaderPresent: Boolean(requestInit.headers?.Range),
+          response: await globalThis.fetch(source.url, requestInit)
+        };
       };
-      let response = await fetchResponse(resolved, offset);
-      let rangeValidation = getRangeValidation(response, offset, metadata.totalBytes);
+      let fetchResult = await fetchResponse(resolved, offset);
+      let response = fetchResult.response;
+      let resumePlan = getBrowserOfflineResumePlan(
+        response,
+        offset,
+        metadata.totalBytes,
+        fetchResult.rangeHeaderPresent
+      );
       if (offset > 0 && [401, 403].includes(Number(response?.status || 0))) {
         // Resolved URLs can expire. Re-resolve from the current stream descriptor,
         // never from a persisted signed URL, before deciding whether to restart.
@@ -1107,11 +1097,16 @@ export async function startBrowserOfflineDownload(input = {}) {
         if (refreshedSourceFingerprint !== metadata.sourceFingerprint) {
           throw new Error("The re-resolved source no longer matches the retained offline copy.");
         }
-        response = await fetchResponse(resolved, offset);
-        rangeValidation = getRangeValidation(response, offset, metadata.totalBytes);
+        fetchResult = await fetchResponse(resolved, offset);
+        response = fetchResult.response;
+        resumePlan = getBrowserOfflineResumePlan(
+          response,
+          offset,
+          metadata.totalBytes,
+          fetchResult.rangeHeaderPresent
+        );
       }
-
-      if (offset > 0 && !rangeValidation.valid) {
+      if (offset > 0 && !resumePlan.valid) {
         await response?.body?.cancel?.().catch(() => {});
         // A full response to a range request would corrupt the retained partial
         // file if appended. Discard only after detecting that safe resume is
@@ -1120,36 +1115,55 @@ export async function startBrowserOfflineDownload(input = {}) {
         offset = 0;
         metadata = { ...metadata, downloadedBytes: 0, totalBytes: null, status: "downloading" };
         await writeDownload(metadata);
-        response = await fetchResponse(resolved, 0);
-        rangeValidation = getRangeValidation(response, 0, metadata.totalBytes);
+        fetchResult = await fetchResponse(resolved, 0);
+        response = fetchResult.response;
+        resumePlan = getBrowserOfflineResumePlan(response, 0, metadata.totalBytes, fetchResult.rangeHeaderPresent);
       }
-      if (!response?.ok || !rangeValidation.valid) {
+      if (!response?.ok || !resumePlan.valid) {
         throw new Error(`Download request failed (${response?.status || "unavailable"}).`);
       }
 
-      metadata.totalBytes = totalBytesFromResponse(response, offset);
+      metadata.totalBytes = resumePlan.totalBytes || totalBytesFromResponse(response, offset);
       const directory = await getDownloadsDirectory(true);
       const fileHandle = await directory.getFileHandle(metadata.fileName, { create: true });
+      const prefixSkipTarget = resumePlan.prefixBytes || 0;
+      const initialFileSize = offset;
       writable = await fileHandle.createWritable({ keepExistingData: offset > 0 });
       if (offset > 0) {
         await writable.seek(offset);
       }
       const reader = response.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          await writable.write(value);
-          metadata.downloadedBytes = offset + value.byteLength;
+      const transfer = await writeBrowserOfflineDownloadResponse({
+        reader,
+        prefixBytes: prefixSkipTarget,
+        write: async (chunk) => {
+          await writable.write(chunk);
+          metadata.downloadedBytes = offset + chunk.byteLength;
           offset = metadata.downloadedBytes;
           if (now() - lastPersistAt >= PROGRESS_PERSIST_INTERVAL_MS) {
             lastPersistAt = now();
             await writeDownload({ ...metadata });
           }
         }
+      });
+      if (transfer.remainingPrefixBytes > 0) {
+        throw new Error("The verified full response ended before its retained prefix was skipped.");
       }
       await writable.close();
       writable = null;
+      const finalFileSize = await getOpfsFileSize(metadata.fileName).catch(() => 0);
+      if (prefixSkipTarget > 0) {
+        const expectedSuffixBytes = metadata.totalBytes - initialFileSize;
+        const invariantsMatch =
+          transfer.prefixBytesDiscarded === initialFileSize &&
+          transfer.suffixBytesWritten === expectedSuffixBytes &&
+          finalFileSize === metadata.totalBytes;
+        if (!invariantsMatch) {
+          throw new Error("Offline download skip-prefix invariants did not match the verified source.");
+        }
+      } else if (metadata.totalBytes && finalFileSize !== metadata.totalBytes) {
+        throw new Error("Offline download size did not match the verified source total.");
+      }
       completed = true;
       metadata = { ...metadata, status: "completed", completedAt: now(), queueSequence: null, queuedAt: null };
       await writeDownload(metadata);

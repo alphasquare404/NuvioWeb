@@ -52,6 +52,8 @@ import {
   normalizeSourceForDisplay,
   renderBrowserSourceCardContent
 } from "../../components/browserStreamSourceCard.js";
+import { resolveBrowserStreamCardClickAction } from "../../components/browserStreamCardClick.js";
+import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import {
   getBrowserExternalPlayerPlatform,
@@ -2588,7 +2590,6 @@ export const StreamScreen = {
       }
     }
     this.bindDesktopPointerActions();
-    this.bindOfflineDownloadActions();
     this.bindListScrollState();
     this.hasRenderedStreamRouteShell = true;
   },
@@ -2598,22 +2599,32 @@ export const StreamScreen = {
       return;
     }
     this.boundDesktopPointerActionHandler = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const clickAction = resolveBrowserStreamCardClickAction(
+        target,
+        (node) => node instanceof HTMLElement && this.container.contains(node)
+      );
+      if (clickAction?.kind === "offline") {
+        event.preventDefault();
+        event.stopPropagation();
+        void this.handleOfflineDownloadAction(
+          clickAction.action,
+          clickAction.streamId
+        );
+        return;
+      }
       // onKeyDown already activates the focused TV/D-pad target. Let its
       // keyboard-generated click pass through without activating it twice.
       if (event.defaultPrevented || Number(event.detail || 0) === 0) {
         return;
       }
-      const target = event.target;
-      if (!(target instanceof Element)) {
+      if (clickAction?.kind !== "source" || !(clickAction.element instanceof HTMLElement)) {
         return;
       }
-      const actionTarget = target.closest(
-        ".stream-route-chip[data-action='setFilter'], .stream-route-card[data-action]"
-      );
-      if (!(actionTarget instanceof HTMLElement) || !this.container.contains(actionTarget)) {
-        return;
-      }
-      void this.onPointerActivate(actionTarget);
+      void this.onPointerActivate(clickAction.element);
     };
     this.container.addEventListener("click", this.boundDesktopPointerActionHandler);
   },
@@ -2621,22 +2632,6 @@ export const StreamScreen = {
   renderOfflineDownloadNotice() {
     if (!Environment.isBrowser() || !this.hasActiveOfflineDownload) return "";
     return `<div class="stream-route-offline-global-notice" aria-live="polite">Keep Nuvio open for reliable downloading</div>`;
-  },
-
-  bindOfflineDownloadActions() {
-    if (!Environment.isBrowser() || !this.container) return;
-    this.container.querySelectorAll("[data-offline-action]").forEach((button) => {
-      if (!(button instanceof HTMLButtonElement) || button.dataset.offlineBound === "true") return;
-      button.dataset.offlineBound = "true";
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        void this.handleOfflineDownloadAction(
-          String(button.dataset.offlineAction || ""),
-          String(button.dataset.streamId || "")
-        );
-      });
-    });
   },
 
   bindListScrollState() {

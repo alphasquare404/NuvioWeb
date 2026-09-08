@@ -15,6 +15,141 @@ import {
   isOfflineSubtitleTextLoadable,
   isOfflineSubtitleFormatSupported
 } from "./offlineSubtitleIdentity.js";
+import {
+  consumeBrowserOfflineDownloadPrefix,
+  createBrowserOfflineDownloadRequestInit,
+  getBrowserOfflineResumePlan,
+  writeBrowserOfflineDownloadResponse
+} from "./browserOfflineDownloadResume.js";
+
+function resumeResponse({ status, contentLength, contentRange = "", hasBody = true }) {
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    body: hasBody ? {} : null,
+    headers: { get: (name) => ({ "content-length": contentLength, "content-range": contentRange })[String(name).toLowerCase()] || null }
+  };
+}
+
+test("resume fetch boundary sends Range for retained offline bytes", () => {
+  assert.deepEqual(
+    createBrowserOfflineDownloadRequestInit(new AbortController().signal, 49552935).headers,
+    { Range: "bytes=49552935-" }
+  );
+  assert.equal(createBrowserOfflineDownloadRequestInit(new AbortController().signal, 0).headers, undefined);
+});
+
+test("ignored Range full response uses the verified skip-prefix append plan", () => {
+  const originalTotal = 155681148;
+  const retainedOffset = 49552935;
+  const plan = getBrowserOfflineResumePlan(
+    resumeResponse({ status: 200, contentLength: originalTotal }),
+    retainedOffset,
+    originalTotal,
+    true
+  );
+  assert.deepEqual(plan, {
+    valid: true,
+    decision: "skip-prefix-and-append",
+    reason: "verified-full-response-ignoring-range",
+    prefixBytes: retainedOffset,
+    totalBytes: originalTotal
+  });
+  assert.equal(originalTotal - plan.prefixBytes, 106128213);
+});
+
+test("prefix skipping is byte accurate across chunk boundaries", () => {
+  let remaining = 100;
+  const written = [];
+  for (const chunk of [
+    Uint8Array.from({ length: 64 }, (_, index) => index),
+    Uint8Array.from({ length: 64 }, (_, index) => index + 64),
+    Uint8Array.from({ length: 64 }, (_, index) => index + 128)
+  ]) {
+    const result = consumeBrowserOfflineDownloadPrefix(chunk, remaining);
+    remaining = result.remainingPrefixBytes;
+    if (result.writeChunk) written.push(...result.writeChunk);
+  }
+  assert.equal(remaining, 0);
+  assert.deepEqual(written, Array.from({ length: 92 }, (_, index) => index + 100));
+});
+
+test("prefix skipping leaves retained OPFS bytes unchanged until the suffix starts", () => {
+  let remaining = 100;
+  let fileSize = 100;
+  for (const chunk of [new Uint8Array(64), new Uint8Array(36)]) {
+    const result = consumeBrowserOfflineDownloadPrefix(chunk, remaining);
+    remaining = result.remainingPrefixBytes;
+    if (result.writeChunk) fileSize += result.writeChunk.byteLength;
+  }
+  assert.equal(remaining, 0);
+  assert.equal(fileSize, 100);
+
+  const suffix = consumeBrowserOfflineDownloadPrefix(new Uint8Array(10), remaining);
+  fileSize += suffix.writeChunk?.byteLength || 0;
+  assert.equal(fileSize, 110);
+});
+
+test("production skip-prefix transfer writes the crossing chunk suffix exactly once", async () => {
+  const chunks = [
+    Uint8Array.from({ length: 64 }, (_, index) => index),
+    Uint8Array.from({ length: 64 }, (_, index) => index + 64),
+    Uint8Array.from({ length: 72 }, (_, index) => index + 128)
+  ];
+  let cursor = 0;
+  const writes = [];
+  const transfer = await writeBrowserOfflineDownloadResponse({
+    prefixBytes: 100,
+    reader: {
+      read: async () => cursor < chunks.length
+        ? { done: false, value: chunks[cursor++] }
+        : { done: true }
+    },
+    write: async (chunk) => writes.push(chunk)
+  });
+
+  assert.deepEqual(writes.map((chunk) => chunk.byteLength), [28, 72]);
+  assert.deepEqual(Array.from(writes[0]), Array.from({ length: 28 }, (_, index) => index + 100));
+  assert.notEqual(writes[0].buffer, chunks[1].buffer);
+  assert.equal(transfer.prefixBytesDiscarded, 100);
+  assert.equal(transfer.suffixBytesWritten, 100);
+  assert.equal(100 + transfer.suffixBytesWritten, 200);
+});
+
+test("true 206 resumes keep the normal append path when Content-Range is hidden", () => {
+  const total = 1513847775;
+  const offset = 234881024;
+  const plan = getBrowserOfflineResumePlan(
+    resumeResponse({ status: 206, contentLength: total - offset }),
+    offset,
+    total,
+    true
+  );
+  assert.equal(plan.valid, true);
+  assert.equal(plan.decision, "append");
+  assert.equal(plan.prefixBytes, 0);
+});
+
+test("ambiguous retained responses retain the safe restart plan", () => {
+  const total = 155681148;
+  const offset = 49552935;
+  assert.equal(
+    getBrowserOfflineResumePlan(resumeResponse({ status: 200, contentLength: total - offset }), offset, total, true).decision,
+    "restart"
+  );
+  assert.equal(
+    getBrowserOfflineResumePlan(resumeResponse({ status: 200, contentLength: total }), offset, total, false).decision,
+    "restart"
+  );
+  assert.equal(
+    getBrowserOfflineResumePlan(resumeResponse({ status: 200, contentLength: total }), 0, total, false).decision,
+    "append"
+  );
+  assert.equal(
+    getBrowserOfflineResumePlan(resumeResponse({ status: 206, contentLength: total }), offset, total, true).decision,
+    "restart"
+  );
+});
 
 test("offline media and copy identities keep source fingerprints separate", () => {
   assert.equal(
