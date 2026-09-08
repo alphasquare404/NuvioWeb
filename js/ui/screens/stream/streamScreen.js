@@ -53,7 +53,12 @@ import {
   renderBrowserSourceCardContent
 } from "../../components/browserStreamSourceCard.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
-import { NuvioDialog } from "../../components/nuvioDialog.js";
+import {
+  getBrowserExternalPlayerPlatform,
+  launchBrowserExternalPlayer,
+  normalizeBrowserExternalPlayer,
+  resolveBrowserStreamPlaybackRoute
+} from "../../components/browserExternalPlayer.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import {
   createBrowserOfflineSubtitlePicker,
@@ -2972,12 +2977,35 @@ export const StreamScreen = {
     if (action === "deleteOffline") return deleteBrowserOfflineDownload(downloadId);
   },
 
-  async playStream(streamId, { offlineObjectUrl = "", offlineDownload = null, offlineStream = null } = {}) {
+  routeSelectedStream(selected, context = {}) {
+    if (!Environment.isBrowser() || context.offlineObjectUrl) return false;
+    const player = normalizeBrowserExternalPlayer(PlayerSettingsStore.get().browserExternalPlayer);
+    const route = resolveBrowserStreamPlaybackRoute({
+      player,
+      platform: getBrowserExternalPlayerPlatform(),
+      mediaUrl: selected?.url || selected?.externalUrl || "",
+      title: this.params?.episodeTitle || this.params?.itemTitle || this.params?.playerTitle || "",
+      subtitleUrl: ""
+    });
+    if (route.target !== "external" || !route.launch?.href) return false;
+    launchBrowserExternalPlayer({ href: route.launch.href });
+    return true;
+  },
+
+  async playStream(streamId, {
+    offlineObjectUrl = "",
+    offlineDownload = null,
+    offlineStream = null,
+    skipExternalRoute = false
+  } = {}) {
     this.cancelAutoPlayCountdown();
     this.cancelAutoPlaySelectionWait();
     const filtered = this.getFilteredStreams();
     const selected = offlineStream || filtered.find((stream) => stream.id === streamId) || filtered[0];
     if (!selected) {
+      return;
+    }
+    if (!skipExternalRoute && this.routeSelectedStream(selected, { offlineObjectUrl, offlineDownload, offlineStream })) {
       return;
     }
     // Browser Player → Sources owns its own provider filters. Preserve the

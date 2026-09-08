@@ -63,7 +63,8 @@ const DEFAULTS = {
   streamAutoPlayReuseBingeGroup: true,
   streamReuseLastLinkEnabled: false,
   streamReuseLastLinkCacheHours: 24,
-  streamAutoPlayTimeoutSeconds: 3
+  streamAutoPlayTimeoutSeconds: 3,
+  browserExternalPlayer: "disabled"
 };
 
 const STREAM_AUTO_PLAY_MODES = ["MANUAL", "FIRST_STREAM", "REGEX_MATCH"];
@@ -142,6 +143,11 @@ function normalizeNextEpisodeThresholdMode(value) {
   return NEXT_EPISODE_THRESHOLD_MODES.includes(normalized)
     ? normalized
     : DEFAULTS.nextEpisodeThresholdMode;
+}
+
+function normalizeBrowserExternalPlayer(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["disabled", "infuse", "vlc"].includes(normalized) ? normalized : "disabled";
 }
 
 function normalizeHalfStep(value, min, max, fallback) {
@@ -296,6 +302,9 @@ export function normalizePlayerSettings(settings = {}) {
     ),
     streamAutoPlayTimeoutSeconds: normalizeStreamAutoPlayTimeout(
       persistentSettings.streamAutoPlayTimeoutSeconds
+    ),
+    browserExternalPlayer: normalizeBrowserExternalPlayer(
+      persistentSettings.browserExternalPlayer ?? DEFAULTS.browserExternalPlayer
     ),
     nextEpisodeThresholdMode: normalizeNextEpisodeThresholdMode(
       persistentSettings.nextEpisodeThresholdMode ?? DEFAULTS.nextEpisodeThresholdMode

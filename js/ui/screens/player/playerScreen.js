@@ -49,6 +49,15 @@ import { Router } from "../../navigation/router.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserPlayerGestures } from "../../components/browserPlayerGestures.js";
+import {
+  buildBrowserExternalPlayerLaunch,
+  getBrowserExternalPlayerPlatform,
+  getManualBrowserExternalPlayerOptions,
+  isTransferableExternalMediaUrl,
+  launchBrowserExternalPlayer,
+  normalizeBrowserExternalPlayer
+} from "../../components/browserExternalPlayer.js";
+import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import {
   createOfflineSubtitleFingerprint,
@@ -5360,7 +5369,7 @@ export const PlayerScreen = {
     return `
       <button class="player-desktop-back-button" type="button" data-player-desktop-back
               aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-        <span class="material-icons" aria-hidden="true">chevron_left</span>
+        <img class="player-desktop-back-icon" src="assets/icons/ic_player_back.svg" alt="" aria-hidden="true" />
       </button>
     `;
   },
@@ -5372,11 +5381,12 @@ export const PlayerScreen = {
     const { volume, muted } = this.getDesktopVolumeState();
     const volumePercent = Math.round(volume * 100);
     const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
+    const externalPlayerAvailable = this.canOpenInExternalPlayer();
     return `
       <div class="player-desktop-playback-tools" aria-label="Playback controls">
         <button class="player-desktop-tool-button" type="button" data-player-desktop-action="mute"
                 title="${escapeHtml(muted ? "Unmute" : "Mute")}" aria-label="${escapeHtml(muted ? "Unmute" : "Mute")}">
-          <span class="player-desktop-tool-icon" data-player-desktop-mute-icon aria-hidden="true">${muted ? "&#128263;" : "&#128266;"}</span>
+          <img class="player-desktop-tool-icon" data-player-desktop-mute-icon src="assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}" alt="" aria-hidden="true" />
         </button>
         <input class="player-desktop-volume" type="range" min="0" max="100" step="1"
                value="${volumePercent}" data-player-desktop-volume aria-label="Volume" />
@@ -5384,16 +5394,99 @@ export const PlayerScreen = {
           pictureInPictureAvailable
             ? `<button class="player-desktop-tool-button" type="button" data-player-desktop-action="picture-in-picture"
                   title="Enter Picture-in-Picture" aria-label="Enter Picture-in-Picture">
-                <span class="player-desktop-tool-icon material-icons" data-player-desktop-picture-in-picture-icon aria-hidden="true">picture_in_picture_alt</span>
+                <img class="player-desktop-tool-icon" src="assets/icons/ic_player_picture_in_picture.svg" alt="" aria-hidden="true" />
+              </button>`
+            : ""
+        }
+        ${
+          externalPlayerAvailable
+            ? `<button class="player-desktop-tool-button" type="button" data-player-desktop-action="external-player"
+                  title="Play with external player" aria-label="Play with external player">
+                <img class="player-desktop-tool-icon" src="assets/icons/ic_player_external.svg" alt="" aria-hidden="true" />
               </button>`
             : ""
         }
         <button class="player-desktop-tool-button" type="button" data-player-desktop-action="fullscreen"
                 title="Enter fullscreen" aria-label="Enter fullscreen">
-          <span class="player-desktop-tool-icon player-desktop-fullscreen-icon" data-player-desktop-fullscreen-icon aria-hidden="true">&#9974;</span>
+          <img class="player-desktop-tool-icon player-desktop-fullscreen-icon" data-player-desktop-fullscreen-icon src="assets/icons/ic_player_fullscreen.svg" alt="" aria-hidden="true" />
         </button>
       </div>
     `;
+  },
+
+  getExternalPlayerContext() {
+    if (!Environment.isBrowser()) return null;
+    const mediaUrl = String(this.activePlaybackUrl || this.getCurrentStreamCandidate()?.url || "").trim();
+    if (!isTransferableExternalMediaUrl(mediaUrl)) return null;
+    const selectedSubtitle = (this.subtitles || []).find((subtitle) => {
+      const id = subtitle?.id || subtitle?.url || "";
+      return id && id === this.selectedAddonSubtitleId;
+    });
+    const uiState = this.getPlayerUiState();
+    return {
+      mediaUrl,
+      title: uiState.currentEpisodeTitle || uiState.title || "",
+      subtitleUrl: selectedSubtitle?.url || ""
+    };
+  },
+
+  getExternalPlayerLaunch(player) {
+    const context = this.getExternalPlayerContext();
+    if (!context) return null;
+    return buildBrowserExternalPlayerLaunch({
+      player: normalizeBrowserExternalPlayer(player),
+      platform: getBrowserExternalPlayerPlatform(),
+      ...context
+    });
+  },
+
+  canOpenInExternalPlayer() {
+    return Boolean(this.getExternalPlayerContext() && getManualBrowserExternalPlayerOptions().length);
+  },
+
+  openExternalPlayerChooser() {
+    if (!this.canOpenInExternalPlayer()) return false;
+    this.externalPlayerChooserDialog?.destroy?.();
+    this.externalPlayerChooserDialog = new NuvioDialog({
+      title: "Open in external player",
+      subtitle: "Choose a player",
+      widthVw: 32,
+      panelClassName: "desktop-external-player-dialog",
+      actionsClassName: "desktop-external-player-actions",
+      buttons: [
+        ...getManualBrowserExternalPlayerOptions().map((player) => ({
+          label: player === "infuse" ? "Infuse" : "VLC",
+          className: "desktop-external-player-choice",
+          content: () => {
+            const copy = document.createElement("span");
+            const playerName = player === "infuse" ? "Infuse" : "VLC";
+            copy.className = "desktop-external-player-choice-copy";
+            copy.innerHTML = `<strong>${playerName}</strong><small>Open this stream in ${playerName}</small>`;
+            return copy;
+          },
+          onAction: () => {
+            this.externalPlayerChooserDialog?.destroy?.();
+            this.launchExternalPlayer(player);
+          }
+        })),
+        {
+          label: "Cancel",
+          className: "desktop-external-player-cancel",
+          onAction: () => this.externalPlayerChooserDialog?.destroy?.()
+        }
+      ],
+      onDismiss: () => {
+        this.externalPlayerChooserDialog = null;
+      }
+    }).mount(document.body);
+    return true;
+  },
+
+  launchExternalPlayer(player) {
+    const launch = this.getExternalPlayerLaunch(player);
+    if (!launch?.href) return false;
+    launchBrowserExternalPlayer({ href: launch.href });
+    return true;
   },
 
   isCompactBrowserPlayerToolbar() {
@@ -5975,13 +6068,10 @@ export const PlayerScreen = {
       const pictureInPictureButton = toolRoot.querySelector(
         "[data-player-desktop-action='picture-in-picture']"
       );
-      const pictureInPictureIcon = toolRoot.querySelector(
-        "[data-player-desktop-picture-in-picture-icon]"
-      );
       muteButton?.setAttribute("aria-label", muteLabel);
       muteButton?.setAttribute("title", muteLabel);
       if (muteIcon) {
-        muteIcon.innerHTML = muted ? "&#128263;" : "&#128266;";
+        muteIcon.src = `assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}`;
       }
       if (volumeInput && document.activeElement !== volumeInput) {
         volumeInput.value = String(Math.round(volume * 100));
@@ -5989,7 +6079,7 @@ export const PlayerScreen = {
       fullscreenButton?.setAttribute("aria-label", fullscreenLabel);
       fullscreenButton?.setAttribute("title", fullscreenLabel);
       if (fullscreenIcon) {
-        fullscreenIcon.innerHTML = fullscreen ? "&#10094;&#10095;" : "&#9974;";
+        fullscreenIcon.src = `assets/icons/${fullscreen ? "ic_player_fullscreen_exit.svg" : "ic_player_fullscreen.svg"}`;
       }
       if (pictureInPictureButton) {
         pictureInPictureButton.hidden = !pictureInPictureAvailable;
@@ -5999,11 +6089,6 @@ export const PlayerScreen = {
           this.getDesktopPlaybackVideo().disablePictureInPicture;
         pictureInPictureButton.setAttribute("aria-label", pictureInPictureLabel);
         pictureInPictureButton.setAttribute("title", pictureInPictureLabel);
-      }
-      if (pictureInPictureIcon) {
-        pictureInPictureIcon.textContent = pictureInPictureActive
-          ? "picture_in_picture"
-          : "picture_in_picture_alt";
       }
     });
   },
@@ -10001,7 +10086,7 @@ export const PlayerScreen = {
 
     base.push({
       action: "more",
-      label: ">",
+      icon: "assets/icons/ic_player_more.svg",
       title: this.moreActionsVisible && compactBrowserToolbar
         ? t("common_close", {}, "Close more actions")
         : t("player_more_actions_title", {}, "More Actions")
@@ -10029,7 +10114,11 @@ export const PlayerScreen = {
         icon: "assets/icons/ic_player_aspect_ratio.svg",
         title: t("player_more_aspect_ratio", {}, "Aspect Ratio")
       },
-      { action: "backFromMore", label: "<", title: t("player_go_back", {}, "Back") }
+      {
+        action: "backFromMore",
+        icon: "assets/icons/ic_player_back.svg",
+        title: t("player_go_back", {}, "Back")
+      }
     ];
   },
 
@@ -10053,14 +10142,23 @@ export const PlayerScreen = {
       <div class="player-mobile-more-actions" role="group" aria-label="${escapeHtml(t("player_more_actions_title", {}, "More Actions"))}">
         <button class="player-mobile-more-action" type="button" data-player-desktop-action="mute"
                 title="${escapeHtml(muted ? "Unmute" : "Mute")}" aria-label="${escapeHtml(muted ? "Unmute" : "Mute")}">
-          <span class="player-desktop-tool-icon" data-player-desktop-mute-icon aria-hidden="true">${muted ? "&#128263;" : "&#128266;"}</span>
+          <img class="player-desktop-tool-icon" data-player-desktop-mute-icon src="assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}" alt="" aria-hidden="true" />
           <span>${escapeHtml(muted ? "Unmute" : "Mute")}</span>
         </button>
         ${
           pictureInPictureAvailable
             ? `<button class="player-mobile-more-action player-mobile-more-icon-action" type="button" data-player-desktop-action="picture-in-picture"
                   title="Enter Picture-in-Picture" aria-label="Enter Picture-in-Picture">
-                <span class="player-desktop-tool-icon material-icons" data-player-desktop-picture-in-picture-icon aria-hidden="true">picture_in_picture_alt</span>
+                <img class="player-desktop-tool-icon" src="assets/icons/ic_player_picture_in_picture.svg" alt="" aria-hidden="true" />
+              </button>`
+            : ""
+        }
+        ${
+          this.canOpenInExternalPlayer()
+            ? `<button class="player-mobile-more-action" type="button" data-player-desktop-action="external-player"
+                  title="Play with external player" aria-label="Play with external player">
+                <img class="player-desktop-tool-icon" src="assets/icons/ic_player_external.svg" alt="" aria-hidden="true" />
+                <span>External player</span>
               </button>`
             : ""
         }
@@ -19928,6 +20026,9 @@ export const PlayerScreen = {
       if (desktopAction.dataset.playerDesktopAction === "picture-in-picture") {
         return this.toggleDesktopPictureInPicture();
       }
+      if (desktopAction.dataset.playerDesktopAction === "external-player") {
+        return this.openExternalPlayerChooser();
+      }
     }
 
     const errorAction = target.closest?.("[data-player-error-action]");
@@ -20786,6 +20887,8 @@ export const PlayerScreen = {
   cleanup() {
     try {
       this.playerRouteActive = false;
+      this.externalPlayerChooserDialog?.destroy?.();
+      this.externalPlayerChooserDialog = null;
       this.releaseOfflineObjectUrl();
       this.releaseOfflineSubtitleObjectUrls();
       if (this.isDesktopPlayerPictureInPicture()) {

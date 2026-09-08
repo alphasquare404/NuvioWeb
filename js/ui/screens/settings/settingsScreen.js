@@ -48,6 +48,12 @@ import { ProfileManager } from "../../../core/profile/profileManager.js";
 import { AuthManager } from "../../../core/auth/authManager.js";
 import { SupabaseApi } from "../../../data/remote/supabase/supabaseApi.js";
 import { Platform } from "../../../platform/index.js";
+import {
+  getBrowserExternalPlayerPlatform,
+  getBrowserExternalPlayerOptions,
+  getBrowserExternalPlayerStoreUrl,
+  normalizeBrowserExternalPlayer
+} from "../../components/browserExternalPlayer.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import { isFastHorizontalNavigationEnabled } from "../../../platform/sharedKeys.js";
 import { CW_DISPLAY_SNAPSHOT_KEY, CW_ENRICHMENT_CACHE_KEY } from "../home/homeConstants.js";
@@ -6229,6 +6235,31 @@ export const SettingsScreen = {
         osdClockEnabled: !PlayerSettingsStore.get().osdClockEnabled
       });
     });
+    if (isDesktopBrowser) {
+      this.actionMap.set("playback:externalPlayer", () => {
+        const options = getBrowserExternalPlayerOptions().map((id) => ({
+          id,
+          label:
+            id === "infuse" ? "Infuse" : id === "vlc" ? "VLC" : t("common.disabled", {}, "Disabled")
+        }));
+        this.openOptionDialog({
+          title: "Play with external player",
+          options,
+          selectedId: normalizeBrowserExternalPlayer(PlayerSettingsStore.get().browserExternalPlayer),
+          returnFocusKey: "playback:externalPlayer",
+          onSelect: (option) => PlayerSettingsStore.set({ browserExternalPlayer: option.id })
+        });
+      });
+      getBrowserExternalPlayerOptions().filter((id) => id !== "disabled").forEach((player) => {
+        this.actionMap.set(`playback:getExternalPlayer:${player}`, () => {
+          const storeUrl = getBrowserExternalPlayerStoreUrl({
+            player,
+            platform: getBrowserExternalPlayerPlatform()
+          });
+          if (storeUrl) window.open(storeUrl, "_blank", "noopener,noreferrer");
+        });
+      });
+    }
     this.actionMap.set("playback:forceDts", () => {
       const current = WebOsAudioCompatibilityStore.get();
       WebOsAudioCompatibilityStore.set({
@@ -6702,6 +6733,36 @@ export const SettingsScreen = {
 
     const generalBody = `
       <div class="settings-stack">
+        ${
+          isDesktopBrowser
+            ? this.renderActionRow({
+                focusKey: "playback:externalPlayer",
+                title: "Play with external player",
+                subtitle: "Choose the default player used after selecting a compatible stream.",
+                value:
+                  normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "infuse"
+                    ? "Infuse"
+                    : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "vlc"
+                      ? "VLC"
+                      : t("common.disabled", {}, "Disabled")
+              })
+            : ""
+        }
+        ${
+          isDesktopBrowser && normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) !== "disabled"
+            ? (() => {
+                const player = normalizeBrowserExternalPlayer(model.player.browserExternalPlayer);
+                const playerName = player === "infuse" ? "Infuse" : "VLC";
+                return this.renderActionRow({
+                  focusKey: `playback:getExternalPlayer:${player}`,
+                  title: `Get ${playerName}`,
+                  subtitle: `Open the official ${playerName} store listing.`,
+                  external: true,
+                  classes: "settings-external-player-store-row"
+                });
+              })()
+            : ""
+        }
         ${this.renderToggleRow({
           focusKey: "playback:autoplay",
           title: t("settings.playback.autoplayNextEpisode.title"),
