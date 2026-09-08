@@ -1,10 +1,12 @@
 const EXTERNAL_PLAYER_IDS = Object.freeze({
   DISABLED: "disabled",
+  LENNA: "lenna",
   INFUSE: "infuse",
   VLC: "vlc"
 });
 
 const IOS_APP_STORE_URLS = Object.freeze({
+  lenna: "https://apps.apple.com/app/lenna-video-library-player/id6502967807",
   infuse: "https://apps.apple.com/app/infuse-video-player/id1136220934",
   vlc: "https://apps.apple.com/app/vlc-media-player/id650377962"
 });
@@ -36,7 +38,12 @@ export function normalizeBrowserExternalPlayer(value) {
 export function getBrowserExternalPlayerOptions(runtime = globalThis) {
   const platform = getBrowserExternalPlayerPlatform(runtime);
   if (platform === "ios") {
-    return [EXTERNAL_PLAYER_IDS.DISABLED, EXTERNAL_PLAYER_IDS.INFUSE, EXTERNAL_PLAYER_IDS.VLC];
+    return [
+      EXTERNAL_PLAYER_IDS.DISABLED,
+      EXTERNAL_PLAYER_IDS.LENNA,
+      EXTERNAL_PLAYER_IDS.INFUSE,
+      EXTERNAL_PLAYER_IDS.VLC
+    ];
   }
   if (platform === "android") {
     return [EXTERNAL_PLAYER_IDS.DISABLED, EXTERNAL_PLAYER_IDS.VLC];
@@ -61,6 +68,11 @@ export function buildInfuseLaunchUrl({ mediaUrl, title = "", subtitleUrl = "" } 
   return `infuse://x-callback-url/play?${query.toString()}`;
 }
 
+export function buildLennaLaunchUrl({ mediaUrl } = {}) {
+  if (!isTransferableExternalMediaUrl(mediaUrl)) return "";
+  return `lenna://x-callback-url/play?${new URLSearchParams({ url: String(mediaUrl) }).toString()}`;
+}
+
 export function buildIosVlcLaunchUrl({ mediaUrl, subtitleUrl = "" } = {}) {
   if (!isTransferableExternalMediaUrl(mediaUrl)) return "";
   const query = new URLSearchParams({ url: String(mediaUrl) });
@@ -81,6 +93,9 @@ export function buildBrowserExternalPlayerLaunch({ player, platform, mediaUrl, t
   const selectedPlayer = normalizeBrowserExternalPlayer(player);
   if (!isTransferableExternalMediaUrl(mediaUrl) || selectedPlayer === EXTERNAL_PLAYER_IDS.DISABLED) {
     return null;
+  }
+  if (platform === "ios" && selectedPlayer === EXTERNAL_PLAYER_IDS.LENNA) {
+    return { href: buildLennaLaunchUrl({ mediaUrl }), storeUrl: IOS_APP_STORE_URLS.lenna };
   }
   if (platform === "ios" && selectedPlayer === EXTERNAL_PLAYER_IDS.INFUSE) {
     return { href: buildInfuseLaunchUrl({ mediaUrl, title, subtitleUrl }), storeUrl: IOS_APP_STORE_URLS.infuse };

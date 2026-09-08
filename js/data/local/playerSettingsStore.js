@@ -147,7 +147,7 @@ function normalizeNextEpisodeThresholdMode(value) {
 
 function normalizeBrowserExternalPlayer(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  return ["disabled", "infuse", "vlc"].includes(normalized) ? normalized : "disabled";
+  return ["disabled", "lenna", "infuse", "vlc"].includes(normalized) ? normalized : "disabled";
 }
 
 function normalizeHalfStep(value, min, max, fallback) {

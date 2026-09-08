@@ -6240,7 +6240,13 @@ export const SettingsScreen = {
         const options = getBrowserExternalPlayerOptions().map((id) => ({
           id,
           label:
-            id === "infuse" ? "Infuse" : id === "vlc" ? "VLC" : t("common.disabled", {}, "Disabled")
+            id === "lenna"
+              ? "Lenna"
+              : id === "infuse"
+                ? "Infuse"
+                : id === "vlc"
+                  ? "VLC"
+                  : t("common.disabled", {}, "Disabled")
         }));
         this.openOptionDialog({
           title: "Play with external player",
@@ -6740,11 +6746,13 @@ export const SettingsScreen = {
                 title: "Play with external player",
                 subtitle: "Choose the default player used after selecting a compatible stream.",
                 value:
-                  normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "infuse"
-                    ? "Infuse"
-                    : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "vlc"
-                      ? "VLC"
-                      : t("common.disabled", {}, "Disabled")
+                  normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "lenna"
+                    ? "Lenna"
+                    : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "infuse"
+                      ? "Infuse"
+                      : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "vlc"
+                        ? "VLC"
+                        : t("common.disabled", {}, "Disabled")
               })
             : ""
         }
@@ -6752,7 +6760,7 @@ export const SettingsScreen = {
           isDesktopBrowser && normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) !== "disabled"
             ? (() => {
                 const player = normalizeBrowserExternalPlayer(model.player.browserExternalPlayer);
-                const playerName = player === "infuse" ? "Infuse" : "VLC";
+                const playerName = player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : "VLC";
                 return this.renderActionRow({
                   focusKey: `playback:getExternalPlayer:${player}`,
                   title: `Get ${playerName}`,
