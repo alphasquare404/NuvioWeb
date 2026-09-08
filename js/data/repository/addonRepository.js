@@ -2,6 +2,7 @@ import { safeApiCall } from "../../core/network/safeApiCall.js";
 import { LocalStore } from "../../core/storage/localStore.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
 import { AddonApi } from "../remote/api/addonApi.js";
+import { buildConfiguredAddonEntry } from "../../core/addons/addonRuntimeState.js";
 
 const ADDON_URLS_KEY = "installedAddonUrls";
 const ADDON_DISPLAY_NAMES_KEY = "installedAddonDisplayNames";
@@ -11,7 +12,7 @@ const PROFILE_SCOPED_VERSION = 1;
 const MANIFEST_SUFFIX = "/manifest.json";
 const DEFAULT_ADDON_URLS = ["https://v3-cinemeta.strem.io", "https://opensubtitles-v3.strem.io"];
 
-class AddonRepository {
+export class AddonRepository {
   constructor() {
     this.manifestCache = new Map();
     this.manifestErrorCache = new Map();
@@ -210,6 +211,23 @@ class AddonRepository {
     );
   }
 
+  getConfiguredAddons(options = {}) {
+    const includeDisabled = Boolean(options?.includeDisabled);
+    const urls = this.getInstalledAddonUrls().filter(
+      (url) => includeDisabled || this.isAddonEnabled(url)
+    );
+    return urls.map((url) => {
+      const baseUrl = this.canonicalizeUrl(url);
+      const cached = this.manifestCache.get(baseUrl);
+      return buildConfiguredAddonEntry({
+        baseUrl,
+        cached: cached ? this.withDisplayNameOverride(cached) : null,
+        failed: this.manifestErrorCache.has(baseUrl),
+        displayName: this.getAddonDisplayNameOverride(baseUrl)
+      });
+    });
+  }
+
   getAddonEnabledStates() {
     return this.readProfileScopedValue(
       ADDON_ENABLED_STATES_KEY,
@@ -356,6 +374,13 @@ class AddonRepository {
     this.installedAddonsPromiseKey = "";
   }
 
+  prepareForReconnect() {
+    // Failed manifests are transient runtime state. The persisted configured
+    // URLs stay intact and the next explicit refresh must retry them.
+    this.manifestErrorCache.clear();
+    this.invalidateInstalledAddonsCache();
+  }
+
   getCachedInstalledAddons(urls = null, options = {}) {
     const includeDisabled = Boolean(options?.includeDisabled);
     const normalizedUrls = Array.isArray(urls) ? urls : this.getInstalledAddonUrls();
@@ -440,6 +465,20 @@ class AddonRepository {
         this.installedAddonsPromiseKey = "";
       }
     }
+  }
+
+  async reloadConfiguredAddons(options = {}) {
+    const includeDisabled = Boolean(options?.includeDisabled);
+    if (options?.force !== false) {
+      this.prepareForReconnect();
+    } else {
+      this.invalidateInstalledAddonsCache();
+    }
+    const initialized = await this.getInstalledAddons({ force: true, includeDisabled });
+    return {
+      configured: this.getConfiguredAddons({ includeDisabled }),
+      initialized
+    };
   }
 
   async addAddon(url) {

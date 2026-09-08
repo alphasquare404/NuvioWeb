@@ -503,6 +503,34 @@ async function buildBundle() {
   }
   console.log("bundle build complete");
 }
+
+async function collectLocaleAssets(directory, relativeDirectory = "") {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const assets = [];
+  for (const entry of entries) {
+    const relativePath = path.posix.join(relativeDirectory, entry.name);
+    const absolutePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      assets.push(...await collectLocaleAssets(absolutePath, relativePath));
+    } else if (entry.isFile() && /^(?:strings|string)\.xml$/i.test(entry.name)) {
+      assets.push(`./res/${relativePath}`);
+    }
+  }
+  return assets;
+}
+
+async function buildBrowserServiceWorker() {
+  const { version } = await readAppMetadata();
+  const source = await readFile(path.join(rootDir, "sw.js"), "utf8");
+  const localeAssets = await collectLocaleAssets(path.join(rootDir, "res"));
+  await writeFile(
+    path.join(distDir, "sw.js"),
+    source
+      .replaceAll("__NUVIO_APP_VERSION__", String(version))
+      .replace("__NUVIO_LOCALE_ASSETS__", JSON.stringify(localeAssets))
+  );
+}
+
 async function runBuild() {
   try {
     console.log("cleaning dist directory...");
@@ -522,6 +550,9 @@ async function runBuild() {
       cp(path.join(rootDir, "docs", "youtube-proxy.html"), path.join(distDir, "youtube-proxy.html")),
       cp(path.join(rootDir, "manifest.webmanifest"), path.join(distDir, "manifest.webmanifest"))
     ]);
+    if (runtimeTarget === "browser") {
+      await buildBrowserServiceWorker();
+    }
     await buildCoreJsBundle();
     await Promise.all([
       cp(

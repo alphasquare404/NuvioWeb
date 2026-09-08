@@ -17,6 +17,7 @@ import {
   offlineSubtitleExtension
 } from "./offlineSubtitleIdentity.js";
 import { summarizeBrowserOfflineStorage } from "./browserOfflineStorageState.js";
+import { createOfflineDisplaySnapshot, mergeOfflineDisplaySnapshot } from "./offlineDisplaySnapshot.js";
 
 export {
   createOfflineMediaId,
@@ -41,6 +42,7 @@ const DOWNLOAD_STORE = "downloads";
 const SUBTITLE_STORE = "subtitles";
 const OPFS_DIRECTORY_NAME = "nuvio-downloads";
 const OPFS_SUBTITLE_DIRECTORY_NAME = "subtitles";
+const OPFS_ARTWORK_DIRECTORY_NAME = "artwork";
 const PROGRESS_PERSIST_INTERVAL_MS = 750;
 
 const listeners = new Set();
@@ -236,6 +238,75 @@ async function getSubtitlesDirectory(create = true) {
   return downloads.getDirectoryHandle(OPFS_SUBTITLE_DIRECTORY_NAME, { create });
 }
 
+async function getArtworkDirectory(create = true) {
+  const downloads = await getDownloadsDirectory(create);
+  return downloads.getDirectoryHandle(OPFS_ARTWORK_DIRECTORY_NAME, { create });
+}
+
+function artworkFileName(downloadId, kind) {
+  return `${safeIdentityPart(downloadId) || "download"}-${kind}.image`;
+}
+
+async function cacheArtwork(download, kind, sourceUrl) {
+  const url = safePublicUrl(sourceUrl);
+  if (!url || !isHttpUrl(url)) return "";
+  const response = await fetch(url);
+  if (!response.ok) return "";
+  const image = await response.blob();
+  if (!image.size || !String(image.type || "").toLowerCase().startsWith("image/")) return "";
+  const fileName = artworkFileName(download.downloadId, kind);
+  const directory = await getArtworkDirectory(true);
+  const writable = await (await directory.getFileHandle(fileName, { create: true })).createWritable();
+  try {
+    await writable.write(image);
+  } finally {
+    await writable.close();
+  }
+  return fileName;
+}
+
+async function captureOfflineArtwork(download) {
+  try {
+    const [posterFile, backdropFile, seriesPosterFile, logoFile] = await Promise.all([
+      cacheArtwork(download, "poster", download.poster),
+      cacheArtwork(download, "backdrop", download.backdrop),
+      download.contentType === "episode"
+        ? cacheArtwork(download, "series-poster", download.displaySnapshot?.poster)
+        : Promise.resolve(""),
+      cacheArtwork(download, "logo", download.displaySnapshot?.logo)
+    ]);
+    if (!posterFile && !backdropFile && !seriesPosterFile && !logoFile) return;
+    await writeDownload({
+      ...download,
+      localPosterFile: posterFile || download.localPosterFile || "",
+      localBackdropFile: backdropFile || download.localBackdropFile || "",
+      localSeriesPosterFile: seriesPosterFile || download.localSeriesPosterFile || "",
+      localLogoFile: logoFile || download.localLogoFile || ""
+    });
+  } catch (_) {
+    // Artwork is optional enrichment; a media copy must remain usable without it.
+  }
+}
+
+export async function getBrowserOfflineArtwork(downloadId, kind = "poster") {
+  const download = await readDownload(downloadId);
+  const fileName =
+    kind === "backdrop"
+      ? download?.localBackdropFile
+      : kind === "seriesPoster"
+        ? download?.localSeriesPosterFile
+        : kind === "logo"
+          ? download?.localLogoFile
+        : download?.localPosterFile;
+  if (download?.status !== "completed" || !fileName) return null;
+  try {
+    const file = await (await getArtworkDirectory(false)).getFileHandle(fileName).then((handle) => handle.getFile());
+    return { download, file };
+  } catch (_) {
+    return null;
+  }
+}
+
 async function removeOfflineSubtitleFile(fileName) {
   if (!fileName) return;
   try {
@@ -251,6 +322,15 @@ async function removeOpfsFile(fileName) {
   try {
     const directory = await getDownloadsDirectory(false);
     await directory.removeEntry(fileName);
+  } catch (error) {
+    if (error?.name !== "NotFoundError") throw error;
+  }
+}
+
+async function removeArtworkFile(fileName) {
+  if (!fileName) return;
+  try {
+    await (await getArtworkDirectory(false)).removeEntry(fileName);
   } catch (error) {
     if (error?.name !== "NotFoundError") throw error;
   }
@@ -347,8 +427,14 @@ function buildMetadata(input, downloadId, fileName) {
     createdAt: now(),
     completedAt: null,
     title: text(input.title || input.playerTitle || input.itemTitle),
-    poster: text(input.poster || input.posterUrl),
-    backdrop: text(input.backdrop || input.backdropUrl),
+    poster: safePublicUrl(input.poster || input.posterUrl),
+    backdrop: safePublicUrl(input.backdrop || input.backdropUrl),
+    description: text(input.description || input.overview),
+    genres: Array.isArray(input.genres) ? input.genres.filter(Boolean).slice(0, 8) : [],
+    runtimeMinutes: Number(input.runtimeMinutes || input.runtime || 0) || 0,
+    episodeOverview: text(input.episodeOverview || input.overview),
+    episodeRuntimeMinutes: Number(input.episodeRuntimeMinutes || input.runtimeMinutes || 0) || 0,
+    displaySnapshot: createOfflineDisplaySnapshot(input.displaySnapshot || input),
     year: text(input.year || input.releaseYear || input.releaseInfo).match(/\b(19|20)\d{2}\b/)?.[0] || "",
     contentType,
     mediaId: text(input.mediaId || input.itemId || input.tmdbId || input.imdbId),
@@ -931,6 +1017,24 @@ export async function updateBrowserOfflineDownload(downloadId, patch = {}) {
   return writeDownload({ ...current, ...patch, downloadId });
 }
 
+export async function enrichBrowserOfflineDownloadDisplay(downloadId, displaySnapshot = {}) {
+  const current = await readDownload(downloadId);
+  if (!current) return null;
+  const next = await writeDownload({
+    ...current,
+    displaySnapshot: mergeOfflineDisplaySnapshot(current.displaySnapshot || {}, displaySnapshot)
+  });
+  void captureOfflineArtwork({
+    ...next,
+    poster:
+      next.contentType === "episode"
+        ? next.displaySnapshot?.episode?.still || next.poster
+        : next.displaySnapshot?.poster || next.poster,
+    backdrop: next.displaySnapshot?.backdrop || next.backdrop
+  });
+  return next;
+}
+
 export async function startBrowserOfflineDownload(input = {}) {
   const capabilities = await initializeBrowserOfflineDownloads();
   if (!capabilities.supported) throw new Error("Offline downloads are unavailable in this browser.");
@@ -1049,6 +1153,7 @@ export async function startBrowserOfflineDownload(input = {}) {
       completed = true;
       metadata = { ...metadata, status: "completed", completedAt: now(), queueSequence: null, queuedAt: null };
       await writeDownload(metadata);
+      void captureOfflineArtwork(metadata);
       return { status: "completed", download: metadata };
     } catch (error) {
       try {
@@ -1130,6 +1235,12 @@ export async function deleteBrowserOfflineDownload(downloadId) {
   const download = await getOfflineDownload(downloadId);
   await deleteOfflineSubtitlesForCopy(downloadId);
   if (download?.fileName) await removeOpfsFile(download.fileName);
+  await Promise.all([
+    removeArtworkFile(download?.localPosterFile),
+    removeArtworkFile(download?.localBackdropFile),
+    removeArtworkFile(download?.localSeriesPosterFile),
+    removeArtworkFile(download?.localLogoFile)
+  ]);
   await removeMetadata(downloadId);
 }
 

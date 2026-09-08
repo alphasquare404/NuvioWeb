@@ -1,6 +1,7 @@
 import { Router } from "../navigation/router.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
 import { AvatarRepository } from "../../data/remote/supabase/avatarRepository.js";
+import { resolveBrowserProfileAvatar } from "../../core/profile/browserProfileAvatarCache.js";
 import { I18n } from "../../i18n/index.js";
 import { Platform } from "../../platform/index.js";
 
@@ -257,9 +258,13 @@ export async function getSidebarProfileState() {
     ) ||
     profiles[0] ||
     null;
-  const activeProfileAvatarUrl =
+  const activeProfileAvatarSource =
     String(activeProfile?.avatarUrl || "").trim() ||
     AvatarRepository.getAvatarImageUrl(activeProfile?.avatarId, avatarCatalog);
+  const activeProfileAvatarUrl = await resolveBrowserProfileAvatar(
+    activeProfile,
+    activeProfileAvatarSource
+  ).catch(() => "");
 
   return {
     activeProfileName:

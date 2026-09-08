@@ -156,6 +156,16 @@ class MetaRepository {
     }
   }
 
+  invalidateDetailCache(id) {
+    const normalizedId = String(id || "").trim();
+    if (!normalizedId) return;
+    for (const key of this.metaCache.keys()) {
+      if (key.endsWith(`:${normalizedId}`)) {
+        this.metaCache.delete(key);
+      }
+    }
+  }
+
   buildMetaUrl(baseUrl, type, id) {
     const cleanBaseUrl = addonRepository.canonicalizeUrl(baseUrl);
     const queryStart = cleanBaseUrl.indexOf("?");

@@ -11,6 +11,10 @@ import { NuvioDialog } from "../../ui/components/nuvioDialog.js";
 import { detailWatchedEnrichmentService } from "../../data/repository/detailWatchedEnrichmentService.js";
 import { resolveExperienceRoute } from "./experienceModeRouting.js";
 import { Platform } from "../../platform/index.js";
+import {
+  removeBrowserProfileAvatar,
+  resolveBrowserProfileAvatar
+} from "./browserProfileAvatarCache.js";
 
 const PROFILE_SELECTION_PERF_DEBUG = Boolean(globalThis.__NUVIO_DEBUG_STARTUP_PERF__);
 
@@ -372,6 +376,7 @@ export const ProfileSelectionScreen = {
     this.pinTransitionCallback = null;
     this.suppressedFocusClick = null;
     this.avatarCatalog = [];
+    this.browserAvatarUrls = new Map();
     this.lastKeyboardActivation = null;
     this.isBrowserKeyboardFocusVisible = false;
     this.suppressHoldMenuEnterUntilKeyUp = false;
@@ -388,6 +393,9 @@ export const ProfileSelectionScreen = {
           await Promise.all([ProfileSyncService.pull(), ProfileSyncService.pullProfileLockStates()])
         )[1];
     this.profiles = await ProfileManager.getProfiles();
+    if (Platform.isBrowser()) {
+      await this.hydrateBrowserAvatarUrls();
+    }
     this.profilePinEnabled = profilePinEnabled;
     this.lastProfileFocusKey = `profile:${this.activeProfileId || "1"}`;
     globalThis.NuvioBootGuard?.stage?.("Loading profile avatars");
@@ -395,6 +403,9 @@ export const ProfileSelectionScreen = {
       // Avatar artwork is optional on browser. Do not delay the local-first
       // picker; the catalog still warms in the background for later use.
       this.render();
+      void this.hydrateBrowserAvatarUrls({ allowNetwork: true }).then(() => {
+        if (Router.getCurrentScreen() === this) this.render();
+      });
       void this.loadAvatarCatalog();
       return;
     }
@@ -405,6 +416,9 @@ export const ProfileSelectionScreen = {
   async loadAvatarCatalog() {
     try {
       this.avatarCatalog = await AvatarRepository.getAvatarCatalog();
+      if (Platform.isBrowser()) {
+        await this.hydrateBrowserAvatarUrls({ allowNetwork: true });
+      }
       // Browser Profile Selection intentionally renders before this optional
       // catalog request completes. Re-render once it is available so every
       // profile can use the same avatar resolver as the desktop navbar.
@@ -444,6 +458,19 @@ export const ProfileSelectionScreen = {
       return null;
     }
     return AvatarRepository.getAvatarImageUrl(normalizedId, this.avatarCatalog);
+  },
+
+  async hydrateBrowserAvatarUrls({ allowNetwork = false } = {}) {
+    if (!Platform.isBrowser()) return;
+    const next = new Map();
+    await Promise.all(
+      (this.profiles || []).map(async (profile) => {
+        const source = resolveProfileAvatarUrl(profile, (avatarId) => this.getAvatarImageUrl(avatarId));
+        const url = await resolveBrowserProfileAvatar(profile, source, { allowNetwork }).catch(() => "");
+        if (url) next.set(String(profile.id), url);
+      })
+    );
+    this.browserAvatarUrls = next;
   },
 
   getEditorSelectedAvatar() {
@@ -501,7 +528,10 @@ export const ProfileSelectionScreen = {
             : ""
         }
         <div class="profile-main-layer"${isPinActive ? ' aria-hidden="true"' : ""}>
-          <img src="assets/brand/app_logo_wordmark.png" class="profile-logo" alt="Nuvio"/>
+          <div class="profile-brand">
+            <img src="assets/brand/app_logo_wordmark.png" class="profile-logo" alt="Nuvio"/>
+            <span class="profile-logo-text-fallback" hidden>Nuvio</span>
+          </div>
 
           <h1 class="profile-title">${escapeHtml(title)}</h1>
           <p class="profile-subtitle">${escapeHtml(subtitle)}</p>
@@ -562,9 +592,11 @@ export const ProfileSelectionScreen = {
   },
 
   renderProfileCard(profile) {
-    const avatarUrl = resolveProfileAvatarUrl(profile, (avatarId) =>
-      this.getAvatarImageUrl(avatarId)
-    );
+    const avatarUrl =
+      this.browserAvatarUrls?.get(String(profile.id)) ||
+      (Platform.isBrowser()
+        ? ""
+        : resolveProfileAvatarUrl(profile, (avatarId) => this.getAvatarImageUrl(avatarId)));
     const isDesktopActive =
       Platform.isBrowser() && String(profile.id) === String(this.activeProfileId);
     return `
@@ -935,6 +967,15 @@ export const ProfileSelectionScreen = {
         { once: true }
       );
     });
+
+    this.container.querySelector(".profile-logo")?.addEventListener(
+      "error",
+      (event) => {
+        event.currentTarget.hidden = true;
+        this.container.querySelector(".profile-logo-text-fallback")?.removeAttribute("hidden");
+      },
+      { once: true }
+    );
 
     Array.from(this.container.querySelectorAll(".profile-overlay-focusable")).forEach((node) => {
       node.addEventListener("focus", () => this.handleFocusableFocus(node));
@@ -2144,6 +2185,9 @@ export const ProfileSelectionScreen = {
 
     const deleted = await ProfileManager.deleteProfile(profile.id);
     if (deleted !== false) {
+      if (Platform.isBrowser()) {
+        void removeBrowserProfileAvatar(profile);
+      }
       await ProfileSyncService.deleteProfileData(profile.id);
       await ProfileSyncService.push();
       await this.refreshProfilePinStates();
@@ -2165,6 +2209,9 @@ export const ProfileSelectionScreen = {
 
   async reloadProfiles(focusKey = "") {
     this.profiles = await ProfileManager.getProfiles();
+    if (Platform.isBrowser()) {
+      await this.hydrateBrowserAvatarUrls({ allowNetwork: true });
+    }
     await this.refreshProfilePinStates();
     this.activeProfileId = String(
       ProfileManager.getActiveProfileId() || this.activeProfileId || "1"

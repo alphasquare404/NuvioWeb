@@ -52,7 +52,7 @@ function logRouterPerf(stage, data = {}) {
 function getBrowserPullRefreshHandler(routeName, screen) {
   switch (routeName) {
     case "home":
-      return () => screen.loadData?.({ background: true, preserveReturnState: true });
+      return () => screen.reloadHomeContent?.({ reason: "pull-to-refresh" }) || screen.loadData?.({ background: true, preserveReturnState: true });
     case "search":
       return () => screen.reloadRows?.();
     case "discover":
@@ -60,7 +60,7 @@ function getBrowserPullRefreshHandler(routeName, screen) {
     case "library":
       return () => screen.controller?.refreshNow?.();
     case "detail":
-      return () => screen.loadDetail?.();
+      return () => screen.reloadDetailContent?.({ reason: "pull-to-refresh" }) || screen.loadDetail?.();
     case "castDetail":
       return () => screen.loadCastDetails?.();
     case "folderDetail":

@@ -51,6 +51,15 @@ const STARTUP_PERF_DEBUG = Boolean(globalThis.__NUVIO_DEBUG_STARTUP_PERF__);
 
 const APP_VERSION = typeof __NUVIO_APP_VERSION__ !== "undefined" ? __NUVIO_APP_VERSION__ : "0.0.0";
 
+if (
+  Platform.isBrowser() &&
+  globalThis.navigator?.serviceWorker &&
+  /^https?:$/.test(globalThis.location?.protocol || "") &&
+  !["localhost", "127.0.0.1", "::1"].includes(globalThis.location?.hostname || "")
+) {
+  globalThis.navigator.serviceWorker.register("./sw.js").catch(() => {});
+}
+
 function markBootStage(stage) {
   const guard = globalThis.NuvioBootGuard;
   if (guard && typeof guard.stage === "function") {

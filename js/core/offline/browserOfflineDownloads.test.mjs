@@ -65,6 +65,33 @@ test("downloaded episodes group under one series and retain episode order", () =
   );
 });
 
+test("downloaded Series cards use canonical Series artwork instead of an episode still", () => {
+  const [series] = groupDownloadedSeries([
+    {
+      status: "completed",
+      contentType: "episode",
+      seriesId: "series-1",
+      seriesTitle: "Example Series",
+      poster: "episode-still.jpg",
+      displaySnapshot: {
+        title: "Example Series",
+        poster: "series-poster.jpg",
+        backdrop: "series-backdrop.jpg",
+        logo: "series-logo.png"
+      },
+      localSeriesPosterFile: "series-1-series-poster.image",
+      seasonNumber: 1,
+      episodeNumber: 1,
+      downloadId: "episode-series-1-s1-e1"
+    }
+  ]);
+
+  assert.equal(series.poster, "series-poster.jpg");
+  assert.equal(series.backdrop, "series-backdrop.jpg");
+  assert.equal(series.logo, "series-logo.png");
+  assert.equal(series.seriesPosterDownloadId, "episode-series-1-s1-e1");
+});
+
 test("downloaded movie copies collapse to one movie card", () => {
   const movies = groupDownloadedMovies([
     {

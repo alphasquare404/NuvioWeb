@@ -5163,7 +5163,22 @@ html.desktop-browser {
 .desktop-browser .profile-logo {
   width: 156px;
   height: 36px;
+  margin: 0;
+}
+
+.desktop-browser .profile-brand {
+  width: 156px;
+  min-height: 36px;
   margin: 0 auto 30px;
+  display: grid;
+  place-items: center;
+}
+
+.desktop-browser .profile-logo-text-fallback {
+  color: var(--text-color);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .desktop-browser .profile-title {
@@ -7142,6 +7157,13 @@ html.desktop-browser {
   grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
   gap: 24px 14px;
   overflow: visible;
+}
+
+/* Offline downloads have a small, uneven item count. Keep their card tracks
+   intentionally sized so a single completed download never becomes a full-width poster. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid.library-downloaded-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 180px));
+  justify-content: start;
 }
 
 .desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card {
@@ -10921,6 +10943,11 @@ body.desktop-browser {
     gap: 24px 12px;
   }
 
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid.library-downloaded-grid {
+    grid-template-columns: repeat(2, minmax(0, 168px));
+    justify-content: start;
+  }
+
   .desktop-browser .library-shell.desktop-navigation-enabled .library-grouped-content {
     gap: 30px;
   }
@@ -11074,6 +11101,11 @@ body.desktop-browser {
   .desktop-browser .library-shell.desktop-navigation-enabled .library-grid {
     grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
     gap: 28px 16px;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid.library-downloaded-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 180px));
+    justify-content: start;
   }
 
   .desktop-browser .settings-shell .settings-workspace {
@@ -11547,3 +11579,30 @@ body.desktop-browser {
     padding-block: 9px;
   }
 }
+/* Browser/PWA offline Home deliberately avoids network-dependent rails. */
+.home-offline-state {
+  width: min(520px, calc(100% - 48px));
+  min-height: min(58dvh, 520px);
+  margin: 0 auto;
+  padding: max(32px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom));
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+}
+.home-offline-state > .material-icons { font-size: 42px; color: rgba(255,255,255,.72); }
+.home-offline-state h1 { margin: 0; font-size: clamp(1.55rem, 4vw, 2.2rem); }
+.home-offline-state p { margin: 0; color: rgba(255,255,255,.72); }
+.home-offline-downloads-action {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 12px;
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  font: inherit;
+  font-weight: 650;
+}
+.home-offline-downloads-action:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.home-offline-reconnect { max-width: 380px; font-size: .9rem; }

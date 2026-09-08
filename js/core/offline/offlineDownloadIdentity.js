@@ -69,11 +69,20 @@ export function groupDownloadedSeries(downloads = []) {
       if (!key) return;
       const group = groups.get(key) || {
         seriesId: key,
-        title: text(download.seriesTitle || download.title),
-        poster: text(download.poster),
-        backdrop: text(download.backdrop),
+        title: text(download.displaySnapshot?.title || download.seriesTitle || download.title),
+        poster: text(download.displaySnapshot?.poster),
+        backdrop: text(download.displaySnapshot?.backdrop),
+        logo: text(download.displaySnapshot?.logo),
+        seriesPosterDownloadId: download.localSeriesPosterFile ? text(download.downloadId) : "",
         episodes: []
       };
+      // Do not use an episode still as Series artwork. A later online-enriched
+      // record may fill any missing canonical Series artwork safely.
+      group.title ||= text(download.displaySnapshot?.title || download.seriesTitle || download.title);
+      group.poster ||= text(download.displaySnapshot?.poster);
+      group.backdrop ||= text(download.displaySnapshot?.backdrop);
+      group.logo ||= text(download.displaySnapshot?.logo);
+      group.seriesPosterDownloadId ||= download.localSeriesPosterFile ? text(download.downloadId) : "";
       group.episodes.push(download);
       groups.set(key, group);
     });

@@ -2,6 +2,7 @@
 import { ScreenUtils } from "../../navigation/screen.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
+import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
 import { savedLibraryRepository } from "../../../data/repository/savedLibraryRepository.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
@@ -67,9 +68,26 @@ import {
   getSafeOfflineSubtitleDescriptors,
   isOfflineSubtitleFormatSupported,
   isBrowserOfflineDownloadSupported,
+  getBrowserOfflineFile,
+  enrichBrowserOfflineDownloadDisplay,
   listOfflineDownloads,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
+import {
+  createBrowserOfflinePlayback,
+  releaseBrowserOfflinePlayback
+} from "../../../core/offline/browserOfflinePlayback.js";
+import { createBrowserOfflineArtworkResolver } from "../../../core/offline/browserOfflineArtworkResolver.js";
+import {
+  applyOfflineDisplaySnapshot,
+  createOfflineDisplaySnapshot
+} from "../../../core/offline/offlineDisplaySnapshot.js";
+import {
+  createOfflineEpisodeEntries,
+  hasPlayableOfflineDownload,
+  mergeDetailEpisodesWithOfflineDownloads,
+  selectCompletedOfflineDetailDownloads
+} from "./offlineDetailData.js";
 import { enqueueBrowserOfflineDownload } from "../../../core/offline/browserOfflineDownloadQueue.js";
 import {
   enqueueSeasonDownloadSelections,
@@ -771,10 +789,14 @@ function renderImdbBadge(rating) {
   const value = formatRatingValue(raw, { digits: 1 });
   return `
     <span class="series-imdb-badge">
-      <img src="assets/icons/imdb_logo_2016.svg" alt="IMDb" />
+      ${renderImdbLogo()}
       <span>${value}</span>
     </span>
   `;
+}
+
+function renderImdbLogo() {
+  return `<img src="assets/icons/imdb_logo_2016.svg" alt="IMDb" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><span class="detail-imdb-text-fallback" hidden>IMDb</span>`;
 }
 
 function formatRatingValue(value, { digits = 1, stripTrailingZero = false } = {}) {
@@ -1750,6 +1772,13 @@ export const MetaDetailsScreen = {
     this.offlineDownloadStatusRefreshToken = (this.offlineDownloadStatusRefreshToken || 0) + 1;
     this.offlineMovieDownloaded = false;
     this.offlineEpisodeMediaIds = new Set();
+    this.offlineMovieDownload = null;
+    this.localOfflineEpisodes = [];
+    this.localOfflineDownloads = [];
+    this.offlineArtworkResolver?.releaseAll?.();
+    this.offlineArtworkResolver = Platform.isBrowser() ? createBrowserOfflineArtworkResolver() : null;
+    this.remoteMetaUnavailable = false;
+    this.remoteEpisodeDataUnavailable = false;
     this.unsubscribeOfflineDownloads?.();
     this.unsubscribeOfflineDownloads = null;
     if (Platform.isBrowser()) {
@@ -1828,7 +1857,9 @@ export const MetaDetailsScreen = {
     const restoredRouteState = navigationContext?.isBackNavigation
       ? navigationContext?.restoredState || null
       : null;
-    if (this.hydrateFromRouteState(restoredRouteState, params)) {
+    const browserCanRestoreOfflineSnapshot =
+      Platform.isBrowser() && globalThis.navigator?.onLine === false;
+    if (this.hydrateFromRouteState(restoredRouteState, params) && (!Platform.isBrowser() || browserCanRestoreOfflineSnapshot)) {
       this.isLoadingDetail = false;
       if (Platform.isBrowser()) {
         this.isSavedInLibrary = false;
@@ -1887,8 +1918,16 @@ export const MetaDetailsScreen = {
     await this.loadDetail();
   },
 
-  async loadDetail() {
+  async loadDetail(options = {}) {
     const token = this.detailLoadToken;
+    const preservedSeason = Number(options?.preserveSeason || this.selectedSeason || 0);
+    // A screen instance is reused across browser history entries. Never let an
+    // old offline fallback supply episode data or artwork for a new request.
+    this.remoteMetaUnavailable = false;
+    this.remoteEpisodeDataUnavailable = false;
+    this.episodes = [];
+    this.localOfflineEpisodes = [];
+    this.localOfflineDownloads = [];
     let { itemId, itemType = "movie", fallbackTitle = "Untitled" } = this.params || {};
     if (!itemId) {
       this.renderError("Item id mancante.");
@@ -1969,17 +2008,22 @@ export const MetaDetailsScreen = {
     const watchedItemPromise = watchedItemsRepository.isWatched(itemId);
     const allProgressPromise = watchProgressRepository.getAll();
     const allWatchedPromise = watchedItemsRepository.getAll();
+    const offlineDownloadsPromise =
+      Platform.isBrowser() && isBrowserOfflineDownloadSupported()
+        ? listOfflineDownloads().catch(() => [])
+        : Promise.resolve([]);
 
-    const [metaResult, isSaved, initialProgress, watchedItem, allProgressItems, allWatchedItems] =
+    const [metaResult, isSaved, initialProgress, watchedItem, allProgressItems, allWatchedItems, offlineDownloads] =
       await Promise.all([
         metaPromise,
         isSavedPromise,
         progressPromise,
         watchedItemPromise,
         allProgressPromise,
-        allWatchedPromise
+        allWatchedPromise,
+        offlineDownloadsPromise
       ]);
-    const meta =
+    let meta =
       metaResult.status === "success"
         ? metaResult.data
         : {
@@ -1992,6 +2036,40 @@ export const MetaDetailsScreen = {
           };
     if (token !== this.detailLoadToken) {
       return;
+    }
+    this.remoteMetaUnavailable = metaResult.status !== "success";
+    const detailIsSeries = ["series", "tv", "show"].includes(
+      String(this.params?.itemType || meta?.type || "").toLowerCase()
+    );
+    this.remoteEpisodeDataUnavailable =
+      this.remoteMetaUnavailable || (detailIsSeries && !Array.isArray(meta?.videos)) ||
+      (detailIsSeries && meta.videos.length === 0);
+    await this.loadVerifiedOfflineDetailDownloads(offlineDownloads, [
+      itemId,
+      sourceItemId,
+      this.params?.originalItemId
+    ]);
+    if (token !== this.detailLoadToken) {
+      return;
+    }
+    if (this.remoteMetaUnavailable && this.localOfflineDownloads.length) {
+      const local = this.localOfflineDownloads[0];
+      const artwork = await this.getOfflineDetailArtwork(local);
+      const browserOffline = Platform.isBrowser() && globalThis.navigator?.onLine === false;
+      meta = applyOfflineDisplaySnapshot({
+        ...meta,
+        name:
+          (this.params?.offlineItem ? "" : meta?.name) || local.seriesTitle || local.title || meta?.name,
+        description: meta?.description || local.description || "",
+        genres: Array.isArray(meta?.genres) && meta.genres.length ? meta.genres : local.genres || [],
+        runtime: meta?.runtime || "",
+        runtimeMinutes: Number(meta?.runtimeMinutes || local.runtimeMinutes || 0) || 0,
+        releaseInfo: meta?.releaseInfo || local.year || "",
+        poster: artwork.poster || (browserOffline ? null : meta?.poster) || null,
+        logo: artwork.logo || (browserOffline ? null : meta?.logo) || null,
+        background:
+          artwork.backdrop || artwork.poster || (browserOffline ? null : meta?.background || meta?.poster) || null
+      }, local.displaySnapshot || local);
     }
     this.resumeContentIds = buildResumeContentIds(meta, this.params);
     let progress = initialProgress;
@@ -2018,7 +2096,13 @@ export const MetaDetailsScreen = {
     // Fast first paint with base metadata.
     this.meta = meta;
     setBrowserMediaTitle({ title: meta?.name, year: meta?.releaseInfo });
-    this.episodes = normalizeEpisodes(meta?.videos || []);
+    this.episodes = mergeDetailEpisodesWithOfflineDownloads(
+      normalizeEpisodes(meta?.videos || []),
+      this.localOfflineEpisodes
+    );
+    if (!this.remoteMetaUnavailable) {
+      void this.backfillOfflineDisplayMetadata(meta);
+    }
     this.castItems = extractCast(meta);
     const progressItemsForDetail = this.resumeProgress
       ? [this.resumeProgress, ...allProgressItems]
@@ -2029,6 +2113,9 @@ export const MetaDetailsScreen = {
       this.resumeProgress || progress,
       progressItemsForDetail
     );
+    if (preservedSeason > 0 && this.episodes.some((episode) => Number(episode.season) === preservedSeason)) {
+      this.selectedSeason = preservedSeason;
+    }
     this.applyPendingEpisodeNavigationSeason();
     this.selectedRatingSeason = this.selectedRatingSeason || this.selectedSeason || 1;
     this.moreLikeThisItems = [];
@@ -2068,7 +2155,7 @@ export const MetaDetailsScreen = {
       });
 
     // Background enrichments: do not block initial screen rendering.
-    (async () => {
+    const enrichmentTask = (async () => {
       const enrichedMeta = await withTimeout(this.enrichMeta(meta), 4000, meta);
       if (token !== this.detailLoadToken) {
         return;
@@ -2076,7 +2163,13 @@ export const MetaDetailsScreen = {
 
       this.meta = enrichedMeta || meta;
       setBrowserMediaTitle({ title: this.meta?.name, year: this.meta?.releaseInfo });
-      this.episodes = normalizeEpisodes(this.meta?.videos || []);
+      this.episodes = mergeDetailEpisodesWithOfflineDownloads(
+        normalizeEpisodes(this.meta?.videos || []),
+        this.localOfflineEpisodes
+      );
+      if (!this.remoteMetaUnavailable) {
+        void this.backfillOfflineDisplayMetadata(this.meta);
+      }
       this.castItems = extractCast(this.meta);
       this.buildEpisodeState(progressItemsForDetail, allWatchedItems);
       this.trailerSource = resolveTrailerSource(this.meta);
@@ -2096,6 +2189,9 @@ export const MetaDetailsScreen = {
         this.resumeProgress || progress,
         progressItemsForDetail
       );
+      if (preservedSeason > 0 && this.episodes.some((episode) => Number(episode.season) === preservedSeason)) {
+        this.selectedSeason = preservedSeason;
+      }
       this.applyPendingEpisodeNavigationSeason();
       this.selectedRatingSeason = this.selectedRatingSeason || this.selectedSeason || 1;
       this.nextEpisodeToWatch = this.computeNextEpisodeToWatch(this.resumeProgress || progress);
@@ -2163,6 +2259,41 @@ export const MetaDetailsScreen = {
     })().catch((error) => {
       console.warn("Detail background enrichment failed", error);
     });
+    if (options?.awaitFull) {
+      await enrichmentTask;
+      if (token !== this.detailLoadToken) return;
+      const [related] = await Promise.all([
+        withTimeout(this.fetchMoreLikeThis(this.meta), 5000, []),
+        withTimeout(this.loadMdbListRatings(this.meta, token), 5000, null),
+        withTimeout(this.refreshTrailerSource(this.meta, token), 5000, null),
+        withTimeout(this.loadTraktComments({ force: true }), 5000, null),
+        Platform.isBrowser()
+          ? withTimeout(this.refreshCurrentLibraryMembership(), 3000, null)
+          : Promise.resolve(null),
+        Platform.isBrowser()
+          ? withTimeout(this.refreshOfflineDownloadStatus(), 3000, null)
+          : Promise.resolve(null)
+      ]);
+      if (token !== this.detailLoadToken) return;
+      this.moreLikeThisItems = Array.isArray(related) ? related : [];
+      this.updateRenderedDetailSections(this.meta);
+    }
+  },
+
+  async reloadDetailContent({ reason = "refresh" } = {}) {
+    if (Platform.isBrowser() && globalThis.navigator?.onLine === false) {
+      // Preserve the currently useful local fallback when connectivity has not
+      // returned; refreshing offline must never blank a downloaded Detail.
+      await this.refreshOfflineDownloadStatus();
+      return;
+    }
+    this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+    const refreshToken = this.detailLoadToken;
+    await addonRepository.reloadConfiguredAddons?.({ force: true }).catch(() => null);
+    if (refreshToken !== this.detailLoadToken || Router.getCurrent() !== "detail") return;
+    metaRepository.invalidateDetailCache?.(this.params?.itemId);
+    metaRepository.invalidateDetailCache?.(this.params?.originalItemId);
+    await this.loadDetail({ awaitFull: true, preserveSeason: this.selectedSeason, reason });
   },
 
   async resolveCanonicalDetailItemId(itemId, itemType = "movie") {
@@ -3235,6 +3366,145 @@ export const MetaDetailsScreen = {
     return String(this.params?.itemId || this.meta?.id || "").trim();
   },
 
+  async loadVerifiedOfflineDetailDownloads(downloads = [], itemIds = []) {
+    if (!Platform.isBrowser() || !isBrowserOfflineDownloadSupported()) {
+      return;
+    }
+    const matching = selectCompletedOfflineDetailDownloads(downloads, {
+      itemType: this.params?.itemType || this.meta?.type,
+      itemIds
+    });
+    const verified = (
+      await Promise.all(
+        matching.map(async (download) =>
+          (await getBrowserOfflineFile(download.downloadId)) ? download : null
+        )
+      )
+    ).filter(Boolean);
+    const isSeries = ["series", "tv", "show"].includes(
+      String(this.params?.itemType || this.meta?.type || "").toLowerCase()
+    );
+    this.localOfflineEpisodes = isSeries ? createOfflineEpisodeEntries(verified) : [];
+    this.localOfflineDownloads = verified;
+    if (isSeries && this.localOfflineEpisodes.length) {
+      const thumbnails = await Promise.all(
+        this.localOfflineEpisodes.map(async (episode) => [
+          episode.offlineDownloadId,
+          (await this.offlineArtworkResolver?.resolve(episode.offlineDownloadId, "poster")) || ""
+        ])
+      );
+      const byDownloadId = new Map(thumbnails);
+      this.localOfflineEpisodes = this.localOfflineEpisodes.map((episode) => ({
+        ...episode,
+        thumbnail: byDownloadId.get(episode.offlineDownloadId) || null
+      }));
+    }
+    this.offlineMovieDownload = isSeries ? null : verified.find(hasPlayableOfflineDownload) || null;
+    this.offlineMovieDownloaded = Boolean(this.offlineMovieDownload);
+    this.offlineEpisodeMediaIds = new Set(
+      this.localOfflineEpisodes.map((episode) => episode.offlineMediaIdentity).filter(Boolean)
+    );
+  },
+
+  async backfillOfflineDisplayMetadata(meta = this.meta) {
+    if (!Platform.isBrowser() || this.remoteMetaUnavailable || !this.localOfflineDownloads.length) {
+      return;
+    }
+    await Promise.all(
+      this.localOfflineDownloads.map((download) => {
+        const episode =
+          download.contentType === "episode"
+            ? this.episodes.find(
+                (entry) =>
+                  Number(entry.season) === Number(download.seasonNumber) &&
+                  Number(entry.episode) === Number(download.episodeNumber)
+              )
+            : null;
+        return enrichBrowserOfflineDownloadDisplay(
+          download.downloadId,
+          createOfflineDisplaySnapshot({ ...meta, episode })
+        ).catch(() => null);
+      })
+    );
+  },
+
+  async getOfflineDetailArtwork(download) {
+    const resolver = this.offlineArtworkResolver;
+    const [poster, backdrop, logo] = await Promise.all([
+      resolver?.resolve(download?.downloadId, download?.contentType === "episode" ? "seriesPoster" : "poster"),
+      resolver?.resolve(download?.downloadId, "backdrop"),
+      resolver?.resolve(download?.downloadId, "logo")
+    ]);
+    const heroPoster = poster || (await resolver?.resolve(download?.downloadId, "poster"));
+    return {
+      poster: heroPoster || "",
+      backdrop: backdrop || "",
+      logo: logo || ""
+    };
+  },
+
+  shouldPreferOfflineEpisode(episode = {}) {
+    return Boolean(this.remoteEpisodeDataUnavailable && episode?.offlineDownloadId);
+  },
+
+  shouldPreferOfflineMovie() {
+    return Boolean(this.remoteMetaUnavailable && hasPlayableOfflineDownload(this.offlineMovieDownload));
+  },
+
+  async playOfflineDetailDownload(download, episode = null) {
+    const playback = await createBrowserOfflinePlayback(download?.downloadId);
+    if (!playback) {
+      await this.refreshOfflineDownloadStatus();
+      return false;
+    }
+    const resumeParams = this.getResumeParamsForProgress(
+      episode ? this.getEpisodeMenuProgress(episode) : this.getActiveResumeProgress(),
+      { useActiveFallback: !episode }
+    );
+    const source = {
+      id: `offline-${playback.download.downloadId}`,
+      url: playback.objectUrl,
+      title: playback.download.filename || playback.download.title || "Offline",
+      addonName: playback.download.sourceName || "Offline",
+      mimeType: playback.download.mimeType || "video/mp4"
+    };
+    try {
+      this.stopTrailerPlaybackForNavigation();
+      Router.navigate("player", {
+        streamUrl: playback.objectUrl,
+        itemId: this.params?.itemId,
+        itemType: this.params?.itemType || (episode ? "series" : "movie"),
+        imdbId: resolveMetaImdbId(this.meta, this.params),
+        tmdbId: resolveMetaTmdbId(this.meta, this.params),
+        traktId: resolveMetaTraktId(this.meta, this.params),
+        contentLanguage: resolveMetaOriginalLanguage(this.meta, this.params),
+        videoId: episode?.id || null,
+        season: episode?.season ?? null,
+        episode: episode?.episode ?? null,
+        episodeLabel: episode ? `S${episode.season}E${episode.episode}` : null,
+        playerTitle: this.meta?.name || this.params?.fallbackTitle || playback.download.title || "Untitled",
+        playerSubtitle: episode ? `S${episode.season}E${episode.episode} - ${episode.title || ""}` : "",
+        playerEpisodeTitle: episode?.title || "",
+        playerReleaseYear: playback.download.year || "",
+        playerBackdropUrl:
+          this.meta?.background || this.meta?.poster || playback.download.backdrop || playback.download.poster || null,
+        playerLogoUrl: this.meta?.logo || null,
+        episodes: this.episodes || [],
+        streamCandidates: [source],
+        preferredStreamId: source.id,
+        playbackSourceContext: { addonName: source.addonName, selectedStreamId: source.id },
+        fromDetailRoute: true,
+        offlineObjectUrl: playback.objectUrl,
+        offlineDownloadId: playback.download.downloadId,
+        ...resumeParams
+      });
+      return true;
+    } catch (_) {
+      releaseBrowserOfflinePlayback(playback);
+      return false;
+    }
+  },
+
   async refreshOfflineDownloadStatus() {
     if (!Platform.isBrowser() || !isBrowserOfflineDownloadSupported()) {
       return;
@@ -3251,12 +3521,13 @@ export const MetaDetailsScreen = {
     );
     const movieMediaId = this.getOfflineMovieMediaId();
     const nextMovieDownloaded = Boolean(
-      movieMediaId &&
-        completedDownloads.some(
-          (download) =>
-            download?.contentType === "movie" &&
-            String(download?.mediaIdentity || createOfflineMediaId(download)).trim() === movieMediaId
-        )
+      this.offlineMovieDownload ||
+        (movieMediaId &&
+          completedDownloads.some(
+            (download) =>
+              download?.contentType === "movie" &&
+              String(download?.mediaIdentity || createOfflineMediaId(download)).trim() === movieMediaId
+          ))
     );
     const seriesId = this.getOfflineSeriesId();
     const nextEpisodeMediaIds = new Set();
@@ -3353,6 +3624,9 @@ export const MetaDetailsScreen = {
   },
 
   getMovieHeroPlayLabel() {
+    if (this.shouldPreferOfflineMovie()) {
+      return t("offline.playOffline", {}, "Play Offline");
+    }
     return this.getActiveResumeProgress()
       ? t("detail.resume", {}, "Resume")
       : t("detail.play", {}, "Play");
@@ -3465,7 +3739,7 @@ export const MetaDetailsScreen = {
     showWatchedButton = false
   }) {
     const logoOrTitle = meta.logo
-      ? `<img src="${meta.logo}" class="series-detail-logo" alt="${escapeHtml(meta.name || "logo")}" decoding="async" fetchpriority="high" />`
+      ? `<img src="${meta.logo}" class="series-detail-logo" alt="${escapeHtml(meta.name || "logo")}" decoding="async" fetchpriority="high" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><h1 class="series-detail-title" hidden>${escapeHtml(meta.name || "Untitled")}</h1>`
       : `<h1 class="series-detail-title">${escapeHtml(meta.name || "Untitled")}</h1>`;
     const externalRatings = this.renderExternalRatingsRow(meta);
     const trailerSource = this.trailerSource || resolveTrailerSource(meta);
@@ -3534,7 +3808,9 @@ export const MetaDetailsScreen = {
     if (season >= 0 && episode > 0) {
       episodeParts.push(`S${season}E${episode}`);
     }
-    const title = String(progress.episodeTitle || "").trim();
+    const title = String(progress.episodeTitle || "")
+      .trim()
+      .replace(/^S\d+E\d+\s*-\s*/i, "");
     if (title) {
       episodeParts.push(title);
     }
@@ -3629,7 +3905,7 @@ export const MetaDetailsScreen = {
           .map(
             ([label, icon, value]) => `
           <span class="detail-rating-item">
-            <img src="${icon}" alt="${escapeHtml(label)}" />
+            ${label === "imdb" ? renderImdbLogo() : `<img src="${icon}" alt="${escapeHtml(label)}" />`}
             <span>${escapeHtml(formatMdbListRating(label, value))}</span>
           </span>
         `
@@ -3907,7 +4183,7 @@ export const MetaDetailsScreen = {
           ${tabs}
           <div class="movie-ratings-row">
             <article class="movie-rating-card">
-              <img src="assets/icons/imdb_logo_2016.svg" alt="IMDb" />
+              ${renderImdbLogo()}
               <div class="movie-rating-value">${imdb}</div>
             </article>
             <article class="movie-rating-card">
@@ -4088,7 +4364,10 @@ export const MetaDetailsScreen = {
 
   renderSeasonButtons() {
     if (!this.episodes?.length) {
-      return `<p>${escapeHtml(t("detail.noEpisodesFound", {}, "No episodes found."))}</p>`;
+      const message = this.remoteMetaUnavailable
+        ? t("offline.episodesUnavailable", {}, "Episode information isn't available offline.")
+        : t("detail.noEpisodesFound", {}, "No episodes found.");
+      return `<p>${escapeHtml(message)}</p>`;
     }
     const seasons = this.getAvailableSeasons();
     return seasons
@@ -4174,6 +4453,12 @@ export const MetaDetailsScreen = {
       year: this.meta?.releaseInfo || this.meta?.year || "",
       poster: episode.thumbnail || this.meta?.poster || "",
       backdrop: this.meta?.background || this.meta?.poster || "",
+      description: this.meta?.description || "",
+      genres: Array.isArray(this.meta?.genres) ? this.meta.genres : [],
+      runtimeMinutes: Number(this.meta?.runtime || this.meta?.runtimeMinutes || 0) || 0,
+      episodeOverview: episode.overview || "",
+      episodeRuntimeMinutes: episode.runtimeMinutes || 0,
+      displaySnapshot: createOfflineDisplaySnapshot({ ...(this.meta || {}), episode }),
       sourceName: stream.addonName || "",
       filename: stream.behaviorHints?.filename || stream.raw?.behaviorHints?.filename || stream.title || "",
       mimeType: stream.mimeType || stream.raw?.mimeType || "",
@@ -4830,7 +5115,8 @@ export const MetaDetailsScreen = {
       episodeNumber: episode.episode
     });
     const isDownloaded = Boolean(
-      offlineEpisodeMediaId && this.offlineEpisodeMediaIds?.has(offlineEpisodeMediaId)
+      episode.offlineDownloadId ||
+        (offlineEpisodeMediaId && this.offlineEpisodeMediaIds?.has(offlineEpisodeMediaId))
     );
     const metaParts = [
       episode.runtimeMinutes > 0 ? renderEpisodeRuntimeLabel(episode.runtimeMinutes) : "",
@@ -4845,6 +5131,7 @@ export const MetaDetailsScreen = {
       <article class="series-episode-card focusable${isWatched ? " watched" : ""}"
             data-action="openEpisodeStreams"
             data-video-id="${escapeHtml(episode.id)}"
+            data-offline-download-id="${escapeAttribute(episode.offlineDownloadId || "")}"
             data-episode-index="${absoluteIndex}">
         <div class="series-episode-thumb">
           <div class="series-episode-image${shouldBlur ? " is-blurred" : ""}"${episode.thumbnail ? ` data-thumb="${escapeHtml(episode.thumbnail)}"` : ""}></div>
@@ -5928,9 +6215,20 @@ export const MetaDetailsScreen = {
         this.episodes?.find((entry) => entry.season === this.selectedSeason) ||
         this.episodes?.[0] ||
         null;
+      if (this.shouldPreferOfflineEpisode(targetEpisode)) {
+        await this.playOfflineDetailDownload(
+          { downloadId: targetEpisode.offlineDownloadId },
+          targetEpisode
+        );
+        return;
+      }
       if (targetEpisode?.id) {
         await this.openEpisodeStreamChooser(targetEpisode.id, { startOver, manualSelection });
       }
+      return;
+    }
+    if (this.shouldPreferOfflineMovie()) {
+      await this.playOfflineDetailDownload(this.offlineMovieDownload);
       return;
     }
     await this.openMovieStreamChooser({ startOver, manualSelection });
@@ -7026,11 +7324,9 @@ export const MetaDetailsScreen = {
       clickHandlerKey: "boundDesktopEpisodeDragClickHandler",
       bindingKey: "desktopEpisodeDragBound",
       cardSelector: ".series-episode-card[data-action='openEpisodeStreams']",
+      enableKeyboardActivation: true,
       onActivate: (card) => {
-        const videoId = String(card.dataset.videoId || "").trim();
-        if (videoId) {
-          void this.openEpisodeStreamChooser(videoId);
-        }
+        void this.activateEpisodeCard(card);
       }
     });
   },
@@ -8824,6 +9120,10 @@ export const MetaDetailsScreen = {
     this.stopTrailerPlaybackForNavigation();
     const episode = this.episodes.find((entry) => entry.id === videoId) || null;
     if (!episode) {
+      return;
+    }
+    if (this.shouldPreferOfflineEpisode(episode)) {
+      await this.playOfflineDetailDownload({ downloadId: episode.offlineDownloadId }, episode);
       return;
     }
     const progress = this.getEpisodeMenuProgress(episode);
@@ -10853,10 +11153,7 @@ export const MetaDetailsScreen = {
     }
 
     if (action === "openEpisodeStreams") {
-      const selectedEpisode = this.episodes.find((entry) => entry.id === current.dataset.videoId);
-      if (selectedEpisode) {
-        await this.openEpisodeStreamChooser(selectedEpisode.id);
-      }
+      await this.activateEpisodeCard(current);
       return;
     }
 
@@ -11023,6 +11320,19 @@ export const MetaDetailsScreen = {
     return false;
   },
 
+  async activateEpisodeCard(card) {
+    const videoId = String(card?.dataset?.videoId || "").trim();
+    const offlineDownloadId = String(card?.dataset?.offlineDownloadId || "").trim();
+    const episode = this.episodes?.find((entry) => entry.id === videoId) || null;
+    if (offlineDownloadId && this.shouldPreferOfflineEpisode(episode)) {
+      await this.playOfflineDetailDownload({ downloadId: offlineDownloadId }, episode);
+      return;
+    }
+    if (videoId) {
+      await this.openEpisodeStreamChooser(videoId);
+    }
+  },
+
   async onKeyUp(event) {
     const direction = getDpadDirection(event);
     if (direction === "left" || direction === "right") {
@@ -11053,6 +11363,8 @@ export const MetaDetailsScreen = {
   },
 
   cleanup() {
+    this.offlineArtworkResolver?.releaseAll?.();
+    this.offlineArtworkResolver = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.browserHorizontalTabScrollCleanup?.();

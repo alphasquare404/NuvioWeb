@@ -12,6 +12,11 @@ import {
 } from "./libraryController.js";
 import { renderContentFilterPicker } from "../../components/filterPicker.js";
 import {
+  DOWNLOADED_LIBRARY_TYPE_OPTIONS,
+  filterDownloadedLibraryItems,
+  normalizeDownloadedLibraryType
+} from "./downloadedLibraryFilter.js";
+import {
   PosterOptionsDialogController,
   posterItemFromNode
 } from "../../components/posterOptionsMenu.js";
@@ -55,6 +60,7 @@ import {
   listDownloadedSeries,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
+import { createBrowserOfflineArtworkResolver } from "../../../core/offline/browserOfflineArtworkResolver.js";
 import {
   cancelQueuedBrowserOfflineDownload,
   moveBrowserOfflineDownloadDown,
@@ -228,13 +234,17 @@ function offlineDetailId(download = {}) {
   return match?.[1] || String(download.downloadId || "").trim();
 }
 
+function canUseRemoteArtwork() {
+  return !Platform.isBrowser() || globalThis.navigator?.onLine !== false;
+}
+
 function offlineMovieCard(download = {}) {
   const itemId = offlineDetailId(download);
   return {
     id: itemId,
     type: "movie",
     name: String(download.title || itemId || "Downloaded movie").trim(),
-    poster: String(download.poster || "").trim(),
+    poster: String(download.localPosterUrl || (canUseRemoteArtwork() ? download.poster : "") || "").trim(),
     background: String(download.backdrop || "").trim(),
     year: download.year,
     offlineItem: true
@@ -248,8 +258,8 @@ function offlineSeriesCard(group = {}) {
     id: itemId,
     type: "series",
     name: String(group.title || representative.seriesTitle || itemId || "Downloaded series").trim(),
-    poster: String(group.poster || representative.poster || "").trim(),
-    background: String(group.backdrop || representative.backdrop || "").trim(),
+    poster: String(group.localPosterUrl || (canUseRemoteArtwork() ? group.poster : "") || "").trim(),
+    background: String(group.backdrop || "").trim(),
     year: representative.year,
     offlineItem: true,
     offlineEpisodeCount: Array.isArray(group.episodes) ? group.episodes.length : 0
@@ -394,11 +404,12 @@ export const LibraryScreen = {
     this.partialContentRefresh = null;
     this.pendingHydrationState = null;
     this.pendingPresentationModeScroll = false;
-    this.downloadedView = false;
-    this.downloadedType = "movies";
+    this.downloadedView = Platform.isBrowser() && String(params?.initialTab || "").toLowerCase() === "downloaded";
+    this.downloadedType = "all";
     this.downloadedPickerOpen = false;
     this.downloadedPickerFocusIndex = 0;
     this.downloadedLibrary = { supported: false, loading: false, movies: [], series: [] };
+    this.offlineArtworkResolver = Platform.isBrowser() ? createBrowserOfflineArtworkResolver() : null;
     this.downloadManagerView = Boolean(params?.downloadManager);
     this.downloadManagerJobs = [];
     this.offlineDownloadsUnsubscribe = null;
@@ -515,15 +526,45 @@ export const LibraryScreen = {
     ) {
       return;
     }
-    this.downloadedLibrary = { supported, loading: false, movies, series };
+    const hydrated = await this.hydrateDownloadedArtwork(movies, series);
+    if (
+      this.downloadedLibraryRequest !== request ||
+      !this.container ||
+      Router.getCurrent() !== "library"
+    ) {
+      return;
+    }
+    this.downloadedLibrary = { supported, loading: false, ...hydrated };
     this.requestRender();
+    requestAnimationFrame(() => this.offlineArtworkResolver?.releaseExcept(hydrated.artworkKeys));
+  },
+
+  async hydrateDownloadedArtwork(movies = [], series = []) {
+    const resolver = this.offlineArtworkResolver;
+    if (!resolver) return { movies, series, artworkKeys: [] };
+    const artworkKeys = [];
+    const resolve = async (downloadId, kind) => {
+      if (!downloadId) return "";
+      const key = resolver.keyFor(downloadId, kind);
+      const url = await resolver.resolve(downloadId, kind);
+      if (url) artworkKeys.push(key);
+      return url;
+    };
+    const [nextMovies, nextSeries] = await Promise.all([
+      Promise.all((movies || []).map(async (download) => ({
+        ...download,
+        localPosterUrl: await resolve(download.downloadId, "poster")
+      }))),
+      Promise.all((series || []).map(async (group) => ({
+        ...group,
+        localPosterUrl: await resolve(group.seriesPosterDownloadId, "seriesPoster")
+      })))
+    ]);
+    return { movies: nextMovies, series: nextSeries, artworkKeys };
   },
 
   getDownloadedTypeOptions() {
-    return [
-      { value: "movies", label: "Movies" },
-      { value: "series", label: "Series" }
-    ];
+    return DOWNLOADED_LIBRARY_TYPE_OPTIONS;
   },
 
   renderDownloadedTypePicker() {
@@ -535,7 +576,7 @@ export const LibraryScreen = {
     return renderContentFilterPicker({
       picker: "downloaded_type",
       title: t("library_filter_type", {}, "Type"),
-      value: options[selectedIndex]?.label || "Movies",
+      value: options[selectedIndex]?.label || "All",
       options: this.downloadedPickerOpen ? options : [],
       open: this.downloadedPickerOpen,
       focusIndex: this.downloadedPickerFocusIndex,
@@ -909,14 +950,17 @@ export const LibraryScreen = {
     if (!downloads.supported) {
       return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">Downloads unavailable</h3><p class="library-empty-subtitle">This browser does not support local offline downloads.</p></section>`;
     }
-    const items = this.downloadedType === "series"
-      ? (downloads.series || []).map(offlineSeriesCard)
-      : (downloads.movies || []).map(offlineMovieCard);
+    this.downloadedType = normalizeDownloadedLibraryType(this.downloadedType);
+    const items = filterDownloadedLibraryItems(
+      this.downloadedType,
+      (downloads.movies || []).map(offlineMovieCard),
+      (downloads.series || []).map(offlineSeriesCard)
+    );
     if (!items.length) {
-      const label = this.downloadedType === "series" ? "series" : "movies";
-      return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">No downloaded ${label}</h3><p class="library-empty-subtitle">Completed downloads will appear here and remain available offline.</p></section>`;
+      const title = this.downloadedType === "all" ? "No downloads yet" : `No downloaded ${this.downloadedType}`;
+      return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">${title}</h3><p class="library-empty-subtitle">Completed downloads will appear here and remain available offline.</p></section>`;
     }
-    return this.renderGrid(items);
+    return this.renderGrid(items, "library-downloaded-grid");
   },
 
   renderCloudActions(state) {
@@ -1164,11 +1208,11 @@ export const LibraryScreen = {
     this.restoreFocus();
   },
 
-  renderGrid(items) {
+  renderGrid(items, gridClass = "") {
     const state = this.controller.getState();
     return `
       <section class="library-grid-wrap">
-        <div class="library-grid">
+        <div class="library-grid${gridClass ? ` ${gridClass}` : ""}">
           ${items
             .map((item) => {
               const focusKey = `${item.type}:${item.id}`;
@@ -2464,6 +2508,7 @@ export const LibraryScreen = {
     }
     if (action === "toggleDownloadedTypePicker") {
       const options = this.getDownloadedTypeOptions();
+      this.downloadedType = normalizeDownloadedLibraryType(this.downloadedType);
       this.downloadedPickerOpen = !this.downloadedPickerOpen;
       this.downloadedPickerFocusIndex = Math.max(
         0,
@@ -2475,7 +2520,7 @@ export const LibraryScreen = {
     if (action === "selectDownloadedTypeOption") {
       const option = this.getDownloadedTypeOptions()[Number(node.dataset.optionIndex || 0)];
       if (option) {
-        this.downloadedType = option.value;
+        this.downloadedType = normalizeDownloadedLibraryType(option.value);
       }
       this.downloadedPickerOpen = false;
       this.downloadedPickerFocusIndex = 0;
@@ -2600,7 +2645,10 @@ export const LibraryScreen = {
       Router.navigate("detail", {
         itemId: node.dataset.itemId,
         itemType: node.dataset.itemType || "movie",
-        fallbackTitle: node.dataset.itemTitle || "Untitled"
+        fallbackTitle: node.dataset.itemTitle || "Untitled",
+        fallbackPoster: node.dataset.posterSrc || null,
+        fallbackBackground: node.dataset.backdropSrc || null,
+        offlineItem: node.dataset.offlineItem === "true"
       });
       return;
     }
@@ -2859,6 +2907,8 @@ export const LibraryScreen = {
     this.offlineDownloadsUnsubscribe?.();
     this.offlineDownloadsUnsubscribe = null;
     this.downloadedLibraryRequest = (this.downloadedLibraryRequest || 0) + 1;
+    this.offlineArtworkResolver?.releaseAll?.();
+    this.offlineArtworkResolver = null;
     this.controller?.dispose?.();
     this.controller = null;
     ScreenUtils.hide(this.container);

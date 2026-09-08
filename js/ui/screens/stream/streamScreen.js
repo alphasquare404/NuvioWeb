@@ -67,13 +67,16 @@ import {
   getOfflineSubtitleIdentityParts,
   getSafeOfflineSubtitleDescriptors,
   deleteBrowserOfflineDownload,
-  getBrowserOfflineFile,
   getOfflineDownload,
   isBrowserOfflineDownloadSupported,
   listOfflineDownloads,
   listOfflineDownloadsForMedia,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
+import {
+  createBrowserOfflinePlayback,
+  releaseBrowserOfflinePlayback
+} from "../../../core/offline/browserOfflinePlayback.js";
 import {
   cancelQueuedBrowserOfflineDownload,
   enqueueBrowserOfflineDownload,
@@ -2273,6 +2276,11 @@ export const StreamScreen = {
       year: this.params?.year || this.params?.releaseYear || this.params?.releaseInfo || "",
       poster: this.params?.poster || this.params?.posterUrl || "",
       backdrop: this.getBackdropUrl() || "",
+      description: this.params?.description || this.params?.overview || "",
+      genres: this.params?.genres || [],
+      runtimeMinutes: this.params?.runtime || this.params?.runtimeMinutes || 0,
+      episodeOverview: isEpisode ? this.params?.episodeOverview || "" : "",
+      episodeRuntimeMinutes: isEpisode ? this.params?.runtime || this.params?.runtimeMinutes || 0 : 0,
       sourceName: stream.addonName || "",
       filename: stream.behaviorHints?.filename || stream.raw?.behaviorHints?.filename || "",
       mimeType: this.resolveStreamMimeType(stream),
@@ -2935,18 +2943,17 @@ export const StreamScreen = {
   },
 
   async playOfflineDownloadById(downloadId, stream = null) {
-    const offline = await getBrowserOfflineFile(downloadId);
-    if (!offline) {
+    const playback = await createBrowserOfflinePlayback(downloadId);
+    if (!playback) {
       this.showStreamToast("Offline file is unavailable.");
       await this.refreshOfflineDownloadMetadata();
       return;
     }
-    const offlineObjectUrl = URL.createObjectURL(offline.file);
     try {
-      const source = stream || { id: `offline-${downloadId}`, addonName: offline.download.sourceName || "Offline" };
-      await this.playStream(source.id, { offlineObjectUrl, offlineDownload: offline.download, offlineStream: source });
+      const source = stream || { id: `offline-${downloadId}`, addonName: playback.download.sourceName || "Offline" };
+      await this.playStream(source.id, { offlineObjectUrl: playback.objectUrl, offlineDownload: playback.download, offlineStream: source });
     } catch (_) {
-      URL.revokeObjectURL(offlineObjectUrl);
+      releaseBrowserOfflinePlayback(playback);
       this.showStreamToast("Could not play the offline file.");
     }
   },

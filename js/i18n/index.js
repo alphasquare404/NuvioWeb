@@ -1,4 +1,5 @@
 import { ThemeStore } from "../data/local/themeStore.js";
+import { loadLocaleMessagesWithFallback } from "./localeLoader.js";
 
 const DEFAULT_LOCALE = "en";
 const SUPPORTED_LOCALES = [
@@ -391,7 +392,6 @@ let activeMessages = Object.create(null);
 let currentLocale = DEFAULT_LOCALE;
 let initialized = false;
 let initPromise = null;
-let baseMessagesPromise = null;
 const localeMessagesCache = new Map();
 
 function normalizeLocale(value) {
@@ -527,33 +527,13 @@ async function loadXmlFile(relativePath) {
   throw new Error(`Unable to load translation file: ${relativePath}`);
 }
 
-async function loadBaseMessages() {
-  if (!baseMessagesPromise) {
-    baseMessagesPromise = loadXmlFile("values/strings.xml");
-  }
-  return baseMessagesPromise;
-}
-
 async function loadLocaleMessages(locale) {
   if (localeMessagesCache.has(locale)) {
     return await localeMessagesCache.get(locale);
   }
 
   const promise = (async () => {
-    const base = await loadBaseMessages();
-    if (locale === DEFAULT_LOCALE) {
-      return { ...base };
-    }
-
-    try {
-      const localized = await loadXmlFile(`values-${locale}/strings.xml`);
-      return {
-        ...base,
-        ...localized
-      };
-    } catch (_) {
-      return { ...base };
-    }
+    return loadLocaleMessagesWithFallback(locale, loadXmlFile);
   })();
 
   localeMessagesCache.set(locale, promise);

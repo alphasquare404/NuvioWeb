@@ -25,6 +25,7 @@ import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { mdbListRepository } from "../../../data/repository/mdbListRepository.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
 import { AvatarRepository } from "../../../data/remote/supabase/avatarRepository.js";
+import { resolveBrowserProfileAvatar } from "../../../core/profile/browserProfileAvatarCache.js";
 import { Platform } from "../../../platform/index.js";
 import { isFastHorizontalNavigationEnabled } from "../../../platform/sharedKeys.js";
 import { LocalStore } from "../../../core/storage/localStore.js";
@@ -177,6 +178,10 @@ function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
 }
 
+function isBrowserOfflineNow() {
+  return Platform.isBrowser() && typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
 function getDirectionFromKeyCode(keyCode) {
   switch (Number(keyCode || 0)) {
     case 37:
@@ -206,7 +211,10 @@ async function getLocalSidebarProfileState() {
     t("sidebar.profileFallback");
   // Do not hold the first Home paint behind the optional avatar catalog RPC.
   // The regular sidebar refresh below resolves catalog avatars in the background.
-  const avatarUrl = activeProfile?.avatarUrl || AvatarRepository.getAvatarImageUrl(activeProfile?.avatarId);
+  const avatarSource = activeProfile?.avatarUrl || AvatarRepository.getAvatarImageUrl(activeProfile?.avatarId);
+  const avatarUrl = await resolveBrowserProfileAvatar(activeProfile, avatarSource, {
+    allowNetwork: false
+  }).catch(() => "");
 
   return {
     activeProfileName: name,
@@ -8109,6 +8117,10 @@ export const HomeScreen = {
           return;
         }
         const action = String(target.dataset.action || "");
+        if (action === "openOfflineDownloads") {
+          Router.navigate("library", { initialTab: "downloaded" });
+          return;
+        }
         if (action === "openDetail" || action === "openCollectionFolder") {
           this.openDetailFromNode(target);
           return;
@@ -8193,6 +8205,50 @@ export const HomeScreen = {
     this.container.addEventListener("mouseover", this.boundHomeMouseOverHandler);
     this.container.addEventListener("wheel", this.boundHomeWheelHandler, { passive: false });
     this.boundHomeEventContainer = this.container;
+  },
+
+  bindBrowserOfflineHomeEvents() {
+    if (!Platform.isBrowser() || this.browserOfflineHomeEventsBound) return;
+    this.browserOfflineHomeEventsBound = true;
+    this.browserOfflineHomeOfflineHandler = () => {
+      if (Router.getCurrent() !== "home") return;
+      this.browserOfflineHome = true;
+      this.browserOfflineHomeRecoverable = false;
+      this.render();
+    };
+    this.browserOfflineHomeOnlineHandler = () => {
+      if (Router.getCurrent() !== "home" || !this.browserOfflineHome) return;
+      addonRepository.prepareForReconnect?.();
+      this.browserOfflineHomeRecoverable = true;
+      this.render();
+    };
+    window.addEventListener("offline", this.browserOfflineHomeOfflineHandler);
+    window.addEventListener("online", this.browserOfflineHomeOnlineHandler);
+  },
+
+  renderBrowserOfflineHome() {
+    this.stopHeroRotation();
+    const rootNavigation = renderDesktopNavigation({ selectedRoute: "home", profile: this.sidebarProfile });
+    const reconnectMessage = this.browserOfflineHomeRecoverable
+      ? "Back online — pull down to refresh."
+      : "Reconnect to the internet and pull down to refresh to restore online content.";
+    this.container.innerHTML = `
+      <div class="home-shell home-screen-shell home-offline-shell desktop-navigation-enabled">
+        ${rootNavigation}
+        <main class="home-main home-screen-main">
+          <section class="home-offline-state" aria-live="polite">
+            <span class="material-icons" aria-hidden="true">cloud_off</span>
+            <h1>You're offline</h1>
+            <p>Downloaded movies and episodes are still available.</p>
+            <button type="button" class="home-offline-downloads-action focusable" data-action="openOfflineDownloads">Open Downloads</button>
+            <p class="home-offline-reconnect">${escapeHtml(reconnectMessage)}</p>
+          </section>
+        </main>
+      </div>`;
+    this.renderedMarkup = "";
+    // Offline Home exits before the normal browser render pipeline, so it must
+    // bind the visible shared navigation itself.
+    bindDesktopNavigationEvents(this.container);
   },
 
   bindDesktopCatalogDragScrolling() {
@@ -8439,6 +8495,11 @@ export const HomeScreen = {
     );
     ScreenUtils.show(this.container);
     this.ensureDelegatedEventsBound();
+    this.bindBrowserOfflineHomeEvents();
+    if (isBrowserOfflineNow()) {
+      this.browserOfflineHome = true;
+      this.browserOfflineHomeRecoverable = false;
+    }
     this.sidebarExpanded = false;
     this.sidebarOpenedByBack = false;
     this.pillIconOnly = Boolean(
@@ -8847,6 +8908,20 @@ export const HomeScreen = {
   },
 
   async loadData({ background = false, preserveReturnState = false } = {}) {
+    if (isBrowserOfflineNow()) {
+      this.browserOfflineHome = true;
+      this.browserOfflineHomeRecoverable = false;
+      this.render();
+      return;
+    }
+    if (Platform.isBrowser() && this.browserOfflineHome) {
+      this.browserOfflineHome = false;
+      this.browserOfflineHomeRecoverable = false;
+      this.rows = [];
+      this.heroCandidates = [];
+      this.heroItem = null;
+      this.isInitialHomeLoading = true;
+    }
     const loadStart = HOME_PERF_DEBUG ? homePerfNow() : 0;
     const token = this.homeLoadToken;
     const preserveHomeReturnState = Boolean(background && preserveReturnState);
@@ -9340,6 +9415,30 @@ export const HomeScreen = {
     return this.heroCandidates[0] || this.pickHeroItem(this.rows);
   },
 
+  async reloadHomeContent({ reason = "refresh" } = {}) {
+    if (isBrowserOfflineNow()) {
+      this.browserOfflineHome = true;
+      this.browserOfflineHomeRecoverable = false;
+      this.render();
+      return;
+    }
+    // A reconnect must not merge into rows that were intentionally absent while
+    // offline or failed transiently. Cancel older progressive batches first.
+    this.homeLoadToken = (this.homeLoadToken || 0) + 1;
+    this.browserOfflineHome = false;
+    this.browserOfflineHomeRecoverable = false;
+    this.catalogRetryInFlight = false;
+    this.rows = [];
+    this.heroCandidates = [];
+    this.heroItem = null;
+    this.hasLoadedOnce = false;
+    this.isInitialHomeLoading = true;
+    // Rebuild the runtime registry before deriving catalog descriptors. A
+    // previous offline attempt may have produced an empty success-only list.
+    await addonRepository.reloadConfiguredAddons?.({ force: true }).catch(() => null);
+    await this.loadData({ background: false, preserveReturnState: false, reason });
+  },
+
   filterUnreleasedResult(result) {
     if (
       !this.layoutPrefs?.hideUnreleasedContent ||
@@ -9561,6 +9660,10 @@ export const HomeScreen = {
     this.teardownModernTrackScrollPagination();
     this.teardownContinueWatchingProgressiveRendering();
     this.invalidateNavigationModel();
+    if (Platform.isBrowser() && this.browserOfflineHome) {
+      this.renderBrowserOfflineHome();
+      return;
+    }
     const backFocusState = this.isRestoringFocusFromBack
       ? this.pendingBackFocusState || this.readStoredReturnFocusState() || null
       : null;
@@ -11332,6 +11435,10 @@ export const HomeScreen = {
       activateLegacySidebarAction(action, "home");
       return;
     }
+    if (action === "openOfflineDownloads") {
+      Router.navigate("library", { initialTab: "downloaded" });
+      return;
+    }
     if (action === "openDetail" || action === "openCollectionFolder")
       this.openDetailFromNode(current);
     if (action === "openCatalogSeeAll") this.openCatalogSeeAllFromNode(current);
@@ -11893,6 +12000,13 @@ export const HomeScreen = {
   },
 
   cleanup() {
+    if (this.browserOfflineHomeEventsBound) {
+      window.removeEventListener("offline", this.browserOfflineHomeOfflineHandler);
+      window.removeEventListener("online", this.browserOfflineHomeOnlineHandler);
+      this.browserOfflineHomeEventsBound = false;
+      this.browserOfflineHomeOfflineHandler = null;
+      this.browserOfflineHomeOnlineHandler = null;
+    }
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.desktopMediaHoverPreview?.destroy();

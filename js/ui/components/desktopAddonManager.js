@@ -67,7 +67,8 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
     state.isLoading = true;
     await rerender();
     try {
-      state.addons = await addonRepository.getInstalledAddons({ includeDisabled: true });
+      await addonRepository.reloadConfiguredAddons({ force: true, includeDisabled: true });
+      state.addons = addonRepository.getConfiguredAddons({ includeDisabled: true });
     } catch (error) {
       console.warn("Desktop addon list load failed", error);
       state.addons = [];
@@ -110,7 +111,7 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
         throw new Error("That addon is already installed.");
       }
       state.addonUrl = "";
-      state.addons = await addonRepository.getInstalledAddons({ includeDisabled: true });
+      state.addons = addonRepository.getConfiguredAddons({ includeDisabled: true });
       setStatus(`${result.data?.displayName || result.data?.name || "Addon"} added locally.`);
       await rerender();
       await requestAutosync();
@@ -130,7 +131,7 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
     if (!url) return;
     const enabled = !addonRepository.isAddonEnabled(url);
     addonRepository.setAddonEnabledStates([{ url, enabled }], { replace: false });
-    state.addons = await addonRepository.getInstalledAddons({ includeDisabled: true });
+    state.addons = addonRepository.getConfiguredAddons({ includeDisabled: true });
     setStatus(`${addon.displayName || addon.name || "Addon"} ${enabled ? "enabled" : "disabled"} locally.`);
     await rerender();
     await requestAutosync();
@@ -147,7 +148,7 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
       if (result.status !== "success") {
         throw new Error(result.message || "The manifest could not be refreshed.");
       }
-      state.addons = await addonRepository.getInstalledAddons({ includeDisabled: true });
+      state.addons = addonRepository.getConfiguredAddons({ includeDisabled: true });
       setStatus("Manifest refreshed.", "success");
     } catch (error) {
       console.warn("Desktop addon refresh failed", error);
@@ -170,7 +171,7 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
       if (!removed) {
         throw new Error("That addon could not be removed.");
       }
-      state.addons = await addonRepository.getInstalledAddons({ includeDisabled: true });
+      state.addons = addonRepository.getConfiguredAddons({ includeDisabled: true });
       setStatus(`${addon.displayName || addon.name || "Addon"} removed locally.`);
       await rerender();
       await requestAutosync();
@@ -195,6 +196,7 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
     const enabled = addonRepository.isAddonEnabled(url);
     const version = String(addon?.version || "").trim();
     const description = truncateText(addon?.description);
+    const runtimeStatus = String(addon?.runtimeStatus || "available").trim();
     const isRefreshing = state.refreshingUrl === url;
     return `
       <article class="desktop-addon-card${enabled ? "" : " is-disabled"}" data-addon-card data-addon-index="${index}">
@@ -205,6 +207,7 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
           <div class="desktop-addon-card-heading">
             <h2>${escapeHtml(name)}</h2>
             ${version ? `<span class="desktop-addon-version">v${escapeHtml(version)}</span>` : ""}
+            ${runtimeStatus !== "available" ? `<span class="desktop-addon-version">${escapeHtml(runtimeStatus)}</span>` : ""}
           </div>
           ${description ? `<p class="desktop-addon-description">${escapeHtml(description)}</p>` : ""}
           <p class="desktop-addon-url" title="${escapeHtml(url)}">${escapeHtml(formatAddonHost(url))}</p>
