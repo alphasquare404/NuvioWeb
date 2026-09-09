@@ -1767,7 +1767,7 @@ export const DiscoverScreen = {
       }
       if (this.isSidebarRootRoute()) {
         if (this.focusZone === "sidebar") {
-          Platform.exitApp();
+          await this.closeSidebarToContent();
         } else {
           await this.openSidebar();
         }

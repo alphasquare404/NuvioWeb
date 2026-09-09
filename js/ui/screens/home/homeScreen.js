@@ -11520,7 +11520,7 @@ export const HomeScreen = {
     if (sidebarFocused || this.sidebarExpanded) {
       if (this.sidebarOpenedByBack) {
         this.sidebarOpenedByBack = false;
-        Platform.exitApp();
+        this.closeSidebarToContent();
         return true;
       }
       this.closeSidebarToContent();

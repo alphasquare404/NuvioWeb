@@ -9074,7 +9074,7 @@ export const SettingsScreen = {
         return;
       }
       if (this.focusZone === "sidebar") {
-        Platform.exitApp();
+        await this.closeSidebarToNav();
       } else {
         await this.openSidebar();
       }
@@ -9278,7 +9278,7 @@ export const SettingsScreen = {
       return true;
     }
     if (this.focusZone === "sidebar") {
-      Platform.exitApp();
+      void this.closeSidebarToNav();
     } else {
       void this.openSidebar();
     }

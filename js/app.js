@@ -1,5 +1,3 @@
-/* global __NUVIO_APP_VERSION__ */
-
 import "./core/diagnostics/consoleDebugBuffer.js";
 import { detailWatchedEnrichmentService } from "./data/repository/detailWatchedEnrichmentService.js";
 import { Router } from "./ui/navigation/router.js";
@@ -20,15 +18,8 @@ import { warmStreamingLibs } from "./runtime/loadStreamingLibs.js";
 import { Platform } from "./platform/index.js";
 import { LocalStore } from "./core/storage/localStore.js";
 import { I18n } from "./i18n/index.js";
-import { getLatestAppUpdate } from "./core/update/appUpdateService.js";
-import { showAppUpdatePrompt } from "./ui/components/appUpdatePrompt.js";
 import { resolveExperienceRoute } from "./core/profile/experienceModeRouting.js";
 import { initializeBrowserOfflineDownloadQueue } from "./core/offline/browserOfflineDownloadQueue.js";
-
-// These legacy Web-only overrides are no longer user settings. Navigation now
-// uses the stable grid algorithm and simulator detection automatically.
-LocalStore.remove("strictDpadGridNavigation");
-LocalStore.remove("rotatedDpadMapping");
 
 (function applyLegacyPatches() {
   const originalGetElementById = document.getElementById;
@@ -46,10 +37,7 @@ const GUEST_QR_BYPASS_KEY = "skipAuthQrGate";
 const SIGNED_OUT_ALLOWED_ROUTES = new Set(["trakt"]);
 let hasSelectedProfileThisSession = false;
 let appShellRendered = false;
-let updateCheckStarted = false;
 const STARTUP_PERF_DEBUG = Boolean(globalThis.__NUVIO_DEBUG_STARTUP_PERF__);
-
-const APP_VERSION = typeof __NUVIO_APP_VERSION__ !== "undefined" ? __NUVIO_APP_VERSION__ : "0.0.0";
 
 if (
   Platform.isBrowser() &&
@@ -79,39 +67,6 @@ function logStartupTiming(stage, startedAt, extra = {}) {
     ms: Number((startupNow() - startedAt).toFixed(2)),
     ...extra
   });
-}
-
-async function waitForInitialRoute(timeoutMs = 15000) {
-  const startedAt = Date.now();
-  while (!Router.getCurrent() && Date.now() - startedAt < timeoutMs) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return Boolean(Router.getCurrent());
-}
-
-async function checkForAppUpdateOnStartup() {
-  // Browser deployments update through their host/container, not the WebTV
-  // installer. Keep the TV-only update prompt out of normal browser startup.
-  if (Platform.isBrowser()) {
-    return;
-  }
-  if (updateCheckStarted) {
-    return;
-  }
-  updateCheckStarted = true;
-
-  try {
-    const update = await getLatestAppUpdate({ currentVersion: APP_VERSION });
-    if (!update) {
-      return;
-    }
-    if (!(await waitForInitialRoute())) {
-      return;
-    }
-    showAppUpdatePrompt(update);
-  } catch (error) {
-    console.warn("App update check failed", error);
-  }
 }
 
 function isSignedOutRouteAllowed() {
@@ -158,23 +113,10 @@ function isLowEndDevice() {
   return lowCpu || lowMem;
 }
 
-function getChromiumMajorVersion() {
-  const userAgent = String(globalThis.navigator?.userAgent || "");
-  const match = userAgent.match(/(?:chrome|chromium)\/(\d{2,3})/i);
-  const version = Number(match?.[1] || 0);
-  return Number.isFinite(version) ? version : 0;
-}
-
 function applyPerformanceMode() {
-  const constrained = Platform.isWebOS() || Platform.isTizen() || isLowEndDevice();
-  const webOsMajorVersion = Platform.isWebOS() ? Number(Platform.getWebOsMajorVersion() || 0) : 0;
-  const legacyWebOs = Platform.isWebOS() && (webOsMajorVersion === 0 || webOsMajorVersion <= 6);
-  const legacyWebOs38 = Platform.isWebOS() && webOsMajorVersion > 0 && webOsMajorVersion <= 3;
-  const legacyTizen = Platform.isTizen();
+  const constrained = isLowEndDevice();
   const rootClasses = document.documentElement.classList;
-  const modernWebOs = Platform.isWebOS() && getChromiumMajorVersion() >= 120;
-  const modernSidebarBlurCapable =
-    !rootClasses.contains("no-backdrop-filter") && ((!constrained && !legacyTizen) || modernWebOs);
+  const modernSidebarBlurCapable = !rootClasses.contains("no-backdrop-filter") && !constrained;
   document.documentElement.classList.toggle("performance-constrained", constrained);
   document.body.classList.toggle("performance-constrained", constrained);
   document.documentElement.classList.toggle(
@@ -182,12 +124,6 @@ function applyPerformanceMode() {
     modernSidebarBlurCapable
   );
   document.body.classList.toggle("modern-sidebar-blur-capable", modernSidebarBlurCapable);
-  document.documentElement.classList.toggle("legacy-webos", legacyWebOs);
-  document.body.classList.toggle("legacy-webos", legacyWebOs);
-  document.documentElement.classList.toggle("legacy-webos38", legacyWebOs38);
-  document.body.classList.toggle("legacy-webos38", legacyWebOs38);
-  document.documentElement.classList.toggle("legacy-tizen", legacyTizen);
-  document.body.classList.toggle("legacy-tizen", legacyTizen);
   ["no-flex-gap", "no-aspect-ratio", "no-css-math", "no-backdrop-filter"].forEach((className) => {
     document.body.classList.toggle(className, rootClasses.contains(className));
   });
@@ -252,7 +188,7 @@ async function shouldShowProfileSelection() {
   return result;
 }
 
-async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
+async function enterWithLastProfile() {
   const startedAt = startupNow();
   hasSelectedProfileThisSession = true;
   const profiles = await ProfileManager.getProfiles();
@@ -277,17 +213,8 @@ async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
         pullRemoteSettings: !Platform.isBrowser()
       })
     : "home";
-  const resumeRoute =
-    restoreWebOsRoute && typeof Router.consumeWebOsResumeRoute === "function"
-      ? Router.consumeWebOsResumeRoute()
-      : null;
   if (experienceRoute !== "home") {
     await Router.navigate(experienceRoute, {}, { replaceHistory: true, skipStackPush: true });
-  } else if (resumeRoute?.route) {
-    await Router.navigate(resumeRoute.route, resumeRoute.params || {}, {
-      replaceHistory: true,
-      skipStackPush: true
-    });
   } else {
     await Router.navigate("home");
   }
@@ -309,140 +236,7 @@ async function routeAfterAuthentication() {
     return;
   }
 
-  await enterWithLastProfile({ restoreWebOsRoute: true });
-}
-
-function setupWebOsAppLifecycle() {
-  if (!Platform.isWebOS()) {
-    return;
-  }
-
-  const appSystems = Array.from(
-    new Set([globalThis.webOSSystem || null, globalThis.PalmSystem || null].filter(Boolean))
-  );
-
-  function activateWebOsApp() {
-    const system = appSystems.find((entry) => typeof entry?.activate === "function") || null;
-    if (!system) {
-      return;
-    }
-    try {
-      system.activate();
-    } catch (error) {
-      console.warn("webOS activate failed", error);
-    }
-  }
-
-  function installNativeCallback(system, systemName, callbackName, { recoverOnCall = false } = {}) {
-    if (!system) {
-      return;
-    }
-    const previous =
-      typeof system[callbackName] === "function" ? system[callbackName].bind(system) : null;
-    try {
-      system[callbackName] = (...args) => {
-        if (previous) {
-          try {
-            previous(...args);
-          } catch (error) {
-            console.warn(`webOS callback ${systemName}.${callbackName} failed`, error);
-          }
-        }
-        if (recoverOnCall) {
-          void recover(`${systemName}.${callbackName}`);
-        }
-      };
-    } catch (error) {
-      console.warn(`webOS callback hook ${systemName}.${callbackName} failed`, error);
-    }
-  }
-
-  // webOS keeps the app resident when it is backgrounded. Re-opening can fire
-  // a launch event on the existing JS context instead of reloading the page.
-  let recovering = false;
-  const recover = async () => {
-    if (recovering || !appShellRendered) {
-      return;
-    }
-    void DeviceSessionRegistration.requestForegroundRegistration();
-    ProviderCredentialSyncService.requestForegroundPull();
-    const current = Router.getCurrent();
-    if (!current) {
-      return;
-    }
-    recovering = true;
-    try {
-      if (document.body) {
-        document.body.style.removeProperty("display");
-      }
-      const shouldReturnHome = !Router.isWebOsResumeRouteRestorable(current);
-      if (shouldReturnHome) {
-        await Router.navigate(
-          "home",
-          {},
-          {
-            replaceHistory: true,
-            skipStackPush: true
-          }
-        );
-      } else if (typeof Router.persistWebOsResumeRoute === "function") {
-        Router.persistWebOsResumeRoute(current, Router.currentParams || {});
-      }
-      // With handlesRelaunch=true, webOS expects the app to explicitly request
-      // foreground activation after processing the relaunch callback.
-      activateWebOsApp();
-    } catch (error) {
-      console.warn("webOS relaunch recovery failed", error);
-    } finally {
-      recovering = false;
-    }
-  };
-
-  document.addEventListener(
-    "webOSRelaunch",
-    () => {
-      void recover();
-    },
-    true
-  );
-
-  // webOS 4.x may fire webOSLaunch instead of webOSRelaunch when resuming.
-  document.addEventListener(
-    "webOSLaunch",
-    () => {
-      void recover();
-    },
-    true
-  );
-
-  // Some builds only expose visibilitychange when the WebView is resumed.
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      void recover();
-    }
-  });
-
-  // Older webOS WebKit builds may emit only the prefixed visibility signal.
-  document.addEventListener("webkitvisibilitychange", () => {
-    if (document.webkitHidden !== true) {
-      void recover();
-    }
-  });
-
-  installNativeCallback(globalThis.webOSSystem, "webOSSystem", "onshow", { recoverOnCall: true });
-  installNativeCallback(globalThis.webOSSystem, "webOSSystem", "onhide");
-  installNativeCallback(globalThis.webOSSystem, "webOSSystem", "onfocus", { recoverOnCall: true });
-  installNativeCallback(globalThis.webOSSystem, "webOSSystem", "onblur");
-  installNativeCallback(globalThis.webOSSystem, "webOSSystem", "onactivate", {
-    recoverOnCall: true
-  });
-  installNativeCallback(globalThis.webOSSystem, "webOSSystem", "ondeactivate");
-  installNativeCallback(globalThis.PalmSystem, "PalmSystem", "onshow", { recoverOnCall: true });
-  installNativeCallback(globalThis.PalmSystem, "PalmSystem", "onhide");
-  installNativeCallback(globalThis.PalmSystem, "PalmSystem", "onfocus", { recoverOnCall: true });
-  installNativeCallback(globalThis.PalmSystem, "PalmSystem", "onblur");
-  installNativeCallback(globalThis.PalmSystem, "PalmSystem", "onactivate", { recoverOnCall: true });
-  installNativeCallback(globalThis.PalmSystem, "PalmSystem", "ondeactivate");
+  await enterWithLastProfile();
 }
 
 function setupProviderCredentialForegroundLifecycle() {
@@ -484,7 +278,7 @@ async function bootstrapApp() {
   markBootStage("Rendering application shell");
   renderAppShell();
   appShellRendered = true;
-  markBootStage("Initializing TV platform");
+  markBootStage("Initializing platform");
   Platform.init();
   const isDesktopBrowser = Platform.isBrowser();
   document.documentElement.classList.toggle("desktop-browser", isDesktopBrowser);
@@ -502,12 +296,10 @@ async function bootstrapApp() {
 
   FocusEngine.init();
   setupProviderCredentialForegroundLifecycle();
-  setupWebOsAppLifecycle();
 
   ThemeManager.apply();
   I18n.apply();
   warmStreamingLibs({ delayMs: 1400 });
-  void checkForAppUpdateOnStartup();
 
   markBootStage("Restoring session");
   DeviceSessionRegistration.start();
@@ -533,7 +325,7 @@ async function bootstrapApp() {
           ProfileManager.isRememberLastProfileEnabled() &&
           ProfileManager.hasEverSelectedProfile()
         ) {
-          enterWithLastProfile({ restoreWebOsRoute: true }).catch((error) => {
+          enterWithLastProfile().catch((error) => {
             console.warn("Failed to enter with last profile", error);
             ProfileManager.clearActiveProfile();
             if (Router.getCurrent() !== "profileSelection") {

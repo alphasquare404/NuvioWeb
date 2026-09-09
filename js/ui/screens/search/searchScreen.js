@@ -2140,7 +2140,7 @@ export const SearchScreen = {
     if (Platform.isBackEvent(event)) {
       event.preventDefault?.();
       if (this.focusZone === "sidebar") {
-        Platform.exitApp();
+        await this.closeSidebarToContent();
       } else {
         await this.openSidebar();
       }

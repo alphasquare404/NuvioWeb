@@ -2728,7 +2728,7 @@ export const LibraryScreen = {
         return;
       }
       if (this.focusZone === "sidebar") {
-        Platform.exitApp();
+        await this.focusMainNode();
       } else {
         await this.focusSidebarNode();
       }

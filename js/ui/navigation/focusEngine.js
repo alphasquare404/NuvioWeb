@@ -62,7 +62,6 @@ export const FocusEngine = {
       normalizedEvent.preventDefault();
       normalizedEvent.stopPropagation();
       normalizedEvent.stopImmediatePropagation();
-      Router.consumeRouteReturnBackGuard?.();
       return;
     }
     this.lastBackHandledAt = now;
@@ -70,10 +69,6 @@ export const FocusEngine = {
     normalizedEvent.preventDefault();
     normalizedEvent.stopPropagation();
     normalizedEvent.stopImmediatePropagation();
-
-    if (Router.consumeRouteReturnBackGuard?.()) {
-      return;
-    }
 
     const currentScreen = Router.getCurrentScreen();
     const consumeResult = currentScreen?.consumeBackRequest?.();
