@@ -84,13 +84,6 @@ body {
   height: 100vh;
 }
 
-/* Samsung TV apps render on a fixed 1920x1080 CSS canvas. Older Tizen
-   engines can under-report 100vh and leave an uncovered strip at the bottom. */
-.tizen-tv #app,
-.tizen-tv .screen {
-  height: 1080px;
-}
-
 .row {
   margin: 40px;
 }
