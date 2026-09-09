@@ -17,8 +17,6 @@ import {
   directDebridPreparationKey
 } from "../../../core/debrid/directDebridStreamPreparer.js";
 import { DebridStreamPresentation } from "../../../core/debrid/directDebridStreamPresentation.js";
-import { WebOsEngineFsResolver } from "../../../core/p2p/webosEngineFsResolver.js";
-import { TizenStreamingServerResolver } from "../../../core/p2p/tizenStreamingServerResolver.js";
 import { DebridSettingsStore } from "../../../data/local/debridSettingsStore.js";
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
 import {
@@ -408,11 +406,7 @@ function flattenStreams(streamResult) {
         sourceType: stream.sourceType || stream.mimeType || stream.type || stream.source || "",
         raw: stream
       };
-      if (
-        DirectDebridResolver.shouldListStream(entry) ||
-        WebOsEngineFsResolver.canResolveStream(entry) ||
-        TizenStreamingServerResolver.canResolveStream(entry)
-      ) {
+      if (DirectDebridResolver.shouldListStream(entry)) {
         flattened.push(entry);
       }
     });
@@ -2090,9 +2084,6 @@ export const StreamScreen = {
     if (this.getWebOsNativeLaunchUrl(stream)) {
       return true;
     }
-    if (WebOsEngineFsResolver.canResolveStream(stream)) {
-      return true;
-    }
     return DirectDebridResolver.canResolveStream(stream, {
       season: this.params?.season ?? null,
       episode: this.params?.episode ?? null
@@ -2112,12 +2103,6 @@ export const StreamScreen = {
     const directUrl = this.getWebOsNativeLaunchUrl(stream);
     if (directUrl) {
       return { status: "success", stream };
-    }
-    if (WebOsEngineFsResolver.canResolveStream(stream)) {
-      const result = await WebOsEngineFsResolver.resolve(stream, {});
-      if (result?.status === "success" && result.stream) {
-        return result;
-      }
     }
     if (
       DirectDebridResolver.canResolveStream(stream, {

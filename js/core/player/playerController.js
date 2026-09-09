@@ -6,7 +6,6 @@ import { WatchProgressSyncService } from "../profile/watchProgressSyncService.js
 import { nativeVideoEngine } from "./engines/nativeVideoEngine.js";
 import { hlsJsEngine } from "./engines/hlsJsEngine.js";
 import { dashJsEngine } from "./engines/dashJsEngine.js";
-import { resolvePlatformAvplayEngine } from "./engines/platformAvplayEngine.js";
 import { isTerminalHlsHttpStatus } from "./hlsNetworkErrorPolicy.js";
 import {
   applyWebOsAudioCodecOverrides,
@@ -337,20 +336,16 @@ export const PlayerController = {
     );
   },
 
-  getPlatformAvplayEngine() {
-    return resolvePlatformAvplayEngine(Platform.getName());
-  },
-
   getPlatformAvplayEngineName() {
-    return this.getPlatformAvplayEngine().name;
+    return "none";
   },
 
   shouldPreferTvNativePipeline() {
-    return Platform.isTizen() || Platform.isWebOS();
+    return false;
   },
 
   getAvPlay() {
-    return this.getPlatformAvplayEngine().getApi();
+    return null;
   },
 
   getAvPlayState() {
@@ -371,10 +366,7 @@ export const PlayerController = {
   },
 
   canUseAvPlay() {
-    if (Platform.isWebOS()) {
-      return false;
-    }
-    return this.getPlatformAvplayEngine().isSupported();
+    return false;
   },
 
   isUsingNativePlayback() {
@@ -2866,14 +2858,8 @@ export const PlayerController = {
     );
   },
 
-  getPlaybackEngineCandidates(url, sourceType = null, itemType = this.currentItemType) {
+  getPlaybackEngineCandidates(url, sourceType = null) {
     const normalizedSourceType = String(sourceType || this.guessMediaMimeType(url) || "").trim();
-    const avplayEngine = this.getPlatformAvplayEngineName();
-    const isTizenRuntime = Platform.isTizen();
-    const isLivePlayback = this.isLivePlaybackItemType(itemType);
-    const canUseAvPlay = this.canUseAvPlay();
-    const preferTvNative = this.shouldPreferTvNativePipeline();
-    const canUseHlsJs = this.canUseHlsJs();
     const canUseDashJs = this.canUseDashJs();
     const canPlayNativeHls = this.canPlayNatively("application/vnd.apple.mpegurl");
     const canPlayNativeDash = this.canPlayNatively("application/dash+xml");
@@ -2888,82 +2874,35 @@ export const PlayerController = {
 
     if (this.isLikelyHlsMimeType(normalizedSourceType)) {
       const candidates = [];
-      if (isTizenRuntime && canUseAvPlay) {
-        pushCandidate(candidates, avplayEngine);
-      }
-      if (preferTvNative && canUseAvPlay) {
-        pushCandidate(candidates, avplayEngine);
-      }
-      if (!isTizenRuntime) {
-        // Android opens HLS through HlsMediaSource, which reports manifest
-        // failures directly. Prefer the equivalent hls.js pipeline here; if
-        // MSE is unavailable, playWithHlsJs falls back to native playback.
-        pushCandidate(candidates, "hls.js");
-      }
+      // Preserve the browser order: hls.js first, then the native WebKit
+      // fallback when the media element supports HLS.
+      pushCandidate(candidates, "hls.js");
       if (canPlayNativeHls) {
         pushCandidate(candidates, "native-hls");
-      }
-      if (isLivePlayback && (canUseHlsJs || isTizenRuntime)) {
-        pushCandidate(candidates, "hls.js");
-      }
-      if (isTizenRuntime && !isLivePlayback) {
-        pushCandidate(candidates, "hls.js");
-      }
-      if (canUseAvPlay) {
-        pushCandidate(candidates, avplayEngine);
       }
       return candidates;
     }
 
     if (this.isLikelyDashMimeType(normalizedSourceType)) {
       const candidates = [];
-      if (isTizenRuntime && canUseAvPlay) {
-        pushCandidate(candidates, avplayEngine);
-      }
-      if (preferTvNative && canUseAvPlay) {
-        pushCandidate(candidates, avplayEngine);
-      }
       if (canPlayNativeDash) {
         pushCandidate(candidates, "native-dash");
       }
-      if (isLivePlayback && (canUseDashJs || isTizenRuntime)) {
+      if (canUseDashJs) {
         pushCandidate(candidates, "dash.js");
-      }
-      if (isTizenRuntime && !isLivePlayback) {
-        pushCandidate(candidates, "dash.js");
-      }
-      if (!isTizenRuntime && canUseDashJs) {
-        pushCandidate(candidates, "dash.js");
-      }
-      if (canUseAvPlay) {
-        pushCandidate(candidates, avplayEngine);
       }
       return candidates;
     }
 
     if (this.isLikelySmoothStreamingMimeType(normalizedSourceType)) {
       const candidates = [];
-      if (isTizenRuntime && canUseAvPlay) {
-        pushCandidate(candidates, avplayEngine);
-      }
       if (canPlayNativeSmooth) {
         pushCandidate(candidates, "native-file");
-      }
-      if (canUseAvPlay) {
-        pushCandidate(candidates, avplayEngine);
       }
       return candidates;
     }
 
-    const candidates = [];
-    if (isTizenRuntime && canUseAvPlay) {
-      pushCandidate(candidates, avplayEngine);
-    }
-    pushCandidate(candidates, "native-file");
-    if (!isTizenRuntime && canUseAvPlay) {
-      pushCandidate(candidates, avplayEngine);
-    }
-    return candidates;
+    return ["native-file"];
   },
 
   getAlternativePlaybackEngine(
@@ -4302,24 +4241,15 @@ export const PlayerController = {
   },
 
   choosePlaybackEngine(url, sourceType, itemType = this.currentItemType) {
-    if (Platform.isTizen() && this.canUseAvPlay()) {
-      return this.getPlatformAvplayEngineName();
-    }
     const candidates = this.getPlaybackEngineCandidates(url, sourceType, itemType);
     if (candidates.length) {
       return candidates[0];
-    }
-    if (this.canUseAvPlay()) {
-      return this.getPlatformAvplayEngineName();
     }
     return "native-file";
   },
 
   async ensureAdaptiveLibrariesForSource(sourceType, playbackEngine = null) {
     const normalizedEngine = String(playbackEngine || "").trim();
-    if (Platform.isTizen() && normalizedEngine !== "hls.js" && normalizedEngine !== "dash.js") {
-      return;
-    }
     const normalizedSourceType = String(sourceType || "").trim();
     if (!normalizedSourceType) {
       return;

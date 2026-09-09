@@ -70,8 +70,6 @@ import {
 } from "../../../core/offline/browserOfflineDownloads.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { TrackingScrobbleService } from "../../../data/repository/trackingScrobbleService.js";
-import { WebOsEngineFsResolver } from "../../../core/p2p/webosEngineFsResolver.js";
-import { TizenStreamingServerResolver } from "../../../core/p2p/tizenStreamingServerResolver.js";
 import { TizenEngineFsService } from "../../../platform/tizen/tizenEngineFsService.js";
 import {
   requestWebOsCompanionService,
@@ -2000,11 +1998,7 @@ function flattenStreamGroups(streamResult) {
           : Number(group.addonOrderIndex ?? Number.MAX_SAFE_INTEGER),
         raw: stream
       };
-      if (
-        DirectDebridResolver.shouldListStream(entry) ||
-        WebOsEngineFsResolver.canResolveStream(entry) ||
-        TizenStreamingServerResolver.canResolveStream(entry)
-      ) {
+      if (DirectDebridResolver.shouldListStream(entry)) {
         flattened.push(entry);
       }
     });
@@ -2701,9 +2695,7 @@ export const PlayerScreen = {
       const sourceCandidate = initialStreamCandidate || this.getCurrentStreamCandidate();
       if (
         sourceCandidate &&
-        (DirectDebridResolver.canResolveStream(sourceCandidate) ||
-          WebOsEngineFsResolver.canResolveStream(sourceCandidate) ||
-          TizenStreamingServerResolver.canResolveStream(sourceCandidate))
+        DirectDebridResolver.canResolveStream(sourceCandidate)
       ) {
         void this.playStreamCandidate(sourceCandidate, {
           preservePendingRestore: true,
@@ -3661,11 +3653,7 @@ export const PlayerScreen = {
             : Number.MAX_SAFE_INTEGER,
           raw: stream
         };
-        return DirectDebridResolver.shouldListStream(entry) ||
-          WebOsEngineFsResolver.canResolveStream(entry) ||
-          TizenStreamingServerResolver.canResolveStream(entry)
-          ? entry
-          : null;
+        return DirectDebridResolver.shouldListStream(entry) ? entry : null;
       })
       .filter(Boolean);
     // Keep the browser player list canonical at its boundary. This is the
@@ -3842,17 +3830,7 @@ export const PlayerScreen = {
   },
 
   getEngineFsStateForStream(streamCandidate = null) {
-    if (Environment.isWebOS()) {
-      const state = WebOsEngineFsResolver.getResolvedStreamState(streamCandidate || {});
-      if (state) {
-        return state;
-      }
-    } else if (Environment.isTizen()) {
-      const state = TizenStreamingServerResolver.getResolvedStreamState(streamCandidate || {});
-      if (state) {
-        return state;
-      }
-    } else {
+    if (Environment.isBrowser()) {
       return null;
     }
     const playbackUrl = String(
@@ -3946,13 +3924,10 @@ export const PlayerScreen = {
         return false;
       }
       try {
-        const result =
-          target.kind === "tizen-streaming-server"
-            ? await TizenStreamingServerResolver.remove(target.infoHash, {
-                baseUrl: target.baseUrl,
-                timeoutMs: 2500
-              })
-            : await WebOsEngineFsResolver.remove(target.infoHash, { timeoutMs: 2500 });
+        // EngineFS/Tizen resolver lifecycle is deferred to Phase 5B. Browser
+        // playback no longer creates these states, so there is no native
+        // runtime cleanup request to make here.
+        const result = { status: "unsupported" };
         if (result?.status === "success") {
           logEngineFsDebug("EngineFS torrent removed", {
             reason,
@@ -11962,11 +11937,6 @@ export const PlayerScreen = {
         season: this.params?.season == null ? null : Number(this.params.season),
         episode: this.params?.episode == null ? null : Number(this.params.episode)
       };
-      const canUseEngineFs = WebOsEngineFsResolver.canResolveStream(streamCandidate);
-      const canUseTizenP2p = TizenStreamingServerResolver.canResolveStream(streamCandidate);
-      const canResolveP2p = canUseEngineFs || canUseTizenP2p;
-      const p2pEnabled = Boolean(TorrentSettingsStore.get().p2pEnabled);
-      const canUseP2p = p2pEnabled && canResolveP2p;
       let fallbackError = "";
       let resolveFailureStatus = "";
       let resolveFailureDetail = "";
@@ -12023,106 +11993,27 @@ export const PlayerScreen = {
         }
       }
 
-      if (!targetUrl && canUseP2p) {
-        const result = canUseEngineFs
-          ? await WebOsEngineFsResolver.resolve(streamCandidate, resolveContext)
-          : await TizenStreamingServerResolver.resolve(streamCandidate, resolveContext);
-        if (!this.isActiveMountToken(mountToken)) {
-          const resolvedEngineFs = result?.stream?.engineFs || null;
-          if (resolvedEngineFs?.infoHash) {
-            void this.cleanupEngineFsState(resolvedEngineFs, "stale-p2p-resolve", {
-              deferMs: 0
-            }).catch(() => null);
-          }
-          return;
-        }
-        if (result.status === "success" && result.stream?.url) {
-          targetUrl = result.stream.url;
-          Object.assign(streamCandidate, {
-            url: targetUrl,
-            externalUrl: null,
-            infoHash: result.stream.infoHash || streamCandidate.infoHash,
-            fileIdx: result.stream.fileIdx ?? streamCandidate.fileIdx,
-            engineFs: result.stream.engineFs || streamCandidate.engineFs || null,
-            tizenP2p: result.stream.tizenP2p || streamCandidate.tizenP2p || null,
-            mimeType: result.stream.mimeType || streamCandidate.mimeType,
-            sourceType: result.stream.sourceType || streamCandidate.sourceType,
-            behaviorHints: result.stream.behaviorHints || streamCandidate.behaviorHints,
-            raw: { ...(streamCandidate.raw || {}), ...(result.stream.raw || {}) }
-          });
-        } else {
-          resolveFailureStatus = result?.status || "p2p-failed";
-          resolveFailureDetail = result?.detail || result?.error || "";
-          console.warn("PlayerScreen: P2P resolve failed", {
-            status: result.status,
-            detail: result.detail || "",
-            infoHash:
-              streamCandidate.infoHash ||
-              streamCandidate.raw?.infoHash ||
-              streamCandidate.clientResolve?.infoHash ||
-              streamCandidate.raw?.clientResolve?.infoHash ||
-              "",
-            fileIdx: streamCandidate.fileIdx ?? streamCandidate.raw?.fileIdx ?? null
-          });
-        }
-      }
-
       if (!targetUrl) {
         if (!this.isActiveMountToken(mountToken)) {
           return;
         }
         const startupMessage =
-          fallbackError ||
-          (!p2pEnabled && canResolveP2p
-            ? t(
-                "player_error_p2p_disabled",
-                {},
-                "P2P streaming is disabled. Enable P2P in Settings to play torrent streams."
-              )
-            : canUseP2p
-              ? t(
-                  "player_error_failed_start_torrent",
-                  [t("player_error_playback_fallback", {}, "Playback error")],
-                  "Failed to start torrent: %1$s"
-                )
-              : t("player_error_playback_fallback", {}, "Playback error"));
+          fallbackError || t("player_error_playback_fallback", {}, "Playback error");
         if (!this.hasPresentedPlaybackFrame) {
           this.showStartupError(startupMessage, {
             streamCandidate,
-            reason:
-              !p2pEnabled && canResolveP2p
-                ? "p2p-disabled"
-                : canUseP2p
-                  ? "p2p-resolve"
-                  : "stream-resolve",
+            reason: "stream-resolve",
             resolverStatus: resolveFailureStatus,
             resolverDetail: resolveFailureDetail
           });
           return;
         }
         const sourceErrorMessage =
-          !p2pEnabled && canResolveP2p
-            ? t(
-                "player_error_p2p_disabled",
-                {},
-                "P2P streaming is disabled. Enable P2P in Settings to play torrent streams."
-              )
-            : canUseP2p
-              ? t("stream.p2p.failed", {}, "Could not start this torrent stream.")
-              : fallbackError ||
-                t(
-                  "stream.debrid.unavailable",
-                  {},
-                  "This Debrid source needs a configured Debrid account."
-                );
+          fallbackError ||
+          t("stream.debrid.unavailable", {}, "This Debrid source needs a configured Debrid account.");
         this.sourcesError = this.formatPlaybackErrorForSources(sourceErrorMessage, {
           streamCandidate,
-          reason:
-            !p2pEnabled && canResolveP2p
-              ? "p2p-disabled"
-              : canUseP2p
-                ? "p2p-resolve"
-                : "stream-resolve",
+          reason: "stream-resolve",
           resolverStatus: resolveFailureStatus,
           resolverDetail: resolveFailureDetail
         });
@@ -20695,9 +20586,7 @@ export const PlayerScreen = {
         Boolean(
           stream?.url ||
           stream?.externalUrl ||
-          DirectDebridResolver.canResolveStream(stream, resolveContext) ||
-          WebOsEngineFsResolver.canResolveStream(stream) ||
-          TizenStreamingServerResolver.canResolveStream(stream)
+          DirectDebridResolver.canResolveStream(stream, resolveContext)
         )
       )
       .map((stream) => {
@@ -20785,14 +20674,6 @@ export const PlayerScreen = {
           score += isWebOsRuntime ? 10 : 4;
         }
 
-        if (
-          !stream.url &&
-          !stream.externalUrl &&
-          (WebOsEngineFsResolver.canResolveStream(stream) ||
-            TizenStreamingServerResolver.canResolveStream(stream))
-        ) {
-          score += 4;
-        }
         if (
           !stream.url &&
           !stream.externalUrl &&
