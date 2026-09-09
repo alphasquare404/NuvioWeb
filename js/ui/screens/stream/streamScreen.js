@@ -38,7 +38,6 @@ import {
 } from "../../../core/media/addonLogoCache.js";
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
-import { WebOsLunaService } from "../../../platform/webos/webosLunaService.js";
 import { I18n } from "../../../i18n/index.js";
 import {
   matchStreamBadges,
@@ -96,13 +95,6 @@ const STREAM_BADGE_LIMIT = 9;
 // focus move O(1) in layout reads on TV browsers, where measuring every card
 // forced a full list reflow on each keypress in long source lists.
 const TV_STREAM_BADGE_WINDOW_ROWS = 24;
-const WEBOS_NATIVE_PLAYER_APP_IDS = [
-  "com.webos.app.mediadiscovery",
-  "com.webos.app.photovideo",
-  "com.webos.app.smartshare"
-];
-const WEBOS_DLNA_PROTOCOL_SUFFIX =
-  "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000";
 function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
 }
@@ -118,48 +110,6 @@ function escapeHtml(value = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-}
-
-function isLaunchableExternalMediaUrl(value = "") {
-  try {
-    const parsed = new URL(String(value || "").trim());
-    return (
-      parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "file:"
-    );
-  } catch (_) {
-    return false;
-  }
-}
-
-function isLocalOnlyPlaybackUrl(value = "") {
-  try {
-    const parsed = new URL(String(value || "").trim());
-    if (parsed.protocol === "file:") {
-      return false;
-    }
-    return (
-      parsed.hostname === "127.0.0.1" ||
-      parsed.hostname === "localhost" ||
-      parsed.hostname === "::1"
-    );
-  } catch (_) {
-    return false;
-  }
-}
-
-function buildWebOsDlnaProtocolInfo(mimeType = "video/mp4") {
-  const normalized = String(mimeType || "video/mp4").trim() || "video/mp4";
-  return `http-get:*:${normalized}:${WEBOS_DLNA_PROTOCOL_SUFFIX}`;
-}
-
-function normalizeExternalLaunchFileName(value = "") {
-  const trimmed = String(value || "").trim();
-  return (
-    trimmed
-      .replace(/[\\/:*?"<>|]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim() || "Nuvio"
-  );
 }
 
 function guessMimeTypeFromUrl(url = "") {
@@ -1030,9 +980,6 @@ export const StreamScreen = {
         this.maybeAutoPlayStream();
       }, autoPlayWaitSeconds * 1000);
     }
-    this.webOsNativePlayerAppId = "";
-    this.nativePlayerPendingStreamId = "";
-    this.nativePlayerRequestToken = 0;
     this.offlineDownloadsSupported = false;
     this.offlineDownloadMetadata = new Map();
     this.offlineLocalCopies = [];
@@ -1065,7 +1012,6 @@ export const StreamScreen = {
         this.requestRender({ delayMs: 0 });
       });
       void ensureWebOsImageProxyReady();
-      void this.detectWebOsNativePlayerApp();
     }
 
     // Match Android TV: restore the selected source only when returning from
@@ -1963,37 +1909,6 @@ export const StreamScreen = {
     return { isSeries, title, subtitle, episodeLabel, detailLine };
   },
 
-  async detectWebOsNativePlayerApp() {
-    if (!Environment.isWebOS() || !WebOsLunaService.isAvailable()) {
-      this.webOsNativePlayerAppId = "";
-      return "";
-    }
-    const requestToken = Number(this.nativePlayerRequestToken || 0) + 1;
-    this.nativePlayerRequestToken = requestToken;
-    for (const appId of WEBOS_NATIVE_PLAYER_APP_IDS) {
-      try {
-        const payload = await WebOsLunaService.request("luna://com.webos.applicationManager", {
-          method: "getAppLoadStatus",
-          parameters: { appId }
-        });
-        if (payload?.exist) {
-          if (this.nativePlayerRequestToken === requestToken) {
-            this.webOsNativePlayerAppId = appId;
-            this.requestRender({ delayMs: 0 });
-          }
-          return appId;
-        }
-      } catch (_) {
-        // Continue trying known native-player app ids.
-      }
-    }
-    if (this.nativePlayerRequestToken === requestToken) {
-      this.webOsNativePlayerAppId = "";
-      this.requestRender({ delayMs: 0 });
-    }
-    return "";
-  },
-
   showStreamToast(message) {
     if (!this.container) {
       return;
@@ -2055,174 +1970,6 @@ export const StreamScreen = {
       webm: "video/webm"
     };
     return aliasMap[alias] || guessMimeTypeFromUrl(fallbackUrl) || "video/mp4";
-  },
-
-  getWebOsNativeLaunchUrl(stream = {}) {
-    const requestHeaders = this.getStreamRequestHeaders(stream);
-    if (Object.keys(requestHeaders).length) {
-      return "";
-    }
-    const candidates = [
-      stream?.engineFs?.publicPlaybackUrl,
-      stream?.raw?.engineFs?.publicPlaybackUrl,
-      stream?.externalUrl,
-      stream?.url,
-      stream?.raw?.externalUrl,
-      stream?.raw?.url
-    ].filter(Boolean);
-    return (
-      candidates.find(
-        (value) => isLaunchableExternalMediaUrl(value) && !isLocalOnlyPlaybackUrl(value)
-      ) || ""
-    );
-  },
-
-  canOfferNativePlayerForStream(stream = {}) {
-    if (!Environment.isWebOS() || !this.webOsNativePlayerAppId) {
-      return false;
-    }
-    if (this.getWebOsNativeLaunchUrl(stream)) {
-      return true;
-    }
-    return DirectDebridResolver.canResolveStream(stream, {
-      season: this.params?.season ?? null,
-      episode: this.params?.episode ?? null
-    });
-  },
-
-  replaceStreamInList(streamId, nextStream = null) {
-    if (!streamId || !nextStream) {
-      return;
-    }
-    this.streams = this.streams.map((stream) =>
-      stream.id === streamId ? { ...stream, ...nextStream } : stream
-    );
-  },
-
-  async resolveStreamForNativePlayer(stream = {}) {
-    const directUrl = this.getWebOsNativeLaunchUrl(stream);
-    if (directUrl) {
-      return { status: "success", stream };
-    }
-    if (
-      DirectDebridResolver.canResolveStream(stream, {
-        season: this.params?.season ?? null,
-        episode: this.params?.episode ?? null
-      })
-    ) {
-      const result = await DirectDebridResolver.resolve(stream, {
-        season: this.params?.season ?? null,
-        episode: this.params?.episode ?? null
-      });
-      if (result?.status === "success" && result.stream) {
-        return result;
-      }
-      return result || { status: "unavailable" };
-    }
-    return { status: "unavailable" };
-  },
-
-  buildWebOsNativePlayerLaunchParameters(stream = {}) {
-    const appId = String(this.webOsNativePlayerAppId || "").trim();
-    const launchUrl = this.getWebOsNativeLaunchUrl(stream);
-    if (!appId || !launchUrl) {
-      return null;
-    }
-    const filename = normalizeExternalLaunchFileName(
-      stream?.behaviorHints?.filename ||
-        stream?.raw?.behaviorHints?.filename ||
-        stream?.title ||
-        stream?.name ||
-        this.params?.itemTitle ||
-        this.params?.playerTitle
-    );
-    const mimeType = this.resolveStreamMimeType(stream, launchUrl);
-    return {
-      id: appId,
-      params: {
-        payload: [
-          {
-            fullPath: launchUrl,
-            artist: "",
-            subtitle: "",
-            dlnaInfo: {
-              flagVal: 4096,
-              cleartextSize: "-1",
-              contentLength: "-1",
-              opVal: 1,
-              protocolInfo: buildWebOsDlnaProtocolInfo(mimeType),
-              duration: 0
-            },
-            mediaType: "VIDEO",
-            thumbnail: "",
-            deviceType: "DMR",
-            album: "",
-            fileName: filename,
-            lastPlayPosition: -1
-          }
-        ]
-      }
-    };
-  },
-
-  async openStreamInNativePlayer(streamId) {
-    if (!Environment.isWebOS() || !this.webOsNativePlayerAppId || !WebOsLunaService.isAvailable()) {
-      return;
-    }
-    if (this.nativePlayerPendingStreamId) {
-      return;
-    }
-    const selected =
-      this.getFilteredStreams().find((stream) => stream.id === streamId) ||
-      this.streams.find((stream) => stream.id === streamId) ||
-      null;
-    if (!selected) {
-      return;
-    }
-
-    this.nativePlayerPendingStreamId = streamId;
-    this.requestRender({ delayMs: 0 });
-    try {
-      const result = await this.resolveStreamForNativePlayer(selected);
-      if (result?.status !== "success" || !result.stream) {
-        this.showStreamToast(
-          t(
-            "player_external_launch_unavailable",
-            {},
-            "This stream cannot be opened in Native Player"
-          )
-        );
-        return;
-      }
-
-      this.replaceStreamInList(streamId, result.stream);
-      const launchParameters = this.buildWebOsNativePlayerLaunchParameters(result.stream);
-      if (!launchParameters) {
-        this.requestRender({ delayMs: 0 });
-        this.showStreamToast(
-          t(
-            "player_external_launch_unavailable",
-            {},
-            "This stream cannot be opened in Native Player"
-          )
-        );
-        return;
-      }
-
-      await WebOsLunaService.request("luna://com.webos.applicationManager", {
-        method: "launch",
-        parameters: launchParameters
-      });
-      this.showStreamToast(
-        t("player_external_launching_media_player", {}, "Opening Native Player")
-      );
-    } catch (error) {
-      console.warn("Failed to open stream in native player", { streamId, error });
-      this.showStreamToast(t("player_external_launch_failed", {}, "Could not open Native Player"));
-    } finally {
-      this.nativePlayerPendingStreamId = "";
-      this.requestRender({ delayMs: 0 });
-    }
   },
 
   renderChip(name, selected, status) {
@@ -3136,10 +2883,6 @@ export const StreamScreen = {
       this.playStream(actionTarget.dataset.streamId);
       return true;
     }
-    if (action === "openNativePlayer") {
-      void this.openStreamInNativePlayer(actionTarget.dataset.streamId);
-      return true;
-    }
     return false;
   },
 
@@ -3295,9 +3038,6 @@ export const StreamScreen = {
       this.playStream(current.dataset.streamId);
       return;
     }
-    if (action === "openNativePlayer") {
-      void this.openStreamInNativePlayer(current.dataset.streamId);
-    }
   },
 
   cleanup() {
@@ -3308,7 +3048,6 @@ export const StreamScreen = {
     this.offlineDownloadsUnsubscribe = null;
     this.loadToken = (this.loadToken || 0) + 1;
     this.playResolveToken = Number(this.playResolveToken || 0) + 1;
-    this.nativePlayerRequestToken = Number(this.nativePlayerRequestToken || 0) + 1;
     this.cancelScheduledRender();
     if (this.errorChipTimer) {
       clearTimeout(this.errorChipTimer);

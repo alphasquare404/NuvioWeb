@@ -1,85 +1,16 @@
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
 import { watchedItemsRepository } from "../../data/repository/watchedItemsRepository.js";
 import { watchedSeriesReconciliationService } from "../../data/repository/watchedSeriesReconciliationService.js";
-import { Platform } from "../../platform/index.js";
 import { WatchProgressSyncService } from "../profile/watchProgressSyncService.js";
 import { nativeVideoEngine } from "./engines/nativeVideoEngine.js";
 import { hlsJsEngine } from "./engines/hlsJsEngine.js";
 import { dashJsEngine } from "./engines/dashJsEngine.js";
 import { isTerminalHlsHttpStatus } from "./hlsNetworkErrorPolicy.js";
-import {
-  applyWebOsAudioCodecOverrides,
-  detectWebOsAudioCapabilities
-} from "../../platform/webos/webosAudioCapabilities.js";
-import { WebOsLunaService } from "../../platform/webos/webosLunaService.js";
-import { WebOSPlayerExtensions } from "../../platform/webos/webosPlayerExtensions.js";
 import { loadStreamingLibs } from "../../runtime/loadStreamingLibs.js";
 
 const MIN_PROGRESS_SYNC_DURATION_MS = 1000;
-const WEBOS_AUDIO_TRACK_SELECTION_TIMEOUT_MS = 4000;
-const AVPLAY_BUFFER_FOR_PLAY_SECONDS = 5;
-const AVPLAY_BUFFER_FOR_RESUME_SECONDS = 4;
-const AVPLAY_BUFFERING_TIMEOUT_SECONDS = 10;
 const HLS_TRANSIENT_LEVEL_404_RETRY_LIMIT = 2;
 const HLS_TRANSIENT_LEVEL_404_RETRY_BASE_DELAY_MS = 1500;
-
-function logEngineFsDebug(...args) {
-  if (globalThis.__NUVIO_DEBUG_ENGINEFS__) {
-    console.info(...args);
-  }
-}
-
-function logTizenAvPlayDebug(...args) {
-  if (globalThis.__NUVIO_DEBUG_TIZEN_AVPLAY__ || globalThis.__NUVIO_DEBUG_ENGINEFS__) {
-    console.info(...args);
-  }
-}
-
-function isValidAvPlayAudioTrackSelectionState(state) {
-  return state === "PLAYING";
-}
-
-function isValidAvPlaySubtitleTrackSelectionState(state) {
-  return state === "PLAYING" || state === "PAUSED";
-}
-
-function isValidAvPlayPlaybackSpeedState(state) {
-  return state === "READY" || state === "PLAYING" || state === "PAUSED";
-}
-
-function normalizeAvPlaySubtitleRenderMode(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase() === "html"
-    ? "html"
-    : "native";
-}
-
-function isAbsoluteLocalAvPlaySubtitlePath(value) {
-  const path = String(value || "").trim();
-  return path.startsWith("/") || /^file:\/\//i.test(path);
-}
-
-// com.webos.media exposes five discrete subtitle sizes (0=tiny, 4=largest).
-function resolveWebOsSubtitleFontSizeLevel(value) {
-  const size = Number(value);
-  if (!Number.isFinite(size)) {
-    return 1;
-  }
-  if (size <= 70) {
-    return 0;
-  }
-  if (size <= 100) {
-    return 1;
-  }
-  if (size <= 125) {
-    return 2;
-  }
-  if (size <= 150) {
-    return 3;
-  }
-  return 4;
-}
 
 export const PlayerController = {
   video: null,
@@ -97,32 +28,6 @@ export const PlayerController = {
   hlsInstance: null,
   dashInstance: null,
   playbackEngine: "none",
-  avplayActive: false,
-  avplayUrl: "",
-  avplayAudioTracks: [],
-  avplaySubtitleTracks: [],
-  selectedAvPlayAudioTrackIndex: -1,
-  selectedAvPlaySubtitleTrackIndex: -1,
-  pendingAvPlayAudioTrackIndex: -1,
-  desiredAvPlayAudioTrackIndex: -1,
-  desiredAvPlayAudioTrackUntil: 0,
-  pendingAvPlaySubtitleTrackIndex: -1,
-  pendingAvPlaySubtitleReactivation: false,
-  desiredAvPlaySubtitleTrackIndex: -1,
-  desiredAvPlaySubtitleTrackUntil: 0,
-  avplaySubtitleSelectionToken: 0,
-  avplaySubtitlesSilent: false,
-  avplayNativeSubtitleRendering: false,
-  avplaySubtitleRenderMode: "native",
-  avplayExternalSubtitlePath: "",
-  avplayExternalSubtitleDelayMs: 0,
-  appliedAvPlayExternalSubtitleDelayKey: "",
-  avplayTickTimer: null,
-  avplayReady: false,
-  avplayEnded: false,
-  avplayCurrentTimeMs: 0,
-  avplayDurationMs: 0,
-  avplayTrackSyncAt: 0,
   lastPlaybackErrorCode: 0,
   lastHlsErrorDiagnostic: null,
   currentPlaybackUrl: "",
@@ -130,34 +35,13 @@ export const PlayerController = {
   currentPlaybackMediaSourceType: null,
   lastProgressSnapshot: null,
   lastKnownDurationSeconds: 0,
-  avplayFallbackAttempts: new Set(),
   playbackEngineAttempts: new Map(),
   playRequestToken: 0,
   playbackSessionActive: false,
-  nativeMediaId: "",
-  nativeMediaIdLookupToken: 0,
-  selectedWebOsEmbeddedAudioTrackIndex: -1,
-  selectedWebOsEmbeddedSubtitleTrackIndex: -1,
-  webOsAudioSelectionRequestToken: 0,
-  webOsSubtitleFontSizeLevel: 1,
-  appliedWebOsSubtitleFontSizeKey: "",
-  webosDeviceInfoPromise: null,
-  webosAudioCapabilities: null,
-  webosUnsupportedAudioCodecs: new Set(["dts", "truehd"]),
-  forceDtsAudio: false,
-  forceTrueHdAudio: false,
-  viewportSyncHandler: null,
-  avplayDisplayRect: null,
-  avplayDisplayMethod: "PLAYER_DISPLAY_MODE_FULL_SCREEN",
   startupAudioGateActive: false,
   startupAudioGatePausesNativePlayback: true,
   startupPresentationAudioMuted: false,
   desiredPlaybackRate: 1,
-  appliedAvPlayPlaybackRate: 1,
-  appliedWebOsPlaybackRate: 1,
-  webOsPlaybackRateRequestToken: 0,
-  webOsPlaybackRateCommandPromise: null,
-  webOsPlaybackRateReapplyPromise: null,
   videoElementListeners: [],
 
   isExpectedPlayInterruption(error) {
@@ -180,6 +64,25 @@ export const PlayerController = {
       return false;
     }
     return Boolean(this.video);
+  },
+
+  emitVideoEvent(eventName, detail = null) {
+    if (!this.video || !eventName) {
+      return;
+    }
+    try {
+      const event =
+        typeof CustomEvent === "function"
+          ? new CustomEvent(eventName, { detail: detail || null })
+          : (() => {
+              const legacyEvent = document.createEvent("CustomEvent");
+              legacyEvent.initCustomEvent(eventName, false, false, detail || null);
+              return legacyEvent;
+            })();
+      this.video.dispatchEvent?.(event);
+    } catch (_) {
+      // Ignore synthetic browser media-event failures.
+    }
   },
 
   normalizeMimeType(mimeType) {
@@ -336,240 +239,6 @@ export const PlayerController = {
     );
   },
 
-  getPlatformAvplayEngineName() {
-    return "none";
-  },
-
-  shouldPreferTvNativePipeline() {
-    return false;
-  },
-
-  getAvPlay() {
-    return null;
-  },
-
-  getAvPlayState() {
-    if (!this.isUsingAvPlay()) {
-      return "";
-    }
-    const avplay = this.getAvPlay();
-    if (!avplay) {
-      return "";
-    }
-    try {
-      return String(avplay.getState?.() || "")
-        .trim()
-        .toUpperCase();
-    } catch (_) {
-      return "";
-    }
-  },
-
-  canUseAvPlay() {
-    return false;
-  },
-
-  isUsingNativePlayback() {
-    return String(this.playbackEngine || "").startsWith("native");
-  },
-
-  refreshWebOsDeviceInfo({ forceRefresh = false } = {}) {
-    if (!Platform.isWebOS()) {
-      return Promise.resolve({
-        unsupportedAudioCodecs: this.getWebOsUnsupportedAudioCodecs()
-      });
-    }
-    if (this.webosDeviceInfoPromise && !forceRefresh) {
-      return this.webosDeviceInfoPromise;
-    }
-
-    this.webosDeviceInfoPromise = detectWebOsAudioCapabilities({ forceRefresh })
-      .then((capabilities) => {
-        this.webosAudioCapabilities = capabilities;
-        this.webosUnsupportedAudioCodecs = new Set(capabilities.unsupportedAudioCodecs);
-        return {
-          ...capabilities,
-          unsupportedAudioCodecs: this.getWebOsUnsupportedAudioCodecs()
-        };
-      })
-      .catch(() => ({
-        unsupportedAudioCodecs: this.getWebOsUnsupportedAudioCodecs()
-      }));
-
-    return this.webosDeviceInfoPromise;
-  },
-
-  setWebOsAudioCodecOverrides({ forceDtsAudio = false, forceTrueHdAudio = false } = {}) {
-    this.forceDtsAudio = Boolean(forceDtsAudio);
-    this.forceTrueHdAudio = Boolean(forceTrueHdAudio);
-  },
-
-  setForceDtsTrueHdAudio(enabled) {
-    const forceAll = Boolean(enabled);
-    this.setWebOsAudioCodecOverrides({
-      forceDtsAudio: forceAll,
-      forceTrueHdAudio: forceAll
-    });
-  },
-
-  getWebOsUnsupportedAudioCodecs() {
-    return applyWebOsAudioCodecOverrides(this.webosUnsupportedAudioCodecs, {
-      forceDtsAudio: this.forceDtsAudio,
-      forceTrueHdAudio: this.forceTrueHdAudio
-    });
-  },
-
-  getWebOsUnsupportedAudioPenalty(text = "") {
-    const unsupportedAudioCodecs = new Set(this.getWebOsUnsupportedAudioCodecs());
-    const normalizedText = String(text || "")
-      .toLowerCase()
-      .replace(/[_-]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    let penalty = 0;
-    if (
-      unsupportedAudioCodecs.has("dts") &&
-      /\b(dts hd|dts hd ma|dts x|dtsx|dts)\b/.test(normalizedText)
-    ) {
-      penalty -= 45;
-    }
-    if (
-      unsupportedAudioCodecs.has("truehd") &&
-      /\b(truehd|true hd|dolby truehd|mlp fba|a truehd)\b/.test(normalizedText)
-    ) {
-      penalty -= 45;
-    }
-    return penalty;
-  },
-
-  isLikelyUnsupportedWebOsAudioTrackDescription(text = "") {
-    return this.getWebOsUnsupportedAudioPenalty(text) < 0;
-  },
-
-  isLikelyDirectFileUrl(url) {
-    const raw = String(url || "").trim();
-    if (!raw) {
-      return false;
-    }
-
-    const probes = [raw];
-    try {
-      probes.push(decodeURIComponent(raw));
-    } catch (_) {
-      // Ignore decode failures.
-    }
-
-    return probes.some((value) =>
-      /\.(mkv|mp4|m4v|mov|webm|avi|wmv|ts|m2ts|mpg|mpeg|3gp)(?=($|[/?#&]))/i.test(
-        String(value || "")
-      )
-    );
-  },
-
-  isUsingAvPlay() {
-    return String(this.playbackEngine || "").endsWith("avplay") && this.avplayActive;
-  },
-
-  shouldKeepWebOsPlaybackAwake() {
-    return Boolean(
-      Platform.isWebOS() && this.playbackSessionActive && this.isPlaying && !this.isPlaybackEnded()
-    );
-  },
-
-  syncWebOsPlaybackKeepAwake() {
-    if (!Platform.isWebOS()) {
-      return;
-    }
-    if (this.shouldKeepWebOsPlaybackAwake()) {
-      WebOSPlayerExtensions.startPlaybackKeepAwake(() => this.shouldKeepWebOsPlaybackAwake());
-    } else {
-      WebOSPlayerExtensions.stopPlaybackKeepAwake();
-    }
-  },
-
-  emitVideoEvent(eventName, detail = null) {
-    if (!this.video || !eventName) {
-      return;
-    }
-
-    try {
-      const event =
-        typeof CustomEvent === "function"
-          ? new CustomEvent(eventName, { detail: detail || null })
-          : (() => {
-              const legacyEvent = document.createEvent("CustomEvent");
-              legacyEvent.initCustomEvent(eventName, false, false, detail || null);
-              return legacyEvent;
-            })();
-      this.video.dispatchEvent(event);
-    } catch (_) {
-      // Ignore synthetic event failures.
-    }
-  },
-
-  requestWebOsMediaCommand(method, parameters = {}) {
-    if (!Platform.isWebOS() || !WebOsLunaService.isAvailable()) {
-      return Promise.reject(new Error("webOS Luna media service unavailable"));
-    }
-    return WebOsLunaService.request("luna://com.webos.media", {
-      method,
-      parameters
-    });
-  },
-
-  resetNativeMediaState() {
-    this.nativeMediaId = "";
-    this.nativeMediaIdLookupToken = Number(this.nativeMediaIdLookupToken || 0) + 1;
-    this.webOsPlaybackRateRequestToken = Number(this.webOsPlaybackRateRequestToken || 0) + 1;
-    this.appliedWebOsPlaybackRate = 1;
-    this.webOsPlaybackRateCommandPromise = null;
-    this.webOsPlaybackRateReapplyPromise = null;
-    this.cancelWebOsAudioTrackSelection();
-    this.selectedWebOsEmbeddedAudioTrackIndex = -1;
-    this.selectedWebOsEmbeddedSubtitleTrackIndex = -1;
-    this.appliedWebOsSubtitleFontSizeKey = "";
-  },
-
-  syncNativeMediaId() {
-    const mediaId = String(this.video?.mediaId || "").trim();
-    if (mediaId) {
-      this.nativeMediaId = mediaId;
-    }
-    return this.nativeMediaId;
-  },
-
-  waitForNativeMediaId({ maxAttempts = 4, intervalMs = 300 } = {}) {
-    if (!Platform.isWebOS() || !this.video || !this.isUsingNativePlayback()) {
-      return Promise.resolve(null);
-    }
-
-    const existingMediaId = this.syncNativeMediaId();
-    if (existingMediaId) {
-      return Promise.resolve(existingMediaId);
-    }
-
-    const lookupToken = Number(this.nativeMediaIdLookupToken || 0) + 1;
-    this.nativeMediaIdLookupToken = lookupToken;
-
-    return new Promise((resolve) => {
-      let attempts = 0;
-      const poll = () => {
-        if (lookupToken !== this.nativeMediaIdLookupToken) {
-          resolve(null);
-          return;
-        }
-        const mediaId = this.syncNativeMediaId();
-        if (mediaId || attempts >= maxAttempts) {
-          resolve(mediaId || null);
-          return;
-        }
-        attempts += 1;
-        setTimeout(poll, intervalMs);
-      };
-      poll();
-    });
-  },
-
   nativeAudioTrackListToArray() {
     const audioTrackList =
       this.video?.audioTracks ||
@@ -594,22 +263,65 @@ export const PlayerController = {
     }
   },
 
-  stopAvPlayTickTimer() {
-    if (this.avplayTickTimer) {
-      clearInterval(this.avplayTickTimer);
-      this.avplayTickTimer = null;
-    }
+  getNativeAudioTracks() {
+    return this.nativeAudioTrackListToArray().map((track, index) => ({
+      id: String(track?.id ?? `native-audio-${index}`),
+      index,
+      label: String(track?.label || track?.name || track?.language || `Audio ${index + 1}`),
+      language: String(track?.language || track?.lang || ""),
+      selected: Boolean(track?.enabled || track?.selected),
+      engine: "native",
+      raw: track
+    }));
   },
 
-  startAvPlayTickTimer() {
-    this.stopAvPlayTickTimer();
-    this.avplayTickTimer = setInterval(() => {
-      if (!this.isUsingAvPlay()) {
-        return;
-      }
-      this.refreshAvPlayTimeline();
-      this.emitVideoEvent("timeupdate", { playbackEngine: this.playbackEngine });
-    }, 1000);
+  getBrowserAudioTracks() {
+    if (this.playbackEngine === "hls.js") {
+      const selectedIndex = this.getSelectedHlsAudioTrackIndex();
+      return this.getHlsAudioTracks().map((track, index) => ({
+        id: String(track?.id ?? track?.name ?? `hls-audio-${index}`),
+        index,
+        label: String(track?.name || track?.label || track?.lang || `Audio ${index + 1}`),
+        language: String(track?.lang || track?.language || ""),
+        selected: index === selectedIndex,
+        engine: "hls.js",
+        raw: track
+      }));
+    }
+    if (this.playbackEngine === "dash.js") {
+      const selectedIndex = this.getSelectedDashAudioTrackIndex();
+      return this.getDashAudioTracks().map((track, index) => ({
+        ...track,
+        index,
+        selected: index === selectedIndex,
+        engine: "dash.js"
+      }));
+    }
+    return this.getNativeAudioTracks();
+  },
+
+  getSelectedBrowserAudioTrackIndex() {
+    return this.getBrowserAudioTracks().findIndex((track) => track.selected);
+  },
+
+  setBrowserAudioTrack(index) {
+    const targetIndex = Number(index);
+    const tracks = this.getBrowserAudioTracks();
+    if (!Number.isFinite(targetIndex) || targetIndex < 0 || targetIndex >= tracks.length) {
+      return false;
+    }
+    const engine = tracks[targetIndex]?.engine;
+    if (engine === "hls.js") {
+      return this.setHlsAudioTrack(targetIndex);
+    }
+    if (engine === "dash.js") {
+      return this.setDashAudioTrack(targetIndex);
+    }
+    const applied = this.setNativeAudioTrack(targetIndex);
+    if (applied) {
+      this.emitVideoEvent("audiotrackschanged", { playbackEngine: "native-file" });
+    }
+    return applied;
   },
 
   applyStartupAudioGateToVideo() {
@@ -637,20 +349,19 @@ export const PlayerController = {
   },
 
   pauseNativePlaybackForStartupGate() {
-    if (!this.video || this.isUsingAvPlay() || !this.startupAudioGateActive) {
+    if (!this.video || !this.startupAudioGateActive) {
       return;
     }
     try {
       this.video.pause();
       this.isPlaying = false;
-      this.syncWebOsPlaybackKeepAwake();
     } catch (_) {
       // Ignore pause failures while the media element is still loading.
     }
   },
 
   resumeNativePlaybackAfterStartupGate() {
-    if (!this.video || this.isUsingAvPlay()) {
+    if (!this.video) {
       return;
     }
     try {
@@ -664,7 +375,6 @@ export const PlayerController = {
         });
       }
       this.isPlaying = true;
-      this.syncWebOsPlaybackKeepAwake();
     } catch (error) {
       if (!this.isExpectedPlayInterruption(error)) {
         console.warn("Playback start after startup gate rejected", error);
@@ -675,7 +385,6 @@ export const PlayerController = {
   handleNativePlayStartedUnderStartupGate(playPromise = null) {
     if (
       !this.startupAudioGateActive ||
-      this.isUsingAvPlay() ||
       !this.startupAudioGatePausesNativePlayback
     ) {
       return playPromise;
@@ -694,6 +403,48 @@ export const PlayerController = {
     return playPromise;
   },
 
+  attemptBrowserVideoPlay({
+    warningLabel = "Playback start rejected",
+    onRejected = null,
+    playToken = null
+  } = {}) {
+    if (!this.video || (playToken !== null && playToken !== this.playRequestToken)) {
+      return Promise.resolve(false);
+    }
+
+    const handleRejectedPlay = async (error) => {
+      if (this.isExpectedPlayInterruption(error)) {
+        return false;
+      }
+      if (typeof onRejected === "function") {
+        try {
+          if (await onRejected(error)) {
+            return true;
+          }
+        } catch (_) {
+          // Continue to the normal browser playback failure path.
+        }
+      }
+      this.isPlaying = false;
+      console.warn(warningLabel, error);
+      return false;
+    };
+
+    try {
+      this.applyStartupAudioGateToVideo();
+      const playPromise = this.handleNativePlayStartedUnderStartupGate(this.video.play());
+      if (!playPromise || typeof playPromise.then !== "function") {
+        return Promise.resolve(true);
+      }
+      return Promise.resolve(playPromise).then(
+        () => true,
+        (error) => handleRejectedPlay(error)
+      );
+    } catch (error) {
+      return handleRejectedPlay(error);
+    }
+  },
+
   setStartupAudioGate(active, { resume = true, pauseNativePlayback = true } = {}) {
     const shouldGate = Boolean(active);
     const wasGated = Boolean(this.startupAudioGateActive);
@@ -703,27 +454,10 @@ export const PlayerController = {
     this.applyStartupAudioGateToVideo();
 
     if (shouldGate) {
-      if (this.isUsingAvPlay() && this.isPlaying) {
-        const avplay = this.getAvPlay();
-        try {
-          avplay?.pause?.();
-          this.isPlaying = false;
-          this.syncWebOsPlaybackKeepAwake();
-          this.stopAvPlayTickTimer();
-        } catch (_) {
-          // Ignore AVPlay pause failures while replacing the source.
-        }
-      }
       return;
     }
 
     if (!resume || !wasGated) {
-      return;
-    }
-    if (this.isUsingAvPlay()) {
-      if (this.avplayReady) {
-        this.startPreparedAvPlayPlayback();
-      }
       return;
     }
     if (nativePlaybackWasPausedForGate || this.video?.paused) {
@@ -731,1849 +465,12 @@ export const PlayerController = {
     }
   },
 
-  startPreparedAvPlayPlayback({ syncTracks = true } = {}) {
-    const avplay = this.getAvPlay();
-    if (!avplay || !this.isUsingAvPlay()) {
-      return false;
-    }
-    try {
-      avplay.play?.();
-      this.isPlaying = true;
-      this.syncWebOsPlaybackKeepAwake();
-      this.reapplyAvPlayPlaybackRate();
-      this.reapplyTizenAvPlayDisplayRect();
-      this.reapplyTizenAvPlayDisplayRect(250);
-      this.startAvPlayTickTimer();
-      this.emitVideoEvent("playing", { playbackEngine: this.playbackEngine });
-      [0, 250, 750, 1500].forEach((delayMs) => {
-        setTimeout(() => {
-          if (!this.isUsingAvPlay()) {
-            return;
-          }
-          this.reapplyAvPlayPlaybackRate();
-          this.applyPendingAvPlayAudioTrackSelection();
-          this.applyPendingAvPlaySubtitleTrackSelection();
-        }, delayMs);
-      });
-      setTimeout(
-        () => {
-          if (!this.isUsingAvPlay()) {
-            return;
-          }
-          this.reapplyAvPlayPlaybackRate();
-          this.applyPendingAvPlayAudioTrackSelection();
-          this.applyPendingAvPlaySubtitleTrackSelection();
-          if (syncTracks) {
-            this.syncAvPlayTrackInfo({ force: true });
-            this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-          }
-        },
-        syncTracks ? 500 : 300
-      );
-      return true;
-    } catch (error) {
-      this.lastPlaybackErrorCode = this.mapAvPlayErrorToMediaCode(
-        error?.name || error?.message || error
-      );
-      this.isPlaying = false;
-      this.syncWebOsPlaybackKeepAwake();
-      this.emitVideoEvent("error", {
-        playbackEngine: this.playbackEngine,
-        mediaErrorCode: this.lastPlaybackErrorCode
-      });
-      return false;
-    }
-  },
-
-  refreshAvPlayTimeline() {
-    if (!this.isUsingAvPlay()) {
-      return;
-    }
-    const avplay = this.getAvPlay();
-    if (!avplay) {
-      return;
-    }
-    try {
-      const currentMs = Number(avplay.getCurrentTime?.() || 0);
-      if (Number.isFinite(currentMs) && currentMs >= 0) {
-        this.avplayCurrentTimeMs = currentMs;
-      }
-    } catch (_) {
-      // Ignore current-time polling failures.
-    }
-    try {
-      const durationMs = Number(avplay.getDuration?.() || 0);
-      if (Number.isFinite(durationMs) && durationMs >= 0) {
-        this.avplayDurationMs = durationMs;
-      }
-    } catch (_) {
-      // Ignore duration polling failures.
-    }
-  },
-
-  parseAvPlayExtraInfo(extraInfoValue) {
-    if (!extraInfoValue) {
-      return null;
-    }
-    if (typeof extraInfoValue === "object") {
-      return extraInfoValue;
-    }
-
-    const source = String(extraInfoValue)
-      .replace(/^\uFEFF/, "")
-      .split(String.fromCharCode(0))
-      .join("")
-      .trim();
-    let candidate = source;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const parsed = JSON.parse(candidate);
-        if (parsed && typeof parsed === "object") {
-          return parsed;
-        }
-        if (typeof parsed === "string" && parsed !== candidate) {
-          candidate = parsed.trim();
-          continue;
-        }
-      } catch (_) {
-        break;
-      }
-      break;
-    }
-
-    // Some AVPlay firmware returns JSON-like metadata with single quotes or
-    // stray bytes. Preserve the language/title fields even when JSON.parse fails.
-    const recovered = {};
-    [
-      "track_lang",
-      "trackLang",
-      "language",
-      "language_code",
-      "lang",
-      "track_name",
-      "track_title",
-      "title",
-      "name",
-      "label"
-    ].forEach((key) => {
-      const match = source.match(new RegExp(`["']?${key}["']?\\s*:\\s*["']([^"']+)["']`, "i"));
-      if (match?.[1]) {
-        recovered[key] = match[1].trim();
-      }
-    });
-    return Object.keys(recovered).length ? recovered : null;
-  },
-
-  normalizeAvPlayTrackType(typeValue) {
-    const type = String(typeValue || "")
-      .trim()
-      .toUpperCase();
-    if (type === "SUBTITLE") {
-      return "TEXT";
-    }
-    if (type === "AUDIO" || type === "TEXT" || type === "VIDEO") {
-      return type;
-    }
-    if (type.includes("AUDIO")) {
-      return "AUDIO";
-    }
-    if (type.includes("TEXT") || type.includes("SUBTITLE")) {
-      return "TEXT";
-    }
-    if (type.includes("VIDEO")) {
-      return "VIDEO";
-    }
-    return type;
-  },
-
-  pickAvPlayTrackLabel(track = {}, trackIndex = 0, prefix = "Track") {
-    const extraInfo = this.parseAvPlayExtraInfo(track.extra_info || track.extraInfo || null) || {};
-    return String(
-      track.name ||
-        track.label ||
-        track.title ||
-        extraInfo.name ||
-        extraInfo.label ||
-        extraInfo.track_name ||
-        extraInfo.track_title ||
-        extraInfo.title ||
-        extraInfo.track_lang ||
-        extraInfo.trackLang ||
-        extraInfo.language ||
-        extraInfo.language_code ||
-        extraInfo.lang ||
-        `${prefix} ${trackIndex + 1}`
-    ).trim();
-  },
-
-  pickAvPlayTrackLanguage(track = {}) {
-    const extraInfo = this.parseAvPlayExtraInfo(track.extra_info || track.extraInfo || null) || {};
-    const candidates = [
-      track.language,
-      track.lang,
-      track.track_lang,
-      track.trackLang,
-      track.language_code,
-      extraInfo.track_lang,
-      extraInfo.trackLang,
-      extraInfo.language,
-      extraInfo.language_code,
-      extraInfo.lang
-    ].map((value) => String(value || "").trim());
-    return (
-      candidates.find(
-        (value) =>
-          value && !/^(unknown(?: language)?|undetermined|undefined|und|unk|zxx)$/i.test(value)
-      ) || ""
-    );
-  },
-
-  pickAvPlayExtraValue(extraInfo = {}, keys = []) {
-    for (const key of keys) {
-      const value = extraInfo?.[key];
-      if (value === null || value === undefined) {
-        continue;
-      }
-      const text = String(value).trim();
-      if (text) {
-        return text;
-      }
-    }
-    return "";
-  },
-
-  syncAvPlayTrackInfo(options = {}) {
-    if (!this.isUsingAvPlay()) {
-      this.avplayAudioTracks = [];
-      this.avplaySubtitleTracks = [];
-      this.selectedAvPlayAudioTrackIndex = -1;
-      this.selectedAvPlaySubtitleTrackIndex = -1;
-      this.avplayTrackSyncAt = 0;
-      return;
-    }
-
-    const avplay = this.getAvPlay();
-    if (!avplay) {
-      return;
-    }
-
-    const force = Boolean(options?.force);
-    const now = Date.now();
-    if (!force && now - Number(this.avplayTrackSyncAt || 0) < 220) {
-      return;
-    }
-    this.avplayTrackSyncAt = now;
-
-    const totalTracks = (() => {
-      try {
-        const value = avplay.getTotalTrackInfo?.();
-        return Array.isArray(value) ? value : [];
-      } catch (_) {
-        return [];
-      }
-    })();
-
-    const currentTracks = (() => {
-      try {
-        const value = avplay.getCurrentStreamInfo?.();
-        return Array.isArray(value) ? value : [];
-      } catch (_) {
-        return [];
-      }
-    })();
-
-    const currentAudio = currentTracks.find(
-      (track) => this.normalizeAvPlayTrackType(track?.type) === "AUDIO"
-    );
-    const currentText = currentTracks.find(
-      (track) => this.normalizeAvPlayTrackType(track?.type) === "TEXT"
-    );
-    const selectedAudioIndex = Number(currentAudio?.index);
-    const selectedTextIndex = Number(currentText?.index);
-
-    this.avplayAudioTracks = totalTracks
-      .filter((track) => this.normalizeAvPlayTrackType(track?.type) === "AUDIO")
-      .map((track, index) => {
-        const trackIndex = Number(track?.index);
-        const normalizedTrackIndex = Number.isFinite(trackIndex) ? trackIndex : -1;
-        const extraInfo =
-          this.parseAvPlayExtraInfo(track.extra_info || track.extraInfo || null) || {};
-        const forcedValue = this.pickAvPlayExtraValue(extraInfo, ["forced", "is_forced"]);
-        return {
-          id: `avplay-audio-${normalizedTrackIndex}`,
-          label: this.pickAvPlayTrackLabel(track, index, "Track"),
-          language: this.pickAvPlayTrackLanguage(track),
-          channels: this.pickAvPlayExtraValue(extraInfo, [
-            "channels",
-            "channel",
-            "audio_channel",
-            "audio_channel_count",
-            "channel_layout"
-          ]),
-          codec: this.pickAvPlayExtraValue(extraInfo, [
-            "codec",
-            "codec_name",
-            "codec_id",
-            "codec_tag_string",
-            "audio_type",
-            "audioType",
-            "audioCodec",
-            "fourCC"
-          ]),
-          codecProfile: this.pickAvPlayExtraValue(extraInfo, [
-            "profile",
-            "codecProfile",
-            "codec_profile"
-          ]),
-          mimeType: this.pickAvPlayExtraValue(extraInfo, [
-            "mimeType",
-            "sampleMimeType",
-            "mime_type",
-            "sample_mime_type"
-          ]),
-          characteristics: this.pickAvPlayExtraValue(extraInfo, [
-            "characteristics",
-            "role",
-            "type"
-          ]),
-          sampleRate:
-            Number(
-              this.pickAvPlayExtraValue(extraInfo, [
-                "sampleRate",
-                "audioSampleRate",
-                "sample_rate"
-              ]) || 0
-            ) || 0,
-          forced: /^(1|true|yes)$/i.test(forcedValue),
-          extraInfo,
-          avplayTrackIndex: normalizedTrackIndex,
-          avplayAudioOrdinalIndex: index
-        };
-      })
-      .filter(
-        (track) =>
-          Number.isFinite(Number(track?.avplayTrackIndex)) && Number(track.avplayTrackIndex) >= 0
-      );
-
-    this.avplaySubtitleTracks = totalTracks
-      .filter((track) => this.normalizeAvPlayTrackType(track?.type) === "TEXT")
-      .map((track, index) => {
-        const trackIndex = Number(track?.index);
-        const normalizedTrackIndex = Number.isFinite(trackIndex) ? trackIndex : index;
-        const extraInfo =
-          this.parseAvPlayExtraInfo(track.extra_info || track.extraInfo || null) || {};
-        const forcedValue = this.pickAvPlayExtraValue(extraInfo, ["forced", "is_forced"]);
-        return {
-          id: `avplay-sub-${normalizedTrackIndex}`,
-          label: this.pickAvPlayTrackLabel(track, index, "Subtitle"),
-          language: this.pickAvPlayTrackLanguage(track),
-          codec: this.pickAvPlayExtraValue(extraInfo, [
-            "codec",
-            "codec_name",
-            "codec_id",
-            "codec_tag_string",
-            "fourCC",
-            "fourcc"
-          ]),
-          forced: /^(1|true|yes)$/i.test(forcedValue),
-          extraInfo,
-          avplayTrackIndex: normalizedTrackIndex
-        };
-      });
-
-    if (Platform.isTizen()) {
-      logTizenAvPlayDebug("Tizen AVPlay tracks synced", {
-        state: this.getAvPlayState(),
-        totalTracks,
-        currentTracks,
-        audioTracks: this.avplayAudioTracks,
-        selectedAudioIndex,
-        selectedAudioTrackIndex: this.selectedAvPlayAudioTrackIndex
-      });
-    }
-
-    const desiredAudioIndex = Number(this.desiredAvPlayAudioTrackIndex);
-    const desiredAudioActive =
-      Number.isFinite(desiredAudioIndex) &&
-      desiredAudioIndex >= 0 &&
-      Date.now() < Number(this.desiredAvPlayAudioTrackUntil || 0);
-    const resolvedSelectedAudioIndex = this.resolveAvPlayAudioTrackIndex(selectedAudioIndex);
-    const resolvedSelectedTextIndex = this.resolveAvPlaySubtitleTrackIndex(selectedTextIndex);
-
-    if (desiredAudioActive) {
-      this.selectedAvPlayAudioTrackIndex = desiredAudioIndex;
-    } else if (Number.isFinite(resolvedSelectedAudioIndex) && resolvedSelectedAudioIndex >= 0) {
-      this.selectedAvPlayAudioTrackIndex = resolvedSelectedAudioIndex;
-      this.pendingAvPlayAudioTrackIndex = -1;
-      this.desiredAvPlayAudioTrackIndex = -1;
-      this.desiredAvPlayAudioTrackUntil = 0;
-    } else if (
-      Number.isFinite(this.pendingAvPlayAudioTrackIndex) &&
-      this.pendingAvPlayAudioTrackIndex >= 0
-    ) {
-      this.selectedAvPlayAudioTrackIndex = this.pendingAvPlayAudioTrackIndex;
-    } else if (this.avplayAudioTracks.length && this.selectedAvPlayAudioTrackIndex < 0) {
-      this.selectedAvPlayAudioTrackIndex = this.avplayAudioTracks[0].avplayTrackIndex;
-    } else if (!this.avplayAudioTracks.length) {
-      this.selectedAvPlayAudioTrackIndex = -1;
-    }
-
-    const desiredSubtitleIndex = Number(this.desiredAvPlaySubtitleTrackIndex);
-    const desiredSubtitleActive =
-      Number.isFinite(desiredSubtitleIndex) &&
-      Date.now() < Number(this.desiredAvPlaySubtitleTrackUntil || 0);
-
-    if (this.avplaySubtitlesSilent) {
-      this.selectedAvPlaySubtitleTrackIndex = -1;
-    } else if (desiredSubtitleActive) {
-      this.selectedAvPlaySubtitleTrackIndex = desiredSubtitleIndex;
-    } else if (Number.isFinite(resolvedSelectedTextIndex) && resolvedSelectedTextIndex >= 0) {
-      this.selectedAvPlaySubtitleTrackIndex = resolvedSelectedTextIndex;
-      this.pendingAvPlaySubtitleTrackIndex = -1;
-      this.desiredAvPlaySubtitleTrackIndex = -1;
-      this.desiredAvPlaySubtitleTrackUntil = 0;
-    } else if (
-      Number.isFinite(this.pendingAvPlaySubtitleTrackIndex) &&
-      this.pendingAvPlaySubtitleTrackIndex >= 0
-    ) {
-      this.selectedAvPlaySubtitleTrackIndex = this.pendingAvPlaySubtitleTrackIndex;
-    } else if (!this.avplaySubtitleTracks.length) {
-      this.selectedAvPlaySubtitleTrackIndex = -1;
-    }
-  },
-
-  getAvPlayAudioTracks() {
-    return this.avplayAudioTracks.slice();
-  },
-
-  getAvPlaySubtitleTracks() {
-    return this.avplaySubtitleTracks.slice();
-  },
-
-  getSelectedAvPlayAudioTrackIndex() {
-    return Number.isFinite(this.selectedAvPlayAudioTrackIndex)
-      ? this.selectedAvPlayAudioTrackIndex
-      : -1;
-  },
-
-  resolveAvPlayAudioTrackIndex(trackIndex) {
-    const targetIndex = Number(trackIndex);
-    if (!Number.isFinite(targetIndex) || targetIndex < 0) {
-      return -1;
-    }
-    const exact = this.avplayAudioTracks.find(
-      (track) => Number(track?.avplayTrackIndex) === targetIndex
-    );
-    if (exact) {
-      return Number(exact.avplayTrackIndex);
-    }
-    return -1;
-  },
-
-  getAvPlayAudioTrackSelectionIndex(trackIndex) {
-    const targetIndex = Number(trackIndex);
-    if (!Number.isFinite(targetIndex) || targetIndex < 0) {
-      return -1;
-    }
-    const track = this.avplayAudioTracks.find(
-      (entry) => Number(entry?.avplayTrackIndex) === targetIndex
-    );
-    return track ? Number(track.avplayTrackIndex) : -1;
-  },
-
-  getCurrentAvPlayAudioTrackIndex() {
-    const avplay = this.getAvPlay();
-    if (!avplay || typeof avplay.getCurrentStreamInfo !== "function") {
-      return -1;
-    }
-    try {
-      const streams = avplay.getCurrentStreamInfo();
-      const audio = Array.isArray(streams)
-        ? streams.find((track) => this.normalizeAvPlayTrackType(track?.type) === "AUDIO")
-        : null;
-      return this.resolveAvPlayAudioTrackIndex(Number(audio?.index));
-    } catch (_) {
-      return -1;
-    }
-  },
-
-  trySelectAvPlayAudioTrackIndex(trackIndex) {
-    const avplay = this.getAvPlay();
-    const targetIndex = Number(trackIndex);
-    if (
-      !avplay ||
-      typeof avplay.setSelectTrack !== "function" ||
-      !Number.isFinite(targetIndex) ||
-      targetIndex < 0
-    ) {
-      return false;
-    }
-    const state = this.getAvPlayState();
-    if (!isValidAvPlayAudioTrackSelectionState(state)) {
-      logTizenAvPlayDebug("Tizen AVPlay audio selection deferred; invalid state", {
-        state,
-        targetIndex
-      });
-      return false;
-    }
-    try {
-      logTizenAvPlayDebug("Tizen AVPlay setSelectTrack(AUDIO)", {
-        state,
-        targetIndex,
-        audioTracks: this.avplayAudioTracks
-      });
-      avplay.setSelectTrack("AUDIO", targetIndex);
-      logTizenAvPlayDebug("Tizen AVPlay setSelectTrack(AUDIO) succeeded", {
-        state: this.getAvPlayState(),
-        targetIndex
-      });
-      return true;
-    } catch (error) {
-      logTizenAvPlayDebug("Tizen AVPlay setSelectTrack(AUDIO) failed", {
-        state,
-        targetIndex,
-        error: error?.message || String(error || "")
-      });
-      return false;
-    }
-  },
-
-  retryAvPlayAudioTrackSelection(trackIndex) {
-    const canonicalIndex = this.resolveAvPlayAudioTrackIndex(trackIndex);
-    if (canonicalIndex < 0) {
-      return false;
-    }
-    const currentIndex = this.getCurrentAvPlayAudioTrackIndex();
-    if (currentIndex === canonicalIndex) {
-      return true;
-    }
-    const selectionIndex = this.getAvPlayAudioTrackSelectionIndex(canonicalIndex);
-    if (selectionIndex < 0) {
-      return false;
-    }
-    const attempted = this.trySelectAvPlayAudioTrackIndex(selectionIndex);
-    return attempted || this.getCurrentAvPlayAudioTrackIndex() === canonicalIndex;
-  },
-
-  getSelectedAvPlaySubtitleTrackIndex() {
-    return Number.isFinite(this.selectedAvPlaySubtitleTrackIndex)
-      ? this.selectedAvPlaySubtitleTrackIndex
-      : -1;
-  },
-
-  resolveAvPlaySubtitleTrackIndex(trackIndex) {
-    const targetIndex = Number(trackIndex);
-    if (!Number.isFinite(targetIndex) || targetIndex < 0) {
-      return -1;
-    }
-    const exact = this.avplaySubtitleTracks.find(
-      (track) => Number(track?.avplayTrackIndex) === targetIndex
-    );
-    if (exact) {
-      return Number(exact.avplayTrackIndex);
-    }
-    return -1;
-  },
-
-  getCurrentAvPlaySubtitleTrackIndex() {
-    if (this.avplaySubtitlesSilent) {
-      return -1;
-    }
-    return this.getAvPlaySubtitleDiagnosticSnapshot().canonicalTrackIndex;
-  },
-
-  getAvPlaySubtitleDiagnosticSnapshot() {
-    const avplay = this.getAvPlay();
-    const snapshot = {
-      state: this.getAvPlayState(),
-      rawTrackIndex: -1,
-      canonicalTrackIndex: -1
-    };
-    if (!avplay || typeof avplay.getCurrentStreamInfo !== "function") {
-      return snapshot;
-    }
-    try {
-      const streams = avplay.getCurrentStreamInfo();
-      const text = Array.isArray(streams)
-        ? streams.find((track) => this.normalizeAvPlayTrackType(track?.type) === "TEXT")
-        : null;
-      const rawTrackIndex = Number(text?.index);
-      snapshot.rawTrackIndex = Number.isFinite(rawTrackIndex) ? rawTrackIndex : -1;
-      snapshot.canonicalTrackIndex = this.resolveAvPlaySubtitleTrackIndex(rawTrackIndex);
-    } catch (error) {
-      snapshot.error = error?.message || String(error || "");
-    }
-    return snapshot;
-  },
-
-  logAvPlaySubtitleDiagnostic(stage, detail = {}) {
-    if (!Platform.isTizen() || !this.isUsingAvPlay()) {
-      return;
-    }
-    console.warn("[Nuvio AVPlay subtitle trace]", {
-      stage,
-      ...detail,
-      current: this.getAvPlaySubtitleDiagnosticSnapshot(),
-      outputDisabled: Boolean(this.avplaySubtitlesSilent),
-      renderMode: this.avplaySubtitleRenderMode,
-      nativeRendering: Boolean(this.avplayNativeSubtitleRendering),
-      selectedTrackIndex: Number(this.selectedAvPlaySubtitleTrackIndex),
-      pendingTrackIndex: Number(this.pendingAvPlaySubtitleTrackIndex),
-      desiredTrackIndex: Number(this.desiredAvPlaySubtitleTrackIndex)
-    });
-  },
-
-  clearAvPlayExternalSubtitlePath() {
-    this.avplayExternalSubtitlePath = "";
-    this.avplayExternalSubtitleDelayMs = 0;
-    this.appliedAvPlayExternalSubtitleDelayKey = "";
-    // AVPlay has no documented "clear" value: the API accepts only an
-    // absolute local path. Track selection and setSilentSubtitle control the
-    // active output without sending an invalid empty path to the player.
-    return true;
-  },
-
-  applyAvPlaySubtitleRenderMode(renderMode = this.avplaySubtitleRenderMode) {
-    const mode = normalizeAvPlaySubtitleRenderMode(renderMode);
-    this.avplaySubtitleRenderMode = mode;
-    const avplay = this.getAvPlay();
-    if (!avplay) {
-      return false;
-    }
-    let applied = false;
-    try {
-      if (typeof avplay.setSilentSubtitle === "function") {
-        // AVPlay emits subtitle callbacks for the HTML overlay only while its
-        // own renderer is silent. Native mode restores Samsung's renderer.
-        avplay.setSilentSubtitle(mode === "html");
-        applied = true;
-      }
-    } catch (_) {
-      // Track selection can still succeed when this toggle is unavailable.
-    }
-    this.avplaySubtitlesSilent = false;
-    this.avplayNativeSubtitleRendering = mode === "native" && applied;
-    return applied;
-  },
-
-  trySelectAvPlaySubtitleTrackIndex(
-    trackIndex,
-    { nudge = false, reactivate = false, renderMode = this.avplaySubtitleRenderMode } = {}
-  ) {
-    const avplay = this.getAvPlay();
-    const targetIndex = Number(trackIndex);
-    if (
-      !avplay ||
-      typeof avplay.setSelectTrack !== "function" ||
-      !Number.isFinite(targetIndex) ||
-      targetIndex < 0
-    ) {
-      return false;
-    }
-    const state = this.getAvPlayState();
-    if (!isValidAvPlaySubtitleTrackSelectionState(state)) {
-      logTizenAvPlayDebug("Tizen AVPlay subtitle selection deferred; invalid state", {
-        state,
-        targetIndex
-      });
-      return false;
-    }
-    const mode = normalizeAvPlaySubtitleRenderMode(renderMode);
-    // Keep the proven 0.3.31 decoder re-arm for startup and ordinary track
-    // changes. When returning from Off/an addon, keep the requested renderer
-    // active throughout selection so the reactivation retries do not switch
-    // AVPlay back through the state that already failed on affected TVs.
-    const preselectSilent = reactivate ? mode === "html" : mode === "native";
-    try {
-      avplay.setSilentSubtitle?.(preselectSilent);
-    } catch (_) {
-      // Track selection can still succeed when this toggle is unavailable.
-    }
-    try {
-      logTizenAvPlayDebug("Tizen AVPlay setSelectTrack(TEXT)", {
-        state,
-        targetIndex,
-        subtitleTracks: this.avplaySubtitleTracks
-      });
-      avplay.setSelectTrack("TEXT", targetIndex);
-    } catch (error) {
-      logTizenAvPlayDebug("Tizen AVPlay subtitle selection failed", {
-        state,
-        targetIndex,
-        error: error?.message || String(error || "")
-      });
-      this.applyAvPlaySubtitleRenderMode(mode);
-      this.logAvPlaySubtitleDiagnostic("select-error", {
-        targetIndex,
-        mode,
-        reactivate: Boolean(reactivate),
-        preselectSilent,
-        error: error?.message || String(error || "")
-      });
-      return false;
-    }
-    this.applyAvPlaySubtitleRenderMode(mode);
-    if (nudge) {
-      this.nudgeAvPlayAfterTrackSwitch();
-    }
-    this.reapplyTizenAvPlayDisplayRect();
-    this.reapplyTizenAvPlayDisplayRect(250);
-    logTizenAvPlayDebug("Tizen AVPlay subtitle selection requested", {
-      state: this.getAvPlayState(),
-      targetIndex
-    });
-    this.logAvPlaySubtitleDiagnostic("select-issued", {
-      targetIndex,
-      mode,
-      reactivate: Boolean(reactivate),
-      preselectSilent
-    });
-    return true;
-  },
-
-  retryAvPlaySubtitleTrackSelection(
-    trackIndex,
-    { force = false, nudge = false, renderMode = this.avplaySubtitleRenderMode } = {}
-  ) {
-    const canonicalIndex = this.resolveAvPlaySubtitleTrackIndex(trackIndex);
-    if (canonicalIndex < 0) {
-      return false;
-    }
-    const currentIndex = this.getCurrentAvPlaySubtitleTrackIndex();
-    if (currentIndex === canonicalIndex && !force) {
-      // Selection and rendering are separate AVPlay states. Reapply the
-      // renderer even when Samsung already reports the requested track.
-      this.applyAvPlaySubtitleRenderMode(renderMode);
-      return true;
-    }
-    const attempted = this.trySelectAvPlaySubtitleTrackIndex(canonicalIndex, {
-      nudge,
-      reactivate: force,
-      renderMode
-    });
-    return attempted || this.getCurrentAvPlaySubtitleTrackIndex() === canonicalIndex;
-  },
-
-  getSelectedWebOsEmbeddedAudioTrackIndex() {
-    return Number.isFinite(this.selectedWebOsEmbeddedAudioTrackIndex)
-      ? this.selectedWebOsEmbeddedAudioTrackIndex
-      : -1;
-  },
-
-  cancelWebOsAudioTrackSelection() {
-    this.webOsAudioSelectionRequestToken = Number(this.webOsAudioSelectionRequestToken || 0) + 1;
-  },
-
-  requestConfirmedWebOsAudioTrackSelection({
-    targetTrackIndex,
-    selectedTrackIndex = targetTrackIndex,
-    selectionKind = "native",
-    applySelection = null
-  } = {}) {
-    if (!Platform.isWebOS() || !this.video || !this.isUsingNativePlayback()) {
-      return false;
-    }
-
-    const targetIndex = Number(targetTrackIndex);
-    const selectedIndex = Number(selectedTrackIndex);
-    if (!Number.isFinite(targetIndex) || targetIndex < 0) {
-      return false;
-    }
-
-    const requestToken = Number(this.webOsAudioSelectionRequestToken || 0) + 1;
-    this.webOsAudioSelectionRequestToken = requestToken;
-    const detail = {
-      requestToken,
-      selectionKind,
-      targetTrackIndex: targetIndex,
-      selectedTrackIndex:
-        Number.isFinite(selectedIndex) && selectedIndex >= 0 ? selectedIndex : targetIndex
-    };
-
-    const emitSelectionState = (status, extra = {}) => {
-      if (requestToken !== this.webOsAudioSelectionRequestToken) {
-        return;
-      }
-      const selectionState = {
-        ...detail,
-        status,
-        ...extra
-      };
-      this.emitVideoEvent("webosaudiotrackselectionchanged", selectionState);
-    };
-
-    const commitSelection = () => {
-      if (typeof applySelection === "function") {
-        applySelection();
-      }
-      this.selectedWebOsEmbeddedAudioTrackIndex =
-        selectionKind === "embedded" ? detail.selectedTrackIndex : -1;
-    };
-
-    emitSelectionState("pending");
-
-    if (!WebOsLunaService.isAvailable()) {
-      commitSelection();
-      emitSelectionState("confirmed");
-      return true;
-    }
-
-    void (async () => {
-      try {
-        const mediaId = this.syncNativeMediaId() || (await this.waitForNativeMediaId());
-        if (requestToken !== this.webOsAudioSelectionRequestToken) {
-          return;
-        }
-        if (!mediaId) {
-          throw new Error("webOS media id unavailable");
-        }
-
-        let timeoutId = 0;
-        const timeoutPromise = new Promise((_, reject) => {
-          timeoutId = setTimeout(() => {
-            reject(new Error("webOS audio track selection timed out"));
-          }, WEBOS_AUDIO_TRACK_SELECTION_TIMEOUT_MS);
-        });
-        let result;
-        try {
-          result = await Promise.race([
-            this.requestWebOsMediaCommand("selectTrack", {
-              type: "audio",
-              mediaId,
-              index: targetIndex
-            }),
-            timeoutPromise
-          ]);
-        } finally {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-        }
-        if (requestToken !== this.webOsAudioSelectionRequestToken) {
-          return;
-        }
-        if (result?.returnValue === false || result?.errorCode) {
-          throw new Error(result?.errorText || "webOS audio track selection failed");
-        }
-
-        commitSelection();
-        emitSelectionState("confirmed");
-      } catch (error) {
-        emitSelectionState("failed", {
-          error: String(
-            error?.errorText || error?.message || error || "webOS audio track selection failed"
-          )
-        });
-      }
-    })();
-
-    return true;
-  },
-
-  getSelectedWebOsEmbeddedSubtitleTrackIndex() {
-    return Number.isFinite(this.selectedWebOsEmbeddedSubtitleTrackIndex)
-      ? this.selectedWebOsEmbeddedSubtitleTrackIndex
-      : -1;
-  },
-
-  setAvPlayAudioTrack(trackIndex) {
-    if (!this.isUsingAvPlay()) {
-      return false;
-    }
-    const targetIndex = this.resolveAvPlayAudioTrackIndex(trackIndex);
-    if (!Number.isFinite(targetIndex) || targetIndex < 0) {
-      return false;
-    }
-
-    const selectionIndex = this.getAvPlayAudioTrackSelectionIndex(targetIndex);
-    if (selectionIndex < 0) {
-      return false;
-    }
-
-    const avplay = this.getAvPlay();
-    if (!avplay || typeof avplay.setSelectTrack !== "function") {
-      return false;
-    }
-
-    this.desiredAvPlayAudioTrackIndex = targetIndex;
-    this.desiredAvPlayAudioTrackUntil = Date.now() + 5000;
-    const state = this.getAvPlayState();
-    const canApplyNow = isValidAvPlayAudioTrackSelectionState(state);
-    const shouldDeferUntilPlay = !canApplyNow;
-    logTizenAvPlayDebug("Tizen AVPlay audio track requested", {
-      state,
-      uiTrackIndex: Number(trackIndex),
-      realAvPlayTrackIndex: targetIndex,
-      selectionIndex,
-      canApplyNow,
-      shouldDeferUntilPlay,
-      audioTracks: this.avplayAudioTracks
-    });
-    if (!canApplyNow || shouldDeferUntilPlay) {
-      this.pendingAvPlayAudioTrackIndex = targetIndex;
-      this.selectedAvPlayAudioTrackIndex = targetIndex;
-      this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      return true;
-    }
-
-    try {
-      if (!this.trySelectAvPlayAudioTrackIndex(selectionIndex)) {
-        throw new Error("setSelectTrack failed");
-      }
-      this.pendingAvPlayAudioTrackIndex = -1;
-      this.selectedAvPlayAudioTrackIndex = targetIndex;
-      this.syncAvPlayTrackInfo({ force: true });
-      this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      setTimeout(() => {
-        if (!this.isUsingAvPlay()) {
-          return;
-        }
-        this.retryAvPlayAudioTrackSelection(targetIndex);
-        this.applyPendingAvPlayAudioTrackSelection();
-        this.syncAvPlayTrackInfo({ force: true });
-        this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      }, 400);
-      setTimeout(() => {
-        if (!this.isUsingAvPlay()) {
-          return;
-        }
-        this.retryAvPlayAudioTrackSelection(targetIndex);
-        this.applyPendingAvPlayAudioTrackSelection();
-        this.syncAvPlayTrackInfo({ force: true });
-        this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      }, 1200);
-      return true;
-    } catch (error) {
-      logTizenAvPlayDebug("Tizen AVPlay audio track request failed", {
-        state,
-        realAvPlayTrackIndex: targetIndex,
-        error: error?.message || String(error || "")
-      });
-      return false;
-    }
-  },
-
-  applyPendingAvPlayAudioTrackSelection() {
-    const pendingIndex = Number(this.pendingAvPlayAudioTrackIndex);
-    const desiredIndex = Number(this.desiredAvPlayAudioTrackIndex);
-    const desiredActive =
-      Number.isFinite(desiredIndex) &&
-      desiredIndex >= 0 &&
-      Date.now() < Number(this.desiredAvPlayAudioTrackUntil || 0);
-    const targetIndex =
-      Number.isFinite(pendingIndex) && pendingIndex >= 0
-        ? pendingIndex
-        : desiredActive
-          ? desiredIndex
-          : -1;
-    const canonicalIndex = this.resolveAvPlayAudioTrackIndex(targetIndex);
-    if (!this.isUsingAvPlay() || !Number.isFinite(canonicalIndex) || canonicalIndex < 0) {
-      return false;
-    }
-
-    const avplay = this.getAvPlay();
-    if (!avplay || typeof avplay.setSelectTrack !== "function") {
-      return false;
-    }
-
-    const state = this.getAvPlayState();
-    if (state && !isValidAvPlayAudioTrackSelectionState(state)) {
-      return false;
-    }
-
-    try {
-      if (!this.retryAvPlayAudioTrackSelection(canonicalIndex)) {
-        const selectionIndex = this.getAvPlayAudioTrackSelectionIndex(canonicalIndex);
-        if (!this.trySelectAvPlayAudioTrackIndex(selectionIndex)) {
-          throw new Error("setSelectTrack failed");
-        }
-      }
-      if (Number.isFinite(pendingIndex) && pendingIndex === canonicalIndex) {
-        this.pendingAvPlayAudioTrackIndex = -1;
-      }
-      this.selectedAvPlayAudioTrackIndex = canonicalIndex;
-      this.desiredAvPlayAudioTrackIndex = canonicalIndex;
-      this.desiredAvPlayAudioTrackUntil = Date.now() + 5000;
-      this.syncAvPlayTrackInfo({ force: true });
-      this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      return true;
-    } catch (_) {
-      return false;
-    }
-  },
-
-  retryPendingAvPlayStartupAudioTrackSelection() {
-    const pendingIndex = Number(this.pendingAvPlayAudioTrackIndex);
-    if (!Number.isFinite(pendingIndex) || pendingIndex < 0) {
-      return false;
-    }
-
-    const deadline = Number(this.desiredAvPlayAudioTrackUntil || 0);
-    if (deadline > 0 && Date.now() >= deadline) {
-      this.pendingAvPlayAudioTrackIndex = -1;
-      return false;
-    }
-
-    return this.applyPendingAvPlayAudioTrackSelection();
-  },
-
-  nudgeAvPlayAfterTrackSwitch() {
-    const avplay = this.getAvPlay();
-    if (!avplay || typeof avplay.seekTo !== "function") {
-      return;
-    }
-    try {
-      const currentMs = Math.max(
-        0,
-        Number(avplay.getCurrentTime?.() || this.avplayCurrentTimeMs || 0)
-      );
-      if (Number.isFinite(currentMs) && currentMs > 0) {
-        avplay.seekTo(Math.max(0, currentMs - 1));
-      }
-    } catch (_) {
-      // Track switching is still valid without a seek nudge.
-    }
-  },
-
-  setAvPlaySubtitleTrack(trackIndex, { renderMode = this.avplaySubtitleRenderMode } = {}) {
-    if (!this.isUsingAvPlay()) {
-      return false;
-    }
-
-    const avplay = this.getAvPlay();
-    if (!avplay) {
-      return false;
-    }
-
-    const selectionToken = Number(this.avplaySubtitleSelectionToken || 0) + 1;
-    this.avplaySubtitleSelectionToken = selectionToken;
-    this.avplaySubtitleRenderMode = normalizeAvPlaySubtitleRenderMode(renderMode);
-    // AVPlay can keep reporting the previous TEXT index after subtitles were
-    // hidden. Match Android's explicit TEXT re-enable by forcing only the
-    // bounded retries that return from Off/an addon to a built-in track.
-    const shouldForceSubtitleReactivation = Boolean(this.avplaySubtitlesSilent);
-
-    const targetIndex = Number(trackIndex);
-    if (!Number.isFinite(targetIndex) || targetIndex < 0) {
-      this.pendingAvPlaySubtitleTrackIndex = -1;
-      this.pendingAvPlaySubtitleReactivation = false;
-      this.desiredAvPlaySubtitleTrackIndex = -1;
-      this.desiredAvPlaySubtitleTrackUntil = Date.now() + 5000;
-      this.clearAvPlayExternalSubtitlePath();
-      try {
-        avplay.setSilentSubtitle?.(true);
-        this.avplaySubtitlesSilent = true;
-      } catch (_) {
-        this.avplaySubtitlesSilent = true;
-        // Ignore subtitle mute failures.
-      }
-      this.avplayNativeSubtitleRendering = false;
-      this.selectedAvPlaySubtitleTrackIndex = -1;
-      this.selectedWebOsEmbeddedSubtitleTrackIndex = -1;
-      this.logAvPlaySubtitleDiagnostic("disabled", {
-        selectionToken
-      });
-      this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      return true;
-    }
-
-    const canonicalIndex = this.resolveAvPlaySubtitleTrackIndex(targetIndex);
-    if (!Number.isFinite(canonicalIndex) || canonicalIndex < 0) {
-      return false;
-    }
-
-    this.clearAvPlayExternalSubtitlePath();
-    this.desiredAvPlaySubtitleTrackIndex = canonicalIndex;
-    this.desiredAvPlaySubtitleTrackUntil = Date.now() + 5000;
-    const state = this.getAvPlayState();
-    const canApplyNow = isValidAvPlaySubtitleTrackSelectionState(state);
-    const shouldDeferUntilPlay = !canApplyNow;
-    logTizenAvPlayDebug("Tizen AVPlay subtitle track requested", {
-      state,
-      uiTrackIndex: targetIndex,
-      realAvPlayTrackIndex: canonicalIndex,
-      canApplyNow,
-      shouldDeferUntilPlay,
-      subtitleTracks: this.avplaySubtitleTracks
-    });
-    this.logAvPlaySubtitleDiagnostic("requested", {
-      selectionToken,
-      targetIndex: canonicalIndex,
-      mode: this.avplaySubtitleRenderMode,
-      reactivate: shouldForceSubtitleReactivation,
-      canApplyNow
-    });
-    if (!canApplyNow || shouldDeferUntilPlay) {
-      this.pendingAvPlaySubtitleTrackIndex = canonicalIndex;
-      this.pendingAvPlaySubtitleReactivation = shouldForceSubtitleReactivation;
-      this.selectedAvPlaySubtitleTrackIndex = canonicalIndex;
-      this.avplaySubtitlesSilent = false;
-      this.selectedWebOsEmbeddedSubtitleTrackIndex = -1;
-      this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      return true;
-    }
-
-    try {
-      if (
-        !this.trySelectAvPlaySubtitleTrackIndex(canonicalIndex, {
-          reactivate: shouldForceSubtitleReactivation,
-          renderMode: this.avplaySubtitleRenderMode
-        })
-      ) {
-        throw new Error("setSelectTrack failed");
-      }
-      this.pendingAvPlaySubtitleTrackIndex = -1;
-      this.pendingAvPlaySubtitleReactivation = false;
-    } catch (error) {
-      logTizenAvPlayDebug("Tizen AVPlay subtitle track request failed", {
-        state,
-        realAvPlayTrackIndex: canonicalIndex,
-        error: error?.message || String(error || "")
-      });
-      return false;
-    }
-
-    this.selectedAvPlaySubtitleTrackIndex = canonicalIndex;
-    this.selectedWebOsEmbeddedSubtitleTrackIndex = -1;
-    this.syncAvPlayTrackInfo({ force: true });
-    this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-    [350, 1000].forEach((delayMs) => {
-      setTimeout(() => {
-        if (
-          !this.isUsingAvPlay() ||
-          selectionToken !== Number(this.avplaySubtitleSelectionToken || 0) ||
-          canonicalIndex !== Number(this.desiredAvPlaySubtitleTrackIndex)
-        ) {
-          return;
-        }
-        this.retryAvPlaySubtitleTrackSelection(canonicalIndex, {
-          force: shouldForceSubtitleReactivation,
-          renderMode: this.avplaySubtitleRenderMode
-        });
-        this.syncAvPlayTrackInfo({ force: true });
-        this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      }, delayMs);
-    });
-    return true;
-  },
-
-  applyPendingAvPlaySubtitleTrackSelection() {
-    const pendingIndex = Number(this.pendingAvPlaySubtitleTrackIndex);
-    const pendingReactivation = Boolean(this.pendingAvPlaySubtitleReactivation);
-    const desiredIndex = Number(this.desiredAvPlaySubtitleTrackIndex);
-    const desiredActive =
-      Number.isFinite(desiredIndex) &&
-      desiredIndex >= 0 &&
-      Date.now() < Number(this.desiredAvPlaySubtitleTrackUntil || 0);
-    const targetIndex =
-      Number.isFinite(pendingIndex) && pendingIndex >= 0
-        ? pendingIndex
-        : desiredActive
-          ? desiredIndex
-          : -1;
-    const canonicalIndex = this.resolveAvPlaySubtitleTrackIndex(targetIndex);
-    if (!this.isUsingAvPlay() || !Number.isFinite(canonicalIndex) || canonicalIndex < 0) {
-      return false;
-    }
-
-    const state = this.getAvPlayState();
-    if (state && !isValidAvPlaySubtitleTrackSelectionState(state)) {
-      return false;
-    }
-
-    try {
-      if (
-        !this.retryAvPlaySubtitleTrackSelection(canonicalIndex, {
-          force: pendingReactivation,
-          renderMode: this.avplaySubtitleRenderMode
-        })
-      ) {
-        throw new Error("setSelectTrack failed");
-      }
-      if (Number.isFinite(pendingIndex) && pendingIndex === canonicalIndex) {
-        this.pendingAvPlaySubtitleTrackIndex = -1;
-        this.pendingAvPlaySubtitleReactivation = false;
-      }
-      this.selectedAvPlaySubtitleTrackIndex = canonicalIndex;
-      this.desiredAvPlaySubtitleTrackIndex = canonicalIndex;
-      this.desiredAvPlaySubtitleTrackUntil = Date.now() + 5000;
-      this.avplaySubtitlesSilent = false;
-      this.selectedWebOsEmbeddedSubtitleTrackIndex = -1;
-      this.syncAvPlayTrackInfo({ force: true });
-      this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      return true;
-    } catch (_) {
-      return false;
-    }
-  },
-
-  setAvPlayExternalSubtitle(subtitleUrl) {
-    if (!this.isUsingAvPlay()) {
-      return false;
-    }
-
-    const avplay = this.getAvPlay();
-    if (!avplay || typeof avplay.setExternalSubtitlePath !== "function") {
-      return false;
-    }
-
-    this.avplaySubtitleSelectionToken = Number(this.avplaySubtitleSelectionToken || 0) + 1;
-
-    const path = String(subtitleUrl || "").trim();
-    // Samsung AVPlay does not download external subtitles. Passing an HTTP(S)
-    // URL is accepted synchronously on some TVs but later aborts through the
-    // player onerror callback with PLAYER_ERROR_CONNECTION_FAILED.
-    if (Platform.isTizen() && !isAbsoluteLocalAvPlaySubtitlePath(path)) {
-      return false;
-    }
-    try {
-      avplay.setExternalSubtitlePath(path);
-      try {
-        avplay.setSilentSubtitle?.(!path);
-        this.avplaySubtitlesSilent = !path;
-      } catch (_) {
-        this.avplaySubtitlesSilent = !path;
-        // Ignore subtitle mute/unmute failures.
-      }
-      this.pendingAvPlaySubtitleTrackIndex = -1;
-      this.pendingAvPlaySubtitleReactivation = false;
-      this.desiredAvPlaySubtitleTrackIndex = -1;
-      this.desiredAvPlaySubtitleTrackUntil = 0;
-      this.avplayNativeSubtitleRendering = false;
-      this.selectedAvPlaySubtitleTrackIndex = -1;
-      this.selectedWebOsEmbeddedSubtitleTrackIndex = -1;
-      this.avplayExternalSubtitlePath = path;
-      this.appliedAvPlayExternalSubtitleDelayKey = "";
-      this.applyAvPlayExternalSubtitleDelay();
-      this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      return true;
-    } catch (_) {
-      return false;
-    }
-  },
-
-  hasActiveAvPlaySubtitleOutput() {
-    if (!this.isUsingAvPlay() || this.avplaySubtitlesSilent) {
-      return false;
-    }
-    if (String(this.avplayExternalSubtitlePath || "").trim()) {
-      return true;
-    }
-    const selectedIndex = Number(this.selectedAvPlaySubtitleTrackIndex);
-    const pendingIndex = Number(this.pendingAvPlaySubtitleTrackIndex);
-    const desiredIndex = Number(this.desiredAvPlaySubtitleTrackIndex);
-    return (
-      (Number.isFinite(selectedIndex) && selectedIndex >= 0) ||
-      (Number.isFinite(pendingIndex) && pendingIndex >= 0) ||
-      (Number.isFinite(desiredIndex) &&
-        desiredIndex >= 0 &&
-        Date.now() < Number(this.desiredAvPlaySubtitleTrackUntil || 0))
-    );
-  },
-
-  shouldRenderAvPlaySubtitleCallbacksInHtml() {
-    return (
-      !this.avplayNativeSubtitleRendering &&
-      !String(this.avplayExternalSubtitlePath || "").trim() &&
-      this.hasActiveAvPlaySubtitleOutput()
-    );
-  },
-
-  getAvPlaySubtitleOutputMode() {
-    if (!this.isUsingAvPlay() || this.avplaySubtitlesSilent) {
-      return "none";
-    }
-    if (String(this.avplayExternalSubtitlePath || "").trim()) {
-      return "external-native";
-    }
-    if (this.avplayNativeSubtitleRendering && this.hasActiveAvPlaySubtitleOutput()) {
-      return "embedded-native";
-    }
-    if (this.hasActiveAvPlaySubtitleOutput()) {
-      return "html-callback";
-    }
-    return "none";
-  },
-
-  supportsAvPlayExternalSubtitleDelay() {
-    return typeof this.getAvPlay()?.setSubtitlePosition === "function";
-  },
-
-  setAvPlayExternalSubtitleDelay(delayMs = 0) {
-    const normalizedDelayMs = Number(delayMs);
-    this.avplayExternalSubtitleDelayMs = Number.isFinite(normalizedDelayMs)
-      ? Math.round(normalizedDelayMs)
-      : 0;
-    this.appliedAvPlayExternalSubtitleDelayKey = "";
-    return this.applyAvPlayExternalSubtitleDelay();
-  },
-
-  applyAvPlayExternalSubtitleDelay() {
-    const path = String(this.avplayExternalSubtitlePath || "").trim();
-    if (!this.isUsingAvPlay() || !path) {
-      return false;
-    }
-    const avplay = this.getAvPlay();
-    if (!avplay || typeof avplay.setSubtitlePosition !== "function") {
-      return false;
-    }
-    const delayMs = Math.round(Number(this.avplayExternalSubtitleDelayMs || 0));
-    const applyKey = `${path}:${delayMs}`;
-    if (this.appliedAvPlayExternalSubtitleDelayKey === applyKey) {
-      return true;
-    }
-    const state = this.getAvPlayState();
-    if (state !== "PLAYING" && state !== "PAUSED") {
-      return false;
-    }
-    try {
-      avplay.setSubtitlePosition(delayMs);
-      this.appliedAvPlayExternalSubtitleDelayKey = applyKey;
-      return true;
-    } catch (_) {
-      return false;
-    }
-  },
-
-  getAvPlayVideoDimensions() {
-    const avplay = this.getAvPlay();
-    if (!avplay || typeof avplay.getCurrentStreamInfo !== "function") {
-      return null;
-    }
-    let streams = [];
-    try {
-      const value = avplay.getCurrentStreamInfo();
-      streams = Array.isArray(value) ? value : [];
-    } catch (_) {
-      streams = [];
-    }
-    const videoTrack =
-      streams.find((track) => this.normalizeAvPlayTrackType(track?.type) === "VIDEO") || null;
-    if (!videoTrack) {
-      return null;
-    }
-    const extraInfo =
-      this.parseAvPlayExtraInfo(videoTrack.extra_info || videoTrack.extraInfo || null) || {};
-    const widthCandidates = [
-      videoTrack.width,
-      videoTrack.Width,
-      videoTrack.videoWidth,
-      extraInfo.width,
-      extraInfo.Width,
-      extraInfo.videoWidth,
-      extraInfo.video_width
-    ];
-    const heightCandidates = [
-      videoTrack.height,
-      videoTrack.Height,
-      videoTrack.videoHeight,
-      extraInfo.height,
-      extraInfo.Height,
-      extraInfo.videoHeight,
-      extraInfo.video_height
-    ];
-    let width =
-      widthCandidates.map(Number).find((value) => Number.isFinite(value) && value > 0) || 0;
-    let height =
-      heightCandidates.map(Number).find((value) => Number.isFinite(value) && value > 0) || 0;
-    if (!width || !height) {
-      const resolutionText = String(
-        videoTrack.resolution ||
-          videoTrack.Resolution ||
-          extraInfo.resolution ||
-          extraInfo.Resolution ||
-          ""
-      );
-      const match = resolutionText.match(/(\d{2,5})\s*[xX]\s*(\d{2,5})/);
-      if (match) {
-        width = Number(match[1]);
-        height = Number(match[2]);
-      }
-    }
-    return width > 0 && height > 0 ? { width, height } : null;
-  },
-
-  mapAvPlayErrorToMediaCode(errorValue) {
-    const errorText = String(errorValue || "").toLowerCase();
-    if (!errorText) {
-      return 4;
-    }
-    if (
-      errorText.includes("network") ||
-      errorText.includes("connection") ||
-      errorText.includes("timeout")
-    ) {
-      return 2;
-    }
-    if (errorText.includes("decode")) {
-      return 3;
-    }
-    return 4;
-  },
-
-  getPlayerViewportSize() {
-    const playerRect =
-      this.video?.parentElement?.getBoundingClientRect?.() ||
-      document.getElementById("player")?.getBoundingClientRect?.() ||
-      null;
-    const playerWidth = Number(playerRect?.width || 0);
-    const playerHeight = Number(playerRect?.height || 0);
-    if (
-      Number.isFinite(playerWidth) &&
-      playerWidth > 0 &&
-      Number.isFinite(playerHeight) &&
-      playerHeight > 0
-    ) {
-      return {
-        width: Math.max(1, Math.round(playerWidth)),
-        height: Math.max(1, Math.round(playerHeight))
-      };
-    }
-    const windowWidth = Number(window.innerWidth || 0);
-    const windowHeight = Number(window.innerHeight || 0);
-    const documentWidth = Number(document.documentElement?.clientWidth || 0);
-    const documentHeight = Number(document.documentElement?.clientHeight || 0);
-    const visualViewportWidth = Number(globalThis.visualViewport?.width || 0);
-    const visualViewportHeight = Number(globalThis.visualViewport?.height || 0);
-    const screenWidth = Number(globalThis.screen?.width || 0);
-    const screenHeight = Number(globalThis.screen?.height || 0);
-    const width = [windowWidth, documentWidth, visualViewportWidth, screenWidth].find(
-      (value) => Number.isFinite(value) && value > 0
-    );
-    const height = [windowHeight, documentHeight, visualViewportHeight, screenHeight].find(
-      (value) => Number.isFinite(value) && value > 0
-    );
-    return {
-      width: Math.max(1, Math.round(width || 1920)),
-      height: Math.max(1, Math.round(height || 1080))
-    };
-  },
-
-  getCssPlayerViewportSize() {
-    const playerSize = this.getPlayerViewportSize();
-    const documentWidth = Number(document.documentElement?.clientWidth || 0);
-    const documentHeight = Number(document.documentElement?.clientHeight || 0);
-    const windowWidth = Number(window.innerWidth || 0);
-    const windowHeight = Number(window.innerHeight || 0);
-    const widthCandidates = [playerSize.width, documentWidth, windowWidth].filter(
-      (value) => Number.isFinite(value) && value > 0
-    );
-    const heightCandidates = [playerSize.height, documentHeight, windowHeight].filter(
-      (value) => Number.isFinite(value) && value > 0
-    );
-    return {
-      width: Math.max(1, Math.round(widthCandidates[0] || 1920)),
-      height: Math.max(1, Math.round(heightCandidates[0] || 1080))
-    };
-  },
-
-  getAvPlayViewportSize() {
-    if (Platform.isTizen()) {
-      return {
-        width: 1920,
-        height: 1080
-      };
-    }
-    const documentWidth = Number(document.documentElement?.clientWidth || 0);
-    const documentHeight = Number(document.documentElement?.clientHeight || 0);
-    const screenWidth = Number(globalThis.screen?.width || 0);
-    const screenHeight = Number(globalThis.screen?.height || 0);
-    const windowWidth = Number(window.innerWidth || 0);
-    const windowHeight = Number(window.innerHeight || 0);
-    const webOsMajorVersion = Platform.isWebOS() ? Number(Platform.getWebOsMajorVersion() || 0) : 0;
-    if (webOsMajorVersion > 0 && webOsMajorVersion <= 6) {
-      return this.getPlayerViewportSize();
-    }
-    return {
-      width: Math.max(1, Math.round(Math.max(windowWidth, documentWidth, screenWidth, 1920))),
-      height: Math.max(1, Math.round(Math.max(windowHeight, documentHeight, screenHeight, 1080)))
-    };
-  },
-
-  setAvPlayDisplayRect(rect = null, displayMethod = null) {
-    const avplay = this.getAvPlay();
-    if (!avplay) {
-      return;
-    }
-    const viewport = this.getAvPlayViewportSize();
-    if (Platform.isTizen() && displayMethod === "PLAYER_DISPLAY_MODE_LETTER_BOX") {
-      // AVPlay applies letterboxing inside the display area. Keep that area
-      // fullscreen instead of passing an already letterboxed rectangle.
-      this.avplayDisplayRect = {
-        x: 0,
-        y: 0,
-        width: viewport.width,
-        height: viewport.height
-      };
-    } else if (rect) {
-      this.avplayDisplayRect = {
-        x: Math.round(Number(rect.x || 0)),
-        y: Math.round(Number(rect.y || 0)),
-        width: Math.max(1, Math.round(Number(rect.width || viewport.width))),
-        height: Math.max(1, Math.round(Number(rect.height || viewport.height)))
-      };
-    }
-    if (displayMethod) {
-      this.avplayDisplayMethod = String(displayMethod);
-    }
-    const targetRect = this.avplayDisplayRect || {
-      x: 0,
-      y: 0,
-      width: viewport.width,
-      height: viewport.height
-    };
-    try {
-      avplay.setDisplayRect?.(targetRect.x, targetRect.y, targetRect.width, targetRect.height);
-    } catch (_) {
-      // Ignore display-rect failures.
-    }
-    try {
-      avplay.setDisplayMethod?.(this.avplayDisplayMethod || "PLAYER_DISPLAY_MODE_FULL_SCREEN");
-    } catch (_) {
-      // Ignore display-method failures.
-    }
-  },
-
-  reapplyTizenAvPlayDisplayRect(delayMs = 0) {
-    if (!Platform.isTizen()) {
-      return;
-    }
-    const apply = () => {
-      if (this.isUsingAvPlay()) {
-        this.setAvPlayDisplayRect();
-      }
-    };
-    if (Number(delayMs || 0) > 0) {
-      setTimeout(apply, Number(delayMs || 0));
-      return;
-    }
-    apply();
-  },
-
-  teardownAvPlay() {
-    const avplay = this.getAvPlay();
-
-    this.stopAvPlayTickTimer();
-    if (avplay) {
-      try {
-        // Clear Samsung's native subtitle plane while AVPlay is still in a
-        // state where setSilentSubtitle() is valid. Otherwise a corrupted
-        // subtitle surface can remain visible after the player DOM is gone.
-        avplay.setSilentSubtitle?.(true);
-      } catch (_) {
-        // Continue with stop/close even when the firmware rejects the toggle.
-      }
-      try {
-        avplay.setListener?.({});
-      } catch (_) {
-        // Ignore listener reset failures.
-      }
-      try {
-        const state = String(avplay.getState?.() || "").toUpperCase();
-        if (state && state !== "NONE" && state !== "IDLE") {
-          avplay.stop?.();
-        }
-      } catch (_) {
-        // Ignore stop failures.
-      }
-      try {
-        avplay.close?.();
-      } catch (_) {
-        // Ignore close failures.
-      }
-    }
-
-    this.avplayActive = false;
-    this.avplayUrl = "";
-    this.avplayAudioTracks = [];
-    this.avplaySubtitleTracks = [];
-    this.selectedAvPlayAudioTrackIndex = -1;
-    this.selectedAvPlaySubtitleTrackIndex = -1;
-    this.pendingAvPlayAudioTrackIndex = -1;
-    this.desiredAvPlayAudioTrackIndex = -1;
-    this.desiredAvPlayAudioTrackUntil = 0;
-    this.pendingAvPlaySubtitleTrackIndex = -1;
-    this.pendingAvPlaySubtitleReactivation = false;
-    this.desiredAvPlaySubtitleTrackIndex = -1;
-    this.desiredAvPlaySubtitleTrackUntil = 0;
-    this.avplaySubtitleSelectionToken = Number(this.avplaySubtitleSelectionToken || 0) + 1;
-    this.avplaySubtitlesSilent = false;
-    this.avplayNativeSubtitleRendering = false;
-    this.avplaySubtitleRenderMode = "native";
-    this.avplayExternalSubtitlePath = "";
-    this.avplayExternalSubtitleDelayMs = 0;
-    this.appliedAvPlayExternalSubtitleDelayKey = "";
-    this.avplayReady = false;
-    this.avplayEnded = false;
-    this.avplayCurrentTimeMs = 0;
-    this.avplayDurationMs = 0;
-    this.appliedAvPlayPlaybackRate = 1;
-  },
-
-  configureAvPlayForSource(requestHeaders = {}) {
-    const avplay = this.getAvPlay();
-    if (!avplay || typeof avplay.setStreamingProperty !== "function") {
-      return;
-    }
-
-    const headers = requestHeaders && typeof requestHeaders === "object" ? requestHeaders : {};
-    const cookieHeader = Object.entries(headers).find(
-      ([key]) =>
-        String(key || "")
-          .trim()
-          .toLowerCase() === "cookie"
-    )?.[1];
-    const userAgentHeader = Object.entries(headers).find(
-      ([key]) =>
-        String(key || "")
-          .trim()
-          .toLowerCase() === "user-agent"
-    )?.[1];
-
-    try {
-      if (cookieHeader) {
-        avplay.setStreamingProperty("COOKIE", String(cookieHeader));
-      }
-    } catch (_) {
-      // Ignore unsupported AVPlay header properties.
-    }
-    try {
-      if (userAgentHeader) {
-        avplay.setStreamingProperty("USER_AGENT", String(userAgentHeader));
-      }
-    } catch (_) {
-      // Ignore unsupported AVPlay header properties.
-    }
-  },
-
-  configureAvPlayBuffering() {
-    const avplay = this.getAvPlay();
-    if (!avplay || Platform.isTizen()) {
-      // Match Stremio's Tizen AVPlay path: leave buffering thresholds and the
-      // timeout to Samsung's model-specific defaults. Small fixed buffers can
-      // make high-bitrate REMUX playback repeatedly drain and resume.
-      return;
-    }
-
-    try {
-      avplay.setBufferingParam?.(
-        "PLAYER_BUFFER_FOR_PLAY",
-        "PLAYER_BUFFER_SIZE_IN_SECOND",
-        AVPLAY_BUFFER_FOR_PLAY_SECONDS
-      );
-    } catch (_) {
-      // Older firmware can reject custom buffering parameters.
-    }
-    try {
-      avplay.setBufferingParam?.(
-        "PLAYER_BUFFER_FOR_RESUME",
-        "PLAYER_BUFFER_SIZE_IN_SECOND",
-        AVPLAY_BUFFER_FOR_RESUME_SECONDS
-      );
-    } catch (_) {
-      // Keep AVPlay's default resume buffer when unsupported.
-    }
-    try {
-      avplay.setTimeoutForBuffering?.(AVPLAY_BUFFERING_TIMEOUT_SECONDS);
-    } catch (_) {
-      // Keep AVPlay's default timeout when unsupported.
-    }
-  },
-
-  playWithAvPlay(url, requestHeaders = {}, _sourceType = null, playToken = null) {
-    if (!this.canUseAvPlay()) {
-      return false;
-    }
-    if (!this.isPlaybackRequestActive(playToken, url)) {
-      return false;
-    }
-
-    const avplay = this.getAvPlay();
-    if (!avplay) {
-      return false;
-    }
-
-    this.teardownAvPlay();
-
-    this.avplayActive = true;
-    this.avplayUrl = String(url || "");
-    this.avplayReady = false;
-    this.avplayEnded = false;
-    this.avplayCurrentTimeMs = 0;
-    this.avplayDurationMs = 0;
-    this.lastPlaybackErrorCode = 0;
-    this.playbackEngine = this.getPlatformAvplayEngineName();
-    this.emitVideoEvent("waiting", { playbackEngine: this.playbackEngine });
-
-    try {
-      avplay.open(this.avplayUrl);
-      this.configureAvPlayForSource(requestHeaders);
-      this.configureAvPlayBuffering();
-    } catch (error) {
-      this.lastPlaybackErrorCode = this.mapAvPlayErrorToMediaCode(
-        error?.name || error?.message || error
-      );
-      this.teardownAvPlay();
-      this.playbackEngine = "none";
-      return false;
-    }
-
-    this.setAvPlayDisplayRect();
-
-    try {
-      avplay.setListener?.({
-        onbufferingstart: () => {
-          if (!this.isPlaybackRequestActive(playToken, url)) {
-            return;
-          }
-          this.avplayReady = false;
-          this.emitVideoEvent("waiting", { playbackEngine: this.playbackEngine });
-        },
-        onbufferingcomplete: () => {
-          if (!this.isPlaybackRequestActive(playToken, url)) {
-            return;
-          }
-          this.avplayReady = true;
-          this.reapplyAvPlayPlaybackRate();
-          this.retryPendingAvPlayStartupAudioTrackSelection();
-          this.applyAvPlayExternalSubtitleDelay();
-          this.emitVideoEvent("canplay", { playbackEngine: this.playbackEngine });
-        },
-        oncurrentplaytime: (currentTimeMs) => {
-          if (!this.isPlaybackRequestActive(playToken, url)) {
-            return;
-          }
-          const value = Number(currentTimeMs || 0);
-          if (Number.isFinite(value) && value >= 0) {
-            this.avplayCurrentTimeMs = value;
-          }
-          this.retryPendingAvPlayStartupAudioTrackSelection();
-          this.applyAvPlayExternalSubtitleDelay();
-          this.emitVideoEvent("timeupdate", { playbackEngine: this.playbackEngine });
-        },
-        onstreamcompleted: () => {
-          if (!this.isPlaybackRequestActive(playToken, url)) {
-            return;
-          }
-          this.avplayEnded = true;
-          this.isPlaying = false;
-          this.syncWebOsPlaybackKeepAwake();
-          this.stopAvPlayTickTimer();
-          this.refreshAvPlayTimeline();
-          const completedDurationMs = Number(this.avplayDurationMs || 0);
-          if (Number.isFinite(completedDurationMs) && completedDurationMs > 0) {
-            this.avplayCurrentTimeMs = Math.max(
-              Number(this.avplayCurrentTimeMs || 0),
-              completedDurationMs
-            );
-          }
-          this.emitVideoEvent("ended", { playbackEngine: this.playbackEngine });
-          try {
-            avplay.stop?.();
-          } catch (_) {
-            // Ignore stream-complete stop failures.
-          }
-        },
-        onsubtitlechange: (duration, subtitles, type, attributes) => {
-          if (!this.isPlaybackRequestActive(playToken, url)) {
-            return;
-          }
-          this.emitVideoEvent("avplaysubtitlechange", {
-            playbackEngine: this.playbackEngine,
-            duration,
-            subtitles,
-            type,
-            attributes
-          });
-        },
-        onerror: (errorValue) => {
-          if (!this.isPlaybackRequestActive(playToken, url)) {
-            return;
-          }
-          this.avplayReady = false;
-          this.isPlaying = false;
-          this.syncWebOsPlaybackKeepAwake();
-          this.lastPlaybackErrorCode = this.mapAvPlayErrorToMediaCode(errorValue);
-          this.stopAvPlayTickTimer();
-          this.emitVideoEvent("error", {
-            playbackEngine: this.playbackEngine,
-            mediaErrorCode: this.lastPlaybackErrorCode,
-            avplayError: String(errorValue || "")
-          });
-        }
-      });
-    } catch (_) {
-      // Ignore listener setup failures; prepareAsync/play may still work.
-    }
-
-    const onPrepared = () => {
-      if (!this.isUsingAvPlay() || !this.isPlaybackRequestActive(playToken, url)) {
-        return;
-      }
-      this.avplayReady = true;
-      this.avplayEnded = false;
-      this.reapplyTizenAvPlayDisplayRect();
-      this.refreshAvPlayTimeline();
-      this.syncAvPlayTrackInfo({ force: true });
-      this.emitVideoEvent("loadedmetadata", { playbackEngine: this.playbackEngine });
-      this.emitVideoEvent("loadeddata", { playbackEngine: this.playbackEngine });
-      this.emitVideoEvent("canplay", { playbackEngine: this.playbackEngine });
-      this.emitVideoEvent("avplaytrackschanged", { playbackEngine: this.playbackEngine });
-      if (this.startupAudioGateActive) {
-        return;
-      }
-      this.startPreparedAvPlayPlayback({ syncTracks: true });
-      this.reapplyTizenAvPlayDisplayRect(250);
-    };
-
-    const onPrepareError = (errorValue) => {
-      if (!this.isPlaybackRequestActive(playToken, url)) {
-        return;
-      }
-      this.lastPlaybackErrorCode = this.mapAvPlayErrorToMediaCode(errorValue);
-      this.isPlaying = false;
-      this.syncWebOsPlaybackKeepAwake();
-      this.teardownAvPlay();
-      this.playbackEngine = "none";
-      this.emitVideoEvent("error", {
-        playbackEngine: this.getPlatformAvplayEngineName(),
-        mediaErrorCode: this.lastPlaybackErrorCode,
-        avplayError: String(errorValue || "")
-      });
-    };
-
-    try {
-      if (typeof avplay.prepareAsync === "function") {
-        avplay.prepareAsync(onPrepared, onPrepareError);
-      } else if (typeof avplay.prepare === "function") {
-        avplay.prepare();
-        onPrepared();
-      } else {
-        onPrepareError("prepare_not_supported");
-      }
-    } catch (error) {
-      onPrepareError(error?.name || error?.message || error);
-    }
-
-    return true;
-  },
-
   getCurrentTimeSeconds() {
-    if (this.isUsingAvPlay()) {
-      this.refreshAvPlayTimeline();
-      return Math.max(0, Number(this.avplayCurrentTimeMs || 0) / 1000);
-    }
     return Math.max(0, Number(this.video?.currentTime || 0));
   },
 
   getDurationSeconds() {
-    let durationSeconds = 0;
-    if (this.isUsingAvPlay()) {
-      this.refreshAvPlayTimeline();
-      durationSeconds = Number(this.avplayDurationMs || 0) / 1000;
-    } else {
-      durationSeconds = Number(this.video?.duration || 0);
-    }
+    const durationSeconds = Number(this.video?.duration || 0);
     if (
       Number.isFinite(durationSeconds) &&
       durationSeconds > Number(this.lastKnownDurationSeconds || 0)
@@ -2584,13 +481,6 @@ export const PlayerController = {
   },
 
   getBufferedTimeSeconds() {
-    // AVPlay reports buffering-operation progress, not a buffered media
-    // timestamp. Returning no value prevents the UI from presenting that
-    // percentage as playable time.
-    if (this.isUsingAvPlay()) {
-      return null;
-    }
-
     try {
       const video = this.video;
       const durationSeconds = Number(video?.duration || 0);
@@ -2625,7 +515,7 @@ export const PlayerController = {
         }
       }
     } catch (_) {
-      // TimeRanges can change while it is being read on older TV engines.
+      // TimeRanges can change while it is being read.
     }
 
     return null;
@@ -2637,46 +527,11 @@ export const PlayerController = {
       return false;
     }
 
-    if (!this.isUsingAvPlay()) {
-      if (!this.video) {
-        return false;
-      }
-      this.video.currentTime = seconds;
-      return true;
-    }
-
-    const avplay = this.getAvPlay();
-    if (!avplay) {
+    if (!this.video) {
       return false;
     }
-
-    const targetMs = Math.max(0, Math.floor(seconds * 1000));
     try {
-      this.avplayReady = false;
-      this.emitVideoEvent("waiting", { playbackEngine: this.playbackEngine });
-      this.emitVideoEvent("seeking", { playbackEngine: this.playbackEngine });
-      if (typeof avplay.seekTo === "function") {
-        avplay.seekTo(targetMs);
-      } else {
-        const currentMs = Number(avplay.getCurrentTime?.() || 0);
-        if (targetMs > currentMs) {
-          avplay.jumpForward?.(targetMs - currentMs);
-        } else if (targetMs < currentMs) {
-          avplay.jumpBackward?.(currentMs - targetMs);
-        }
-      }
-      this.avplayCurrentTimeMs = targetMs;
-      this.emitVideoEvent("timeupdate", { playbackEngine: this.playbackEngine });
-      setTimeout(() => {
-        if (!this.isUsingAvPlay()) {
-          return;
-        }
-        this.refreshAvPlayTimeline();
-        this.avplayReady = true;
-        this.reapplyAvPlayPlaybackRate();
-        this.emitVideoEvent("seeked", { playbackEngine: this.playbackEngine });
-        this.emitVideoEvent("canplay", { playbackEngine: this.playbackEngine });
-      }, 120);
+      this.video.currentTime = seconds;
       return true;
     } catch (_) {
       return false;
@@ -2684,16 +539,10 @@ export const PlayerController = {
   },
 
   isPlaybackEnded() {
-    if (this.isUsingAvPlay()) {
-      return Boolean(this.avplayEnded);
-    }
     return Boolean(this.video?.ended);
   },
 
   getPlaybackReadyState() {
-    if (this.isUsingAvPlay()) {
-      return this.avplayReady ? 4 : 1;
-    }
     return Number(this.video?.readyState || 0);
   },
 
@@ -2791,29 +640,6 @@ export const PlayerController = {
       diagnostic.mediaError
     ].filter(Boolean);
     return fields.join("; ");
-  },
-
-  forceAvPlayFallbackForCurrentSource(reason = "fallback") {
-    const url = String(
-      this.currentPlaybackUrl || this.video?.currentSrc || this.video?.src || ""
-    ).trim();
-    if (!url || this.avplayFallbackAttempts.has(url) || !this.canUseAvPlay()) {
-      return false;
-    }
-
-    this.avplayFallbackAttempts.add(url);
-    console.warn("Forcing AVPlay fallback:", { reason, url });
-    this.play(url, {
-      itemId: this.currentItemId,
-      itemType: this.currentItemType || "movie",
-      videoId: this.currentVideoId,
-      season: this.currentSeason,
-      episode: this.currentEpisode,
-      requestHeaders: { ...(this.currentPlaybackHeaders || {}) },
-      mediaSourceType: this.currentPlaybackMediaSourceType || null,
-      forceEngine: this.getPlatformAvplayEngineName()
-    });
-    return true;
   },
 
   getAttemptedPlaybackEngines(url = this.currentPlaybackUrl) {
@@ -2924,19 +750,9 @@ export const PlayerController = {
     );
   },
 
-  isEngineFsPlaybackUrl(url = "") {
-    try {
-      const parsedUrl = new URL(String(url || ""));
-      return /\/([0-9a-f]{40})\/\d+(?:\/|$)/i.test(parsedUrl.pathname);
-    } catch (_) {
-      return false;
-    }
-  },
-
   getPlaybackCapabilities() {
     const supports = (mimeType) => this.canPlayNatively(mimeType);
     const capabilities = {
-      avplay: this.canUseAvPlay(),
       hls: supports("application/vnd.apple.mpegurl"),
       dash: supports("application/dash+xml"),
       smoothStreaming: supports("application/vnd.ms-sstr+xml"),
@@ -2997,45 +813,15 @@ export const PlayerController = {
   teardownAdaptiveInstances() {
     this.teardownHlsInstance();
     this.teardownDashInstance();
-    if (!this.isUsingAvPlay()) {
-      this.playbackEngine = "none";
-    }
+    this.playbackEngine = "none";
   },
 
   applyNativeSource(url, mimeType = null, engineName = "native-file") {
-    const normalizedMimeType = this.normalizeMimeType(mimeType);
-    const sourceMimeType =
-      Platform.isWebOS() &&
-      (this.isEngineFsPlaybackUrl(url) || normalizedMimeType === "video/x-matroska")
-        ? null
-        : mimeType;
-    if (!nativeVideoEngine.load(this.video, url, sourceMimeType)) {
+    if (!nativeVideoEngine.load(this.video, url, mimeType)) {
       return false;
     }
     this.playbackEngine = String(engineName || "native-file");
     return true;
-  },
-
-  applyWebOsStagedNativeSource(url, engineName = "native-file") {
-    if (!this.video) {
-      return false;
-    }
-    Array.from(this.video.querySelectorAll("source")).forEach((node) => node.remove());
-    this.video.src = url;
-    this.playbackEngine = String(engineName || "native-file");
-    return true;
-  },
-
-  async prepareWebOsStagedNativePlayback(playToken = null, url = null) {
-    await this.waitForNativeMediaId();
-    if (!this.isPlaybackRequestActive(playToken, url)) {
-      return;
-    }
-    try {
-      this.video?.load?.();
-    } catch (_) {
-      // webOS may throw during staged native startup; play() will surface the real failure.
-    }
   },
 
   shouldForwardHeaderToHls(name) {
@@ -3078,18 +864,17 @@ export const PlayerController = {
 
   buildHlsConfig(requestHeaders = {}) {
     const forwardedHeaders = this.normalizePlaybackHeaders(requestHeaders);
-    const isWebOs = Platform.isWebOS();
     return {
       autoStartLoad: false,
-      enableWorker: !isWebOs,
+      enableWorker: true,
       lowLatencyMode: false,
-      backBufferLength: isWebOs ? 30 : 90,
-      maxBufferLength: isWebOs ? 18 : 30,
-      maxMaxBufferLength: isWebOs ? 24 : 60,
+      backBufferLength: 90,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
       maxBufferHole: 0.5,
       startFragPrefetch: false,
-      fragLoadingTimeOut: isWebOs ? 18000 : 20000,
-      manifestLoadingTimeOut: isWebOs ? 18000 : 20000,
+      fragLoadingTimeOut: 20000,
+      manifestLoadingTimeOut: 20000,
       xhrSetup: (xhr) => {
         Object.entries(forwardedHeaders).forEach(([headerName, headerValue]) => {
           try {
@@ -3378,15 +1163,14 @@ export const PlayerController = {
       if (!player) {
         return false;
       }
-      const isWebOs = Platform.isWebOS();
       player.updateSettings?.({
         streaming: {
-          fastSwitchEnabled: !isWebOs,
+          fastSwitchEnabled: true,
           lowLatencyEnabled: false,
           scheduleWhilePaused: false,
-          bufferToKeep: isWebOs ? 8 : 20,
-          bufferPruningInterval: isWebOs ? 10 : 20,
-          stableBufferTime: isWebOs ? 8 : 12
+          bufferToKeep: 20,
+          bufferPruningInterval: 20,
+          stableBufferTime: 12
         }
       });
       player.initialize(this.video, url, true);
@@ -3426,10 +1210,16 @@ export const PlayerController = {
         });
       };
       try {
-        player.on?.(dashEvents.STREAM_INITIALIZED, emitTracksChanged);
-        player.on?.(dashEvents.TRACK_CHANGE_RENDERED, emitTracksChanged);
-        player.on?.(dashEvents.TEXT_TRACKS_ADDED, emitTracksChanged);
-        player.on?.(dashEvents.PERIOD_SWITCH_COMPLETED, emitTracksChanged);
+        [
+          dashEvents.STREAM_INITIALIZED,
+          dashEvents.TRACK_CHANGE_RENDERED,
+          dashEvents.CURRENT_TRACK_CHANGED,
+          dashEvents.TEXT_TRACKS_ADDED,
+          dashEvents.PLAYBACK_METADATA_LOADED,
+          dashEvents.PERIOD_SWITCH_COMPLETED
+        ]
+          .filter(Boolean)
+          .forEach((eventName) => player.on?.(eventName, emitTracksChanged));
         if (dashEvents.ERROR) {
           player.on?.(dashEvents.ERROR, emitDashError);
         }
@@ -3637,172 +1427,7 @@ export const PlayerController = {
   },
 
   getSupportedPlaybackRates() {
-    if (Platform.isTizen() && this.isUsingAvPlay()) {
-      // AVPlay setSpeed() is trick play, not Android-style playback-speed
-      // processing. It cannot guarantee that audio is tempo-adjusted with
-      // video, so only expose the rate that preserves A/V synchronization.
-      return [1];
-    }
-    if (Platform.isWebOS() && !this.isUsingNativePlayback()) {
-      // MSE-backed hls.js/dash.js playback never exposes a mediaId, so the
-      // native Luna setPlayRate command cannot target that pipeline.
-      return [1];
-    }
     return [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-  },
-
-  isSupportedAvPlayPlaybackRate(speed = 1) {
-    const targetSpeed = this.normalizePlaybackRate(speed);
-    if (!Number.isFinite(targetSpeed)) {
-      return false;
-    }
-    return targetSpeed === 1;
-  },
-
-  applyAvPlayPlaybackRate(speed = this.desiredPlaybackRate) {
-    if (!this.isUsingAvPlay()) {
-      return false;
-    }
-    const targetSpeed = this.normalizePlaybackRate(speed);
-    if (!this.isSupportedAvPlayPlaybackRate(targetSpeed)) {
-      return false;
-    }
-    if (targetSpeed === 1) {
-      // Normal speed is AVPlay's native state. Tizen exposes no alternative
-      // rate in this app, so avoid repeatedly re-entering Samsung trick-play
-      // after play, buffering completion, resume, and seek.
-      this.appliedAvPlayPlaybackRate = 1;
-      return true;
-    }
-    const avplay = this.getAvPlay();
-    if (!avplay || typeof avplay.setSpeed !== "function") {
-      return false;
-    }
-    const state = this.getAvPlayState();
-    if (!isValidAvPlayPlaybackSpeedState(state)) {
-      return false;
-    }
-    try {
-      avplay.setSpeed(targetSpeed);
-      this.appliedAvPlayPlaybackRate = targetSpeed;
-      logTizenAvPlayDebug("Tizen AVPlay setSpeed succeeded", {
-        speed: targetSpeed,
-        state
-      });
-      return true;
-    } catch (error) {
-      logTizenAvPlayDebug("Tizen AVPlay setSpeed failed", {
-        speed: targetSpeed,
-        state,
-        error: error?.message || String(error || "")
-      });
-      return false;
-    }
-  },
-
-  reapplyAvPlayPlaybackRate() {
-    if (!this.isUsingAvPlay()) {
-      return false;
-    }
-    const targetSpeed = this.normalizePlaybackRate(this.desiredPlaybackRate);
-    if (!Number.isFinite(targetSpeed)) {
-      return false;
-    }
-    return this.applyAvPlayPlaybackRate(targetSpeed);
-  },
-
-  isSupportedWebOsPlaybackRate(speed = 1) {
-    const targetSpeed = this.normalizePlaybackRate(speed);
-    if (!Number.isFinite(targetSpeed) || targetSpeed > 2) {
-      return false;
-    }
-    if (targetSpeed === 1) {
-      return true;
-    }
-    return Platform.isWebOS() && this.isUsingNativePlayback();
-  },
-
-  async applyWebOsPlaybackRate(speed = this.desiredPlaybackRate) {
-    if (!Platform.isWebOS() || !this.video || !this.isUsingNativePlayback()) {
-      return false;
-    }
-    const targetSpeed = this.normalizePlaybackRate(speed);
-    if (!this.isSupportedWebOsPlaybackRate(targetSpeed)) {
-      return false;
-    }
-
-    // A native webOS pipeline publishes its private mediaId asynchronously.
-    // MSE pipelines never publish one, which is why they are rejected above.
-    const mediaId =
-      this.syncNativeMediaId() ||
-      (await this.waitForNativeMediaId({ maxAttempts: 20, intervalMs: 250 }));
-    if (!mediaId) {
-      return false;
-    }
-    // Treat nativeMediaIdLookupToken as the native-pipeline generation. Once
-    // mediaId exists, waitForNativeMediaId() does not increment it, so a later
-    // token change means the source was reset while this Luna command was in
-    // flight.
-    const nativeMediaStateToken = Number(this.nativeMediaIdLookupToken || 0);
-
-    try {
-      // Do not locally time out this command. Luna requests cannot be cancelled
-      // through the shared wrapper, so declaring failure while one is still in
-      // flight can let a late success change the native rate after the UI has
-      // reverted to its previous value.
-      const result = await this.requestWebOsMediaCommand("setPlayRate", {
-        mediaId,
-        playRate: targetSpeed,
-        audioOutput: true
-      });
-      if (result?.returnValue !== true) {
-        return false;
-      }
-      if (nativeMediaStateToken !== Number(this.nativeMediaIdLookupToken || 0)) {
-        return false;
-      }
-      this.appliedWebOsPlaybackRate = targetSpeed;
-      return true;
-    } catch (_) {
-      return false;
-    }
-  },
-
-  queueWebOsPlaybackRate(speed = this.desiredPlaybackRate) {
-    const previousCommand = this.webOsPlaybackRateCommandPromise;
-    const commandPromise = previousCommand
-      ? Promise.resolve(previousCommand)
-          .catch(() => false)
-          .then(() => this.applyWebOsPlaybackRate(speed))
-      : this.applyWebOsPlaybackRate(speed);
-    const trackedPromise = commandPromise.finally(() => {
-      if (this.webOsPlaybackRateCommandPromise === trackedPromise) {
-        this.webOsPlaybackRateCommandPromise = null;
-      }
-    });
-    this.webOsPlaybackRateCommandPromise = trackedPromise;
-    return trackedPromise;
-  },
-
-  reapplyWebOsPlaybackRate() {
-    if (
-      !Platform.isWebOS() ||
-      !this.video ||
-      !this.isUsingNativePlayback() ||
-      this.desiredPlaybackRate === 1
-    ) {
-      return Promise.resolve(false);
-    }
-    if (this.webOsPlaybackRateReapplyPromise) {
-      return this.webOsPlaybackRateReapplyPromise;
-    }
-    const reapplyPromise = this.queueWebOsPlaybackRate(this.desiredPlaybackRate).finally(() => {
-      if (this.webOsPlaybackRateReapplyPromise === reapplyPromise) {
-        this.webOsPlaybackRateReapplyPromise = null;
-      }
-    });
-    this.webOsPlaybackRateReapplyPromise = reapplyPromise;
-    return reapplyPromise;
   },
 
   getPlaybackRate() {
@@ -3820,43 +1445,6 @@ export const PlayerController = {
     const targetSpeed = this.normalizePlaybackRate(speed);
     if (!Number.isFinite(targetSpeed)) {
       return false;
-    }
-
-    if (this.isUsingAvPlay()) {
-      if (!this.isSupportedAvPlayPlaybackRate(targetSpeed)) {
-        return false;
-      }
-      const state = this.getAvPlayState();
-      if (isValidAvPlayPlaybackSpeedState(state) && !this.applyAvPlayPlaybackRate(targetSpeed)) {
-        return false;
-      }
-      this.desiredPlaybackRate = targetSpeed;
-      return true;
-    }
-
-    if (Platform.isWebOS()) {
-      if (!this.isSupportedWebOsPlaybackRate(targetSpeed)) {
-        return false;
-      }
-      if (!this.isUsingNativePlayback()) {
-        // A non-native (MSE) pipeline is already at normal speed and has no
-        // mediaId that Luna can address.
-        if (targetSpeed === 1) {
-          this.desiredPlaybackRate = 1;
-          this.appliedWebOsPlaybackRate = 1;
-          return true;
-        }
-        return false;
-      }
-
-      const requestToken = Number(this.webOsPlaybackRateRequestToken || 0) + 1;
-      this.webOsPlaybackRateRequestToken = requestToken;
-      const applied = await this.queueWebOsPlaybackRate(targetSpeed);
-      if (!applied || requestToken !== this.webOsPlaybackRateRequestToken) {
-        return false;
-      }
-      this.desiredPlaybackRate = targetSpeed;
-      return true;
     }
 
     try {
@@ -3899,65 +1487,8 @@ export const PlayerController = {
       });
     };
 
-    if (Platform.isWebOS() && this.isUsingNativePlayback()) {
-      return this.requestConfirmedWebOsAudioTrackSelection({
-        targetTrackIndex: targetIndex,
-        selectedTrackIndex: targetIndex,
-        selectionKind: "native",
-        applySelection
-      });
-    }
-
-    this.selectedWebOsEmbeddedAudioTrackIndex = -1;
     applySelection();
     return true;
-  },
-
-  setWebOsEmbeddedAudioTrack(trackIndex, selectedTrackIndex = trackIndex) {
-    if (!Platform.isWebOS() || !this.video || !this.isUsingNativePlayback()) {
-      return false;
-    }
-
-    const targetIndex = Number(trackIndex);
-    const selectedIndex = Number(selectedTrackIndex);
-    const storedSelectedIndex =
-      Number.isFinite(selectedIndex) && selectedIndex >= 0 ? selectedIndex : targetIndex;
-    if (!Number.isFinite(targetIndex) || targetIndex < 0) {
-      this.selectedWebOsEmbeddedAudioTrackIndex = -1;
-      return false;
-    }
-
-    const applySelection = () => {
-      const tracks = this.nativeAudioTrackListToArray();
-      if (!tracks.length) {
-        return;
-      }
-
-      tracks.forEach((track, trackListIndex) => {
-        const selected = trackListIndex === targetIndex;
-        try {
-          if ("enabled" in track) {
-            track.enabled = selected;
-          }
-        } catch (_) {
-          // Best effort.
-        }
-        try {
-          if ("selected" in track) {
-            track.selected = selected;
-          }
-        } catch (_) {
-          // Best effort.
-        }
-      });
-    };
-
-    return this.requestConfirmedWebOsAudioTrackSelection({
-      targetTrackIndex: targetIndex,
-      selectedTrackIndex: storedSelectedIndex,
-      selectionKind: "embedded",
-      applySelection
-    });
   },
 
   setNativeTextTrack(index) {
@@ -3985,40 +1516,6 @@ export const PlayerController = {
       return false;
     }
 
-    this.selectedWebOsEmbeddedSubtitleTrackIndex = -1;
-
-    const mediaId = this.syncNativeMediaId();
-    if (mediaId && Platform.isWebOS()) {
-      if (targetIndex < 0) {
-        this.requestWebOsMediaCommand("setSubtitleEnable", {
-          mediaId,
-          enable: false
-        }).catch(() => {
-          // Ignore Luna subtitle disable failures and keep native toggles.
-        });
-      } else {
-        this.requestWebOsMediaCommand("setSubtitleEnable", {
-          mediaId,
-          enable: true
-        }).catch(() => {
-          // Ignore Luna subtitle enable failures and keep native toggles.
-        });
-        this.applyWebOsSubtitleFontSize(mediaId, { force: true });
-        setTimeout(() => {
-          if (mediaId !== this.nativeMediaId) {
-            return;
-          }
-          this.requestWebOsMediaCommand("selectTrack", {
-            type: "text",
-            mediaId,
-            index: targetIndex
-          }).catch(() => {
-            // Ignore Luna subtitle track selection failures and keep native toggles.
-          });
-        }, 350);
-      }
-    }
-
     tracks.forEach((track, trackIndex) => {
       try {
         track.mode = targetIndex >= 0 && trackIndex === targetIndex ? "showing" : "disabled";
@@ -4028,216 +1525,6 @@ export const PlayerController = {
     });
 
     return true;
-  },
-
-  applyWebOsSubtitleFontSize(mediaId, { force = false } = {}) {
-    const normalizedMediaId = String(mediaId || "").trim();
-    if (!Platform.isWebOS() || !normalizedMediaId) {
-      return false;
-    }
-
-    const fontSize = Math.min(
-      4,
-      Math.max(0, Math.trunc(Number(this.webOsSubtitleFontSizeLevel) || 0))
-    );
-    const applyKey = `${normalizedMediaId}:${fontSize}`;
-    if (!force && this.appliedWebOsSubtitleFontSizeKey === applyKey) {
-      return true;
-    }
-
-    this.appliedWebOsSubtitleFontSizeKey = applyKey;
-    this.requestWebOsMediaCommand("setSubtitleFontSize", {
-      mediaId: normalizedMediaId,
-      fontSize
-    }).catch(() => {
-      if (this.appliedWebOsSubtitleFontSizeKey === applyKey) {
-        this.appliedWebOsSubtitleFontSizeKey = "";
-      }
-    });
-    return true;
-  },
-
-  setWebOsSubtitleFontSize(value) {
-    if (!Platform.isWebOS()) {
-      return false;
-    }
-
-    this.webOsSubtitleFontSizeLevel = resolveWebOsSubtitleFontSizeLevel(value);
-    const mediaId = this.syncNativeMediaId();
-    if (mediaId) {
-      return this.applyWebOsSubtitleFontSize(mediaId);
-    }
-    return true;
-  },
-
-  setWebOsEmbeddedSubtitleNativeVisibility(
-    enabled,
-    selectedTrackIndex = this.selectedWebOsEmbeddedSubtitleTrackIndex
-  ) {
-    if (!Platform.isWebOS() || !this.video || !this.isUsingNativePlayback()) {
-      return Promise.resolve(false);
-    }
-    const expectedSelectedIndex = Number(selectedTrackIndex);
-    if (
-      !Number.isFinite(expectedSelectedIndex) ||
-      expectedSelectedIndex < 0 ||
-      Number(this.selectedWebOsEmbeddedSubtitleTrackIndex) !== expectedSelectedIndex
-    ) {
-      return Promise.resolve(false);
-    }
-
-    const applyVisibility = (mediaId) => {
-      if (
-        !mediaId ||
-        Number(this.selectedWebOsEmbeddedSubtitleTrackIndex) !== expectedSelectedIndex
-      ) {
-        return false;
-      }
-      return this.requestWebOsMediaCommand("setSubtitleEnable", {
-        mediaId,
-        enable: Boolean(enabled)
-      })
-        .then(() => true)
-        .catch(() => false);
-    };
-
-    const mediaId = this.syncNativeMediaId();
-    if (mediaId) {
-      return Promise.resolve(applyVisibility(mediaId));
-    }
-
-    return this.waitForNativeMediaId()
-      .then(applyVisibility)
-      .catch(() => false);
-  },
-
-  setWebOsEmbeddedSubtitleTrack(trackIndex, selectedTrackIndex = trackIndex) {
-    if (!Platform.isWebOS() || !this.video || !this.isUsingNativePlayback()) {
-      return false;
-    }
-
-    const targetIndex = Number(trackIndex);
-    const selectedIndex = Number(selectedTrackIndex);
-    const storedSelectedIndex =
-      Number.isFinite(selectedIndex) && selectedIndex >= 0 ? selectedIndex : targetIndex;
-    if (!Number.isFinite(targetIndex) || targetIndex < -1) {
-      return false;
-    }
-
-    const applySelection = (mediaId) => {
-      if (!mediaId) {
-        return;
-      }
-
-      if (targetIndex < 0) {
-        this.requestWebOsMediaCommand("setSubtitleEnable", {
-          mediaId,
-          enable: false
-        }).catch(() => {
-          // Ignore Luna subtitle disable failures.
-        });
-        return;
-      }
-
-      this.requestWebOsMediaCommand("setSubtitleEnable", {
-        mediaId,
-        enable: true
-      }).catch(() => {
-        // Ignore Luna subtitle enable failures.
-      });
-      this.applyWebOsSubtitleFontSize(mediaId, { force: true });
-
-      setTimeout(() => {
-        if (Number(this.selectedWebOsEmbeddedSubtitleTrackIndex) !== storedSelectedIndex) {
-          return;
-        }
-        if (this.nativeMediaId && mediaId !== this.nativeMediaId) {
-          return;
-        }
-        this.requestWebOsMediaCommand("selectTrack", {
-          type: "text",
-          mediaId,
-          index: targetIndex
-        }).catch(() => {
-          // Ignore Luna subtitle track selection failures.
-        });
-      }, 350);
-    };
-
-    this.selectedWebOsEmbeddedSubtitleTrackIndex = targetIndex < 0 ? -1 : storedSelectedIndex;
-
-    const mediaId = this.syncNativeMediaId();
-    if (mediaId) {
-      applySelection(mediaId);
-      return true;
-    }
-
-    this.waitForNativeMediaId()
-      .then((resolvedMediaId) => {
-        if (
-          Number(this.selectedWebOsEmbeddedSubtitleTrackIndex) !==
-          (targetIndex < 0 ? -1 : storedSelectedIndex)
-        ) {
-          return;
-        }
-        applySelection(resolvedMediaId);
-      })
-      .catch(() => {
-        // Ignore media-id lookup failures.
-      });
-
-    return true;
-  },
-
-  attemptVideoPlay({
-    warningLabel = "Playback start rejected",
-    onRejected = null,
-    beforePlay = null,
-    playToken = null
-  } = {}) {
-    if (!this.video) {
-      return;
-    }
-    Promise.resolve()
-      .then(() => beforePlay?.())
-      .then(() => {
-        if (playToken !== null && playToken !== this.playRequestToken) {
-          return null;
-        }
-        this.applyStartupAudioGateToVideo();
-        const playPromise = this.video.play();
-        return this.handleNativePlayStartedUnderStartupGate(playPromise);
-      })
-      .then((playPromise) => {
-        if (!playPromise || typeof playPromise.catch !== "function") {
-          return null;
-        }
-        return playPromise.catch((error) => {
-          if (this.isExpectedPlayInterruption(error)) {
-            return null;
-          }
-          if (typeof onRejected === "function") {
-            try {
-              const handled = onRejected(error);
-              if (handled) {
-                return null;
-              }
-            } catch (_) {
-              // Ignore rejection handler failures and continue to warning output.
-            }
-          }
-          this.isPlaying = false;
-          console.warn(warningLabel, error);
-          return null;
-        });
-      })
-      .catch((error) => {
-        if (this.isExpectedPlayInterruption(error)) {
-          return;
-        }
-        this.isPlaying = false;
-        console.warn(warningLabel, error);
-      });
   },
 
   choosePlaybackEngine(url, sourceType, itemType = this.currentItemType) {
@@ -4278,7 +1565,6 @@ export const PlayerController = {
     }
     this.unbindVideoElementListeners();
     this.video = video;
-    Platform.prepareVideoElement(video);
     const listen = (eventName, handler) => {
       video.addEventListener(eventName, handler);
       this.videoElementListeners.push({ target: video, eventName, handler });
@@ -4286,7 +1572,6 @@ export const PlayerController = {
 
     listen("ended", () => {
       this.isPlaying = false;
-      this.syncWebOsPlaybackKeepAwake();
       const context = this.createProgressContext();
       const durationMs = Math.floor(this.getDurationSeconds() * 1000);
       const completedMs =
@@ -4296,81 +1581,22 @@ export const PlayerController = {
 
     listen("error", (e) => {
       this.isPlaying = false;
-      this.syncWebOsPlaybackKeepAwake();
       const customErrorCode = Number(e?.detail?.mediaErrorCode || 0);
       const nativeErrorCode = Number(this.video?.error?.code || 0);
       const mediaErrorCode = customErrorCode || nativeErrorCode || this.getLastPlaybackErrorCode();
       const diagnostic = {
         event: e?.type || "error",
         mediaErrorCode,
-        avplayError: e?.detail?.avplayError || "",
         playbackEngine: this.playbackEngine
       };
-      if (!Platform.isBrowser()) {
-        diagnostic.currentSrc = this.video?.currentSrc || this.video?.src || "";
-      }
       console.error("Video error:", diagnostic);
     });
 
-    const syncNativeMediaId = (event) => {
-      this.syncNativeMediaId();
-      if (event?.type === "canplay" || event?.type === "playing") {
-        this.reapplyWebOsPlaybackRate().catch(() => {});
-      }
-    };
-    listen("loadedmetadata", syncNativeMediaId);
-    listen("loadeddata", syncNativeMediaId);
-    listen("canplay", syncNativeMediaId);
-    listen("playing", syncNativeMediaId);
-    listen("seeked", () => {
-      this.reapplyWebOsPlaybackRate().catch(() => {});
-    });
-    listen("emptied", () => {
-      this.resetNativeMediaState();
-    });
-
-    listen("playing", () => {
-      const audioTrackList =
-        this.video?.audioTracks || this.video?.webkitAudioTracks || this.video?.mozAudioTracks;
-      const audioTrackCount = Number(audioTrackList?.length || 0);
-      const probeUrl = String(
-        this.currentPlaybackUrl || this.video?.currentSrc || this.video?.src || ""
-      ).trim();
-      const isDirectFile = this.isLikelyDirectFileUrl(probeUrl);
-      if (
-        this.isUsingNativePlayback() &&
-        isDirectFile &&
-        audioTrackCount <= 0 &&
-        Platform.isWebOS() &&
-        this.canUseAvPlay()
-      ) {
-        this.forceAvPlayFallbackForCurrentSource("native_playing_no_audio_tracks");
-      }
-    });
-
-    listen("loadedmetadata", () => {
-      const audioTrackList =
-        this.video?.audioTracks || this.video?.webkitAudioTracks || this.video?.mozAudioTracks;
-      const audioTrackCount = Number(audioTrackList?.length || 0);
-      const probeUrl = String(
-        this.currentPlaybackUrl || this.video?.currentSrc || this.video?.src || ""
-      ).trim();
-      const isDirectFile = this.isLikelyDirectFileUrl(probeUrl);
-      if (
-        this.isUsingNativePlayback() &&
-        isDirectFile &&
-        audioTrackCount <= 0 &&
-        Platform.isWebOS() &&
-        this.canUseAvPlay()
-      ) {
-        this.forceAvPlayFallbackForCurrentSource("native_no_audio_tracks");
-      }
-    });
     return true;
   },
 
   replaceBrowserVideoElement() {
-    if (!Platform.isBrowser() || !this.video?.parentNode) {
+    if (!this.video?.parentNode) {
       return null;
     }
     const oldVideo = this.video;
@@ -4386,7 +1612,6 @@ export const PlayerController = {
     this.playRequestToken = Number(this.playRequestToken || 0) + 1;
     this.unbindVideoElementListeners();
     this.teardownAdaptiveInstances();
-    this.teardownAvPlay();
     try {
       oldVideo.pause();
       Array.from(oldVideo.querySelectorAll("source, track")).forEach((node) => node.remove());
@@ -4409,7 +1634,6 @@ export const PlayerController = {
 
     this.playbackSessionActive = false;
     this.playbackEngine = "none";
-    this.resetNativeMediaState();
     this.bindVideoElement(freshVideo);
     return freshVideo;
   },
@@ -4420,15 +1644,6 @@ export const PlayerController = {
     this.video.muted = false;
     this.video.defaultMuted = false;
     this.video.volume = 1;
-    this.refreshWebOsDeviceInfo();
-    if (!this.viewportSyncHandler) {
-      this.viewportSyncHandler = () => {
-        if (this.isUsingAvPlay()) {
-          this.setAvPlayDisplayRect();
-        }
-      };
-      window.addEventListener("resize", this.viewportSyncHandler);
-    }
 
     if (!this.lifecycleBound) {
       this.lifecycleBound = true;
@@ -4475,9 +1690,8 @@ export const PlayerController = {
       return;
     }
 
-    // Duration can temporarily regress while webOS tears down or restages its
-    // native media pipeline. Keep the maximum duration for this playback only,
-    // matching Android TV's lastKnownDuration contract.
+    // Keep the maximum duration for this playback while adaptive engines
+    // transition through their initial metadata events.
     this.lastKnownDurationSeconds = 0;
     this.lastProgressSnapshot = null;
     this.playbackSessionActive = true;
@@ -4508,72 +1722,22 @@ export const PlayerController = {
     if (!this.isPlaybackRequestActive(playToken, requestedUrl)) {
       return;
     }
-    try {
-      const parsedUrl = new URL(String(url || ""));
-      const isEngineFsUrl = /\/([0-9a-f]{40})\/\d+(?:\/|$)/i.test(parsedUrl.pathname);
-      if (isEngineFsUrl) {
-        const host = parsedUrl.hostname;
-        const baseUrlKind =
-          host === "127.0.0.1" || host === "localhost" || host === "::1"
-            ? "local-service"
-            : "public-service";
-        logEngineFsDebug("PlayerController: EngineFS playback selected", {
-          baseUrlKind,
-          playbackUrl: String(url || ""),
-          declaredMediaSourceType: this.currentPlaybackMediaSourceType || null,
-          chosenSourceType: sourceType || null,
-          playbackEngine: preferredEngine,
-          webOsLoadMode: Platform.isWebOS() ? "src-mediaid-load-play" : null
-        });
-      }
-    } catch (_) {
-      // ignore logging errors
-    }
     this.rememberPlaybackEngineAttempt(this.currentPlaybackUrl, preferredEngine, {
       reset: !forceEngine
     });
 
     this.teardownAdaptiveInstances();
-    this.teardownAvPlay();
     Array.from(this.video.querySelectorAll("source")).forEach((node) => node.remove());
     this.video.pause();
     this.video.removeAttribute("src");
     this.video.load();
-    this.resetNativeMediaState();
-    const nativeFallbackEngine = this.isLikelyHlsMimeType(sourceType)
-      ? "native-hls"
-      : this.isLikelyDashMimeType(sourceType)
-        ? "native-dash"
-        : "native-file";
-
-    if (preferredEngine === this.getPlatformAvplayEngineName()) {
-      const avplayStarted = this.playWithAvPlay(url, requestHeaders, sourceType, playToken);
-      if (!avplayStarted) {
-        this.applyNativeSource(url, sourceType || null, nativeFallbackEngine);
-        this.attemptVideoPlay({
-          warningLabel: "Playback start rejected",
-          playToken,
-          beforePlay: () => this.waitForNativeMediaId(),
-          onRejected: (error) => {
-            if (!this.isUnsupportedSourceError(error) || !this.canUseAvPlay()) {
-              return false;
-            }
-            const fallbackStarted = this.playWithAvPlay(url, requestHeaders, sourceType, playToken);
-            if (fallbackStarted) {
-              this.isPlaying = true;
-            }
-            return fallbackStarted;
-          }
-        });
-      }
-    } else if (preferredEngine === "hls.js") {
+    if (preferredEngine === "hls.js") {
       const hlsStarted = this.playWithHlsJs(url, requestHeaders, playToken);
       if (!hlsStarted) {
         this.applyNativeSource(url, sourceType || "application/vnd.apple.mpegurl", "native-hls");
-        this.attemptVideoPlay({
+        this.attemptBrowserVideoPlay({
           warningLabel: "Playback start rejected",
-          playToken,
-          beforePlay: () => this.waitForNativeMediaId()
+          playToken
         });
       }
     } else if (preferredEngine === "dash.js") {
@@ -4581,17 +1745,15 @@ export const PlayerController = {
       if (!dashStarted) {
         this.applyNativeSource(url, sourceType || "application/dash+xml", "native-dash");
       }
-      this.attemptVideoPlay({
+      this.attemptBrowserVideoPlay({
         warningLabel: "DASH playback start rejected",
-        playToken,
-        beforePlay: dashStarted ? null : () => this.waitForNativeMediaId()
+        playToken
       });
     } else if (preferredEngine === "native-hls") {
       this.applyNativeSource(url, sourceType || "application/vnd.apple.mpegurl", "native-hls");
-      this.attemptVideoPlay({
+      this.attemptBrowserVideoPlay({
         warningLabel: "Native HLS playback start rejected",
         playToken,
-        beforePlay: () => this.waitForNativeMediaId(),
         onRejected: (error) => {
           if (!this.isUnsupportedSourceError(error)) {
             return false;
@@ -4605,10 +1767,9 @@ export const PlayerController = {
       });
     } else if (preferredEngine === "native-dash") {
       this.applyNativeSource(url, sourceType || "application/dash+xml", "native-dash");
-      this.attemptVideoPlay({
+      this.attemptBrowserVideoPlay({
         warningLabel: "Native DASH playback start rejected",
         playToken,
-        beforePlay: () => this.waitForNativeMediaId(),
         onRejected: (error) => {
           if (!this.isUnsupportedSourceError(error) || !this.canUseDashJs()) {
             return false;
@@ -4621,43 +1782,14 @@ export const PlayerController = {
         }
       });
     } else {
-      const isWebOsEngineFsPlayback = Platform.isWebOS() && this.isEngineFsPlaybackUrl(url);
-      const isWebOsMatroskaPlayback =
-        Platform.isWebOS() && this.normalizeMimeType(sourceType) === "video/x-matroska";
-      const shouldStageWebOsNativePlayback = isWebOsEngineFsPlayback || isWebOsMatroskaPlayback;
-      if (shouldStageWebOsNativePlayback) {
-        // Match Stremio's webOS startup order: src -> mediaId -> load -> play.
-        this.applyWebOsStagedNativeSource(url, "native-file");
-        await this.prepareWebOsStagedNativePlayback(playToken, requestedUrl);
-        if (!this.isPlaybackRequestActive(playToken, requestedUrl)) {
-          return;
-        }
-      } else {
-        this.applyNativeSource(url, sourceType || null, "native-file");
-      }
-      this.attemptVideoPlay({
+      this.applyNativeSource(url, sourceType || null, "native-file");
+      this.attemptBrowserVideoPlay({
         warningLabel: "Playback start rejected",
-        playToken,
-        beforePlay: shouldStageWebOsNativePlayback ? null : () => this.waitForNativeMediaId(),
-        onRejected: (error) => {
-          if (
-            !this.isUnsupportedSourceError(error) ||
-            !this.canUseAvPlay() ||
-            !this.isLikelyDirectFileUrl(url)
-          ) {
-            return false;
-          }
-          const fallbackStarted = this.playWithAvPlay(url, requestHeaders, sourceType, playToken);
-          if (fallbackStarted) {
-            this.isPlaying = true;
-          }
-          return fallbackStarted;
-        }
+        playToken
       });
     }
 
     this.isPlaying = true;
-    this.syncWebOsPlaybackKeepAwake();
 
     if (this.progressSaveTimer) {
       clearInterval(this.progressSaveTimer);
@@ -4679,26 +1811,8 @@ export const PlayerController = {
 
     this.flushCurrentProgress({ forceCloudSync: true });
 
-    if (this.isUsingAvPlay()) {
-      const avplay = this.getAvPlay();
-      if (!avplay) {
-        return;
-      }
-      try {
-        avplay.pause?.();
-        this.isPlaying = false;
-        this.syncWebOsPlaybackKeepAwake();
-        this.stopAvPlayTickTimer();
-        this.emitVideoEvent("pause", { playbackEngine: this.playbackEngine });
-      } catch (_) {
-        // Ignore AVPlay pause failures.
-      }
-      return;
-    }
-
     this.video.pause();
     this.isPlaying = false;
-    this.syncWebOsPlaybackKeepAwake();
   },
 
   resume() {
@@ -4707,37 +1821,6 @@ export const PlayerController = {
     this.flushCurrentProgress({ forceCloudSync: false });
     if (this.startupAudioGateActive) {
       this.applyStartupAudioGateToVideo();
-      return;
-    }
-
-    if (this.isUsingAvPlay()) {
-      const avplay = this.getAvPlay();
-      if (!avplay) {
-        return;
-      }
-      try {
-        avplay.play?.();
-        this.isPlaying = true;
-        this.syncWebOsPlaybackKeepAwake();
-        this.reapplyAvPlayPlaybackRate();
-        this.startAvPlayTickTimer();
-        this.emitVideoEvent("playing", { playbackEngine: this.playbackEngine });
-        setTimeout(() => {
-          this.reapplyAvPlayPlaybackRate();
-          this.applyPendingAvPlayAudioTrackSelection();
-          this.applyPendingAvPlaySubtitleTrackSelection();
-        }, 0);
-        setTimeout(() => {
-          this.reapplyAvPlayPlaybackRate();
-          this.applyPendingAvPlayAudioTrackSelection();
-          this.applyPendingAvPlaySubtitleTrackSelection();
-        }, 300);
-      } catch (error) {
-        this.lastPlaybackErrorCode = this.mapAvPlayErrorToMediaCode(
-          error?.name || error?.message || error
-        );
-        console.warn("Playback resume rejected", error);
-      }
       return;
     }
 
@@ -4751,7 +1834,6 @@ export const PlayerController = {
       });
     }
     this.isPlaying = true;
-    this.syncWebOsPlaybackKeepAwake();
   },
 
   stop({ forceCloudSync = true, allowCloudSync = true, flushProgress = true } = {}) {
@@ -4763,7 +1845,6 @@ export const PlayerController = {
       ? this.flushCurrentProgress({ forceCloudSync, allowCloudSync })
       : Promise.resolve(false);
     if (!this.playbackSessionActive) {
-      this.syncWebOsPlaybackKeepAwake();
       if (this.progressSaveTimer) {
         clearInterval(this.progressSaveTimer);
         this.progressSaveTimer = null;
@@ -4771,17 +1852,14 @@ export const PlayerController = {
       return flushPromise;
     }
     this.playbackSessionActive = false;
-    this.syncWebOsPlaybackKeepAwake();
     this.setStartupAudioGate(false, { resume: false });
 
     try {
       this.video.pause();
     } catch (_) {
-      // Older TV media elements can throw while the native pipeline is tearing down.
+      // Ignore media-element cleanup failures during route transitions.
     }
     this.teardownAdaptiveInstances();
-    this.teardownAvPlay();
-    this.resetNativeMediaState();
     try {
       this.video.removeAttribute("src");
     } catch (_) {
@@ -4795,11 +1873,10 @@ export const PlayerController = {
     try {
       this.video.load();
     } catch (_) {
-      // Some legacy TV engines reject load() after AVPlay/native teardown.
+      // Ignore source-reset failures during route transitions.
     }
 
     this.isPlaying = false;
-    this.syncWebOsPlaybackKeepAwake();
     this.currentItemId = null;
     this.currentItemType = null;
     this.currentVideoId = null;
@@ -4817,7 +1894,6 @@ export const PlayerController = {
     this.playbackEngine = "none";
     this.lastPlaybackErrorCode = 0;
     this.clearPlaybackEngineAttempts();
-    this.avplayFallbackAttempts.clear();
 
     if (this.progressSaveTimer) {
       clearInterval(this.progressSaveTimer);
