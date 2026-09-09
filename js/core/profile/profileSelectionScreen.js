@@ -2043,7 +2043,7 @@ export const ProfileSelectionScreen = {
       }
       return true;
     }
-    if (code === 27 || code === 461 || code === 10009 || key === "Escape") {
+    if (code === 27 || key === "Escape") {
       event?.preventDefault?.();
       this.closePinOverlay();
       return true;

@@ -89,22 +89,18 @@ export class NuvioDialog {
 
   _eventKey(e) {
     const key = String(e?.key || "");
-    const keyName = String(e?.keyName || e?.detail?.keyName || "");
-    const code = String(e?.code || "");
     const keyCode = Number(e?.keyCode || e?.which || 0);
-    const normalized = (key || keyName || code).toLowerCase();
+    const normalized = key.toLowerCase();
     return {
       isBack:
         keyCode === 8 ||
         keyCode === 27 ||
-        keyCode === 461 ||
-        keyCode === 10009 ||
-        ["escape", "esc", "backspace", "goback", "back", "return"].includes(normalized),
-      isDown: keyCode === 40 || normalized === "arrowdown" || normalized === "down",
-      isRight: keyCode === 39 || normalized === "arrowright" || normalized === "right",
-      isUp: keyCode === 38 || normalized === "arrowup" || normalized === "up",
-      isLeft: keyCode === 37 || normalized === "arrowleft" || normalized === "left",
-      isEnter: keyCode === 13 || normalized === "enter" || normalized === "ok",
+        ["escape", "esc", "backspace", "goback"].includes(normalized),
+      isDown: keyCode === 40 || normalized === "arrowdown",
+      isRight: keyCode === 39 || normalized === "arrowright",
+      isUp: keyCode === 38 || normalized === "arrowup",
+      isLeft: keyCode === 37 || normalized === "arrowleft",
+      isEnter: keyCode === 13 || normalized === "enter",
       isSpace: keyCode === 32 || normalized === " "
     };
   }

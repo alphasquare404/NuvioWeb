@@ -589,7 +589,7 @@ export function getLegacySidebarSelectedNode(container) {
 
 export function handleLegacySidebarBack(screen, event) {
   const keyCode = Number(event?.keyCode || 0);
-  const isBackEvent = keyCode === 8 || keyCode === 27 || keyCode === 461 || keyCode === 10009;
+  const isBackEvent = keyCode === 8 || keyCode === 27;
   if (!isBackEvent) {
     return false;
   }

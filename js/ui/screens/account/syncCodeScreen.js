@@ -73,7 +73,7 @@ export const SyncCodeScreen = {
 
   onKeyDown(event) {
     if (this.textDialog) {
-      if (event.keyCode === 27 || event.keyCode === 461) {
+      if (event.keyCode === 27) {
         this.textDialog = false;
         this.render();
         return;
