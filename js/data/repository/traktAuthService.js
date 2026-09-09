@@ -7,17 +7,27 @@ import {
 import { TraktAuthStore } from "../local/traktAuthStore.js";
 import { detailWatchedEnrichmentService } from "./detailWatchedEnrichmentService.js";
 import { TraktCredentialSyncService } from "../../core/profile/traktCredentialSyncService.js";
+import { Platform } from "../../platform/index.js";
 
 const API_VERSION = "2";
 const DEFAULT_API_URL = "https://api.trakt.tv";
 const REFRESH_LEEWAY_SECONDS = 60;
+const BROWSER_AUTH_BRIDGE_BASE_PATH = "/api/trakt";
+let browserBridgeStatus = "unknown";
 
 function apiBaseUrl() {
   return String(TRAKT_API_URL || DEFAULT_API_URL).replace(/\/+$/, "");
 }
 
 function hasRequiredCredentials() {
+  if (Platform.isBrowser()) {
+    return Boolean(TRAKT_CLIENT_ID && browserBridgeStatus !== "unavailable");
+  }
   return Boolean(TRAKT_CLIENT_ID && TRAKT_CLIENT_SECRET);
+}
+
+function usesBrowserAuthBridge() {
+  return Platform.isBrowser();
 }
 
 function normalizeAuthErrorMessage(payload, fallback) {
@@ -37,6 +47,27 @@ async function readResponseBody(response) {
   } catch (_) {
     return text;
   }
+}
+
+async function requestBrowserBridge(path, { method = "POST", body = null } = {}) {
+  const response = await fetch(`${BROWSER_AUTH_BRIDGE_BASE_PATH}${path}`, {
+    method,
+    headers: body == null ? undefined : { "Content-Type": "application/json" },
+    body: body == null ? undefined : JSON.stringify(body),
+    cache: "no-store"
+  });
+  return { response, payload: await readResponseBody(response) };
+}
+
+async function ensureBrowserAuthBridge() {
+  if (!usesBrowserAuthBridge()) return true;
+  try {
+    const { response, payload } = await requestBrowserBridge("/health", { method: "GET" });
+    browserBridgeStatus = response.ok && payload?.configured === true ? "available" : "unavailable";
+  } catch {
+    browserBridgeStatus = "unavailable";
+  }
+  return browserBridgeStatus === "available";
 }
 
 export async function requestJson(
@@ -92,6 +123,14 @@ async function fetchUserSettings() {
 export const TraktAuthService = {
   hasRequiredCredentials,
 
+  getBrowserBridgeStatus() {
+    return usesBrowserAuthBridge() ? browserBridgeStatus : "not-applicable";
+  },
+
+  async refreshBrowserBridgeAvailability() {
+    return ensureBrowserAuthBridge();
+  },
+
   getCurrentAuthState() {
     return TraktAuthStore.get();
   },
@@ -104,25 +143,29 @@ export const TraktAuthService = {
     if (!hasRequiredCredentials()) {
       throw new Error("Missing TRAKT credentials");
     }
+    if (usesBrowserAuthBridge() && !(await ensureBrowserAuthBridge())) {
+      throw new Error("Trakt browser authentication is unavailable on this server");
+    }
 
     const current = TraktAuthStore.get();
     if (current.deviceCode && current.expiresAt && Date.now() < Number(current.expiresAt)) {
       return current;
     }
 
-    let { response, payload } = await requestJson("/oauth/device/code", {
-      method: "POST",
-      body: { client_id: TRAKT_CLIENT_ID }
-    });
+    const startRequest = () =>
+      usesBrowserAuthBridge()
+        ? requestBrowserBridge("/device/code")
+        : requestJson("/oauth/device/code", {
+            method: "POST",
+            body: { client_id: TRAKT_CLIENT_ID }
+          });
+    let { response, payload } = await startRequest();
 
     if (response.status === 429) {
       const retryAfterSeconds = Number(response.headers.get("Retry-After") || 0);
       if (retryAfterSeconds >= 1 && retryAfterSeconds <= 10) {
         await new Promise((resolve) => setTimeout(resolve, retryAfterSeconds * 1000));
-        ({ response, payload } = await requestJson("/oauth/device/code", {
-          method: "POST",
-          body: { client_id: TRAKT_CLIENT_ID }
-        }));
+        ({ response, payload } = await startRequest());
       }
     }
 
@@ -153,14 +196,16 @@ export const TraktAuthService = {
       return { type: "expired" };
     }
 
-    const { response, payload } = await requestJson("/oauth/device/token", {
-      method: "POST",
-      body: {
-        code: state.deviceCode,
-        client_id: TRAKT_CLIENT_ID,
-        client_secret: TRAKT_CLIENT_SECRET
-      }
-    });
+    const { response, payload } = usesBrowserAuthBridge()
+      ? await requestBrowserBridge("/device/token", { body: { code: state.deviceCode } })
+      : await requestJson("/oauth/device/token", {
+          method: "POST",
+          body: {
+            code: state.deviceCode,
+            client_id: TRAKT_CLIENT_ID,
+            client_secret: TRAKT_CLIENT_SECRET
+          }
+        });
 
     if (response.ok && payload) {
       TraktAuthStore.saveToken(payload);
@@ -207,16 +252,21 @@ export const TraktAuthService = {
       return true;
     }
 
-    const { response, payload } = await requestJson("/oauth/token", {
-      method: "POST",
-      body: {
-        refresh_token: state.refreshToken,
-        client_id: TRAKT_CLIENT_ID,
-        client_secret: TRAKT_CLIENT_SECRET,
-        redirect_uri: TRAKT_REDIRECT_URI || "urn:ietf:wg:oauth:2.0:oob",
-        grant_type: "refresh_token"
-      }
-    });
+    if (usesBrowserAuthBridge() && !(await ensureBrowserAuthBridge())) {
+      return false;
+    }
+    const { response, payload } = usesBrowserAuthBridge()
+      ? await requestBrowserBridge("/refresh", { body: { refresh_token: state.refreshToken } })
+      : await requestJson("/oauth/token", {
+          method: "POST",
+          body: {
+            refresh_token: state.refreshToken,
+            client_id: TRAKT_CLIENT_ID,
+            client_secret: TRAKT_CLIENT_SECRET,
+            redirect_uri: TRAKT_REDIRECT_URI || "urn:ietf:wg:oauth:2.0:oob",
+            grant_type: "refresh_token"
+          }
+        });
 
     if (!response.ok || !payload) {
       if (response.status === 401 || response.status === 403) {
@@ -251,7 +301,7 @@ export const TraktAuthService = {
 
   async disconnect() {
     const state = TraktAuthStore.get();
-    if (hasRequiredCredentials() && state.accessToken) {
+    if (!usesBrowserAuthBridge() && hasRequiredCredentials() && state.accessToken) {
       try {
         await requestJson("/oauth/revoke", {
           method: "POST",

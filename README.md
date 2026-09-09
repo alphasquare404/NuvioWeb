@@ -154,6 +154,11 @@ Provide browser-public values through an untracked `.env` file next to
 NUVIO_SUPABASE_URL=https://your-project.supabase.co
 NUVIO_SUPABASE_ANON_KEY=your-browser-anon-key
 
+# Optional: enables browser Trakt device sign-in through the internal bridge.
+# TRAKT_CLIENT_SECRET is supplied only to the bridge, never to the browser.
+TRAKT_CLIENT_ID=
+TRAKT_CLIENT_SECRET=
+
 # Optional: enables browser Simkl PIN sign-in
 SIMKL_CLIENT_ID=
 
@@ -161,7 +166,7 @@ SIMKL_CLIENT_ID=
 NUVIO_PORT=4174
 ```
 
-`TRAKT_CLIENT_ID`, `NUVIO_SUPABASE_FALLBACK_URL`, and the existing public
+`NUVIO_SUPABASE_FALLBACK_URL` and the existing public
 metadata/avatar/donation endpoint overrides are also supported. Their defaults
 work for most deployments. TMDB remains profile-configurable in Settings rather
 than a required Docker value.
@@ -174,10 +179,12 @@ recreating the container, not rebuilding the image:
 docker compose up -d --force-recreate
 ```
 
-Never put `TRAKT_CLIENT_SECRET`, Supabase service-role keys, access tokens, or
-other private/native credentials in `.env` or browser runtime configuration.
-The browser build explicitly omits
-`TRAKT_CLIENT_SECRET`; native Tizen and webOS build paths remain separate.
+`TRAKT_CLIENT_SECRET` is a server-only value: Compose passes it exclusively to
+the internal `trakt-auth-bridge` container. Nginx routes only `/api/trakt/*`
+to that sidecar; it is never written to `nuvio.env.js`, bundled, or exposed on
+a host port. Never place Supabase service-role keys, access tokens, or other
+private/native credentials in browser runtime configuration. Native Tizen and
+webOS build paths remain separate.
 
 ### Start and update
 

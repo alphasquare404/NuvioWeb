@@ -2282,6 +2282,8 @@ export const SettingsScreen = {
       simkl: false,
       behavior: false
     };
+    this.desktopTraktStatusMessage = this.desktopTraktStatusMessage || null;
+    this.desktopTraktErrorMessage = this.desktopTraktErrorMessage || null;
     this.desktopAddonManager = this.desktopAddonManager || createDesktopAddonManager({
       requestRender: () => this.render({ refreshModel: false }),
       isActive: () =>
@@ -2305,6 +2307,13 @@ export const SettingsScreen = {
     ]);
     this.sidebarProfile = sidebarProfile;
     this.model = initialModel;
+    if (Platform.isBrowser()) {
+      void TraktAuthService.refreshBrowserBridgeAvailability().then(() => {
+        if (this.container && Router.getCurrent() === "settings") {
+          void this.render();
+        }
+      });
+    }
     if (Platform.isBrowser()) {
       this.offlineDownloadsUnsubscribe?.();
       this.offlineDownloadsUnsubscribe = subscribeToOfflineDownloads(() => {
@@ -2364,6 +2373,7 @@ export const SettingsScreen = {
       this.collapseExpandedSection(this.activeSection);
       if (this.activeSection === "trakt") {
         this.stopDesktopSimklPolling?.();
+        this.stopDesktopTraktPolling?.();
       }
     }
     this.activeSection = sectionId || null;
@@ -2442,6 +2452,7 @@ export const SettingsScreen = {
       settings,
       mode,
       credentialsConfigured: TraktAuthService.hasRequiredCredentials(),
+      browserBridgeStatus: TraktAuthService.getBrowserBridgeStatus(),
       isLoading: Boolean(this.traktLoading),
       isStatsLoading: Boolean(this.traktStatsLoading),
       statusMessage: this.traktStatusMessage || null,
@@ -7759,16 +7770,74 @@ export const SettingsScreen = {
     void poll();
   },
 
+  stopDesktopTraktPolling() {
+    if (this.desktopTraktPollTimer) {
+      clearTimeout(this.desktopTraktPollTimer);
+      this.desktopTraktPollTimer = null;
+    }
+  },
+
+  startDesktopTraktPolling() {
+    if (this.desktopTraktPollTimer) return;
+    const poll = async () => {
+      const auth = TraktAuthService.getCurrentAuthState();
+      if (!auth.deviceCode || Router.getCurrent() !== "settings" || this.activeSection !== "trakt") {
+        this.stopDesktopTraktPolling();
+        return;
+      }
+      const result = await TraktAuthService.pollDeviceToken().catch((error) => ({
+        type: "failed",
+        message: String(error?.message || error || "Unable to reach Trakt. Try again.")
+      }));
+      if (result.type === "approved") {
+        this.stopDesktopTraktPolling();
+        this.desktopTraktStatusMessage = `Connected as ${result.username || "Trakt user"}`;
+        this.desktopTraktErrorMessage = null;
+        await this.render();
+        return;
+      }
+      if (result.type === "pending") {
+        this.desktopTraktStatusMessage = "Waiting for Trakt approval...";
+        this.desktopTraktErrorMessage = null;
+      } else if (["expired", "already_used", "denied"].includes(result.type)) {
+        this.stopDesktopTraktPolling();
+        this.desktopTraktStatusMessage = null;
+        this.desktopTraktErrorMessage =
+          result.type === "denied" ? "Trakt authorization was denied." : "Trakt code expired. Start again.";
+      } else if (result.type === "slow_down") {
+        this.desktopTraktStatusMessage = "Trakt is rate limiting requests. Waiting before retrying...";
+      } else if (result.type === "failed") {
+        this.stopDesktopTraktPolling();
+        this.desktopTraktStatusMessage = null;
+        this.desktopTraktErrorMessage = result.message;
+      }
+      await this.render();
+      const next = TraktAuthService.getCurrentAuthState();
+      if (next.deviceCode && !this.desktopTraktPollTimer) {
+        this.desktopTraktPollTimer = setTimeout(() => {
+          this.desktopTraktPollTimer = null;
+          void poll();
+        }, Math.max(1, Number(next.pollInterval || 5)) * 1000);
+      }
+    };
+    void poll();
+  },
+
   renderDesktopTrackingSection() {
     const settings = TraktSettingsStore.get();
     const trakt = TraktAuthService.getCurrentAuthState();
     const simkl = SimklAuthService.getCurrentAuthState();
     const traktConnected = TraktAuthService.isAuthenticated();
     const simklConnected = SimklAuthService.isAuthenticated();
+    const traktBridgeStatus = TraktAuthService.getBrowserBridgeStatus();
+    const traktWaiting = Boolean(trakt.deviceCode && Number(trakt.expiresAt || 0) > Date.now());
     const simklWaiting = Boolean(simkl.userCode && Number(simkl.expiresAt || 0) > Date.now());
     const expanded = this.desktopTrackingExpanded || {};
     if (simklWaiting) {
       this.startDesktopSimklPolling();
+    }
+    if (traktWaiting) {
+      this.startDesktopTraktPolling();
     }
     const librarySources = [
       { id: TraktLibrarySourceMode.LOCAL, label: "Nuvio" },
@@ -7784,6 +7853,30 @@ export const SettingsScreen = {
     this.actionMap.set("tracking:desktop:trakt", () => this.toggleDesktopTrackingSection("trakt"));
     this.actionMap.set("tracking:desktop:simkl", () => this.toggleDesktopTrackingSection("simkl"));
     this.actionMap.set("tracking:desktop:behavior", () => this.toggleDesktopTrackingSection("behavior"));
+    this.actionMap.set("tracking:desktop:trakt:connect", async () => {
+      this.desktopTraktErrorMessage = null;
+      try {
+        await TraktAuthService.startDeviceAuth();
+        this.desktopTraktStatusMessage = "Enter the code on Trakt to approve Nuvio.";
+        this.desktopTrackingExpanded = { ...this.desktopTrackingExpanded, trakt: true };
+        this.startDesktopTraktPolling();
+      } catch (error) {
+        this.desktopTraktStatusMessage = null;
+        this.desktopTraktErrorMessage = String(error?.message || error || "Unable to start Trakt sign-in.");
+      }
+      await this.render();
+    });
+    this.actionMap.set("tracking:desktop:trakt:open", () => {
+      const url = String(TraktAuthService.getCurrentAuthState().verificationUrl || "").trim();
+      if (url) window.open?.(url, "_blank", "noopener,noreferrer");
+    });
+    this.actionMap.set("tracking:desktop:trakt:cancel", async () => {
+      this.stopDesktopTraktPolling();
+      await TraktAuthService.disconnect();
+      this.desktopTraktStatusMessage = null;
+      this.desktopTraktErrorMessage = null;
+      await this.render();
+    });
     this.actionMap.set("tracking:desktop:simkl:connect", async () => {
       this.desktopSimklErrorMessage = null;
       try {
@@ -7931,7 +8024,22 @@ export const SettingsScreen = {
     const traktBody = traktConnected
       ? `<p class="settings-tracking-provider-status">Connected as ${escapeHtml(trakt.username || "Trakt user")}</p>
          ${inlineButton("tracking:desktop:trakt:disconnect", "Disconnect", "is-danger")}`
-      : `<p class="settings-row-subtitle">Browser sign-in coming soon. Trakt requires a secure server-side token exchange; this browser build does not expose its confidential client secret.</p>`;
+      : traktWaiting
+        ? `<div class="settings-tracking-activation">
+             <div class="settings-row-title">Enter this code on Trakt</div>
+             <p class="settings-row-subtitle">Open Trakt activation and enter this code to approve Nuvio.</p>
+             <code class="settings-tracking-activation-code">${escapeHtml(trakt.userCode || "-")}</code>
+             <div class="settings-tracking-activation-url">${escapeHtml(trakt.verificationUrl || "https://trakt.tv/activate")}</div>
+             <div class="settings-tracking-inline-actions">
+               ${inlineButton("tracking:desktop:trakt:open", "Open Trakt")}
+               ${inlineButton("tracking:desktop:trakt:cancel", "Cancel", "is-secondary")}
+             </div>
+             <p class="settings-tracking-provider-status">${escapeHtml(this.desktopTraktStatusMessage || "Waiting for Trakt approval...")}</p>
+           </div>`
+        : traktBridgeStatus === "unavailable" || !TraktAuthService.hasRequiredCredentials()
+          ? `<p class="settings-row-subtitle">Trakt browser authentication is unavailable on this server.</p>`
+          : `<p class="settings-row-subtitle">Connect Trakt to sync lists, watched history, playback progress, and scrobbles.</p>
+             ${inlineButton("tracking:desktop:trakt:connect", "Connect Trakt")}`;
     const behaviorBody = `
       ${this.renderActionRow({ focusKey: "tracking:desktop:library", title: "Library source", subtitle: "Choose the service Nuvio reads for your Library.", value: librarySources.find((item) => item.id === settings.librarySourceMode)?.label || "Nuvio" })}
       ${this.renderActionRow({ focusKey: "tracking:desktop:progress", title: "Watch progress source", subtitle: "Choose the service Nuvio reads for resume and Continue Watching.", value: progressSources.find((item) => item.id === settings.watchProgressSource)?.label || "Nuvio Sync" })}
@@ -7945,7 +8053,7 @@ export const SettingsScreen = {
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "trakt"))}
       <div class="settings-group-card settings-group-card-fill">
         <div class="settings-stack settings-desktop-tracking-stack">
-          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:trakt", title: "Trakt", subtitle: traktConnected ? `Connected as ${trakt.username || "Trakt user"}` : "Not connected", expanded: Boolean(expanded.trakt), bodyHtml: expanded.trakt ? traktBody : "", classes: "settings-collapsible-tracking" })}
+          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:trakt", title: "Trakt", subtitle: traktConnected ? `Connected as ${trakt.username || "Trakt user"}` : traktWaiting ? "Waiting for approval" : traktBridgeStatus === "unavailable" ? "Unavailable on this server" : "Not connected", expanded: Boolean(expanded.trakt), bodyHtml: expanded.trakt ? `${traktBody}${this.desktopTraktErrorMessage ? `<p class="settings-tracking-error">${escapeHtml(this.desktopTraktErrorMessage)}</p>` : ""}` : "", classes: "settings-collapsible-tracking" })}
           ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:simkl", title: "Simkl", subtitle: simklConnected ? `Connected as ${simkl.username || "Simkl user"}` : simklWaiting ? "Waiting for approval" : "Not connected", expanded: Boolean(expanded.simkl), bodyHtml: expanded.simkl ? `${simklBody}${this.desktopSimklErrorMessage ? `<p class="settings-tracking-error">${escapeHtml(this.desktopSimklErrorMessage)}</p>` : ""}` : "", classes: "settings-collapsible-tracking" })}
           ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:behavior", title: "Sources & Behavior", subtitle: "Choose the sources used for Library, progress, and related content.", expanded: Boolean(expanded.behavior), bodyHtml: expanded.behavior ? behaviorBody : "", classes: "settings-collapsible-tracking" })}
         </div>
@@ -9184,6 +9292,7 @@ export const SettingsScreen = {
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
     this.stopTraktPolling?.();
+    this.stopDesktopTraktPolling?.();
     this.stopDesktopSimklPolling?.();
     this.stopDebridDeviceAuth();
     this.desktopAddonManager?.dispose?.();

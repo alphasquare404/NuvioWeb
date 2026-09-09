@@ -21,3 +21,12 @@ services:
     ports:
       - "${NUVIO_PORT:-4173}:80"
     restart: unless-stopped
+
+  trakt-auth-bridge:
+    container_name: nuvioweb-trakt-auth-bridge
+    image: ghcr.io/alphasquare404/nuvioweb-trakt-auth-bridge:desktop
+    environment:
+      TRAKT_CLIENT_ID: ${TRAKT_CLIENT_ID:-}
+      TRAKT_CLIENT_SECRET: ${TRAKT_CLIENT_SECRET:-}
+      TRAKT_REDIRECT_URI: ${TRAKT_REDIRECT_URI:-urn:ietf:wg:oauth:2.0:oob}
+    restart: unless-stopped
