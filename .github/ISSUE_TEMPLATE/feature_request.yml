@@ -11,7 +11,7 @@ body:
 
         Feature requests are reviewed as product proposals first.
 
-        Please do not open a pull request for a new feature, major UX change, playback behavior change, platform change, installer change, or broad cosmetic update unless a maintainer has explicitly approved it first.
+        Please do not open a pull request for a new feature, major UX change, playback behavior change, deployment change, or broad cosmetic update unless a maintainer has explicitly approved it first.
 
         Unapproved feature PRs will usually be closed.
 
@@ -37,18 +37,13 @@ body:
         - Resume / Watch progress
         - Continue Watching
         - Next Episode / Auto-play
-        - Focus / Remote navigation
+        - Focus / Keyboard navigation
         - UI / Layout
         - Search
         - Library / Sync
         - Settings
-        - Samsung Tizen / AVPlay
-        - LG webOS / Luna media
-        - Packaging / Build
-        - Installer
-        - TizenBrew wrapper
-        - webOS Homebrew wrapper
-        - Browser development mode
+        - Build / Deployment
+        - Browser / PWA
         - Documentation
         - Other
     validations:
@@ -61,13 +56,10 @@ body:
       description: Select the platform or platforms that would be affected by this request.
       multiple: true
       options:
-        - Samsung Tizen
-        - LG webOS
-        - Browser development mode
-        - Nuvio WebTV Installer
-        - TizenBrew wrapper
-        - webOS Homebrew wrapper
-        - Shared web app
+        - Desktop browser
+        - Mobile / tablet browser
+        - Installed PWA
+        - Docker / self-hosting
         - Not sure
     validations:
       required: true
@@ -99,12 +91,12 @@ body:
     id: platform_notes
     attributes:
       label: Platform notes
-      description: Explain whether this should work on Tizen, webOS, both, browser development mode, or installer/wrapper tooling.
+      description: Explain whether this should work on desktop browsers, mobile/tablet browsers, installed PWA, or Docker/self-hosting.
       placeholder: |
-        - Samsung Tizen:
-        - LG webOS:
-        - Browser development mode:
-        - Installer / wrapper impact:
+        - Desktop browser:
+        - Mobile / tablet browser:
+        - Installed PWA:
+        - Docker / self-hosting:
     validations:
       required: false
 
@@ -112,7 +104,7 @@ body:
     id: compatibility_risks
     attributes:
       label: Compatibility risks
-      description: Describe any possible risks for Smart TV compatibility, playback behavior, remote navigation, packaging, installer flow, or wrapper projects.
+      description: Describe any possible risks for browser compatibility, playback behavior, keyboard navigation, PWA, or deployment.
       placeholder: |
         This may affect...
         This may require platform-specific handling because...
@@ -124,7 +116,7 @@ body:
     id: contribution_plan
     attributes:
       label: Are you planning to implement this yourself?
-      description: Major features, playback changes, platform changes, installer changes, and UI changes need maintainer approval before implementation.
+      description: Major features, playback changes, deployment changes, and UI changes need maintainer approval before implementation.
       options:
         - No, this is only a proposal
         - Maybe, but only if approved first

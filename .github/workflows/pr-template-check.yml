@@ -90,7 +90,6 @@ jobs:
               "New behavior",
               "Platform impact",
               "UI / behavior / playback impact",
-              "Installer, packaging, or wrapper impact",
               "Policy check",
               "Scope boundaries",
               "Testing",
@@ -167,13 +166,6 @@ jobs:
               failedRules.push("Check at least one UI / behavior / playback impact box.");
             }
 
-            const installerImpactContent = sectionContent("Installer, packaging, or wrapper impact") || "";
-            const installerImpactChecked = checkedLines(installerImpactContent);
-
-            if (sectionContent("Installer, packaging, or wrapper impact") !== null && installerImpactChecked.length === 0) {
-              failedRules.push("Check at least one installer, packaging, or wrapper impact box.");
-            }
-
             const policyContent = sectionContent("Policy check") || "";
             const policyChecked = checkedLines(policyContent);
             const policyUnchecked = uncheckedLines(policyContent);
@@ -234,31 +226,6 @@ jobs:
               ["none", "n/a", "na", "not applicable"].includes(logsText)
             ) {
               failedRules.push("Playback changes must include logs or a clear explanation of why logs are not relevant.");
-            }
-
-            const packagingChanged = installerImpactChecked.some((line) =>
-              /Tizen `\.wgt` packaging changed|webOS `\.ipk` packaging changed|App identifiers or metadata changed|local\.properties|sync:tizen|sync:webos|Nuvio WebTV Installer compatibility changed|TizenBrew wrapper support changed|webOS Homebrew metadata support changed/i.test(line)
-            );
-
-            const testingContent = [
-              sectionContent("Testing") || "",
-              body.match(/^###\s+Commands tested\s*$/m) ? body : "",
-            ].join("\n");
-
-            if (
-              packagingChanged &&
-              !/npm run (build|package:tizen|package:webos|install:webos|sync:tizen|sync:webos)/i.test(testingContent)
-            ) {
-              failedRules.push("Installer, packaging, or wrapper changes must list the relevant commands tested.");
-            }
-
-            const platformImpact = cleanedContent("Platform impact") || "";
-
-            if (
-              (affectedAreaChecked.some((line) => /Samsung Tizen/i.test(line)) && !/Samsung Tizen:\s*\S+/i.test(platformImpact)) ||
-              (affectedAreaChecked.some((line) => /LG webOS/i.test(line)) && !/LG webOS:\s*\S+/i.test(platformImpact))
-            ) {
-              failedRules.push("Platform impact must describe the affected Tizen and/or webOS platform sections.");
             }
 
             if (missing.length || empty.length || failedRules.length) {

@@ -423,34 +423,6 @@ async function buildCSS() {
   }
 }
 
-async function copyOptionalRootFile(fileName, { fallback = null, defaultContents = "" } = {}) {
-  const targetPath = path.join(distDir, fileName);
-  try {
-    await cp(path.join(rootDir, fileName), targetPath);
-    return fileName;
-  } catch (error) {
-    if (error?.code !== "ENOENT") {
-      throw error;
-    }
-  }
-
-  if (!fallback) {
-    return "";
-  }
-
-  try {
-    await cp(path.join(rootDir, fallback), targetPath);
-    return fallback;
-  } catch (error) {
-    if (error?.code !== "ENOENT") {
-      throw error;
-    }
-  }
-
-  await writeFile(targetPath, defaultContents, "utf8");
-  return "generated-default";
-}
-
 async function buildCoreJsBundle() {
   console.log("building core-js bundle...");
   const { list: requiredModules } = coreJsCompat({
@@ -542,7 +514,6 @@ async function runBuild() {
     await buildCSS();
 
     console.log("copying static assets...");
-    const copiedAppInfoSource = await copyOptionalRootFile("appinfo.json");
     await Promise.all([
       cp(path.join(rootDir, "assets"), path.join(distDir, "assets"), { recursive: true }),
       cp(path.join(rootDir, "res"), path.join(distDir, "res"), { recursive: true }),
@@ -580,10 +551,6 @@ async function runBuild() {
       path.join(rootDir, "node_modules", "libbitsub", "LICENSE"),
       path.join(distDir, "assets", "libs", "libbitsub.LICENSE")
     );
-
-    if (!copiedAppInfoSource) {
-      console.warn("WARNING: skipping appinfo.json because it is not present in the repo root.");
-    }
 
     // js bundle processing (final step to ensure all transformations are applied correctly and we end up with a single, minified bundle file)
     await buildBundle();

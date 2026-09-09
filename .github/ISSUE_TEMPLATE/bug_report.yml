@@ -59,12 +59,9 @@ body:
     attributes:
       label: Platform
       options:
-        - Samsung Tizen
-        - LG webOS
-        - Browser development mode
-        - Nuvio WebTV Installer
-        - TizenBrew wrapper
-        - webOS Homebrew wrapper
+        - Desktop browser
+        - Mobile / tablet browser
+        - Installed PWA
         - Other (please describe below)
     validations:
       required: true
@@ -72,14 +69,10 @@ body:
   - type: dropdown
     id: install_method
     attributes:
-      label: Install method
+      label: Access method
       options:
-        - Nuvio WebTV Installer
-        - TizenBrew
-        - webOS Homebrew Channel
-        - Manual WGT install
-        - Manual IPK install
         - Hosted web app
+        - Installed PWA
         - Local development build
         - Built from source
         - Other (please describe below)
@@ -90,8 +83,8 @@ body:
     id: device_model
     attributes:
       label: Device model
-      description: Include the TV model or the device/browser used for testing.
-      placeholder: "e.g. LG C1, LG B4, Samsung S90F, Chrome on macOS"
+      description: Include the device and browser used for testing.
+      placeholder: "e.g. Chrome on macOS, Safari on iPadOS"
     validations:
       required: true
 
@@ -99,17 +92,17 @@ body:
     id: platform_version
     attributes:
       label: Platform version
-      description: Include Tizen version, webOS version, browser version, or installer version if known.
-      placeholder: "e.g. webOS 6, webOS 24, Tizen 9.0, Chrome 126"
+      description: Include browser and operating-system version if known.
+      placeholder: "e.g. Chrome 126 on macOS, Safari 18 on iPadOS"
     validations:
       required: false
 
   - type: input
-    id: package_type
+    id: build_type
     attributes:
-      label: Package type
-      description: If relevant, specify whether this was a WGT, IPK, hosted build, local build, or installer build.
-      placeholder: "e.g. .wgt, .ipk, hosted, local dist, installer"
+      label: Build type
+      description: If relevant, specify whether this was a hosted build, installed PWA, local build, or source build.
+      placeholder: "e.g. hosted, installed PWA, local dist"
     validations:
       required: false
 
@@ -131,18 +124,13 @@ body:
         - Resume / Watch progress
         - Continue Watching
         - Next Episode / Auto-play
-        - Focus / Remote navigation
+        - Focus / Keyboard navigation
         - UI / Layout
         - Search
         - Library / Sync
         - Settings
-        - Samsung Tizen / AVPlay
-        - LG webOS / Luna media
-        - Packaging / Build
-        - Installer
-        - TizenBrew wrapper
-        - webOS Homebrew wrapper
-        - Browser development mode
+        - Build / Deployment
+        - Browser / PWA
         - Other
     validations:
       required: true
@@ -153,7 +141,7 @@ body:
       label: Bug description
       description: |
         Explain the problem in detail. Do not only write "not working" or "same issue".
-        Include what screen or flow you were using, what you pressed on the remote, what changed on screen, and any visible error text.
+        Include what screen or flow you were using, what you clicked, tapped, or pressed, what changed on screen, and any visible error text.
       placeholder: |
         I was trying to ...
         The app ...
@@ -168,7 +156,7 @@ body:
       label: Steps to reproduce
       description: Exact steps, one action per line. If it depends on specific content, describe it without sharing private links.
       placeholder: |
-        1. Open NuvioTV Web on ...
+        1. Open NuvioWeb in ...
         2. Navigate to ...
         3. Press ...
         4. Select ...
@@ -188,7 +176,7 @@ body:
     id: actual
     attributes:
       label: Actual behavior
-      placeholder: "What actually happened? Include any on-screen error text/codes and whether the app froze, crashed, ignored remote input, showed the wrong content, failed playback, etc."
+      placeholder: "What actually happened? Include any on-screen error text/codes and whether the app froze, crashed, ignored input, showed the wrong content, failed playback, etc."
     validations:
       required: true
 
@@ -240,12 +228,10 @@ body:
   - type: dropdown
     id: playback_engine
     attributes:
-      label: Playback engine / platform API
+      label: Playback engine
       description: Select the closest option if this is a playback issue.
       options:
         - Not a playback issue
-        - LG webOS media player / Luna
-        - Samsung Tizen AVPlay
         - Browser video element
         - Not sure
         - Other (please describe below)
@@ -266,11 +252,7 @@ body:
         Include a short snippet from around the time the bug happens.
 
         Useful examples:
-        - webOS logs: npm run logs:webos -- -d lg
-        - webOS inspect: npm run inspect:webos -- -d lg
-        - Tizen Studio console/device logs
         - Browser console and network errors
-        - Installer logs, if the issue is installer-related
       render: shell
       placeholder: |
         Paste logs here. Take the logs from the Console Log in the settings under "Informations" tab.

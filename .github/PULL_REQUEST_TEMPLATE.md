@@ -15,21 +15,16 @@
 <!-- Check every area affected by this PR. -->
 
 - [ ] Shared web app
-- [ ] Samsung Tizen
-- [ ] LG webOS
-- [ ] Browser development mode
+- [ ] Browser / PWA
 - [ ] Playback
 - [ ] Audio tracks
 - [ ] Subtitles
-- [ ] Focus / Remote navigation
+- [ ] Focus / Keyboard navigation
 - [ ] UI / Layout
 - [ ] Resume / Watch progress
 - [ ] Continue Watching
 - [ ] Next Episode / Auto-play
-- [ ] Packaging / Build
-- [ ] Nuvio WebTV Installer compatibility
-- [ ] TizenBrew wrapper
-- [ ] webOS Homebrew wrapper
+- [ ] Build / Deployment
 - [ ] Documentation
 - [ ] Other
 
@@ -58,11 +53,10 @@
 
 <!-- Explain which platforms were affected and whether this change touches shared code. -->
 
-- Samsung Tizen:
-- LG webOS:
-- Browser development mode:
-- Installer / packaging:
-- Wrapper repositories:
+- Desktop browser:
+- Mobile / tablet browser:
+- Installed PWA:
+- Docker / self-hosting:
 
 ## UI / behavior / playback impact
 
@@ -78,21 +72,6 @@
 - [ ] Behavior change has explicit maintainer approval
 - [ ] Playback change has explicit maintainer approval
 
-## Installer, packaging, or wrapper impact
-
-<!-- Check every box that applies. -->
-
-- [ ] No installer, packaging, or wrapper impact
-- [ ] Tizen `.wgt` packaging changed
-- [ ] webOS `.ipk` packaging changed
-- [ ] App identifiers or metadata changed
-- [ ] `local.properties` / environment handling changed
-- [ ] `sync:tizen` changed
-- [ ] `sync:webos` changed
-- [ ] Nuvio WebTV Installer compatibility changed
-- [ ] TizenBrew wrapper support changed
-- [ ] webOS Homebrew metadata support changed
-
 ## Policy check
 
 <!-- ALL boxes must be checked or the PR may be closed without review. -->
@@ -101,15 +80,15 @@
 - [ ] This PR fits the current PR policy or has explicit maintainer approval.
 - [ ] This PR is small, focused, and limited to one issue.
 - [ ] This PR does not bundle unrelated refactors, cleanups, formatting, or drive-by changes.
-- [ ] This PR does not add dependencies, architecture changes, platform rewrites, installer rewrites, or broad refactors without approval.
+- [ ] This PR does not add dependencies, architecture changes, or broad refactors without approval.
 - [ ] This PR does not change UI unless it fixes a linked glitch/bug or has explicit approval.
 - [ ] This PR does not change behavior unless it fixes a linked bug/regression or has explicit approval.
 - [ ] This PR does not change playback unless it fixes a linked bug/regression or has explicit approval.
-- [ ] This PR does not change installer, packaging, app identifiers, release flow, or wrapper behavior without clear need or approval.
+- [ ] This PR does not change deployment or release behavior without clear need or approval.
 - [ ] I included a linked issue, reproduction steps, and testing notes if this is a critical bug fix.
 - [ ] I listed the testing performed below.
 
-> Feature additions, broad UI changes, refactors, playback rewrites, platform rewrites, installer rewrites, and other non-critical changes may be closed or deferred without review while NuvioTV Web is being prepared for a stable Smart TV release.
+> Feature additions, broad UI changes, refactors, playback rewrites, and other non-critical changes may be closed or deferred without review.
 
 ## Scope boundaries
 
@@ -117,11 +96,11 @@
 
 ## Testing
 
-<!-- What did you test and how? Include devices, TVs, emulators, simulators, commands, packages, and manual flows. Do not write only "not tested" unless this is localization-only. -->
+<!-- What did you test and how? Include browsers, devices, commands, and manual flows. Do not write only "not tested" unless this is localization-only. -->
 
 ### Devices / platforms tested
 
-<!-- Examples: LG C1 webOS 6, LG B4 webOS 24, Samsung S90F Tizen 9.0, Chrome on macOS, Tizen emulator, webOS simulator. -->
+<!-- Examples: Chrome on macOS, Safari on iPadOS, Firefox on Windows, installed PWA. -->
 
 ### Commands tested
 
@@ -130,11 +109,7 @@
 ```sh
 # Examples:
 npm run build
-npm run package:tizen
-npm run package:webos
-npm run install:webos -- -d lg
-npm run logs:webos -- -d lg
-npm run inspect:webos -- -d lg
+npm test
 ```
 
 ## Manual test flow
@@ -151,7 +126,7 @@ npm run inspect:webos -- -d lg
 
 ## Regression risk
 
-<!-- Describe what could break, especially across Samsung Tizen, LG webOS, browser development mode, installer, packaging, or wrappers. -->
+<!-- Describe what could break across desktop/mobile browsers, installed PWA, or deployment. -->
 
 ## Breaking changes
 
