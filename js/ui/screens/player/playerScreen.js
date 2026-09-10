@@ -8771,10 +8771,13 @@ export const PlayerScreen = {
     if (!root) {
       return;
     }
-    root.classList.toggle(
-      "controls-visible",
-      Boolean(this.controlsVisible) && !this.isExternalFrameMode()
-    );
+    const controlsVisible = Boolean(this.controlsVisible) && !this.isExternalFrameMode();
+    root.classList.toggle("controls-visible", controlsVisible);
+    const backButton = root.querySelector("[data-player-desktop-back]");
+    if (backButton) {
+      backButton.toggleAttribute("inert", !controlsVisible);
+      backButton.setAttribute("aria-hidden", String(!controlsVisible));
+    }
     this.syncPlayerActionOverlayOffset();
   },
 

@@ -2796,10 +2796,16 @@ html.desktop-browser {
   font: inherit;
   font-size: 20px;
   line-height: 1;
+  opacity: 1;
   pointer-events: auto;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease, opacity 200ms ease;
+}
+
+.desktop-browser #playerUiRoot:not(.controls-visible) .player-desktop-back-button {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .desktop-browser #player .player-desktop-back-button:focus-visible {
