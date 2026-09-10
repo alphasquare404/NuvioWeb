@@ -8,6 +8,7 @@ import { AuthState } from "./core/auth/authState.js";
 import { DeviceSessionRegistration } from "./core/auth/deviceSessionRegistration.js";
 import { ProfileManager } from "./core/profile/profileManager.js";
 import { ProfileSyncService } from "./core/profile/profileSyncService.js";
+import { shouldShowProfileSelectionAtStartup } from "./core/profile/profileStartupSelectionPolicy.js";
 import { StartupSyncService } from "./core/profile/startupSyncService.js";
 import { ProviderCredentialSyncService } from "./core/profile/providerCredentialSyncService.js";
 import { ThemeManager } from "./ui/theme/themeManager.js";
@@ -139,25 +140,6 @@ function isAddonRemoteMode() {
 
 async function shouldShowProfileSelection() {
   const startedAt = startupNow();
-  // Browser profile cards use locally cached metadata immediately. Remote
-  // profile and PIN refreshes continue after the picker becomes visible.
-  if (Platform.isBrowser()) {
-    const profiles = await ProfileManager.getProfiles();
-    const activeProfileId = ProfileManager.getActiveProfileId();
-    void Promise.all([ProfileSyncService.pull(), ProfileSyncService.pullProfileLockStates()])
-      .then(async ([remoteProfiles, pinStates]) => {
-        if (Router.getCurrent() !== "profileSelection") return;
-        const screen = Router.getCurrentScreen();
-        if (!screen) return;
-        screen.profiles = remoteProfiles?.length ? remoteProfiles : await ProfileManager.getProfiles();
-        screen.profilePinEnabled = pinStates || {};
-        screen.activeProfileId = String(ProfileManager.getActiveProfileId() || "1");
-        screen.render?.();
-      })
-      .catch((error) => console.warn("Background profile picker refresh failed", error));
-    logStartupTiming("profile-selection-local-ready", startedAt, { profiles: profiles.length });
-    return { show: profiles.length > 1, pinStates: {} };
-  }
   const [, pinStates] = await Promise.all([
     ProfileSyncService.pull(),
     ProfileSyncService.pullProfileLockStates()
@@ -168,22 +150,16 @@ async function shouldShowProfileSelection() {
     pinStates?.[String(activeProfileId)] || pinStates?.[Number(activeProfileId)]
   );
 
-  if (hasSelectedProfileThisSession) {
-    return { show: false, pinStates };
-  }
-
-  // Remember last profile: when enabled and the last used profile has no PIN,
-  // skip the picker and go straight in, matching the Android TV app. A profile
-  // with a PIN always shows the picker so the PIN can be entered.
-  if (
-    ProfileManager.isRememberLastProfileEnabled() &&
-    ProfileManager.hasEverSelectedProfile() &&
-    !activeProfileHasPin
-  ) {
-    return { show: false, pinStates };
-  }
-
-  const result = { show: profiles.length > 1 || activeProfileHasPin, pinStates };
+  const result = {
+    show: shouldShowProfileSelectionAtStartup({
+      profiles,
+      activeProfileHasPin,
+      hasSelectedProfileThisSession,
+      rememberLastProfileEnabled: ProfileManager.isRememberLastProfileEnabled(),
+      hasEverSelectedProfile: ProfileManager.hasEverSelectedProfile()
+    }),
+    pinStates
+  };
   logStartupTiming("profile-selection-ready", startedAt, { profiles: profiles.length });
   return result;
 }
