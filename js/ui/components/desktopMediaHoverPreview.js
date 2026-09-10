@@ -1,4 +1,4 @@
-const HOVER_DELAY_MS = 3000;
+const HOVER_DELAY_MS = 2500;
 const CLOSE_GRACE_MS = 160;
 
 function escapeHtml(value) {
