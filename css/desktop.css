@@ -10100,6 +10100,41 @@ body.desktop-browser {
   }
 }
 
+/* Mobile/PWA Hero keeps the browser artwork lifecycle, but restores its
+   crossfade states after the desktop base rules above. Remove only the
+   horizontal overlays here; the bottom gradient remains for copy readability. */
+@media (max-width: 1023px) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::before,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::before {
+    background: none;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop.home-hero-backdrop-transition-enter {
+    opacity: 0;
+    transition: opacity 400ms ease !important;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop.home-hero-backdrop-transition-enter.is-visible {
+    opacity: 1;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop-transition-ghost {
+    opacity: 1;
+    transition: opacity 400ms ease !important;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop-transition-ghost.is-fading-out {
+    opacity: 0;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    line-height: 1;
+  }
+}
+
 /* Phone Home keeps the desktop browser composition, but uses a deliberate
    mobile rhythm: readable cards, a visible next-card cue, and less empty hero
    space before the first rail. These rules are browser-only and leave the TV
