@@ -26,7 +26,7 @@ function toRgbChannels(hex, fallback = "255 255 255") {
 
 /**
  * Pure function — no DOM access. Returns a CSS string for legacy engines that
- * do not support CSS custom properties (e.g. Chromium 38 / webOS 3.x).
+ * do not support CSS custom properties.
  *
  * colorMap keys:
  *   bg, bgElevated, cardBg, secondary, onSecondary,

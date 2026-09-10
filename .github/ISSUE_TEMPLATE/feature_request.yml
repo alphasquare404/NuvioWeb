@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an improvement or new feature for NuvioTV Web.
+description: Suggest an improvement or new feature for NuvioWeb.
 title: "[Feature]: "
 labels:
   - enhancement
@@ -80,7 +80,7 @@ body:
     id: proposed
     attributes:
       label: Proposed solution
-      description: What would you like NuvioTV Web to do?
+      description: What would you like NuvioWeb to do?
       placeholder: |
         I would like the app to...
         The expected behavior would be...

@@ -4,11 +4,7 @@ import eslintConfigPrettier from "eslint-config-prettier";
 
 const runtimeGlobals = {
   ...globals.browser,
-  ...globals.node,
-  PalmSystem: "readonly",
-  tizen: "readonly",
-  webOS: "readonly",
-  webOSSystem: "readonly"
+  ...globals.node
 };
 
 export default [

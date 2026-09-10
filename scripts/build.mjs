@@ -8,7 +8,7 @@ import postcss from "postcss";
 import cssnano from "cssnano";
 import autoprefixer from "autoprefixer";
 import { readAppMetadata, syncVersionFiles } from "./appMetadata.mjs";
-import { compatibilityPolicy } from "./compatibilityPolicy.mjs";
+import { browserCompatibilityPolicy } from "./browserCompatibilityPolicy.mjs";
 import { writeRuntimeEnvScriptFile } from "./envProperties.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,19 +18,10 @@ const requireConfiguredRuntimeEnv = /^(1|true|yes|on)$/i.test(
   String(process.env.NUVIO_REQUIRE_LOCAL_PROPERTIES || "")
 );
 const debugBundle = /^(1|true|yes|on)$/i.test(String(process.env.NUVIO_DEBUG_BUNDLE || ""));
-const runtimeTargetArg = process.argv
-  .slice(2)
-  .find((arg) => String(arg || "").startsWith("--target="));
-const runtimeTarget = String(runtimeTargetArg || "--target=browser")
-  .slice("--target=".length)
-  .trim()
-  .toLowerCase();
-const supportedRuntimeTargets = new Set(["browser", "webos", "tizen"]);
-if (!supportedRuntimeTargets.has(runtimeTarget)) {
-  throw new Error(`Unsupported build runtime target: ${runtimeTarget || "(empty)"}`);
+if (process.argv.slice(2).some((arg) => String(arg || "").startsWith("--target="))) {
+  throw new Error("NuvioWeb builds browser/PWA artifacts only.");
 }
-const includePrivateRuntimeEnv = runtimeTarget !== "browser";
-const legacyViewport = {
+const browserViewport = {
   width: 1920,
   height: 1080,
   remPx: 20
@@ -141,13 +132,13 @@ function parseLengthToPx(value) {
     return amount;
   }
   if (unit === "vw") {
-    return (amount * legacyViewport.width) / 100;
+    return (amount * browserViewport.width) / 100;
   }
   if (unit === "vh") {
-    return (amount * legacyViewport.height) / 100;
+    return (amount * browserViewport.height) / 100;
   }
   if (unit === "rem") {
-    return amount * legacyViewport.remPx;
+    return amount * browserViewport.remPx;
   }
   return null;
 }
@@ -409,7 +400,7 @@ async function buildCSS() {
     const result = await postcss([
       postcssGlobalData({ files: [path.join(cssDir, "base.css")] }),
       autoprefixer({
-        overrideBrowserslist: [`Chrome ${compatibilityPolicy.chromiumVersion}`],
+        overrideBrowserslist: [`Chrome ${browserCompatibilityPolicy.chromiumVersion}`],
         grid: "autoplace"
       }),
       legacyDeclarationFallbackPlugin(),
@@ -427,7 +418,7 @@ async function buildCoreJsBundle() {
   console.log("building core-js bundle...");
   const { list: requiredModules } = coreJsCompat({
     modules: ["core-js/stable"],
-    targets: { chrome: String(compatibilityPolicy.chromiumVersion) }
+    targets: { chrome: String(browserCompatibilityPolicy.chromiumVersion) }
   });
   if (requiredModules.length === 0) {
     throw new Error("Core-js compatibility query returned no required modules.");
@@ -444,7 +435,7 @@ async function buildCoreJsBundle() {
     bundle: true,
     format: "iife",
     minify: !debugBundle,
-    target: [`chrome${compatibilityPolicy.chromiumVersion}`],
+    target: [`chrome${browserCompatibilityPolicy.chromiumVersion}`],
     legalComments: "none"
   });
 }
@@ -460,12 +451,11 @@ async function buildBundle() {
     minify: !debugBundle,
     format: "iife",
     sourcemap: debugBundle,
-    target: [`chrome${compatibilityPolicy.chromiumVersion}`],
+    target: [`chrome${browserCompatibilityPolicy.chromiumVersion}`],
     metafile: true,
     define: {
       "process.env.NODE_ENV": '"production"',
-      __NUVIO_APP_VERSION__: JSON.stringify(version),
-      __NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__: JSON.stringify(includePrivateRuntimeEnv)
+      __NUVIO_APP_VERSION__: JSON.stringify(version)
     }
   });
   if (
@@ -521,9 +511,7 @@ async function runBuild() {
       cp(path.join(rootDir, "docs", "youtube-proxy.html"), path.join(distDir, "youtube-proxy.html")),
       cp(path.join(rootDir, "manifest.webmanifest"), path.join(distDir, "manifest.webmanifest"))
     ]);
-    if (runtimeTarget === "browser") {
-      await buildBrowserServiceWorker();
-    }
+    await buildBrowserServiceWorker();
     await buildCoreJsBundle();
     await Promise.all([
       cp(
@@ -560,8 +548,7 @@ async function runBuild() {
 
     console.log("configuring runtime env from local.properties...");
     const envResult = await writeRuntimeEnvScriptFile(path.join(distDir, "nuvio.env.js"), {
-      rootDir,
-      includePrivateKeys: includePrivateRuntimeEnv
+      rootDir
     });
     const envSourceBaseName = path.basename(envResult.sourcePath || "");
     const usingFallbackEnv =

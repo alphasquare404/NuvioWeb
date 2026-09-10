@@ -241,7 +241,7 @@ await ensureLocalMediaRuntime();
 server.listen(port, host, async () => {
   const localHost = host === "0.0.0.0" ? "127.0.0.1" : host;
   const mediaPort = await findLocalMediaServerPort();
-  console.log(`Serving Nuvio TV from ${rootDir}`);
+  console.log(`Serving Nuvio from ${rootDir}`);
   console.log(`Local URL: http://${localHost}:${port}/`);
   for (const lanUrl of getLanUrls()) {
     console.log(`LAN URL: ${lanUrl}`);

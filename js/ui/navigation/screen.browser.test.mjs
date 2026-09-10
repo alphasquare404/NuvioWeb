@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-globalThis.__NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__ = false;
 
 const { ensureSpatialFocusVisible, ScreenUtils } = await import("./screen.js");
 const { focusWithoutAutoScroll } = await import("../components/sidebarNavigation.js");
@@ -148,5 +147,4 @@ test("moving to a spatial card releases an active editable control without focus
 });
 
 test.after(() => {
-  delete globalThis.__NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__;
 });

@@ -2,7 +2,6 @@ import { addonRepository } from "../../data/repository/addonRepository.js";
 import { ExperienceModeStore } from "../../data/local/experienceModeStore.js";
 import { LayoutPreferences } from "../../data/local/layoutPreferences.js";
 import { ProfileSettingsSyncService } from "./profileSettingsSyncService.js";
-import { Platform } from "../../platform/index.js";
 
 export async function resolveExperienceRoute(profileId, { pullRemoteSettings = true } = {}) {
   // Browser profile activation must be able to choose its route from the local
@@ -22,9 +21,8 @@ export async function resolveExperienceRoute(profileId, { pullRemoteSettings = t
     );
   }
 
-  // The desktop browser has one supported Home experience. New browser profiles
-  // should enter it directly; TV platforms retain the existing layout chooser.
-  if (!experience.mode && Platform.isBrowser()) {
+  // New profiles enter the browser Home experience directly.
+  if (!experience.mode) {
     experience = ExperienceModeStore.setForProfile(
       profileId,
       { mode: "ADVANCED" },

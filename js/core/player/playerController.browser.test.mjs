@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-globalThis.__NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__ = false;
 globalThis.__NUVIO_PLATFORM__ = "browser";
 
 const { PlayerController } = await import("./playerController.js");

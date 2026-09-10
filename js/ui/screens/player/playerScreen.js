@@ -6,12 +6,12 @@ import {
   getAudioTrackLabelPrefix
 } from "../../../core/player/audioTrackCodecMetadata.js";
 import {
-  canReleasePlayingNativeStartupAudioGate,
+  canReleasePlayingStartupAudioGate,
   selectStartupAudioFallbackOption,
-  shouldAllowNativePlaybackDuringStartupAudioGate
+  shouldAllowPlaybackDuringStartupAudioGate
 } from "../../../core/player/startupAudioGatePolicy.js";
 import { isTerminalHlsHttpStatus } from "../../../core/player/hlsNetworkErrorPolicy.js";
-import { buildClockFormatOptions, resolveSystemHour12 } from "../../../core/player/clockFormat.js";
+import { buildClockFormatOptions, resolveBrowserHour12 } from "../../../core/player/clockFormat.js";
 import { normalizeImageUrl } from "../../../core/media/imageProxy.js";
 import {
   getCachedAddonLogoDisplayUrl,
@@ -1108,7 +1108,7 @@ function formatTime(secondsValue) {
 
 function formatClock(date = new Date()) {
   const locale = typeof I18n.getLocale === "function" ? I18n.getLocale() : undefined;
-  const hour12 = resolveSystemHour12({
+  const hour12 = resolveBrowserHour12({
     intlApi: typeof Intl !== "undefined" ? Intl : null
   });
   const localeKey = `${String(locale || "__default__")}:${String(hour12)}`;
@@ -2296,7 +2296,7 @@ export const PlayerScreen = {
     this.seekLoadingBaselineSeconds = null;
     this.seekLoadingTargetSeconds = null;
     this.startupAudioGateActive = false;
-    this.startupAudioGateAllowsNativePlayback = false;
+    this.startupAudioGateAllowsPlayback = false;
     this.startupAudioGateDeadline = 0;
     this.loadingCompletionTimer = null;
     this.loadingCompletionToken = 0;
@@ -2367,12 +2367,11 @@ export const PlayerScreen = {
       const sourceCandidate =
         this.getStreamCandidateByUrl(initialStreamUrl) || this.getCurrentStreamCandidate();
       this.activePlaybackUrl = initialStreamUrl;
-      const allowNativePlaybackDuringStartupAudioGate =
-        shouldAllowNativePlaybackDuringStartupAudioGate({
+      const allowPlaybackDuringStartupAudioGate = shouldAllowPlaybackDuringStartupAudioGate({
           isHlsPlayback: this.isCurrentSourceLikelyHls(initialStreamUrl, sourceCandidate)
         });
       this.enableStartupAudioGate({
-        allowNativePlayback: allowNativePlaybackDuringStartupAudioGate
+        allowPlayback: allowPlaybackDuringStartupAudioGate
       });
       const playbackStartPromise = this.startPlayerControllerPlayback(
         this.activePlaybackUrl,
@@ -3106,7 +3105,7 @@ export const PlayerScreen = {
         try {
           button.focus();
         } catch (_) {
-          // Some TV runtimes can reject focus during DOM churn.
+          // Ignore focus races while the controls are being updated.
         }
       }
     }
@@ -8047,7 +8046,7 @@ export const PlayerScreen = {
         this.seekLoadingTargetSeconds = null;
         this.clearBufferingSpinnerTimer();
       }
-      if (this.startupAudioGateActive && !this.startupAudioGateAllowsNativePlayback) {
+      if (this.startupAudioGateActive && !this.startupAudioGateAllowsPlayback) {
         this.paused = false;
         this.startupTrackPreferenceReady = true;
         this.refreshTrackDialogs();
@@ -9044,13 +9043,13 @@ export const PlayerScreen = {
     );
   },
 
-  enableStartupAudioGate({ allowNativePlayback = false, maxWaitMs = 0 } = {}) {
+  enableStartupAudioGate({ allowPlayback = false, maxWaitMs = 0 } = {}) {
     this.startupAudioGateActive = true;
-    this.startupAudioGateAllowsNativePlayback = Boolean(allowNativePlayback);
+    this.startupAudioGateAllowsPlayback = Boolean(allowPlayback);
     const boundedWaitMs = Math.max(0, Number(maxWaitMs || 0));
     this.startupAudioGateDeadline = boundedWaitMs > 0 ? Date.now() + boundedWaitMs : 0;
     PlayerController.setStartupAudioGate?.(true, {
-      pauseNativePlayback: !allowNativePlayback
+      pausePlayback: !allowPlayback
     });
   },
 
@@ -9059,7 +9058,7 @@ export const PlayerScreen = {
       return;
     }
     this.startupAudioGateActive = false;
-    this.startupAudioGateAllowsNativePlayback = false;
+    this.startupAudioGateAllowsPlayback = false;
     this.startupAudioGateDeadline = 0;
     // Once playback leaves the startup gate, later track-list churn must not
     // reopen automatic language matching during normal playback.
@@ -9161,8 +9160,8 @@ export const PlayerScreen = {
       Number(this.startupAudioGateDeadline || 0) > 0 &&
       Date.now() >= Number(this.startupAudioGateDeadline || 0);
     if (
-      canReleasePlayingNativeStartupAudioGate({
-        allowNativePlayback: this.startupAudioGateAllowsNativePlayback,
+      canReleasePlayingStartupAudioGate({
+        allowPlayback: this.startupAudioGateAllowsPlayback,
         hasPresentedPlaybackFrame: this.hasPresentedPlaybackFrame,
         pendingAudioSelection: false,
         readyState
@@ -10119,8 +10118,7 @@ export const PlayerScreen = {
     if (sourceContext) {
       this.activePlaybackSourceContext = sourceContext;
     }
-    const allowNativePlaybackDuringStartupAudioGate =
-      shouldAllowNativePlaybackDuringStartupAudioGate({
+    const allowPlaybackDuringStartupAudioGate = shouldAllowPlaybackDuringStartupAudioGate({
         isHlsPlayback: this.isCurrentSourceLikelyHls(streamUrl, sourceCandidate)
       });
 
@@ -10133,7 +10131,7 @@ export const PlayerScreen = {
     this.updateLoadingVisibility();
     this.clearBufferingSpinnerTimer();
     this.enableStartupAudioGate({
-      allowNativePlayback: allowNativePlaybackDuringStartupAudioGate
+      allowPlayback: allowPlaybackDuringStartupAudioGate
     });
     this.cancelSeekPreview({ commit: false });
     if (preservePlaybackState) {
@@ -16502,9 +16500,7 @@ export const PlayerScreen = {
       event?.preventDefault?.();
       this.revealDesktopPlayerControls();
       if (keyCode === 37 || keyCode === 39) {
-        // Keep the existing target calculation and seek implementation, but
-        // commit it immediately for browser key presses. The delayed preview
-        // is retained for TV remote repeat behavior.
+        // Commit the existing seek calculation immediately for browser key presses.
         this.beginSeekPreview(keyCode === 39 ? 1 : -1, false);
         this.commitSeekPreview();
         return;

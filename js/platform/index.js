@@ -20,8 +20,8 @@ export const Platform = {
     return getAdapter().name;
   },
 
-  // Transitional browser-only compatibility for shared screens. These no
-  // longer inspect native globals or select a TV runtime.
+  // Compatibility shims retained solely for the currently protected Detail
+  // screen. They no longer inspect native globals or select a native runtime.
   isWebOS() {
     return false;
   },

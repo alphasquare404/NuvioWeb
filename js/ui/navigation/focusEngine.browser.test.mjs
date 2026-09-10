@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-globalThis.__NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__ = false;
 globalThis.__NUVIO_PLATFORM__ = "browser";
 
 const registeredEvents = [];
@@ -107,14 +106,14 @@ test("Escape uses the existing browser back path while editable Backspace remain
   }
 });
 
-test("TV-only aliases and native Back codes no longer become browser actions", () => {
+test("legacy non-browser aliases and back codes no longer become browser actions", () => {
   const received = [];
   const restore = installScreen({ onKeyDown: (event) => received.push(event) });
   try {
-    const tizenBack = makeKeyboardEvent("");
-    tizenBack.keyName = "Back";
-    tizenBack.keyCode = 10009;
-    FocusEngine.handleKey(tizenBack);
+    const legacyBack = makeKeyboardEvent("");
+    legacyBack.keyName = "Back";
+    legacyBack.keyCode = 10009;
+    FocusEngine.handleKey(legacyBack);
 
     const dpadSelect = makeKeyboardEvent("");
     dpadSelect.keyCode = 23;
@@ -132,7 +131,7 @@ test("TV-only aliases and native Back codes no longer become browser actions", (
   }
 });
 
-test("FocusEngine installs only browser key listeners and no Tizen hardware-back listener", () => {
+test("FocusEngine installs only browser key listeners", () => {
   registeredEvents.length = 0;
   FocusEngine.init();
   assert.deepEqual(

@@ -39,7 +39,7 @@ export const PlayerController = {
   playRequestToken: 0,
   playbackSessionActive: false,
   startupAudioGateActive: false,
-  startupAudioGatePausesNativePlayback: true,
+  startupAudioGatePausesPlayback: true,
   startupPresentationAudioMuted: false,
   desiredPlaybackRate: 1,
   videoElementListeners: [],
@@ -348,7 +348,7 @@ export const PlayerController = {
     this.applyStartupAudioGateToVideo();
   },
 
-  pauseNativePlaybackForStartupGate() {
+  pausePlaybackForStartupGate() {
     if (!this.video || !this.startupAudioGateActive) {
       return;
     }
@@ -360,7 +360,7 @@ export const PlayerController = {
     }
   },
 
-  resumeNativePlaybackAfterStartupGate() {
+  resumePlaybackAfterStartupGate() {
     if (!this.video) {
       return;
     }
@@ -382,24 +382,24 @@ export const PlayerController = {
     }
   },
 
-  handleNativePlayStartedUnderStartupGate(playPromise = null) {
+  handlePlaybackStartedUnderStartupGate(playPromise = null) {
     if (
       !this.startupAudioGateActive ||
-      !this.startupAudioGatePausesNativePlayback
+      !this.startupAudioGatePausesPlayback
     ) {
       return playPromise;
     }
     if (playPromise && typeof playPromise.then === "function") {
       playPromise
         .then(() => {
-          this.pauseNativePlaybackForStartupGate();
+          this.pausePlaybackForStartupGate();
         })
         .catch(() => {
           // The normal playback-start rejection handler reports real failures.
         });
       return playPromise;
     }
-    this.pauseNativePlaybackForStartupGate();
+    this.pausePlaybackForStartupGate();
     return playPromise;
   },
 
@@ -432,7 +432,7 @@ export const PlayerController = {
 
     try {
       this.applyStartupAudioGateToVideo();
-      const playPromise = this.handleNativePlayStartedUnderStartupGate(this.video.play());
+      const playPromise = this.handlePlaybackStartedUnderStartupGate(this.video.play());
       if (!playPromise || typeof playPromise.then !== "function") {
         return Promise.resolve(true);
       }
@@ -445,12 +445,12 @@ export const PlayerController = {
     }
   },
 
-  setStartupAudioGate(active, { resume = true, pauseNativePlayback = true } = {}) {
+  setStartupAudioGate(active, { resume = true, pausePlayback = true } = {}) {
     const shouldGate = Boolean(active);
     const wasGated = Boolean(this.startupAudioGateActive);
-    const nativePlaybackWasPausedForGate = Boolean(this.startupAudioGatePausesNativePlayback);
+    const playbackWasPausedForGate = Boolean(this.startupAudioGatePausesPlayback);
     this.startupAudioGateActive = shouldGate;
-    this.startupAudioGatePausesNativePlayback = shouldGate ? Boolean(pauseNativePlayback) : true;
+    this.startupAudioGatePausesPlayback = shouldGate ? Boolean(pausePlayback) : true;
     this.applyStartupAudioGateToVideo();
 
     if (shouldGate) {
@@ -460,8 +460,8 @@ export const PlayerController = {
     if (!resume || !wasGated) {
       return;
     }
-    if (nativePlaybackWasPausedForGate || this.video?.paused) {
-      this.resumeNativePlaybackAfterStartupGate();
+    if (playbackWasPausedForGate || this.video?.paused) {
+      this.resumePlaybackAfterStartupGate();
     }
   },
 
@@ -1112,7 +1112,7 @@ export const PlayerController = {
       }
       this.applyStartupAudioGateToVideo();
       const playPromise = this.video.play();
-      this.handleNativePlayStartedUnderStartupGate(playPromise);
+      this.handlePlaybackStartedUnderStartupGate(playPromise);
       if (playPromise && typeof playPromise.catch === "function") {
         playPromise.catch((error) => {
           if (this.isExpectedPlayInterruption(error)) {

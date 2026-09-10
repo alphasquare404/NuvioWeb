@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-globalThis.__NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__ = false;
 globalThis.__NUVIO_PLATFORM__ = "browser";
 
 const listeners = new Map();

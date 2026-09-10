@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="assets/brand/app_logo_wordmark.png" alt="NuvioTV Web" width="300" />
+  <img src="assets/brand/app_logo_wordmark.png" alt="NuvioWeb" width="300" />
   <br />
   <br />
 
@@ -143,7 +143,7 @@ this application container.
 
 ## Origins / Credits
 
-This project is part of the Nuvio TV ecosystem and builds on important community work:
+This browser/PWA project builds on important community work:
 
 - **tapframe/NuvioTV**
   The original project that shaped Nuvio's product direction.

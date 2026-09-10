@@ -75,7 +75,7 @@ export const ProfileSyncService = {
       } catch (rpcError) {
         // A table fallback is useful only for deployments that do not expose
         // the profiles RPC. Retrying network, auth, or server failures through
-        // another webOS proxy request can otherwise hold boot past its watchdog.
+        // another failed proxy request can otherwise hold boot past its watchdog.
         if (!shouldTryProfileTableFallback(rpcError)) {
           throw rpcError;
         }

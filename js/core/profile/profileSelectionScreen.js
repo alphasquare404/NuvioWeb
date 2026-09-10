@@ -10,7 +10,6 @@ import { I18n } from "../../i18n/index.js";
 import { NuvioDialog } from "../../ui/components/nuvioDialog.js";
 import { detailWatchedEnrichmentService } from "../../data/repository/detailWatchedEnrichmentService.js";
 import { resolveExperienceRoute } from "./experienceModeRouting.js";
-import { Platform } from "../../platform/index.js";
 import {
   removeBrowserProfileAvatar,
   resolveBrowserProfileAvatar
@@ -393,36 +392,27 @@ export const ProfileSelectionScreen = {
           await Promise.all([ProfileSyncService.pull(), ProfileSyncService.pullProfileLockStates()])
         )[1];
     this.profiles = await ProfileManager.getProfiles();
-    if (Platform.isBrowser()) {
-      await this.hydrateBrowserAvatarUrls();
-    }
+    await this.hydrateBrowserAvatarUrls();
     this.profilePinEnabled = profilePinEnabled;
     this.lastProfileFocusKey = `profile:${this.activeProfileId || "1"}`;
     globalThis.NuvioBootGuard?.stage?.("Loading profile avatars");
-    if (Platform.isBrowser()) {
-      // Avatar artwork is optional on browser. Do not delay the local-first
-      // picker; the catalog still warms in the background for later use.
-      this.render();
-      void this.hydrateBrowserAvatarUrls({ allowNetwork: true }).then(() => {
-        if (Router.getCurrentScreen() === this) this.render();
-      });
-      void this.loadAvatarCatalog();
-      return;
-    }
-    await this.loadAvatarCatalog();
+    // Avatar artwork is optional. Do not delay the local-first picker; the
+    // catalog still warms in the background for later use.
     this.render();
+    void this.hydrateBrowserAvatarUrls({ allowNetwork: true }).then(() => {
+      if (Router.getCurrentScreen() === this) this.render();
+    });
+    void this.loadAvatarCatalog();
   },
 
   async loadAvatarCatalog() {
     try {
       this.avatarCatalog = await AvatarRepository.getAvatarCatalog();
-      if (Platform.isBrowser()) {
-        await this.hydrateBrowserAvatarUrls({ allowNetwork: true });
-      }
+      await this.hydrateBrowserAvatarUrls({ allowNetwork: true });
       // Browser Profile Selection intentionally renders before this optional
       // catalog request completes. Re-render once it is available so every
       // profile can use the same avatar resolver as the desktop navbar.
-      if (Platform.isBrowser() && Router.getCurrentScreen() === this) {
+      if (Router.getCurrentScreen() === this) {
         this.render();
       }
     } catch (error) {
@@ -461,7 +451,6 @@ export const ProfileSelectionScreen = {
   },
 
   async hydrateBrowserAvatarUrls({ allowNetwork = false } = {}) {
-    if (!Platform.isBrowser()) return;
     const next = new Map();
     await Promise.all(
       (this.profiles || []).map(async (profile) => {
@@ -494,7 +483,7 @@ export const ProfileSelectionScreen = {
 
   render() {
     const visibleProfiles = this.getVisibleProfiles();
-    const isDesktopBrowser = Platform.isBrowser();
+    const isDesktopBrowser = true;
     const canAddProfile = visibleProfiles.length < MAX_PROFILES;
     const totalItems = visibleProfiles.length + (canAddProfile ? 1 : 0);
     const gridClass = totalItems >= 5 ? "profile-grid profile-grid-compact" : "profile-grid";
@@ -580,7 +569,7 @@ export const ProfileSelectionScreen = {
   },
 
   focusDesktopPinInput() {
-    if (!Platform.isBrowser() || !this.getRenderedPinOverlayState() || this.isPinOperationInProgress) {
+    if (!this.getRenderedPinOverlayState() || this.isPinOperationInProgress) {
       return;
     }
     const focusInput = () => this.container?.querySelector("[data-role='desktop-pin-input']")?.focus();
@@ -594,11 +583,9 @@ export const ProfileSelectionScreen = {
   renderProfileCard(profile) {
     const avatarUrl =
       this.browserAvatarUrls?.get(String(profile.id)) ||
-      (Platform.isBrowser()
-        ? ""
-        : resolveProfileAvatarUrl(profile, (avatarId) => this.getAvatarImageUrl(avatarId)));
+      "";
     const isDesktopActive =
-      Platform.isBrowser() && String(profile.id) === String(this.activeProfileId);
+      String(profile.id) === String(this.activeProfileId);
     return `
       <div class="profile-card profile-focusable focusable${isDesktopActive ? " is-active-profile" : ""}"
            data-profile-id="${escapeHtml(profile.id)}"
@@ -883,7 +870,7 @@ export const ProfileSelectionScreen = {
       support = isSingleEntryMode ? PROFILE_PIN_TEXT.verifying : PROFILE_PIN_TEXT.saving;
     }
 
-    const isDesktopBrowser = Platform.isBrowser();
+    const isDesktopBrowser = true;
     if (isDesktopBrowser && state.type === "unlock" && !this.pinOverlayError && !this.isPinOperationInProgress) {
       support = "Enter your 4-digit PIN to continue.";
     }
@@ -938,12 +925,10 @@ export const ProfileSelectionScreen = {
   },
 
   bindEvents() {
-    if (Platform.isBrowser()) {
-      const profileScreen = this.container.querySelector(".profile-screen");
-      const clearBrowserKeyboardFocus = () => this.setBrowserKeyboardFocusVisible(false);
-      profileScreen?.addEventListener("pointerdown", clearBrowserKeyboardFocus, { capture: true });
-      profileScreen?.addEventListener("pointermove", clearBrowserKeyboardFocus, { capture: true });
-    }
+    const profileScreen = this.container.querySelector(".profile-screen");
+    const clearBrowserKeyboardFocus = () => this.setBrowserKeyboardFocusVisible(false);
+    profileScreen?.addEventListener("pointerdown", clearBrowserKeyboardFocus, { capture: true });
+    profileScreen?.addEventListener("pointermove", clearBrowserKeyboardFocus, { capture: true });
 
     const gridCards = Array.from(this.container.querySelectorAll(".profile-card"));
     gridCards.forEach((card) => {
@@ -1123,9 +1108,6 @@ export const ProfileSelectionScreen = {
   },
 
   setBrowserKeyboardFocusVisible(enabled) {
-    if (!Platform.isBrowser()) {
-      return;
-    }
     this.isBrowserKeyboardFocusVisible = Boolean(enabled);
     this.container
       ?.querySelector(".profile-screen")
@@ -1464,11 +1446,7 @@ export const ProfileSelectionScreen = {
       this._bgAnimRaf = null;
     }
 
-    if (
-      Platform.isTizen() ||
-      Platform.isWebOS() ||
-      globalThis.document?.body?.classList?.contains("performance-constrained")
-    ) {
+    if (globalThis.document?.body?.classList?.contains("performance-constrained")) {
       this._bgCurrentColor = targetColor;
       screen.style.background = this.buildBackgroundStyleFromColor(targetColor, themeColors);
       return;
@@ -2026,7 +2004,7 @@ export const ProfileSelectionScreen = {
   async handlePinOverlayKeyDown(event) {
     const code = Number(event?.keyCode || 0);
     const key = String(event?.key || "");
-    if (Platform.isBrowser() && event?.target?.matches?.("[data-role='desktop-pin-input']")) {
+    if (event?.target?.matches?.("[data-role='desktop-pin-input']")) {
       if (key === "Escape") {
         event.preventDefault();
         this.closePinOverlay();
@@ -2185,9 +2163,7 @@ export const ProfileSelectionScreen = {
 
     const deleted = await ProfileManager.deleteProfile(profile.id);
     if (deleted !== false) {
-      if (Platform.isBrowser()) {
-        void removeBrowserProfileAvatar(profile);
-      }
+      void removeBrowserProfileAvatar(profile);
       await ProfileSyncService.deleteProfileData(profile.id);
       await ProfileSyncService.push();
       await this.refreshProfilePinStates();
@@ -2209,9 +2185,7 @@ export const ProfileSelectionScreen = {
 
   async reloadProfiles(focusKey = "") {
     this.profiles = await ProfileManager.getProfiles();
-    if (Platform.isBrowser()) {
-      await this.hydrateBrowserAvatarUrls({ allowNetwork: true });
-    }
+    await this.hydrateBrowserAvatarUrls({ allowNetwork: true });
     await this.refreshProfilePinStates();
     this.activeProfileId = String(
       ProfileManager.getActiveProfileId() || this.activeProfileId || "1"
@@ -2334,7 +2308,7 @@ export const ProfileSelectionScreen = {
       ThemeManager.apply();
       I18n.apply();
       const experienceRoute = await resolveExperienceRoute(profileId, {
-        pullRemoteSettings: !Platform.isBrowser()
+        pullRemoteSettings: false
       });
       await Router.navigate(
         experienceRoute,

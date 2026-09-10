@@ -1,15 +1,11 @@
 import { LocalStore } from "../storage/localStore.js";
-import { Environment } from "../../platform/environment.js";
-import { Platform } from "../../platform/index.js";
-import { isWebOsImageProxyUrl, normalizeImageUrl } from "./imageProxy.js";
+import { normalizeImageUrl } from "./imageProxy.js";
 
 const failedAddonLogoUrls = new Set();
 const addonLogoCache = new Map();
 const ADDON_LOGO_CACHE_KEY = "nuvio.stream.addonLogoCache.v1";
 const ADDON_LOGO_CACHE_LIMIT = 36;
-const ADDON_LOGO_TV_CACHE_LIMIT = 12;
 const ADDON_LOGO_CACHE_MAX_LENGTH = 140000;
-const ADDON_LOGO_PRELOAD_CONCURRENCY_TV = 3;
 const ADDON_LOGO_PRELOAD_CONCURRENCY_DEFAULT = 6;
 
 let addonLogoCacheHydrated = false;
@@ -142,10 +138,7 @@ export async function preloadAddonLogoUrls(urls = []) {
     return;
   }
 
-  const concurrency =
-    Environment.isWebOS() || Platform.isTizen()
-      ? ADDON_LOGO_PRELOAD_CONCURRENCY_TV
-      : ADDON_LOGO_PRELOAD_CONCURRENCY_DEFAULT;
+  const concurrency = ADDON_LOGO_PRELOAD_CONCURRENCY_DEFAULT;
   let nextIndex = 0;
   const worker = async () => {
     while (nextIndex < pending.length) {
@@ -169,18 +162,6 @@ export function requestAddonLogo(url = "", onSettled = null) {
   }
   if (cached?.status === "loading") {
     return cached.promise || Promise.resolve(false);
-  }
-
-  if ((Environment.isWebOS() || Platform.isTizen()) && !isWebOsImageProxyUrl(normalized)) {
-    addonLogoCache.set(normalized, {
-      status: "direct",
-      displayUrl: normalized,
-      updatedAt: Date.now()
-    });
-    if (typeof onSettled === "function") {
-      setTimeout(onSettled, 0);
-    }
-    return Promise.resolve(true);
   }
 
   const loadingEntry = { status: "loading", updatedAt: Date.now(), promise: null };
@@ -313,9 +294,6 @@ function hydrateAddonLogoCache() {
     return;
   }
   addonLogoCacheHydrated = true;
-  if (Platform.isTizen()) {
-    return;
-  }
   const cached = LocalStore.get(ADDON_LOGO_CACHE_KEY, {});
   const entries = cached && typeof cached === "object" && !Array.isArray(cached) ? cached : {};
   Object.keys(entries).forEach((url) => {
@@ -333,11 +311,8 @@ function hydrateAddonLogoCache() {
 }
 
 function persistAddonLogoCache() {
-  if (Platform.isTizen()) {
-    return;
-  }
   addonLogoCachePersistTimer = null;
-  const cacheLimit = Platform.isWebOS() ? ADDON_LOGO_TV_CACHE_LIMIT : ADDON_LOGO_CACHE_LIMIT;
+  const cacheLimit = ADDON_LOGO_CACHE_LIMIT;
   const entries = Array.from(addonLogoCache.entries())
     .filter(
       ([, entry]) =>
@@ -358,9 +333,6 @@ function persistAddonLogoCache() {
 }
 
 function scheduleAddonLogoCachePersist() {
-  if (Platform.isTizen()) {
-    return;
-  }
   if (addonLogoCachePersistTimer) {
     return;
   }

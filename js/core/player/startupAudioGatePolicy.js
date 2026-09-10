@@ -1,11 +1,11 @@
-export function canReleasePlayingNativeStartupAudioGate({
-  allowNativePlayback = false,
+export function canReleasePlayingStartupAudioGate({
+  allowPlayback = false,
   hasPresentedPlaybackFrame = false,
   pendingAudioSelection = false,
   readyState = 0
 } = {}) {
   return Boolean(
-    allowNativePlayback &&
+    allowPlayback &&
     hasPresentedPlaybackFrame &&
     !pendingAudioSelection &&
     Number.isFinite(Number(readyState)) &&
@@ -13,11 +13,8 @@ export function canReleasePlayingNativeStartupAudioGate({
   );
 }
 
-export function shouldAllowNativePlaybackDuringStartupAudioGate({
-  isHlsPlayback = false,
-  isPrioritizedWebOsRemoteMkvPlayback = false
-} = {}) {
-  return Boolean(isHlsPlayback || isPrioritizedWebOsRemoteMkvPlayback);
+export function shouldAllowPlaybackDuringStartupAudioGate({ isHlsPlayback = false } = {}) {
+  return Boolean(isHlsPlayback);
 }
 
 export function selectStartupAudioFallbackOption(options = []) {

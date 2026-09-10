@@ -1,5 +1,4 @@
-// Auto stream selection, ported from the Android TV app's StreamAutoPlaySelector
-// and StreamAutoPlayPolicy so the two clients behave the same. Given the list of
+// Auto stream selection uses the same preference model as the original app. Given the list of
 // streams shown in the picker and the user's auto-play settings, it returns the
 // stream that should play automatically, or null to leave the picker open.
 
@@ -44,7 +43,7 @@ export function isRegexSelectionConfigured(regexPattern) {
 }
 
 // Whether auto-play is active for these settings. Default mode MANUAL is off, so
-// existing users see no change unless they opt in (or sync it from Android TV).
+// existing users see no change unless they opt in.
 export function isAutoPlayEffectivelyEnabled(settings = {}) {
   const mode = normalizeMode(settings.streamAutoPlayMode);
   if (mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM) {
@@ -74,8 +73,6 @@ function isPlayableStream(stream = {}) {
       stream.infoHash ||
       resolve.infoHash ||
       resolve.magnetUri ||
-      stream.engineFs ||
-      stream.tizenP2p ||
       stream.debridCacheStatus)
   );
 }
@@ -109,7 +106,7 @@ function scopeStreamsBySource(streams, source, installedAddonNames) {
 }
 
 // Extract excluded words from negative lookaheads like (?!.*(CAM|TS)) so a
-// pattern can both include and exclude, matching the Android TV behaviour.
+// pattern can both include and exclude.
 function buildExcludeRegex(pattern) {
   const matches = String(pattern || "").match(/\(\?![^)]*?\(([^)]+)\)/g) || [];
   const words = matches
@@ -161,7 +158,7 @@ export function selectAutoPlayStream(streams, options = {}) {
     return null;
   }
 
-  // Android gives an exact binge-group match priority over the normal mode,
+  // An exact binge-group match takes priority over the normal mode,
   // including MANUAL. In bingeGroupOnly mode, a miss must open the picker.
   const preferredBingeGroup = String(options.preferredBingeGroup || "").trim();
   if (options.preferBingeGroupInSelection && preferredBingeGroup) {

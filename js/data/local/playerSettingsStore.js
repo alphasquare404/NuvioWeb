@@ -49,9 +49,6 @@ const DEFAULTS = {
   },
   audioAmplificationDb: 0,
   persistAudioAmplification: false,
-  // Legacy combined override from 0.3.14. Kept only so the device-wide,
-  // per-codec webOS compatibility store can migrate an existing preference.
-  forceDtsTrueHdAudio: false,
   // Auto stream selection (matches the Android TV app). When the mode is not
   // MANUAL, pressing play auto-selects a stream and plays it after a countdown.
   streamAutoPlayMode: "MANUAL",

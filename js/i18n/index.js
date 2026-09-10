@@ -149,7 +149,6 @@ const KEY_ALIASES = {
   "settings.integration.debrid.template.reset.value": "debrid_formatter_reset_value",
   "stream.debrid.failed": "debrid_resolution_failed",
   "stream.debrid.serviceDegraded": "debrid_service_degraded",
-  "stream.enginefs.failed": "enginefs_resolution_failed",
   "stream.p2p.failed": "p2p_resolution_failed",
   player_error_p2p_disabled: "player_error_p2p_disabled",
   "stream.debrid.notCached": "debrid_not_cached",
@@ -492,7 +491,7 @@ function loadXmlFileXhr(url) {
     const xhr = new XMLHttpRequest();
     xhr.open("GET", url, true);
     xhr.onload = () => {
-      // status 0 is returned for successful file:// loads in webOS
+      // Some local browser contexts report status 0 for successful file loads.
       if (xhr.status === 200 || xhr.status === 0) {
         try {
           resolve(parseStringsXml(xhr.responseText));

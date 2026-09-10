@@ -3,7 +3,7 @@ const REQUEST_TIMEOUT_MS = 15000;
 function withTimeout(promise, timeoutMs) {
   let timeoutId = 0;
   const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error("webOS subtitle request timed out")), timeoutMs);
+    timeoutId = setTimeout(() => reject(new Error("Subtitle request timed out")), timeoutMs);
   });
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 }

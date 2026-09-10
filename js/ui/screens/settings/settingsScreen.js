@@ -18,7 +18,6 @@ import {
   normalizeSubtitleVerticalOffset
 } from "../../../core/player/subtitleVerticalOffset.js";
 import { TorrentSettingsStore } from "../../../data/local/torrentSettingsStore.js";
-import { WebOsAudioCompatibilityStore } from "../../../data/local/webOsAudioCompatibilityStore.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { ExperienceModeStore } from "../../../data/local/experienceModeStore.js";
 import { MdbListSettingsStore } from "../../../data/local/mdbListSettingsStore.js";
@@ -2120,7 +2119,6 @@ function createDefaultExpandedState(sectionId) {
       general: false,
       stream: false,
       audio: false,
-      audioCompatibility: false,
       subtitles: false,
       p2p: false
     };
@@ -2401,11 +2399,6 @@ export const SettingsScreen = {
       pluginsEnabled: PluginManager.pluginsEnabled,
       theme: ThemeStore.get(),
       player: PlayerSettingsStore.get(),
-      webOsAudioCompatibility: Platform.isWebOS()
-        ? WebOsAudioCompatibilityStore.get({
-            legacyForceAll: Boolean(PlayerSettingsStore.get().forceDtsTrueHdAudio)
-          })
-        : null,
       torrent: TorrentSettingsStore.get(),
       layout: LayoutPreferences.get(),
       homeCatalog: HomeCatalogStore.get(),
@@ -6146,9 +6139,6 @@ export const SettingsScreen = {
     this.actionMap.set("playback:toggle:audio", () => {
       this.toggleExpandedSection("playback", "audio");
     });
-    this.actionMap.set("playback:toggle:audioCompatibility", () => {
-      this.toggleExpandedSection("playback", "audioCompatibility");
-    });
     this.actionMap.set("playback:toggle:subtitles", () => {
       this.toggleExpandedSection("playback", "subtitles");
     });
@@ -6263,18 +6253,6 @@ export const SettingsScreen = {
         });
       });
     }
-    this.actionMap.set("playback:forceDts", () => {
-      const current = WebOsAudioCompatibilityStore.get();
-      WebOsAudioCompatibilityStore.set({
-        forceDtsAudio: !current.forceDtsAudio
-      });
-    });
-    this.actionMap.set("playback:forceTrueHd", () => {
-      const current = WebOsAudioCompatibilityStore.get();
-      WebOsAudioCompatibilityStore.set({
-        forceTrueHdAudio: !current.forceTrueHdAudio
-      });
-    });
     this.actionMap.set("playback:nextEpisodeThresholdMode", () => {
       this.openOptionDialog({
         title: t("settings.playback.nextEpisodeThresholdMode.title", {}, "Next episode threshold"),
@@ -7079,31 +7057,6 @@ export const SettingsScreen = {
       </div>
     `;
 
-    const audioCompatibilityBody = `
-      <div class="settings-stack">
-        ${this.renderToggleRow({
-          focusKey: "playback:forceDts",
-          title: t("settings.playback.forceDts.title", {}, "Force DTS audio"),
-          subtitle: t(
-            "settings.playback.forceDts.subtitle",
-            {},
-            "Keep DTS tracks selectable when automatic detection cannot see a working DTS restoration."
-          ),
-          checked: Boolean(model.webOsAudioCompatibility?.forceDtsAudio)
-        })}
-        ${this.renderToggleRow({
-          focusKey: "playback:forceTrueHd",
-          title: t("settings.playback.forceTrueHd.title", {}, "Force TrueHD audio"),
-          subtitle: t(
-            "settings.playback.forceTrueHd.subtitle",
-            {},
-            "Keep TrueHD tracks selectable only when this TV can actually decode or pass through TrueHD."
-          ),
-          checked: Boolean(model.webOsAudioCompatibility?.forceTrueHdAudio)
-        })}
-      </div>
-    `;
-
     const subtitleBody = `
       <div class="settings-stack">
         ${this.renderActionRow({
@@ -7257,25 +7210,6 @@ export const SettingsScreen = {
             expanded: Boolean(expanded.audio),
             bodyHtml: audioBody
           })}
-          ${
-            Platform.isWebOS()
-              ? this.renderCollapsibleRow({
-                  focusKey: "playback:toggle:audioCompatibility",
-                  title: t(
-                    "settings.playback.groups.audioCompatibility.title",
-                    {},
-                    "Advanced audio compatibility"
-                  ),
-                  subtitle: t(
-                    "settings.playback.groups.audioCompatibility.subtitle",
-                    {},
-                    "Automatic detection is used first. Override only when a rooted TV has a working decoder."
-                  ),
-                  expanded: Boolean(expanded.audioCompatibility),
-                  bodyHtml: audioCompatibilityBody
-                })
-              : ""
-          }
           ${this.renderCollapsibleRow({
             focusKey: "playback:toggle:subtitles",
             title: t("settings.playback.groups.subtitles.title"),
@@ -7606,7 +7540,7 @@ export const SettingsScreen = {
               ${this.registerAction("trakt:login", !trakt.credentialsConfigured || trakt.isLoading ? () => {} : this.actionMap.get("trakt:login"))}>
         ${escapeHtml(t("trakt_login", {}, "Login"))}
       </button>
-      ${!trakt.credentialsConfigured ? `<p class="settings-trakt-warning">${escapeHtml(t("trakt_missing_credentials", {}, "Missing TRAKT_CLIENT_ID / TRAKT_CLIENT_SECRET in local.properties."))}</p>` : ""}
+      ${!trakt.credentialsConfigured ? `<p class="settings-trakt-warning">${escapeHtml("Trakt browser authentication is unavailable on this server.")}</p>` : ""}
     `;
   },
 

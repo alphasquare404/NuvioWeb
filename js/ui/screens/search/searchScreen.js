@@ -5,7 +5,6 @@ import { catalogRepository } from "../../../data/repository/catalogRepository.js
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
-import { Platform } from "../../../platform/index.js";
 import { MODERN_HOME_CONSTANTS } from "../home/modernHomeLayout.js";
 import {
   activateLegacySidebarAction,
@@ -147,11 +146,7 @@ function isSearchableCatalogType(type) {
 }
 
 function isPerformanceConstrainedRuntime() {
-  return (
-    Platform.isWebOS() ||
-    Platform.isTizen() ||
-    Boolean(globalThis.document?.body?.classList?.contains("performance-constrained"))
-  );
+  return Boolean(globalThis.document?.body?.classList?.contains("performance-constrained"));
 }
 
 function getSearchResultsPerRow() {
@@ -468,10 +463,8 @@ export const SearchScreen = {
     this.rowScrollLeftByKey = {};
     this.rowFocusedIndexByKey = {};
     this.restoredFocusedDescriptor = null;
-    // TV platforms provide voice input through their native keyboard/IME, not
-    // through a supported Web Speech API that an in-app button can start.
+    // Voice input is available only when the browser exposes Web Speech.
     this.voiceSearchSupported =
-      Platform.isBrowser() &&
       typeof window !== "undefined" &&
       (typeof window.SpeechRecognition === "function" ||
         typeof window.webkitSpeechRecognition === "function");
@@ -514,7 +507,7 @@ export const SearchScreen = {
   },
 
   renderLoading() {
-    const useDesktopNavigation = Platform.isBrowser();
+    const useDesktopNavigation = true;
     this.container.innerHTML = `
       <div class="home-shell search-screen-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.searchRouteEnterPending ? " search-route-enter" : ""}">
         ${
@@ -593,12 +586,10 @@ export const SearchScreen = {
     this.bindActionEvents();
     this.bindDesktopSearchShelfInteractions();
     this.bindDesktopMediaHoverPreview();
-    if (Platform.isBrowser()) {
-      this.browserCardTouchIntentCleanup?.();
-      this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
-        cardSelector: ".search-result-card[data-action='openDetail']"
-      });
-    }
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+      cardSelector: ".search-result-card[data-action='openDetail']"
+    });
     input.value = this.query || "";
     input.focus?.();
     this.focusNode(this.container?.querySelector(".focusable.focused") || null, input);
@@ -901,7 +892,7 @@ export const SearchScreen = {
   render() {
     this.cancelScheduledRender();
     const queryText = this.query || "";
-    const useDesktopNavigation = Platform.isBrowser();
+    const useDesktopNavigation = true;
     const showVoiceSearch = this.voiceSearchSupported && !useDesktopNavigation;
     this.container.innerHTML = `
       <div class="home-shell search-screen-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.searchRouteEnterPending ? " search-route-enter" : ""}">
@@ -987,7 +978,7 @@ export const SearchScreen = {
   },
 
   bindDesktopSearchShelfInteractions() {
-    if (!Platform.isBrowser() || !this.container) {
+    if (!this.container) {
       return;
     }
 
@@ -1121,7 +1112,7 @@ export const SearchScreen = {
   },
 
   bindDesktopMediaHoverPreview() {
-    if (!Platform.isBrowser() || !this.container) {
+    if (!this.container) {
       return;
     }
     this.desktopMediaHoverPreview ||= createDesktopMediaHoverPreview({
@@ -1771,7 +1762,7 @@ export const SearchScreen = {
       const col = Number(current.dataset.navCol || 0);
       if (direction === "left") {
         if (col > 0) return this.focusNode(current, nav.header?.[col - 1] || current) || true;
-        return Platform.isBrowser() ? true : "sidebar";
+        return true;
       }
       if (direction === "right") {
         if (col < (nav.header?.length || 0) - 1) {
@@ -1799,7 +1790,7 @@ export const SearchScreen = {
         if (col > 0) {
           return this.focusNode(current, rowNodes[col - 1] || current) || true;
         }
-        return Platform.isBrowser() ? true : "sidebar";
+        return true;
       }
       if (direction === "right") {
         const target = rowNodes[col + 1] || null;
@@ -2126,7 +2117,7 @@ export const SearchScreen = {
   },
 
   async onKeyDown(event) {
-    if (Platform.isBrowser() && event?.target?.closest?.(".desktop-navigation")) {
+    if (event?.target?.closest?.(".desktop-navigation")) {
       return;
     }
     const code = Number(event?.keyCode || 0);
@@ -2140,7 +2131,7 @@ export const SearchScreen = {
       this.cancelPendingPosterHold();
     }
 
-    if (Platform.isBackEvent(event)) {
+    if (String(event?.key || "").toLowerCase() === "escape" || Number(event?.keyCode || 0) === 27) {
       event.preventDefault?.();
       if (this.focusZone === "sidebar") {
         await this.closeSidebarToContent();

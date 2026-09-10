@@ -8,7 +8,6 @@ globalThis.localStorage = {
   removeItem(key) { storage.delete(key); },
   clear() { storage.clear(); }
 };
-globalThis.__NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__ = false;
 globalThis.__NUVIO_PLATFORM__ = "browser";
 globalThis.__NUVIO_ENV__ = { TRAKT_CLIENT_ID: "browser-public-client" };
 

@@ -1,13 +1,7 @@
-import {
-  TRAKT_API_URL,
-  TRAKT_CLIENT_ID,
-  TRAKT_CLIENT_SECRET,
-  TRAKT_REDIRECT_URI
-} from "../../config.js";
+import { TRAKT_API_URL, TRAKT_CLIENT_ID } from "../../config.js";
 import { TraktAuthStore } from "../local/traktAuthStore.js";
 import { detailWatchedEnrichmentService } from "./detailWatchedEnrichmentService.js";
 import { TraktCredentialSyncService } from "../../core/profile/traktCredentialSyncService.js";
-import { Platform } from "../../platform/index.js";
 
 const API_VERSION = "2";
 const DEFAULT_API_URL = "https://api.trakt.tv";
@@ -20,14 +14,7 @@ function apiBaseUrl() {
 }
 
 function hasRequiredCredentials() {
-  if (Platform.isBrowser()) {
-    return Boolean(TRAKT_CLIENT_ID && browserBridgeStatus !== "unavailable");
-  }
-  return Boolean(TRAKT_CLIENT_ID && TRAKT_CLIENT_SECRET);
-}
-
-function usesBrowserAuthBridge() {
-  return Platform.isBrowser();
+  return Boolean(TRAKT_CLIENT_ID && browserBridgeStatus !== "unavailable");
 }
 
 function normalizeAuthErrorMessage(payload, fallback) {
@@ -60,7 +47,6 @@ async function requestBrowserBridge(path, { method = "POST", body = null } = {})
 }
 
 async function ensureBrowserAuthBridge() {
-  if (!usesBrowserAuthBridge()) return true;
   try {
     const { response, payload } = await requestBrowserBridge("/health", { method: "GET" });
     browserBridgeStatus = response.ok && payload?.configured === true ? "available" : "unavailable";
@@ -124,7 +110,7 @@ export const TraktAuthService = {
   hasRequiredCredentials,
 
   getBrowserBridgeStatus() {
-    return usesBrowserAuthBridge() ? browserBridgeStatus : "not-applicable";
+    return browserBridgeStatus;
   },
 
   async refreshBrowserBridgeAvailability() {
@@ -143,7 +129,7 @@ export const TraktAuthService = {
     if (!hasRequiredCredentials()) {
       throw new Error("Missing TRAKT credentials");
     }
-    if (usesBrowserAuthBridge() && !(await ensureBrowserAuthBridge())) {
+    if (!(await ensureBrowserAuthBridge())) {
       throw new Error("Trakt browser authentication is unavailable on this server");
     }
 
@@ -152,13 +138,7 @@ export const TraktAuthService = {
       return current;
     }
 
-    const startRequest = () =>
-      usesBrowserAuthBridge()
-        ? requestBrowserBridge("/device/code")
-        : requestJson("/oauth/device/code", {
-            method: "POST",
-            body: { client_id: TRAKT_CLIENT_ID }
-          });
+    const startRequest = () => requestBrowserBridge("/device/code");
     let { response, payload } = await startRequest();
 
     if (response.status === 429) {
@@ -196,16 +176,9 @@ export const TraktAuthService = {
       return { type: "expired" };
     }
 
-    const { response, payload } = usesBrowserAuthBridge()
-      ? await requestBrowserBridge("/device/token", { body: { code: state.deviceCode } })
-      : await requestJson("/oauth/device/token", {
-          method: "POST",
-          body: {
-            code: state.deviceCode,
-            client_id: TRAKT_CLIENT_ID,
-            client_secret: TRAKT_CLIENT_SECRET
-          }
-        });
+    const { response, payload } = await requestBrowserBridge("/device/token", {
+      body: { code: state.deviceCode }
+    });
 
     if (response.ok && payload) {
       TraktAuthStore.saveToken(payload);
@@ -252,21 +225,12 @@ export const TraktAuthService = {
       return true;
     }
 
-    if (usesBrowserAuthBridge() && !(await ensureBrowserAuthBridge())) {
+    if (!(await ensureBrowserAuthBridge())) {
       return false;
     }
-    const { response, payload } = usesBrowserAuthBridge()
-      ? await requestBrowserBridge("/refresh", { body: { refresh_token: state.refreshToken } })
-      : await requestJson("/oauth/token", {
-          method: "POST",
-          body: {
-            refresh_token: state.refreshToken,
-            client_id: TRAKT_CLIENT_ID,
-            client_secret: TRAKT_CLIENT_SECRET,
-            redirect_uri: TRAKT_REDIRECT_URI || "urn:ietf:wg:oauth:2.0:oob",
-            grant_type: "refresh_token"
-          }
-        });
+    const { response, payload } = await requestBrowserBridge("/refresh", {
+      body: { refresh_token: state.refreshToken }
+    });
 
     if (!response.ok || !payload) {
       if (response.status === 401 || response.status === 403) {
@@ -301,20 +265,6 @@ export const TraktAuthService = {
 
   async disconnect() {
     const state = TraktAuthStore.get();
-    if (!usesBrowserAuthBridge() && hasRequiredCredentials() && state.accessToken) {
-      try {
-        await requestJson("/oauth/revoke", {
-          method: "POST",
-          body: {
-            token: state.accessToken,
-            client_id: TRAKT_CLIENT_ID,
-            client_secret: TRAKT_CLIENT_SECRET
-          }
-        });
-      } catch (error) {
-        console.warn("Trakt revoke failed", error);
-      }
-    }
     await TraktCredentialSyncService.deleteRemote();
     detailWatchedEnrichmentService.invalidateAllCache();
     TraktAuthStore.clearAuth();

@@ -90,27 +90,22 @@ import {
   CW_MAX_NEXT_UP_LOOKUPS,
   CW_MAX_VISIBLE_ITEMS,
   CW_META_TIMEOUT_MS,
-  CW_META_TIMEOUT_TV_MS,
   CW_NEXT_UP_META_TIMEOUT_MS,
   CW_NEXT_UP_NEW_SEASON_UNAIRED_WINDOW_DAYS,
   CW_PROGRESS_END_THRESHOLD,
   CW_PROGRESS_START_THRESHOLD,
   CW_RENDER_BATCH_ITEMS_CONSTRAINED,
   CW_RENDER_BATCH_ITEMS_DEFAULT,
-  CW_RENDER_BATCH_ITEMS_LEGACY_TV,
   CW_RENDER_LOAD_AHEAD_ITEMS,
   HERO_ROTATE_FIRST_DELAY_MS,
   HERO_ROTATE_INTERVAL_MS,
-  HOME_BACKGROUND_RENDER_DELAY_LEGACY_MS,
   HOME_BACKGROUND_RENDER_DELAY_MS,
   HOME_INITIAL_CATALOG_LOAD,
   HOME_LAYOUT_SEQUENCE,
   HOME_LOADING_ROW_ITEMS_CONSTRAINED,
   HOME_LOADING_ROW_ITEMS_DEFAULT,
-  HOME_LOADING_ROW_ITEMS_LEGACY_TV,
   HOME_MAX_ITEMS_PER_ROW_CONSTRAINED,
   HOME_MAX_ITEMS_PER_ROW_DEFAULT,
-  HOME_MAX_ITEMS_PER_ROW_LEGACY_TV,
   HOME_MODERN_HERO_BACKDROP_CROSSFADE_MS,
   HOME_PERF_DEBUG,
   HOME_RETURN_FOCUS_STATE_KEY,
@@ -900,13 +895,6 @@ function buildYoutubeEmbedUrl(videoId, { muted = true } = {}) {
       proxyUrl.searchParams.set("playsinline", "1");
       proxyUrl.searchParams.set("rel", "0");
       proxyUrl.searchParams.set("cc_load_policy", "0");
-      if (Platform.isWebOS()) {
-        // Home previews do not need the controllable IFrame API. On webOS it
-        // commonly reaches the same direct-embed fallback only after the
-        // proxy watchdog expires, keeping the trailer hidden for several
-        // seconds after the focused poster has already expanded.
-        proxyUrl.searchParams.set("direct", "1");
-      }
       proxyUrl.searchParams.set("_cb", `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
       return proxyUrl.toString();
     } catch (_) {
@@ -1063,9 +1051,6 @@ async function resolveTrailerMetaWithTmdbFallback(meta = {}, itemType = "movie")
 
 function getContinueWatchingMetaTimeout(timeoutMs) {
   const requestedTimeout = Math.max(500, Number(timeoutMs || 0) || CW_META_TIMEOUT_MS);
-  if (Platform.isWebOS() || Platform.isTizen()) {
-    return Math.max(requestedTimeout, CW_META_TIMEOUT_TV_MS);
-  }
   return requestedTimeout;
 }
 
@@ -1802,7 +1787,7 @@ function saveContinueWatchingEnrichment(item = {}) {
     episodeDescription: normalized.episodeDescription,
     continueWatchingMetaResolved: true
   };
-  const enrichmentCacheLimit = Platform.isTizen() || Platform.isWebOS() ? 50 : 200;
+  const enrichmentCacheLimit = 200;
   const entries = Object.entries(cache)
     .sort(([, left], [, right]) => Number(right?.cachedAt || 0) - Number(left?.cachedAt || 0))
     .slice(0, enrichmentCacheLimit);
@@ -2207,9 +2192,6 @@ function renderRowHeader(title, subtitle = "") {
 }
 
 function resolveContinueWatchingBlurNextUp(layoutPrefs) {
-  if (Platform.isTizen()) {
-    return false;
-  }
   return Boolean(layoutPrefs?.blurContinueWatchingNextUp);
 }
 
@@ -2256,7 +2238,7 @@ function renderContinueWatchingCard(item, index, options = {}) {
   const uniqueCardImageSources = uniqueNonEmptyValues(cardImageSources);
   const cardImage = uniqueCardImageSources[0] || "";
   const fallbackQueue = encodeHeroBackdropFallbacks(uniqueCardImageSources.slice(1));
-  const deferContinueImage = Platform.isTizen() || Platform.isWebOS();
+  const deferContinueImage = false;
   const continueImageAttrs = cardImage
     ? buildLazyImageAttributes(cardImage, { defer: deferContinueImage })
     : "";
@@ -2577,14 +2559,14 @@ function shouldDeferHomeRowImages(rowIndex = 0, rowKey = "", focusedRowKey = "")
   if (focused && String(rowKey || "") === focused) {
     return false;
   }
-  const eagerRows = Platform.isWebOS() || Platform.isTizen() ? 3 : 5;
+  const eagerRows = 5;
   return safeRowIndex >= eagerRows;
 }
 
 function buildLazyImageAttributes(src = "", { defer = false, highPriority = false } = {}) {
   const safeSrc = escapeAttribute(src);
   const priority = highPriority ? ' fetchpriority="high"' : "";
-  const loadingMode = Platform.isWebOS() || Platform.isTizen() ? "eager" : "lazy";
+  const loadingMode = "lazy";
   if (defer) {
     return `data-src="${safeSrc}" loading="${loadingMode}" decoding="async"${priority}`;
   }
@@ -3714,31 +3696,11 @@ export const HomeScreen = {
     });
   },
 
-  isLegacyTvRuntime() {
-    if (Platform.isTizen()) {
-      return true;
-    }
-    if (!Platform.isWebOS()) {
-      return false;
-    }
-    const webOsMajor = Number(Platform.getWebOsMajorVersion?.() || 0);
-    return webOsMajor > 0 && webOsMajor <= 5;
-  },
-
   shouldSuppressAutomaticTrailerPlayback() {
-    return this.isLegacyTvRuntime() && !Platform.isTizen();
+    return false;
   },
 
   getFocusedPosterTrailerDelayMs() {
-    if (Platform.isTizen()) {
-      return 1600;
-    }
-    // The configured focused-poster delay already settles focus before this
-    // flow starts. Android begins resolving its preview during that dwell, so
-    // adding another delay after expansion only makes webOS visibly later.
-    if (Platform.isWebOS()) {
-      return 0;
-    }
     if (this.isPerformanceConstrained()) {
       return 1400;
     }
@@ -3749,49 +3711,24 @@ export const HomeScreen = {
     return Boolean(globalThis.document?.body?.classList?.contains("performance-constrained"));
   },
 
-  // Constrained TVs (all webOS/Tizen, plus low-end) cannot afford the animated
-  // spring scroll on every focus move: each move runs a ~440ms rAF loop writing
-  // scrollTop/scrollLeft per frame, which stacks into seconds of input lag. Snap
-  // focus scrolling instead, matching the classic layout and Tizen behaviour.
   shouldUseImmediateFocusScroll() {
-    return Boolean(Platform.isTizen() || this.isPerformanceConstrained());
-  },
-
-  hasCollectionHomeRows() {
-    return Array.isArray(this.collections) && this.collections.length > 0;
+    return this.isPerformanceConstrained();
   },
 
   getRowItemLimit() {
-    if (this.isLegacyTvRuntime()) {
-      return HOME_MAX_ITEMS_PER_ROW_LEGACY_TV;
-    }
-    if (Platform.isWebOS() && this.hasCollectionHomeRows()) {
-      return this.collections.length > 2
-        ? HOME_MAX_ITEMS_PER_ROW_LEGACY_TV
-        : HOME_MAX_ITEMS_PER_ROW_CONSTRAINED;
-    }
     return this.isPerformanceConstrained()
       ? HOME_MAX_ITEMS_PER_ROW_CONSTRAINED
       : HOME_MAX_ITEMS_PER_ROW_DEFAULT;
   },
 
   getContinueWatchingRenderBatchSize() {
-    if (this.isLegacyTvRuntime()) {
-      return CW_RENDER_BATCH_ITEMS_LEGACY_TV;
-    }
-    if (Platform.isWebOS() || Platform.isTizen() || this.isPerformanceConstrained()) {
+    if (this.isPerformanceConstrained()) {
       return CW_RENDER_BATCH_ITEMS_CONSTRAINED;
     }
     return CW_RENDER_BATCH_ITEMS_DEFAULT;
   },
 
   getLoadingRowItemCount() {
-    if (this.isLegacyTvRuntime()) {
-      return HOME_LOADING_ROW_ITEMS_LEGACY_TV;
-    }
-    if (Platform.isWebOS() && this.hasCollectionHomeRows()) {
-      return HOME_LOADING_ROW_ITEMS_LEGACY_TV;
-    }
     return this.isPerformanceConstrained()
       ? HOME_LOADING_ROW_ITEMS_CONSTRAINED
       : HOME_LOADING_ROW_ITEMS_DEFAULT;
@@ -3799,52 +3736,20 @@ export const HomeScreen = {
 
   getInitialCatalogLoadCount() {
     if (this.isPerformanceConstrained()) {
-      if (this.isLegacyTvRuntime()) {
-        return 4;
-      }
       return 5;
-    }
-    if (Platform.isWebOS()) {
-      if (this.hasCollectionHomeRows()) {
-        return 4;
-      }
-      const webOsMajor = Number(Platform.getWebOsMajorVersion?.() || 0);
-      if (webOsMajor > 0 && webOsMajor <= 5) {
-        return 4;
-      }
-      return Math.min(HOME_INITIAL_CATALOG_LOAD, 6);
-    }
-    if (Platform.isTizen()) {
-      return Math.min(HOME_INITIAL_CATALOG_LOAD, 6);
     }
     return HOME_INITIAL_CATALOG_LOAD;
   },
 
   getDeferredCatalogBatchSize() {
     if (this.isPerformanceConstrained()) {
-      return this.isLegacyTvRuntime() ? 2 : 4;
-    }
-    if (Platform.isWebOS()) {
-      if (this.hasCollectionHomeRows()) {
-        return 4;
-      }
-      const webOsMajor = Number(Platform.getWebOsMajorVersion?.() || 0);
-      if (webOsMajor > 0 && webOsMajor <= 5) {
-        return 4;
-      }
-      return 8;
-    }
-    if (Platform.isTizen()) {
-      return 8;
+      return 4;
     }
     return 0;
   },
 
   getScrollDuration(base) {
     const baseline = Number.isFinite(base) ? base : 150;
-    if (this.isLegacyTvRuntime()) {
-      return 0;
-    }
     if (this.isPerformanceConstrained()) {
       return Math.min(baseline, 90);
     }
@@ -3853,8 +3758,7 @@ export const HomeScreen = {
 
   shouldUseImmediateHorizontalScrollForNode(node) {
     return Boolean(
-      node?.matches?.(".home-continue-card.focusable") &&
-      (Platform.isWebOS() || this.isPerformanceConstrained() || this.isLegacyTvRuntime())
+      node?.matches?.(".home-continue-card.focusable") && this.isPerformanceConstrained()
     );
   },
 
@@ -3887,17 +3791,11 @@ export const HomeScreen = {
         }
         this.scheduleModernHeroUpdate(target);
       },
-      this.isLegacyTvRuntime() ? 260 : 220
+      220
     );
   },
 
   getBackgroundRenderDelay() {
-    if (this.isLegacyTvRuntime()) {
-      const collectionCount = Array.isArray(this.collections) ? this.collections.length : 0;
-      return collectionCount > 2
-        ? HOME_BACKGROUND_RENDER_DELAY_LEGACY_MS + 140
-        : HOME_BACKGROUND_RENDER_DELAY_LEGACY_MS;
-    }
     if (this.isPerformanceConstrained()) {
       return HOME_BACKGROUND_RENDER_DELAY_MS;
     }
@@ -3905,25 +3803,13 @@ export const HomeScreen = {
   },
 
   shouldProgressivelyRenderDeferredRows() {
-    if (Platform.isWebOS() && this.hasCollectionHomeRows()) {
-      return false;
-    }
     return !this.isPerformanceConstrained();
   },
 
   getDirectionalRepeatThrottleMs(direction = null) {
     if ((direction === "left" || direction === "right") && isFastHorizontalNavigationEnabled()) {
-      // Match Android TV's fast-horizontal D-pad gate while preserving
-      // the existing vertical and constrained-runtime throttles.
+      // Preserve the existing vertical and constrained-runtime throttles.
       return 48;
-    }
-    if (!Platform.isBrowser()) {
-      return direction === "up" || direction === "down"
-        ? MODERN_HOME_CONSTANTS.verticalKeyRepeatThrottleMs
-        : MODERN_HOME_CONSTANTS.keyRepeatThrottleMs;
-    }
-    if (this.isLegacyTvRuntime()) {
-      return Math.max(MODERN_HOME_CONSTANTS.keyRepeatThrottleMs, 120);
     }
     if (this.isPerformanceConstrained()) {
       return Math.max(MODERN_HOME_CONSTANTS.keyRepeatThrottleMs, 100);
@@ -3932,9 +3818,6 @@ export const HomeScreen = {
   },
 
   getHeroFocusDelay({ rapid = false } = {}) {
-    if (this.isLegacyTvRuntime()) {
-      return rapid ? 260 : 150;
-    }
     return rapid ? MODERN_HOME_CONSTANTS.heroRapidSettleMs : MODERN_HOME_CONSTANTS.heroFocusDelayMs;
   },
 
@@ -6340,8 +6223,7 @@ export const HomeScreen = {
   },
 
   collapseFocusedPoster(node = this.expandedPosterNode, options = {}) {
-    // Avoid overlapping flex-size transitions that leave stale poster layers on TV runtimes.
-    const instant = Boolean(options?.instant || Platform.isTizen() || Platform.isWebOS());
+    const instant = Boolean(options?.instant);
     const preserveHeroMedia = Boolean(options?.preserveHeroMedia);
     const excludeNode = options?.excludeNode instanceof HTMLElement ? options.excludeNode : null;
     const targets = new Set();
@@ -7551,7 +7433,7 @@ export const HomeScreen = {
 
     if (
       (direction === "up" || direction === "down") &&
-      (Platform.isTizen() || Platform.isWebOS() || this.isPerformanceConstrained())
+      this.isPerformanceConstrained()
     ) {
       if (this._mainClassicVertRaf) {
         cancelAnimationFrame(this._mainClassicVertRaf);
@@ -8566,70 +8448,6 @@ export const HomeScreen = {
       };
     }
 
-    const canResumePreservedTizenHome = Boolean(
-      Platform.isTizen() &&
-      navigationContext?.isBackNavigation &&
-      this.homeDomPreserved &&
-      this.hasLoadedOnce &&
-      Array.isArray(this.rows) &&
-      this.rows.length &&
-      this.container?.childNodes?.length &&
-      String(this.renderedLayoutMode || "") === String(this.layoutMode || "")
-    );
-    if (canResumePreservedTizenHome) {
-      this.homeDomPreserved = false;
-      this.container.classList.remove("home-dom-preserved");
-      this.container.style.removeProperty("position");
-      this.container.style.removeProperty("top");
-      this.container.style.removeProperty("right");
-      this.container.style.removeProperty("bottom");
-      this.container.style.removeProperty("left");
-      this.container.style.removeProperty("visibility");
-      this.container.style.removeProperty("pointer-events");
-      setModernSidebarPillIconOnly(this.container, this.pillIconOnly);
-      this.scheduleModernSidebarPillAutoCollapse();
-      this.homeLoadToken = (this.homeLoadToken || 0) + 1;
-      this.bindHomeViewportEvents();
-      this.setupContinueWatchingProgressiveRendering();
-      if (this.layoutMode === "modern") {
-        this.setupModernTrackScrollPagination();
-      }
-      const restoredFocus = this.restoreFocusState(returnFocusState);
-      if (restoredFocus) {
-        this.isRestoringFocusFromBack = false;
-      } else {
-        this.setInitialHomeFocus();
-      }
-      this.syncFocusedCollectionCardState();
-      if (this.layoutMode === "grid") {
-        this.setupGridStickyHeader(
-          Boolean(this.layoutPrefs?.heroSectionEnabled) && Boolean(this.heroItem)
-        );
-      }
-      this.startHeroRotation();
-      this.homeRouteEnterPending = false;
-      this.pendingCollectionRouteReturnAnimation = false;
-      this.ensureHomeTruncationObservers();
-      this.scheduleHomeTruncationUpdate();
-      this.scheduleHomeLazyImageHydration();
-      this.scheduleReturnFocusRestore();
-      this.loadData({
-        background: true,
-        preserveReturnState: true
-      }).catch((error) => {
-        console.warn("Home background refresh failed", error);
-      });
-      logHomePerf("mount", {
-        ms: Number((homePerfNow() - mountStart).toFixed(2)),
-        route: "home",
-        background: true,
-        layoutMode: String(this.layoutMode || ""),
-        mode: "resume"
-      });
-      return;
-    }
-    this.homeDomPreserved = false;
-    this.container.classList.remove("home-dom-preserved");
     this.container.style.removeProperty("position");
     this.container.style.removeProperty("top");
     this.container.style.removeProperty("right");
@@ -10226,8 +10044,8 @@ export const HomeScreen = {
       this.container.querySelector(".home-main") ||
       this.container;
     const viewportRect = viewport.getBoundingClientRect();
-    const verticalMargin = Platform.isWebOS() || Platform.isTizen() ? 720 : 1200;
-    const horizontalMargin = Platform.isWebOS() || Platform.isTizen() ? 520 : 1000;
+    const verticalMargin = 1200;
+    const horizontalMargin = 1000;
     imageRows.forEach(({ row, images }) => {
       if (row instanceof HTMLElement && !row.isConnected) {
         return;
@@ -12118,38 +11936,14 @@ export const HomeScreen = {
     }
     this.cachedModernPortraitPosterMetrics = null;
     this.cachedModernLandscapePosterMetrics = null;
-    const preserveRenderedTizenHome = Boolean(
-      Platform.isTizen() &&
-      this.hasLoadedOnce &&
-      Array.isArray(this.rows) &&
-      this.rows.length &&
-      this.container?.childNodes?.length
-    );
-    if (preserveRenderedTizenHome) {
-      // Keep layout alive while another screen is shown. Re-displaying a large
-      // Tizen catalog after display:none can itself force an expensive full
-      // layout before the first Home frame is painted.
-      this.container.style.position = "absolute";
-      this.container.style.top = "0";
-      this.container.style.right = "0";
-      this.container.style.bottom = "0";
-      this.container.style.left = "0";
-      this.container.style.visibility = "hidden";
-      this.container.style.pointerEvents = "none";
-      this.container.classList.add("home-dom-preserved");
-      this.homeDomPreserved = true;
-    } else {
-      this.homeDomPreserved = false;
-      this.container.classList.remove("home-dom-preserved");
-      this.container.style.removeProperty("position");
-      this.container.style.removeProperty("top");
-      this.container.style.removeProperty("right");
-      this.container.style.removeProperty("bottom");
-      this.container.style.removeProperty("left");
-      this.container.style.removeProperty("visibility");
-      this.container.style.removeProperty("pointer-events");
-      this.renderedMarkup = null;
-      ScreenUtils.hide(this.container);
-    }
+    this.container.style.removeProperty("position");
+    this.container.style.removeProperty("top");
+    this.container.style.removeProperty("right");
+    this.container.style.removeProperty("bottom");
+    this.container.style.removeProperty("left");
+    this.container.style.removeProperty("visibility");
+    this.container.style.removeProperty("pointer-events");
+    this.renderedMarkup = null;
+    ScreenUtils.hide(this.container);
   }
 };

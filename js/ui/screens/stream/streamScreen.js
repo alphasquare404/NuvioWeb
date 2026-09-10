@@ -20,11 +20,6 @@ import { DebridStreamPresentation } from "../../../core/debrid/directDebridStrea
 import { DebridSettingsStore } from "../../../data/local/debridSettingsStore.js";
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
 import {
-  ensureWebOsImageProxyReady,
-  onWebOsImageProxyReady
-} from "../../../core/media/imageProxy.js";
-import {
-  clearFailedAddonLogos,
   getCachedAddonLogoDisplayUrl,
   hasFailedAddonLogo,
   normalizeAddonLogoLookup,
@@ -36,15 +31,14 @@ import {
   requestAddonLogo,
   resolveAddonLogo
 } from "../../../core/media/addonLogoCache.js";
-import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
+import { Environment } from "../../../platform/environment.js";
 import { I18n } from "../../../i18n/index.js";
 import {
   matchStreamBadges,
   normalizeStreamBadgeChipColor,
   normalizeStreamBadgeRules
 } from "../../../core/streams/streamBadgeRules.js";
-import { normalizeMathematicalAlphanumericSymbols } from "../../../core/streams/streamDisplayText.js";
 import {
   normalizeSourceForDisplay,
   renderBrowserSourceCardContent
@@ -94,7 +88,6 @@ const STREAM_BADGE_LIMIT = 9;
 // Windowing by row index (instead of measuring every card) keeps a single
 // focus move O(1) in layout reads on TV browsers, where measuring every card
 // forced a full list reflow on each keypress in long source lists.
-const TV_STREAM_BADGE_WINDOW_ROWS = 24;
 function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
 }
@@ -154,7 +147,9 @@ function getDpadDirection(event) {
 }
 
 function isBackEvent(event) {
-  return Environment.isBackEvent(event);
+  const key = String(event?.key || "").toLowerCase();
+  const keyCode = Number(event?.keyCode || 0);
+  return key === "escape" || key === "browserback" || keyCode === 27;
 }
 
 function normalizeType(itemType) {
@@ -326,7 +321,6 @@ function flattenStreams(streamResult) {
         ytId: stream.ytId || null,
         infoHash: stream.infoHash || null,
         fileIdx: stream.fileIdx ?? null,
-        engineFs: stream.engineFs || stream.raw?.engineFs || null,
         externalUrl: stream.externalUrl || null,
         behaviorHints: stream.behaviorHints || null,
         sources: Array.isArray(stream.sources) ? stream.sources : [],
@@ -403,19 +397,7 @@ function getAddonBadgeLabel(name = "") {
   return letters || cleaned.charAt(0).toUpperCase();
 }
 
-async function ensureAddonLogoImageProxyReady() {
-  if (!Environment.isWebOS()) {
-    return false;
-  }
-  try {
-    return await ensureWebOsImageProxyReady();
-  } catch (_) {
-    return false;
-  }
-}
-
 export async function preloadStreamBadgeImages(settings = StreamBadgeSettingsStore.snapshot()) {
-  await ensureAddonLogoImageProxyReady();
   const rules = normalizeStreamBadgeRules(settings?.rules);
   const urls = new Set();
   rules.imports.forEach((importItem) => {
@@ -455,10 +437,7 @@ function getStreamHeadline(stream = {}) {
     return stream.addonName || "Unknown source";
   }
   const firstLine = String(primary).split(/\r?\n/)[0].trim();
-  const displayLine = Environment.isWebOS()
-    ? normalizeMathematicalAlphanumericSymbols(firstLine)
-    : firstLine;
-  return displayLine || stream.addonName || "Unknown source";
+  return firstLine || stream.addonName || "Unknown source";
 }
 
 function getStreamQuality(stream = {}) {
@@ -511,9 +490,6 @@ function renderImageBadgeChip(badge = {}) {
   let displayImageUrl = getCachedAddonLogoDisplayUrl(imageUrl);
   if (imageUrl && !displayImageUrl && !hasFailedAddonLogo(imageUrl)) {
     requestAddonLogo(imageUrl);
-    if (Environment.isWebOS()) {
-      displayImageUrl = getCachedAddonLogoDisplayUrl(imageUrl);
-    }
   }
   const backgroundColor = normalizeStreamBadgeChipColor(badge.tagColor);
   const outlineColor = normalizeStreamBadgeChipColor(badge.borderColor);
@@ -522,8 +498,7 @@ function renderImageBadgeChip(badge = {}) {
     String(badge.tagStyle || "")
       .trim()
       .toLowerCase() === "filled";
-  const fallbackImageUrl = Environment.isWebOS() ? "" : imageUrl;
-  const safeImageUrl = displayImageUrl || fallbackImageUrl;
+  const safeImageUrl = displayImageUrl || imageUrl;
   if (!safeImageUrl) {
     return "";
   }
@@ -576,34 +551,6 @@ function renderStreamBadges(stream = {}, enabled = true, badgeSettings = null) {
   return renderImportedStreamBadgeChips(
     stream,
     importedBadges,
-    currentBadgeSettings.showFileSizeBadges !== false
-  );
-}
-
-function hasStreamBadges(stream = {}, enabled = true, badgeSettings = null) {
-  if (!enabled) {
-    return false;
-  }
-  const currentBadgeSettings = badgeSettings || StreamBadgeSettingsStore.snapshot();
-  if (
-    currentBadgeSettings.showFileSizeBadges !== false &&
-    stream.behaviorHints?.videoSize != null
-  ) {
-    return true;
-  }
-  return matchStreamBadges(stream, currentBadgeSettings.rules).some((badge) =>
-    normalizeAddonLogoUrl(badge.imageURL)
-  );
-}
-
-function renderStreamBadgeContents(stream = {}, enabled = true, badgeSettings = null) {
-  if (!enabled) {
-    return "";
-  }
-  const currentBadgeSettings = badgeSettings || StreamBadgeSettingsStore.snapshot();
-  return renderImportedStreamBadgeChipContents(
-    stream,
-    matchStreamBadges(stream, currentBadgeSettings.rules),
     currentBadgeSettings.showFileSizeBadges !== false
   );
 }
@@ -685,10 +632,6 @@ export const StreamScreen = {
     if (this.renderFrame) {
       cancelAnimationFrame(this.renderFrame);
       this.renderFrame = null;
-    }
-    if (this.streamBadgeHydrationFrame) {
-      cancelAnimationFrame(this.streamBadgeHydrationFrame);
-      this.streamBadgeHydrationFrame = null;
     }
   },
 
@@ -894,9 +837,6 @@ export const StreamScreen = {
   },
 
   renderDesktopBackButton() {
-    if (!Platform.isBrowser()) {
-      return "";
-    }
     return `
       <button class="stream-desktop-back-button" type="button" data-stream-desktop-back
               aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
@@ -985,7 +925,7 @@ export const StreamScreen = {
     this.offlineLocalCopies = [];
     this.offlineDownloadsUnsubscribe?.();
     this.offlineDownloadsUnsubscribe = null;
-    if (Environment.isBrowser() && isBrowserOfflineDownloadSupported()) {
+    if (isBrowserOfflineDownloadSupported()) {
       void initializeBrowserOfflineDownloadQueue()
         .then((capabilities) => {
           if (token !== this.loadToken || Router.getCurrent() !== "stream") return;
@@ -1002,18 +942,6 @@ export const StreamScreen = {
           // Offline storage is optional. Streaming remains available.
         });
     }
-    if (this.releaseImageProxyReadyListener) {
-      this.releaseImageProxyReadyListener();
-      this.releaseImageProxyReadyListener = null;
-    }
-    if (Environment.isWebOS()) {
-      this.releaseImageProxyReadyListener = onWebOsImageProxyReady(() => {
-        clearFailedAddonLogos();
-        this.requestRender({ delayMs: 0 });
-      });
-      void ensureWebOsImageProxyReady();
-    }
-
     // Match Android TV: restore the selected source only when returning from
     // playback. A fresh open of the same item must start from the first source
     // instead of inheriting an old list scroll/focus snapshot.
@@ -1045,10 +973,6 @@ export const StreamScreen = {
 
     const showAddonLogo = StreamBadgeSettingsStore.snapshot().showAddonLogo === true;
     if (restored && this.streams.length && showAddonLogo) {
-      await ensureAddonLogoImageProxyReady();
-      if (token !== this.loadToken || Router.getCurrent() !== "stream") {
-        return;
-      }
       this.streams = this.applyAddonLogos(this.streams);
       await preloadAddonLogoImages(this.streams, this.addonLogoLookup);
       if (token !== this.loadToken || Router.getCurrent() !== "stream") {
@@ -1098,10 +1022,6 @@ export const StreamScreen = {
     const badgeSettings = StreamBadgeSettingsStore.snapshot();
     const showAddonLogo = badgeSettings.showAddonLogo === true;
     if (showAddonLogo) {
-      await ensureAddonLogoImageProxyReady();
-      if (token !== this.loadToken) {
-        return;
-      }
     }
 
     const upsertSourceChip = (addon, status = "loading") => {
@@ -1707,58 +1627,11 @@ export const StreamScreen = {
     return this.focusElement(target);
   },
 
-  isLegacyWebOsRoute() {
-    return Boolean(
-      document.documentElement?.classList?.contains("legacy-webos") ||
-      document.body?.classList?.contains("legacy-webos")
-    );
-  },
-
-  shouldUseManualListScroll(listNode) {
-    if (!listNode || !Environment.isWebOS()) {
-      return false;
-    }
-    return Number(listNode.scrollHeight || 0) > Number(listNode.clientHeight || 0);
-  },
-
   getListScrollTop(listNode) {
     if (!listNode) {
       return 0;
     }
-    if (listNode.classList?.contains("manual-scroll")) {
-      return Number(listNode.dataset?.manualScrollTop || 0);
-    }
     return Number(listNode.scrollTop || 0);
-  },
-
-  updateManualListScrollTransform(listNode, scrollTop) {
-    if (!listNode) {
-      return;
-    }
-    const normalized = Math.max(0, Number(scrollTop || 0));
-    const transform = normalized > 0 ? `translateY(${-normalized}px)` : "";
-    Array.from(listNode.children || []).forEach((child) => {
-      if (child instanceof HTMLElement) {
-        child.style.transform = transform;
-      }
-    });
-  },
-
-  applyManualListScroll(listNode, scrollTop) {
-    if (!listNode) {
-      return;
-    }
-    const normalized = Math.max(0, Number(scrollTop || 0));
-    listNode.classList.add("manual-scroll");
-    listNode.dataset.manualScrollTop = String(normalized);
-    listNode.style.setProperty("--stream-route-manual-scroll", `${-normalized}px`);
-    try {
-      listNode.scrollTop = 0;
-    } catch (_) {
-      // Ignore webOS scrollTop assignment failures; the manual transform is authoritative.
-    }
-    this.updateManualListScrollTransform(listNode, normalized);
-    this.listScrollTop = normalized;
   },
 
   setListScrollTop(listNode, nextScrollTop) {
@@ -1770,14 +1643,6 @@ export const StreamScreen = {
       Number(listNode.scrollHeight || 0) - Number(listNode.clientHeight || 0)
     );
     const normalized = clamp(Number(nextScrollTop || 0), 0, maxScrollTop);
-    if (listNode.classList?.contains("manual-scroll")) {
-      this.applyManualListScroll(listNode, normalized);
-      return;
-    }
-    if (this.shouldUseManualListScroll(listNode)) {
-      this.applyManualListScroll(listNode, normalized);
-      return;
-    }
     listNode.scrollTop = normalized;
     if (typeof listNode.scrollTo === "function") {
       try {
@@ -1786,17 +1651,7 @@ export const StreamScreen = {
         listNode.scrollTop = normalized;
       }
     }
-    const applied = Number(listNode.scrollTop || 0);
-    if (
-      this.isLegacyWebOsRoute() &&
-      maxScrollTop > 0 &&
-      normalized > 0 &&
-      Math.abs(applied - normalized) > 2
-    ) {
-      this.applyManualListScroll(listNode, normalized);
-      return;
-    }
-    this.listScrollTop = Number(applied || normalized || 0);
+    this.listScrollTop = Number(listNode.scrollTop || normalized || 0);
   },
 
   ensureListItemVisible(listNode, target) {
@@ -1845,7 +1700,6 @@ export const StreamScreen = {
         return;
       }
       this.ensureListItemVisible(listNode, target);
-      this.requestStreamBadgeHydration();
     };
     if (typeof requestAnimationFrame === "function") {
       requestAnimationFrame(run);
@@ -2126,12 +1980,7 @@ export const StreamScreen = {
     }
     const headline = getStreamHeadline(stream);
     const quality = getStreamQuality(stream);
-    const lazyBadges =
-      (Environment.isWebOS() || Environment.isTizen()) &&
-      hasStreamBadges(stream, streamBadgesEnabled, badgeSettings);
-    const badges = lazyBadges
-      ? `<div class="stream-route-card-badges stream-route-card-badges-lazy" data-lazy-stream-badges data-stream-badge-row="${index}" data-badges-hydrated="false" aria-label="${escapeHtml(t("settings_stream_badges_section", {}, "Fusion Style"))}"></div>`
-      : renderStreamBadges(stream, streamBadgesEnabled, badgeSettings);
+    const badges = renderStreamBadges(stream, streamBadgesEnabled, badgeSettings);
     const showAddonLogo = badgeSettings?.showAddonLogo === true;
     const badgePlacement = resolveStreamBadgePlacement(badgeSettings);
     const topBadges = badgePlacement === "TOP" ? badges : "";
@@ -2146,13 +1995,10 @@ export const StreamScreen = {
       let displayAddonLogoUrl = cachedAddonLogoUrl || "";
       if (addonLogoUrl && !displayAddonLogoUrl && !hasFailedAddonLogo(addonLogoUrl)) {
         requestAddonLogo(addonLogoUrl, () => this.requestRender({ delayMs: 160 }));
-        if (Environment.isWebOS()) {
-          displayAddonLogoUrl = getCachedAddonLogoDisplayUrl(addonLogoUrl);
-        }
       }
       const addonBadgeLabel = escapeHtml(getAddonBadgeLabel(stream.addonName || ""));
-      const addonLogoLoading = Environment.isWebOS() || Environment.isTizen() ? "eager" : "lazy";
-      const addonLogoDecoding = Environment.isWebOS() || Environment.isTizen() ? "sync" : "async";
+      const addonLogoLoading = "lazy";
+      const addonLogoDecoding = "async";
       const addonBadge = displayAddonLogoUrl
         ? `<img src="${escapeHtml(displayAddonLogoUrl)}" alt="${escapeHtml(stream.addonName || "Addon")}" data-addon-logo="${escapeHtml(addonLogoUrl)}" decoding="${addonLogoDecoding}" loading="${addonLogoLoading}" referrerpolicy="no-referrer" /><span hidden>${addonBadgeLabel}</span>`
         : `<span>${addonBadgeLabel}</span>`;
@@ -2292,8 +2138,8 @@ export const StreamScreen = {
       </div>
     `;
 
-    // Addon logos and the webOS image proxy each schedule their own render once
-    // they resolve, so a settled list is rebuilt several times over. Measured on
+    // Addon logos can schedule a render once they resolve, so a settled list is
+    // rebuilt several times over. Measured on
     // a 407-source list: three consecutive renders produced byte-identical
     // markup at ~1s each, so two of them were pure parse/layout/paint cost.
     // Keep the exact generated markup. Fixed-width hashes are not sufficient
@@ -2310,7 +2156,6 @@ export const StreamScreen = {
     }
 
     this.restoreScrollPosition();
-    this.hydrateVisibleStreamBadges();
     this.bindAddonLogoFallbacks();
     ScreenUtils.indexFocusables(this.container);
     this.restoreScrollPosition();
@@ -2382,96 +2227,9 @@ export const StreamScreen = {
       "scroll",
       () => {
         this.listScrollTop = this.getListScrollTop(list);
-        this.requestStreamBadgeHydration();
       },
       { passive: true }
     );
-    if (Environment.isWebOS()) {
-      list.addEventListener(
-        "wheel",
-        (event) => {
-          const deltaMode = Number(event?.deltaMode || 0);
-          const multiplier = deltaMode === 1 ? 40 : deltaMode === 2 ? list.clientHeight : 1;
-          const deltaY = Number(event?.deltaY || 0) * multiplier;
-          if (!deltaY) {
-            return;
-          }
-          event?.preventDefault?.();
-          this.setListScrollTop(list, this.getListScrollTop(list) + deltaY);
-          this.requestStreamBadgeHydration();
-        },
-        { passive: false }
-      );
-    }
-  },
-
-  requestStreamBadgeHydration() {
-    if (
-      (!Environment.isWebOS() && !Environment.isTizen()) ||
-      Router.getCurrent() !== "stream" ||
-      this.streamBadgeHydrationFrame
-    ) {
-      return;
-    }
-    this.streamBadgeHydrationFrame = requestAnimationFrame(() => {
-      this.streamBadgeHydrationFrame = null;
-      this.hydrateVisibleStreamBadges();
-    });
-  },
-
-  hydrateVisibleStreamBadges() {
-    if (
-      (!Environment.isWebOS() && !Environment.isTizen()) ||
-      Router.getCurrent() !== "stream" ||
-      !this.container
-    ) {
-      return;
-    }
-    const list = this.container.querySelector(".stream-route-list");
-    const placeholders = Array.from(this.container.querySelectorAll("[data-lazy-stream-badges]"));
-    if (!list || !placeholders.length) {
-      return;
-    }
-    const filtered = this.getFilteredStreams();
-    const streamBadgesEnabled = DebridSettingsStore.get().streamBadgesEnabled !== false;
-    const badgeSettings = StreamBadgeSettingsStore.snapshot();
-    const focusedRow = this.focusState?.zone === "card" ? Number(this.focusState?.row || 0) : -1;
-
-    // Android's LazyColumn only composes badge images near the viewport. Keep
-    // the complete Web card list for existing remote/pointer navigation, but
-    // apply the same bounded image/DOM lifetime on webOS and Tizen. Window by
-    // row index around the focus (the focused row is always scrolled into view)
-    // instead of measuring every card: per-card geometry reads forced a full
-    // list reflow on every focus move on constrained TV browsers.
-    const anchorRow = focusedRow >= 0 ? focusedRow : 0;
-    const windowStart = anchorRow - TV_STREAM_BADGE_WINDOW_ROWS;
-    const windowEnd = anchorRow + TV_STREAM_BADGE_WINDOW_ROWS;
-    placeholders.forEach((placeholder) => {
-      const rowIndex = Number(placeholder.dataset.streamBadgeRow || -1);
-      const shouldHydrate =
-        rowIndex === focusedRow || (rowIndex >= windowStart && rowIndex <= windowEnd);
-      const hydrated = placeholder.dataset.badgesHydrated === "true";
-      if (shouldHydrate && !hydrated) {
-        placeholder.innerHTML = renderStreamBadgeContents(
-          filtered[rowIndex],
-          streamBadgesEnabled,
-          badgeSettings
-        );
-        // webOS already uses the fixed-height lazy badge row. Tizen must drop
-        // that placeholder-only class once hydrated so its visible wrapping
-        // and card geometry remain byte-for-byte CSS-equivalent to the eager
-        // rendering path.
-        if (Environment.isTizen()) {
-          placeholder.classList.remove("stream-route-card-badges-lazy");
-        }
-        placeholder.dataset.badgesHydrated = "true";
-        // Keep already-visited Tizen rows hydrated. Removing a wrapped badge row
-        // above the viewport could change list geometry and move the focused card.
-      } else if (!shouldHydrate && hydrated && !Environment.isTizen()) {
-        placeholder.textContent = "";
-        placeholder.dataset.badgesHydrated = "false";
-      }
-    });
   },
 
   bindAddonLogoFallbacks() {
@@ -3056,10 +2814,6 @@ export const StreamScreen = {
     if (this.streamToastTimer) {
       clearTimeout(this.streamToastTimer);
       this.streamToastTimer = null;
-    }
-    if (this.releaseImageProxyReadyListener) {
-      this.releaseImageProxyReadyListener();
-      this.releaseImageProxyReadyListener = null;
     }
     this.renderedMarkup = null;
     this.boundStreamListNode = null;

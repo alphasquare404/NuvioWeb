@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible NuvioTV Web bug, one problem per issue.
+description: Report a reproducible NuvioWeb bug, one problem per issue.
 title: "[Bug]: short summary here"
 labels:
   - bug
@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug in NuvioTV Web.
+        Thanks for reporting a bug in NuvioWeb.
 
         If we can reproduce it, we can usually fix it. Please describe the bug in enough detail that someone else can understand what failed without watching a video or guessing from the title.
 

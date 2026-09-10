@@ -2196,11 +2196,6 @@ html.desktop-browser {
   margin: 7px 0 6px;
 }
 
-.desktop-browser #stream .stream-route-card-badges-lazy {
-  height: 26px;
-  min-height: 26px;
-}
-
 .desktop-browser #stream .stream-route-stream-badge,
 .desktop-browser #stream .stream-route-stream-badge.size {
   min-height: 24px;

@@ -18,16 +18,10 @@ export const ENV_PROPERTY_KEYS = [
   "SPONSOR_NAMES",
   "TMDB_API_KEY",
   "TRAKT_CLIENT_ID",
-  "TRAKT_CLIENT_SECRET",
   "SIMKL_CLIENT_ID",
   "SIMKL_APP_NAME",
   "PREMIUMIZE_CLIENT_ID"
 ];
-
-// Browser runtime configuration is downloaded by every visitor, so it must
-// contain only values that are safe to expose to a browser client. Private
-// credentials are emitted only for explicitly targeted native TV builds.
-const PRIVATE_RUNTIME_ENV_KEYS = new Set(["TRAKT_CLIENT_SECRET"]);
 
 const DEFAULT_ENV_VALUES = {
   NUVIO_SUPABASE_URL: "",
@@ -45,7 +39,6 @@ const DEFAULT_ENV_VALUES = {
   SPONSOR_NAMES: "ragmehos.",
   TMDB_API_KEY: "",
   TRAKT_CLIENT_ID: "",
-  TRAKT_CLIENT_SECRET: "",
   SIMKL_CLIENT_ID: "",
   SIMKL_APP_NAME: "nuvio",
   PREMIUMIZE_CLIENT_ID: ""
@@ -145,13 +138,8 @@ export async function readEnvProperties({ rootDir, sourcePath = "" } = {}) {
   };
 }
 
-export function buildRuntimeEnvScript(env = {}, { includePrivateKeys = false } = {}) {
+export function buildRuntimeEnvScript(env = {}) {
   const values = normalizeEnvProperties(env);
-  if (!includePrivateKeys) {
-    PRIVATE_RUNTIME_ENV_KEYS.forEach((key) => {
-      delete values[key];
-    });
-  }
   return `(function defineNuvioEnv() {
   var root = typeof globalThis !== "undefined" ? globalThis : window;
   var env = root.__NUVIO_ENV__ || {};
@@ -168,12 +156,12 @@ export function buildRuntimeEnvScript(env = {}, { includePrivateKeys = false } =
 
 export async function writeRuntimeEnvScriptFile(
   targetPath,
-  { rootDir, sourcePath = "", includePrivateKeys = false } = {}
+  { rootDir, sourcePath = "" } = {}
 ) {
   const result = await readEnvProperties({ rootDir, sourcePath });
   await writeFile(
     targetPath,
-    buildRuntimeEnvScript(result.env, { includePrivateKeys }),
+    buildRuntimeEnvScript(result.env),
     "utf8"
   );
   return result;
