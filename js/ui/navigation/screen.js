@@ -1,3 +1,75 @@
+export function isSpatialCardTarget(node) {
+  return Boolean(node?.matches?.("article.focusable"));
+}
+
+function isScrollable(node, axis) {
+  if (!node) return false;
+  const style = globalThis.getComputedStyle?.(node);
+  const overflow = axis === "x" ? style?.overflowX : style?.overflowY;
+  const scrollSize = axis === "x" ? Number(node.scrollWidth || 0) : Number(node.scrollHeight || 0);
+  const clientSize = axis === "x" ? Number(node.clientWidth || 0) : Number(node.clientHeight || 0);
+  return /auto|scroll|overlay/i.test(String(overflow || "")) && scrollSize > clientSize + 1;
+}
+
+function getScrollContainer(node, axis) {
+  for (let parent = node?.parentElement || null; parent; parent = parent.parentElement) {
+    if (isScrollable(parent, axis)) return parent;
+  }
+  return globalThis.document?.scrollingElement || globalThis.document?.documentElement || null;
+}
+
+function scrollNearest(container, target, axis) {
+  if (!container || !target) return;
+  const targetRect = target.getBoundingClientRect?.();
+  if (!targetRect) return;
+  const isDocumentScroll =
+    container === globalThis.document?.scrollingElement || container === globalThis.document?.documentElement;
+  const viewportRect = isDocumentScroll
+    ? {
+        left: 0,
+        top: 0,
+        right: Number(globalThis.innerWidth || globalThis.document?.documentElement?.clientWidth || 0),
+        bottom: Number(globalThis.innerHeight || globalThis.document?.documentElement?.clientHeight || 0)
+      }
+    : container.getBoundingClientRect?.();
+  if (!viewportRect) return;
+
+  const before = axis === "x" ? targetRect.left - viewportRect.left : targetRect.top - viewportRect.top;
+  const after = axis === "x" ? targetRect.right - viewportRect.right : targetRect.bottom - viewportRect.bottom;
+  const inset = axis === "x" ? 16 : 20;
+  let adjustment = 0;
+  if (before < inset) adjustment = before - inset;
+  else if (after > -inset) adjustment = after + inset;
+  if (Math.abs(adjustment) <= 1) return;
+
+  const property = axis === "x" ? "scrollLeft" : "scrollTop";
+  const max = Math.max(
+    0,
+    Number(axis === "x" ? container.scrollWidth : container.scrollHeight) -
+      Number(axis === "x" ? container.clientWidth : container.clientHeight)
+  );
+  container[property] = Math.max(0, Math.min(max, Number(container[property] || 0) + adjustment));
+}
+
+export function ensureSpatialFocusVisible(node) {
+  if (!node) return;
+  scrollNearest(getScrollContainer(node, "y"), node, "y");
+  scrollNearest(getScrollContainer(node, "x"), node, "x");
+}
+
+function focusSpatialTarget(node, { scroll = false } = {}) {
+  if (!node) return;
+  if (scroll) ensureSpatialFocusVisible(node);
+  if (isSpatialCardTarget(node)) return;
+  try {
+    node.focus({ preventScroll: true });
+  } catch (_) {
+    try {
+      node.focus();
+    } catch (_) {}
+  }
+}
+
 export const ScreenUtils = {
   show(container) {
     if (!container) {
@@ -29,26 +101,14 @@ export const ScreenUtils = {
     if (modalOpen) {
       const existingFocused = container?.querySelector?.(".focusable.focused") || null;
       if (existingFocused instanceof HTMLElement && container?.contains(existingFocused)) {
-        try {
-          existingFocused.focus({ preventScroll: true });
-        } catch (_) {
-          try {
-            existingFocused.focus();
-          } catch (_) {}
-        }
+        focusSpatialTarget(existingFocused);
         return existingFocused;
       }
       return null;
     }
     const existingFocused = container?.querySelector?.(".focusable.focused") || null;
     if (existingFocused instanceof HTMLElement && container?.contains(existingFocused)) {
-      try {
-        existingFocused.focus({ preventScroll: true });
-      } catch (_) {
-        try {
-          existingFocused.focus();
-        } catch (_) {}
-      }
+      focusSpatialTarget(existingFocused);
       return existingFocused;
     }
     const first = container?.querySelector(selector);
@@ -56,7 +116,7 @@ export const ScreenUtils = {
       return;
     }
     first.classList.add("focused");
-    first.focus();
+    focusSpatialTarget(first);
   },
 
   moveFocus(container, direction, selector = ".focusable") {
@@ -77,11 +137,7 @@ export const ScreenUtils = {
 
     current.classList.remove("focused");
     list[nextIndex].classList.add("focused");
-    try {
-      list[nextIndex].focus({ preventScroll: true });
-    } catch (_) {
-      list[nextIndex].focus();
-    }
+    focusSpatialTarget(list[nextIndex], { scroll: true });
   },
 
   moveFocusDirectional(container, direction, selector = ".focusable") {
@@ -100,11 +156,7 @@ export const ScreenUtils = {
     if (!current.classList.contains("focused")) {
       list.forEach((node) => node.classList.remove("focused"));
       current.classList.add("focused");
-      try {
-        current.focus({ preventScroll: true });
-      } catch (_) {
-        current.focus();
-      }
+      focusSpatialTarget(current);
       return;
     }
 
@@ -200,11 +252,7 @@ export const ScreenUtils = {
 
     current.classList.remove("focused");
     target.classList.add("focused");
-    try {
-      target.focus({ preventScroll: true });
-    } catch (_) {
-      target.focus();
-    }
+    focusSpatialTarget(target, { scroll: true });
   },
 
   handleDpadNavigation(event, container, selector = ".focusable") {
@@ -239,7 +287,9 @@ export const ScreenUtils = {
       if (node.dataset.index !== indexValue) {
         node.dataset.index = indexValue;
       }
-      if (node.tabIndex !== 0) {
+      if (isSpatialCardTarget(node)) {
+        node.removeAttribute?.("tabindex");
+      } else if (node.tabIndex !== 0) {
         node.tabIndex = 0;
       }
     });

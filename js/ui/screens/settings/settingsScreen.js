@@ -1,6 +1,6 @@
 /* global __NUVIO_APP_VERSION__ */
 import { Router } from "../../navigation/router.js";
-import { ScreenUtils } from "../../navigation/screen.js";
+import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { LocalStore } from "../../../core/storage/localStore.js";
 import { SessionStore } from "../../../core/storage/sessionStore.js";
@@ -1560,20 +1560,6 @@ function isSettingsActivateEvent(event) {
   );
 }
 
-function scrollIntoNearestView(node) {
-  if (!node || typeof node.scrollIntoView !== "function") {
-    return;
-  }
-  try {
-    node.scrollIntoView({
-      block: "nearest",
-      inline: "nearest"
-    });
-  } catch (_) {
-    node.scrollIntoView();
-  }
-}
-
 function getScrollMax(node, axis = "y") {
   if (!node) {
     return 0;
@@ -1704,7 +1690,7 @@ export function scrollSettingsContentItem(node) {
     return;
   }
 
-  scrollIntoNearestView(node);
+  ensureSpatialFocusVisible(node);
 }
 
 function updateSettingsScrollIndicators(container) {

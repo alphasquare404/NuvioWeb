@@ -13,7 +13,6 @@ const INSTALLATION_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 const REGISTRATION_INTERVAL_MS = 15 * 60 * 1000;
 const MAX_PLATFORM_LENGTH = 80;
 const MAX_DEVICE_NAME_LENGTH = 160;
-const WEBOS_DEVICE_INFO_TIMEOUT_MS = 1200;
 
 let volatileInstallationId = null;
 
@@ -29,18 +28,6 @@ function firstText(...values) {
     }
   }
   return "";
-}
-
-function parseJsonObject(value) {
-  if (value && typeof value === "object") {
-    return value;
-  }
-  try {
-    const parsed = JSON.parse(String(value || ""));
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
 }
 
 function readAppVersion() {
@@ -105,81 +92,8 @@ export function buildDeviceRegistrationParams({ installationId, clientVersion, m
   };
 }
 
-function readTizenMetadata(runtime, fallbackDeviceName) {
-  let version = "";
-  let model = "";
-  try {
-    version = normalizedText(
-      runtime.tizen?.systeminfo?.getCapability?.("http://tizen.org/feature/platform.version")
-    );
-  } catch {
-    // Fall back to the user agent below.
-  }
-  try {
-    model = normalizedText(runtime.webapis?.productinfo?.getModel?.());
-  } catch {
-    // Model access is optional on wrappers and older TVs.
-  }
-  if (!version) {
-    version =
-      (normalizedText(runtime.navigator?.userAgent).match(/Tizen[\s/]([0-9.]+)/i) || [])[1] || "";
-  }
-  return {
-    deviceName: model || fallbackDeviceName || "Tizen TV",
-    platform: version ? `Tizen ${version}` : "Tizen"
-  };
-}
-
-async function readWebOsMetadata(runtime, fallbackDeviceName) {
-  const initial = {
-    ...parseJsonObject(runtime.PalmSystem?.deviceInfo),
-    ...parseJsonObject(runtime.webOSSystem?.deviceInfo)
-  };
-
-  let enriched = {};
-  if (typeof runtime.webOS?.deviceInfo === "function") {
-    enriched = await new Promise((resolve) => {
-      let finished = false;
-      const finish = (value = {}) => {
-        if (finished) return;
-        finished = true;
-        runtime.clearTimeout?.(timeoutId);
-        resolve(value && typeof value === "object" ? value : {});
-      };
-      const timeoutId = runtime.setTimeout?.(() => finish(), WEBOS_DEVICE_INFO_TIMEOUT_MS);
-      try {
-        runtime.webOS.deviceInfo((details) => finish(details));
-      } catch {
-        finish();
-      }
-    });
-  }
-
-  const details = { ...initial, ...enriched };
-  const version = firstText(
-    details.platformVersion,
-    details.sdkVersion,
-    details.version,
-    details.firmwareVersion,
-    details.platformVersionMajor
-  );
-  const model = firstText(details.modelName, details.model);
-  return {
-    deviceName: model || fallbackDeviceName || "webOS TV",
-    platform: version ? `webOS ${version}` : "webOS"
-  };
-}
-
 export async function resolveCurrentDeviceMetadata(platform = Platform, runtime = globalThis) {
-  const platformName = normalizedText(platform.getName?.()).toLowerCase();
   const fallbackDeviceName = normalizedText(platform.getDeviceLabel?.());
-  if (platformName === "tizen") {
-    return readTizenMetadata(runtime, fallbackDeviceName);
-  }
-  if (platformName === "webos") {
-    return readWebOsMetadata(runtime, fallbackDeviceName);
-  }
-
   const browserPlatform = firstText(
     runtime.navigator?.userAgentData?.platform,
     runtime.navigator?.platform

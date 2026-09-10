@@ -1,23 +1,23 @@
-import { Platform } from "./index.js";
-
 export const Environment = {
   isWebOS() {
-    return Platform.isWebOS();
+    return false;
   },
 
   isTizen() {
-    return Platform.isTizen();
+    return false;
   },
 
   isBrowser() {
-    return Platform.isBrowser();
+    return true;
   },
 
   isBackEvent(event) {
-    return Platform.isBackEvent(event);
+    const key = String(event?.key || "").toLowerCase();
+    const keyCode = Number(event?.keyCode || 0);
+    return key === "escape" || key === "browserback" || keyCode === 27;
   },
 
   getDeviceLabel() {
-    return Platform.getDeviceLabel();
+    return "Web Browser";
   }
 };

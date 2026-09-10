@@ -1,5 +1,3 @@
-import { requestWebOsCompanionService } from "../../platform/webos/webosCompanionService.js";
-
 const REQUEST_TIMEOUT_MS = 15000;
 
 function withTimeout(promise, timeoutMs) {
@@ -16,33 +14,17 @@ export const localMediaSubtitleRepository = {
     if (!/^https?:\/\//i.test(targetUrl)) {
       throw new Error("Unsupported subtitle URL");
     }
-    const result = await withTimeout(
-      requestWebOsCompanionService({
-        method: "subtitleText",
-        parameters: { url: targetUrl }
-      }),
-      REQUEST_TIMEOUT_MS
-    );
-    const payload = result?.payload || {};
-    if (
-      payload.returnValue === false ||
-      Number(payload.statusCode || 0) < 200 ||
-      Number(payload.statusCode || 0) >= 300
-    ) {
-      throw new Error(
-        payload.errorText || `Subtitle request failed with HTTP ${payload.statusCode || 0}`
-      );
+    const response = await withTimeout(fetch(targetUrl), REQUEST_TIMEOUT_MS);
+    if (!response.ok) {
+      throw new Error(`Subtitle request failed with HTTP ${response.status}`);
     }
-    if (payload.bodyTruncated) {
-      throw new Error("Subtitle response is too large");
-    }
-    const body = String(payload.body || "");
+    const body = await response.text();
     if (!body.trim()) {
       throw new Error("Subtitle response is empty");
     }
     return {
       body,
-      contentType: String(payload.contentType || "text/vtt")
+      contentType: String(response.headers.get("content-type") || "text/vtt")
     };
   }
 };

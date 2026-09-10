@@ -1,12 +1,8 @@
 import { browserAdapter } from "./adapters/browserAdapter.js";
 
-const ADAPTERS = {
-  browser: browserAdapter
-};
-
 function getAdapter() {
   if (!Platform.current) {
-    Platform.current = ADAPTERS.browser;
+    Platform.current = browserAdapter;
   }
   return Platform.current;
 }
@@ -24,8 +20,10 @@ export const Platform = {
     return getAdapter().name;
   },
 
+  // Transitional browser-only compatibility for shared screens. These no
+  // longer inspect native globals or select a TV runtime.
   isWebOS() {
-    return this.getName() === "webos";
+    return false;
   },
 
   getWebOsMajorVersion() {
@@ -33,11 +31,11 @@ export const Platform = {
   },
 
   isTizen() {
-    return this.getName() === "tizen";
+    return false;
   },
 
   isBrowser() {
-    return this.getName() === "browser";
+    return true;
   },
 
   exitApp() {
@@ -67,9 +65,5 @@ export const Platform = {
 
   getCapabilities() {
     return getAdapter().getCapabilities();
-  },
-
-  prepareVideoElement(videoElement) {
-    return getAdapter().prepareVideoElement?.(videoElement);
   }
 };

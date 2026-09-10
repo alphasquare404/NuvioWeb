@@ -736,6 +736,14 @@ export function focusWithoutAutoScroll(node) {
   if (!node || typeof node.focus !== "function") {
     return;
   }
+  if (node.matches?.("article.focusable")) {
+    node.removeAttribute?.("tabindex");
+    const active = globalThis.document?.activeElement;
+    if (active && active !== globalThis.document?.body && typeof active.blur === "function") {
+      active.blur();
+    }
+    return;
+  }
   try {
     node.focus({ preventScroll: true });
   } catch (_) {

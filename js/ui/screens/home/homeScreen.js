@@ -1,5 +1,5 @@
 import { Router } from "../../navigation/router.js";
-import { ScreenUtils } from "../../navigation/screen.js";
+import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
@@ -7736,6 +7736,7 @@ export const HomeScreen = {
     current.classList.remove("focused");
     target.classList.add("focused");
     this.focusWithoutAutoScroll(target, { suppressDelegatedFocus: true });
+    ensureSpatialFocusVisible(target);
     this.setCurrentFocusedNode(target);
     this.scheduleHomeLazyImageHydration(target);
     if (this.isCollectionFolderNode(current)) {

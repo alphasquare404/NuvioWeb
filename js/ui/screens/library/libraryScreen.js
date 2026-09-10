@@ -1,5 +1,5 @@
 import { Router } from "../../navigation/router.js";
-import { ScreenUtils } from "../../navigation/screen.js";
+import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
@@ -115,21 +115,6 @@ function selectorValue(value) {
     return CSS.escape(raw);
   }
   return raw.replace(/["\\]/g, "\\$&");
-}
-
-function scrollIntoNearestView(node) {
-  if (!node || typeof node.scrollIntoView !== "function") {
-    return;
-  }
-  try {
-    node.scrollIntoView({
-      behavior: "auto",
-      block: "nearest",
-      inline: "nearest"
-    });
-  } catch (_) {
-    node.scrollIntoView();
-  }
 }
 
 function findNearestNodeByCenterX(referenceNode, nodes = []) {
@@ -604,7 +589,7 @@ export const LibraryScreen = {
     }
     if (!sidebarFocused) {
       this.lastMainFocus = target;
-      scrollIntoNearestView(target);
+      ensureSpatialFocusVisible(target);
       if (target.closest?.(".library-actions-row") && target.dataset.action) {
         this.lastActionsRowAction = String(target.dataset.action);
       }

@@ -1,5 +1,5 @@
 import { Router } from "../../navigation/router.js";
-import { ScreenUtils } from "../../navigation/screen.js";
+import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
@@ -1469,6 +1469,9 @@ export const SearchScreen = {
     });
     target.classList.add("focused");
     focusWithoutAutoScroll(target);
+    if (String(target.dataset.navZone || "") === "results") {
+      ensureSpatialFocusVisible(target);
+    }
     const zone = String(target.dataset.navZone || "");
     const currentZone = String(current?.dataset?.navZone || "");
     const sidebarFocused = isRootSidebarNode(target);

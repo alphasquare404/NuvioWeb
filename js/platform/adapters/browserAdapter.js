@@ -29,11 +29,7 @@ export const browserAdapter = {
     return {
       hlsJs: Boolean(globalThis.Hls?.isSupported?.()),
       dashJs: Boolean(globalThis.dashjs?.MediaPlayer),
-      nativeVideo: true,
-      webosAvplay: false,
-      tizenAvplay: false
+      nativeVideo: true
     };
-  },
-
-  prepareVideoElement() {}
+  }
 };

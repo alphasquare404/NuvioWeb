@@ -1,5 +1,3 @@
-import { fetchViaWebOsDebridAuthProxy } from "../../../platform/webos/webosSupabaseProxy.js";
-
 const TORBOX_BASE_URL = "https://api.torbox.app/";
 const PREMIUMIZE_BASE_URL = "https://www.premiumize.me/";
 const REAL_DEBRID_BASE_URL = "https://api.real-debrid.com/rest/1.0/";
@@ -18,7 +16,7 @@ async function requestJson(baseUrl, path, options = {}) {
         ...(options.headers || {})
       }
     };
-    response = (await fetchViaWebOsDebridAuthProxy(url, fetchOptions)) || (await fetch(url, fetchOptions));
+    response = await fetch(url, fetchOptions);
   } catch (error) {
     return {
       ok: false,
@@ -52,8 +50,7 @@ async function requestDebridAuthJson(baseUrl, path, options = {}) {
     headers: { ...(options.headers || {}) }
   };
   try {
-    const response =
-      (await fetchViaWebOsDebridAuthProxy(url, fetchOptions)) || (await fetch(url, fetchOptions));
+    const response = await fetch(url, fetchOptions);
     const text = await response.text();
     let data = null;
     if (text.trim()) {

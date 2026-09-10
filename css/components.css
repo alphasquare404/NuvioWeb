@@ -5546,9 +5546,7 @@ button:focus-visible {
 }
 
 .home-screen-shell .home-continue-card.focused .home-continue-media {
-  box-shadow:
-    inset 0 0 0 2px var(--secondary-color),
-    0 0 0 2px var(--secondary-color);
+  box-shadow: 0 0 0 2px var(--secondary-color);
   background-color: var(--focus-bg);
 }
 
@@ -11275,11 +11273,6 @@ button:focus-visible {
   height: 100%;
   background: #000;
   overflow: hidden;
-}
-
-.tizen-avplay-object {
-  /* Structural removal is deferred to Phase 7; this shell must not render. */
-  display: none !important;
 }
 
 #videoPlayer {
