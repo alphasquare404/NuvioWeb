@@ -2359,7 +2359,7 @@ export const StreamScreen = {
       content: () => this.renderOfflineDownloadOptionsContent(state),
       buttons: [
         { label: "Cancel", className: "season-download-secondary-action", onAction: () => this.closeOfflineDownloadOptions() },
-        { label: "Download", selected: true, onAction: () => void this.confirmOfflineDownloadOptions(state) }
+        { label: "Download", className: "stream-download-primary-action", onAction: () => void this.confirmOfflineDownloadOptions(state) }
       ],
       onDismiss: () => this.closeOfflineDownloadOptions()
     });

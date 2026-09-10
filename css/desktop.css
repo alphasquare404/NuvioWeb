@@ -3368,9 +3368,10 @@ html.desktop-browser {
   color: rgb(255 255 255 / 0.86);
 }
 
-.desktop-browser .stream-download-options-actions .nuvio-dialog-button.selected {
+.desktop-browser .stream-download-options-actions .stream-download-primary-action {
   border-color: rgb(var(--secondary-color-rgb) / 0.68);
   background: rgb(var(--secondary-color-rgb) / 0.28);
+  font-weight: 650;
 }
 
 /* Download Options is a browser sheet: controls and actions stay visible while

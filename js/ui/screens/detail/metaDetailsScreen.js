@@ -4877,7 +4877,7 @@ export const MetaDetailsScreen = {
         buttons: [
           {
             label: "Use Selection",
-            selected: true,
+            className: "stream-download-primary-action",
             onAction: () => {
               const selectedSubtitle = Number.isInteger(pickerState.selectedIndex)
                 ? snapshot[pickerState.selectedIndex]?.subtitle
