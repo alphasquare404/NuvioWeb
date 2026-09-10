@@ -36,7 +36,7 @@ import { Environment } from "../../../platform/environment.js";
 import { Router } from "../../navigation/router.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
-import { bindBrowserPlayerGestures } from "../../components/browserPlayerGestures.js";
+import { bindBrowserPlayerGestures, getBrowserPlayerVideoTapAction } from "../../components/browserPlayerGestures.js";
 import {
   buildBrowserExternalPlayerLaunch,
   getBrowserExternalPlayerPlatform,
@@ -4770,9 +4770,6 @@ export const PlayerScreen = {
         return;
       }
 
-      if (this.isDesktopVideoAreaClick(target)) {
-        this.togglePause({ focusControls: false });
-      }
     };
 
     this.container.addEventListener("pointermove", this.boundDesktopPlayerPointerMoveHandler);
@@ -4815,7 +4812,10 @@ export const PlayerScreen = {
     this.browserPlayerGestureCleanup = bindBrowserPlayerGestures(this.container, {
       isInteractiveTarget: (target) => !this.isDesktopVideoAreaClick(target),
       onSeek: (zone) => this.seekBrowserPlayerGesture(zone),
-      onHoldChange: (active) => this.setBrowserPlayerGestureHold(active)
+      onHoldChange: (active) => this.setBrowserPlayerGestureHold(active),
+      getSingleTapContext: () => ({ controlsWereVisible: this.controlsVisible }),
+      onSingleTap: ({ controlsWereVisible } = {}) =>
+        this.handleBrowserVideoAreaTap(Boolean(controlsWereVisible))
     });
   },
 
@@ -4890,6 +4890,15 @@ export const PlayerScreen = {
       return;
     }
     this.setControlsVisible(true, { focus: false });
+  },
+
+  handleBrowserVideoAreaTap(controlsWereVisible = this.controlsVisible) {
+    if (getBrowserPlayerVideoTapAction(controlsWereVisible) === "reveal-controls") {
+      this.revealDesktopPlayerControls();
+      return true;
+    }
+    this.togglePause({ focusControls: false });
+    return true;
   },
 
   isDesktopVideoAreaClick(target) {

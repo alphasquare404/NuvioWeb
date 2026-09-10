@@ -23,28 +23,41 @@ export function isWithinGestureTolerance(start, end, tolerance = PLAYER_GESTURE_
   return Math.hypot(Number(end?.x || 0) - Number(start?.x || 0), Number(end?.y || 0) - Number(start?.y || 0)) <= tolerance;
 }
 
+export function getBrowserPlayerVideoTapAction(controlsVisible) {
+  return controlsVisible ? "toggle-playback" : "reveal-controls";
+}
+
 export function bindBrowserPlayerGestures(surface, {
   isInteractiveTarget = () => false,
   onSeek = () => {},
-  onHoldChange = () => {}
+  onHoldChange = () => {},
+  getSingleTapContext = () => null,
+  onSingleTap = () => {},
+  schedule = setTimeout,
+  cancelScheduled = clearTimeout,
+  getNow = Date.now
 } = {}) {
   if (!(surface instanceof HTMLElement)) return () => {};
 
   let active = null;
-  let pendingTouchTap = null;
+  let pendingTap = null;
   let suppressionTimer = null;
   let suppressNextClick = false;
   let ignoreDoubleClickUntil = 0;
 
   const clearClickSuppression = () => {
     suppressNextClick = false;
-    if (suppressionTimer) clearTimeout(suppressionTimer);
+    if (suppressionTimer) cancelScheduled(suppressionTimer);
     suppressionTimer = null;
   };
   const suppressClick = () => {
     suppressNextClick = true;
-    if (suppressionTimer) clearTimeout(suppressionTimer);
-    suppressionTimer = setTimeout(clearClickSuppression, 700);
+    if (suppressionTimer) cancelScheduled(suppressionTimer);
+    suppressionTimer = schedule(clearClickSuppression, 700);
+  };
+  const clearPendingTap = () => {
+    if (pendingTap?.timer) cancelScheduled(pendingTap.timer);
+    pendingTap = null;
   };
   const clearActive = ({ restoreHold = true } = {}) => {
     if (!active) return null;
@@ -55,8 +68,8 @@ export function bindBrowserPlayerGestures(surface, {
   };
   const cancelActive = () => {
     const current = clearActive();
-    if (current?.holdTimer) clearTimeout(current.holdTimer);
-    pendingTouchTap = null;
+    if (current?.holdTimer) cancelScheduled(current.holdTimer);
+    clearPendingTap();
   };
   const targetIsValid = (target) => target instanceof Element && surface.contains(target) && !isInteractiveTarget(target);
   const pointFor = (event) => ({ x: Number(event?.clientX || 0), y: Number(event?.clientY || 0) });
@@ -76,12 +89,13 @@ export function bindBrowserPlayerGestures(surface, {
       zone: getBrowserPlayerGestureZone(surface.getBoundingClientRect(), point.x),
       moved: false,
       holdActive: false,
-      holdTimer: null
+      holdTimer: null,
+      singleTapContext: getSingleTapContext()
     };
-    current.holdTimer = setTimeout(() => {
+    current.holdTimer = schedule(() => {
       if (active !== current || current.moved) return;
       current.holdActive = true;
-      pendingTouchTap = null;
+      clearPendingTap();
       onHoldChange(true);
     }, PLAYER_GESTURE_HOLD_MS);
     active = current;
@@ -96,7 +110,7 @@ export function bindBrowserPlayerGestures(surface, {
     if (!active || active.pointerId !== event.pointerId || active.holdActive) return;
     if (!isWithinGestureTolerance(active.point, pointFor(event), PLAYER_GESTURE_HOLD_MOVE_TOLERANCE_PX)) {
       active.moved = true;
-      clearTimeout(active.holdTimer);
+      cancelScheduled(active.holdTimer);
       active.holdTimer = null;
     }
   };
@@ -104,7 +118,7 @@ export function bindBrowserPlayerGestures(surface, {
   const finishPointer = (event, { cancelled = false } = {}) => {
     if (!active || active.pointerId !== event.pointerId) return;
     const current = clearActive();
-    clearTimeout(current.holdTimer);
+    cancelScheduled(current.holdTimer);
     try {
       surface.releasePointerCapture?.(event.pointerId);
     } catch (_) {
@@ -114,31 +128,49 @@ export function bindBrowserPlayerGestures(surface, {
       suppressClick();
       return;
     }
-    if (cancelled || current.moved || current.pointerType !== "touch") return;
-    const now = Date.now();
+    if (cancelled || current.moved) return;
+    const now = getNow();
     const point = pointFor(event);
-    const previous = pendingTouchTap;
-    pendingTouchTap = null;
+    const previous = pendingTap;
     if (
       previous &&
       now - previous.at <= PLAYER_GESTURE_DOUBLE_ACTIVATION_MS &&
       previous.zone === current.zone &&
       isWithinGestureTolerance(previous.point, point)
     ) {
+      clearPendingTap();
       if (current.zone !== "center") {
         ignoreDoubleClickUntil = now + 700;
+        suppressClick();
         onSeek(current.zone);
       }
       return;
     }
-    pendingTouchTap = { at: now, point, zone: current.zone };
+    if (previous) {
+      clearPendingTap();
+      onSingleTap(previous.context);
+    }
+    const nextPendingTap = {
+      at: now,
+      point,
+      zone: current.zone,
+      context: current.singleTapContext,
+      timer: null
+    };
+    pendingTap = nextPendingTap;
+    suppressClick();
+    nextPendingTap.timer = schedule(() => {
+      if (pendingTap !== nextPendingTap) return;
+      pendingTap = null;
+      onSingleTap(nextPendingTap.context);
+    }, PLAYER_GESTURE_DOUBLE_ACTIVATION_MS);
   };
 
   const onDoubleClick = (event) => {
-    if (Date.now() < ignoreDoubleClickUntil || event.button !== 0 || !targetIsValid(event.target)) return;
+    if (getNow() < ignoreDoubleClickUntil || event.button !== 0 || !targetIsValid(event.target)) return;
     const zone = getBrowserPlayerGestureZone(surface.getBoundingClientRect(), Number(event.clientX || 0));
     if (zone === "center") return;
-    pendingTouchTap = null;
+    clearPendingTap();
     onSeek(zone);
     event.preventDefault();
     event.stopPropagation();
