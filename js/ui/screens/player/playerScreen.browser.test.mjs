@@ -33,3 +33,14 @@ test("desktop Player Back chrome follows the shared controls-visible state", asy
     /#playerUiRoot:not\(\.controls-visible\) \.player-desktop-back-button\s*\{\s*opacity: 0;\s*pointer-events: none;/
   );
 });
+
+test("browser Player routes PiP through active-video capability and lifecycle events", async () => {
+  const source = await readFile(playerScreenUrl, "utf8");
+
+  assert.match(source, /getBrowserPictureInPictureCapability\(this\.getDesktopPlaybackVideo\(\), document\)/);
+  assert.match(source, /enterpictureinpicture/);
+  assert.match(source, /leavepictureinpicture/);
+  assert.match(source, /webkitpresentationmodechanged/);
+  assert.doesNotMatch(source, /navigator\.standalone|display-mode|isPwa|isStandalone/);
+  assert.match(source, /markPictureInPictureUnavailableForActivePlayback/);
+});

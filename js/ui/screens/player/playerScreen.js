@@ -38,6 +38,16 @@ import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserPlayerGestures, getBrowserPlayerVideoTapAction } from "../../components/browserPlayerGestures.js";
 import {
+  BROWSER_PICTURE_IN_PICTURE_STANDARD,
+  BROWSER_PICTURE_IN_PICTURE_WEBKIT,
+  enterBrowserPictureInPicture,
+  exitBrowserPictureInPicture,
+  getBrowserPictureInPictureCapability,
+  isBrowserPictureInPictureActive,
+  isBrowserPictureInPictureUnavailableForSession,
+  shouldMarkBrowserPictureInPictureUnavailable
+} from "../../components/browserPictureInPicture.js";
+import {
   buildBrowserExternalPlayerLaunch,
   getBrowserExternalPlayerPlatform,
   getManualBrowserExternalPlayerOptions,
@@ -2262,6 +2272,7 @@ export const PlayerScreen = {
     this.selectedManifestSubtitleTrackId = null;
     this.hlsManifestSubtitlePromotionUrls = new Set();
     this.activePlaybackUrl = initialStreamUrl || null;
+    this.resetPictureInPictureAvailability();
     this.pendingPlaybackRestore = buildPendingPlaybackRestore(params);
     this.trackDiscoveryToken = 0;
     this.trackDiscoveryInProgress = false;
@@ -2367,6 +2378,7 @@ export const PlayerScreen = {
       const sourceCandidate =
         this.getStreamCandidateByUrl(initialStreamUrl) || this.getCurrentStreamCandidate();
       this.activePlaybackUrl = initialStreamUrl;
+      this.resetPictureInPictureAvailability();
       const allowPlaybackDuringStartupAudioGate = shouldAllowPlaybackDuringStartupAudioGate({
           isHlsPlayback: this.isCurrentSourceLikelyHls(initialStreamUrl, sourceCandidate)
         });
@@ -4297,6 +4309,7 @@ export const PlayerScreen = {
     };
 
     this.activePlaybackUrl = targetUrl;
+    this.resetPictureInPictureAvailability();
     const currentStreamCandidate = this.getCurrentStreamCandidate();
     this.paused = false;
     this.hasPresentedPlaybackFrame = false;
@@ -5021,33 +5034,44 @@ export const PlayerScreen = {
     return Boolean(Environment.isBrowser() && document.fullscreenElement === this.container);
   },
 
-  isStandardPictureInPictureSupported() {
-    if (!Environment.isBrowser() || typeof document === "undefined") {
-      return false;
+  resetPictureInPictureAvailability() {
+    this.pictureInPictureUnsupportedVideo = null;
+    this.pictureInPicturePlaybackSession = Number(this.pictureInPicturePlaybackSession || 0) + 1;
+    this.pictureInPictureUnsupportedPlaybackSession = null;
+  },
+
+  isPictureInPictureUnavailableForActivePlayback(video = this.getDesktopPlaybackVideo()) {
+    return isBrowserPictureInPictureUnavailableForSession({
+      video,
+      session: this.pictureInPicturePlaybackSession,
+      unavailableVideo: this.pictureInPictureUnsupportedVideo,
+      unavailableSession: this.pictureInPictureUnsupportedPlaybackSession
+    });
+  },
+
+  markPictureInPictureUnavailableForActivePlayback(video, error) {
+    if (!shouldMarkBrowserPictureInPictureUnavailable(error) || !video) return false;
+    const alreadyUnavailable = this.isPictureInPictureUnavailableForActivePlayback(video);
+    this.pictureInPictureUnsupportedVideo = video;
+    this.pictureInPictureUnsupportedPlaybackSession = this.pictureInPicturePlaybackSession;
+    if (!alreadyUnavailable) {
+      this.showAspectToast("Picture-in-Picture is not supported for this video.");
     }
+    return true;
+  },
+
+  isStandardPictureInPictureSupported() {
     return (
-      document.pictureInPictureEnabled !== false &&
-      typeof HTMLVideoElement !== "undefined" &&
-      typeof HTMLVideoElement.prototype.requestPictureInPicture === "function" &&
-      typeof document.exitPictureInPicture === "function"
+      Environment.isBrowser() &&
+      getBrowserPictureInPictureCapability(this.getDesktopPlaybackVideo(), document) ===
+        BROWSER_PICTURE_IN_PICTURE_STANDARD
     );
   },
 
   getSafariPictureInPictureCapability() {
-    const video = this.getDesktopPlaybackVideo();
-    if (!Environment.isBrowser() || !(video instanceof HTMLVideoElement)) {
-      return null;
-    }
-    if (typeof video.webkitSetPresentationMode !== "function") {
-      return null;
-    }
-    try {
-      return typeof video.webkitSupportsPresentationMode !== "function"
-        ? true
-        : Boolean(video.webkitSupportsPresentationMode("picture-in-picture"));
-    } catch (_) {
-      return false;
-    }
+    if (!Environment.isBrowser()) return null;
+    return getBrowserPictureInPictureCapability(this.getDesktopPlaybackVideo(), document) ===
+      BROWSER_PICTURE_IN_PICTURE_WEBKIT;
   },
 
   isSafariPictureInPictureSupported() {
@@ -5055,24 +5079,18 @@ export const PlayerScreen = {
   },
 
   isDesktopPictureInPictureSupported() {
-    const safariCapability = this.getSafariPictureInPictureCapability();
-    // When WebKit exposes an element-level support probe, it is more precise
-    // than document.pictureInPictureEnabled in installed Safari web apps.
-    if (safariCapability !== null) {
-      return safariCapability;
-    }
-    return this.isStandardPictureInPictureSupported();
+    // This is capability based: installed/standalone PWAs use the same active
+    // video probe as a browser tab. Standard PiP remains preferred over the
+    // WebKit presentation-mode fallback.
+    return (
+      !this.isPictureInPictureUnavailableForActivePlayback() &&
+      (this.isStandardPictureInPictureSupported() || this.isSafariPictureInPictureSupported())
+    );
   },
 
   isDesktopPlayerPictureInPicture() {
     const video = this.getDesktopPlaybackVideo();
-    if (!video) {
-      return false;
-    }
-    if (this.isStandardPictureInPictureSupported() && document.pictureInPictureElement === video) {
-      return true;
-    }
-    return this.isSafariPictureInPictureSupported() && video.webkitPresentationMode === "picture-in-picture";
+    return Environment.isBrowser() && isBrowserPictureInPictureActive(video, document);
   },
 
   async exitDesktopPictureInPicture() {
@@ -5080,12 +5098,7 @@ export const PlayerScreen = {
     if (!video || !this.isDesktopPlayerPictureInPicture()) {
       return false;
     }
-    if (this.isStandardPictureInPictureSupported() && document.pictureInPictureElement === video) {
-      await document.exitPictureInPicture();
-    } else if (this.isSafariPictureInPictureSupported()) {
-      video.webkitSetPresentationMode("inline");
-    }
-    return true;
+    return exitBrowserPictureInPicture(video, document);
   },
 
   async toggleDesktopPictureInPicture() {
@@ -5100,24 +5113,28 @@ export const PlayerScreen = {
         await this.exitDesktopPictureInPicture();
       } else if (this.isStandardPictureInPictureSupported()) {
         try {
-          await video.requestPictureInPicture();
+          await enterBrowserPictureInPicture(video, document);
         } catch (initialError) {
+          if (this.markPictureInPictureUnavailableForActivePlayback(video, initialError)) {
+            throw initialError;
+          }
           // Chromium may reject PiP while this page owns fullscreen. Preserve
           // fullscreen unless the browser actually requires an exit first.
           if (!document.fullscreenElement) {
             throw initialError;
           }
           await document.exitFullscreen?.();
-          await video.requestPictureInPicture();
+          await enterBrowserPictureInPicture(video, document);
         }
       } else {
-        video.webkitSetPresentationMode("picture-in-picture");
+        await enterBrowserPictureInPicture(video, document);
       }
       this.revealDesktopPlayerControls();
       this.syncDesktopPlaybackTools();
       this.renderCompactBrowserMorePanel();
       return true;
-    } catch (_) {
+    } catch (error) {
+      this.markPictureInPictureUnavailableForActivePlayback(video, error);
       this.syncDesktopPlaybackTools();
       this.renderCompactBrowserMorePanel();
       return false;
@@ -10205,6 +10222,7 @@ export const PlayerScreen = {
     this.trackDiscoveryStartedAt = 0;
     this.trackDiscoveryDeadline = 0;
     this.activePlaybackUrl = streamUrl;
+    this.resetPictureInPictureAvailability();
     this.lastTrackWarmupAt = Date.now();
     const playbackContext = {
       ...this.buildPlaybackContext(sourceCandidate),
