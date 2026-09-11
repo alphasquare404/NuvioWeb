@@ -6,6 +6,7 @@ nuvio.env.js
 local.properties
 .env
 .env.*
+!.env.example
 local.example.properties
 node_modules/
 *.ipk

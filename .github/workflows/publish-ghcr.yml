@@ -42,10 +42,11 @@ jobs:
           flavor: |
             latest=false
           tags: |
+            type=raw,value=nightly,enable=${{ github.ref == 'refs/heads/web' }}
             type=raw,value=latest
-            type=raw,value=web
             type=raw,value=desktop
-            type=semver,pattern={{version}}
+            type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
 
       - name: Extract Trakt bridge image metadata
@@ -56,10 +57,11 @@ jobs:
           flavor: |
             latest=false
           tags: |
+            type=raw,value=nightly,enable=${{ github.ref == 'refs/heads/web' }}
             type=raw,value=latest
-            type=raw,value=web
             type=raw,value=desktop
-            type=semver,pattern={{version}}
+            type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
 
       - name: Extract debrid bridge image metadata
@@ -70,10 +72,11 @@ jobs:
           flavor: |
             latest=false
           tags: |
+            type=raw,value=nightly,enable=${{ github.ref == 'refs/heads/web' }}
             type=raw,value=latest
-            type=raw,value=web
             type=raw,value=desktop
-            type=semver,pattern={{version}}
+            type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
 
       - name: Build and publish image

@@ -60,43 +60,49 @@ http://127.0.0.1:8080
 
 ## Self-host with Docker
 
-The default Compose deployment pins all three published services to the tested
-`0.1.0` release. It serves the browser build from Nginx, does not run the
-development Node server, and does not require a local source build on the
-server. Use `:latest` only when you intentionally want the rolling stable
-release. The `:web` tag follows the maintained browser/PWA branch. The older
-`:desktop` tag remains a temporary compatibility alias for existing deployments.
+NuvioWeb runs from published GHCR images. A self-host server needs only Docker
+Compose, `docker-compose.yml`, and `.env`; it does not need a source checkout,
+Node.js, npm, or a local image build.
 
-### Configure public browser values
+### Quick Deploy with Docker
 
-Provide browser-public values through an untracked `.env` file next to
-`docker-compose.yml`. The required values for account sign-in are:
+On the server, create an empty deployment directory and download the Compose
+file and configuration template:
 
-```dotenv
-NUVIO_SUPABASE_URL=https://your-project.supabase.co
-NUVIO_SUPABASE_ANON_KEY=your-browser-anon-key
+```bash
+mkdir -p nuvioweb
+cd nuvioweb
 
-# Optional: enables browser Trakt device sign-in through the internal bridge.
-# TRAKT_CLIENT_SECRET is supplied only to the bridge, never to the browser.
-TRAKT_CLIENT_ID=
-TRAKT_CLIENT_SECRET=
+curl -fsSL \
+  https://raw.githubusercontent.com/alphasquare404/NuvioWeb/web/docker-compose.yml \
+  -o docker-compose.yml
 
-# Optional: enables browser Simkl PIN sign-in
-SIMKL_CLIENT_ID=
-SIMKL_APP_NAME=nuvio
-
-# Optional: enables Premiumize Device Code sign-in in Connected Services.
-# This is a public OAuth client identifier, not a Premiumize user credential.
-PREMIUMIZE_CLIENT_ID=
-
-# Optional: expose the container on another host port (default: 4173)
-NUVIO_PORT=4174
+curl -fsSL \
+  https://raw.githubusercontent.com/alphasquare404/NuvioWeb/web/.env.example \
+  -o .env
 ```
 
-`NUVIO_SUPABASE_FALLBACK_URL` and the existing public
-metadata/avatar/donation endpoint overrides are also supported. Their defaults
-work for most deployments. TMDB remains profile-configurable in Settings rather
-than a required Docker value.
+For the normal frontend-only deployment, the downloaded `.env` already uses the
+hosted Nuvio backend defaults, so you can start NuvioWeb immediately:
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+Open `http://SERVER_IP:4173`. Set `NUVIO_PORT` in `.env` before starting if
+you need a different host port. You can also edit `.env` for Simkl, Premiumize,
+Trakt, or a custom/self-hosted compatible Nuvio backend. See
+[environment configuration](docs/environment.md) for every supported value.
+
+### Configuration
+
+The downloaded `.env` template includes safe hosted-backend defaults and labels
+browser-public versus server-only values. Do not create an empty Supabase
+project for the frontend-only mode. Replace the Nuvio backend values only when
+you operate your own compatible backend; the full mapping and advanced options
+are in [environment configuration](docs/environment.md).
 
 Docker builds a generic browser image. At container startup, an explicit
 public allowlist is written to `nuvio.env.js`, so changing `.env` only requires
@@ -115,12 +121,26 @@ value is written to `nuvio.env.js`, bundled, or exposed on a host port. Never
 place Supabase service-role keys, access tokens, provider credentials, or other
 private values in browser runtime configuration.
 
-### Start and update
+### Release Channels
 
-Run these commands on the Docker/self-host server. The server only needs this
-Compose file and its local `.env`; it does not need a source checkout to build
-the application. Your development machine only needs to commit and push source
-changes; Docker is not required on it.
+Use the default `:stable` tag for normal self-hosting. To switch channels, edit
+all three `image:` tags in `docker-compose.yml` to the same tag before pulling.
+
+| Tag | Meaning |
+| --- | --- |
+| `stable` | Recommended. Latest official release. |
+| `nightly` | Latest development build from `web`; may be unstable. |
+| `latest` | Most recently published project build, whether development or release. |
+| `X.Y.Z` | Pinned immutable release, such as `0.1.0`. |
+| `desktop` | Temporary legacy compatibility alias. |
+
+Examples: use `:stable` for the recommended channel, `:nightly` for the latest
+web development build, `:latest` for the newest published build of any kind,
+or `:0.1.0` to remain on a specific release.
+
+### Start, Stop, and Update
+
+Run these commands from the deployment directory.
 
 ```bash
 docker compose pull
@@ -137,17 +157,17 @@ docker logs -f nuvioweb
 # Stop the application
 docker compose down
 
-# Refresh the pinned 0.1.0 release images
+# Update the selected image channel
 docker compose pull
 docker compose up -d
 ```
 
-For a rolling stable deployment, change all three image tags in
-`docker-compose.yml` from `:0.1.0` to `:latest` before pulling. To follow the
-current browser/PWA branch build instead, use `:web` for all three services.
-Keep the three service tags aligned. The `web` branch is the maintained
-browser/PWA fork; `main` preserves the upstream/original Nuvio line, while
-`desktop` remains a temporary compatibility branch.
+With `:stable`, this updates to the newest official release. With `:nightly`,
+it updates to the newest `web` development build. With `:latest`, it updates to
+whichever project build was published most recently. A pinned tag such as
+`:0.1.0` remains pinned until you edit all three image tags manually.
+
+### Reverse Proxy
 
 The container serves HTTP on port `80` and Compose maps it to host port `4173`.
 It can sit behind an external reverse proxy such as Nginx Proxy Manager, Caddy,
