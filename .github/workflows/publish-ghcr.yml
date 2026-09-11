@@ -1,17 +1,20 @@
-name: Publish Desktop Docker Image
+name: Publish NuvioWeb Docker Images
 
 on:
   push:
     branches:
-      - desktop
+      - main
+    tags:
+      - "v*"
   workflow_dispatch:
 
 concurrency:
-  group: publish-ghcr-desktop
+  group: publish-ghcr-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,15 +34,43 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract image metadata
-        id: meta
+      - name: Extract frontend image metadata
+        id: frontend-meta
         uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96 # v5.6.1
         with:
           images: ghcr.io/alphasquare404/nuvioweb
           flavor: |
             latest=false
           tags: |
+            type=raw,value=latest
             type=raw,value=desktop
+            type=semver,pattern={{version}}
+            type=sha,format=short,prefix=sha-
+
+      - name: Extract Trakt bridge image metadata
+        id: trakt-meta
+        uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96 # v5.6.1
+        with:
+          images: ghcr.io/alphasquare404/nuvioweb-trakt-auth-bridge
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=latest
+            type=raw,value=desktop
+            type=semver,pattern={{version}}
+            type=sha,format=short,prefix=sha-
+
+      - name: Extract debrid bridge image metadata
+        id: debrid-meta
+        uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96 # v5.6.1
+        with:
+          images: ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=latest
+            type=raw,value=desktop
+            type=semver,pattern={{version}}
             type=sha,format=short,prefix=sha-
 
       - name: Build and publish image
@@ -49,8 +80,8 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.frontend-meta.outputs.tags }}
+          labels: ${{ steps.frontend-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -61,9 +92,8 @@ jobs:
           file: ./services/trakt-auth-bridge/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: |
-            ghcr.io/alphasquare404/nuvioweb-trakt-auth-bridge:desktop
-            ghcr.io/alphasquare404/nuvioweb-trakt-auth-bridge:sha-${{ github.sha }}
+          tags: ${{ steps.trakt-meta.outputs.tags }}
+          labels: ${{ steps.trakt-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -74,8 +104,7 @@ jobs:
           file: ./services/debrid-api-bridge/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: |
-            ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:desktop
-            ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:sha-${{ github.sha }}
+          tags: ${{ steps.debrid-meta.outputs.tags }}
+          labels: ${{ steps.debrid-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

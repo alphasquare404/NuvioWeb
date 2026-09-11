@@ -1,7 +1,7 @@
 services:
   nuvioweb:
     container_name: nuvioweb
-    image: ghcr.io/alphasquare404/nuvioweb:desktop
+    image: ghcr.io/alphasquare404/nuvioweb:0.1.0
     environment:
       NUVIO_SUPABASE_URL: ${NUVIO_SUPABASE_URL:-}
       NUVIO_SUPABASE_ANON_KEY: ${NUVIO_SUPABASE_ANON_KEY:-}
@@ -25,7 +25,7 @@ services:
 
   trakt-auth-bridge:
     container_name: nuvioweb-trakt-auth-bridge
-    image: ghcr.io/alphasquare404/nuvioweb-trakt-auth-bridge:desktop
+    image: ghcr.io/alphasquare404/nuvioweb-trakt-auth-bridge:0.1.0
     environment:
       TRAKT_CLIENT_ID: ${TRAKT_CLIENT_ID:-}
       TRAKT_CLIENT_SECRET: ${TRAKT_CLIENT_SECRET:-}
@@ -34,5 +34,5 @@ services:
 
   debrid-api-bridge:
     container_name: nuvioweb-debrid-api-bridge
-    image: ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:desktop
+    image: ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:0.1.0
     restart: unless-stopped

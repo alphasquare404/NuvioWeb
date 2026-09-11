@@ -1,9 +1,9 @@
 blank_issues_enabled: false
 contact_links:
   - name: Downloads / Releases
-    url: https://github.com/NuvioMedia/NuvioWeb/releases
+    url: https://github.com/alphasquare404/NuvioWeb/releases
     about: Download the latest NuvioWeb browser/PWA release artifacts.
 
   - name: Documentation
-    url: https://github.com/NuvioMedia/NuvioWeb/blob/main/README.md
+    url: https://github.com/alphasquare404/NuvioWeb/blob/main/README.md
     about: Read the README for browser/PWA setup, self-hosting, and development details.
