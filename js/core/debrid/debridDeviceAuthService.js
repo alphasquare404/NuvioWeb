@@ -19,6 +19,12 @@ function positiveSeconds(value, fallback = 5) {
   return Number.isFinite(seconds) && seconds > 0 ? Math.max(1, Math.trunc(seconds)) : fallback;
 }
 
+export function isDeviceAuthorizationExpired(expiresAt, now = Date.now()) {
+  const timestamp =
+    typeof expiresAt === "number" ? expiresAt : Date.parse(String(expiresAt || ""));
+  return Number.isFinite(timestamp) && timestamp <= now;
+}
+
 function failureMessage(response) {
   const data = response?.data;
   if (data && typeof data === "object") {

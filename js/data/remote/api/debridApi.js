@@ -6,6 +6,10 @@ function joinUrl(baseUrl, path) {
   return `${String(baseUrl || "").replace(/\/+$/, "")}/${String(path || "").replace(/^\/+/, "")}`;
 }
 
+async function requestBridgeJson(path, options = {}) {
+  return requestJson("", path, options);
+}
+
 async function requestJson(baseUrl, path, options = {}) {
   let response;
   try {
@@ -43,29 +47,6 @@ async function requestJson(baseUrl, path, options = {}) {
   };
 }
 
-async function requestDebridAuthJson(baseUrl, path, options = {}) {
-  const url = joinUrl(baseUrl, path);
-  const fetchOptions = {
-    ...options,
-    headers: { ...(options.headers || {}) }
-  };
-  try {
-    const response = await fetch(url, fetchOptions);
-    const text = await response.text();
-    let data = null;
-    if (text.trim()) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
-      }
-    }
-    return { ok: response.ok, status: response.status, data, text };
-  } catch (error) {
-    return { ok: false, status: 0, data: null, text: "", error };
-  }
-}
-
 function authHeaders(apiKey) {
   return {
     Authorization: `Bearer ${String(apiKey || "").trim()}`
@@ -86,46 +67,46 @@ function formBody(values = {}) {
 
 export const DebridApi = {
   async startTorboxDeviceAuthorization(appName = "Nuvio") {
-    const query = new URLSearchParams({ app: String(appName || "Nuvio") });
-    return requestDebridAuthJson(
-      TORBOX_BASE_URL,
-      `v1/api/user/auth/device/start?${query.toString()}`
-    );
+    void appName;
+    return requestBridgeJson("/api/debrid/torbox/device/start", { method: "POST" });
   },
 
   async redeemTorboxDeviceAuthorization(deviceCode) {
-    return requestDebridAuthJson(TORBOX_BASE_URL, "v1/api/user/auth/device/token", {
+    return requestBridgeJson("/api/debrid/torbox/device/redeem", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ device_code: String(deviceCode || "").trim() })
+      body: JSON.stringify({ deviceCode: String(deviceCode || "").trim() })
     });
   },
 
   async startPremiumizeDeviceAuthorization(clientId) {
-    return requestDebridAuthJson(PREMIUMIZE_BASE_URL, "token", {
+    return requestBridgeJson("/api/debrid/premiumize/device/start", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body: formBody({ response_type: "device_code", client_id: clientId }).toString()
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: String(clientId || "").trim() })
     });
   },
 
   async redeemPremiumizeDeviceAuthorization(deviceCode, clientId) {
-    return requestDebridAuthJson(PREMIUMIZE_BASE_URL, "token", {
+    return requestBridgeJson("/api/debrid/premiumize/device/redeem", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body: formBody({ grant_type: "device_code", code: deviceCode, client_id: clientId }).toString()
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceCode: String(deviceCode || "").trim(),
+        clientId: String(clientId || "").trim()
+      })
     });
   },
 
   async validateTorboxApiKey(apiKey) {
-    const response = await requestJson(TORBOX_BASE_URL, "v1/api/user/me", {
+    const response = await requestBridgeJson("/api/debrid/torbox/account", {
       headers: authHeaders(apiKey)
     });
     return response.ok;
   },
 
   async validatePremiumizeApiKey(apiKey) {
-    const response = await requestJson(PREMIUMIZE_BASE_URL, "api/account/info", {
+    const response = await requestBridgeJson("/api/debrid/premiumize/account", {
       headers: authHeaders(apiKey)
     });
     return response.ok && String(response.data?.status || "").toLowerCase() !== "error";
@@ -139,19 +120,15 @@ export const DebridApi = {
   },
 
   async torboxCreateTorrent(apiKey, magnet) {
-    const body = new FormData();
-    body.set("magnet", magnet);
-    body.set("add_only_if_cached", "true");
-    body.set("allow_zip", "false");
-    return requestJson(TORBOX_BASE_URL, "v1/api/torrents/createtorrent", {
+    return requestBridgeJson("/api/debrid/torbox/torrent/create", {
       method: "POST",
-      headers: authHeaders(apiKey),
-      body
+      headers: { ...authHeaders(apiKey), "Content-Type": "application/json" },
+      body: JSON.stringify({ magnet: String(magnet || "").trim() })
     });
   },
 
   async torboxCheckCached(apiKey, hashes = []) {
-    return requestJson(TORBOX_BASE_URL, "v1/api/torrents/checkcached?format=object", {
+    return requestBridgeJson("/api/debrid/torbox/cache/check", {
       method: "POST",
       headers: {
         ...authHeaders(apiKey),
@@ -170,28 +147,21 @@ export const DebridApi = {
   },
 
   async torboxGetTorrent(apiKey, torrentId) {
-    const query = new URLSearchParams({
-      id: String(torrentId),
-      bypass_cache: "true"
-    });
-    return requestJson(TORBOX_BASE_URL, `v1/api/torrents/mylist?${query.toString()}`, {
-      headers: authHeaders(apiKey)
+    return requestBridgeJson("/api/debrid/torbox/torrent/lookup", {
+      method: "POST",
+      headers: { ...authHeaders(apiKey), "Content-Type": "application/json" },
+      body: JSON.stringify({ torrentId: String(torrentId || "").trim() })
     });
   },
 
   async torboxRequestDownloadLink(apiKey, torrentId, fileId) {
-    const query = new URLSearchParams({
-      token: String(apiKey || "").trim(),
-      torrent_id: String(torrentId),
-      zip_link: "false",
-      redirect: "false",
-      append_name: "false"
-    });
-    if (fileId != null) {
-      query.set("file_id", String(fileId));
-    }
-    return requestJson(TORBOX_BASE_URL, `v1/api/torrents/requestdl?${query.toString()}`, {
-      headers: authHeaders(apiKey)
+    return requestBridgeJson("/api/debrid/torbox/link/resolve", {
+      method: "POST",
+      headers: { ...authHeaders(apiKey), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        torrentId: String(torrentId || "").trim(),
+        ...(fileId != null ? { fileId: String(fileId) } : {})
+      })
     });
   },
 

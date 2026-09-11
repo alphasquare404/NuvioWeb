@@ -30,3 +30,8 @@ services:
       TRAKT_CLIENT_SECRET: ${TRAKT_CLIENT_SECRET:-}
       TRAKT_REDIRECT_URI: ${TRAKT_REDIRECT_URI:-urn:ietf:wg:oauth:2.0:oob}
     restart: unless-stopped
+
+  debrid-api-bridge:
+    container_name: nuvioweb-debrid-api-bridge
+    image: ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:desktop
+    restart: unless-stopped

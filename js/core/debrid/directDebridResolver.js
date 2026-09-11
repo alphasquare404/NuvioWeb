@@ -416,7 +416,16 @@ export const DirectDebridResolver = {
   },
 
   shouldListStream(stream = {}) {
-    return Boolean(getStreamUrl(stream) || stream.ytId || this.canResolveStream(stream));
+    if (getStreamUrl(stream) || stream.ytId) {
+      return true;
+    }
+    const settings = DebridSettingsStore.get();
+    // Resolve playable links is opt-in. With it off, retain ordinary addon
+    // torrent results instead of making native debrid resolution a display prerequisite.
+    if (!settings.enabled) {
+      return Boolean(stream.infoHash || torrentMagnetUri(stream));
+    }
+    return this.canResolveStream(stream);
   },
 
   cachedPlayableStream(stream = {}, { season = null, episode = null } = {}) {

@@ -5,6 +5,7 @@ import { readFile, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildRuntimeEnvScript, readEnvProperties } from "./envProperties.mjs";
+import { createDebridApiBridgeHandler } from "../services/debrid-api-bridge/bridge.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -16,6 +17,7 @@ const mediaServerPorts = [2710, 2711, 2712, 2713, 2714];
 const mediaProbeTimeoutMs = 1200;
 let mediaRuntimeProcess = null;
 let cachedMediaServerPort = mediaServerPorts[0];
+const debridApiBridgeHandler = createDebridApiBridgeHandler();
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -192,6 +194,10 @@ async function proxyLocalMediaRequest(request, response, pathname) {
 const server = http.createServer(async (request, response) => {
   try {
     const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    if (requestUrl.pathname.startsWith("/api/debrid/")) {
+      await debridApiBridgeHandler(request, response);
+      return;
+    }
     if (requestUrl.pathname === "/nuvio.env.js") {
       const { env } = await readEnvProperties({ rootDir });
       response.writeHead(200, {

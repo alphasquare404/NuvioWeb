@@ -41,7 +41,8 @@ import { DebridApi } from "../../../data/remote/api/debridApi.js";
 import { DEBRID_AUTH_METHODS, DebridProviders } from "../../../core/debrid/debridProviders.js";
 import {
   DEBRID_DEVICE_AUTH_STATUS,
-  DebridDeviceAuthService
+  DebridDeviceAuthService,
+  isDeviceAuthorizationExpired
 } from "../../../core/debrid/debridDeviceAuthService.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
 import { AuthManager } from "../../../core/auth/authManager.js";
@@ -1440,10 +1441,6 @@ async function validateDebridApiKey(providerId, apiKey) {
     return DebridApi.validateRealDebridApiKey(normalized);
   }
   return false;
-}
-
-function isDesktopDebridComingSoon(provider) {
-  return Platform.isBrowser() && (provider?.id === "torbox" || provider?.id === "premiumize");
 }
 
 function normalizeSelectableSubtitleLanguageCode(language) {
@@ -3183,6 +3180,13 @@ export const SettingsScreen = {
   async pollDebridDeviceAuth(nonce) {
     const state = this.debridAuthDialog;
     if (!state?.session || !this.isCurrentDebridAuth(nonce)) return;
+    if (isDeviceAuthorizationExpired(state.session.expiresAt)) {
+      this.debridAuthDialog.status = "expired";
+      this.debridAuthDialog.message = "";
+      this.refreshDebridDeviceAuthDialog();
+      await this.render({ refreshModel: false });
+      return;
+    }
     const result = await DebridDeviceAuthService.redeem(
       state.provider.id,
       state.session.deviceCode
@@ -4827,9 +4831,6 @@ export const SettingsScreen = {
       });
       providers.forEach((provider) => {
         this.actionMap.set(`integration:debrid:key:${provider.id}`, () => {
-          if (isDesktopDebridComingSoon(provider)) {
-            return;
-          }
           if (provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE) {
             this.openDebridDeviceAuthDialog(provider);
             return;
@@ -5107,15 +5108,12 @@ export const SettingsScreen = {
               <div class="settings-group-title">${escapeHtml(t("debrid_section_account", {}, "Account"))}</div>
             </div>
             ${providers
-              .map((provider) => {
-                const comingSoon = isDesktopDebridComingSoon(provider);
-                return this.renderActionRow({
+              .map((provider) =>
+                this.renderActionRow({
                   focusKey: `integration:debrid:key:${provider.id}`,
                   title: provider.displayName,
                   subtitle:
-                    comingSoon
-                      ? "Desktop browser support is coming soon."
-                      : provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE
+                    provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE
                       ? t(
                           "debrid_provider_device_description",
                           { provider: provider.displayName },
@@ -5127,19 +5125,16 @@ export const SettingsScreen = {
                           `Connect your ${provider.displayName} account.`
                       ),
                   value: maskValue(
-                    comingSoon || provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE
+                    provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE
                       ? ""
                       : DebridProviders.apiKeyFor(model.debrid, provider.id),
-                    comingSoon
-                      ? "Coming Soon"
-                      : DebridProviders.apiKeyFor(model.debrid, provider.id)
+                    DebridProviders.apiKeyFor(model.debrid, provider.id)
                       ? t("debrid_connected", {}, "Connected")
                       : t("settings.integration.debrid.notSet", {}, "Not set")
                   ),
-                  icon: comingSoon ? null : "chevron",
-                  disabled: comingSoon
-                });
-              })
+                  icon: "chevron"
+                })
+              )
               .join("")}
             ${
               canResolvePlayableLinks
