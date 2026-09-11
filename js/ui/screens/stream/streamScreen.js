@@ -10,6 +10,7 @@ import {
   selectAutoPlayStream,
   isAutoPlayEffectivelyEnabled
 } from "../../../core/streams/streamAutoPlaySelector.js";
+import { orderSourceNames, orderStreamsByAddonOrder } from "../../../core/streams/streamOrdering.js";
 import { buildStreamResumeIdentity } from "../../../core/streams/streamResumeIdentity.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import {
@@ -565,62 +566,15 @@ function resolveStreamBadgePlacement(badgeSettings = null) {
 }
 
 function getOrderedFilterNames(sourceChips = [], streams = []) {
-  const ordered = [];
-  const sortedChips = (sourceChips || [])
-    .slice()
-    .sort(
-      (left, right) =>
-        Number(left?.orderIndex ?? Number.MAX_SAFE_INTEGER) -
-        Number(right?.orderIndex ?? Number.MAX_SAFE_INTEGER)
-    );
-  sortedChips.forEach((chip) => {
-    if (chip?.name && !ordered.includes(chip.name)) {
-      ordered.push(chip.name);
-    }
+  return orderSourceNames(streams, sourceChips, {
+    isDirectDebrid: (stream) => DebridStreamPresentation.isDirectDebrid(stream)
   });
-  const sortedStreams = (streams || [])
-    .map((stream, index) => ({ stream, index }))
-    .sort((left, right) => {
-      const leftOrder = Number(left.stream?.addonOrderIndex ?? Number.MAX_SAFE_INTEGER);
-      const rightOrder = Number(right.stream?.addonOrderIndex ?? Number.MAX_SAFE_INTEGER);
-      if (leftOrder !== rightOrder) {
-        return leftOrder - rightOrder;
-      }
-      return left.index - right.index;
-    })
-    .map((entry) => entry.stream);
-  sortedStreams.forEach((stream) => {
-    const addonName = String(stream?.addonName || "").trim();
-    if (addonName && !ordered.includes(addonName)) {
-      ordered.push(addonName);
-    }
-  });
-  return ordered;
 }
 
 function sortStreamsByAddonOrder(streams = [], sourceChips = []) {
-  const order = new Map();
-  (sourceChips || []).forEach((chip, index) => {
-    const name = String(chip?.name || "").trim();
-    if (name && !order.has(name)) {
-      order.set(name, index);
-    }
+  return orderStreamsByAddonOrder(streams, sourceChips, {
+    isDirectDebrid: (stream) => DebridStreamPresentation.isDirectDebrid(stream)
   });
-  return (streams || [])
-    .map((stream, index) => ({ stream, index }))
-    .sort((left, right) => {
-      const leftOrder = order.has(left.stream?.addonName)
-        ? order.get(left.stream.addonName)
-        : Number(left.stream?.addonOrderIndex ?? Number.MAX_SAFE_INTEGER);
-      const rightOrder = order.has(right.stream?.addonName)
-        ? order.get(right.stream.addonName)
-        : Number(right.stream?.addonOrderIndex ?? Number.MAX_SAFE_INTEGER);
-      if (leftOrder !== rightOrder) {
-        return leftOrder - rightOrder;
-      }
-      return left.index - right.index;
-    })
-    .map((entry) => entry.stream);
 }
 
 export const StreamScreen = {
@@ -1495,10 +1449,7 @@ export const StreamScreen = {
       return cache.result;
     }
     const orderedStreams = sortStreamsByAddonOrder(this.streams, this.sourceChips);
-    const result =
-      filter === "all"
-        ? DebridStreamPresentation.sortForDisplay(orderedStreams, DebridSettingsStore.get())
-        : orderedStreams.filter((stream) => stream.addonName === filter);
+    const result = filter === "all" ? orderedStreams : orderedStreams.filter((stream) => stream.addonName === filter);
     this._filteredStreamsCache = {
       streams: this.streams,
       chips: this.sourceChips,

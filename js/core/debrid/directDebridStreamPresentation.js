@@ -1,33 +1,8 @@
 import { DebridSettingsStore } from "../../data/local/debridSettingsStore.js";
-import { DEBRID_PROVIDER_IDS, DebridProviders } from "./debridProviders.js";
+import { DebridProviders } from "./debridProviders.js";
 import { DebridStreamTemplateEngine } from "./debridStreamTemplateEngine.js";
 import { sizeBytesFromStreamText } from "./streamTextSizeParser.js";
-
-const RESOLUTION_RANK = {
-  P2160: 700,
-  P1440: 600,
-  P1080: 500,
-  P720: 400,
-  P576: 300,
-  P480: 200,
-  P360: 100,
-  UNKNOWN: 0
-};
-const QUALITY_RANK = {
-  BLURAY_REMUX: 1200,
-  BLURAY: 1100,
-  WEB_DL: 1000,
-  WEBRIP: 900,
-  HDRIP: 800,
-  HD_RIP: 700,
-  DVDRIP: 600,
-  HDTV: 500,
-  CAM: 100,
-  TS: 90,
-  TC: 80,
-  SCR: 70,
-  UNKNOWN: 0
-};
+import { resolutionFromFields } from "./streamResolution.js";
 const RESOLUTION_LABELS = {
   P2160: "2160p",
   P1440: "1440p",
@@ -245,17 +220,6 @@ function searchText(stream = {}) {
     .toLowerCase();
 }
 
-function resolutionFromText(text = "") {
-  if (/\b(2160p?|4k|uhd)\b/i.test(text)) return "P2160";
-  if (/\b(1440p?|2k)\b/i.test(text)) return "P1440";
-  if (/\b(1080p?|fhd)\b/i.test(text)) return "P1080";
-  if (/\b(720p?|hd)\b/i.test(text)) return "P720";
-  if (/\b576p?\b/i.test(text)) return "P576";
-  if (/\b(480p?|sd)\b/i.test(text)) return "P480";
-  if (/\b360p?\b/i.test(text)) return "P360";
-  return "UNKNOWN";
-}
-
 function qualityFromText(text = "") {
   const value = String(text || "").toLowerCase();
   if (value.includes("remux")) return "BLURAY_REMUX";
@@ -428,9 +392,12 @@ function facts(stream = {}) {
   const resolve = stream.clientResolve || stream.raw?.clientResolve || {};
   const parsed = resolve.stream?.raw?.parsed || {};
   const text = searchText(stream);
-  const resolution = resolutionFromText(
-    [parsed.resolution, parsed.quality, stream.quality, text].filter(Boolean).join(" ")
-  );
+  const resolution = resolutionFromFields([
+    parsed.resolution,
+    parsed.quality,
+    stream.quality,
+    text
+  ]);
   const quality = qualityFromText([parsed.quality, text].filter(Boolean).join(" "));
   const visualTags = visualTagsFromText(parsed.hdr || [], text);
   const audioTags = audioTagsFromText(parsed.audio || [], text);
@@ -1049,36 +1016,7 @@ export const DebridStreamPresentation = {
     });
   },
 
-  sortForDisplay(streams = [], settings = DebridSettingsStore.get()) {
-    if (!settings.enabled || !DebridProviders.preferredResolverService(settings)) {
-      return streams;
-    }
-    const effective = effectiveSettings(settings);
-    if (!effective.sortCriteria.length) {
-      return streams;
-    }
-    const managed = [];
-    const managedPositions = new Set();
-    (streams || []).forEach((stream, index) => {
-      if (!isManagedDebridStream(stream)) {
-        return;
-      }
-      managedPositions.add(index);
-      managed.push({ stream, fact: facts(stream) });
-    });
-    if (managed.length <= 1) {
-      return streams;
-    }
-    managed.sort((left, right) => compareStreams(left, right, effective));
-    let managedIndex = 0;
-    return (streams || []).map((stream, index) => {
-      if (!managedPositions.has(index)) {
-        return stream;
-      }
-      return managed[managedIndex++]?.stream || stream;
-    });
-  },
-
+  isDirectDebrid,
   isManagedDebridStream,
   needsLocalDebridResolve
 };
