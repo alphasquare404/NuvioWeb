@@ -1,7 +1,10 @@
 import { AuthState } from "./authState.js";
+import { clearAccountLocalData, resetAccountRuntimeState } from "./accountLocalDataReset.js";
 import { SessionStore } from "../storage/sessionStore.js";
 import { SUPABASE_ANON_KEY } from "../../config.js";
 import { fetchSupabaseAuth } from "./supabaseAuthFetch.js";
+
+const ACCOUNT_OWNER_MARKER_KEY = "nuvioAccountOwnerMarker";
 
 function isJwtLike(token) {
   const value = String(token || "").trim();
@@ -57,6 +60,7 @@ class AuthManagerClass {
     this.cachedEffectiveUserSourceUserId = null;
     this.refreshPromise = null;
     this.lastRefreshFailureKind = null;
+    this.sessionGeneration = 0;
   }
 
   // ------------------------------------
@@ -97,7 +101,7 @@ class AuthManagerClass {
       return;
     }
 
-    this.setState(AuthState.AUTHENTICATED);
+    await this.establishAuthenticatedSession();
   }
 
   getAuthState() {
@@ -137,14 +141,52 @@ class AuthManagerClass {
     SessionStore.refreshToken = data.refresh_token;
     SessionStore.isAnonymousSession = false;
 
-    this.setState(AuthState.AUTHENTICATED);
+    await this.establishAuthenticatedSession();
   }
 
   async signOut() {
+    this.sessionGeneration += 1;
     SessionStore.clear();
     this.cachedEffectiveUserId = null;
     this.cachedEffectiveUserSourceUserId = null;
     this.setState(AuthState.SIGNED_OUT);
+    clearAccountLocalData();
+    await resetAccountRuntimeState();
+  }
+
+  getSessionGeneration() {
+    return this.sessionGeneration;
+  }
+
+  isSessionCurrent(generation) {
+    return this.state === AuthState.AUTHENTICATED && generation === this.sessionGeneration;
+  }
+
+  async establishAuthenticatedSession() {
+    // Always resolve the owner again before profile routing. A host may replace
+    // a session without an explicit sign-out, and profile index alone is not an
+    // account boundary.
+    this.cachedEffectiveUserId = null;
+    const ownerId = String(await this.getEffectiveUserId()).trim();
+    let previousOwner = null;
+    try {
+      previousOwner = String(globalThis.localStorage?.getItem(ACCOUNT_OWNER_MARKER_KEY) || "").trim() || null;
+    } catch (_) {}
+
+    // A missing marker is treated conservatively during migration: account
+    // state is cleared once, then rehydrated from the authenticated owner.
+    if (!previousOwner || previousOwner !== ownerId) {
+      this.sessionGeneration += 1;
+      this.setState(AuthState.LOADING);
+      clearAccountLocalData();
+      await resetAccountRuntimeState();
+    }
+
+    try {
+      globalThis.localStorage?.setItem?.(ACCOUNT_OWNER_MARKER_KEY, ownerId);
+    } catch (_) {}
+    this.cachedEffectiveUserId = ownerId;
+    this.setState(AuthState.AUTHENTICATED);
   }
 
   async refreshSessionIfNeeded({ force = false } = {}) {
@@ -270,7 +312,7 @@ class AuthManagerClass {
     SessionStore.accessToken = data.accessToken;
     SessionStore.refreshToken = data.refreshToken;
 
-    this.setState(AuthState.AUTHENTICATED);
+    await this.establishAuthenticatedSession();
   }
 
   // ------------------------------------
@@ -279,6 +321,8 @@ class AuthManagerClass {
 
   async getEffectiveUserId() {
     if (this.cachedEffectiveUserId) return this.cachedEffectiveUserId;
+
+    const sessionGeneration = this.sessionGeneration;
 
     if (!SessionStore.accessToken) {
       const refreshed = await this.refreshSessionIfNeeded();
@@ -299,6 +343,10 @@ class AuthManagerClass {
       headers: authHeaders
     });
 
+    if (sessionGeneration !== this.sessionGeneration) {
+      throw new Error("Session changed while resolving sync owner");
+    }
+
     if (res.status === 401) {
       const refreshed = await this.refreshSessionIfNeeded();
       if (refreshed) {
@@ -309,6 +357,9 @@ class AuthManagerClass {
             Authorization: `Bearer ${SessionStore.accessToken}`
           }
         });
+        if (sessionGeneration !== this.sessionGeneration) {
+          throw new Error("Session changed while resolving sync owner");
+        }
       }
     }
 
@@ -322,6 +373,9 @@ class AuthManagerClass {
     const data = await res.json();
     const id = data;
 
+    if (sessionGeneration !== this.sessionGeneration) {
+      throw new Error("Session changed while resolving sync owner");
+    }
     this.cachedEffectiveUserId = id;
     return id;
   }

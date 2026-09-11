@@ -73,6 +73,7 @@ export const SavedLibrarySyncService = {
       if (!AuthManager.isAuthenticated) {
         return [];
       }
+      const sessionGeneration = AuthManager.getSessionGeneration();
       const resolvedProfileId = resolveProfileId(profileId);
       const localItems = await savedLibraryRepository.getAll(1000, resolvedProfileId);
       const rows = [];
@@ -86,6 +87,7 @@ export const SavedLibrarySyncService = {
           },
           true
         );
+        if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
         const pageRows = Array.isArray(page) ? page : [];
         rows.push(...pageRows);
         if (pageRows.length < PULL_PAGE_SIZE) {
@@ -98,6 +100,7 @@ export const SavedLibrarySyncService = {
       if (!remoteItems.length && localItems.length) {
         return localItems;
       }
+      if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
       await savedLibraryRepository.replaceAll(remoteItems, resolvedProfileId);
       return remoteItems;
     } catch (error) {
@@ -111,6 +114,7 @@ export const SavedLibrarySyncService = {
       if (!AuthManager.isAuthenticated) {
         return false;
       }
+      const sessionGeneration = AuthManager.getSessionGeneration();
       const resolvedProfileId = resolveProfileId(profileId);
       const items = await savedLibraryRepository.getAll(1000, resolvedProfileId);
       if (!items.length) {
@@ -124,6 +128,7 @@ export const SavedLibrarySyncService = {
         },
         true
       );
+      if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
       return true;
     } catch (error) {
       console.warn("Saved library sync push failed", error);

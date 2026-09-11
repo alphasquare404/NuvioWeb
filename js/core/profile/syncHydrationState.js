@@ -1,4 +1,5 @@
 import { AuthManager } from "../auth/authManager.js";
+import { registerAccountRuntimeResetHandler } from "../auth/accountLocalDataReset.js";
 import { ProfileManager } from "./profileManager.js";
 
 export const SyncPullResult = Object.freeze({
@@ -113,3 +114,5 @@ export const SyncHydrationState = {
     pendingSettingsMutations.delete(pendingSettingsKey(context.profileId));
   }
 };
+
+registerAccountRuntimeResetHandler(() => SyncHydrationState.invalidate());

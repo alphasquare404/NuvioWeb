@@ -1,4 +1,5 @@
 import { AuthManager } from "../auth/authManager.js";
+import { registerAccountRuntimeResetHandler } from "../auth/accountLocalDataReset.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { CollectionsStore } from "../../data/local/collectionsStore.js";
 import { ProfileManager } from "./profileManager.js";
@@ -169,5 +170,14 @@ export const CollectionSyncService = {
       void this.push(resolvedProfileId, { automatic: true });
     }, PUSH_DEBOUNCE_MS);
     this.pushTimers.set(resolvedProfileId, timerId);
+  },
+
+  resetAccountState() {
+    this.pushTimers.forEach((timerId) => clearTimeout(timerId));
+    this.pushTimers.clear();
+    this.pendingLocalChanges.clear();
+    this.syncingFromRemoteProfiles.clear();
   }
 };
+
+registerAccountRuntimeResetHandler(() => CollectionSyncService.resetAccountState());

@@ -155,12 +155,14 @@ export const WatchedItemsSyncService = {
       if (!AuthManager.isAuthenticated) {
         return [];
       }
+      const sessionGeneration = AuthManager.getSessionGeneration();
       if (!shouldUseSupabaseWatchProgressSync()) {
         return [];
       }
       const profileId = resolveProfileId();
       const localItems = await watchedItemsRepository.getAll(5000);
       const rows = await pullRemoteWatchedItems(profileId);
+      if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
       const remoteItems = (rows || [])
         .map((row) => mapRemoteItem(row))
         .filter((item) => Boolean(item.contentId));
@@ -172,7 +174,7 @@ export const WatchedItemsSyncService = {
         remoteItems,
         Number(watchedStateForProfile(profileId).lastSuccessfulPushAt || 0)
       );
-      if (resolveProfileId() !== profileId) {
+      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
         return localItems;
       }
       await watchedItemsRepository.replaceAll(mergedItems, profileId);
@@ -188,6 +190,7 @@ export const WatchedItemsSyncService = {
       if (!AuthManager.isAuthenticated) {
         return false;
       }
+      const sessionGeneration = AuthManager.getSessionGeneration();
       const items = await watchedItemsRepository.getAll(5000);
       await SupabaseApi.rpc(
         PUSH_RPC,
@@ -197,6 +200,7 @@ export const WatchedItemsSyncService = {
         },
         true
       );
+      if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
       writeWatchedStateForProfile(resolveProfileId(), { lastSuccessfulPushAt: Date.now() });
       return true;
     } catch (error) {

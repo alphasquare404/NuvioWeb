@@ -468,9 +468,11 @@ async function pushOnce() {
     if (!AuthManager.isAuthenticated) {
       return false;
     }
+    const sessionGeneration = AuthManager.getSessionGeneration();
     const items = coalesceSyncItems(await watchProgressRepository.getAll()).filter((item) =>
       isSyncableProgressItem(item)
     );
+    if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
     const profileId = resolveProfileId();
     const rows = buildRemoteProgressEntries(items);
     pushSignature = buildPushSignature(rows);
@@ -493,6 +495,7 @@ async function pushOnce() {
       },
       true
     );
+    if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
     lastSuccessfulPushSignature = pushSignature;
     writeBaselineItems(profileId, items);
     lastFailedPushSignature = "";
@@ -514,6 +517,7 @@ export const WatchProgressSyncService = {
       if (!AuthManager.isAuthenticated) {
         return [];
       }
+      const sessionGeneration = AuthManager.getSessionGeneration();
       if (!shouldUseSupabaseWatchProgressSync()) {
         return [];
       }
@@ -523,6 +527,7 @@ export const WatchProgressSyncService = {
         return localItems;
       }
       const rows = await SupabaseApi.rpc(PULL_RPC, { p_profile_id: profileId }, true);
+      if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
       const filteredRows = (Array.isArray(rows) ? rows : []).filter((row) => {
         const rowProfile = row?.profile_id ?? row?.profileId ?? null;
         if (rowProfile == null || rowProfile === "") {
@@ -536,7 +541,7 @@ export const WatchProgressSyncService = {
       const snapshotItems = normalizeProgressItems(remoteItems);
       const baselineItems = readBaselineItems(profileId);
       const mergedItems = mergeProgressItems(localItems, snapshotItems, baselineItems);
-      if (resolveProfileId() !== profileId) {
+      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
         return localItems;
       }
       writeBaselineItems(profileId, snapshotItems);

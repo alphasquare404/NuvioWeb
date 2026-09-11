@@ -1,4 +1,5 @@
 import { AuthManager } from "../auth/authManager.js";
+import { registerAccountRuntimeResetHandler } from "../auth/accountLocalDataReset.js";
 import { LocalStore } from "../storage/localStore.js";
 import { DebridProviders } from "../debrid/debridProviders.js";
 import { DebridSettingsStore } from "../../data/local/debridSettingsStore.js";
@@ -329,3 +330,11 @@ export const ProviderCredentialSyncService = {
     }
   }
 };
+
+registerAccountRuntimeResetHandler(() => {
+  pushTimers.forEach((timerId) => clearTimeout(timerId));
+  pushTimers.clear();
+  ProviderCredentialSyncService.cancelForegroundPull();
+  ProviderCredentialSyncService.foregroundPullInFlight = false;
+  ProviderCredentialSyncService.lastForegroundPullAtMs = 0;
+});

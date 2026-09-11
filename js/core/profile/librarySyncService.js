@@ -1,4 +1,5 @@
 import { AuthManager } from "../auth/authManager.js";
+import { registerAccountRuntimeResetHandler } from "../auth/accountLocalDataReset.js";
 import { addonRepository } from "../../data/repository/addonRepository.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { ProfileManager } from "./profileManager.js";
@@ -404,3 +405,8 @@ export const LibrarySyncService = {
     }
   }
 };
+
+registerAccountRuntimeResetHandler(() => {
+  pendingLocalSnapshots.clear();
+  lastPullStatus = { state: "idle", count: 0, error: null, at: 0 };
+});
