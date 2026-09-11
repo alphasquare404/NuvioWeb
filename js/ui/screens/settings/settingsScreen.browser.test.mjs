@@ -48,3 +48,14 @@ test("device authorization polls at the provider interval, retries pending, and 
   assert.match(source, /isDeviceAuthorizationExpired\(state\.session\.expiresAt\)/);
   assert.match(source, /this\.debridAuthDialog\.status = "expired"/);
 });
+
+test("Device Code dialog renders shared copy and trusted-link actions only while waiting", async () => {
+  const source = await settingsScreenSource();
+
+  assert.match(source, /state\.status === "waiting" && state\.session/);
+  assert.match(source, /data-debrid-auth-action="copy" aria-label="Copy device code"/);
+  assert.match(source, /data-debrid-auth-action="open" aria-label="Open verification link"/);
+  assert.match(source, /copyDeviceAuthorizationCode\(currentState\.session\.userCode\)/);
+  assert.match(source, /openDeviceAuthorizationLink\(/);
+  assert.match(source, /this\.refreshDebridDeviceAuthDialog\(\);\s*await this\.render\(\{ refreshModel: false \}\)/);
+});

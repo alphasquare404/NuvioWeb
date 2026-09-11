@@ -9708,6 +9708,29 @@ button:focus-visible {
   word-break: break-word;
 }
 
+.settings-debrid-auth-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 390px);
+  gap: 12px;
+}
+
+.settings-debrid-auth-action {
+  min-height: 48px;
+  border: 1px solid var(--border-color, #3a3a3a);
+  border-radius: 10px;
+  background: var(--card-bg, #242424);
+  color: var(--text-color, #fff);
+  cursor: pointer;
+  font: inherit;
+}
+
+.settings-debrid-auth-action:hover,
+.settings-debrid-auth-action:focus-visible {
+  border-color: var(--focus-color, #fff);
+  background: var(--focus-bg, #303030);
+}
+
 .settings-debrid-auth-error {
   color: #ff8a80;
 }

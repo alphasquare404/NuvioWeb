@@ -55,6 +55,10 @@ import {
   normalizeBrowserExternalPlayer
 } from "../../components/browserExternalPlayer.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
+import {
+  copyDeviceAuthorizationCode,
+  openDeviceAuthorizationLink
+} from "../../components/browserDeviceCodeActions.js";
 import { isFastHorizontalNavigationEnabled } from "../../../platform/sharedKeys.js";
 import { CW_DISPLAY_SNAPSHOT_KEY, CW_ENRICHMENT_CACHE_KEY } from "../home/homeConstants.js";
 import { I18n } from "../../../i18n/index.js";
@@ -2252,6 +2256,7 @@ export const SettingsScreen = {
     this.textDialog = this.textDialog || null;
     this.debridAuthDialog = null;
     this.debridAuthPollTimer = null;
+    this.debridAuthCopyFeedbackTimer = null;
     this.dialogFocusIndex = Number.isFinite(this.dialogFocusIndex) ? this.dialogFocusIndex : 0;
     this.sidebarExpanded = false;
     this.pillIconOnly = false;
@@ -2992,6 +2997,10 @@ export const SettingsScreen = {
       clearTimeout(this.debridAuthPollTimer);
       this.debridAuthPollTimer = null;
     }
+    if (this.debridAuthCopyFeedbackTimer) {
+      clearTimeout(this.debridAuthCopyFeedbackTimer);
+      this.debridAuthCopyFeedbackTimer = null;
+    }
     this.debridAuthNonce = Number(this.debridAuthNonce || 0) + 1;
     if (clearState) this.debridAuthDialog = null;
   },
@@ -3021,6 +3030,9 @@ export const SettingsScreen = {
     if (state.status === "waiting" && state.session) {
       const verificationUrl =
         state.session.friendlyVerificationUrl || state.session.verificationUrl;
+      const copyLabel = state.copyFeedback
+        ? t("common.copied", {}, "Copied!")
+        : t("debrid_device_auth_copy_code", {}, "Copy Code");
       return `
         <div class="settings-debrid-auth-body">
           <p class="settings-debrid-auth-copy">${escapeHtml(
@@ -3035,6 +3047,12 @@ export const SettingsScreen = {
           )}"></canvas>
           <div class="settings-debrid-auth-code">${escapeHtml(state.session.userCode)}</div>
           <div class="settings-debrid-auth-url">${escapeHtml(verificationUrl)}</div>
+          <div class="settings-debrid-auth-actions">
+            <button type="button" class="settings-debrid-auth-action" data-debrid-auth-action="copy" aria-label="Copy device code">${escapeHtml(copyLabel)}</button>
+            <button type="button" class="settings-debrid-auth-action" data-debrid-auth-action="open" aria-label="Open verification link">${escapeHtml(
+              t("debrid_device_auth_open_link", {}, "Open Link")
+            )}</button>
+          </div>
           <div class="settings-debrid-auth-status">${renderLoadingIndicator({ size: "small" })}<span>${escapeHtml(
             t("debrid_device_auth_waiting", {}, "Waiting for authorization…")
           )}</span></div>
@@ -3099,6 +3117,33 @@ export const SettingsScreen = {
             console.warn("Failed to generate Debrid authorization QR", error);
           }
         }
+        dialogSlot.querySelectorAll?.("[data-debrid-auth-action]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            const currentState = this.debridAuthDialog;
+            if (!currentState?.session || currentState.status !== "waiting") return;
+            const action = button.dataset.debridAuthAction;
+            if (action === "open") {
+              openDeviceAuthorizationLink(
+                currentState.provider.id,
+                currentState.session.friendlyVerificationUrl || currentState.session.verificationUrl
+              );
+              return;
+            }
+            if (action !== "copy") return;
+            const copied = await copyDeviceAuthorizationCode(currentState.session.userCode);
+            if (!copied || !this.isCurrentDebridAuth(currentState.nonce)) return;
+            this.debridAuthDialog.copyFeedback = true;
+            this.refreshDebridDeviceAuthDialog();
+            await this.render({ refreshModel: false });
+            if (this.debridAuthCopyFeedbackTimer) clearTimeout(this.debridAuthCopyFeedbackTimer);
+            this.debridAuthCopyFeedbackTimer = setTimeout(() => {
+              if (!this.isCurrentDebridAuth(currentState.nonce)) return;
+              this.debridAuthDialog.copyFeedback = false;
+              this.refreshDebridDeviceAuthDialog();
+              void this.render({ refreshModel: false });
+            }, 1800);
+          });
+        });
       },
       onClose: () => this.stopDebridDeviceAuth(),
       onSelect: async (option) => {
