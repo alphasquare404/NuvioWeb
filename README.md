@@ -20,14 +20,11 @@
 
 ## About
 
-NuvioWeb is an independent, GPL-3.0-licensed community fork maintained by
-alphasquare. It is based on Nuvio, preserves upstream attribution, and uses an
-independent release lifecycle: 0.1.0 is the first community-fork release;
-0.1.1 denotes bug fixes; 0.2.0 denotes meaningful changes; and 1.0.0 will mark
-the first stable release. NuvioWeb is not affiliated with or endorsed by
-NuvioMedia.
+NuvioWeb is an independent, GPL-3.0-licensed community fork of Nuvio, maintained by alphasquare.
 
-NuvioWeb acts as a client-side playback interface that can integrate with the Stremio addon ecosystem for content discovery and source resolution through user-installed extensions.
+It provides a client-side playback interface with support for the Stremio addon ecosystem, enabling content discovery and source resolution through user-installed extensions.
+
+NuvioWeb is based on the original Nuvio project and preserves credit and attribution to its upstream maintainers and main repository.
 
 ## Development
 
