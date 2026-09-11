@@ -5,5 +5,5 @@ contact_links:
     about: Download the latest NuvioWeb browser/PWA release artifacts.
 
   - name: Documentation
-    url: https://github.com/alphasquare404/NuvioWeb/blob/main/README.md
+    url: https://github.com/alphasquare404/NuvioWeb/blob/web/README.md
     about: Read the README for browser/PWA setup, self-hosting, and development details.

@@ -64,8 +64,8 @@ The default Compose deployment pins all three published services to the tested
 `0.1.0` release. It serves the browser build from Nginx, does not run the
 development Node server, and does not require a local source build on the
 server. Use `:latest` only when you intentionally want the rolling stable
-release. The older `:desktop` tag remains a temporary compatibility alias for
-existing deployments and is not the canonical source branch.
+release. The `:web` tag follows the maintained browser/PWA branch. The older
+`:desktop` tag remains a temporary compatibility alias for existing deployments.
 
 ### Configure public browser values
 
@@ -143,8 +143,11 @@ docker compose up -d
 ```
 
 For a rolling stable deployment, change all three image tags in
-`docker-compose.yml` from `:0.1.0` to `:latest` before pulling. Keep the three
-service tags aligned. New development and release source lives on `main`.
+`docker-compose.yml` from `:0.1.0` to `:latest` before pulling. To follow the
+current browser/PWA branch build instead, use `:web` for all three services.
+Keep the three service tags aligned. The `web` branch is the maintained
+browser/PWA fork; `main` preserves the upstream/original Nuvio line, while
+`desktop` remains a temporary compatibility branch.
 
 The container serves HTTP on port `80` and Compose maps it to host port `4173`.
 It can sit behind an external reverse proxy such as Nginx Proxy Manager, Caddy,
@@ -212,4 +215,4 @@ For comprehensive legal information, including our full disclaimer, third-party 
 [issues-shield]: https://img.shields.io/github/issues/alphasquare404/NuvioWeb.svg?style=for-the-badge
 [issues-url]: https://github.com/alphasquare404/NuvioWeb/issues
 [license-shield]: https://img.shields.io/github/license/alphasquare404/NuvioWeb.svg?style=for-the-badge
-[license-url]: https://github.com/alphasquare404/NuvioWeb/blob/main/LICENSE
+[license-url]: https://github.com/alphasquare404/NuvioWeb/blob/web/LICENSE

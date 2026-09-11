@@ -8,16 +8,23 @@ async function readRepositoryFile(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("GHCR publishing uses main and v tags with consistent release aliases", async () => {
+function countMatches(text, pattern) {
+  return [...text.matchAll(pattern)].length;
+}
+
+test("GHCR publishing uses web and v tags with consistent release aliases", async () => {
   const workflow = await readRepositoryFile(".github/workflows/publish-ghcr.yml");
 
-  assert.match(workflow, /branches:\s*\n\s*- main/);
+  assert.match(workflow, /branches:\s*\n\s*- web/);
   assert.match(workflow, /tags:\s*\n\s*- "v\*"/);
+  assert.doesNotMatch(workflow, /branches:\s*\n\s*- main/);
   assert.doesNotMatch(workflow, /branches:\s*\n\s*- desktop/);
-  assert.match(workflow, /type=raw,value=latest/);
-  assert.match(workflow, /type=raw,value=desktop/);
-  assert.match(workflow, /type=semver,pattern=\{\{version\}\}/);
-  assert.match(workflow, /type=sha,format=short,prefix=sha-/);
+  assert.match(workflow, /github\.ref == 'refs\/heads\/web'/);
+  assert.equal(countMatches(workflow, /type=raw,value=latest/g), 3);
+  assert.equal(countMatches(workflow, /type=raw,value=web/g), 3);
+  assert.equal(countMatches(workflow, /type=raw,value=desktop/g), 3);
+  assert.equal(countMatches(workflow, /type=semver,pattern=\{\{version\}\}/g), 3);
+  assert.equal(countMatches(workflow, /type=sha,format=short,prefix=sha-/g), 3);
   assert.match(workflow, /steps\.frontend-meta\.outputs\.tags/);
   assert.match(workflow, /steps\.trakt-meta\.outputs\.tags/);
   assert.match(workflow, /steps\.debrid-meta\.outputs\.tags/);
