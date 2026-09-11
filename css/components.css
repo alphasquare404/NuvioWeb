@@ -945,11 +945,23 @@ button:focus-visible {
 }
 
 .profile-pin-box-row {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: min(1.46vw, 28px);
   margin-top: min(4.375vw, 84px);
+}
+
+.profile-pin-native-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  cursor: text;
 }
 
 .profile-pin-box-row.is-shaking {

@@ -565,19 +565,14 @@ export const ProfileSelectionScreen = {
       }
     }
     this.restoreFocus();
-    this.focusDesktopPinInput();
+    this.focusNativePinInput();
   },
 
-  focusDesktopPinInput() {
-    if (!this.getRenderedPinOverlayState() || this.isPinOperationInProgress) {
+  focusNativePinInput() {
+    if (this.isPinOperationInProgress) {
       return;
     }
-    const focusInput = () => this.container?.querySelector("[data-role='desktop-pin-input']")?.focus();
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(focusInput);
-    } else {
-      setTimeout(focusInput, 0);
-    }
+    this.container?.querySelector("[data-role='native-pin-input']")?.focus();
   },
 
   renderProfileCard(profile) {
@@ -870,43 +865,26 @@ export const ProfileSelectionScreen = {
       support = isSingleEntryMode ? PROFILE_PIN_TEXT.verifying : PROFILE_PIN_TEXT.saving;
     }
 
-    const isDesktopBrowser = true;
-    if (isDesktopBrowser && state.type === "unlock" && !this.pinOverlayError && !this.isPinOperationInProgress) {
-      support = "Enter your 4-digit PIN to continue.";
-    }
-
     return `
       <div class="profile-pin-layer${phaseClass}">
         <div class="profile-pin-overlay profile-focusable focusable" data-overlay-root="pin" data-focus-key="pin:root" tabindex="0">
-          <div class="profile-pin-content${isDesktopBrowser ? " profile-pin-desktop-card" : ""}">
-            ${
-              isDesktopBrowser
-                ? `<button class="profile-pin-desktop-back" type="button" data-action="close-pin" aria-label="${escapeHtml(
-                    t("common.back", {}, "Back")
-                  )}"><span class="material-icons" aria-hidden="true">chevron_left</span></button>`
-                : ""
-            }
+          <div class="profile-pin-content">
             <div class="profile-pin-heading">${escapeHtml(heading)}</div>
             <div class="profile-pin-box-row" data-role="pin-box-row">
               ${this.renderPinBoxes()}
-              ${
-                isDesktopBrowser
-                  ? `<input class="profile-pin-desktop-input"
-                            data-role="desktop-pin-input"
-                            type="password"
-                            inputmode="numeric"
-                            pattern="[0-9]*"
-                            maxlength="${PROFILE_PIN_LENGTH}"
-                            autocomplete="off"
-                            aria-label="${escapeHtml(t("profile_pin", {}, "4-digit PIN"))}"
-                            value="${escapeHtml(this.pinValue)}"/>`
-                  : ""
-              }
+              <input class="profile-pin-native-input"
+                     data-role="native-pin-input"
+                     type="password"
+                     inputmode="numeric"
+                     pattern="[0-9]*"
+                     maxlength="${PROFILE_PIN_LENGTH}"
+                     autocomplete="off"
+                     aria-label="${escapeHtml(t("profile_pin", {}, "4-digit PIN"))}"
+                     value="${escapeHtml(this.pinValue)}"/>
             </div>
             <div class="profile-pin-support${this.pinOverlayError ? " is-error" : ""}">${escapeHtml(support)}</div>
-            ${isDesktopBrowser ? "" : `<div class="profile-pin-keypad" aria-label="PIN keypad">${this.renderPinKeypad()}</div>`}
             ${isSingleEntryMode ? `<div class="profile-pin-forgot">${escapeHtml(PROFILE_PIN_TEXT.forgot)}</div>` : ""}
-            ${isDesktopBrowser ? "" : `<div class="profile-pin-back-hint">${escapeHtml(PROFILE_PIN_TEXT.back)}</div>`}
+            <div class="profile-pin-back-hint">${escapeHtml(PROFILE_PIN_TEXT.back)}</div>
           </div>
         </div>
       </div>
@@ -983,35 +961,13 @@ export const ProfileSelectionScreen = {
       });
     }
 
-    const desktopPinInput = this.container.querySelector("[data-role='desktop-pin-input']");
-    if (desktopPinInput) {
-      desktopPinInput.addEventListener("click", (event) => event.stopPropagation());
-      desktopPinInput.addEventListener("input", async (event) => {
-        if (this.isPinOperationInProgress) {
-          return;
-        }
-        const value = String(event.target?.value || "")
-          .replace(/\D/g, "")
-          .slice(0, PROFILE_PIN_LENGTH);
-        this.pinValue = value;
-        this.pinOverlayError = "";
-        this.render();
-        await this.handleCompletedPinEntry();
-      });
-      desktopPinInput.addEventListener("keydown", async (event) => {
-        if (event.key !== "Enter" || this.pinValue.length !== PROFILE_PIN_LENGTH) {
-          return;
-        }
-        event.preventDefault();
-        await this.handleCompletedPinEntry();
+    const nativePinInput = this.container.querySelector("[data-role='native-pin-input']");
+    if (nativePinInput) {
+      nativePinInput.addEventListener("click", (event) => event.stopPropagation());
+      nativePinInput.addEventListener("input", async (event) => {
+        await this.handleNativePinInput(event.target?.value);
       });
     }
-
-    this.container.querySelector("[data-action='close-pin']")?.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.closePinOverlay();
-    });
 
     Array.from(this.container.querySelectorAll(".profile-pin-key")).forEach((node) => {
       node.addEventListener("focus", () => this.handleFocusableFocus(node));
@@ -2001,17 +1957,21 @@ export const ProfileSelectionScreen = {
     await this.handleCompletedPinEntry();
   },
 
+  async handleNativePinInput(value) {
+    if (this.isPinOperationInProgress) {
+      return;
+    }
+    this.pinValue = String(value || "")
+      .replace(/\D/g, "")
+      .slice(0, PROFILE_PIN_LENGTH);
+    this.pinOverlayError = "";
+    this.render();
+    await this.handleCompletedPinEntry();
+  },
+
   async handlePinOverlayKeyDown(event) {
     const code = Number(event?.keyCode || 0);
     const key = String(event?.key || "");
-    if (event?.target?.matches?.("[data-role='desktop-pin-input']")) {
-      if (key === "Escape") {
-        event.preventDefault();
-        this.closePinOverlay();
-        return true;
-      }
-      return false;
-    }
     if (code === 8 || code === 46 || key === "Backspace" || key === "Delete") {
       event?.preventDefault?.();
       if (!this.isPinOperationInProgress && this.pinValue) {
