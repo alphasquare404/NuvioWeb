@@ -59,3 +59,15 @@ test("Device Code dialog renders shared copy and trusted-link actions only while
   assert.match(source, /openDeviceAuthorizationLink\(/);
   assert.match(source, /this\.refreshDebridDeviceAuthDialog\(\);\s*await this\.render\(\{ refreshModel: false \}\)/);
 });
+
+test("About renders independent fork identity and quiet community fallbacks", async () => {
+  const source = await settingsScreenSource();
+
+  assert.match(source, /Version \$\{escapeHtml\(APP_IDENTITY\.version\)\}/);
+  assert.match(source, /Based on Nuvio \$\{escapeHtml\(APP_IDENTITY\.upstreamVersion\)\}/);
+  assert.match(source, /Maintained by \$\{escapeHtml\(APP_IDENTITY\.maintainer\)\}/);
+  assert.match(source, /Independent community fork\. Not affiliated with or endorsed by NuvioMedia\./);
+  assert.match(source, /title: "View Contributors on GitHub"/);
+  assert.match(source, /hasDesktopSupporterSource\(\)/);
+  assert.doesNotMatch(source, /Contributors API is not configured\.|Unable to load supporters\./);
+});

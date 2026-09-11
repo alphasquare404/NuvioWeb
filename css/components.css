@@ -10229,6 +10229,13 @@ button:focus-visible {
   object-fit: contain;
 }
 
+.settings-about-name {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 28px;
+  line-height: 1.2;
+}
+
 .settings-about-copy {
   margin: 0;
   color: var(--text-secondary);

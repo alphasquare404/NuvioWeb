@@ -2,6 +2,7 @@ import { ScreenUtils } from "../../navigation/screen.js";
 import { Router } from "../../navigation/router.js";
 import { Platform } from "../../../platform/index.js";
 import { I18n } from "../../../i18n/index.js";
+import { APP_IDENTITY } from "../../../core/app/appIdentity.js";
 import {
   DONATIONS_BASE_URL,
   DONATIONS_DONATE_URL,
@@ -176,7 +177,7 @@ function sortedTabListItems(container, tab) {
 async function loadSupporters() {
   const baseUrl = normalizeBaseUrl(DONATIONS_BASE_URL);
   if (!baseUrl) {
-    throw new Error(t("supporters_error_load", {}, "Unable to load supporters."));
+    return null;
   }
   const data = await requestJson(
     `${baseUrl}/api/donations?view=recent`,
@@ -198,9 +199,7 @@ async function loadSponsors() {
 async function loadContributors() {
   const url = uniqueContributionsUrl(UNIQUE_CONTRIBUTIONS_BASE_URL);
   if (!url) {
-    throw new Error(
-      t("contributors_error_api_not_configured", {}, "Contributors API is not configured.")
-    );
+    return null;
   }
   const data = await requestJson(
     url,
@@ -226,7 +225,7 @@ export const SupportersContributorsScreen = {
     this.state = {
       supporters: { loading: false, loaded: false, items: [], error: null },
       sponsors: { loading: false, loaded: false, items: [], error: null },
-      contributors: { loading: false, loaded: false, items: [], error: null },
+      contributors: { loading: false, loaded: false, items: [], error: null, fallback: false },
       donationProgress: null
     };
   },
@@ -284,16 +283,19 @@ export const SupportersContributorsScreen = {
           : tab === "sponsors"
             ? await loadSponsors()
             : await loadContributors();
-      tabState.items = tab === "supporters" ? result.items : result;
+      tabState.items = tab === "supporters" ? result?.items || [] : result || [];
+      tabState.fallback = tab === "contributors" && result === null;
       if (tab === "supporters") {
-        this.state.donationProgress = result.donationProgress;
+        this.state.donationProgress = result?.donationProgress ?? null;
       }
       tabState.loaded = true;
       tabState.error = null;
     } catch (error) {
       tabState.items = [];
-      tabState.loaded = false;
-      tabState.error = error?.message || String(error || "");
+      tabState.loaded = tab === "supporters" || tab === "contributors";
+      tabState.error =
+        tab === "supporters" || tab === "contributors" ? null : error?.message || String(error || "");
+      tabState.fallback = tab === "contributors";
       if (tab === "supporters") {
         this.state.donationProgress = null;
       }
@@ -432,6 +434,16 @@ export const SupportersContributorsScreen = {
           <p>${escapeHtml(tabState.error)}</p>
           <button class="supporters-retry-button supporters-focusable focusable" data-focus-key="retry:${this.selectedTab}" data-action="retry">
             ${escapeHtml(t("action_retry", {}, "Retry"))}
+          </button>
+        </div>
+      `;
+    }
+    if (this.selectedTab === "contributors" && (tabState.fallback || (tabState.loaded && !tabState.items.length))) {
+      return `
+        <div class="supporters-status">
+          <p>People who have contributed to this NuvioWeb community fork.</p>
+          <button class="supporters-retry-button supporters-focusable focusable" data-focus-key="contributors:github" data-action="openForkContributors">
+            View Contributors on GitHub
           </button>
         </div>
       `;
@@ -846,6 +858,10 @@ export const SupportersContributorsScreen = {
     if (action === "openGithub") {
       const url = this.dialog?.item?.profileUrl;
       if (url) window.open?.(url, "_blank");
+      return true;
+    }
+    if (action === "openForkContributors") {
+      window.open?.(APP_IDENTITY.contributorsUrl, "_blank", "noopener,noreferrer");
       return true;
     }
     return false;

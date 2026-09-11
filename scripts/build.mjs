@@ -441,7 +441,7 @@ async function buildCoreJsBundle() {
 }
 
 async function buildBundle() {
-  const { version } = await readAppMetadata();
+  const { version, identity } = await readAppMetadata();
 
   console.log("starting bundle build...");
   const result = await build({
@@ -455,7 +455,8 @@ async function buildBundle() {
     metafile: true,
     define: {
       "process.env.NODE_ENV": '"production"',
-      __NUVIO_APP_VERSION__: JSON.stringify(version)
+      __NUVIO_APP_VERSION__: JSON.stringify(version),
+      __NUVIO_APP_IDENTITY__: JSON.stringify(identity)
     }
   });
   if (

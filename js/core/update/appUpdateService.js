@@ -1,4 +1,6 @@
-const LATEST_RELEASE_URL = "https://api.github.com/repos/NuvioMedia/NuvioWeb/releases/latest";
+import { APP_IDENTITY } from "../app/appIdentity.js";
+
+const LATEST_RELEASE_URL = APP_IDENTITY.latestReleaseUrl;
 const DEFAULT_TIMEOUT_MS = 8000;
 
 export function normalizeAppVersion(raw) {

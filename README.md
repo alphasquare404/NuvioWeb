@@ -11,7 +11,7 @@
 [![License][license-shield]][license-url]
 
   <p>
-    A browser and PWA media app powered by the Stremio addon ecosystem.
+    An independent community fork of Nuvio for browser and PWA playback.
     <br />
     Desktop • Mobile • Tablet • Offline-capable PWA
   </p>
@@ -20,7 +20,12 @@
 
 ## About
 
-NuvioWeb is the web codebase for the Nuvio browser and PWA experience.
+NuvioWeb is an independent, GPL-3.0-licensed community fork maintained by
+alphasquare. It is based on Nuvio, preserves upstream attribution, and uses an
+independent release lifecycle: 0.1.0 is the first community-fork release;
+0.1.1 denotes bug fixes; 0.2.0 denotes meaningful changes; and 1.0.0 will mark
+the first stable release. NuvioWeb is not affiliated with or endorsed by
+NuvioMedia.
 
 NuvioWeb acts as a client-side playback interface that can integrate with the Stremio addon ecosystem for content discovery and source resolution through user-installed extensions.
 
@@ -35,7 +40,7 @@ NuvioWeb acts as a client-side playback interface that can integrate with the St
 ### Setup
 
 ```bash
-git clone https://github.com/NuvioMedia/NuvioWeb.git
+git clone https://github.com/alphasquare404/NuvioWeb.git
 cd NuvioWeb
 npm install
 ```
@@ -161,7 +166,8 @@ This browser/PWA project builds on important community work:
   An early inspiration for this web codebase.
   https://github.com/WhiteGiso/NuvioTV-WebOS
 
-NuvioWeb builds on that foundation for browsers and installed PWAs.
+NuvioWeb builds on that foundation for browsers and installed PWAs. It also
+includes web/community work by WhiteGiso, edoedac0, and other contributors.
 
 ## Legal & DMCA
 
@@ -181,23 +187,23 @@ For comprehensive legal information, including our full disclaimer, third-party 
 
 ## Star History
 
-<a href="https://star-history.dera.page/#NuvioMedia/NuvioWeb&type=date&legend=top-left">
+<a href="https://star-history.dera.page/#alphasquare404/NuvioWeb&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=NuvioMedia/NuvioWeb&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=NuvioMedia/NuvioWeb&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=NuvioMedia/NuvioWeb&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=alphasquare404/NuvioWeb&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=alphasquare404/NuvioWeb&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=alphasquare404/NuvioWeb&type=date&legend=top-left" />
  </picture>
 </a>
 
 <!-- MARKDOWN LINKS & IMAGES -->
 
-[contributors-shield]: https://img.shields.io/github/contributors/NuvioMedia/NuvioWeb.svg?style=for-the-badge
-[contributors-url]: https://github.com/NuvioMedia/NuvioWeb/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/NuvioMedia/NuvioWeb.svg?style=for-the-badge
-[forks-url]: https://github.com/NuvioMedia/NuvioWeb/network/members
-[stars-shield]: https://img.shields.io/github/stars/NuvioMedia/NuvioWeb.svg?style=for-the-badge
-[stars-url]: https://github.com/NuvioMedia/NuvioWeb/stargazers
-[issues-shield]: https://img.shields.io/github/issues/NuvioMedia/NuvioWeb.svg?style=for-the-badge
-[issues-url]: https://github.com/NuvioMedia/NuvioWeb/issues
-[license-shield]: https://img.shields.io/github/license/NuvioMedia/NuvioWeb.svg?style=for-the-badge
-[license-url]: https://github.com/NuvioMedia/NuvioWeb/blob/main/LICENSE
+[contributors-shield]: https://img.shields.io/github/contributors/alphasquare404/NuvioWeb.svg?style=for-the-badge
+[contributors-url]: https://github.com/alphasquare404/NuvioWeb/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/alphasquare404/NuvioWeb.svg?style=for-the-badge
+[forks-url]: https://github.com/alphasquare404/NuvioWeb/network/members
+[stars-shield]: https://img.shields.io/github/stars/alphasquare404/NuvioWeb.svg?style=for-the-badge
+[stars-url]: https://github.com/alphasquare404/NuvioWeb/stargazers
+[issues-shield]: https://img.shields.io/github/issues/alphasquare404/NuvioWeb.svg?style=for-the-badge
+[issues-url]: https://github.com/alphasquare404/NuvioWeb/issues
+[license-shield]: https://img.shields.io/github/license/alphasquare404/NuvioWeb.svg?style=for-the-badge
+[license-url]: https://github.com/alphasquare404/NuvioWeb/blob/main/LICENSE

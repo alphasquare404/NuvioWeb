@@ -2,7 +2,21 @@
   "name": "nuvioweb",
   "private": true,
   "type": "module",
-  "version": "0.3.35",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alphasquare404/NuvioWeb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alphasquare404/NuvioWeb/issues"
+  },
+  "homepage": "https://github.com/alphasquare404/NuvioWeb",
+  "nuvioFork": {
+    "upstreamVersion": "0.3.35",
+    "upstreamRepository": "https://github.com/NuvioMedia/NuvioWeb",
+    "maintainer": "alphasquare",
+    "defaultBranch": "main"
+  },
   "scripts": {
     "build": "node ./scripts/build.mjs",
     "prepare": "husky || true",

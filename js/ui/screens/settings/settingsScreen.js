@@ -1,5 +1,6 @@
 /* global __NUVIO_APP_VERSION__ */
 import { Router } from "../../navigation/router.js";
+import { APP_IDENTITY } from "../../../core/app/appIdentity.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { LocalStore } from "../../../core/storage/localStore.js";
@@ -129,9 +130,7 @@ const SETTINGS_RAIL_SCROLL_TARGET_RATIO = 0.42;
 const SETTINGS_RAIL_SCROLL_STIFFNESS = 180;
 const SETTINGS_RAIL_SCROLL_DAMPING_RATIO = 0.95;
 const SETTINGS_MARQUEE_VELOCITY_PX_PER_SECOND = 90; // ATV 45dp/s -> 90px/s
-const CURRENT_APP_VERSION =
-  typeof __NUVIO_APP_VERSION__ !== "undefined" ? __NUVIO_APP_VERSION__ : "0.0.0";
-const SETTINGS_VERSION_LABEL = formatSettingsVersionLabel(CURRENT_APP_VERSION);
+const CURRENT_APP_VERSION = APP_IDENTITY.version;
 const PRIVACY_URL = "https://nuvio.tv/privacy-policy";
 
 function isDesktopSettingsBrowser() {
@@ -147,6 +146,14 @@ function normalizeDesktopAboutUrl(value) {
 function desktopContributorsUrl() {
   const baseUrl = normalizeDesktopAboutUrl(UNIQUE_CONTRIBUTIONS_BASE_URL);
   return baseUrl ? `${baseUrl}/api/unique-contributions` : "";
+}
+
+function hasDesktopSupporterSource() {
+  return Boolean(normalizeDesktopAboutUrl(DONATIONS_BASE_URL));
+}
+
+function openExternalUrl(url) {
+  if (url) window.open?.(url, "_blank", "noopener,noreferrer");
 }
 
 async function requestDesktopAboutJson(url, errorMessage) {
@@ -822,15 +829,6 @@ const ROW_ICONS = {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
-}
-
-function formatSettingsVersionLabel(value) {
-  const normalized = String(value || "").trim();
-  const shortMatch = normalized.match(/^(\d+\.\d+)\.0$/);
-  if (shortMatch) {
-    return shortMatch[1];
-  }
-  return normalized || "0.0.0";
 }
 
 function t(key, params = {}, fallback = key) {
@@ -8060,7 +8058,8 @@ export const SettingsScreen = {
       if (kind === "supporters") {
         const baseUrl = normalizeDesktopAboutUrl(DONATIONS_BASE_URL);
         if (!baseUrl) {
-          throw new Error("Unable to load supporters.");
+          state.loaded = true;
+          return;
         }
         const data = await requestDesktopAboutJson(
           `${baseUrl}/api/donations?view=recent`,
@@ -8073,8 +8072,6 @@ export const SettingsScreen = {
       } else {
         const url = desktopContributorsUrl();
         if (!url) {
-          state.error = "Contributors API is not configured.";
-          state.canRetry = false;
           state.loaded = true;
           return;
         }
@@ -8086,8 +8083,9 @@ export const SettingsScreen = {
       }
       state.loaded = true;
     } catch (_) {
-      state.error = kind === "supporters" ? "Unable to load supporters." : "Contributors API is not configured.";
-      state.canRetry = kind === "supporters" && Boolean(normalizeDesktopAboutUrl(DONATIONS_BASE_URL));
+      // Community endpoints are optional. Their absence must not become a user-facing error.
+      state.error = kind === "supporters" ? "hidden" : "fallback";
+      state.canRetry = false;
       state.loaded = true;
     } finally {
       state.loading = false;
@@ -8099,31 +8097,30 @@ export const SettingsScreen = {
 
   renderDesktopAboutCommunityList(kind, title) {
     const state = this.desktopAboutCommunityState?.[kind] || {};
+    if (kind === "supporters" && (!hasDesktopSupporterSource() || state.error === "hidden")) {
+      return "";
+    }
     if (state.loading) {
       return `<section class="settings-about-community-group"><h3>${escapeHtml(title)}</h3><p class="settings-about-inline-status">Loading…</p></section>`;
     }
-    if (state.error) {
-      const retryKey = `about:community:retry:${kind}`;
-      this.actionMap.set(retryKey, () => this.loadDesktopAboutCommunity(kind, true));
+    if (kind === "contributors" && (state.error === "fallback" || !state.items?.length)) {
+      const fallbackKey = "about:contributors:github";
+      this.actionMap.set(fallbackKey, () => openExternalUrl(APP_IDENTITY.contributorsUrl));
       return `
         <section class="settings-about-community-group">
           <h3>${escapeHtml(title)}</h3>
-          <p class="settings-about-inline-status is-error">${escapeHtml(state.error)}</p>
-          ${
-            state.canRetry
-              ? this.renderActionRow({
-                  focusKey: retryKey,
-                  title: t("action_retry", {}, "Retry"),
-                  icon: "",
-                  classes: "settings-about-inline-retry"
-                })
-              : ""
-          }
+          <p class="settings-about-inline-status">People who have contributed to this NuvioWeb community fork.</p>
+          ${this.renderActionRow({
+            focusKey: fallbackKey,
+            title: "View Contributors on GitHub",
+            external: true,
+            classes: "settings-about-inline-retry"
+          })}
         </section>
       `;
     }
     if (!state.loaded || !state.items?.length) {
-      const empty = kind === "supporters" ? "No supporters found yet." : "No contributors found yet.";
+      const empty = "No supporters found yet.";
       return `<section class="settings-about-community-group"><h3>${escapeHtml(title)}</h3><p class="settings-about-inline-status">${escapeHtml(empty)}</p></section>`;
     }
     const items = state.items
@@ -8141,8 +8138,8 @@ export const SettingsScreen = {
 
   renderDesktopAboutCommunity() {
     return `<div class="settings-about-inline-community">
-      ${this.renderDesktopAboutCommunityList("supporters", "Supporters")}
       ${this.renderDesktopAboutCommunityList("contributors", "Contributors")}
+      ${this.renderDesktopAboutCommunityList("supporters", "Supporters")}
     </div>`;
   },
 
@@ -8151,7 +8148,7 @@ export const SettingsScreen = {
       ${LICENSES_ATTRIBUTION_SECTIONS.map(
         (section) => `
           <section class="settings-about-license-group">
-            <h3>${escapeHtml(t(section.titleKey, {}, section.titleKey))}</h3>
+            <h3>${escapeHtml(section.title || t(section.titleKey, {}, section.titleKey))}</h3>
             <div class="settings-about-license-list">
               ${section.items
                 .map(([id, url, license]) => {
@@ -8170,6 +8167,10 @@ export const SettingsScreen = {
   renderAboutSection() {
     const isDesktopBrowser = isDesktopSettingsBrowser();
     const expanded = this.expandedSections.about || {};
+    this.actionMap.set("about:source", () => openExternalUrl(APP_IDENTITY.sourceRepositoryUrl));
+    this.actionMap.set("about:issues", () => openExternalUrl(APP_IDENTITY.issuesUrl));
+    this.actionMap.set("about:upstream", () => openExternalUrl(APP_IDENTITY.upstreamRepositoryUrl));
+    this.actionMap.set("about:license", () => openExternalUrl(APP_IDENTITY.licenseUrl));
     this.actionMap.set("about:privacy", () => {
       window.open?.(PRIVACY_URL, "_blank");
     });
@@ -8178,7 +8179,7 @@ export const SettingsScreen = {
         const wasExpanded = Boolean(this.expandedSections.about?.supportersContributors);
         this.toggleExpandedSection("about", "supportersContributors");
         if (!wasExpanded) {
-          void this.loadDesktopAboutCommunity("supporters");
+          if (hasDesktopSupporterSource()) void this.loadDesktopAboutCommunity("supporters");
           void this.loadDesktopAboutCommunity("contributors");
         }
       });
@@ -8209,12 +8210,20 @@ export const SettingsScreen = {
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "about"))}
       <div class="settings-group-card settings-group-card-fill">
         <div class="settings-about-brand">
-          <img class="settings-about-logo" src="assets/brand/app_logo_wordmark.png" alt="Nuvio" />
-          <p class="settings-about-copy">${t("settings.about.madeWithLove")}</p>
-          <p class="settings-about-copy">${t("settings.about.version", { version: SETTINGS_VERSION_LABEL })}</p>
-          <p class="settings-about-copy">${t("settings.about.portedBy")}</p>
+          <img class="settings-about-logo" src="assets/brand/app_logo_wordmark.png" alt="${escapeHtml(APP_IDENTITY.name)}" />
+          <h2 class="settings-about-name">${escapeHtml(APP_IDENTITY.name)}</h2>
+          <p class="settings-about-copy">Version ${escapeHtml(APP_IDENTITY.version)}</p>
+          <p class="settings-about-copy">Based on Nuvio ${escapeHtml(APP_IDENTITY.upstreamVersion)}</p>
+          <p class="settings-about-copy">Originally created by Tapframe and contributors.</p>
+          <p class="settings-about-copy">Built upon web/community work by WhiteGiso, edoedac0, and other contributors.</p>
+          <p class="settings-about-copy">Maintained by ${escapeHtml(APP_IDENTITY.maintainer)}.</p>
+          <p class="settings-about-copy">Independent community fork. Not affiliated with or endorsed by NuvioMedia.</p>
         </div>
         <div class="settings-stack">
+          ${this.renderActionRow({ focusKey: "about:source", title: "Source Code", subtitle: "View this community fork on GitHub.", external: true })}
+          ${this.renderActionRow({ focusKey: "about:issues", title: "Report an Issue", subtitle: "Open an issue for this community fork.", external: true })}
+          ${this.renderActionRow({ focusKey: "about:upstream", title: "Upstream Project", subtitle: "View the original Nuvio project.", external: true })}
+          ${this.renderActionRow({ focusKey: "about:license", title: "View License", subtitle: "NuvioWeb is licensed under the GNU General Public License v3.0.", external: true })}
           ${this.renderActionRow({
             focusKey: "about:checkUpdates",
             title: t("about_check_updates", {}, "Check for updates"),
@@ -8236,8 +8245,8 @@ export const SettingsScreen = {
             isDesktopBrowser
               ? this.renderCollapsibleRow({
                   focusKey: "about:supporters:toggle",
-                  title: t("settings.about.supporters.title"),
-                  subtitle: t("settings.about.supporters.subtitle"),
+                  title: "Contributors",
+                  subtitle: "People who have contributed to this NuvioWeb community fork.",
                   expanded: Boolean(expanded.supportersContributors),
                   bodyHtml: expanded.supportersContributors
                     ? this.renderDesktopAboutCommunity()
@@ -8246,8 +8255,8 @@ export const SettingsScreen = {
                 })
               : this.renderActionRow({
                   focusKey: "about:supporters",
-                  title: t("settings.about.supporters.title"),
-                  subtitle: t("settings.about.supporters.subtitle")
+                  title: "Contributors",
+                  subtitle: "People who have contributed to this NuvioWeb community fork."
                 })
           }
           ${
