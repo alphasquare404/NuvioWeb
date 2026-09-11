@@ -52,7 +52,8 @@ EOF
   write_value SPONSOR_NAMES "${SPONSOR_NAMES:-ragmehos.}"; printf ',\n'
   write_value TRAKT_CLIENT_ID "${TRAKT_CLIENT_ID:-}"; printf ',\n'
   write_value SIMKL_CLIENT_ID "${SIMKL_CLIENT_ID:-}"; printf ',\n'
-  write_value SIMKL_APP_NAME "${SIMKL_APP_NAME:-nuvio}"
+  write_value SIMKL_APP_NAME "${SIMKL_APP_NAME:-nuvio}"; printf ',\n'
+  write_value PREMIUMIZE_CLIENT_ID "${PREMIUMIZE_CLIENT_ID:-}"
   cat <<'EOF'
   };
   for (var key in values) {

@@ -6,7 +6,6 @@ const APP_SHELL = [
   "./boot-guard.js",
   "./assets/runtime/legacy-features.js",
   "./core-js.bundle.js",
-  "./nuvio.env.js",
   "./app.bundle.js",
   "./css/base.css",
   "./css/layout.css",
@@ -119,6 +118,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (url.origin !== self.location.origin) return;
+  // Runtime deployment configuration must always be fetched from the active
+  // container. Never return a stale value from the app-shell cache.
+  if (url.pathname === "/nuvio.env.js") {
+    event.respondWith(fetch(request));
+    return;
+  }
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).catch(() => caches.match("./index.html")));
     return;

@@ -76,6 +76,11 @@ TRAKT_CLIENT_SECRET=
 
 # Optional: enables browser Simkl PIN sign-in
 SIMKL_CLIENT_ID=
+SIMKL_APP_NAME=nuvio
+
+# Optional: enables Premiumize Device Code sign-in in Connected Services.
+# This is a public OAuth client identifier, not a Premiumize user credential.
+PREMIUMIZE_CLIENT_ID=
 
 # Optional: expose the container on another host port (default: 4173)
 NUVIO_PORT=4174
@@ -94,11 +99,14 @@ recreating the container, not rebuilding the image:
 docker compose up -d --force-recreate
 ```
 
-`TRAKT_CLIENT_SECRET` is a server-only value: Compose passes it exclusively to
-the internal `trakt-auth-bridge` container. Nginx routes only `/api/trakt/*`
-to that sidecar; it is never written to `nuvio.env.js`, bundled, or exposed on
-a host port. Never place Supabase service-role keys, access tokens, or other
-private credentials in browser runtime configuration.
+`TRAKT_CLIENT_ID`, `SIMKL_CLIENT_ID`, `SIMKL_APP_NAME`, and
+`PREMIUMIZE_CLIENT_ID` are browser-public runtime values. The frontend receives
+only `TRAKT_CLIENT_ID`; `TRAKT_CLIENT_SECRET` and `TRAKT_REDIRECT_URI` are
+server-only values passed exclusively to the internal `trakt-auth-bridge`
+container. Nginx routes only `/api/trakt/*` to that sidecar; neither server
+value is written to `nuvio.env.js`, bundled, or exposed on a host port. Never
+place Supabase service-role keys, access tokens, provider credentials, or other
+private values in browser runtime configuration.
 
 ### Start and update
 

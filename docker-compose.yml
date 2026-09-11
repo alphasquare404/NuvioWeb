@@ -18,6 +18,7 @@ services:
       TRAKT_CLIENT_ID: ${TRAKT_CLIENT_ID:-}
       SIMKL_CLIENT_ID: ${SIMKL_CLIENT_ID:-}
       SIMKL_APP_NAME: ${SIMKL_APP_NAME:-nuvio}
+      PREMIUMIZE_CLIENT_ID: ${PREMIUMIZE_CLIENT_ID:-}
     ports:
       - "${NUVIO_PORT:-4173}:80"
     restart: unless-stopped
