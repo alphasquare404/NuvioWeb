@@ -3,6 +3,7 @@ import { ScreenUtils } from "../../navigation/screen.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
 import { Environment } from "../../../platform/environment.js";
+import { Platform } from "../../../platform/index.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import { filterReleasedItems } from "../../../core/util/releaseInfoUtils.js";
@@ -17,6 +18,18 @@ import {
   renderTitleWatchedBadge
 } from "../../components/watchedTitleBadge.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
+import {
+  getDesktopMediaLibraryMembership,
+  openDesktopMediaLibraryDestinationMenu,
+  subscribeDesktopMediaLibrarySource,
+  toggleDesktopMediaLibraryMembership
+} from "../../components/desktopMediaLibraryActions.js";
+import {
+  resolveDesktopMediaPreviewMetadata,
+  resolveDesktopMediaTrailerSource
+} from "../../components/desktopMediaPreviewData.js";
 
 const POSTER_HOLD_DELAY_MS = 650;
 
@@ -201,6 +214,10 @@ export const CatalogSeeAllScreen = {
     this.posterOptionsFocusKey = "";
     this.pendingPosterHoldTarget = null;
     this.pendingPosterHoldTimer = null;
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = null;
+    this.desktopMediaHoverPreview?.destroy?.();
+    this.desktopMediaHoverPreview = null;
     await this.refreshWatchedTitleIds();
 
     if (
@@ -601,6 +618,75 @@ export const CatalogSeeAllScreen = {
     return true;
   },
 
+  renderBrowserBackButton() {
+    if (!Platform.isBrowser()) {
+      return "";
+    }
+    return `
+      <button class="catalog-seeall-browser-back" type="button" data-catalog-seeall-back
+              aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
+        <span class="material-icons" aria-hidden="true">chevron_left</span>
+      </button>
+    `;
+  },
+
+  getDesktopHoverPreviewItem(node) {
+    if (!node?.matches?.(".seeall-card.focusable[data-action='openDetail']")) {
+      return null;
+    }
+    return {
+      id: String(node.dataset.itemId || "").trim(),
+      type: node.dataset.itemType || "movie",
+      name: node.dataset.itemTitle || "Untitled",
+      poster: node.dataset.posterSrc || "",
+      background: node.dataset.backdropSrc || "",
+      backdrop: node.dataset.backdropSrc || ""
+    };
+  },
+
+  bindBrowserCardInteractions() {
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+
+    this.browserCardTouchIntentCleanup ||= bindBrowserCardTouchIntent(this.container, {
+      cardSelector: ".seeall-card[data-action='openDetail']"
+    });
+
+    this.desktopMediaHoverPreview ||= createDesktopMediaHoverPreview({
+      getItem: (node) => this.getDesktopHoverPreviewItem(node),
+      openDetail: (node) => this.openDetailFromNode(node),
+      resolveTrailer: resolveDesktopMediaTrailerSource,
+      resolveMetadata: resolveDesktopMediaPreviewMetadata,
+      getLibraryMembership: getDesktopMediaLibraryMembership,
+      toggleLibrary: toggleDesktopMediaLibraryMembership,
+      openLibraryDestinationMenu: openDesktopMediaLibraryDestinationMenu,
+      subscribeLibrarySource: subscribeDesktopMediaLibrarySource,
+      cardSelector: ".seeall-card.focusable[data-action='openDetail']",
+      subtitleSelector: ".seeall-card-year"
+    });
+    this.desktopMediaHoverPreview.bind(this.container);
+
+    if (this.container.__catalogSeeAllBrowserEventsBound) {
+      return;
+    }
+    this.container.__catalogSeeAllBrowserEventsBound = true;
+    this.container.addEventListener("click", (event) => {
+      const backButton = event.target?.closest?.("[data-catalog-seeall-back]");
+      if (backButton && this.container.contains(backButton)) {
+        event.preventDefault();
+        void Router.back();
+        return;
+      }
+      const card = event.target?.closest?.(".seeall-card.focusable[data-action='openDetail']");
+      if (!card || !this.container.contains(card)) {
+        return;
+      }
+      this.focusNode(card);
+      this.openDetailFromNode(card);
+    });
+  },
+
   render() {
     const descriptor = this.params || {};
     const title = descriptor.catalogName || "Catalog";
@@ -646,12 +732,15 @@ export const CatalogSeeAllScreen = {
     this.container.innerHTML = `
       <div class="seeall-shell">
         <header class="seeall-header">
-          <h2 class="seeall-title">${escapeHtml(title)}</h2>
-          ${
-            this.layoutPrefs?.catalogAddonNameEnabled !== false && descriptor.addonName
-              ? `<div class="seeall-subtitle">${escapeHtml(t("catalog_see_all_from", [descriptor.addonName], "from %1$s"))}</div>`
-              : ""
-          }
+          ${this.renderBrowserBackButton()}
+          <div class="seeall-header-copy">
+            <h2 class="seeall-title">${escapeHtml(title)}</h2>
+            ${
+              this.layoutPrefs?.catalogAddonNameEnabled !== false && descriptor.addonName
+                ? `<div class="seeall-subtitle">${escapeHtml(t("catalog_see_all_from", [descriptor.addonName], "from %1$s"))}</div>`
+                : ""
+            }
+          </div>
         </header>
         <section class="seeall-grid">
           ${cards}
@@ -673,6 +762,7 @@ export const CatalogSeeAllScreen = {
     this.buildNavigationModel();
     this.bindCardEvents();
     this.bindShellEvents();
+    this.bindBrowserCardInteractions();
     if (this.pendingRestoreFocus) {
       const scrollMode = this.preserveViewportOnNextRender ? "none" : "center";
       this.pendingRestoreFocus = false;
@@ -771,6 +861,10 @@ export const CatalogSeeAllScreen = {
     this.posterOptionsController?.destroy?.({ restoreFocus: false });
     this.posterOptionsController = null;
     this.posterOptionsFocusKey = "";
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = null;
+    this.desktopMediaHoverPreview?.destroy?.();
+    this.desktopMediaHoverPreview = null;
     ScreenUtils.hide(this.container);
   }
 };

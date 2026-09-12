@@ -52,6 +52,20 @@ function isTransientNetworkError(error) {
   );
 }
 
+function getStoredAccountOwnerMarker() {
+  try {
+    return String(globalThis.localStorage?.getItem(ACCOUNT_OWNER_MARKER_KEY) || "").trim();
+  } catch (_) {
+    return "";
+  }
+}
+
+function createOwnerResponseError(response, message) {
+  const error = new Error(message || `Unable to resolve sync owner (${response?.status || "unknown"})`);
+  error.status = Number(response?.status || 0) || null;
+  return error;
+}
+
 class AuthManagerClass {
   constructor() {
     this.state = AuthState.LOADING;
@@ -167,11 +181,28 @@ class AuthManagerClass {
     // a session without an explicit sign-out, and profile index alone is not an
     // account boundary.
     this.cachedEffectiveUserId = null;
-    const ownerId = String(await this.getEffectiveUserId()).trim();
-    let previousOwner = null;
+    let ownerId = "";
     try {
-      previousOwner = String(globalThis.localStorage?.getItem(ACCOUNT_OWNER_MARKER_KEY) || "").trim() || null;
-    } catch (_) {}
+      ownerId = String(await this.getEffectiveUserId()).trim();
+    } catch (error) {
+      const cachedOwner = getStoredAccountOwnerMarker();
+      // A cached owner is only trusted for a previously authenticated local
+      // session when owner verification itself cannot reach the backend. HTTP
+      // rejections and malformed responses remain authoritative failures.
+      if (
+        !SessionStore.accessToken ||
+        !cachedOwner ||
+        Number(error?.status || 0) > 0 ||
+        !isTransientNetworkError(error)
+      ) {
+        throw error;
+      }
+      ownerId = cachedOwner;
+    }
+    if (!ownerId) {
+      throw new Error("Missing valid sync owner");
+    }
+    const previousOwner = getStoredAccountOwnerMarker() || null;
 
     // A missing marker is treated conservatively during migration: account
     // state is cleared once, then rehydrated from the authenticated owner.
@@ -367,11 +398,14 @@ class AuthManagerClass {
       if (res.status === 401) {
         await this.signOut();
       }
-      throw new Error(await res.text());
+      throw createOwnerResponseError(res, await res.text());
     }
 
     const data = await res.json();
-    const id = data;
+    const id = typeof data === "string" ? data.trim() : "";
+    if (!id) {
+      throw new Error("Invalid sync owner response");
+    }
 
     if (sessionGeneration !== this.sessionGeneration) {
       throw new Error("Session changed while resolving sync owner");
