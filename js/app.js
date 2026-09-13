@@ -21,6 +21,9 @@ import { LocalStore } from "./core/storage/localStore.js";
 import { I18n } from "./i18n/index.js";
 import { resolveExperienceRoute } from "./core/profile/experienceModeRouting.js";
 import { initializeBrowserOfflineDownloadQueue } from "./core/offline/browserOfflineDownloadQueue.js";
+import { installExternalPlaybackReturnCoordinator } from "./ui/components/browserExternalPlaybackHandoff.js";
+import { dispatchOutplayerExplicitFinish } from "./ui/components/browserOutplayerFinishDispatch.js";
+import { PlayerScreen } from "./ui/screens/player/playerScreen.js";
 
 (function applyLegacyPatches() {
   const originalGetElementById = document.getElementById;
@@ -351,6 +354,40 @@ async function bootstrapApp() {
 
   markBootStage("Checking authentication");
   await AuthManager.bootstrap();
+  installExternalPlaybackReturnCoordinator({
+    getProfileId: () => ProfileManager.getActiveProfileId(),
+    onAutomaticReport: async (report) => {
+      const provider = report.handoff?.playerMode;
+      const infuseRuntimeSeconds = Number(report.handoff?.knownDurationMs || 0) / 1000;
+      const outplayerFinish = await dispatchOutplayerExplicitFinish({ report, controller: PlayerController });
+      if (outplayerFinish.handled) return outplayerFinish.applied;
+      return (
+        provider === "infuse" && report.sourceOutcome !== "error" && Number.isFinite(report.positionSeconds) && report.positionSeconds >= 0 && infuseRuntimeSeconds > 0
+          ? await PlayerController.applyExternalPlaybackReport({
+              handoff: report.handoff,
+              outcome: "stopped",
+              // Infuse x-success is emitted for both close and playlist end;
+              // canonical completion decides from its returned position.
+              // TODO: Infuse can report a stale end position after replaying a
+              // previously completed item; retain the official value until a
+              // reproducible device signal can distinguish that edge case.
+              positionSeconds: report.positionSeconds,
+              durationSeconds: infuseRuntimeSeconds
+            })
+          : provider === "lenna" && report.sourceOutcome !== "error" && Number.isFinite(report.positionSeconds) && report.positionSeconds >= 0 && infuseRuntimeSeconds > 0
+            ? await PlayerController.applyExternalPlaybackReport({
+                handoff: report.handoff,
+                outcome: "stopped",
+                positionSeconds: report.positionSeconds,
+                durationSeconds: infuseRuntimeSeconds
+              })
+          : provider === "vlc"
+            ? false
+            : await PlayerController.applyExternalPlaybackReport(report)
+      );
+    },
+    onManualFallback: (handoff) => PlayerScreen.showExternalPlaybackManualFallback(handoff)
+  });
   logStartupTiming("auth-bootstrap-complete", bootstrapStartedAt);
 }
 

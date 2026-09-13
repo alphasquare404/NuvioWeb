@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const settingsScreenUrl = new URL("./settingsScreen.js", import.meta.url);
+const desktopCssUrl = new URL("../../../../css/desktop.css", import.meta.url);
 
 async function settingsScreenSource() {
   return readFile(settingsScreenUrl, "utf8");
@@ -70,4 +71,16 @@ test("About renders independent fork identity and quiet community fallbacks", as
   assert.match(source, /title: "View Contributors on GitHub"/);
   assert.match(source, /hasDesktopSupporterSource\(\)/);
   assert.doesNotMatch(source, /Contributors API is not configured\.|Unable to load supporters\./);
+});
+
+test("mobile Playback selector rows preserve full-width copy while toggles retain their normal row", async () => {
+  const [source, desktopCss] = await Promise.all([
+    settingsScreenSource(),
+    readFile(desktopCssUrl, "utf8")
+  ]);
+
+  assert.match(source, /classes: "settings-playback-external-player-row"/);
+  assert.match(desktopCss, /settings-playback-external-player-row \{\s*align-items: stretch;\s*flex-wrap: wrap;/);
+  assert.match(desktopCss, /settings-playback-external-player-row \.settings-row-copy \{\s*flex-basis: 100%;/);
+  assert.doesNotMatch(desktopCss, /settings-playback-external-player-row\.settings-toggle-row/);
 });

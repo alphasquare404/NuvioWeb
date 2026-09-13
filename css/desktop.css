@@ -11408,6 +11408,31 @@ body.desktop-browser {
     overflow-wrap: anywhere;
   }
 
+  /* Long Playback selector values get their own compact line on phones,
+     preserving the full width for the setting title and description. */
+  .desktop-browser .settings-shell .settings-playback-external-player-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 12px;
+  }
+
+  .desktop-browser .settings-shell .settings-playback-external-player-row .settings-row-copy {
+    flex-basis: 100%;
+  }
+
+  .desktop-browser .settings-shell .settings-playback-external-player-row .settings-row-tail {
+    width: 100%;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .desktop-browser .settings-shell .settings-playback-external-player-row .settings-row-value {
+    font-size: 14px;
+    line-height: 1.25;
+    overflow-wrap: normal;
+  }
+
   .desktop-browser .settings-shell .settings-account-sync-stats {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }

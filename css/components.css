@@ -20852,3 +20852,170 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .licenses-list section { margin-bottom: 2rem; }
 .licenses-list h2 { font-size: .95rem; letter-spacing: .12em; color: var(--color-text-secondary, #aaa); }
 .license-row { display: block; width: 100%; margin: .65rem 0; }
+/* Compact external-player return dialogs must also be styled in installed PWAs,
+   where the desktop-browser selector is intentionally absent. */
+.desktop-external-player-dialog {
+  width: min(calc(100vw - 32px), 340px);
+  max-width: min(calc(100vw - 32px), 340px) !important;
+  padding: 16px;
+  border-radius: 16px;
+  gap: 8px;
+}
+
+.desktop-external-player-dialog .nuvio-dialog-title {
+  color: #fff;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.desktop-external-player-dialog .nuvio-dialog-subtitle,
+.desktop-external-player-dialog .desktop-external-player-choice-copy small {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.nuvio-dialog-actions.desktop-external-player-actions {
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.desktop-external-player-actions .nuvio-dialog-button {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.desktop-external-player-actions .nuvio-dialog-button:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.desktop-external-player-actions .nuvio-dialog-button:not([disabled]) {
+  opacity: 1;
+  color: #fff;
+}
+
+.desktop-external-player-actions .desktop-external-player-primary,
+.desktop-external-player-actions .desktop-external-player-primary:not([disabled]) {
+  background: var(--secondary-color, #f5f5f5);
+  color: #111;
+}
+
+.desktop-external-player-manual-actions .nuvio-dialog-button-label {
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+
+.desktop-external-player-time-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.desktop-external-player-time-fields > :is(input, .desktop-external-player-time-separator) {
+  min-width: 0;
+}
+
+.desktop-external-player-time-separator {
+  color: rgba(255, 255, 255, 0.72);
+  font-variant-numeric: tabular-nums;
+}
+
+.desktop-external-player-time-input {
+  width: 100%;
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font: inherit;
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .desktop-external-player-dialog {
+    width: min(calc(100vw - 24px), 520px);
+    max-width: min(calc(100vw - 24px), 520px) !important;
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);
+    box-sizing: border-box;
+    padding: 12px;
+    gap: 5px;
+    overflow-y: auto;
+  }
+
+  .desktop-external-player-dialog .nuvio-dialog-title {
+    font-size: 18px;
+  }
+
+  .nuvio-dialog-actions.desktop-external-player-manual-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 12px;
+    margin-top: 5px;
+  }
+
+  .nuvio-dialog-actions.desktop-external-player-manual-actions .nuvio-dialog-button {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 8px 10px;
+    text-align: center;
+    white-space: normal;
+  }
+
+  /* NuvioDialog focuses its first action at mount. The global focused scale
+     would expand only that left grid cell into the 12px column gap. */
+  .nuvio-dialog-actions.desktop-external-player-manual-actions .nuvio-dialog-button.focused,
+  .nuvio-dialog-actions.desktop-external-player-manual-actions .nuvio-dialog-button:focus-visible {
+    transform: none;
+    outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
+    outline-offset: 1px;
+  }
+
+  .nuvio-dialog-actions.desktop-external-player-manual-actions .nuvio-dialog-button:last-child:nth-child(3) {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .nuvio-dialog-actions.desktop-external-player-manual-actions .desktop-external-player-manual-keep {
+    grid-column: 1;
+  }
+
+  .nuvio-dialog-actions.desktop-external-player-manual-actions .desktop-external-player-manual-set {
+    grid-column: 2;
+  }
+
+  .desktop-external-player-actions .nuvio-dialog-button {
+    width: 100%;
+    min-width: 0;
+    flex: none;
+    min-height: 42px;
+    padding: 8px 12px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 500px) {
+  .nuvio-dialog-actions.desktop-external-player-manual-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .nuvio-dialog-actions.desktop-external-player-manual-actions .nuvio-dialog-button:last-child:nth-child(3) {
+    width: 100%;
+  }
+}

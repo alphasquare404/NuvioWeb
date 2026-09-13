@@ -48,13 +48,17 @@ import {
   shouldMarkBrowserPictureInPictureUnavailable
 } from "../../components/browserPictureInPicture.js";
 import {
-  buildBrowserExternalPlayerLaunch,
+  copyBrowserExternalStreamLink,
   getBrowserExternalPlayerPlatform,
   getManualBrowserExternalPlayerOptions,
   isTransferableExternalMediaUrl,
   launchBrowserExternalPlayer,
-  normalizeBrowserExternalPlayer
+  prepareBrowserExternalPlaybackLaunch
 } from "../../components/browserExternalPlayer.js";
+import { clearExternalPlaybackHandoff } from "../../components/browserExternalPlaybackHandoff.js";
+import { bindBrowserPushReturn } from "../../components/browserPushReturn.js";
+import { markBrowserExternalPlaybackFinished } from "../../components/browserExternalPlaybackFinish.js";
+import { validateExternalPlaybackPositionParts } from "../../components/browserExternalPlaybackTime.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import {
@@ -69,6 +73,7 @@ import {
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { TrackingScrobbleService } from "../../../data/repository/trackingScrobbleService.js";
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
+
 import { buildStreamResumeIdentity } from "../../../core/streams/streamResumeIdentity.js";
 import { TrackPreferencesStore } from "../../../data/local/trackPreferencesStore.js";
 import {
@@ -4553,16 +4558,6 @@ export const PlayerScreen = {
     };
   },
 
-  getExternalPlayerLaunch(player) {
-    const context = this.getExternalPlayerContext();
-    if (!context) return null;
-    return buildBrowserExternalPlayerLaunch({
-      player: normalizeBrowserExternalPlayer(player),
-      platform: getBrowserExternalPlayerPlatform(),
-      ...context
-    });
-  },
-
   canOpenInExternalPlayer() {
     return Boolean(this.getExternalPlayerContext() && getManualBrowserExternalPlayerOptions().length);
   },
@@ -4578,11 +4573,11 @@ export const PlayerScreen = {
       actionsClassName: "desktop-external-player-actions",
       buttons: [
         ...getManualBrowserExternalPlayerOptions().map((player) => ({
-          label: player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : "VLC",
+          label: player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : player === "outplayer" ? "Outplayer" : "VLC",
           className: "desktop-external-player-choice",
           content: () => {
             const copy = document.createElement("span");
-            const playerName = player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : "VLC";
+            const playerName = player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : player === "outplayer" ? "Outplayer" : "VLC";
             copy.className = "desktop-external-player-choice-copy";
             copy.innerHTML = `<strong>${playerName}</strong><small>Open this stream in ${playerName}</small>`;
             return copy;
@@ -4592,6 +4587,15 @@ export const PlayerScreen = {
             this.launchExternalPlayer(player);
           }
         })),
+        {
+          label: "Copy Stream Link",
+          className: "desktop-external-player-choice",
+          onAction: async () => {
+            const copied = await copyBrowserExternalStreamLink({ mediaUrl: this.getExternalPlayerContext()?.mediaUrl });
+            this.externalPlayerChooserDialog?.destroy?.();
+            this.showAspectToast(copied ? "Stream link copied" : "Could not copy stream link");
+          }
+        },
         {
           label: "Cancel",
           className: "desktop-external-player-cancel",
@@ -4605,11 +4609,174 @@ export const PlayerScreen = {
     return true;
   },
 
-  launchExternalPlayer(player) {
-    const launch = this.getExternalPlayerLaunch(player);
-    if (!launch?.href) return false;
-    launchBrowserExternalPlayer({ href: launch.href });
+  async launchExternalPlayer(player) {
+    const context = this.getExternalPlayerContext();
+    if (!context) return false;
+    const progressMode = PlayerSettingsStore.get().externalPlayerProgress === "manual" ? "manual" : "automatic";
+    const prepared = prepareBrowserExternalPlaybackLaunch({
+      player,
+      platform: getBrowserExternalPlayerPlatform(),
+      progressMode,
+      resumePositionSeconds: this.getExternalPlayerResumeSeconds(),
+      knownDurationMs: this.getExternalPlayerKnownDurationMs(),
+      progressContext: PlayerController.createProgressContext?.(),
+      ...context
+    });
+    if (!prepared?.launch?.href) {
+      return false;
+    }
+    if (prepared.handoff) {
+      PlayerController.beginExternalPlaybackHandoff?.(prepared.handoff);
+    }
+    // Return notifications are optional: the binding helper resolves false on
+    // unsupported, unavailable, or failed Push paths and must not alter launch.
+    await bindBrowserPushReturn({ token: prepared.handoff?.token });
+    launchBrowserExternalPlayer({ href: prepared.launch.href });
     return true;
+  },
+
+  getExternalPlayerResumeSeconds() {
+    if (this.params?.startFromBeginning) return 0;
+    const activeSeconds = Number(this.getPlaybackCurrentSeconds());
+    if (Number.isFinite(activeSeconds) && activeSeconds > 0) return activeSeconds;
+    const routePositionMs = Number(this.params?.resumePositionMs || 0);
+    const routeDurationMs = Number(this.params?.resumeDurationMs || 0);
+    if (
+      Number.isFinite(routePositionMs) && routePositionMs > 0 &&
+      (!Number.isFinite(routeDurationMs) || routeDurationMs <= 0 || routePositionMs < routeDurationMs * 0.9)
+    ) return routePositionMs / 1000;
+    return 0;
+  },
+
+  getExternalPlayerKnownDurationMs() {
+    const playbackDurationMs = Math.max(0, Number(this.getPlaybackDurationSeconds() || 0)) * 1000;
+    if (playbackDurationMs > 0) return playbackDurationMs;
+    const routeDurationMs = Math.max(0, Number(this.params?.resumeDurationMs || 0));
+    if (routeDurationMs > 0) return routeDurationMs;
+    return Math.max(0, Number(this.params?.runtime || this.params?.runtimeMinutes || 0)) * 60_000;
+  },
+
+  showExternalPlaybackManualFallback(handoff) {
+    if (!handoff?.progressContext?.itemId || this.externalPlaybackReturnDialog) return false;
+    let submitting = false;
+    const title = handoff.progressContext.episodeTitle || handoff.progressContext.title || "this title";
+    const close = () => {
+      this.externalPlaybackReturnDialog?.destroy?.();
+      this.externalPlaybackReturnDialog = null;
+    };
+    const consume = () => clearExternalPlaybackHandoff();
+    this.externalPlaybackReturnDialog = new NuvioDialog({
+      title: "How did your playback go?",
+      subtitle: title,
+      widthVw: 32,
+      panelClassName: "desktop-external-player-dialog",
+      actionsClassName: "desktop-external-player-actions desktop-external-player-manual-actions",
+      buttons: [
+        { label: "Keep current progress", className: "desktop-external-player-manual-keep", onAction: () => { consume(); close(); } },
+        { label: "Set playback position", className: "desktop-external-player-manual-set", onAction: () => { close(); this.showExternalPlaybackPositionDialog(handoff); } },
+        { label: "Mark as finished", className: "desktop-external-player-primary desktop-external-player-manual-finish", onAction: async () => {
+          if (submitting) return;
+          submitting = true;
+          const applied = await markBrowserExternalPlaybackFinished({ handoff, controller: PlayerController });
+          if (!applied) { submitting = false; this.showAspectToast("Could not mark as finished"); return; }
+          consume(); close(); this.showAspectToast("Marked as finished");
+        } }
+      ],
+      onDismiss: () => { this.externalPlaybackReturnDialog = null; }
+    }).mount(document.body);
+    return true;
+  },
+
+  showExternalPlaybackPositionDialog(handoff) {
+    const manualDurationMs = Math.max(0, Number(handoff.knownDurationMs || 0));
+    const inputs = [];
+    let error = null;
+    let saveButton = null;
+    let submitting = false;
+    const validate = () => validateExternalPlaybackPositionParts(
+      inputs[0]?.value,
+      inputs[1]?.value,
+      inputs[2]?.value,
+      manualDurationMs
+    );
+    const updateSaveState = ({ showError = false } = {}) => {
+      const result = validate();
+      if (saveButton) {
+        saveButton.disabled = submitting || !result.valid;
+        saveButton.setAttribute("aria-disabled", String(submitting || !result.valid));
+      }
+      if (error) error.textContent = showError || !result.valid ? result.message : "";
+      return result;
+    };
+    const content = () => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "desktop-external-player-choice-copy";
+      const runtimeSeconds = Math.round(manualDurationMs / 1000);
+      const runtime = runtimeSeconds ? `${Math.floor(runtimeSeconds / 60)}:${String(runtimeSeconds % 60).padStart(2, "0")}` : "Unknown";
+      wrapper.innerHTML = `<small>Runtime: ${runtime}</small>`;
+      const fields = document.createElement("div");
+      fields.className = "desktop-external-player-time-fields";
+      ["HH", "MM", "SS"].forEach((label, index) => {
+        const input = document.createElement("input");
+        input.type = "text"; input.inputMode = "numeric"; input.maxLength = 2; input.placeholder = label;
+        input.className = "desktop-external-player-time-input";
+        input.setAttribute("data-nuvio-dialog-preserve-deletion", "");
+        input.setAttribute("aria-label", label === "HH" ? "Hours" : label === "MM" ? "Minutes" : "Seconds");
+        input.addEventListener("focus", () => {
+          if (input.value.length >= 2) input.select();
+        });
+        input.addEventListener("input", () => {
+          input.value = input.value.replace(/\D/g, "").slice(0, 2);
+          if (input.value.length >= 2 && inputs[index + 1]) inputs[index + 1].focus();
+          updateSaveState();
+        });
+        input.addEventListener("keydown", (event) => {
+          if (event.key !== "Backspace" && event.key !== "Delete") return;
+          event.stopPropagation();
+          if (event.key === "Backspace" && !input.value && inputs[index - 1]) inputs[index - 1].focus();
+        });
+        inputs.push(input); fields.appendChild(input);
+        if (index < 2) {
+          const separator = document.createElement("span");
+          separator.className = "desktop-external-player-time-separator";
+          separator.textContent = ":";
+          separator.setAttribute("aria-hidden", "true");
+          fields.appendChild(separator);
+        }
+      });
+      wrapper.appendChild(fields);
+      error = document.createElement("small");
+      error.className = "nuvio-dialog-error";
+      wrapper.appendChild(error);
+      return wrapper;
+    };
+    const close = () => { this.externalPlaybackPositionDialog?.destroy?.(); this.externalPlaybackPositionDialog = null; };
+    this.externalPlaybackPositionDialog = new NuvioDialog({
+      title: "Set playback position", content, widthVw: 32,
+      panelClassName: "desktop-external-player-dialog", actionsClassName: "desktop-external-player-actions",
+      buttons: [
+        { label: "Save", onAction: async () => {
+          if (submitting) return;
+          const result = updateSaveState({ showError: true });
+          if (!result.valid) return;
+          submitting = true;
+          updateSaveState();
+          try {
+            const applied = await PlayerController.applyExternalPlaybackReport({ handoff, outcome: "stopped", positionSeconds: result.positionMs / 1000, durationSeconds: manualDurationMs / 1000 });
+            if (!applied) throw new Error("Progress was not applied");
+            clearExternalPlaybackHandoff(); close(); this.showAspectToast("Playback position saved");
+          } catch (_) {
+            submitting = false;
+            if (error) error.textContent = "Could not save playback position. Try again.";
+            updateSaveState();
+          }
+        } },
+        { label: "Back", onAction: () => { close(); this.showExternalPlaybackManualFallback(handoff); } }
+      ],
+      onDismiss: () => { this.externalPlaybackPositionDialog = null; }
+    }).mount(document.body);
+    saveButton = this.externalPlaybackPositionDialog?._buttonEls?.[0] || null;
+    updateSaveState();
   },
 
   isCompactBrowserPlayerToolbar() {

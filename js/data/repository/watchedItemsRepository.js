@@ -164,12 +164,9 @@ class WatchedItemsRepository {
     if (!item?.contentId) {
       return;
     }
-    if (shouldUseSimkl() && options.skipTrackingWrite !== true) {
-      await SimklSyncService.markWatched(item);
-    }
-    if (shouldUseTrakt() && options.skipTrackingWrite !== true) {
-      await writeTraktHistory(item, false);
-    }
+    // Local watched state is the completion boundary for Player and Continue
+    // Watching. A tracking provider can be offline or reject a history write;
+    // it must not prevent the local completion from being recorded.
     WatchedItemsStore.upsert(
       {
         ...item,
@@ -178,6 +175,16 @@ class WatchedItemsRepository {
       activeProfileId()
     );
     queueWatchedItemsCloudSync();
+    if (shouldUseSimkl() && options.skipTrackingWrite !== true) {
+      void SimklSyncService.markWatched(item).catch((error) => {
+        console.warn("SIMKL watched history update failed", error);
+      });
+    }
+    if (shouldUseTrakt() && options.skipTrackingWrite !== true) {
+      void writeTraktHistory(item, false).catch((error) => {
+        console.warn("Trakt watched history update failed", error);
+      });
+    }
   }
 
   async unmark(contentId, options = null) {

@@ -36,3 +36,12 @@ services:
     container_name: nuvioweb-debrid-api-bridge
     image: ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:stable
     restart: unless-stopped
+
+  external-return-bridge:
+    container_name: nuvioweb-external-return-bridge
+    image: ghcr.io/alphasquare404/nuvioweb-external-return-bridge:stable
+    restart: unless-stopped
+    environment:
+      NUVIO_WEB_PUSH_PUBLIC_KEY: ${NUVIO_WEB_PUSH_PUBLIC_KEY}
+      NUVIO_WEB_PUSH_PRIVATE_KEY: ${NUVIO_WEB_PUSH_PRIVATE_KEY}
+      NUVIO_WEB_PUSH_SUBJECT: ${NUVIO_WEB_PUSH_SUBJECT}

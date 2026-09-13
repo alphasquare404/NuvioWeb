@@ -55,6 +55,7 @@ import {
   getBrowserExternalPlayerStoreUrl,
   normalizeBrowserExternalPlayer
 } from "../../components/browserExternalPlayer.js";
+import { enableBrowserPushReturn, disableBrowserPushReturn, getBrowserPushReturnState } from "../../components/browserPushReturn.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import {
   copyDeviceAuthorizationCode,
@@ -2251,6 +2252,15 @@ export const SettingsScreen = {
     this.desktopAboutCommunityState = this.desktopAboutCommunityState || createDesktopAboutCommunityState();
     this.advancedCacheCleared = false;
     this.optionDialog = this.optionDialog || null;
+    this.pushReturnState = this.pushReturnState || "checking";
+    if (Platform.isBrowser() && !this.pushReturnStateLoading) {
+      this.pushReturnStateLoading = true;
+      void getBrowserPushReturnState().then((result) => {
+        this.pushReturnState = result.state;
+        this.pushReturnStateLoading = false;
+        void this.render();
+      }).catch(() => { this.pushReturnState = "unavailable"; this.pushReturnStateLoading = false; void this.render(); });
+    }
     this.textDialog = this.textDialog || null;
     this.debridAuthDialog = null;
     this.debridAuthPollTimer = null;
@@ -6265,13 +6275,16 @@ export const SettingsScreen = {
         const options = getBrowserExternalPlayerOptions().map((id) => ({
           id,
           label:
-            id === "lenna"
+            id === "outplayer"
+              ? "Outplayer"
+              : id === "lenna"
               ? "Lenna"
               : id === "infuse"
                 ? "Infuse"
                 : id === "vlc"
                   ? "VLC"
                   : t("common.disabled", {}, "Disabled")
+          , subtitle: id === "lenna" ? "Recommended" : ""
         }));
         this.openOptionDialog({
           title: "Play with external player",
@@ -6290,6 +6303,30 @@ export const SettingsScreen = {
           if (storeUrl) window.open(storeUrl, "_blank", "noopener,noreferrer");
         });
       });
+      this.actionMap.set("playback:externalPlayerProgress", () => {
+        this.openOptionDialog({
+          title: "External Player Progress",
+          options: [
+            { id: "automatic", label: "Automatic when supported" },
+            { id: "manual", label: "Always ask manually" }
+          ],
+          selectedId: PlayerSettingsStore.get().externalPlayerProgress || "automatic",
+          returnFocusKey: "playback:externalPlayerProgress",
+          onSelect: (option) => PlayerSettingsStore.set({ externalPlayerProgress: option.id })
+        });
+      });
+      this.actionMap.set("playback:pushReturn", async () => {
+        try {
+          const result = await enableBrowserPushReturn();
+          this.pushReturnState = (await getBrowserPushReturnState()).state;
+          if (result.state === "enabled") this.showToast?.("Return notifications enabled.");
+          if (result.diagnostic) this.showToast?.("Could not enable return notifications.");
+        } catch (error) {
+          this.showToast?.("Could not enable return notifications.");
+        }
+        this.render();
+      });
+      this.actionMap.set("playback:pushReturnDisable", async () => { await disableBrowserPushReturn(); this.pushReturnState = (await getBrowserPushReturnState()).state; this.render(); });
     }
     this.actionMap.set("playback:nextEpisodeThresholdMode", () => {
       this.openOptionDialog({
@@ -6761,19 +6798,40 @@ export const SettingsScreen = {
                 value:
                   normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "lenna"
                     ? "Lenna"
-                    : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "infuse"
+                    : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "outplayer"
+                      ? "Outplayer"
+                      : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "infuse"
                       ? "Infuse"
                       : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "vlc"
                         ? "VLC"
-                        : t("common.disabled", {}, "Disabled")
+                        : t("common.disabled", {}, "Disabled"),
+                classes: "settings-playback-external-player-row"
+              })
+            : ""
+        }
+        ${isDesktopBrowser ? this.renderActionRow({ focusKey: this.pushReturnState === "enabled" ? "playback:pushReturnDisable" : "playback:pushReturn", title: "Return to NuvioWeb", subtitle: "Get a notification after external playback so you can quickly return to the NuvioWeb app.", value: ({ enabled: "Enabled", "not-enabled": "Not enabled", blocked: "Blocked", unavailable: "Unavailable", "server-not-configured": "Server not configured", checking: "Checking…" })[this.pushReturnState] || "Unavailable", classes: "settings-playback-external-player-row" }) : ""}
+        ${
+          isDesktopBrowser
+            ? this.renderActionRow({
+                focusKey: "playback:externalPlayerProgress",
+                title: "External Player Progress",
+                subtitle: "Choose automatic callbacks where supported or always report playback manually.",
+                value: model.player.externalPlayerProgress === "manual" ? "Always ask manually" : "Automatic when supported",
+                classes: "settings-playback-external-player-row"
               })
             : ""
         }
         ${
-          isDesktopBrowser && normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) !== "disabled"
+          isDesktopBrowser && (() => {
+            const player = normalizeBrowserExternalPlayer(model.player.browserExternalPlayer);
+            return player !== "disabled" && Boolean(getBrowserExternalPlayerStoreUrl({
+              player,
+              platform: getBrowserExternalPlayerPlatform()
+            }));
+          })()
             ? (() => {
                 const player = normalizeBrowserExternalPlayer(model.player.browserExternalPlayer);
-                const playerName = player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : "VLC";
+                const playerName = player === "outplayer" ? "Outplayer" : player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : "VLC";
                 return this.renderActionRow({
                   focusKey: `playback:getExternalPlayer:${player}`,
                   title: `Get ${playerName}`,

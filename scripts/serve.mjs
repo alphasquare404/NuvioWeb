@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildRuntimeEnvScript, readEnvProperties } from "./envProperties.mjs";
 import { createDebridApiBridgeHandler } from "../services/debrid-api-bridge/bridge.mjs";
+import { createExternalReturnHandler } from "../services/external-return-bridge/bridge.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -18,6 +19,7 @@ const mediaProbeTimeoutMs = 1200;
 let mediaRuntimeProcess = null;
 let cachedMediaServerPort = mediaServerPorts[0];
 const debridApiBridgeHandler = createDebridApiBridgeHandler();
+const externalReturnHandler = createExternalReturnHandler();
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -196,6 +198,10 @@ const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
     if (requestUrl.pathname.startsWith("/api/debrid/")) {
       await debridApiBridgeHandler(request, response);
+      return;
+    }
+    if (requestUrl.pathname.startsWith("/api/external-return/")) {
+      externalReturnHandler(request, response);
       return;
     }
     if (requestUrl.pathname === "/nuvio.env.js") {

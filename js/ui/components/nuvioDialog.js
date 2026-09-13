@@ -264,6 +264,16 @@ export class NuvioDialog {
     if (this._destroyed) return;
     const key = this._eventKey(e);
 
+    // A dialog can opt an editable field into native deletion. This check must
+    // run in the capture handler, before the dialog's Backspace-as-dismiss
+    // shortcut consumes the field event.
+    const target = e?.target;
+    const preservesDeletion =
+      (key.isBack || String(e?.key || "").toLowerCase() === "delete") &&
+      typeof target?.closest === "function" &&
+      target.closest("[data-nuvio-dialog-preserve-deletion]");
+    if (preservesDeletion) return;
+
     if (key.isBack) {
       e.preventDefault();
       e.stopPropagation();

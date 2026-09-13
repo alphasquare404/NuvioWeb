@@ -109,6 +109,30 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("push", (event) => {
+  let payload;
+  try { payload = event.data?.json?.(); } catch (_) { return; }
+  if (payload?.type !== "external-playback-return") return;
+  const finished = payload.kind === "finished";
+  event.waitUntil(self.registration.showNotification("NuvioWeb", {
+    body: finished ? "Playback completed. Tap to return to NuvioWeb." : "Playback updated. Tap to return to NuvioWeb.",
+    tag: "nuvio-external-playback-return",
+    data: { type: "external-playback-return" }
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  if (event.notification?.data?.type !== "external-playback-return") return;
+  event.notification.close();
+  event.waitUntil((async () => {
+    const scope = self.registration.scope;
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const existing = clients.find((client) => String(client.url || "").startsWith(scope));
+    if (existing) return existing.focus();
+    return self.clients.openWindow(scope);
+  })());
+});
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;

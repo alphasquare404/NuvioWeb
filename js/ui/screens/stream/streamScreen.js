@@ -51,8 +51,9 @@ import {
   getBrowserExternalPlayerPlatform,
   launchBrowserExternalPlayer,
   normalizeBrowserExternalPlayer,
-  resolveBrowserStreamPlaybackRoute
+  prepareBrowserExternalPlaybackLaunch
 } from "../../components/browserExternalPlayer.js";
+import { bindBrowserPushReturn } from "../../components/browserPushReturn.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import {
   createBrowserOfflineSubtitlePicker,
@@ -2413,18 +2414,38 @@ export const StreamScreen = {
     if (action === "deleteOffline") return deleteBrowserOfflineDownload(downloadId);
   },
 
-  routeSelectedStream(selected, context = {}) {
+  async routeSelectedStream(selected, context = {}) {
     if (!Environment.isBrowser() || context.offlineObjectUrl) return false;
     const player = normalizeBrowserExternalPlayer(PlayerSettingsStore.get().browserExternalPlayer);
-    const route = resolveBrowserStreamPlaybackRoute({
+    if (player === "disabled") return false;
+    const itemType = normalizeType(this.params?.itemType);
+    const prepared = prepareBrowserExternalPlaybackLaunch({
       player,
       platform: getBrowserExternalPlayerPlatform(),
       mediaUrl: selected?.url || selected?.externalUrl || "",
       title: this.params?.episodeTitle || this.params?.itemTitle || this.params?.playerTitle || "",
-      subtitleUrl: ""
+      subtitleUrl: "",
+      resumePositionSeconds: Number(context.resumePositionMs || 0) / 1000,
+      knownDurationMs: Number(context.resumeDurationMs || 0) || Math.max(0, Number(this.params?.runtime || this.params?.runtimeMinutes || 0)) * 60_000,
+      progressMode: PlayerSettingsStore.get().externalPlayerProgress,
+      progressContext: {
+        itemId: this.params?.itemId || null,
+        itemType: itemType || "movie",
+        videoId: itemType === "series" || itemType === "tv" ? this.params?.videoId || null : null,
+        season: this.params?.season == null ? null : Number(this.params.season),
+        episode: this.params?.episode == null ? null : Number(this.params.episode),
+        title: this.params?.itemTitle || this.params?.playerTitle || null,
+        poster: this.params?.poster || null,
+        background: this.getBackdropUrl() || null,
+        episodeTitle: this.params?.episodeTitle || null,
+        streamIdentity: buildStreamResumeIdentity(selected) || null
+      }
     });
-    if (route.target !== "external" || !route.launch?.href) return false;
-    launchBrowserExternalPlayer({ href: route.launch.href });
+    if (!prepared?.launch?.href) return false;
+    // Optional return convenience only: never allow binding failure to alter
+    // the already-verified external-player launch path.
+    await bindBrowserPushReturn({ token: prepared.handoff?.token });
+    launchBrowserExternalPlayer({ href: prepared.launch.href });
     return true;
   },
 
@@ -2439,9 +2460,6 @@ export const StreamScreen = {
     const filtered = this.getFilteredStreams();
     const selected = offlineStream || filtered.find((stream) => stream.id === streamId) || filtered[0];
     if (!selected) {
-      return;
-    }
-    if (!skipExternalRoute && this.routeSelectedStream(selected, { offlineObjectUrl, offlineDownload, offlineStream })) {
       return;
     }
     // Browser Player → Sources owns its own provider filters. Preserve the
@@ -2489,6 +2507,15 @@ export const StreamScreen = {
       resumePositionMs = Number(resumeProgress?.positionMs || 0) || 0;
       resumeProgressPercent = resumeProgress?.progressPercent ?? resumeProgressPercent;
       resumeDurationMs = Number(resumeProgress?.durationMs || 0) || resumeDurationMs;
+    }
+    if (!skipExternalRoute && await this.routeSelectedStream(selected, {
+      offlineObjectUrl,
+      offlineDownload,
+      offlineStream,
+      resumePositionMs,
+      resumeDurationMs
+    })) {
+      return;
     }
 
     return Router.navigate("player", {

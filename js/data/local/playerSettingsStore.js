@@ -61,7 +61,10 @@ const DEFAULTS = {
   streamReuseLastLinkEnabled: false,
   streamReuseLastLinkCacheHours: 24,
   streamAutoPlayTimeoutSeconds: 3,
-  browserExternalPlayer: "disabled"
+  // Apple browser users without a stored preference receive the verified
+  // Lenna path; platform-specific consumers keep Android on its own options.
+  browserExternalPlayer: "lenna",
+  externalPlayerProgress: "automatic"
 };
 
 const STREAM_AUTO_PLAY_MODES = ["MANUAL", "FIRST_STREAM", "REGEX_MATCH"];
@@ -144,7 +147,11 @@ function normalizeNextEpisodeThresholdMode(value) {
 
 function normalizeBrowserExternalPlayer(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  return ["disabled", "lenna", "infuse", "vlc"].includes(normalized) ? normalized : "disabled";
+  return ["disabled", "outplayer", "lenna", "infuse", "vlc"].includes(normalized) ? normalized : "disabled";
+}
+
+function normalizeExternalPlayerProgress(value) {
+  return String(value || "").trim().toLowerCase() === "manual" ? "manual" : "automatic";
 }
 
 function normalizeHalfStep(value, min, max, fallback) {
@@ -302,6 +309,9 @@ export function normalizePlayerSettings(settings = {}) {
     ),
     browserExternalPlayer: normalizeBrowserExternalPlayer(
       persistentSettings.browserExternalPlayer ?? DEFAULTS.browserExternalPlayer
+    ),
+    externalPlayerProgress: normalizeExternalPlayerProgress(
+      persistentSettings.externalPlayerProgress ?? DEFAULTS.externalPlayerProgress
     ),
     nextEpisodeThresholdMode: normalizeNextEpisodeThresholdMode(
       persistentSettings.nextEpisodeThresholdMode ?? DEFAULTS.nextEpisodeThresholdMode

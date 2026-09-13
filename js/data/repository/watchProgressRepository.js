@@ -622,6 +622,40 @@ class WatchProgressRepository {
     queueWatchProgressCloudSync();
   }
 
+  async removePlaybackProgress(identity = {}) {
+    const contentId = String(identity?.contentId || identity?.itemId || "").trim();
+    if (!contentId) {
+      return false;
+    }
+    const videoId = identity?.videoId == null ? "" : String(identity.videoId).trim();
+    const season = Number.isFinite(Number(identity?.season)) ? Number(identity.season) : null;
+    const episode = Number.isFinite(Number(identity?.episode)) ? Number(identity.episode) : null;
+    const isEpisode = season != null || episode != null;
+    const pid = activeProfileId();
+    const removedItems = WatchProgressStore.listForProfile(pid).filter((item) => {
+      if (String(item?.contentId || "") !== contentId) return false;
+      if (!isEpisode) return !videoId || String(item?.videoId || "") === videoId;
+      // A provider can change an episode's video ID between launches. Season
+      // and episode are the stable fallback, while a video-ID match retains
+      // compatibility with existing exact-ID progress rows.
+      return (
+        (videoId && String(item?.videoId || "") === videoId) ||
+        (Number(item?.season) === season && Number(item?.episode) === episode)
+      );
+    });
+    if (!removedItems.length) {
+      return false;
+    }
+    WatchProgressStore.replaceForProfile(
+      pid,
+      WatchProgressStore.listForProfile(pid).filter((item) => !removedItems.includes(item))
+    );
+    await deleteWatchProgressFromCloud(removedItems);
+    invalidateContinueWatchingDisplaySnapshot();
+    queueWatchProgressCloudSync();
+    return true;
+  }
+
   async getRecent(limit = 30, { enrichMetadata = true } = {}) {
     const now = Date.now();
     const useTraktProgress = selectedContinueWatchingSource() === WatchProgressSource.TRAKT;

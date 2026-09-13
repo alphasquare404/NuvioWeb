@@ -9,7 +9,7 @@ async function readRepositoryFile(path) {
 }
 
 function metadataTagBlocks(workflow) {
-  return [...workflow.matchAll(/id: (?:frontend|trakt|debrid)-meta[\s\S]*?tags: \|\r?\n((?:\s+type=.*\r?\n)+)/g)].map((match) =>
+  return [...workflow.matchAll(/id: (?:frontend|trakt|debrid|external-return)-meta[\s\S]*?tags: \|\r?\n((?:\s+type=.*\r?\n)+)/g)].map((match) =>
     match[1]
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -36,11 +36,12 @@ test("GHCR publishing separates web development and release channels consistentl
     "type=sha,format=short,prefix=sha-",
   ];
 
-  assert.equal(tagBlocks.length, 3);
-  assert.deepEqual(tagBlocks, [expectedTags, expectedTags, expectedTags]);
+  assert.equal(tagBlocks.length, 4);
+  assert.deepEqual(tagBlocks, [expectedTags, expectedTags, expectedTags, expectedTags]);
   assert.match(workflow, /steps\.frontend-meta\.outputs\.tags/);
   assert.match(workflow, /steps\.trakt-meta\.outputs\.tags/);
   assert.match(workflow, /steps\.debrid-meta\.outputs\.tags/);
+  assert.match(workflow, /steps\.external-return-meta\.outputs\.tags/);
 });
 
 test("Compose defaults every production service to stable without a tag environment variable", async () => {
@@ -49,6 +50,7 @@ test("Compose defaults every production service to stable without a tag environm
   assert.match(compose, /ghcr\.io\/alphasquare404\/nuvioweb:stable/);
   assert.match(compose, /ghcr\.io\/alphasquare404\/nuvioweb-trakt-auth-bridge:stable/);
   assert.match(compose, /ghcr\.io\/alphasquare404\/nuvioweb-debrid-api-bridge:stable/);
+  assert.match(compose, /ghcr\.io\/alphasquare404\/nuvioweb-external-return-bridge:stable/);
   assert.doesNotMatch(compose, /NUVIO_TAG/);
 });
 

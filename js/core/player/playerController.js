@@ -1,6 +1,5 @@
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
-import { watchedItemsRepository } from "../../data/repository/watchedItemsRepository.js";
-import { watchedSeriesReconciliationService } from "../../data/repository/watchedSeriesReconciliationService.js";
+import { markPlaybackWatched } from "./markPlaybackWatched.js";
 import { WatchProgressSyncService } from "../profile/watchProgressSyncService.js";
 import { nativeVideoEngine } from "./engines/nativeVideoEngine.js";
 import { hlsJsEngine } from "./engines/hlsJsEngine.js";
@@ -43,6 +42,8 @@ export const PlayerController = {
   startupPresentationAudioMuted: false,
   desiredPlaybackRate: 1,
   videoElementListeners: [],
+  markPlaybackWatched,
+  externalProgressHandoff: null,
 
   isExpectedPlayInterruption(error) {
     const message = String(error?.message || "").toLowerCase();
@@ -1690,6 +1691,11 @@ export const PlayerController = {
       return;
     }
 
+    // Starting a new built-in playback session is an intentional local-player
+    // action. Any stale protection left by an earlier external handoff must
+    // not permanently suppress this session's normal progress writes.
+    this.externalProgressHandoff = null;
+
     // Keep the maximum duration for this playback while adaptive engines
     // transition through their initial metadata events.
     this.lastKnownDurationSeconds = 0;
@@ -1818,6 +1824,9 @@ export const PlayerController = {
   resume() {
     if (!this.video) return;
 
+    // A user explicitly resumed the built-in player after an external return.
+    // Its subsequent progress is authoritative again.
+    this.releaseExternalPlaybackOwnership();
     this.flushCurrentProgress({ forceCloudSync: false });
     if (this.startupAudioGateActive) {
       this.applyStartupAudioGateToVideo();
@@ -1994,12 +2003,100 @@ export const PlayerController = {
     return true;
   },
 
+  beginExternalPlaybackHandoff(handoff) {
+    const context = handoff?.progressContext;
+    if (!context?.itemId || this.buildProgressSnapshotKey(context) !== this.buildProgressSnapshotKey()) return false;
+    this.externalProgressHandoff = {
+      key: this.buildProgressSnapshotKey(context),
+      token: String(handoff.token || ""),
+      authoritativePositionMs: null,
+      completed: false
+    };
+    // Start one final best-effort save without delaying the user-gesture
+    // custom-scheme launch (iOS can reject a launch after an await).
+    void this.flushCurrentProgress({ forceCloudSync: true });
+    try { this.video?.pause?.(); } catch (_) { /* Best effort before app handoff. */ }
+    this.isPlaying = false;
+    return true;
+  },
+
+  releaseExternalPlaybackOwnership() {
+    this.externalProgressHandoff = null;
+  },
+
+  shouldSuppressStaleInternalProgress(context, positionMs) {
+    const handoff = this.externalProgressHandoff;
+    if (!handoff || handoff.key !== this.buildProgressSnapshotKey(context) || handoff.authoritativePositionMs == null) return false;
+    if (handoff.completed) return true;
+    return Number(positionMs || 0) <= Number(handoff.authoritativePositionMs) + 1000;
+  },
+
+  acceptExternalPlaybackProgress(context, positionMs, durationMs) {
+    const handoff = this.externalProgressHandoff;
+    if (!handoff || handoff.key !== this.buildProgressSnapshotKey(context)) return;
+    handoff.authoritativePositionMs = Math.max(0, Number(positionMs) || 0);
+    handoff.completed = Number(durationMs) > 0 && handoff.authoritativePositionMs / Number(durationMs) >= 0.9;
+    if (this.video) {
+      try { this.video.currentTime = handoff.authoritativePositionMs / 1000; } catch (_) { /* Media may be detached. */ }
+      try { this.video.pause(); } catch (_) { /* Keep the built-in player paused. */ }
+    }
+    this.isPlaying = false;
+  },
+
+  acceptExternalPlaybackCompletion(context) {
+    const handoff = this.externalProgressHandoff;
+    if (!handoff || handoff.key !== this.buildProgressSnapshotKey(context)) return;
+    handoff.completed = true;
+    if (this.video) {
+      try { this.video.pause(); } catch (_) { /* Keep the built-in player paused. */ }
+    }
+    this.isPlaying = false;
+  },
+
+  async completePlayback(context = null, { allowCloudSync = true, externalAuthoritative = false } = {}) {
+    const active = context || this.createProgressContext();
+    if (!active?.itemId) return false;
+    if (!externalAuthoritative && this.shouldSuppressStaleInternalProgress(active, 0)) return true;
+    await this.markPlaybackWatched(active);
+    if (externalAuthoritative) this.acceptExternalPlaybackCompletion(active);
+    if (allowCloudSync) await this.pushProgressIfDue(true);
+    return true;
+  },
+
+  async applyExternalPlaybackReport({ handoff, outcome, positionSeconds = null, durationSeconds = null } = {}) {
+    const context = handoff?.progressContext;
+    if (!context?.itemId || !["finished", "stopped"].includes(outcome)) {
+      return false;
+    }
+    const toMilliseconds = (value) => {
+      const seconds = Number(value);
+      return Number.isFinite(seconds) && seconds >= 0 ? Math.round(seconds * 1000) : 0;
+    };
+    const reportedPositionMs = toMilliseconds(positionSeconds);
+    const reportedDurationMs = toMilliseconds(durationSeconds);
+    const knownDurationMs = Math.max(0, Number(handoff?.knownDurationMs || 0));
+    const durationMs = reportedDurationMs || knownDurationMs;
+    if ((positionSeconds != null && !reportedPositionMs) || (durationSeconds != null && !reportedDurationMs)) {
+      return false;
+    }
+    if (durationMs > 0 && reportedPositionMs > durationMs * 1.1 + 60000) {
+      return false;
+    }
+    if (outcome === "finished") {
+      return PlayerController.completePlayback.call(this, context, { externalAuthoritative: true });
+    }
+    if (reportedPositionMs <= 0) return false;
+    const applied = await this.flushProgress(reportedPositionMs, durationMs, false, context, { externalAuthoritative: true });
+    if (applied) this.acceptExternalPlaybackProgress?.(context, reportedPositionMs, durationMs);
+    return applied;
+  },
+
   async flushProgress(
     positionMs,
     durationMs,
     clear = false,
     context = null,
-    { allowCloudSync = true } = {}
+    { allowCloudSync = true, externalAuthoritative = false } = {}
   ) {
     const active = context || this.createProgressContext();
     if (!active?.itemId) {
@@ -2008,6 +2105,7 @@ export const PlayerController = {
 
     const safePosition = Number(positionMs || 0);
     const safeDuration = Number(durationMs || 0);
+    if (!externalAuthoritative && this.shouldSuppressStaleInternalProgress(active, safePosition)) return true;
     const hasFiniteDuration = Number.isFinite(safeDuration) && safeDuration > 0;
     const hasReachedMinimumSyncPosition =
       Number.isFinite(safePosition) && safePosition >= MIN_PROGRESS_SYNC_DURATION_MS;
@@ -2024,57 +2122,20 @@ export const PlayerController = {
       }
     }
 
-    if (isCompleted) {
-      await watchedItemsRepository.mark({
-        contentId: active.itemId,
-        contentType: active.itemType || "movie",
-        title: active.episodeTitle || active.title || active.itemId,
-        season: active.season,
-        episode: active.episode,
-        watchedAt: Date.now()
-      });
-    }
-
     if (clear || isCompleted) {
       if (isCompleted) {
-        await watchProgressRepository.saveProgress({
-          contentId: active.itemId,
-          contentType: active.itemType || "movie",
-          videoId: active.videoId || null,
-          season: active.season,
-          episode: active.episode,
-          title: active.title || null,
-          poster: active.poster || null,
-          background: active.background || null,
-          logo: active.logo || null,
-          episodeTitle: active.episodeTitle || null,
-          positionMs: hasFiniteDuration
-            ? Math.max(0, Math.trunc(safeDuration))
-            : Math.max(0, Math.trunc(safePosition)),
-          durationMs: hasFiniteDuration
-            ? Math.max(0, Math.trunc(safeDuration))
-            : Math.max(0, Math.trunc(safePosition))
-        });
-        if (watchedSeriesReconciliationService.isSeriesType(active.itemType)) {
-          void watchedSeriesReconciliationService
-            .reconcile(active.itemId, active.itemType, {
-              title: active.title || active.itemId,
-              completedEpisode: {
-                season: active.season,
-                episode: active.episode
-              }
-            })
-            .catch((error) => {
-              console.warn("Series watched reconciliation failed", error);
-            });
-        }
+        return this.completePlayback(active, { allowCloudSync, externalAuthoritative });
       } else {
         await watchProgressRepository.removeProgress(active.itemId, active.videoId || null);
       }
       if (!allowCloudSync) {
         return true;
       }
-      return this.pushProgressIfDue(true);
+      // Local watched/progress state (and series reconciliation above) is the
+      // canonical completion boundary. A delayed/offline cloud push must not
+      // make an already-applied completion look like a failed playback report.
+      await this.pushProgressIfDue(true);
+      return true;
     }
 
     if (!Number.isFinite(safePosition) || safePosition <= 0) {
@@ -2101,7 +2162,11 @@ export const PlayerController = {
     if (!allowCloudSync) {
       return true;
     }
-    return this.pushProgressIfDue(false);
+    // Saving progress locally succeeded. Cloud sync is best effort and has
+    // its own retry path, so callers must not show a manual fallback merely
+    // because this particular push was deferred or offline.
+    await this.pushProgressIfDue(false);
+    return true;
   },
 
   pushProgressIfDue(force = false) {
