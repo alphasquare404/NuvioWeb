@@ -53,22 +53,6 @@ backend.
 | `NUVIO_PORT`                  | Optional | Host-only Compose setting | `4173`                                              | Host port mapped to Nginx. Change it when `4173` is unavailable.                                                                                                                                                     |
 | `YOUTUBE_PROXY_URL`           | Optional | Browser-public            | `youtube-proxy.html`                                | Browser proxy helper path for YouTube-related playback. Empty disables that override.                                                                                                                                |
 
-### Optional integrations
-
-| Variable               | Required | Visibility      | Default                     | Purpose and empty behavior                                                                                                                                                                    |
-| ---------------------- | -------- | --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SIMKL_CLIENT_ID`      | Optional | Browser-public  | Empty                       | Enables Simkl integration when configured. Obtain the public client identifier from [Simkl API documentation](https://api.simkl.com/). Empty leaves Simkl unavailable.                        |
-| `SIMKL_APP_NAME`       | Optional | Browser-public  | `nuvio`                     | Display/application name passed to Simkl. Leave the default unless your Simkl registration requires another value.                                                                            |
-| `PREMIUMIZE_CLIENT_ID` | Optional | Browser-public  | Empty                       | Enables Premiumize Device Code authentication. Register an OAuth client through [Premiumize API documentation](https://www.premiumize.me/api). Empty keeps Premiumize connection unavailable. |
-| `TRAKT_CLIENT_ID`      | Optional | Browser-public  | Empty                       | Public Trakt application identifier for browser sign-in. Obtain it from the [Trakt application settings](https://app.trakt.tv/settings/apps). Empty keeps Trakt sign-in unavailable.          |
-| `TRAKT_CLIENT_SECRET`  | Optional | **Server-only** | Empty                       | Private Trakt application credential. It is passed only to `trakt-auth-bridge`, never written to `nuvio.env.js` or exposed to browser JavaScript. Empty leaves the bridge unconfigured.       |
-| `TRAKT_REDIRECT_URI`   | Optional | **Server-only** | `urn:ietf:wg:oauth:2.0:oob` | Redirect URI registered with Trakt; it must match the application configuration. Empty uses the Compose default. See [Trakt authentication](https://docs.trakt.tv/reference/auth).            |
-
-In general, a `CLIENT_ID` is a public application identifier, while a
-`CLIENT_SECRET` is private and belongs only on a server. Do not put access
-tokens, refresh tokens, provider credentials, Supabase service-role keys,
-database passwords, or signing keys in browser runtime configuration.
-
 ### Return-to-NuvioWeb notifications (optional)
 
 This optional feature sends a notification after an external player reports
@@ -107,6 +91,22 @@ If VAPID is not configured, permission is denied, Push is unsupported, a
 subscription is unavailable, or delivery fails, normal NuvioWeb usage and
 external playback still work. The callback/manual Home Screen return path stays
 available; only the notification-based return convenience is unavailable.
+
+### Optional integrations
+
+| Variable               | Required | Visibility      | Default                     | Purpose and empty behavior                                                                                                                                                                    |
+| ---------------------- | -------- | --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SIMKL_CLIENT_ID`      | Optional | Browser-public  | Empty                       | Enables Simkl integration when configured. Obtain the public client identifier from [Simkl API documentation](https://api.simkl.com/). Empty leaves Simkl unavailable.                        |
+| `SIMKL_APP_NAME`       | Optional | Browser-public  | `nuvio`                     | Display/application name passed to Simkl. Leave the default unless your Simkl registration requires another value.                                                                            |
+| `PREMIUMIZE_CLIENT_ID` | Optional | Browser-public  | Empty                       | Enables Premiumize Device Code authentication. Register an OAuth client through [Premiumize API documentation](https://www.premiumize.me/api). Empty keeps Premiumize connection unavailable. |
+| `TRAKT_CLIENT_ID`      | Optional | Browser-public  | Empty                       | Public Trakt application identifier for browser sign-in. Obtain it from the [Trakt application settings](https://app.trakt.tv/settings/apps). Empty keeps Trakt sign-in unavailable.          |
+| `TRAKT_CLIENT_SECRET`  | Optional | **Server-only** | Empty                       | Private Trakt application credential. It is passed only to `trakt-auth-bridge`, never written to `nuvio.env.js` or exposed to browser JavaScript. Empty leaves the bridge unconfigured.       |
+| `TRAKT_REDIRECT_URI`   | Optional | **Server-only** | `urn:ietf:wg:oauth:2.0:oob` | Redirect URI registered with Trakt; it must match the application configuration. Empty uses the Compose default. See [Trakt authentication](https://docs.trakt.tv/reference/auth).            |
+
+In general, a `CLIENT_ID` is a public application identifier, while a
+`CLIENT_SECRET` is private and belongs only on a server. Do not put access
+tokens, refresh tokens, provider credentials, Supabase service-role keys,
+database passwords, or signing keys in browser runtime configuration.
 
 ### Advanced browser-public endpoint overrides
 
