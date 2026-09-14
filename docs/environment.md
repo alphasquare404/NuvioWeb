@@ -136,5 +136,5 @@ public runtime configuration:
 docker compose up -d --force-recreate
 ```
 
-Keep all three Docker `image:` tags in `docker-compose.yml` aligned when
+Keep all four Docker `image:` tags in `docker-compose.yml` aligned when
 switching between `stable`, `nightly`, `latest`, or a pinned `X.Y.Z` release.

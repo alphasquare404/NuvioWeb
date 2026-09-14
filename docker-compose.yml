@@ -42,6 +42,6 @@ services:
     image: ghcr.io/alphasquare404/nuvioweb-external-return-bridge:stable
     restart: unless-stopped
     environment:
-      NUVIO_WEB_PUSH_PUBLIC_KEY: ${NUVIO_WEB_PUSH_PUBLIC_KEY}
-      NUVIO_WEB_PUSH_PRIVATE_KEY: ${NUVIO_WEB_PUSH_PRIVATE_KEY}
-      NUVIO_WEB_PUSH_SUBJECT: ${NUVIO_WEB_PUSH_SUBJECT}
+      NUVIO_WEB_PUSH_PUBLIC_KEY: ${NUVIO_WEB_PUSH_PUBLIC_KEY:-}
+      NUVIO_WEB_PUSH_PRIVATE_KEY: ${NUVIO_WEB_PUSH_PRIVATE_KEY:-}
+      NUVIO_WEB_PUSH_SUBJECT: ${NUVIO_WEB_PUSH_SUBJECT:-}
