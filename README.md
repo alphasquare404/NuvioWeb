@@ -171,6 +171,10 @@ It can sit behind an external reverse proxy such as Nginx Proxy Manager, Caddy,
 or Traefik for HTTPS and a custom domain; TLS is intentionally not bundled into
 this application container.
 
+Use HTTPS in production for installed-PWA and Web Push features.
+Return-to-NuvioWeb notifications are optional; see
+[environment configuration](docs/environment.md) for setup and fallback behavior.
+
 ## Project Structure
 
 - `js/` contains app logic, UI screens, platform adapters, and player code.
