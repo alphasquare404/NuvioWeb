@@ -9333,7 +9333,7 @@ export const MetaDetailsScreen = {
     this.render(this.meta);
   },
 
-  consumeBackRequest() {
+  consumeBackRequest(backContext = {}) {
     if (this.seasonHoldMenu) {
       this.closeSeasonHoldMenu();
       return true;
@@ -9358,10 +9358,13 @@ export const MetaDetailsScreen = {
       this.closeEpisodeStreamChooser();
       return true;
     }
-    if (this.navigateBackFromDetail()) {
+    // Browser History already selected an authoritative route target. Keep
+    // dismissible Detail UI above it, but do not replace that target with the
+    // explicit Search/Home fallback used by in-app Back actions.
+    if (!backContext?.hasValidHistoryTarget && this.navigateBackFromDetail()) {
       return true;
     }
-    if (this.isLoadingDetail) {
+    if (!backContext?.hasValidHistoryTarget && this.isLoadingDetail) {
       void Router.backFromPendingNavigation();
       return true;
     }

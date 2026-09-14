@@ -185,6 +185,7 @@ export const Router = {
         return;
       }
       const state = event?.state || null;
+      const hasValidHistoryTarget = Boolean(state?.route && this.routes[state.route]);
       const shouldSkipConsume = Boolean(this.skipConsumeNextPopstate);
       this.skipConsumeNextPopstate = false;
       const currentScreen = this.getCurrentScreen();
@@ -195,7 +196,11 @@ export const Router = {
         !currentScreen?.hasBackDismissableOverlay?.();
       const consumeResult =
         !shouldSkipConsume && !shouldLetPlayerReturnToStream
-          ? currentScreen?.consumeBackRequest?.()
+          ? currentScreen?.consumeBackRequest?.({
+              source: "popstate",
+              hasValidHistoryTarget,
+              targetRoute: hasValidHistoryTarget ? state.route : null
+            })
           : false;
       if (consumeResult) {
         if (
@@ -210,7 +215,7 @@ export const Router = {
       if (this.current === "home" && (!state?.route || NON_BACKSTACK_ROUTES.has(state.route))) {
         return;
       }
-      if (state?.route && this.routes[state.route]) {
+      if (hasValidHistoryTarget) {
         await this.navigate(state.route, state.params || {}, {
           fromHistory: true,
           skipStackPush: true,
