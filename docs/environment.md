@@ -70,11 +70,14 @@ available.
 Generate a matching key pair on the self-host server:
 
 ```bash
-npx web-push generate-vapid-keys
+npx --yes web-push@3.6.7 generate-vapid-keys
 ```
 
-The command generates the public and private VAPID keys. Copy them into
-`NUVIO_WEB_PUSH_PUBLIC_KEY` and `NUVIO_WEB_PUSH_PRIVATE_KEY`, respectively.
+No separate global or manual `web-push` installation is required. If needed,
+`npx` downloads and runs `web-push@3.6.7`; `--yes` accepts that temporary
+installation without prompting. The command generates only a Public Key and
+Private Key. Copy them into `NUVIO_WEB_PUSH_PUBLIC_KEY` and
+`NUVIO_WEB_PUSH_PRIVATE_KEY`, respectively.
 Set `NUVIO_WEB_PUSH_SUBJECT` separately to a contact URI, such as
 `mailto:admin@example.com` or an appropriate HTTPS URI; the command does not
 generate the subject. Do not commit the real `.env` file or generated private
