@@ -80,6 +80,14 @@ const NON_BACKSTACK_ROUTES = new Set([
   ,"experienceModeSelection"
   ,"essentialAddonSetup"
 ]);
+
+const NUVIO_HISTORY_STATE_KEY = "__nuvioHistory";
+
+function getNuvioHistoryIndex(state) {
+  const value = state?.[NUVIO_HISTORY_STATE_KEY]?.index;
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
 export const Router = {
   current: null,
   currentParams: {},
@@ -89,6 +97,7 @@ export const Router = {
   suppressPopstateUntil: 0,
   skipConsumeNextPopstate: false,
   ignoreNextPopstate: false,
+  browserHistoryIndex: null,
 
   routes: {
     home: HomeScreen,
@@ -180,12 +189,13 @@ export const Router = {
       }
       if (Date.now() < Number(this.suppressPopstateUntil || 0)) {
         if (window?.history && typeof window.history.pushState === "function") {
-          window.history.pushState({ route: this.current, params: this.currentParams }, "");
+          window.history.pushState(this.createBrowserHistoryState(), "");
         }
         return;
       }
       const state = event?.state || null;
       const hasValidHistoryTarget = Boolean(state?.route && this.routes[state.route]);
+      this.browserHistoryIndex = getNuvioHistoryIndex(state);
       const shouldSkipConsume = Boolean(this.skipConsumeNextPopstate);
       this.skipConsumeNextPopstate = false;
       const currentScreen = this.getCurrentScreen();
@@ -208,7 +218,8 @@ export const Router = {
           window?.history &&
           typeof window.history.pushState === "function"
         ) {
-          window.history.pushState({ route: this.current, params: this.currentParams }, "");
+          this.browserHistoryIndex = Math.max(0, Number(this.browserHistoryIndex || 0)) + 1;
+          window.history.pushState(this.createBrowserHistoryState(), "");
         }
         return;
       }
@@ -246,6 +257,23 @@ export const Router = {
 
   ignoreSinglePopstate() {
     this.ignoreNextPopstate = true;
+  },
+
+  createBrowserHistoryState(route = this.current, params = this.currentParams, index = this.browserHistoryIndex) {
+    return {
+      route,
+      params,
+      [NUVIO_HISTORY_STATE_KEY]: {
+        index: Number.isInteger(index) && index >= 0 ? index : 0
+      }
+    };
+  },
+
+  hasPreviousBrowserHistoryEntry() {
+    return Platform.isBrowser()
+      && this.historyInitialized
+      && Number.isInteger(this.browserHistoryIndex)
+      && this.browserHistoryIndex > 0;
   },
 
   async navigate(routeName, params = {}, options = {}) {
@@ -325,18 +353,28 @@ export const Router = {
     }
 
     if (window?.history && typeof window.history.pushState === "function") {
-      const state = { route: this.current, params: this.currentParams };
       if (!this.historyInitialized) {
+        this.browserHistoryIndex = getNuvioHistoryIndex(window.history.state) ?? 0;
+        const state = this.createBrowserHistoryState();
         window.history.replaceState(state, "");
         this.historyInitialized = true;
       } else if (!fromHistory) {
         if (replaceHistory || NON_BACKSTACK_ROUTES.has(previousRoute)) {
+          const state = this.createBrowserHistoryState();
           window.history.replaceState(state, "");
         } else {
+          this.browserHistoryIndex = Math.max(0, Number(this.browserHistoryIndex || 0)) + 1;
+          const state = this.createBrowserHistoryState();
           window.history.pushState(state, "");
         }
       }
     }
+
+    // Screens that must immediately replace their own committed route (for
+    // example Continue Watching's transient Detail) run only after Router has
+    // written the browser history entry. This keeps History API ownership here
+    // while avoiding a later task that could paint the transient screen.
+    await Screen.afterNavigationCommit?.(this.currentParams, navigationContext);
   },
 
   async backFromPendingNavigation() {
@@ -364,11 +402,13 @@ export const Router = {
 
   async back(options = {}) {
     const currentScreen = this.getCurrentScreen();
-    const consumeResult = !options?.skipConsume ? currentScreen?.consumeBackRequest?.() : false;
+    const consumeResult = !options?.skipConsume
+      ? currentScreen?.consumeBackRequest?.({
+          source: "app",
+          hasPreviousBrowserHistoryEntry: this.hasPreviousBrowserHistoryEntry()
+        })
+      : false;
     if (consumeResult) {
-      if (consumeResult !== "history") {
-        this.suppressNextPopstate();
-      }
       return;
     }
 
@@ -380,7 +420,7 @@ export const Router = {
       !options?.skipHistory &&
       window?.history &&
       typeof window.history.back === "function" &&
-      this.historyInitialized
+      this.hasPreviousBrowserHistoryEntry()
     ) {
       if (options?.skipConsume) {
         this.skipConsumeNextPopstate = true;

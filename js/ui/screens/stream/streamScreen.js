@@ -738,16 +738,10 @@ export const StreamScreen = {
     return `stream:${itemType}:${itemId}:${videoId}`;
   },
 
-  navigateBackFromStream() {
-    const itemId = String(this.params?.itemId || "").trim();
-    if (!itemId) {
-      return false;
-    }
-    const itemType = normalizeType(this.params?.itemType);
-    const isSeries = itemType === "series" || itemType === "tv";
-    if (this.params?.continueWatchingBackHome && !isSeries) {
-      // Android returns movies opened from Continue Watching straight Home;
-      // only episodic content reconstructs a Detail route on Back.
+  navigateBackFromStream({ fallbackToHome = false } = {}) {
+    if (this.params?.continueWatchingBackHome) {
+      // Continue Watching always returns Home. Detail is only a transient
+      // metadata/stream-resolution route for this flow.
       void Router.navigate(
         "home",
         {},
@@ -759,6 +753,11 @@ export const StreamScreen = {
       );
       return true;
     }
+    const itemId = String(this.params?.itemId || "").trim();
+    if (!itemId) {
+      return false;
+    }
+    const itemType = normalizeType(this.params?.itemType);
     void Router.navigate(
       "detail",
       {
@@ -772,10 +771,7 @@ export const StreamScreen = {
         returnToSearchOnBack: Boolean(this.params?.returnToSearchOnBack),
         returnHomeOnBack: Boolean(
           !this.params?.returnToSearchOnBack &&
-          (this.params?.continueWatchingBackHome ||
-            this.params?.returnHomeOnBack ||
-            this.params?.returnToDetail ||
-            this.params?.fromDetailRoute)
+          (this.params?.returnHomeOnBack || fallbackToHome)
         )
       },
       {
@@ -787,8 +783,19 @@ export const StreamScreen = {
     return true;
   },
 
-  consumeBackRequest() {
-    return this.navigateBackFromStream();
+  consumeBackRequest(backContext = {}) {
+    // A normal Detail -> Stream transition has a durable Detail entry directly
+    // behind it. Let Router move through that entry instead of replacing Stream
+    // with a synthetic Detail that no longer knows its original parent route.
+    if (backContext?.hasValidHistoryTarget) {
+      return false;
+    }
+    if (backContext?.source === "app" && backContext?.hasPreviousBrowserHistoryEntry) {
+      return false;
+    }
+    return this.navigateBackFromStream({
+      fallbackToHome: !backContext?.hasPreviousBrowserHistoryEntry
+    });
   },
 
   renderDesktopBackButton() {
@@ -801,9 +808,7 @@ export const StreamScreen = {
   },
 
   handleStreamBack() {
-    if (!this.navigateBackFromStream()) {
-      Router.back();
-    }
+    Router.back();
   },
 
   captureRouteState() {
@@ -2636,9 +2641,7 @@ export const StreamScreen = {
 
     if (isBackEvent(event)) {
       event?.preventDefault?.();
-      if (!this.navigateBackFromStream()) {
-        Router.back();
-      }
+      Router.back();
       return;
     }
 

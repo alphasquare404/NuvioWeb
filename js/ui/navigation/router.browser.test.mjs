@@ -6,17 +6,48 @@ globalThis.__NUVIO_PLATFORM__ = "browser";
 const listeners = new Map();
 const historyCalls = [];
 const history = {
-  state: null,
+  entries: [{ state: null }],
+  index: 0,
+  pendingTraversal: Promise.resolve(),
+
+  get state() {
+    return this.entries[this.index]?.state ?? null;
+  },
+
   replaceState(state) {
-    this.state = state;
+    this.entries[this.index] = { state };
     historyCalls.push({ type: "replace", state });
   },
+
   pushState(state) {
-    this.state = state;
+    this.entries.splice(this.index + 1);
+    this.entries.push({ state });
+    this.index = this.entries.length - 1;
     historyCalls.push({ type: "push", state });
   },
+
   back() {
     historyCalls.push({ type: "back" });
+    if (this.index === 0) return;
+    this.index -= 1;
+    this.pendingTraversal = dispatchPopstate(this.state);
+  },
+
+  forward() {
+    historyCalls.push({ type: "forward" });
+    if (this.index >= this.entries.length - 1) return;
+    this.index += 1;
+    this.pendingTraversal = dispatchPopstate(this.state);
+  },
+
+  async whenSettled() {
+    await this.pendingTraversal;
+  },
+
+  reset() {
+    this.entries = [{ state: null }];
+    this.index = 0;
+    this.pendingTraversal = Promise.resolve();
   }
 };
 
@@ -40,16 +71,8 @@ const testWindow = {
 
 const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
-Object.defineProperty(globalThis, "document", {
-  configurable: true,
-  writable: true,
-  value: testDocument
-});
-Object.defineProperty(globalThis, "window", {
-  configurable: true,
-  writable: true,
-  value: testWindow
-});
+Object.defineProperty(globalThis, "document", { configurable: true, writable: true, value: testDocument });
+Object.defineProperty(globalThis, "window", { configurable: true, writable: true, value: testWindow });
 
 const { Platform } = await import("../../platform/index.js");
 Platform.current = null;
@@ -59,11 +82,12 @@ const originalRoutes = Router.routes;
 const originalExitApp = Platform.exitApp;
 
 function makeScreen(name, options = {}) {
-  const screen = {
+  return {
     name,
     mounts: [],
     cleanupCalls: 0,
-    mount(params, context) {
+    async mount(params, context) {
+      this.params = params;
       this.mounts.push({ params, context });
     },
     cleanup() {
@@ -73,6 +97,66 @@ function makeScreen(name, options = {}) {
     shouldReturnToStreamOnBack: options.shouldReturnToStreamOnBack,
     hasBackDismissableOverlay: options.hasBackDismissableOverlay
   };
+}
+
+function makeDetailScreen() {
+  const screen = Object.create(originalRoutes.detail);
+  screen.mounts = [];
+  screen.seasonHoldMenu = null;
+  screen.episodeHoldMenu = null;
+  screen.posterOptionsController = null;
+  screen.heroPlayMenu = null;
+  screen.libraryListMenu = null;
+  screen.desktopLibraryDestinationMenu = null;
+  screen.isTrailerPlaying = false;
+  screen.pendingEpisodeSelection = null;
+  screen.pendingMovieSelection = null;
+  screen.isLoadingDetail = false;
+  screen.mount = async function mount(params, context) {
+    this.params = params;
+    this.mounts.push({ params, context });
+  };
+  screen.cleanup = () => {};
+  return screen;
+}
+
+function makeDeferredContinueWatchingDetailScreen() {
+  const screen = makeDetailScreen();
+  screen.committedContinueWatchingRoutes = [];
+  screen.mount = async function mount(params, context) {
+    this.params = params;
+    this.isBackNavigation = Boolean(context?.isBackNavigation);
+    this.mounts.push({ params, context });
+  };
+  screen.afterNavigationCommit = function afterNavigationCommit(params, context) {
+    if (!params.autoOpenContinueWatching || context?.isBackNavigation) return;
+    this.committedContinueWatchingRoutes.push({
+      route: history.state?.route,
+      index: history.state?.__nuvioHistory?.index
+    });
+    void Router.navigate(
+      "stream",
+      {
+        itemId: params.itemId,
+        itemType: params.itemType,
+        returnToDetail: true,
+        continueWatchingBackHome: true
+      },
+      { skipStackPush: true, replaceHistory: true }
+    );
+  };
+  screen.cleanup = () => {};
+  return screen;
+}
+
+function makeStreamScreen() {
+  const screen = Object.create(originalRoutes.stream);
+  screen.mounts = [];
+  screen.mount = async function mount(params, context) {
+    this.params = params;
+    this.mounts.push({ params, context });
+  };
+  screen.cleanup = () => {};
   return screen;
 }
 
@@ -86,9 +170,10 @@ function resetRouter(routes) {
   Router.suppressPopstateUntil = 0;
   Router.skipConsumeNextPopstate = false;
   Router.ignoreNextPopstate = false;
+  Router.browserHistoryIndex = null;
   Router.browserPullToRefreshCleanup?.();
   Router.browserPullToRefreshCleanup = null;
-  history.state = null;
+  history.reset();
   historyCalls.length = 0;
   listeners.clear();
 }
@@ -99,207 +184,534 @@ function dispatchPopstate(state) {
   return handler({ state });
 }
 
-test("browser History restores Detail → Stream → Player route transitions", async () => {
+async function flushNavigation() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+function historyRoutes() {
+  return history.entries.map((entry) => entry.state?.route || null);
+}
+
+test("Detail app Back reuses Search, then browser Back reaches Home without a duplicate Search entry", async () => {
   const home = makeScreen("home");
-  const detail = makeScreen("detail");
-  const stream = makeScreen("stream");
-  const player = makeScreen("player", {
-    shouldReturnToStreamOnBack: () => true,
-    hasBackDismissableOverlay: () => false
-  });
-  resetRouter({ home, detail, stream, player });
+  const search = makeScreen("search");
+  const detail = makeDetailScreen();
+  resetRouter({ home, search, detail });
   Router.init();
 
   await Router.navigate("home");
-  await Router.navigate("detail", { id: "movie-1" });
-  await Router.navigate("stream", { id: "movie-1" });
-  await Router.navigate("player", { id: "movie-1" });
-  assert.deepEqual(historyCalls.map((entry) => entry.type), ["replace", "push", "push", "push"]);
+  await Router.navigate("search", { query: "one piece" });
+  await Router.navigate("detail", { id: "movie-1", returnToSearchOnBack: true });
 
-  await dispatchPopstate({ route: "stream", params: { id: "movie-1" } });
-  assert.equal(Router.getCurrent(), "stream");
-  assert.equal(stream.mounts.at(-1)?.context?.fromHistory, true);
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "search");
+  assert.deepEqual(historyRoutes(), ["home", "search", "detail"]);
 
-  await dispatchPopstate({ route: "detail", params: { id: "movie-1" } });
-  assert.equal(Router.getCurrent(), "detail");
-  assert.equal(detail.mounts.at(-1)?.context?.isBackNavigation, true);
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.deepEqual(historyRoutes(), ["home", "search", "detail"]);
 });
 
-test("a modal consumes browser Back before Router changes the current route", async () => {
+test("browser Back and Forward keep Search and Detail entries structurally usable", async () => {
   const home = makeScreen("home");
-  const detail = makeScreen("detail", { consumeBackRequest: () => true });
-  resetRouter({ home, detail });
+  const search = makeScreen("search");
+  const detail = makeDetailScreen();
+  resetRouter({ home, search, detail });
   Router.init();
-  await Router.navigate("home");
-  await Router.navigate("detail", { id: "movie-1" });
 
-  await dispatchPopstate({ route: "home", params: {} });
+  await Router.navigate("home");
+  await Router.navigate("search", { query: "one piece" });
+  await Router.navigate("detail", { id: "movie-1", returnToSearchOnBack: true });
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "search");
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  history.forward();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "search");
+  history.forward();
+  await history.whenSettled();
   assert.equal(Router.getCurrent(), "detail");
-  assert.deepEqual(historyCalls.at(-1), {
-    type: "push",
-    state: { route: "detail", params: { id: "movie-1" } }
-  });
+  assert.deepEqual(historyRoutes(), ["home", "search", "detail"]);
 });
 
-test("Search → See All browser Back restores the actual Search history entry", async () => {
+test("Search → Catalog See All browser Back restores the original Search entry and query", async () => {
   const home = makeScreen("home");
   const search = makeScreen("search");
   const catalogSeeAll = makeScreen("catalogSeeAll");
   resetRouter({ home, search, catalogSeeAll });
   Router.init();
 
+  await Router.navigate("home");
   await Router.navigate("search", { query: "one piece" });
   await Router.navigate("catalogSeeAll", { catalogId: "movies-search" });
-  const historyCallCount = historyCalls.length;
 
-  await dispatchPopstate({ route: "search", params: { query: "one piece" } });
-
+  history.back();
+  await history.whenSettled();
   assert.equal(Router.getCurrent(), "search");
-  assert.equal(historyCalls.length, historyCallCount, "popstate must not create a synthetic history entry");
-  assert.equal(search.mounts.at(-1)?.context?.fromHistory, true);
+  assert.deepEqual(Router.currentParams, { query: "one piece" });
+  assert.deepEqual(historyRoutes(), ["home", "search", "catalogSeeAll"]);
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.deepEqual(historyRoutes(), ["home", "search", "catalogSeeAll"]);
 });
 
-test("valid browser history targets win over Detail origin fallbacks", async () => {
-  const destinations = [
-    { route: "home", params: {}, detailParams: { returnHomeOnBack: true } },
-    { route: "search", params: { query: "one piece" }, detailParams: { returnToSearchOnBack: true } },
-    { route: "folderDetail", params: { folderId: "collection-1" }, detailParams: {} },
-    { route: "library", params: {}, detailParams: {} },
-    { route: "discover", params: { tab: "popular" }, detailParams: {} },
-    { route: "detail", params: { id: "movie-1" }, detailParams: { id: "movie-2" } }
-  ];
+test("browser Back restores Player → Stream → Detail through existing entries", async () => {
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makeScreen("player", {
+    shouldReturnToStreamOnBack: () => true,
+    hasBackDismissableOverlay: () => false
+  });
+  resetRouter({ detail, stream, player });
+  Router.init();
 
-  for (const destination of destinations) {
-    const contexts = [];
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("stream", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("player", { itemId: "movie-1", itemType: "movie" });
+  const writesBeforeBack = historyCalls.filter((call) => call.type === "push" || call.type === "replace").length;
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "stream");
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(historyCalls.filter((call) => call.type === "push" || call.type === "replace").length, writesBeforeBack);
+  assert.deepEqual(historyRoutes(), ["detail", "stream", "player"]);
+});
+
+for (const parent of [
+  { route: "folderDetail", params: { folderId: "collection-1" } },
+  { route: "discover", params: { tab: "popular" } },
+  { route: "library", params: {} }
+]) {
+  test(`${parent.route} → Detail → Stream reuses both existing parent entries on app Back`, async () => {
     const home = makeScreen("home");
-    const detail = makeScreen("detail", {
-      consumeBackRequest(context) {
-        contexts.push(context);
-        // This models Detail's explicit Search/Home fallback: it is available
-        // for app Back, but must not consume a valid browser-history target.
-        return !context?.hasValidHistoryTarget && Boolean(this.originFallback);
-      }
-    });
-    detail.originFallback = Boolean(
-      destination.detailParams.returnHomeOnBack || destination.detailParams.returnToSearchOnBack
-    );
-    const target = destination.route === "detail" ? detail : makeScreen(destination.route);
-    resetRouter({ home, detail, [destination.route]: target });
+    const parentScreen = makeScreen(parent.route);
+    const detail = makeDetailScreen();
+    const stream = makeStreamScreen();
+    resetRouter({ home, [parent.route]: parentScreen, detail, stream });
     Router.init();
 
-    await Router.navigate(destination.route, destination.params);
-    await Router.navigate("detail", destination.detailParams);
-    const historyCallCount = historyCalls.length;
-
-    await dispatchPopstate({ route: destination.route, params: destination.params });
-
-    assert.equal(Router.getCurrent(), destination.route, `Back must restore ${destination.route}`);
-    assert.equal(historyCalls.length, historyCallCount, `Back to ${destination.route} must not write history`);
-    assert.deepEqual(contexts.at(-1), {
-      source: "popstate",
-      hasValidHistoryTarget: true,
-      targetRoute: destination.route
+    await Router.navigate("home");
+    await Router.navigate(parent.route, parent.params);
+    await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+    await Router.navigate("stream", {
+      itemId: "movie-1",
+      itemType: "movie",
+      returnToDetail: true,
+      fromDetailRoute: true
     });
-  }
-});
 
-test("Detail keeps origin fallback for explicit in-app Back while browser Back skips it", () => {
-  const detail = Object.create(originalRoutes.detail);
-  detail.seasonHoldMenu = null;
-  detail.episodeHoldMenu = null;
-  detail.posterOptionsController = null;
-  detail.heroPlayMenu = null;
-  detail.libraryListMenu = null;
-  detail.desktopLibraryDestinationMenu = null;
-  detail.isTrailerPlaying = false;
-  detail.pendingEpisodeSelection = null;
-  detail.pendingMovieSelection = null;
-  detail.isLoadingDetail = false;
-  let fallbackCalls = 0;
-  detail.navigateBackFromDetail = () => {
-    fallbackCalls += 1;
-    return true;
-  };
-
-  assert.equal(
-    detail.consumeBackRequest({ source: "popstate", hasValidHistoryTarget: true, targetRoute: "search" }),
-    false
-  );
-  assert.equal(fallbackCalls, 0);
-  assert.equal(detail.consumeBackRequest(), true);
-  assert.equal(fallbackCalls, 1);
-
-  assert.equal(
-    detail.consumeBackRequest({ source: "popstate", hasValidHistoryTarget: false, targetRoute: null }),
-    true
-  );
-  assert.equal(fallbackCalls, 2);
-
-  detail.navigateBackFromDetail = () => false;
-  detail.isLoadingDetail = true;
-  assert.equal(
-    detail.consumeBackRequest({ source: "popstate", hasValidHistoryTarget: true, targetRoute: "search" }),
-    false
-  );
-});
-
-test("an invalid popstate route remains eligible for Detail's existing origin fallback", async () => {
-  const home = makeScreen("home");
-  const contexts = [];
-  const detail = makeScreen("detail", {
-    consumeBackRequest(context) {
-      contexts.push(context);
-      return !context?.hasValidHistoryTarget;
-    }
+    await Router.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), "detail");
+    await Router.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), parent.route);
+    assert.deepEqual(Router.currentParams, parent.params);
+    assert.deepEqual(historyRoutes(), ["home", parent.route, "detail", "stream"]);
   });
+}
+
+test("Library → Detail direct app Back remains a real History transition", async () => {
+  const library = makeScreen("library");
+  const detail = makeDetailScreen();
+  resetRouter({ library, detail });
+  Router.init();
+
+  await Router.navigate("library");
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.back();
+  await history.whenSettled();
+
+  assert.equal(Router.getCurrent(), "library");
+  assert.deepEqual(historyRoutes(), ["library", "detail"]);
+});
+
+test("Home → Detail app Back prefers the durable Home entry over returnHomeOnBack", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
   resetRouter({ home, detail });
   Router.init();
+
   await Router.navigate("home");
-  await Router.navigate("detail", { id: "movie-1", returnHomeOnBack: true });
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie", returnHomeOnBack: true });
+  await Router.back();
+  await history.whenSettled();
 
-  await dispatchPopstate({ route: "removed-route", params: {} });
-
-  assert.equal(Router.getCurrent(), "detail");
-  assert.deepEqual(contexts.at(-1), {
-    source: "popstate",
-    hasValidHistoryTarget: false,
-    targetRoute: null
-  });
-  assert.deepEqual(historyCalls.at(-1), {
-    type: "push",
-    state: { route: "detail", params: { id: "movie-1", returnHomeOnBack: true } }
-  });
+  assert.equal(Router.getCurrent(), "home");
+  assert.deepEqual(historyRoutes(), ["home", "detail"]);
 });
 
-test("an active Detail overlay still consumes browser Back before route restoration", async () => {
+test("Detail → Detail app Back restores the existing first Detail entry", async () => {
+  const detail = makeDetailScreen();
+  resetRouter({ detail });
+  Router.init();
+
+  await Router.navigate("detail", { itemId: "movie-a", itemType: "movie" });
+  await Router.navigate("detail", { itemId: "movie-b", itemType: "movie" });
+  await Router.back();
+  await history.whenSettled();
+
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(Router.currentParams.itemId, "movie-a");
+  assert.deepEqual(historyRoutes(), ["detail", "detail"]);
+});
+
+test("Detail overlays consume the first app Back without moving the route", async () => {
   const home = makeScreen("home");
-  const contexts = [];
+  let overlayVisible = true;
   const detail = makeScreen("detail", {
-    consumeBackRequest(context) {
-      contexts.push(context);
+    consumeBackRequest() {
+      if (!overlayVisible) return false;
+      overlayVisible = false;
       return true;
     }
   });
   resetRouter({ home, detail });
   Router.init();
+
   await Router.navigate("home");
   await Router.navigate("detail", { id: "movie-1" });
-
-  await dispatchPopstate({ route: "home", params: {} });
-
+  await Router.back();
   assert.equal(Router.getCurrent(), "detail");
-  assert.deepEqual(contexts.at(-1), {
-    source: "popstate",
-    hasValidHistoryTarget: true,
-    targetRoute: "home"
-  });
-  assert.deepEqual(historyCalls.at(-1), {
-    type: "push",
-    state: { route: "detail", params: { id: "movie-1" } }
-  });
+  assert.deepEqual(historyRoutes(), ["home", "detail"]);
+
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
 });
 
-test("root browser Back does not request native app exit or install TV route guards", async () => {
+test("Detail overlays restore Detail on browser Back, then allow the next browser Back", async () => {
+  const home = makeScreen("home");
+  let overlayVisible = true;
+  const detail = makeScreen("detail", {
+    consumeBackRequest() {
+      if (!overlayVisible) return false;
+      overlayVisible = false;
+      return true;
+    }
+  });
+  resetRouter({ home, detail });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { id: "movie-1" });
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(history.state.__nuvioHistory.index, 1);
+  assert.deepEqual(historyRoutes(), ["home", "detail"]);
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(Router.suppressPopstateUntil, 0);
+});
+
+test("browser Back from Stream restores the existing Detail without a synthetic write", async () => {
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ detail, stream });
+  Router.init();
+
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("stream", { itemId: "movie-1", itemType: "movie", returnToDetail: true });
+  const writesBeforeBack = historyCalls.filter((call) => call.type === "push" || call.type === "replace").length;
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(historyCalls.filter((call) => call.type === "push" || call.type === "replace").length, writesBeforeBack);
+});
+
+test("valid popstate targets remain authoritative for Detail and Stream", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ home, detail, stream });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1", returnHomeOnBack: true });
+  await dispatchPopstate({ route: "home", params: {} });
+  assert.equal(Router.getCurrent(), "home");
+
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("stream", { itemId: "movie-1", itemType: "movie", returnToDetail: true });
+  await dispatchPopstate({ route: "detail", params: { itemId: "movie-1", itemType: "movie" } });
+  assert.equal(Router.getCurrent(), "detail");
+});
+
+test("direct-entry fallbacks never use browser history merely because it has external entries", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  resetRouter({ home, detail });
+  Router.init();
+
+  await Router.navigate("detail", { itemId: "movie-1", returnHomeOnBack: true });
+  await Router.back();
+  await flushNavigation();
+
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(historyCalls.filter((call) => call.type === "back").length, 0);
+});
+
+test("replaceHistory preserves the current Nuvio index before the next normal push", async () => {
+  const home = makeScreen("home");
+  const search = makeScreen("search");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ home, search, detail, stream });
+  Router.init();
+
+  await Router.navigate("home");
+  assert.equal(history.state.__nuvioHistory.index, 0);
+  await Router.navigate("search", { query: "one piece" });
+  assert.equal(history.state.__nuvioHistory.index, 1);
+  await Router.navigate("detail", { itemId: "movie-1" }, { replaceHistory: true });
+  assert.equal(history.state.__nuvioHistory.index, 1);
+  await Router.navigate("stream", { itemId: "movie-1" });
+  assert.equal(history.state.__nuvioHistory.index, 2);
+});
+
+test("legacy and malformed route markers restore routes but never prove browser Back depth", async () => {
+  const home = makeScreen("home");
+  const search = makeScreen("search");
+  const detail = makeDetailScreen();
+  resetRouter({ home, search, detail });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("search", { query: "one piece" });
+  await Router.navigate("detail", { itemId: "movie-1" });
+  await dispatchPopstate({ route: "search", params: { query: "legacy" } });
+  assert.equal(Router.getCurrent(), "search");
+  assert.equal(Router.browserHistoryIndex, null);
+  const browserBackCalls = historyCalls.filter((call) => call.type === "back").length;
+  await Router.back();
+  assert.equal(historyCalls.filter((call) => call.type === "back").length, browserBackCalls);
+
+  await dispatchPopstate({
+    route: "search",
+    params: { query: "malformed" },
+    __nuvioHistory: { index: "2" }
+  });
+  assert.equal(Router.getCurrent(), "search");
+  assert.equal(Router.browserHistoryIndex, null);
+});
+
+test("direct Continue Watching movie and episode routes safely fall back to Home", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ home, detail, stream });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("stream", {
+    itemId: "movie-1",
+    itemType: "movie",
+    continueWatchingBackHome: true
+  }, { skipStackPush: true, replaceHistory: true });
+  await Router.back();
+  await flushNavigation();
+  assert.equal(Router.getCurrent(), "home");
+  assert.deepEqual(historyRoutes(), ["home"]);
+
+  await Router.navigate("stream", {
+    itemId: "series-1",
+    itemType: "series",
+    continueWatchingBackHome: true
+  }, { skipStackPush: true, replaceHistory: true });
+  await Router.back();
+  await flushNavigation();
+  assert.equal(Router.getCurrent(), "home");
+  assert.deepEqual(historyRoutes(), ["home"]);
+});
+
+test("Continue Watching replaces committed transient Detail without a timer task", async () => {
+  const library = makeScreen("library");
+  const home = makeScreen("home");
+  const detail = makeDeferredContinueWatchingDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ library, home, detail, stream });
+  Router.init();
+
+  await Router.navigate("library");
+  await Router.navigate("home");
+  await Router.navigate("detail", {
+    itemId: "movie-1",
+    itemType: "movie",
+    autoOpenContinueWatching: true,
+    returnHomeOnBack: true
+  });
+  await flushNavigation();
+
+  assert.equal(Router.getCurrent(), "stream");
+  assert.deepEqual(detail.committedContinueWatchingRoutes, [{ route: "detail", index: 2 }]);
+  assert.deepEqual(historyRoutes(), ["library", "home", "stream"]);
+  assert.deepEqual(
+    history.entries.map((entry) => entry.state?.__nuvioHistory?.index),
+    [0, 1, 2]
+  );
+
+  await Router.back();
+  await flushNavigation();
+  assert.equal(Router.getCurrent(), "home");
+});
+
+test("browser Back from a Continue Watching movie returns to the preserved Home entry", async () => {
+  const library = makeScreen("library");
+  const home = makeScreen("home");
+  const detail = makeDeferredContinueWatchingDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ library, home, detail, stream });
+  Router.init();
+
+  await Router.navigate("library");
+  await Router.navigate("home");
+  await Router.navigate("detail", {
+    itemId: "movie-1",
+    itemType: "movie",
+    autoOpenContinueWatching: true,
+    returnHomeOnBack: true
+  });
+  await flushNavigation();
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.deepEqual(historyRoutes(), ["library", "home", "stream"]);
+});
+
+test("Continue Watching episode app Back reuses Home without synthesizing Detail", async () => {
+  const library = makeScreen("library");
+  const home = makeScreen("home");
+  const detail = makeDeferredContinueWatchingDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ library, home, detail, stream });
+  Router.init();
+
+  await Router.navigate("library");
+  await Router.navigate("home");
+  await Router.navigate("detail", {
+    itemId: "series-1",
+    itemType: "series",
+    autoOpenContinueWatching: true,
+    returnHomeOnBack: true
+  });
+  await flushNavigation();
+  assert.deepEqual(historyRoutes(), ["library", "home", "stream"]);
+  assert.deepEqual(
+    history.entries.map((entry) => entry.state?.__nuvioHistory?.index),
+    [0, 1, 2]
+  );
+
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(detail.mounts.filter((mount) => mount.context?.isBackNavigation).length, 0);
+  assert.deepEqual(historyRoutes(), ["library", "home", "stream"]);
+});
+
+test("browser Back from a Continue Watching episode returns to Home without exposing transient Detail", async () => {
+  const library = makeScreen("library");
+  const home = makeScreen("home");
+  const detail = makeDeferredContinueWatchingDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ library, home, detail, stream });
+  Router.init();
+
+  await Router.navigate("library");
+  await Router.navigate("home");
+  await Router.navigate("detail", {
+    itemId: "series-1",
+    itemType: "series",
+    autoOpenContinueWatching: true,
+    returnHomeOnBack: true
+  });
+  await flushNavigation();
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.deepEqual(historyRoutes(), ["library", "home", "stream"]);
+});
+
+test("Continue Watching episode keeps Home as its semantic parent after a Search prefix", async () => {
+  const search = makeScreen("search");
+  const home = makeScreen("home");
+  const detail = makeDeferredContinueWatchingDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ search, home, detail, stream });
+  Router.init();
+
+  await Router.navigate("search", { query: "one piece" });
+  await Router.navigate("home");
+  await Router.navigate("detail", {
+    itemId: "series-1",
+    itemType: "series",
+    autoOpenContinueWatching: true,
+    returnHomeOnBack: true
+  });
+  await flushNavigation();
+
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(detail.mounts.filter((mount) => mount.context?.isBackNavigation).length, 0);
+  assert.deepEqual(historyRoutes(), ["search", "home", "stream"]);
+});
+
+test("browser Back from a Search-prefixed Continue Watching episode returns to Home", async () => {
+  const search = makeScreen("search");
+  const home = makeScreen("home");
+  const detail = makeDeferredContinueWatchingDetailScreen();
+  const stream = makeStreamScreen();
+  resetRouter({ search, home, detail, stream });
+  Router.init();
+
+  await Router.navigate("search", { query: "one piece" });
+  await Router.navigate("home");
+  await Router.navigate("detail", {
+    itemId: "series-1",
+    itemType: "series",
+    autoOpenContinueWatching: true,
+    returnHomeOnBack: true
+  });
+  await flushNavigation();
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.deepEqual(historyRoutes(), ["search", "home", "stream"]);
+});
+
+test("invalid popstate remains eligible for Detail's safe origin fallback", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  resetRouter({ home, detail });
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1", returnHomeOnBack: true });
+
+  await dispatchPopstate({ route: "removed-route", params: {} });
+  await flushNavigation();
+  assert.equal(Router.getCurrent(), "home");
+});
+
+test("root browser Back does not request native app exit", async () => {
   const home = makeScreen("home");
   resetRouter({ home });
   Router.init();
@@ -310,13 +722,9 @@ test("root browser Back does not request native app exit or install TV route gua
   };
   try {
     await Router.back();
-    await dispatchPopstate(null);
     assert.equal(Router.getCurrent(), "home");
     assert.equal(nativeExitCalls, 0);
     assert.equal(historyCalls.filter((entry) => entry.type === "back").length, 0);
-    assert.equal("consumeWebOsResumeRoute" in Router, false);
-    assert.equal("persistWebOsResumeRoute" in Router, false);
-    assert.equal("beginRouteReturnBackGuard" in Router, false);
   } finally {
     Platform.exitApp = originalExitApp;
   }

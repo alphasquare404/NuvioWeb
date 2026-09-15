@@ -1846,6 +1846,7 @@ export const MetaDetailsScreen = {
     this.selectedSeasonEpisodeState = null;
     this.railFocusIndexByKey = {};
     this.watchedEpisodeKeys = new Set();
+    this.autoOpenContinueWatchingStreamReady = false;
     this.autoOpenedContinueWatchingStream = false;
     this.restoredContentScrollTop = 0;
     this.restoredTrackScrollLeftByKey = {};
@@ -1884,7 +1885,7 @@ export const MetaDetailsScreen = {
       if (!hasMdbListRatings(this.meta?.mdbListRatings)) {
         void this.loadMdbListRatings(this.meta, refreshToken);
       }
-      this.maybeAutoOpenContinueWatchingStream();
+      this.markAutoOpenContinueWatchingStreamReady();
       return;
     }
 
@@ -2135,7 +2136,7 @@ export const MetaDetailsScreen = {
       void this.refreshOfflineDownloadStatus();
     }
     this.isLoadingDetail = false;
-    this.maybeAutoOpenContinueWatchingStream();
+    this.markAutoOpenContinueWatchingStreamReady();
     void this.refreshTrailerSource(meta, token);
     void this.loadTraktComments({ force: true });
 
@@ -2956,6 +2957,33 @@ export const MetaDetailsScreen = {
     return this.nextEpisodeToWatch || this.episodes[0] || null;
   },
 
+  markAutoOpenContinueWatchingStreamReady() {
+    if (
+      !this.params?.autoOpenContinueWatching ||
+      this.autoOpenedContinueWatchingStream ||
+      this.isBackNavigation
+    ) {
+      return;
+    }
+    this.autoOpenContinueWatchingStreamReady = true;
+  },
+
+  afterNavigationCommit(params, navigationContext = {}) {
+    if (
+      !this.autoOpenContinueWatchingStreamReady ||
+      Router.getCurrent() !== "detail" ||
+      this.params !== params ||
+      !this.params?.autoOpenContinueWatching ||
+      this.isBackNavigation ||
+      navigationContext?.isBackNavigation
+    ) {
+      return;
+    }
+
+    this.autoOpenContinueWatchingStreamReady = false;
+    this.maybeAutoOpenContinueWatchingStream();
+  },
+
   maybeAutoOpenContinueWatchingStream() {
     if (
       !this.params?.autoOpenContinueWatching ||
@@ -3667,9 +3695,7 @@ export const MetaDetailsScreen = {
   },
 
   handleDetailBack() {
-    if (!this.navigateBackFromDetail()) {
-      Router.back();
-    }
+    Router.back();
   },
 
   renderSeriesLayout(meta) {
@@ -9358,13 +9384,17 @@ export const MetaDetailsScreen = {
       this.closeEpisodeStreamChooser();
       return true;
     }
-    // Browser History already selected an authoritative route target. Keep
-    // dismissible Detail UI above it, but do not replace that target with the
-    // explicit Search/Home fallback used by in-app Back actions.
-    if (!backContext?.hasValidHistoryTarget && this.navigateBackFromDetail()) {
+    // A durable Router history entry is the authoritative parent for both
+    // browser Back and the visible in-app Back control. Search/Home flags are
+    // only safe fallbacks for transient or direct-entry Detail routes.
+    const shouldUseHistory = Boolean(
+      backContext?.hasValidHistoryTarget ||
+      (backContext?.source === "app" && backContext?.hasPreviousBrowserHistoryEntry)
+    );
+    if (!shouldUseHistory && this.navigateBackFromDetail()) {
       return true;
     }
-    if (!backContext?.hasValidHistoryTarget && this.isLoadingDetail) {
+    if (!shouldUseHistory && this.isLoadingDetail) {
       void Router.backFromPendingNavigation();
       return true;
     }
@@ -10882,13 +10912,6 @@ export const MetaDetailsScreen = {
       if (typeof event.preventDefault === "function") {
         event.preventDefault();
       }
-      if (this.consumeBackRequest()) {
-        return;
-      }
-      if (this.pendingEpisodeSelection || this.pendingMovieSelection) {
-        this.closeEpisodeStreamChooser();
-        return;
-      }
       Router.back();
       return;
     }
@@ -11022,9 +11045,6 @@ export const MetaDetailsScreen = {
 
     const action = current.dataset.action;
     if (action === "goBack") {
-      if (this.navigateBackFromDetail()) {
-        return;
-      }
       Router.back();
       return;
     }
@@ -11366,6 +11386,7 @@ export const MetaDetailsScreen = {
   },
 
   cleanup() {
+    this.autoOpenContinueWatchingStreamReady = false;
     this.offlineArtworkResolver?.releaseAll?.();
     this.offlineArtworkResolver = null;
     this.browserCardTouchIntentCleanup?.();
