@@ -5,6 +5,34 @@ globalThis.__NUVIO_PLATFORM__ = "browser";
 
 const listeners = new Map();
 const historyCalls = [];
+const screenContainers = new Map();
+
+function makeStyle() {
+  const values = new Map();
+  return {
+    display: "",
+    getPropertyValue: (name) => values.get(name) || "",
+    setProperty(name, value) {
+      values.set(name, String(value));
+      if (name === "display") this.display = String(value);
+    },
+    removeProperty(name) {
+      values.delete(name);
+      if (name === "display") this.display = "";
+    }
+  };
+}
+
+function makeContainer() {
+  const attributes = new Map();
+  return {
+    style: makeStyle(),
+    inert: false,
+    getAttribute: (name) => attributes.get(name) ?? null,
+    setAttribute: (name, value) => attributes.set(name, String(value)),
+    removeAttribute: (name) => attributes.delete(name)
+  };
+}
 const history = {
   entries: [{ state: null }],
   index: 0,
@@ -52,9 +80,10 @@ const history = {
 };
 
 const testDocument = {
-  body: { classList: { contains: () => false } },
-  documentElement: {},
+  body: { classList: { contains: () => false }, style: makeStyle() },
+  documentElement: { style: makeStyle() },
   title: "",
+  getElementById: (id) => screenContainers.get(id) || null,
   addEventListener() {},
   removeEventListener() {}
 };
@@ -111,6 +140,25 @@ function makeRouteStateScreen(name, routeStateKey) {
       ? String(context.restoredState.value || "")
       : String(params?.value || "");
     this.mounts.push({ params, context, value: this.value });
+  };
+  return screen;
+}
+
+function makeVisualRouteStateScreen(name, routeStateKey) {
+  const screen = makeRouteStateScreen(name, routeStateKey);
+  screen.visualState = { scrollTop: 0, railLeft: 0, focusId: null };
+  screen.captureRouteState = () => ({
+    value: screen.value,
+    visualState: { ...screen.visualState }
+  });
+  screen.mount = async function mount(params, context) {
+    this.params = params;
+    const restored = context?.restoreRouteState ? context?.restoredState || null : null;
+    this.value = restored ? String(restored.value || "") : String(params?.value || "");
+    this.visualState = restored?.visualState
+      ? { ...restored.visualState }
+      : { scrollTop: 0, railLeft: 0, focusId: null };
+    this.mounts.push({ params, context, value: this.value, visualState: this.visualState });
   };
   return screen;
 }
@@ -228,6 +276,7 @@ function resetRouter(routes) {
   Router.ignoreNextPopstate = false;
   Router.browserHistoryIndex = null;
   Router.browserHistoryProvenance = null;
+  Router.suspendedDetailParent = null;
   Router.pendingPreviousRouteBack = null;
   Router.browserPullToRefreshCleanup?.();
   Router.browserPullToRefreshCleanup = null;
@@ -235,6 +284,7 @@ function resetRouter(routes) {
   history.reset();
   historyCalls.length = 0;
   listeners.clear();
+  screenContainers.clear();
 }
 
 test("route snapshots are scoped to each Search history entry and fresh Search stays fresh", async () => {
@@ -267,6 +317,79 @@ test("route snapshots are scoped to each Search history entry and fresh Search s
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "search");
   assert.equal(search.value, "batman", "the earlier Search entry restores its own snapshot");
+});
+
+test("visual route state restores only on the same history entry and ignores a missing focus target", async () => {
+  const home = makeScreen("home");
+  const search = makeRouteStateScreen("search", "route:search");
+  const detail = makeScreen("detail");
+  search.visual = { scrollTop: 0, railLeft: 0, focusId: null };
+  search.captureRouteState = () => ({ value: search.value, visualState: search.visual });
+  search.mount = async function mount(params, context) {
+    this.params = params;
+    this.value = context?.restoreRouteState && context?.restoredState
+      ? String(context.restoredState.value || "")
+      : String(params?.value || "");
+    this.visual = context?.restoreRouteState && context?.restoredState?.visualState
+      ? context.restoredState.visualState
+      : { scrollTop: 0, railLeft: 0, focusId: null };
+    this.mounts.push({ params, context, value: this.value, visual: this.visual });
+  };
+  resetRouter({ home, search, detail });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("search");
+  search.value = "batman";
+  search.visual = { scrollTop: 640, railLeft: 180, focusId: "missing-card" };
+  await Router.navigate("detail", { itemId: "movie-a" });
+  await Router.back();
+  await history.whenSettled();
+  assert.deepEqual(search.visual, { scrollTop: 640, railLeft: 180, focusId: "missing-card" });
+
+  await Router.navigate("home");
+  await Router.navigate("search");
+  assert.deepEqual(search.visual, { scrollTop: 0, railLeft: 0, focusId: null }, "a fresh entry must not reuse visual state");
+
+  search.value = "superman";
+  search.visual = { scrollTop: 240, railLeft: 80, focusId: "missing-card" };
+  await Router.navigate("detail", { itemId: "movie-b" });
+  history.back();
+  await history.whenSettled();
+  assert.equal(search.value, "superman", "logical Issue #5 state and visual Issue #6 state restore together");
+  assert.deepEqual(search.visual, { scrollTop: 240, railLeft: 80, focusId: "missing-card" });
+});
+
+test("Home, Search, and Discover restore their visual snapshots on browser Back", async () => {
+  const home = makeVisualRouteStateScreen("home", "route:home");
+  const search = makeVisualRouteStateScreen("search", "route:search");
+  const discover = makeVisualRouteStateScreen("discover", "route:discover");
+  const detail = makeScreen("detail");
+  resetRouter({ home, search, discover, detail });
+  Router.init();
+
+  await Router.navigate("home");
+  home.visualState = { scrollTop: 540, railLeft: 170, focusId: null };
+  await Router.navigate("detail", { itemId: "home-item" });
+  history.back();
+  await history.whenSettled();
+  assert.deepEqual(home.visualState, { scrollTop: 540, railLeft: 170, focusId: null });
+
+  await Router.navigate("search");
+  search.value = "batman";
+  search.visualState = { scrollTop: 720, railLeft: 0, focusId: "missing-card" };
+  await Router.navigate("detail", { itemId: "search-item" });
+  history.back();
+  await history.whenSettled();
+  assert.equal(search.value, "batman");
+  assert.deepEqual(search.visualState, { scrollTop: 720, railLeft: 0, focusId: "missing-card" });
+
+  await Router.navigate("discover");
+  discover.visualState = { scrollTop: 960, railLeft: 0, focusId: "missing-card" };
+  await Router.navigate("detail", { itemId: "discover-item" });
+  history.back();
+  await history.whenSettled();
+  assert.deepEqual(discover.visualState, { scrollTop: 960, railLeft: 0, focusId: "missing-card" });
 });
 
 test("replaceHistory clears obsolete entry snapshots before a different route occupies that entry", async () => {
@@ -622,6 +745,79 @@ test("ten rapid Player Back requests accept one settled browser history movement
   await Router.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "detail");
+});
+
+test("browser Forward renders a valid target instead of letting Home consume it", async () => {
+  const home = makeScreen("home", { consumeBackRequest: () => true });
+  const detail = makeScreen("detail");
+  resetRouter({ home, detail });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-a" });
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+
+  history.forward();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(detail.mounts.length, 2, "the Forward target must mount again");
+});
+
+test("Detail suspends and resumes each supported parent without remounting it", async () => {
+  for (const routeName of ["home", "search", "discover", "library", "folderDetail"]) {
+    const parent = makeScreen(routeName);
+    const detail = makeScreen("detail");
+    parent.container = makeContainer();
+    detail.container = makeContainer();
+    screenContainers.set(routeName, parent.container);
+    screenContainers.set("detail", detail.container);
+    resetRouter({ [routeName]: parent, detail });
+    screenContainers.set(routeName, parent.container);
+    screenContainers.set("detail", detail.container);
+    Router.init();
+
+    await Router.navigate(routeName, { entry: routeName });
+    await Router.navigate("detail", { itemId: `${routeName}-item` });
+    assert.equal(parent.cleanupCalls, 0, `${routeName} stays mounted under Detail`);
+    assert.equal(parent.container.inert, true);
+    assert.equal(detail.container.style.getPropertyValue("position"), "fixed");
+
+    history.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), routeName);
+    assert.equal(parent.mounts.length, 1, `${routeName} resumes its existing DOM`);
+    assert.equal(parent.cleanupCalls, 0);
+    assert.equal(parent.container.inert, false);
+
+    history.forward();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), "detail");
+    assert.equal(detail.mounts.length, 2, "Forward mounts Detail again over the parent");
+    history.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), routeName);
+  }
+});
+
+test("fresh parent navigation never reuses an unrelated suspended Detail parent", async () => {
+  const home = makeScreen("home");
+  const detail = makeScreen("detail");
+  home.container = makeContainer();
+  detail.container = makeContainer();
+  resetRouter({ home, detail });
+  screenContainers.set("home", home.container);
+  screenContainers.set("detail", detail.container);
+  Router.init();
+
+  await Router.navigate("home", { entry: "first" });
+  await Router.navigate("detail", { itemId: "movie-a" });
+  await Router.navigate("home", { entry: "fresh" });
+
+  assert.equal(home.mounts.length, 2, "fresh navigation mounts a fresh Home route");
+  assert.equal(home.params.entry, "fresh");
+  assert.equal(home.cleanupCalls, 1, "the old suspended parent is released normally");
 });
 
 test("Player Back safely synthesizes Stream only without a proven Stream predecessor", async () => {

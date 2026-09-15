@@ -225,3 +225,26 @@ test("LibraryController validates restored genre and year after metadata hydrati
     }
   );
 });
+
+test("LibraryController clears active facets without changing ordinary filter state mechanics", () => {
+  const controller = new LibraryController();
+  try {
+    controller.state = {
+      ...controller.state,
+      selectedTypeKey: "movie",
+      selectedGenre: "Thriller",
+      selectedYear: "2024",
+      expandedPicker: "genre",
+      pickerFocusIndex: 3
+    };
+
+    assert.equal(controller.clearFilters(), true);
+    assert.equal(controller.state.selectedTypeKey, "__all__");
+    assert.equal(controller.state.selectedGenre, null);
+    assert.equal(controller.state.selectedYear, null);
+    assert.equal(controller.state.expandedPicker, null);
+    assert.equal(controller.state.pickerFocusIndex, 0);
+  } finally {
+    controller.dispose();
+  }
+});

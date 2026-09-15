@@ -83,6 +83,21 @@ const NON_BACKSTACK_ROUTES = new Set([
 ]);
 
 const NUVIO_HISTORY_STATE_KEY = "__nuvioHistory";
+const DETAIL_SUSPEND_PARENT_ROUTES = new Set(["home", "search", "discover", "library", "folderDetail"]);
+
+function rememberInlineStyles(element, properties) {
+  return Object.fromEntries(
+    properties.map((property) => [property, element?.style?.getPropertyValue?.(property) || ""])
+  );
+}
+
+function restoreInlineStyles(element, styles = {}) {
+  Object.entries(styles || {}).forEach(([property, value]) => {
+    if (!element?.style) return;
+    if (value) element.style.setProperty(property, value);
+    else element.style.removeProperty(property);
+  });
+}
 
 function getNuvioHistoryIndex(state) {
   const value = state?.[NUVIO_HISTORY_STATE_KEY]?.index;
@@ -118,6 +133,7 @@ export const Router = {
   ignoreNextPopstate: false,
   browserHistoryIndex: null,
   browserHistoryProvenance: null,
+  suspendedDetailParent: null,
   pendingPreviousRouteBack: null,
 
   routes: {
@@ -218,6 +234,9 @@ export const Router = {
     if (this.popstateBound) {
       return;
     }
+    if (window?.history && "scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
     this.popstateBound = true;
     window.addEventListener("popstate", async (event) => {
       if (this.ignoreNextPopstate) {
@@ -243,8 +262,13 @@ export const Router = {
         state?.route === "stream" &&
         currentScreen?.shouldReturnToStreamOnBack?.() !== false &&
         !currentScreen?.hasBackDismissableOverlay?.();
+      // Home uses Back to open/dismiss its sidebar, but that local behavior
+      // must not consume a valid Forward traversal into another Nuvio route.
+      const shouldSkipHomeForwardConsume = Boolean(
+        this.current === "home" && hasValidHistoryTarget && state.route !== this.current
+      );
       const consumeResult =
-        !shouldSkipConsume && !shouldLetPlayerReturnToStream
+        !shouldSkipConsume && !shouldLetPlayerReturnToStream && !shouldSkipHomeForwardConsume
           ? currentScreen?.consumeBackRequest?.({
               source: "popstate",
               hasValidHistoryTarget,
@@ -397,6 +421,91 @@ export const Router = {
       && this.browserHistoryIndex > 0;
   },
 
+  suspendCurrentParentForDetail() {
+    if (!Platform.isBrowser() || !DETAIL_SUSPEND_PARENT_ROUTES.has(this.current)) {
+      return false;
+    }
+    const parentScreen = this.routes[this.current];
+    const parentContainer = parentScreen?.container || document?.getElementById?.(this.current);
+    const detailContainer = document?.getElementById?.("detail");
+    if (!parentScreen || !parentContainer || !detailContainer) {
+      return false;
+    }
+    const documentElement = document.documentElement;
+    const body = document.body;
+    this.suspendedDetailParent = {
+      route: this.current,
+      params: this.currentParams,
+      historyIndex: this.browserHistoryIndex,
+      screen: parentScreen,
+      parentContainer,
+      parentInert: Boolean(parentContainer.inert),
+      parentAriaHidden: parentContainer.getAttribute?.("aria-hidden"),
+      detailContainer,
+      detailStyles: rememberInlineStyles(detailContainer, [
+        "position", "inset", "z-index", "overflow-y", "overscroll-behavior", "background"
+      ]),
+      documentStyles: rememberInlineStyles(documentElement, ["overflow"]),
+      bodyStyles: rememberInlineStyles(body, ["overflow"])
+    };
+    parentContainer.inert = true;
+    parentContainer.setAttribute?.("aria-hidden", "true");
+    documentElement?.style?.setProperty("overflow", "hidden");
+    body?.style?.setProperty("overflow", "hidden");
+    detailContainer.style.setProperty("position", "fixed");
+    detailContainer.style.setProperty("inset", "0");
+    detailContainer.style.setProperty("z-index", "1000");
+    detailContainer.style.setProperty("overflow-y", "auto");
+    detailContainer.style.setProperty("overscroll-behavior", "contain");
+    detailContainer.style.setProperty("background", "var(--bg-color)");
+    return true;
+  },
+
+  releaseSuspendedDetailParent({ cleanup = false } = {}) {
+    const suspended = this.suspendedDetailParent;
+    if (!suspended) return null;
+    this.suspendedDetailParent = null;
+    const { parentContainer, detailContainer } = suspended;
+    if (parentContainer) {
+      parentContainer.inert = Boolean(suspended.parentInert);
+      if (suspended.parentAriaHidden == null) parentContainer.removeAttribute?.("aria-hidden");
+      else parentContainer.setAttribute?.("aria-hidden", suspended.parentAriaHidden);
+    }
+    restoreInlineStyles(detailContainer, suspended.detailStyles);
+    restoreInlineStyles(document.documentElement, suspended.documentStyles);
+    restoreInlineStyles(document.body, suspended.bodyStyles);
+    if (cleanup) suspended.screen?.cleanup?.();
+    return suspended;
+  },
+
+  canResumeSuspendedDetailParent(routeName, options = {}) {
+    const suspended = this.suspendedDetailParent;
+    return Boolean(
+      suspended &&
+        routeName === suspended.route &&
+        (options?.fromHistory || options?.isBackNavigation) &&
+        Number.isInteger(this.browserHistoryIndex) &&
+        this.browserHistoryIndex === suspended.historyIndex
+    );
+  },
+
+  async resumeSuspendedDetailParent(routeName, params, options, previousRoute) {
+    const suspended = this.releaseSuspendedDetailParent();
+    this.routes[previousRoute]?.cleanup?.();
+    this.current = routeName;
+    this.currentParams = params || {};
+    setBrowserRouteTitle(routeName);
+    if (suspended?.parentContainer?.style) {
+      suspended.parentContainer.style.display = "block";
+    }
+    const pullRefreshHandler = Platform.isBrowser()
+      ? getBrowserPullRefreshHandler(routeName, this.routes[routeName])
+      : null;
+    if (pullRefreshHandler) {
+      this.browserPullToRefreshCleanup = bindBrowserPullToRefresh({ onRefresh: pullRefreshHandler });
+    }
+  },
+
   async navigate(routeName, params = {}, options = {}) {
     const navigationStart = ROUTER_PERF_DEBUG ? routerPerfNow() : 0;
 
@@ -417,14 +526,26 @@ export const Router = {
       bootGuard.stage(`Opening ${routeName} screen`);
     }
 
-    // Cleanup current
     const previousRoute = this.current;
+    if (this.canResumeSuspendedDetailParent(routeName, options)) {
+      await this.resumeSuspendedDetailParent(routeName, targetParams, options, previousRoute);
+      this.settlePreviousRouteBack({ route: this.current, index: this.browserHistoryIndex });
+      return;
+    }
+    if (previousRoute === "detail" && this.suspendedDetailParent) {
+      this.releaseSuspendedDetailParent({ cleanup: true });
+    }
+
+    // Cleanup current
     const shouldSkipPush = skipStackPush || NON_BACKSTACK_ROUTES.has(previousRoute);
     this.browserPullToRefreshCleanup?.();
     this.browserPullToRefreshCleanup = null;
     if (this.current && this.current !== routeName) {
       this.captureCurrentRouteState(routeName, options?.captureHistoryIndex);
-      this.routes[this.current].cleanup?.();
+      const suspendParent = routeName === "detail" && this.suspendCurrentParentForDetail();
+      if (!suspendParent) {
+        this.routes[this.current].cleanup?.();
+      }
       if (!shouldSkipPush) {
         this.stack.push({
           route: this.current,

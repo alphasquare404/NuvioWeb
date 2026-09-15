@@ -585,7 +585,7 @@ export const LibraryScreen = {
     });
   },
 
-  setFocusedNode(target) {
+  setFocusedNode(target, { ensureVisible = true } = {}) {
     this.container?.querySelectorAll(".focusable.focused").forEach((node) => {
       if (node !== target) {
         node.classList.remove("focused");
@@ -600,7 +600,9 @@ export const LibraryScreen = {
     }
     if (!sidebarFocused) {
       this.lastMainFocus = target;
-      ensureSpatialFocusVisible(target);
+      if (ensureVisible) {
+        ensureSpatialFocusVisible(target);
+      }
       if (target.closest?.(".library-actions-row") && target.dataset.action) {
         this.lastActionsRowAction = String(target.dataset.action);
       }
@@ -1195,7 +1197,7 @@ export const LibraryScreen = {
         `.library-picker-anchor[data-picker="${selectorValue(this.pendingPickerRestore)}"]`
       );
       if (target instanceof HTMLElement) {
-        this.setFocusedNode(target);
+        this.setFocusedNode(target, { ensureVisible: false });
         this.pendingPickerRestore = null;
         return;
       }
@@ -1742,7 +1744,7 @@ export const LibraryScreen = {
         getRootSidebarNodes(this.container, this.layoutPrefs)[0] ||
         null;
       if (sidebarNode) {
-        this.setFocusedNode(sidebarNode);
+        this.setFocusedNode(sidebarNode, { ensureVisible: false });
         return;
       }
     }
@@ -1795,7 +1797,9 @@ export const LibraryScreen = {
     if (!target) {
       return;
     }
-    this.setFocusedNode(target);
+    // Content refreshes rebuild filter results. Keep the existing focused-card
+    // identity, but never turn that passive restoration into a scroll anchor.
+    this.setFocusedNode(target, { ensureVisible: false });
     if (this.pendingPresentationModeScroll && Platform.isBrowser()) {
       this.pendingPresentationModeScroll = false;
       this.scrollPresentationControlsIntoView();
