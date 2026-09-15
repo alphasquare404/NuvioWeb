@@ -461,6 +461,8 @@ export class LibraryController {
     this.unsubscribeSavedLibrary = null;
     this.unsubscribeLibrarySource = null;
     this.savedLibraryReloadPending = false;
+    this.pendingRouteState = null;
+    this.pendingFacetRouteState = null;
     this.cloudSettingsSignature = cloudLibrarySettingsSignature();
     this.unsubscribeDebridSettings = DebridSettingsStore.subscribe(() => {
       void this.refreshCloudLibraryIfSettingsChanged();
@@ -482,6 +484,63 @@ export class LibraryController {
       });
     }
     await this.reload();
+    if (this.state.viewMode === LIBRARY_VIEW_MODE.CLOUD && !this.state.cloudLibrary.isLoaded) {
+      await this.refreshCloudLibrary();
+    }
+  }
+
+  captureRouteState() {
+    const state = this.state;
+    return {
+      viewMode: state.viewMode,
+      presentationMode: state.presentationMode,
+      sourceMode: state.sourceMode,
+      selectedListKey: state.selectedListKey,
+      selectedTypeKey: state.selectedTypeKey,
+      selectedGenre: state.selectedGenre,
+      selectedYear: state.selectedYear,
+      selectedSortKey: state.selectedSortKey,
+      selectedCloudProviderId: state.selectedCloudProviderId,
+      selectedCloudType: state.selectedCloudType,
+      cloudSearchQuery: state.cloudSearchQuery
+    };
+  }
+
+  hydrateFromRouteState(snapshot = null) {
+    if (!snapshot || typeof snapshot !== "object") return false;
+    const viewMode = snapshot.viewMode === LIBRARY_VIEW_MODE.CLOUD
+      ? LIBRARY_VIEW_MODE.CLOUD
+      : LIBRARY_VIEW_MODE.SAVED;
+    const presentationMode = snapshot.presentationMode === LIBRARY_PRESENTATION_MODE.GROUPED
+      ? LIBRARY_PRESENTATION_MODE.GROUPED
+      : LIBRARY_PRESENTATION_MODE.FLAT;
+    const stringOrNull = (value) => {
+      const normalized = String(value || "").trim();
+      return normalized || null;
+    };
+    const pendingRouteState = {
+      viewMode,
+      presentationMode,
+      selectedListKey: stringOrNull(snapshot.selectedListKey),
+      selectedTypeKey: stringOrNull(snapshot.selectedTypeKey) || ALL_KEY,
+      selectedGenre: stringOrNull(snapshot.selectedGenre),
+      selectedYear: stringOrNull(snapshot.selectedYear),
+      selectedSortKey: stringOrNull(snapshot.selectedSortKey) || this.state.selectedSortKey,
+      selectedCloudProviderId: stringOrNull(snapshot.selectedCloudProviderId),
+      selectedCloudType: stringOrNull(snapshot.selectedCloudType),
+      cloudSearchQuery: String(snapshot.cloudSearchQuery || "")
+    };
+    this.pendingRouteState = pendingRouteState;
+    this.pendingFacetRouteState = {
+      selectedGenre: pendingRouteState.selectedGenre,
+      selectedYear: pendingRouteState.selectedYear
+    };
+    this.state = {
+      ...this.state,
+      ...pendingRouteState
+    };
+    persistedLibraryViewMode = viewMode;
+    return true;
   }
 
   dispose() {
@@ -613,6 +672,33 @@ export class LibraryController {
     }
   }
 
+  getPendingFacetRouteStatePatch(items = []) {
+    const pending = this.pendingFacetRouteState;
+    if (!pending) {
+      return null;
+    }
+    const validationFacets = buildFacets(items, {
+      ...this.state,
+      allItems: items,
+      selectedGenre: null,
+      selectedYear: null
+    });
+    const patch = {
+      selectedGenre:
+        pending.selectedGenre &&
+        validationFacets.availableGenres.some((item) => item.key === pending.selectedGenre)
+          ? pending.selectedGenre
+          : null,
+      selectedYear:
+        pending.selectedYear &&
+        validationFacets.availableYears.some((item) => item.key === pending.selectedYear)
+          ? pending.selectedYear
+          : null
+    };
+    this.pendingFacetRouteState = null;
+    return patch;
+  }
+
   async reload(options = {}) {
     const reloadToken = this.reloadToken + 1;
     this.reloadToken = reloadToken;
@@ -629,7 +715,7 @@ export class LibraryController {
     if (this.disposed || reloadToken !== this.reloadToken) {
       return;
     }
-    const [listTabs, allItems, watchedItems] = await Promise.all([
+    let [listTabs, allItems, watchedItems] = await Promise.all([
       libraryRepository.getListTabs({ sourceMode }),
       libraryRepository.getItems({ hydrate: false, sourceMode }),
       watchedItemsRepository.getAll(5000).catch(() => [])
@@ -638,21 +724,39 @@ export class LibraryController {
       return;
     }
 
+    // Genre and year are metadata-derived. On a history restoration, wait for
+    // that metadata before publishing the first content state so the restored
+    // filters are never painted as defaults and then applied a second time.
+    const waitForPendingFacetMetadata = Boolean(
+      this.pendingFacetRouteState?.selectedGenre || this.pendingFacetRouteState?.selectedYear
+    );
+    if (waitForPendingFacetMetadata) {
+      allItems = await libraryRepository.hydrateItems(allItems, {
+        shouldContinue: () => !this.disposed && reloadToken === this.reloadToken
+      });
+      if (this.disposed || reloadToken !== this.reloadToken) {
+        return;
+      }
+    }
+
+    const pendingRouteState = this.pendingRouteState;
+    const restoredStateApplies = Boolean(pendingRouteState);
+    const selectedListCandidate = restoredStateApplies
+      ? pendingRouteState.selectedListKey
+      : this.state.selectedListKey;
     const persistedListKey = LibraryPreferencesStore.getLastSelectedListKey();
     const persistedSimklStatusKey = LibraryPreferencesStore.getBrowserSimklStatusKey();
     const nextSelectedListKey =
       sourceMode === LibrarySourceMode.TRAKT ||
       (sourceMode === LibrarySourceMode.SIMKL && !Platform.isBrowser())
-        ? this.state.selectedListKey &&
-          listTabs.some((item) => item.key === this.state.selectedListKey)
-          ? this.state.selectedListKey
+        ? selectedListCandidate && listTabs.some((item) => item.key === selectedListCandidate)
+          ? selectedListCandidate
           : listTabs.some((item) => item.key === persistedListKey)
             ? persistedListKey
             : listTabs[0]?.key || null
         : sourceMode === LibrarySourceMode.SIMKL
-          ? this.state.selectedListKey &&
-            listTabs.some((item) => item.key === this.state.selectedListKey)
-            ? this.state.selectedListKey
+          ? selectedListCandidate && listTabs.some((item) => item.key === selectedListCandidate)
+            ? selectedListCandidate
             : listTabs.some((item) => item.key === persistedSimklStatusKey)
               ? persistedSimklStatusKey
               : null
@@ -662,34 +766,52 @@ export class LibraryController {
       sourceMode !== LibrarySourceMode.LOCAL
         ? LIBRARY_SORT_OPTIONS
         : LIBRARY_SORT_OPTIONS.filter((option) => option.key !== LibrarySortOptionKey.DEFAULT);
-    const facets = buildFacets(allItems, {
+    const restoredSelection = restoredStateApplies
+      ? {
+          selectedTypeKey: pendingRouteState.selectedTypeKey,
+          selectedGenre: pendingRouteState.selectedGenre,
+          selectedYear: pendingRouteState.selectedYear,
+          selectedSortKey: pendingRouteState.selectedSortKey
+        }
+      : this.state;
+    const validationFacets = buildFacets(allItems, {
       ...this.state,
       sourceMode,
-      selectedListKey: nextSelectedListKey
+      selectedListKey: nextSelectedListKey,
+      selectedTypeKey: ALL_KEY,
+      selectedGenre: null,
+      selectedYear: null
     });
-    const availableTypeTabs = facets.availableTypeTabs;
-    const selectedTypeKey = availableTypeTabs.some(
-      (item) => item.key === this.state.selectedTypeKey
+    const selectedTypeKey = validationFacets.availableTypeTabs.some(
+      (item) => item.key === restoredSelection.selectedTypeKey
     )
-      ? this.state.selectedTypeKey
+      ? restoredSelection.selectedTypeKey
       : ALL_KEY;
     const selectedGenre =
-      this.state.selectedGenre &&
-      facets.availableGenres.some((item) => item.key === this.state.selectedGenre)
-        ? this.state.selectedGenre
+      restoredSelection.selectedGenre &&
+      validationFacets.availableGenres.some((item) => item.key === restoredSelection.selectedGenre)
+        ? restoredSelection.selectedGenre
         : null;
     const selectedYear =
-      this.state.selectedYear &&
-      facets.availableYears.some((item) => item.key === this.state.selectedYear)
-        ? this.state.selectedYear
+      restoredSelection.selectedYear &&
+      validationFacets.availableYears.some((item) => item.key === restoredSelection.selectedYear)
+        ? restoredSelection.selectedYear
         : null;
     const selectedSortKey = availableSortOptions.some(
-      (item) => item.key === this.state.selectedSortKey
+      (item) => item.key === restoredSelection.selectedSortKey
     )
-      ? this.state.selectedSortKey
+      ? restoredSelection.selectedSortKey
       : sourceMode !== LibrarySourceMode.LOCAL
         ? LibrarySortOptionKey.DEFAULT
         : LibrarySortOptionKey.ADDED_DESC;
+    const facets = buildFacets(allItems, {
+      ...this.state,
+      sourceMode,
+      selectedListKey: nextSelectedListKey,
+      selectedTypeKey,
+      selectedGenre,
+      selectedYear
+    });
     const manageSelectedListKey =
       this.state.manageSelectedListKey &&
       listTabs.some(
@@ -722,8 +844,16 @@ export class LibraryController {
       expandedPicker: preserveOverlay ? this.state.expandedPicker : null,
       pickerFocusIndex: 0
     };
+    this.pendingRouteState = null;
+    if (waitForPendingFacetMetadata) {
+      this.pendingFacetRouteState = null;
+    }
     this.state.visibleItems = sortForState(this.state.allItems, this.state);
     this.onChange(this.getState());
+
+    if (waitForPendingFacetMetadata) {
+      return;
+    }
 
     let hydrationChanged = false;
     void libraryRepository
@@ -738,10 +868,16 @@ export class LibraryController {
         }
       })
       .then((enrichedItems) => {
-        if (!hydrationChanged || this.disposed || reloadToken !== this.reloadToken) {
+        if (this.disposed || reloadToken !== this.reloadToken) {
           return;
         }
-        this.setState({ allItems: enrichedItems }, { reason: "metadataHydration" });
+        const pendingFacetPatch = this.getPendingFacetRouteStatePatch(enrichedItems);
+        if (hydrationChanged || pendingFacetPatch) {
+          this.setState(
+            { allItems: enrichedItems, ...(pendingFacetPatch || {}) },
+            { reason: "metadataHydration" }
+          );
+        }
       })
       .catch((error) => {
         if (!this.disposed && reloadToken === this.reloadToken) {

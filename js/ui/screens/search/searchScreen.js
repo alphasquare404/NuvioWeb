@@ -477,7 +477,10 @@ export const SearchScreen = {
     this.pendingPosterOptionsFocusId = "";
     this.pendingPosterHoldTarget = null;
     this.pendingPosterHoldTimer = null;
-    this.hydrateFromRouteState(navigationContext?.restoredState || null, params);
+    this.hydrateFromRouteState(
+      navigationContext?.restoreRouteState ? navigationContext?.restoredState || null : null,
+      params
+    );
     await this.refreshWatchedTitleIds();
     if (!navigationContext?.isBackNavigation) {
       this.focusZone = "content";
@@ -489,6 +492,7 @@ export const SearchScreen = {
     const hasExplicitQuery = Boolean(String(params.query || "").trim());
     const restoredQuery = String(navigationContext?.restoredState?.query || "").trim();
     const shouldUseRestoredState = Boolean(
+      navigationContext?.restoreRouteState &&
       navigationContext?.restoredState &&
       (!hasExplicitQuery || restoredQuery === String(params.query || "").trim())
     );

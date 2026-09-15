@@ -77,6 +77,7 @@ Object.defineProperty(globalThis, "window", { configurable: true, writable: true
 const { Platform } = await import("../../platform/index.js");
 Platform.current = null;
 const { Router } = await import("./router.js");
+const { RouteStateStore } = await import("./routeStateStore.js");
 
 const originalRoutes = Router.routes;
 const originalExitApp = Platform.exitApp;
@@ -97,6 +98,40 @@ function makeScreen(name, options = {}) {
     shouldReturnToStreamOnBack: options.shouldReturnToStreamOnBack,
     hasBackDismissableOverlay: options.hasBackDismissableOverlay
   };
+}
+
+function makeRouteStateScreen(name, routeStateKey) {
+  const screen = makeScreen(name);
+  screen.value = "";
+  screen.getRouteStateKey = () => routeStateKey;
+  screen.captureRouteState = () => ({ value: screen.value });
+  screen.mount = async function mount(params, context) {
+    this.params = params;
+    this.value = context?.restoreRouteState && context?.restoredState
+      ? String(context.restoredState.value || "")
+      : String(params?.value || "");
+    this.mounts.push({ params, context, value: this.value });
+  };
+  return screen;
+}
+
+function makeFolderRouteStateScreen() {
+  const screen = makeRouteStateScreen("folderDetail", "");
+  screen.getRouteStateKey = (params = {}) => {
+    const collectionId = String(params.collectionId || "");
+    const folderId = String(params.folderId || "");
+    return collectionId && folderId ? `folderDetail:${collectionId}:${folderId}` : null;
+  };
+  screen.tab = 0;
+  screen.captureRouteState = () => ({ tab: screen.tab });
+  screen.mount = async function mount(params, context) {
+    this.params = params;
+    this.tab = context?.restoreRouteState && context?.restoredState
+      ? Number(context.restoredState.tab || 0)
+      : 0;
+    this.mounts.push({ params, context, tab: this.tab });
+  };
+  return screen;
 }
 
 function makeDetailScreen() {
@@ -173,10 +208,109 @@ function resetRouter(routes) {
   Router.browserHistoryIndex = null;
   Router.browserPullToRefreshCleanup?.();
   Router.browserPullToRefreshCleanup = null;
+  RouteStateStore.clearAll();
   history.reset();
   historyCalls.length = 0;
   listeners.clear();
 }
+
+test("route snapshots are scoped to each Search history entry and fresh Search stays fresh", async () => {
+  const home = makeScreen("home");
+  const search = makeRouteStateScreen("search", "route:search");
+  const detail = makeScreen("detail");
+  resetRouter({ home, search, detail });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("search");
+  search.value = "batman";
+  await Router.navigate("detail", { itemId: "movie-a" });
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(search.value, "batman");
+
+  await Router.navigate("home");
+  await Router.navigate("search");
+  assert.equal(search.value, "", "a fresh Search entry must not receive Search entry #1 state");
+  search.value = "superman";
+  await Router.navigate("detail", { itemId: "movie-b" });
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(search.value, "superman");
+
+  history.back();
+  await history.whenSettled();
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "search");
+  assert.equal(search.value, "batman", "the earlier Search entry restores its own snapshot");
+});
+
+test("replaceHistory clears obsolete entry snapshots before a different route occupies that entry", async () => {
+  const home = makeScreen("home");
+  const search = makeRouteStateScreen("search", "route:search");
+  const detail = makeRouteStateScreen("detail", "detail:movie-1");
+  resetRouter({ home, search, detail });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("search");
+  search.value = "old search";
+  await Router.navigate("detail", { itemId: "movie-1" }, { replaceHistory: true });
+  history.back();
+  await history.whenSettled();
+  history.forward();
+  await history.whenSettled();
+
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(detail.value, "", "a replacement route must not inherit the replaced Search snapshot");
+});
+
+test("browser Forward restores the snapshot captured for the forward entry", async () => {
+  const home = makeScreen("home");
+  const search = makeRouteStateScreen("search", "route:search");
+  const detail = makeRouteStateScreen("detail", "detail:movie-1");
+  resetRouter({ home, search, detail });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("search");
+  search.value = "batman";
+  await Router.navigate("detail", { itemId: "movie-1" });
+  detail.value = "movie metadata";
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(search.value, "batman");
+  history.forward();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(detail.value, "movie metadata");
+});
+
+test("folder route state restores only the matching historical folder entry", async () => {
+  const home = makeScreen("home");
+  const folderDetail = makeFolderRouteStateScreen();
+  const detail = makeScreen("detail");
+  resetRouter({ home, folderDetail, detail });
+  Router.init();
+
+  const folderA = { collectionId: "collection-1", folderId: "folder-a" };
+  const folderB = { collectionId: "collection-1", folderId: "folder-b" };
+  await Router.navigate("home");
+  await Router.navigate("folderDetail", folderA);
+  folderDetail.tab = 2;
+  await Router.navigate("detail", { itemId: "movie-1" });
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(folderDetail.tab, 2);
+
+  await Router.navigate("home");
+  await Router.navigate("folderDetail", folderA);
+  assert.equal(folderDetail.tab, 0, "a fresh folder entry must not consume an earlier visit");
+  await Router.navigate("folderDetail", folderB);
+  assert.equal(folderDetail.tab, 0, "folder A state must not restore into folder B");
+});
 
 function dispatchPopstate(state) {
   const handler = listeners.get("popstate")?.at(-1);

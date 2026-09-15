@@ -25,6 +25,7 @@ import { CatalogSeeAllScreen } from "../screens/catalog/catalogSeeAllScreen.js";
 import { FolderDetailScreen } from "../screens/collection/folderDetailScreen.js";
 import { CollectionEditorScreen, CollectionFolderEditorScreen } from "../screens/collection/collectionEditorScreen.js";
 import { Platform } from "../../platform/index.js";
+import { ProfileManager } from "../../core/profile/profileManager.js";
 import { RouteStateStore } from "./routeStateStore.js";
 import { setBrowserRouteTitle } from "./browserDocumentTitle.js";
 import { bindBrowserPullToRefresh } from "../components/browserPullToRefresh.js";
@@ -142,7 +143,21 @@ export const Router = {
     }
   },
 
-  captureCurrentRouteState(nextRoute = null) {
+  getRouteStateStorageKey(routeName, params = {}, historyIndex = this.browserHistoryIndex) {
+    const routeStateKey = this.getRouteStateKey(routeName, params);
+    if (!routeStateKey) {
+      return null;
+    }
+    const profileId = globalThis.window?.localStorage
+      ? String(ProfileManager.getActiveProfileId?.() || "1")
+      : "1";
+    if (Number.isInteger(historyIndex) && historyIndex >= 0) {
+      return `profile:${profileId}:entry:${historyIndex}:${routeStateKey}`;
+    }
+    return `profile:${profileId}:fallback:${routeStateKey}`;
+  },
+
+  captureCurrentRouteState(nextRoute = null, historyIndex = this.browserHistoryIndex) {
     if (!this.current) {
       return;
     }
@@ -150,7 +165,7 @@ export const Router = {
     if (!screen?.captureRouteState) {
       return;
     }
-    const key = this.getRouteStateKey(this.current, this.currentParams);
+    const key = this.getRouteStateStorageKey(this.current, this.currentParams, historyIndex);
     if (!key) {
       return;
     }
@@ -163,14 +178,16 @@ export const Router = {
 
   resolveNavigationContext(routeName, params = {}, options = {}) {
     const screen = this.routes[routeName];
-    const key = this.getRouteStateKey(routeName, params);
+    const key = this.getRouteStateStorageKey(routeName, params);
+    const restoreRouteState = Boolean(options?.restoreRouteState ?? (options?.fromHistory || options?.isBackNavigation));
     const shouldClear = Boolean(screen?.clearRouteStateOnMount?.(params || {}));
     if (shouldClear && key) {
       RouteStateStore.clear(key);
     }
     return {
-      restoredState: !shouldClear && key ? RouteStateStore.get(key) : null,
+      restoredState: restoreRouteState && !shouldClear && key ? RouteStateStore.get(key) : null,
       routeStateKey: key,
+      restoreRouteState,
       fromHistory: Boolean(options?.fromHistory),
       isBackNavigation: Boolean(options?.isBackNavigation),
       previousRoute: String(options?.previousRoute || "")
@@ -195,6 +212,7 @@ export const Router = {
       }
       const state = event?.state || null;
       const hasValidHistoryTarget = Boolean(state?.route && this.routes[state.route]);
+      const departingBrowserHistoryIndex = this.browserHistoryIndex;
       this.browserHistoryIndex = getNuvioHistoryIndex(state);
       const shouldSkipConsume = Boolean(this.skipConsumeNextPopstate);
       this.skipConsumeNextPopstate = false;
@@ -230,7 +248,8 @@ export const Router = {
         await this.navigate(state.route, state.params || {}, {
           fromHistory: true,
           skipStackPush: true,
-          isBackNavigation: true
+          isBackNavigation: true,
+          captureHistoryIndex: departingBrowserHistoryIndex
         });
         return;
       }
@@ -302,7 +321,7 @@ export const Router = {
     this.browserPullToRefreshCleanup?.();
     this.browserPullToRefreshCleanup = null;
     if (this.current && this.current !== routeName) {
-      this.captureCurrentRouteState(routeName);
+      this.captureCurrentRouteState(routeName, options?.captureHistoryIndex);
       this.routes[this.current].cleanup?.();
       if (!shouldSkipPush) {
         this.stack.push({
@@ -311,7 +330,7 @@ export const Router = {
         });
       }
     } else if (this.current === routeName) {
-      this.captureCurrentRouteState(routeName);
+      this.captureCurrentRouteState(routeName, options?.captureHistoryIndex);
       this.routes[this.current].cleanup?.();
     }
 
@@ -360,6 +379,7 @@ export const Router = {
         this.historyInitialized = true;
       } else if (!fromHistory) {
         if (replaceHistory || NON_BACKSTACK_ROUTES.has(previousRoute)) {
+          RouteStateStore.clearByHistoryEntry(this.browserHistoryIndex);
           const state = this.createBrowserHistoryState();
           window.history.replaceState(state, "");
         } else {

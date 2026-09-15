@@ -1066,7 +1066,9 @@ export const FolderDetailScreen = {
           ]
         : sourceTabs;
 
-    const restored = this.hydrateFromRouteState(navigationContext?.restoredState, this.params);
+    const restored = navigationContext?.restoreRouteState
+      ? this.hydrateFromRouteState(navigationContext?.restoredState, this.params)
+      : false;
     const sourceOffset = this.tabs[0]?.isAllTab ? 1 : 0;
     const tabsToLoad = restored
       ? this.tabs

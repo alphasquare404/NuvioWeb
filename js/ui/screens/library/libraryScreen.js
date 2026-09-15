@@ -275,6 +275,14 @@ function managerSourceLabel(download = {}) {
 }
 
 export const LibraryScreen = {
+  getRouteStateKey() {
+    return "library";
+  },
+
+  captureRouteState() {
+    return this.controller?.captureRouteState?.() || null;
+  },
+
   clearClosingPicker() {
     if (this.closingPickerTimer) {
       clearTimeout(this.closingPickerTimer);
@@ -358,13 +366,16 @@ export const LibraryScreen = {
     this.requestRender();
   },
 
-  async mount(params = {}) {
+  async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("library");
     ScreenUtils.show(this.container);
     const controller = new LibraryController((state, change) =>
       this.handleControllerChange(state, change)
     );
     this.controller = controller;
+    if (navigationContext?.restoreRouteState) {
+      controller.hydrateFromRouteState(navigationContext?.restoredState || null);
+    }
     this.libraryRouteEnterPending = true;
     this.sidebarProfile = await getSidebarProfileState();
     this.layoutPrefs = LayoutPreferences.get();

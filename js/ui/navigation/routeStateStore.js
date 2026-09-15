@@ -29,6 +29,16 @@ export const RouteStateStore = {
     }
   },
 
+  clearByHistoryEntry(index) {
+    if (!Number.isInteger(index) || index < 0) return;
+    const entryMarker = `:entry:${index}:`;
+    for (const key of stateMap.keys()) {
+      if (String(key).includes(entryMarker)) {
+        stateMap.delete(key);
+      }
+    }
+  },
+
   clearAll() {
     stateMap.clear();
   }

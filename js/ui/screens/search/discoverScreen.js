@@ -364,7 +364,7 @@ export const DiscoverScreen = {
     await this.refreshWatchedTitleIds();
 
     if (
-      navigationContext?.isBackNavigation &&
+      navigationContext?.restoreRouteState &&
       this.hydrateFromRouteState(navigationContext?.restoredState || null)
     ) {
       this.render();

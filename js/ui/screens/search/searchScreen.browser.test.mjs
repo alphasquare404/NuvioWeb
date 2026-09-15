@@ -78,3 +78,50 @@ test("SearchScreen mounts in the browser without a Platform global", async () =>
     }
   }
 });
+
+test("SearchScreen consumes a route snapshot only for an eligible history restoration", async () => {
+  const { SearchScreen } = await loadSearchScreen();
+  const originalDocument = globalThis.document;
+  const originalRefreshWatchedTitleIds = SearchScreen.refreshWatchedTitleIds;
+  const originalRenderLoading = SearchScreen.renderLoading;
+  const originalReloadRows = SearchScreen.reloadRows;
+  const originalRender = SearchScreen.render;
+  const container = { style: { display: "none" } };
+
+  globalThis.document = {
+    getElementById(id) {
+      return id === "search" ? container : null;
+    }
+  };
+  SearchScreen.refreshWatchedTitleIds = async () => {};
+  SearchScreen.renderLoading = () => {};
+  SearchScreen.reloadRows = async () => {};
+  SearchScreen.render = () => {};
+
+  const snapshot = {
+    query: "batman",
+    mode: "search",
+    rows: [{ title: "Results", items: [{ id: "movie-1" }] }]
+  };
+
+  try {
+    await SearchScreen.mount({}, { restoreRouteState: false, restoredState: snapshot });
+    assert.equal(SearchScreen.query, "");
+    assert.deepEqual(SearchScreen.rows, []);
+
+    await SearchScreen.mount({}, { restoreRouteState: true, restoredState: snapshot });
+    assert.equal(SearchScreen.query, "batman");
+    assert.equal(SearchScreen.mode, "search");
+    assert.equal(SearchScreen.rows[0]?.title, "Results");
+  } finally {
+    SearchScreen.refreshWatchedTitleIds = originalRefreshWatchedTitleIds;
+    SearchScreen.renderLoading = originalRenderLoading;
+    SearchScreen.reloadRows = originalReloadRows;
+    SearchScreen.render = originalRender;
+    if (originalDocument) {
+      globalThis.document = originalDocument;
+    } else {
+      delete globalThis.document;
+    }
+  }
+});
