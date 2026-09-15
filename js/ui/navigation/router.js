@@ -89,6 +89,24 @@ function getNuvioHistoryIndex(state) {
   return Number.isInteger(value) && value >= 0 ? value : null;
 }
 
+function getNuvioHistoryProvenance(state) {
+  const marker = state?.[NUVIO_HISTORY_STATE_KEY];
+  const index = getNuvioHistoryIndex(state);
+  const previousIndex = marker?.previousIndex;
+  const previousRoute = marker?.previousRoute;
+  if (
+    index == null ||
+    !Number.isInteger(previousIndex) ||
+    previousIndex < 0 ||
+    previousIndex !== index - 1 ||
+    typeof previousRoute !== "string" ||
+    !previousRoute
+  ) {
+    return null;
+  }
+  return { previousIndex, previousRoute };
+}
+
 export const Router = {
   current: null,
   currentParams: {},
@@ -99,6 +117,8 @@ export const Router = {
   skipConsumeNextPopstate: false,
   ignoreNextPopstate: false,
   browserHistoryIndex: null,
+  browserHistoryProvenance: null,
+  pendingPreviousRouteBack: null,
 
   routes: {
     home: HomeScreen,
@@ -214,6 +234,7 @@ export const Router = {
       const hasValidHistoryTarget = Boolean(state?.route && this.routes[state.route]);
       const departingBrowserHistoryIndex = this.browserHistoryIndex;
       this.browserHistoryIndex = getNuvioHistoryIndex(state);
+      this.browserHistoryProvenance = getNuvioHistoryProvenance(state);
       const shouldSkipConsume = Boolean(this.skipConsumeNextPopstate);
       this.skipConsumeNextPopstate = false;
       const currentScreen = this.getCurrentScreen();
@@ -236,12 +257,20 @@ export const Router = {
           window?.history &&
           typeof window.history.pushState === "function"
         ) {
+          const previousIndex = this.browserHistoryIndex;
+          const previousRoute = hasValidHistoryTarget ? state.route : null;
           this.browserHistoryIndex = Math.max(0, Number(this.browserHistoryIndex || 0)) + 1;
+          this.browserHistoryProvenance = this.createBrowserHistoryProvenance(
+            previousIndex,
+            previousRoute
+          );
           window.history.pushState(this.createBrowserHistoryState(), "");
         }
+        this.settlePreviousRouteBack(false);
         return;
       }
       if (this.current === "home" && (!state?.route || NON_BACKSTACK_ROUTES.has(state.route))) {
+        this.settlePreviousRouteBack(false);
         return;
       }
       if (hasValidHistoryTarget) {
@@ -250,6 +279,10 @@ export const Router = {
           skipStackPush: true,
           isBackNavigation: true,
           captureHistoryIndex: departingBrowserHistoryIndex
+        });
+        this.settlePreviousRouteBack({
+          route: this.current,
+          index: this.browserHistoryIndex
         });
         return;
       }
@@ -264,6 +297,7 @@ export const Router = {
           }
         );
       }
+      this.settlePreviousRouteBack(false);
     });
   },
 
@@ -278,14 +312,82 @@ export const Router = {
     this.ignoreNextPopstate = true;
   },
 
-  createBrowserHistoryState(route = this.current, params = this.currentParams, index = this.browserHistoryIndex) {
+  createBrowserHistoryProvenance(previousIndex, previousRoute) {
+    return Number.isInteger(previousIndex) && previousIndex >= 0 && typeof previousRoute === "string" && previousRoute
+      ? { previousIndex, previousRoute }
+      : null;
+  },
+
+  createBrowserHistoryState(
+    route = this.current,
+    params = this.currentParams,
+    index = this.browserHistoryIndex,
+    provenance = this.browserHistoryProvenance
+  ) {
+    const marker = {
+      index: Number.isInteger(index) && index >= 0 ? index : 0
+    };
+    if (provenance) {
+      marker.previousIndex = provenance.previousIndex;
+      marker.previousRoute = provenance.previousRoute;
+    }
     return {
       route,
       params,
-      [NUVIO_HISTORY_STATE_KEY]: {
-        index: Number.isInteger(index) && index >= 0 ? index : 0
-      }
+      [NUVIO_HISTORY_STATE_KEY]: marker
     };
+  },
+
+  canBackToPreviousNuvioRoute(routeName) {
+    const provenance = this.browserHistoryProvenance;
+    return Boolean(
+      Platform.isBrowser() &&
+        this.historyInitialized &&
+        Number.isInteger(this.browserHistoryIndex) &&
+        provenance &&
+        provenance.previousRoute === routeName &&
+        provenance.previousIndex === this.browserHistoryIndex - 1
+    );
+  },
+
+  backToPreviousNuvioRoute(routeName) {
+    if (
+      this.pendingPreviousRouteBack ||
+      !this.canBackToPreviousNuvioRoute(routeName) ||
+      !window?.history ||
+      typeof window.history.back !== "function"
+    ) {
+      return { accepted: false, settled: Promise.resolve(false) };
+    }
+    let resolve;
+    const settled = new Promise((done) => {
+      resolve = done;
+    });
+    this.pendingPreviousRouteBack = {
+      expectedRoute: routeName,
+      expectedIndex: this.browserHistoryProvenance.previousIndex,
+      resolve
+    };
+    try {
+      window.history.back();
+      return { accepted: true, settled };
+    } catch (_) {
+      this.settlePreviousRouteBack(false);
+      return { accepted: false, settled: Promise.resolve(false) };
+    }
+  },
+
+  settlePreviousRouteBack(result = false) {
+    const pending = this.pendingPreviousRouteBack;
+    if (!pending) return;
+    this.pendingPreviousRouteBack = null;
+    pending.resolve(
+      Boolean(
+        result &&
+          result.route === pending.expectedRoute &&
+          result.index === pending.expectedIndex
+      )
+    );
   },
 
   hasPreviousBrowserHistoryEntry() {
@@ -374,6 +476,7 @@ export const Router = {
     if (window?.history && typeof window.history.pushState === "function") {
       if (!this.historyInitialized) {
         this.browserHistoryIndex = getNuvioHistoryIndex(window.history.state) ?? 0;
+        this.browserHistoryProvenance = null;
         const state = this.createBrowserHistoryState();
         window.history.replaceState(state, "");
         this.historyInitialized = true;
@@ -383,7 +486,12 @@ export const Router = {
           const state = this.createBrowserHistoryState();
           window.history.replaceState(state, "");
         } else {
+          const previousIndex = this.browserHistoryIndex;
           this.browserHistoryIndex = Math.max(0, Number(this.browserHistoryIndex || 0)) + 1;
+          this.browserHistoryProvenance = this.createBrowserHistoryProvenance(
+            previousIndex,
+            previousRoute
+          );
           const state = this.createBrowserHistoryState();
           window.history.pushState(state, "");
         }

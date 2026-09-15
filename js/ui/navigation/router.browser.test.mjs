@@ -195,6 +195,27 @@ function makeStreamScreen() {
   return screen;
 }
 
+function makePlayerBackScreen() {
+  const screen = Object.create(originalRoutes.player);
+  screen.mounts = [];
+  screen.playerBackNavigationInProgress = false;
+  screen.episodes = [];
+  screen.controlsVisible = false;
+  screen.loadingVisible = false;
+  screen.hasPresentedPlaybackFrame = true;
+  screen.nextEpisodeBackExitArmed = false;
+  screen.mount = async function mount(params, context) {
+    this.params = params;
+    this.mounts.push({ params, context });
+  };
+  screen.cleanup = () => {};
+  screen.getPlaybackCurrentSeconds = () => 0;
+  screen.resolveCurrentEpisodeEntry = () => null;
+  screen.resolveNextEpisodeInfo = () => null;
+  screen.isStartupErrorVisible = () => false;
+  return screen;
+}
+
 function resetRouter(routes) {
   Router.routes = routes;
   Router.current = null;
@@ -206,6 +227,8 @@ function resetRouter(routes) {
   Router.skipConsumeNextPopstate = false;
   Router.ignoreNextPopstate = false;
   Router.browserHistoryIndex = null;
+  Router.browserHistoryProvenance = null;
+  Router.pendingPreviousRouteBack = null;
   Router.browserPullToRefreshCleanup?.();
   Router.browserPullToRefreshCleanup = null;
   RouteStateStore.clearAll();
@@ -416,11 +439,223 @@ test("browser Back restores Player → Stream → Detail through existing entrie
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "stream");
+  assert.equal(Router.browserHistoryIndex, 1);
+  assert.deepEqual(Router.browserHistoryProvenance, {
+    previousIndex: 0,
+    previousRoute: "detail"
+  });
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "detail");
   assert.equal(historyCalls.filter((call) => call.type === "push" || call.type === "replace").length, writesBeforeBack);
   assert.deepEqual(historyRoutes(), ["detail", "stream", "player"]);
+});
+
+test("Router push records immediate prior-route provenance and initial state has none", async () => {
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ detail, stream, player });
+  Router.init();
+
+  await Router.navigate("detail", { itemId: "movie-1" });
+  assert.deepEqual(history.state.__nuvioHistory, { index: 0 });
+  assert.equal(Router.canBackToPreviousNuvioRoute("stream"), false);
+
+  await Router.navigate("stream", { itemId: "movie-1" });
+  assert.deepEqual(history.state.__nuvioHistory, {
+    index: 1,
+    previousIndex: 0,
+    previousRoute: "detail"
+  });
+  await Router.navigate("player", {
+    itemId: "movie-1",
+    itemType: "movie",
+    returnToStreamOnBack: true,
+    streamRouteParams: { itemId: "movie-1", itemType: "movie" }
+  });
+  assert.deepEqual(history.state.__nuvioHistory, {
+    index: 2,
+    previousIndex: 1,
+    previousRoute: "stream"
+  });
+  assert.equal(Router.canBackToPreviousNuvioRoute("stream"), true);
+});
+
+test("Router replaceHistory preserves the current entry provenance", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ home, detail, stream, player });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1" });
+  await Router.navigate("stream", { itemId: "movie-1" }, { replaceHistory: true });
+  assert.deepEqual(history.state.__nuvioHistory, {
+    index: 1,
+    previousIndex: 0,
+    previousRoute: "home"
+  });
+
+  await Router.navigate("player", {
+    itemId: "movie-1",
+    itemType: "movie",
+    returnToStreamOnBack: true,
+    streamRouteParams: { itemId: "movie-1", itemType: "movie" }
+  });
+  assert.deepEqual(history.state.__nuvioHistory, {
+    index: 2,
+    previousIndex: 1,
+    previousRoute: "stream"
+  });
+});
+
+test("Player app Back returns to the original Stream entry, then Detail", async () => {
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ detail, stream, player });
+  Router.init();
+
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("stream", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("player", {
+    itemId: "movie-1",
+    itemType: "movie",
+    returnToStreamOnBack: true,
+    streamRouteParams: { itemId: "movie-1", itemType: "movie" }
+  });
+  const writesBeforeBack = historyCalls.filter((call) => call.type === "push" || call.type === "replace").length;
+
+  await Router.back();
+  await history.whenSettled();
+  await flushNavigation();
+  assert.equal(Router.getCurrent(), "stream");
+  assert.equal(history.index, 1);
+  assert.equal(history.state.__nuvioHistory.index, 1);
+  assert.deepEqual(historyRoutes(), ["detail", "stream", "player"]);
+  assert.equal(historyCalls.filter((call) => call.type === "push" || call.type === "replace").length, writesBeforeBack);
+
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(history.index, 0);
+});
+
+test("Player app and browser Back both reuse the existing Stream entry", async () => {
+  for (const secondBack of ["app", "browser"]) {
+    const detail = makeDetailScreen();
+    const stream = makeStreamScreen();
+    const player = makePlayerBackScreen();
+    resetRouter({ detail, stream, player });
+    Router.init();
+    await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+    await Router.navigate("stream", { itemId: "movie-1", itemType: "movie" });
+    await Router.navigate("player", {
+      itemId: "movie-1",
+      itemType: "movie",
+      returnToStreamOnBack: true,
+      streamRouteParams: { itemId: "movie-1", itemType: "movie" }
+    });
+
+    await Router.back();
+    await history.whenSettled();
+    if (secondBack === "app") await Router.back();
+    else history.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), "detail", `${secondBack} Back must reach original Detail`);
+    assert.deepEqual(historyRoutes(), ["detail", "stream", "player"]);
+  }
+});
+
+test("browser Player Back still reuses Stream before app or browser Back reaches Detail", async () => {
+  for (const secondBack of ["app", "browser"]) {
+    const detail = makeDetailScreen();
+    const stream = makeStreamScreen();
+    const player = makePlayerBackScreen();
+    resetRouter({ detail, stream, player });
+    Router.init();
+    await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+    await Router.navigate("stream", { itemId: "movie-1", itemType: "movie" });
+    await Router.navigate("player", {
+      itemId: "movie-1",
+      itemType: "movie",
+      returnToStreamOnBack: true,
+      streamRouteParams: { itemId: "movie-1", itemType: "movie" }
+    });
+
+    history.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), "stream");
+    if (secondBack === "app") await Router.back();
+    else history.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), "detail", `${secondBack} Back must reach original Detail`);
+  }
+});
+
+test("ten rapid Player Back requests accept one settled browser history movement", async () => {
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ detail, stream, player });
+  Router.init();
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("stream", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("player", {
+    itemId: "movie-1",
+    itemType: "movie",
+    returnToStreamOnBack: true,
+    streamRouteParams: { itemId: "movie-1", itemType: "movie" }
+  });
+  // Simulate ten queued Player-origin controls, which can outlive the first
+  // popstate's synchronous route switch before Stream has fully mounted.
+  for (let count = 0; count < 10; count += 1) player.consumeBackRequest();
+  await history.whenSettled();
+  await flushNavigation();
+
+  assert.equal(historyCalls.filter((call) => call.type === "back").length, 1);
+  assert.equal(Router.getCurrent(), "stream");
+  assert.deepEqual(historyRoutes(), ["detail", "stream", "player"]);
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+});
+
+test("Player Back safely synthesizes Stream only without a proven Stream predecessor", async () => {
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ detail, stream, player });
+  Router.init();
+
+  await Router.navigate("player", {
+    itemId: "movie-1",
+    itemType: "movie",
+    returnToStreamOnBack: true,
+    streamRouteParams: { itemId: "movie-1", itemType: "movie" }
+  });
+  await Router.back();
+  await flushNavigation();
+  assert.equal(Router.getCurrent(), "stream");
+  assert.equal(historyCalls.filter((call) => call.type === "back").length, 0);
+
+  resetRouter({ detail, stream, player });
+  Router.init();
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("player", {
+    itemId: "movie-1",
+    itemType: "movie",
+    returnToStreamOnBack: true,
+    streamRouteParams: { itemId: "movie-1", itemType: "movie" }
+  });
+  await Router.back();
+  await flushNavigation();
+  assert.equal(Router.getCurrent(), "stream");
+  assert.deepEqual(historyRoutes(), ["detail", "stream"]);
+  assert.equal(historyCalls.filter((call) => call.type === "back").length, 0);
 });
 
 for (const parent of [
@@ -632,6 +867,7 @@ test("legacy and malformed route markers restore routes but never prove browser 
   await dispatchPopstate({ route: "search", params: { query: "legacy" } });
   assert.equal(Router.getCurrent(), "search");
   assert.equal(Router.browserHistoryIndex, null);
+  assert.equal(Router.canBackToPreviousNuvioRoute("stream"), false);
   const browserBackCalls = historyCalls.filter((call) => call.type === "back").length;
   await Router.back();
   assert.equal(historyCalls.filter((call) => call.type === "back").length, browserBackCalls);
@@ -643,6 +879,7 @@ test("legacy and malformed route markers restore routes but never prove browser 
   });
   assert.equal(Router.getCurrent(), "search");
   assert.equal(Router.browserHistoryIndex, null);
+  assert.equal(Router.canBackToPreviousNuvioRoute("stream"), false);
 });
 
 test("direct Continue Watching movie and episode routes safely fall back to Home", async () => {

@@ -7006,7 +7006,7 @@ export const PlayerScreen = {
   },
 
   navigateBackToStreamScreen({ forceDetail = false } = {}) {
-    if (this.playerBackNavigationInProgress) {
+    if (this.playerBackNavigationInProgress || (Router.getCurrent?.() && Router.getCurrent() !== "player")) {
       return true;
     }
     this.playerBackNavigationInProgress = true;
@@ -7017,6 +7017,18 @@ export const PlayerScreen = {
       // Route cleanup will make a second best-effort stop if native teardown throws.
     }
     const shouldReturnToStream = !forceDetail && this.shouldReturnToStreamOnBack();
+    if (shouldReturnToStream) {
+      const historyBack = Router.backToPreviousNuvioRoute?.("stream");
+      if (historyBack?.accepted) {
+        void historyBack.settled.finally(() => {
+          this.playerBackNavigationInProgress = false;
+        });
+        return true;
+      }
+    }
+
+    // Direct, legacy, and malformed Player entries have no proven Stream parent.
+    // Preserve the existing synthetic route fallback only for those safe cases.
     Router.suppressNextPopstate?.(1500);
     Router.ignoreSinglePopstate?.();
     const targetRoute = shouldReturnToStream ? "stream" : this.params?.itemId ? "detail" : "home";
@@ -7030,6 +7042,8 @@ export const PlayerScreen = {
       skipStackPush: true,
       replaceHistory: true,
       isBackNavigation: true
+    }).finally(() => {
+      this.playerBackNavigationInProgress = false;
     });
     return true;
   },
