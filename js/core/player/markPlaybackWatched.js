@@ -21,19 +21,25 @@ export function createMarkPlaybackWatched({
   progressRepository = watchProgressRepository,
   seriesReconciliation = watchedSeriesReconciliationService
 } = {}) {
-  return async function markPlaybackWatched(context, { reconcileSeries = true } = {}) {
+  return async function markPlaybackWatched(
+    context,
+    { reconcileSeries = true, authoritative = false } = {}
+  ) {
     const active = normalizeContext(context);
     if (!active) return false;
 
-    await watchedRepository.mark({
-      contentId: active.itemId,
-      contentType: active.itemType,
-      videoId: active.videoId,
-      season: active.season,
-      episode: active.episode,
-      title: active.episodeTitle || active.title || active.itemId,
-      watchedAt: Date.now()
-    });
+    await watchedRepository.mark(
+      {
+        contentId: active.itemId,
+        contentType: active.itemType,
+        videoId: active.videoId,
+        season: active.season,
+        episode: active.episode,
+        title: active.episodeTitle || active.title || active.itemId,
+        watchedAt: Date.now()
+      },
+      { authoritative }
+    );
 
     // Completion is represented by watched state, not a synthetic 100%
     // resume row. Removing by the stable playback identity also clears an old

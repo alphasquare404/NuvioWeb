@@ -2057,7 +2057,7 @@ export const PlayerController = {
     const active = context || this.createProgressContext();
     if (!active?.itemId) return false;
     if (!externalAuthoritative && this.shouldSuppressStaleInternalProgress(active, 0)) return true;
-    await this.markPlaybackWatched(active);
+    await this.markPlaybackWatched(active, { authoritative: externalAuthoritative });
     if (externalAuthoritative) this.acceptExternalPlaybackCompletion(active);
     if (allowCloudSync) await this.pushProgressIfDue(true);
     return true;
@@ -2158,7 +2158,7 @@ export const PlayerController = {
       streamIdentity: active.streamIdentity || null,
       positionMs: Math.max(0, Math.trunc(safePosition)),
       durationMs: hasFiniteDuration ? Math.max(0, Math.trunc(safeDuration)) : 0
-    });
+    }, { authoritative: externalAuthoritative });
     if (!allowCloudSync) {
       return true;
     }

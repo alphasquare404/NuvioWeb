@@ -3,8 +3,12 @@ import { LocalStore } from "../../core/storage/localStore.js";
 const WATCHED_ITEMS_KEY = "watchedItems";
 const changeListeners = new Set();
 
-function notifyChange(profileId, reason) {
-  const payload = { profileId: String(profileId || "1"), reason: String(reason || "update") };
+function notifyChange(profileId, reason, meta = {}) {
+  const payload = {
+    profileId: String(profileId || "1"),
+    reason: String(reason || "update"),
+    authoritative: Boolean(meta.authoritative)
+  };
   changeListeners.forEach((listener) => {
     try {
       listener(payload);
@@ -78,7 +82,7 @@ export const WatchedItemsStore = {
     return this.listAll().filter((item) => String(item.profileId || "1") === pid);
   },
 
-  upsert(item, profileId) {
+  upsert(item, profileId, { authoritative = false } = {}) {
     const pid = String(profileId || 1);
     const normalized = normalizeItem(item, pid);
     if (!normalized.contentId) {
@@ -92,7 +96,7 @@ export const WatchedItemsStore = {
       )
     ]).slice(0, 5000);
     LocalStore.set(WATCHED_ITEMS_KEY, next);
-    notifyChange(pid, "upsert");
+    notifyChange(pid, "upsert", { authoritative });
   },
 
   remove(contentId, profileId, options = null) {

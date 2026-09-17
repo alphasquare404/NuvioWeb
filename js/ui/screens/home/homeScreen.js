@@ -113,6 +113,8 @@ import {
   HOME_ROW_TIMEOUT_MS
 } from "./homeConstants.js";
 import { resolveNextUpCandidates } from "./nextUpCandidateResolver.js";
+import { shouldRefreshContinueWatchingForChange } from "./continueWatchingRefreshPolicy.js";
+import { patchContinueWatchingDisplayProgress } from "./continueWatchingProgressPatch.js";
 import {
   getContinueWatchingRenderItems,
   shouldAppendContinueWatchingItems
@@ -8493,6 +8495,20 @@ export const HomeScreen = {
     this.continueWatchingDisplay = readContinueWatchingDisplaySnapshot(
       watchProgressRepository.getContinueWatchingSourceKey()
     );
+    // The on-disk snapshot can lag the live store (e.g. a write landed while
+    // Home was unmounted, after the last persistContinueWatchingSnapshot()).
+    // Cross-check it against the local store right now — synchronous, no
+    // network — so the very first paint already reflects the true position
+    // instead of waiting for a full re-resolve to catch up.
+    WatchProgressStore.listForProfile(activeProfileId).forEach((progressItem) => {
+      const patched = patchContinueWatchingDisplayProgress(
+        this.continueWatchingDisplay,
+        progressItem
+      );
+      if (patched) {
+        this.continueWatchingDisplay = patched;
+      }
+    });
     this.continueWatchingHydratedFromSnapshot = Boolean(this.continueWatchingDisplay.length);
     this.continueWatchingLoading = false;
     this.continueWatchingResolved = false;
@@ -8586,19 +8602,46 @@ export const HomeScreen = {
     if (!Platform.isBrowser()) {
       return;
     }
-    const handleChange = ({ profileId, reason }) => {
-      // Startup/profile pulls replace a complete scoped snapshot. Ignore the
-      // high-frequency local playback writes; their existing Player/Home paths
-      // already handle immediate UI state without re-running enrichment.
+    const handleChange = ({ profileId, reason, authoritative }) => {
+      // Startup/profile pulls replace a complete scoped snapshot, and an
+      // authoritative write (an accepted external-player callback report)
+      // must surface quickly. Ordinary high-frequency local playback writes
+      // are still ignored; their existing Player/Home paths already handle
+      // immediate UI state without re-running enrichment.
       if (
-        reason === "replaceForProfile" &&
-        String(profileId || "") === String(ProfileManager.getActiveProfileId() || "")
+        shouldRefreshContinueWatchingForChange(
+          { profileId, reason, authoritative },
+          ProfileManager.getActiveProfileId()
+        )
       ) {
         this.scheduleContinueWatchingStoreRefresh();
       }
     };
+    const handleWatchProgressChange = (change) => {
+      const { reason, authoritative, item } = change || {};
+      if (
+        authoritative &&
+        reason === "upsert" &&
+        item &&
+        shouldRefreshContinueWatchingForChange(change, ProfileManager.getActiveProfileId())
+      ) {
+        // Reflect the accepted external-playback position on an
+        // already-displayed card immediately, ahead of the full store
+        // refresh below. This only ever patches position/duration on a card
+        // that is already resolved and showing, so it cannot guess a wrong
+        // Next-Up episode or misorder the row.
+        const patched = patchContinueWatchingDisplayProgress(this.continueWatchingDisplay, item);
+        if (patched) {
+          this.continueWatchingDisplay = patched;
+          this.requestBackgroundRender();
+        }
+      }
+      handleChange(change);
+    };
     if (!this.unsubscribeWatchProgressStoreChanges) {
-      this.unsubscribeWatchProgressStoreChanges = WatchProgressStore.subscribe(handleChange);
+      this.unsubscribeWatchProgressStoreChanges = WatchProgressStore.subscribe(
+        handleWatchProgressChange
+      );
     }
     if (!this.unsubscribeWatchedItemsStoreChanges) {
       this.unsubscribeWatchedItemsStoreChanges = WatchedItemsStore.subscribe(handleChange);
