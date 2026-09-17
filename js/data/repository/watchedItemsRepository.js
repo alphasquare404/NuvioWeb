@@ -172,7 +172,8 @@ class WatchedItemsRepository {
         ...item,
         watchedAt: item.watchedAt || Date.now()
       },
-      activeProfileId()
+      activeProfileId(),
+      { authoritative: Boolean(options.authoritative) }
     );
     queueWatchedItemsCloudSync();
     if (shouldUseSimkl() && options.skipTrackingWrite !== true) {

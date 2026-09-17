@@ -820,6 +820,96 @@ test("fresh parent navigation never reuses an unrelated suspended Detail parent"
   assert.equal(home.cleanupCalls, 1, "the old suspended parent is released normally");
 });
 
+test("Home -> Detail -> Stream -> Detail -> Home releases the suspended Home parent, while Home -> Detail -> Home alone resumes it", async () => {
+  const home = makeScreen("home");
+  const detail = makeScreen("detail");
+  const stream = makeScreen("stream");
+  home.container = makeContainer();
+  detail.container = makeContainer();
+  resetRouter({ home, detail, stream });
+  screenContainers.set("home", home.container);
+  screenContainers.set("detail", detail.container);
+  Router.init();
+
+  // Comparison A: Home -> Detail -> back -> Home. Home is only ever
+  // suspended, never cleaned up, and its second appearance is a resume of
+  // the same instance, not a fresh mount.
+  await Router.navigate("home", { entry: "first" });
+  await Router.navigate("detail", { itemId: "movie-a" });
+  assert.equal(home.cleanupCalls, 0, "Home stays suspended under Detail");
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(home.mounts.length, 1, "returning directly from Detail resumes Home instead of remounting it");
+  assert.equal(home.cleanupCalls, 0);
+
+  // Comparison B: from that same suspended arrangement, detour through
+  // Stream Selection before coming back. Leaving Detail for Stream must
+  // release the suspended Home parent (with cleanup), so Home's eventual
+  // return is a genuine fresh mount -- this is the router-level mechanism
+  // the "Home reconstructs after a Stream Selection detour" bug depends on
+  // (the fix itself is in homeScreen.js: a still-in-flight load started by
+  // that fresh mount must not be discarded just because it started while
+  // Home was mid-navigation away).
+  await Router.navigate("detail", { itemId: "movie-b" });
+  assert.equal(home.cleanupCalls, 0, "Home is suspended again under this second Detail visit");
+  await Router.navigate("stream", { itemId: "movie-b" });
+  assert.equal(home.cleanupCalls, 1, "leaving Detail for Stream releases the suspended Home parent");
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(home.mounts.length, 2, "Home must be mounted fresh after the Stream Selection detour");
+});
+
+test("forceReload is a one-time directive and is not replayed by a later popstate return to Home", async () => {
+  const home = makeScreen("home");
+  const detail = makeScreen("detail");
+  const stream = makeScreen("stream");
+  home.container = makeContainer();
+  detail.container = makeContainer();
+  resetRouter({ home, detail, stream });
+  screenContainers.set("home", home.container);
+  screenContainers.set("detail", detail.container);
+  Router.init();
+
+  // Simulate profile activation entering Home with a one-time reload
+  // directive. This is the very first navigation, so it goes through
+  // history.replaceState (createBrowserHistoryState), not pushState -- the
+  // leak this test guards against lived in that state object.
+  await Router.navigate("home", { forceReload: true });
+  assert.equal(home.mounts[0].params.forceReload, true, "the original mount still consumes it");
+  assert.equal(
+    history.entries[history.index].state.params.forceReload,
+    undefined,
+    "forceReload must not be persisted into the stored history entry"
+  );
+
+  await Router.navigate("detail", { itemId: "movie-a" });
+  await Router.navigate("stream", { itemId: "movie-a" });
+  // Leaving Detail for Stream releases the suspended Home parent, so the
+  // eventual return below is a genuine fresh mount (not a resume) -- the
+  // scenario where a stale forceReload could otherwise force Home back into
+  // a full cold reload on every such return, not just the first one.
+  assert.equal(home.cleanupCalls, 1);
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+
+  const secondMount = home.mounts[home.mounts.length - 1];
+  assert.equal(
+    secondMount.params.forceReload,
+    undefined,
+    "a popstate return to this history entry must not replay forceReload"
+  );
+});
+
 test("Player Back safely synthesizes Stream only without a proven Stream predecessor", async () => {
   const detail = makeDetailScreen();
   const stream = makeStreamScreen();

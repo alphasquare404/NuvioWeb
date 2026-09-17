@@ -72,3 +72,65 @@ test("an explicit Outplayer finish completes without a reported or metadata dura
   assert.equal(await PlayerController.applyExternalPlaybackReport.call(controller, { handoff: { ...handoff, knownDurationMs: 3_000_000 }, outcome: "finished" }), true);
   assert.deepEqual(calls, [["watched", handoff.progressContext], ["ownership", handoff.progressContext], ["sync", true]]);
 });
+
+test("an accepted finish report marks watched as authoritative", async () => {
+  const calls = [];
+  const controller = {
+    markPlaybackWatched: async (...args) => { calls.push(args); },
+    pushProgressIfDue: async () => {},
+    acceptExternalPlaybackCompletion: () => {}
+  };
+  assert.equal(await PlayerController.applyExternalPlaybackReport.call(controller, { handoff, outcome: "finished" }), true);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], [handoff.progressContext, { authoritative: true }]);
+});
+
+test("a real flushProgress call forwards externalAuthoritative into watchProgressRepository.saveProgress", async () => {
+  const { watchProgressRepository } = await import("../../data/repository/watchProgressRepository.js");
+  const originalSaveProgress = watchProgressRepository.saveProgress;
+  const calls = [];
+  watchProgressRepository.saveProgress = async (...args) => { calls.push(args); };
+  const controller = {
+    shouldSuppressStaleInternalProgress: () => false,
+    recordProgressSnapshot: () => {}
+  };
+  try {
+    await PlayerController.flushProgress.call(
+      controller,
+      45_625,
+      120_000,
+      false,
+      handoff.progressContext,
+      { allowCloudSync: false, externalAuthoritative: true }
+    );
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0][1], { authoritative: true });
+  } finally {
+    watchProgressRepository.saveProgress = originalSaveProgress;
+  }
+});
+
+test("an ordinary (non-external) flushProgress call saves progress as non-authoritative", async () => {
+  const { watchProgressRepository } = await import("../../data/repository/watchProgressRepository.js");
+  const originalSaveProgress = watchProgressRepository.saveProgress;
+  const calls = [];
+  watchProgressRepository.saveProgress = async (...args) => { calls.push(args); };
+  const controller = {
+    shouldSuppressStaleInternalProgress: () => false,
+    recordProgressSnapshot: () => {}
+  };
+  try {
+    await PlayerController.flushProgress.call(
+      controller,
+      45_625,
+      120_000,
+      false,
+      handoff.progressContext,
+      { allowCloudSync: false }
+    );
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0][1], { authoritative: false });
+  } finally {
+    watchProgressRepository.saveProgress = originalSaveProgress;
+  }
+});

@@ -45,6 +45,72 @@ function normalizeProfileId(value) {
   return normalized || null;
 }
 
+function isActiveProfile(profileId) {
+  return normalizeProfileId(profileId) === normalizeProfileId(ProfileManager.getActiveProfileId());
+}
+
+function succeeded(result) {
+  return (
+    result?.result === SyncPullResult.SUCCESS_WITH_DATA ||
+    result?.result === SyncPullResult.SUCCESS_EMPTY
+  );
+}
+
+function settledValue(settled, fallback = null) {
+  return settled?.status === "fulfilled" ? settled.value : fallback;
+}
+
+let pendingCriticalHydration = null; // { profileId, promise }
+
+async function hydrateCriticalHomeUncached(resolvedProfileId) {
+  const startedAt = syncNow();
+  if (!resolvedProfileId || !isActiveProfile(resolvedProfileId)) {
+    return { profileId: resolvedProfileId, current: false, addons: null };
+  }
+
+  // Home must not mount with a temporary catalog layout or add-on list and
+  // then visibly replace it. These are the only remote domains on its first
+  // render critical path; everything else belongs to background hydration.
+  const [profileSettings, homeCatalog, addons] = AuthManager.isAuthenticated
+    ? await Promise.allSettled([
+        ProfileSettingsSyncService.pull(resolvedProfileId),
+        HomeCatalogSettingsSyncService.pull(resolvedProfileId),
+        LibrarySyncService.pull()
+      ])
+    : [
+        { status: "fulfilled", value: false },
+        { status: "fulfilled", value: false },
+        { status: "fulfilled", value: null }
+      ];
+
+  const syncContext = AuthManager.isAuthenticated
+    ? await SyncHydrationState.capture(resolvedProfileId)
+    : null;
+  const current =
+    isActiveProfile(resolvedProfileId) &&
+    (!syncContext || (await SyncHydrationState.isCurrent(syncContext)));
+  if (!current) {
+    return { profileId: resolvedProfileId, current: false, addons: null };
+  }
+
+  // Theme and language are profile-scoped settings. Apply them only after
+  // the active profile's settings pull is settled, never from a stale pull.
+  await I18n.init();
+  if (!isActiveProfile(resolvedProfileId)) {
+    return { profileId: resolvedProfileId, current: false, addons: null };
+  }
+  ThemeManager.apply();
+  I18n.apply();
+  logSyncTiming("critical-home-hydration-ready", startedAt);
+  return {
+    profileId: resolvedProfileId,
+    current: true,
+    profileSettings: settledValue(profileSettings, false),
+    homeCatalog: settledValue(homeCatalog, false),
+    addons: settledValue(addons, null)
+  };
+}
+
 async function collectKnownProfileIds(profiles = []) {
   const ids = [
     normalizeProfileId(ProfileManager.getActiveProfileId()),
@@ -132,7 +198,31 @@ export const StartupSyncService = {
     SyncHydrationState.invalidate();
   },
 
-  async requestSyncNow({ pushAfterPull = false } = {}) {
+  // Profile activation kicks this off without waiting for it (so the screen
+  // transition away from profile selection is instant), and Home's own mount
+  // awaits it before fetching catalog rows. Both callers pass the same
+  // profileId around the same time, so this dedupes to one in-flight pull
+  // instead of two, rather than requiring the callers to coordinate a shared
+  // promise reference themselves.
+  async hydrateCriticalHome(profileId = ProfileManager.getActiveProfileId()) {
+    const resolvedProfileId = normalizeProfileId(profileId);
+    if (
+      pendingCriticalHydration &&
+      pendingCriticalHydration.profileId === resolvedProfileId
+    ) {
+      return pendingCriticalHydration.promise;
+    }
+    const promise = hydrateCriticalHomeUncached(resolvedProfileId);
+    pendingCriticalHydration = { profileId: resolvedProfileId, promise };
+    promise.finally(() => {
+      if (pendingCriticalHydration?.promise === promise) {
+        pendingCriticalHydration = null;
+      }
+    });
+    return promise;
+  },
+
+  async requestSyncNow({ pushAfterPull = false, criticalHydration = null } = {}) {
     if (!this.started || this.inFlight) {
       if (this.started && this.inFlight) this.syncRequestedWhileInFlight = true;
       return false;
@@ -140,7 +230,7 @@ export const StartupSyncService = {
     this.inFlight = true;
     try {
       const includeProfileScoped = this.profileScopedSyncEnabled;
-      const pullResults = await this.syncPull({ includeProfileScoped });
+      const pullResults = await this.syncPull({ includeProfileScoped, criticalHydration });
       if (pushAfterPull && includeProfileScoped) {
         await this.syncPush(pullResults);
       }
@@ -154,50 +244,82 @@ export const StartupSyncService = {
     }
   },
 
-  async syncPull({ includeProfileScoped = this.profileScopedSyncEnabled } = {}) {
+  async syncPull({
+    includeProfileScoped = this.profileScopedSyncEnabled,
+    criticalHydration = null
+  } = {}) {
     if (!AuthManager.isAuthenticated) {
       return {};
     }
-    let didApplyProfileSettings = false;
     const pullResults = {};
     const syncStartedAt = syncNow();
     const activeProfileId = ProfileManager.getActiveProfileId();
     for (let attempt = 1; attempt <= MAX_PULL_ATTEMPTS; attempt += 1) {
       try {
-        const profiles = await ProfileSyncService.pull();
-        logSyncTiming("background-profile-pull", syncStartedAt);
-        const profileIds = await collectKnownProfileIds(profiles);
-        for (const profileId of profileIds) {
-          didApplyProfileSettings =
-            (await ProfileSettingsSyncService.pull(profileId)) || didApplyProfileSettings;
-        }
-        logSyncTiming("background-profile-settings-pull", syncStartedAt);
-        if (didApplyProfileSettings) {
-          await I18n.init();
-          ThemeManager.apply();
-          I18n.apply();
-        }
-        await TraktCredentialSyncService.pullFromRemote(ProfileManager.getActiveProfileId());
-        await SimklCredentialSyncService.pullFromRemote(ProfileManager.getActiveProfileId());
-        await ProviderCredentialSyncService.syncFromRemote(ProfileManager.getActiveProfileId());
-        logSyncTiming("background-credentials-pull", syncStartedAt);
-        await SimklSyncService.refresh().catch((error) => {
-          console.warn("Simkl automatic refresh failed", error);
-        });
-        logSyncTiming("background-simkl-refresh", syncStartedAt);
-        if (!includeProfileScoped) {
+        const critical =
+          criticalHydration?.current &&
+          normalizeProfileId(criticalHydration.profileId) === normalizeProfileId(activeProfileId)
+            ? criticalHydration
+            : await this.hydrateCriticalHome(activeProfileId);
+        if (!critical.current || !isActiveProfile(activeProfileId)) {
           return pullResults;
         }
-        pullResults.collections = await CollectionSyncService.pull(activeProfileId);
-        await HomeCatalogSettingsSyncService.pull();
-        pullResults.plugins = await PluginSyncService.pull();
-        pullResults.addons = await LibrarySyncService.pull();
-        await SavedLibrarySyncService.pull();
-        await WatchedItemsSyncService.pull();
-        await WatchProgressSyncService.pull();
-        const succeeded = (result) =>
-          result?.result === SyncPullResult.SUCCESS_WITH_DATA ||
-          result?.result === SyncPullResult.SUCCESS_EMPTY;
+        pullResults.addons = critical.addons;
+
+        // Every background branch starts now. SIMKL retains its credential →
+        // refresh dependency inside its own branch, so it cannot delay
+        // collections, library, watched/progress, plugins, or Home.
+        const profilesTask = Promise.resolve().then(() => ProfileSyncService.pull()).then(async (profiles) => {
+          logSyncTiming("background-profile-pull", syncStartedAt);
+          const profileIds = await collectKnownProfileIds(profiles);
+          await Promise.allSettled(
+            profileIds
+              .filter((profileId) => normalizeProfileId(profileId) !== normalizeProfileId(activeProfileId))
+              .map((profileId) => ProfileSettingsSyncService.pull(profileId))
+          );
+          logSyncTiming("background-inactive-profile-settings-pull", syncStartedAt);
+          return profiles;
+        });
+        const traktCredentialsTask = Promise.resolve().then(() =>
+          TraktCredentialSyncService.pullFromRemote(activeProfileId)
+        );
+        const providerCredentialsTask = Promise.resolve().then(() =>
+          ProviderCredentialSyncService.syncFromRemote(activeProfileId)
+        );
+        const simklTask = Promise.resolve().then(() =>
+          SimklCredentialSyncService.pullFromRemote(activeProfileId)
+        )
+          .then(() => SimklSyncService.refresh())
+          .catch((error) => {
+            console.warn("Simkl automatic refresh failed", error);
+            return false;
+          })
+          .finally(() => logSyncTiming("background-simkl-refresh", syncStartedAt));
+        const scopedTasks = includeProfileScoped
+          ? {
+              collections: Promise.resolve().then(() => CollectionSyncService.pull(activeProfileId)),
+              plugins: Promise.resolve().then(() => PluginSyncService.pull()),
+              savedLibrary: Promise.resolve().then(() => SavedLibrarySyncService.pull(activeProfileId)),
+              watchedItems: Promise.resolve().then(() => WatchedItemsSyncService.pull()),
+              watchProgress: Promise.resolve().then(() => WatchProgressSyncService.pull())
+            }
+          : {};
+        const settled = await Promise.allSettled([
+          profilesTask,
+          traktCredentialsTask,
+          providerCredentialsTask,
+          simklTask,
+          ...Object.values(scopedTasks)
+        ]);
+        logSyncTiming("background-domains-settled", syncStartedAt);
+        if (!isActiveProfile(activeProfileId)) {
+          return pullResults;
+        }
+        if (includeProfileScoped) {
+          const offset = 4;
+          pullResults.collections = settledValue(settled[offset], null);
+          pullResults.plugins = settledValue(settled[offset + 1], null);
+        }
         if (succeeded(pullResults.addons) && LibrarySyncService.hasPendingLocalMutation()) {
           this.scheduleAddonPush();
         }

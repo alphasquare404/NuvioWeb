@@ -24,6 +24,7 @@ import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/t
 import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { mdbListRepository } from "../../../data/repository/mdbListRepository.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
+import { StartupSyncService } from "../../../core/profile/startupSyncService.js";
 import { AvatarRepository } from "../../../data/remote/supabase/avatarRepository.js";
 import { resolveBrowserProfileAvatar } from "../../../core/profile/browserProfileAvatarCache.js";
 import { Platform } from "../../../platform/index.js";
@@ -84,7 +85,7 @@ import {
   CW_ENRICHMENT_CACHE_MAX_AGE_MS,
   CW_ENTER_DELAY_MS,
   CW_HOLD_DELAY_MS,
-  CW_INITIAL_RESOLVE_BUDGET_MS,
+  CW_INITIAL_EMPTY_RECHECK_MAX_WAIT_MS,
   CW_MAX_ENRICHMENT_CONCURRENCY,
   CW_MAX_NEXT_UP_CONCURRENCY,
   CW_MAX_NEXT_UP_LOOKUPS,
@@ -113,6 +114,9 @@ import {
   HOME_ROW_TIMEOUT_MS
 } from "./homeConstants.js";
 import { resolveNextUpCandidates } from "./nextUpCandidateResolver.js";
+import { shouldRefreshContinueWatchingForChange } from "./continueWatchingRefreshPolicy.js";
+import { patchContinueWatchingDisplayProgress } from "./continueWatchingProgressPatch.js";
+import { isHomeLoadGenerationCurrent } from "./homeLoadGeneration.js";
 import {
   getContinueWatchingRenderItems,
   shouldAppendContinueWatchingItems
@@ -141,7 +145,7 @@ export { escapeAttribute, escapeHtml, formatCatalogRowTitle } from "./homeUtils.
 
 const MODERN_SIDEBAR_PILL_AUTO_COLLAPSE_MS = 4000;
 const CW_RELEASE_ALERT_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
-const BROWSER_HOME_DRILL_DOWN_ROUTES = new Set(["detail", "folderDetail"]);
+const BROWSER_HOME_DRILL_DOWN_ROUTES = new Set(["detail", "folderDetail", "stream", "player"]);
 const BROWSER_HOME_GLOBAL_ROUTES = new Set([
   "search",
   "library",
@@ -8403,6 +8407,7 @@ export const HomeScreen = {
     this.cancelPendingContinueWatchingEnter();
     this.forceInitialContinueWatchingFocus = false;
     this.continueWatchingLoading = false;
+    this.continueWatchingStoreRefreshPending = false;
     if (returnFocusState?.layoutMode) {
       this.pendingBackFocusState = returnFocusState;
     } else if (!shouldRestoreHomeReturnState) {
@@ -8463,6 +8468,23 @@ export const HomeScreen = {
       // cached rows, so returning Home reflects the change immediately.
       this.rows = this.sortAndFilterRows(this.rows, this.collections);
       this.invalidateNavigationModel();
+      // The preserved continueWatchingDisplay predates whatever just played
+      // (built-in or external). Cross-check it against the local store
+      // synchronously — same source Detail's episode card already reads —
+      // so this render shows the true position immediately instead of the
+      // stale one, without waiting for the slower background loadData()
+      // enrichment/Next-Up pass below to catch up.
+      if (Array.isArray(this.continueWatchingDisplay) && this.continueWatchingDisplay.length) {
+        WatchProgressStore.listForProfile(activeProfileId).forEach((progressItem) => {
+          const patched = patchContinueWatchingDisplayProgress(
+            this.continueWatchingDisplay,
+            progressItem
+          );
+          if (patched) {
+            this.continueWatchingDisplay = patched;
+          }
+        });
+      }
       this.render();
       this.loadData({
         background: true,
@@ -8493,6 +8515,20 @@ export const HomeScreen = {
     this.continueWatchingDisplay = readContinueWatchingDisplaySnapshot(
       watchProgressRepository.getContinueWatchingSourceKey()
     );
+    // The on-disk snapshot can lag the live store (e.g. a write landed while
+    // Home was unmounted, after the last persistContinueWatchingSnapshot()).
+    // Cross-check it against the local store right now — synchronous, no
+    // network — so the very first paint already reflects the true position
+    // instead of waiting for a full re-resolve to catch up.
+    WatchProgressStore.listForProfile(activeProfileId).forEach((progressItem) => {
+      const patched = patchContinueWatchingDisplayProgress(
+        this.continueWatchingDisplay,
+        progressItem
+      );
+      if (patched) {
+        this.continueWatchingDisplay = patched;
+      }
+    });
     this.continueWatchingHydratedFromSnapshot = Boolean(this.continueWatchingDisplay.length);
     this.continueWatchingLoading = false;
     this.continueWatchingResolved = false;
@@ -8503,12 +8539,33 @@ export const HomeScreen = {
     this.sidebarProfile = await getLocalSidebarProfileState().catch(() => null);
     this.render();
     if (Platform.isBrowser()) {
-      // Browser Home paints its local shell immediately. Catalog and optional
-      // remote data continue progressively, so one unavailable addon cannot
-      // make profile activation look frozen.
-      void this.loadData({ background: false }).catch((error) => {
-        console.warn("Home initial background load failed", error);
-      });
+      // Browser Home paints its local shell (this skeleton) immediately so
+      // the transition away from profile selection is instant. Critical
+      // profile/catalog/addon hydration is awaited here, inside Home's own
+      // loading state, rather than by the caller before it navigates here
+      // (profileSelectionScreen.js / app.js kick it off without waiting) —
+      // Home must still not fetch catalog rows from pre-hydration config and
+      // visibly replace them once the pull lands. hydrateCriticalHome dedupes
+      // against whichever caller already started this same profile's pull.
+      // Exposed so a caller that is bridging this transition with its own
+      // loading UI (profileSelectionScreen.js's activation overlay) can wait
+      // for Home's actual first paint instead of guessing how long that
+      // takes. Resolves once catalog rows/hero are ready — it does not wait
+      // for Continue Watching's own background enrichment.
+      this.initialLoadPromise = StartupSyncService.hydrateCriticalHome(activeProfileId)
+        .catch((error) => {
+          console.warn("Home critical hydration failed", error);
+          return null;
+        })
+        .then(() => {
+          if (String(ProfileManager.getActiveProfileId() || "") !== activeProfileId) {
+            return null;
+          }
+          return this.loadData({ background: false });
+        })
+        .catch((error) => {
+          console.warn("Home initial background load failed", error);
+        });
       logHomePerf("mount", {
         ms: Number((homePerfNow() - mountStart).toFixed(2)),
         route: "home",
@@ -8586,19 +8643,46 @@ export const HomeScreen = {
     if (!Platform.isBrowser()) {
       return;
     }
-    const handleChange = ({ profileId, reason }) => {
-      // Startup/profile pulls replace a complete scoped snapshot. Ignore the
-      // high-frequency local playback writes; their existing Player/Home paths
-      // already handle immediate UI state without re-running enrichment.
+    const handleChange = ({ profileId, reason, authoritative }) => {
+      // Startup/profile pulls replace a complete scoped snapshot, and an
+      // authoritative write (an accepted external-player callback report)
+      // must surface quickly. Ordinary high-frequency local playback writes
+      // are still ignored; their existing Player/Home paths already handle
+      // immediate UI state without re-running enrichment.
       if (
-        reason === "replaceForProfile" &&
-        String(profileId || "") === String(ProfileManager.getActiveProfileId() || "")
+        shouldRefreshContinueWatchingForChange(
+          { profileId, reason, authoritative },
+          ProfileManager.getActiveProfileId()
+        )
       ) {
         this.scheduleContinueWatchingStoreRefresh();
       }
     };
+    const handleWatchProgressChange = (change) => {
+      const { reason, authoritative, item } = change || {};
+      if (
+        authoritative &&
+        reason === "upsert" &&
+        item &&
+        shouldRefreshContinueWatchingForChange(change, ProfileManager.getActiveProfileId())
+      ) {
+        // Reflect the accepted external-playback position on an
+        // already-displayed card immediately, ahead of the full store
+        // refresh below. This only ever patches position/duration on a card
+        // that is already resolved and showing, so it cannot guess a wrong
+        // Next-Up episode or misorder the row.
+        const patched = patchContinueWatchingDisplayProgress(this.continueWatchingDisplay, item);
+        if (patched) {
+          this.continueWatchingDisplay = patched;
+          this.requestBackgroundRender();
+        }
+      }
+      handleChange(change);
+    };
     if (!this.unsubscribeWatchProgressStoreChanges) {
-      this.unsubscribeWatchProgressStoreChanges = WatchProgressStore.subscribe(handleChange);
+      this.unsubscribeWatchProgressStoreChanges = WatchProgressStore.subscribe(
+        handleWatchProgressChange
+      );
     }
     if (!this.unsubscribeWatchedItemsStoreChanges) {
       this.unsubscribeWatchedItemsStoreChanges = WatchedItemsStore.subscribe(handleChange);
@@ -8632,6 +8716,11 @@ export const HomeScreen = {
   },
 
   scheduleContinueWatchingStoreRefresh() {
+    // A store-triggered refresh is now owed for this profile. A concurrent
+    // initial-load CW read that captured an empty/stale local store (e.g. the
+    // background watch-progress cloud pull hadn't landed yet) must not treat
+    // that read as final while this fresher refresh is on its way.
+    this.continueWatchingStoreRefreshPending = true;
     if (this.continueWatchingStoreRefreshFrame || Router.getCurrent() !== "home") {
       return;
     }
@@ -8723,6 +8812,10 @@ export const HomeScreen = {
       }
     } catch (error) {
       console.warn("Continue watching store refresh failed", error);
+    } finally {
+      if (isCurrent()) {
+        this.continueWatchingStoreRefreshPending = false;
+      }
     }
   },
 
@@ -8743,6 +8836,15 @@ export const HomeScreen = {
     }
     const loadStart = HOME_PERF_DEBUG ? homePerfNow() : 0;
     const token = this.homeLoadToken;
+    // cleanup() no longer bumps homeLoadToken (see cleanup()'s comment), so a
+    // load that was in flight when the user merely navigated away from Home
+    // is allowed to keep resolving and land its rows/hasLoadedOnce once done,
+    // instead of being discarded just because Home wasn't the active route
+    // for a moment. The token still catches a real new generation (mount()
+    // always bumps it). This profile id is the second, explicit guard: it
+    // catches the one case the token alone would miss -- a profile switch
+    // that happens while this load is still in flight.
+    const loadProfileId = String(ProfileManager.getActiveProfileId() || "");
     const preserveHomeReturnState = Boolean(background && preserveReturnState);
     const preservedHeroItem = preserveHomeReturnState ? this.heroItem : null;
     const preservedHeroIdentity = preserveHomeReturnState ? buildHeroIdentity(this.heroItem) : "";
@@ -8773,20 +8875,12 @@ export const HomeScreen = {
       ? buildContinueWatchingSignature(this.continueWatchingDisplay)
       : "";
     const waitForInitialContinueWatching = Boolean(!background && !hydratedFromSnapshot);
-    let initialContinueWatchingReleased = false;
-    const releaseInitialHomeAfterContinueWatching = () => {
-      if (!waitForInitialContinueWatching || initialContinueWatchingReleased) {
-        return false;
-      }
-      if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
-        return false;
-      }
-      initialContinueWatchingReleased = true;
-      this.isInitialHomeLoading = false;
-      this.hasLoadedOnce = true;
-      this.render();
-      return true;
-    };
+    if (waitForInitialContinueWatching) {
+      // No snapshot to paint from yet. Show the CW section's own loading
+      // skeleton immediately so there is no blank-gap-then-skeleton-pops-in
+      // transition once catalog rows release the rest of Home below.
+      this.continueWatchingLoading = true;
+    }
 
     let progressAllError = null;
     let recentProgressError = null;
@@ -8885,14 +8979,19 @@ export const HomeScreen = {
         if (!this.heroItem) {
           this.heroItem = this.pickInitialHero();
         }
-        if (!waitForInitialContinueWatching) {
-          this.isInitialHomeLoading = false;
-          this.hasLoadedOnce = true;
-          this.requestBackgroundRender();
-        }
+        this.isInitialHomeLoading = false;
+        this.hasLoadedOnce = true;
+        this.requestBackgroundRender();
       }
     });
-    if (token !== this.homeLoadToken) {
+    if (
+      !isHomeLoadGenerationCurrent({
+        token,
+        currentToken: this.homeLoadToken,
+        profileId: loadProfileId,
+        currentProfileId: ProfileManager.getActiveProfileId()
+      })
+    ) {
       return;
     }
     const nextInitialRows = preserveHomeReturnState
@@ -8941,11 +9040,9 @@ export const HomeScreen = {
     }
     this.loadedProfileId = String(ProfileManager.getActiveProfileId() || "");
     this.loadedWatchProgressSourceKey = watchProgressRepository.getContinueWatchingSourceKey();
-    if (!waitForInitialContinueWatching) {
-      this.isInitialHomeLoading = false;
-      this.hasLoadedOnce = true;
-      this.render();
-    }
+    this.isInitialHomeLoading = false;
+    this.hasLoadedOnce = true;
+    this.render();
     logHomePerf("loadData", {
       phase: "first-render",
       ms: Number((homePerfNow() - loadStart).toFixed(2)),
@@ -9033,15 +9130,6 @@ export const HomeScreen = {
         });
     }
 
-    if (waitForInitialContinueWatching) {
-      setTimeout(() => {
-        if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
-          return;
-        }
-        releaseInitialHomeAfterContinueWatching();
-      }, CW_INITIAL_RESOLVE_BUDGET_MS);
-    }
-
     {
       (async () => {
         const [allProgress, continueWatching] = await Promise.all([
@@ -9070,15 +9158,92 @@ export const HomeScreen = {
             nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
           }
         ).slice(0, CW_MAX_NEXT_UP_LOOKUPS);
-        const shouldShowLoading = Boolean(
+        let shouldShowLoading = Boolean(
           (this.continueWatching?.length || 0) + (this.nextUpProgressCandidates?.length || 0)
         );
+        // A background catalog-hydration refresh (scheduleCatalogHydrationRefresh,
+        // fired once addon/catalog config settles shortly after critical
+        // hydration) starts its own loadData({background:true}) call and can
+        // supersede the original cold load's token before that load's own
+        // recheck below gets a chance to run. This background reload's own
+        // waitForInitialContinueWatching is false, but if a skeleton was
+        // already showing when it started, treat it the same way — an empty
+        // read here is just as likely to be racing the same cloud pull.
+        const wasAlreadyShowingContinueWatchingSkeleton = Boolean(this.continueWatchingLoading);
+        if ((waitForInitialContinueWatching || wasAlreadyShowingContinueWatchingSkeleton) && !shouldShowLoading) {
+          // The local store can still be empty here even though this
+          // profile has real history, if the background watch-progress
+          // cloud pull (part of this same activation) simply hasn't landed
+          // yet — a race, not a confirmed "nothing to show". Listen for that
+          // pull's replaceForProfile event and re-check the moment it lands,
+          // rather than guessing a fixed delay; a bounded max wait still
+          // applies so a profile with genuinely no history isn't blocked.
+          const waitingForProfileId = String(ProfileManager.getActiveProfileId() || "");
+          await new Promise((resolve) => {
+            let settled = false;
+            const finish = () => {
+              if (settled) return;
+              settled = true;
+              unsubscribeProgress();
+              unsubscribeWatched();
+              clearTimeout(timeoutId);
+              resolve();
+            };
+            const onStoreChange = ({ profileId, reason } = {}) => {
+              if (
+                reason === "replaceForProfile" &&
+                String(profileId || "") === waitingForProfileId
+              ) {
+                finish();
+              }
+            };
+            const unsubscribeProgress = WatchProgressStore.subscribe(onStoreChange);
+            const unsubscribeWatched = WatchedItemsStore.subscribe(onStoreChange);
+            const timeoutId = setTimeout(finish, CW_INITIAL_EMPTY_RECHECK_MAX_WAIT_MS);
+          });
+          if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
+            return;
+          }
+          const [recheckedAllProgress, recheckedContinueWatching] = await Promise.all([
+            watchProgressRepository.getAllForContinueWatching().catch(() => []),
+            watchProgressRepository.getRecent(CW_MAX_VISIBLE_ITEMS).catch(() => [])
+          ]);
+          if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
+            return;
+          }
+          this.allProgress = Array.isArray(recheckedAllProgress) ? recheckedAllProgress : [];
+          this.continueWatching = Array.isArray(recheckedContinueWatching)
+            ? recheckedContinueWatching
+            : [];
+          this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(
+            this.allProgress,
+            this.continueWatching,
+            this.watchedItems,
+            {
+              applyDaysCap: !includeWatchedItemNextUpSeeds,
+              includeProgressSeeds: !includeWatchedItemNextUpSeeds,
+              includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
+              nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
+            }
+          ).slice(0, CW_MAX_NEXT_UP_LOOKUPS);
+          shouldShowLoading = Boolean(
+            (this.continueWatching?.length || 0) + (this.nextUpProgressCandidates?.length || 0)
+          );
+        }
         const previousDisplaySignature = buildContinueWatchingSignature(
           this.continueWatchingDisplay
         );
         const previousHeroIdentity = buildHeroIdentity(this.heroItem);
         const previousLoadingState = Boolean(this.continueWatchingLoading);
-        if (!suppressContinueWatchingLoading) {
+        // A store-triggered refresh (e.g. the background watch-progress cloud
+        // pull) is already scheduled or in flight for this profile. This read
+        // may have raced it and captured an empty local store just before the
+        // pull landed. Do not conclude "nothing to show" from a possibly-stale
+        // empty read; leave the loading skeleton up and let the pending
+        // refresh (which reads the store fresh) settle the final state.
+        const deferToPendingStoreRefresh =
+          !shouldShowLoading && Boolean(this.continueWatchingStoreRefreshPending);
+        if (!suppressContinueWatchingLoading && !deferToPendingStoreRefresh) {
           this.continueWatchingLoading = shouldShowLoading;
           this.continueWatchingDisplay = [];
           if (
@@ -9089,36 +9254,68 @@ export const HomeScreen = {
           }
         }
 
+        if (deferToPendingStoreRefresh) {
+          return;
+        }
+
         if (!shouldShowLoading) {
           if (suppressContinueWatchingLoading && (progressAllError || recentProgressError)) {
             this.continueWatchingLoading = false;
-            releaseInitialHomeAfterContinueWatching();
+            if (previousLoadingState) {
+              this.requestBackgroundRender();
+            }
             return;
           }
           if (preserveContinueWatching) {
             const nextSignature = "";
             if (nextSignature === previousContinueWatchingSignature) {
               this.continueWatchingLoading = false;
-              releaseInitialHomeAfterContinueWatching();
+              if (previousLoadingState) {
+                this.requestBackgroundRender();
+              }
               return;
             }
           }
           this.continueWatchingLoading = false;
           this.continueWatchingDisplay = [];
-          if (
-            !releaseInitialHomeAfterContinueWatching() &&
-            (previousLoadingState || previousDisplaySignature)
-          ) {
+          if (previousLoadingState || previousDisplaySignature) {
             this.requestBackgroundRender();
           }
           return;
         }
 
         try {
+          // On a true cold start (no snapshot to paint from), reveal each
+          // in-progress card as its own enrichment resolves instead of
+          // waiting for the whole batch (which can legitimately take several
+          // seconds of addon/TMDB lookups). Next-Up candidates still wait for
+          // the full pipeline below, since resolving "what's next" is the
+          // part that must not show a provisional/wrong guess.
+          const progressiveInProgressItems = [];
           const enriched = await this.enrichContinueWatching(this.continueWatching, {
             allProgress: this.allProgress,
             watchedItems: this.watchedItems,
-            nextUpProgressCandidates: this.nextUpProgressCandidates
+            nextUpProgressCandidates: this.nextUpProgressCandidates,
+            onInProgressItemReady: waitForInitialContinueWatching
+              ? (item) => {
+                  if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
+                    return;
+                  }
+                  progressiveInProgressItems.push(item);
+                  const partialDisplay = buildVisibleContinueWatchingItems(
+                    sortContinueWatchingItemsForDisplay(
+                      progressiveInProgressItems,
+                      this.layoutPrefs?.continueWatchingSortMode
+                    ),
+                    { requireArtwork: false }
+                  );
+                  if (!partialDisplay.length) {
+                    return;
+                  }
+                  this.continueWatchingDisplay = partialDisplay;
+                  this.requestBackgroundRender();
+                }
+              : undefined
           });
           if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
             return;
@@ -9161,21 +9358,16 @@ export const HomeScreen = {
           const nextDisplaySignature = buildContinueWatchingSignature(this.continueWatchingDisplay);
           const nextHeroIdentity = buildHeroIdentity(this.heroItem);
           if (
-            !releaseInitialHomeAfterContinueWatching() &&
-            (previousLoadingState !== this.continueWatchingLoading ||
-              previousDisplaySignature !== nextDisplaySignature ||
-              (!preserveHomeReturnState && previousHeroIdentity !== nextHeroIdentity))
+            previousLoadingState !== this.continueWatchingLoading ||
+            previousDisplaySignature !== nextDisplaySignature ||
+            (!preserveHomeReturnState && previousHeroIdentity !== nextHeroIdentity)
           ) {
             this.requestBackgroundRender();
           }
         } catch (error) {
           console.warn("Continue watching async enrichment failed", error);
           this.continueWatchingLoading = false;
-          if (
-            !releaseInitialHomeAfterContinueWatching() &&
-            !suppressContinueWatchingLoading &&
-            previousLoadingState
-          ) {
+          if (!suppressContinueWatchingLoading && previousLoadingState) {
             this.requestBackgroundRender();
           }
         }
@@ -9185,7 +9377,7 @@ export const HomeScreen = {
           return;
         }
         this.continueWatchingLoading = false;
-        if (!releaseInitialHomeAfterContinueWatching() && !suppressContinueWatchingLoading) {
+        if (!suppressContinueWatchingLoading) {
           this.requestBackgroundRender();
         }
       });
@@ -10702,7 +10894,11 @@ export const HomeScreen = {
 
   async enrichContinueWatching(items = [], options = {}) {
     const [inProgressItems, nextUpItems] = await Promise.all([
-      mapWithConcurrency(items || [], CW_MAX_ENRICHMENT_CONCURRENCY, async (item) => {
+      mapWithConcurrency(items || [], CW_MAX_ENRICHMENT_CONCURRENCY, async (item, index) => {
+        // The body below is unchanged; it is wrapped so a caller can be
+        // notified as each item resolves (for progressive rendering)
+        // without touching any of its several existing return points.
+        const enrichedItem = await (async () => {
         const cachedItem = applyCachedContinueWatchingEnrichment(item);
         if (!options?.forceRefreshMetadata && !needsContinueWatchingMetadataRefresh([cachedItem])) {
           return cachedItem;
@@ -10822,6 +11018,9 @@ export const HomeScreen = {
           country: firstNonEmpty(cachedItem.country),
           episodeTitle: firstNonEmpty(cachedItem.episodeTitle, cachedItem.subtitle)
         };
+        })();
+        options?.onInProgressItemReady?.(enrichedItem, index);
+        return enrichedItem;
       }),
       this.buildNextUpItems({
         allProgress: options?.allProgress || [],
@@ -11840,7 +12039,20 @@ export const HomeScreen = {
     this.posterHoldMenu = null;
     this.posterListPicker = null;
     this.persistCurrentFocusState();
-    this.homeLoadToken = (this.homeLoadToken || 0) + 1;
+    // Deliberately NOT bumping homeLoadToken here. Home can be cleaned up
+    // (e.g. the persistent-parent release when Detail hands off to Stream
+    // Selection, or any plain navigate-away) while its very first loadData()
+    // is still fetching catalog rows. Invalidating that in-flight load here
+    // used to discard it outright, so hasLoadedOnce/this.rows never got set
+    // and the next mount() had no choice but a full cold reload -- even
+    // though the fetch was still good data for the same profile. mount()
+    // itself always bumps the token on every entry (both the warm and cold
+    // paths), which is what actually needs to supersede a prior generation,
+    // so this bump was redundant for that purpose. Rendering from a stale
+    // route stays safe regardless: requestRender()/requestBackgroundRender()
+    // already no-op unless Router.getCurrent() === "home". The one thing the
+    // token alone would miss -- a profile switch while this load is still in
+    // flight -- is covered explicitly in loadData() via loadProfileId.
     this._trackPaginationInFlight?.clear();
     this.cancelScheduledRender();
     this.cancelModernCameraFollow({ stopAnimations: true });

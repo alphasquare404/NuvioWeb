@@ -439,6 +439,37 @@ button:focus-visible {
   overflow: hidden;
 }
 
+/* Standalone overlay bridging profile activation to Home. It is appended to
+   document.body, not to either screen's own markup, so it never changes the
+   layout of the profile-selection page or Home. */
+.profile-activation-transition-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  background: var(--bg-color);
+  opacity: 1;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+
+.profile-activation-transition-overlay.is-hidden {
+  opacity: 0;
+}
+
+.profile-activation-transition-overlay-logo {
+  width: 160px;
+  height: auto;
+}
+
+.profile-activation-transition-overlay-spinner {
+  color: var(--text-secondary);
+}
+
 .profile-main-layer {
   width: 100%;
   height: 100%;

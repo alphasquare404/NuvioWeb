@@ -11,8 +11,14 @@ export const CW_MAX_NEXT_UP_LOOKUPS = 32;
 export const CW_MAX_NEXT_UP_CONCURRENCY = 4;
 export const CW_MAX_ENRICHMENT_CONCURRENCY = 4;
 export const CW_MAX_VISIBLE_ITEMS = 300;
+// On a cold profile activation (no display snapshot yet), the very first
+// local watch-progress read can race the background cloud pull that is part
+// of the same activation. Rather than guessing a fixed delay, Home listens
+// for that pull's replaceForProfile event and re-checks as soon as it
+// lands; this is the maximum time to wait for it before concluding the
+// profile genuinely has no history.
+export const CW_INITIAL_EMPTY_RECHECK_MAX_WAIT_MS = 5000;
 export const CW_DISPLAY_SNAPSHOT_MAX_ITEMS = 50;
-export const CW_INITIAL_RESOLVE_BUDGET_MS = 1000;
 export const CW_RENDER_BATCH_ITEMS_DEFAULT = 30;
 export const CW_RENDER_BATCH_ITEMS_CONSTRAINED = 18;
 export const CW_RENDER_BATCH_ITEMS_LEGACY_TV = 12;

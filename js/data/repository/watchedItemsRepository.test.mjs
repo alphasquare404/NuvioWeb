@@ -41,3 +41,25 @@ test("marking watched commits the local row before a tracking provider completes
     values.clear();
   }
 });
+
+test("mark() forwards the authoritative flag to the WatchedItemsStore notification", async () => {
+  values.clear();
+  const notifications = [];
+  const unsubscribe = WatchedItemsStore.subscribe((payload) => notifications.push(payload));
+  try {
+    await watchedItemsRepository.mark(
+      { contentId: "movie:external-authoritative", contentType: "movie", title: "External" },
+      { authoritative: true, skipTrackingWrite: true }
+    );
+    await watchedItemsRepository.mark(
+      { contentId: "movie:ordinary", contentType: "movie", title: "Ordinary" },
+      { skipTrackingWrite: true }
+    );
+    assert.equal(notifications.length, 2);
+    assert.equal(notifications[0].authoritative, true);
+    assert.equal(notifications[1].authoritative, false);
+  } finally {
+    unsubscribe();
+    values.clear();
+  }
+});

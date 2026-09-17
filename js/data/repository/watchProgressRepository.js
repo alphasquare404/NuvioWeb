@@ -100,6 +100,55 @@ function invalidateContinueWatchingDisplaySnapshot() {
   LocalStore.set(CW_DISPLAY_SNAPSHOT_KEY, next);
 }
 
+function continueWatchingSnapshotItemKey({ contentId, videoId, season, episode } = {}) {
+  const normalizedContentId = String(contentId || "").trim();
+  if (!normalizedContentId) {
+    return "";
+  }
+  const normalizedVideoId = videoId == null ? "main" : String(videoId).trim();
+  const normalizedSeason = season == null ? "" : String(Number(season));
+  const normalizedEpisode = episode == null ? "" : String(Number(episode));
+  return `${normalizedContentId}::${normalizedVideoId}::${normalizedSeason}::${normalizedEpisode}`;
+}
+
+// A plain progress write (position/duration only, same item identity) does
+// not change which items belong on Home's Continue Watching row or their
+// Next-Up resolution, so the on-disk display snapshot can be patched in
+// place instead of thrown away. This keeps the snapshot valid across a
+// backgrounding/foregrounding cycle (e.g. returning from an external player
+// on iOS, where the app can re-mount Home) so the next mount still paints
+// instantly instead of falling back to the slow no-snapshot cold path.
+// A write for an item not already in the snapshot leaves the snapshot as-is
+// (rather than wiping it): the other cards it already shows are still a
+// valid fast paint, and this one item just won't reflect the change until
+// the next full resolve — better than forcing every card back through the
+// slow no-snapshot cold path for one item's update.
+function patchOrInvalidateContinueWatchingDisplaySnapshot(progressItem) {
+  const itemKey = continueWatchingSnapshotItemKey(progressItem);
+  if (!itemKey) {
+    invalidateContinueWatchingDisplaySnapshot();
+    return;
+  }
+  const sourceKey = `${activeProfileId()}:${selectedContinueWatchingSource()}`;
+  const store = LocalStore.get(CW_DISPLAY_SNAPSHOT_KEY, {});
+  const entry = store && typeof store === "object" ? store[sourceKey] : null;
+  if (!entry || !Array.isArray(entry.items)) {
+    return;
+  }
+  const index = entry.items.findIndex(
+    (item) => continueWatchingSnapshotItemKey(item) === itemKey
+  );
+  if (index === -1) {
+    return;
+  }
+  const positionMs = Math.max(0, Math.trunc(Number(progressItem?.positionMs) || 0));
+  const durationMs = Math.max(0, Math.trunc(Number(progressItem?.durationMs) || 0));
+  const nextItems = entry.items.slice();
+  nextItems[index] = { ...nextItems[index], positionMs, durationMs };
+  const nextStore = { ...store, [sourceKey]: { ...entry, items: nextItems } };
+  LocalStore.set(CW_DISPLAY_SNAPSHOT_KEY, nextStore);
+}
+
 function isSeriesType(type) {
   const normalized = String(type || "").toLowerCase();
   return normalized === "series" || normalized === "tv";
@@ -564,7 +613,7 @@ async function batchEnrichProgressItems(items) {
 }
 
 class WatchProgressRepository {
-  async saveProgress(progress) {
+  async saveProgress(progress, { authoritative = false } = {}) {
     if (isSeriesType(progress?.contentType)) {
       ContinueWatchingPreferences.removeDismissedNextUpKeysForContent(
         progress?.contentId,
@@ -577,9 +626,10 @@ class WatchProgressRepository {
         source: String(progress?.source || "").trim() || selectedLocalProgressSource(),
         updatedAt: progress.updatedAt || Date.now()
       },
-      activeProfileId()
+      activeProfileId(),
+      { authoritative }
     );
-    invalidateContinueWatchingDisplaySnapshot();
+    patchOrInvalidateContinueWatchingDisplaySnapshot(progress);
     queueWatchProgressCloudSync();
   }
 

@@ -355,9 +355,17 @@ export const Router = {
       marker.previousIndex = provenance.previousIndex;
       marker.previousRoute = provenance.previousRoute;
     }
+    // forceReload is a one-time directive for the mount that consumed it when
+    // this entry was first navigated to (e.g. profile activation reloading
+    // Home). It must not be baked into the persisted browser history state,
+    // or a later popstate landing back on this exact entry replays it and
+    // force-reloads the screen instead of restoring its preserved state --
+    // the same one-time-directive leak navigate()'s own stack push already
+    // guards against for the non-browser-history fallback path.
+    const { forceReload: _forceReload, ...persistableParams } = params || {};
     return {
       route,
-      params,
+      params: persistableParams,
       [NUVIO_HISTORY_STATE_KEY]: marker
     };
   },
@@ -547,9 +555,14 @@ export const Router = {
         this.routes[this.current].cleanup?.();
       }
       if (!shouldSkipPush) {
+        // forceReload is a one-time directive for the mount that consumed it
+        // (e.g. profile activation reloading Home). It must not be replayed
+        // by a later back() to this stack entry, or every return trip
+        // force-reloads the screen instead of restoring its preserved state.
+        const { forceReload: _forceReload, ...persistableParams } = this.currentParams || {};
         this.stack.push({
           route: this.current,
-          params: this.currentParams || {}
+          params: persistableParams
         });
       }
     } else if (this.current === routeName) {

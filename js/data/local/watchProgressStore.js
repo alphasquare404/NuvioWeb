@@ -109,8 +109,13 @@ let listAllCacheRaw = null;
 let listAllCacheValue = null;
 const changeListeners = new Set();
 
-function notifyChange(profileId, reason) {
-  const payload = { profileId: String(profileId || "1"), reason: String(reason || "update") };
+function notifyChange(profileId, reason, meta = {}) {
+  const payload = {
+    profileId: String(profileId || "1"),
+    reason: String(reason || "update"),
+    authoritative: Boolean(meta.authoritative),
+    item: meta.item || null
+  };
   changeListeners.forEach((listener) => {
     try {
       listener(payload);
@@ -173,7 +178,7 @@ export const WatchProgressStore = {
     return this.listAll().filter((item) => String(item.profileId || "1") === pid);
   },
 
-  upsert(progress, profileId) {
+  upsert(progress, profileId, { authoritative = false } = {}) {
     const pid = String(profileId || "1");
     const normalized = normalizeProgress(progress, pid);
     if (!normalized.contentId) {
@@ -186,7 +191,7 @@ export const WatchProgressStore = {
       ...items.filter((item) => progressKey(item) !== key)
     ]).slice(0, 5000);
     persistProgressItems(next);
-    notifyChange(pid, "upsert");
+    notifyChange(pid, "upsert", { authoritative, item: normalized });
   },
 
   findByContentId(contentId, profileId) {
@@ -194,7 +199,7 @@ export const WatchProgressStore = {
     return this.listForProfile(profileId).find((item) => item.contentId === wanted) || null;
   },
 
-  remove(contentId, videoId = null, profileId) {
+  remove(contentId, videoId = null, profileId, { authoritative = false } = {}) {
     const wantedContentId = String(contentId || "").trim();
     const wantedVideoId = videoId == null ? null : String(videoId);
     const pid = String(profileId || "1");
@@ -211,7 +216,7 @@ export const WatchProgressStore = {
       return String(item.videoId || "") !== wantedVideoId;
     });
     persistProgressItems(next);
-    notifyChange(pid, "remove");
+    notifyChange(pid, "remove", { authoritative });
   },
 
   replaceForProfile(profileId, items = []) {
