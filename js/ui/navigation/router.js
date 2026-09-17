@@ -547,9 +547,14 @@ export const Router = {
         this.routes[this.current].cleanup?.();
       }
       if (!shouldSkipPush) {
+        // forceReload is a one-time directive for the mount that consumed it
+        // (e.g. profile activation reloading Home). It must not be replayed
+        // by a later back() to this stack entry, or every return trip
+        // force-reloads the screen instead of restoring its preserved state.
+        const { forceReload: _forceReload, ...persistableParams } = this.currentParams || {};
         this.stack.push({
           route: this.current,
-          params: this.currentParams || {}
+          params: persistableParams
         });
       }
     } else if (this.current === routeName) {

@@ -141,7 +141,7 @@ export { escapeAttribute, escapeHtml, formatCatalogRowTitle } from "./homeUtils.
 
 const MODERN_SIDEBAR_PILL_AUTO_COLLAPSE_MS = 4000;
 const CW_RELEASE_ALERT_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
-const BROWSER_HOME_DRILL_DOWN_ROUTES = new Set(["detail", "folderDetail"]);
+const BROWSER_HOME_DRILL_DOWN_ROUTES = new Set(["detail", "folderDetail", "stream", "player"]);
 const BROWSER_HOME_GLOBAL_ROUTES = new Set([
   "search",
   "library",
