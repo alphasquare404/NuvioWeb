@@ -116,6 +116,7 @@ import {
 import { resolveNextUpCandidates } from "./nextUpCandidateResolver.js";
 import { shouldRefreshContinueWatchingForChange } from "./continueWatchingRefreshPolicy.js";
 import { patchContinueWatchingDisplayProgress } from "./continueWatchingProgressPatch.js";
+import { isHomeLoadGenerationCurrent } from "./homeLoadGeneration.js";
 import {
   getContinueWatchingRenderItems,
   shouldAppendContinueWatchingItems
@@ -8467,6 +8468,23 @@ export const HomeScreen = {
       // cached rows, so returning Home reflects the change immediately.
       this.rows = this.sortAndFilterRows(this.rows, this.collections);
       this.invalidateNavigationModel();
+      // The preserved continueWatchingDisplay predates whatever just played
+      // (built-in or external). Cross-check it against the local store
+      // synchronously — same source Detail's episode card already reads —
+      // so this render shows the true position immediately instead of the
+      // stale one, without waiting for the slower background loadData()
+      // enrichment/Next-Up pass below to catch up.
+      if (Array.isArray(this.continueWatchingDisplay) && this.continueWatchingDisplay.length) {
+        WatchProgressStore.listForProfile(activeProfileId).forEach((progressItem) => {
+          const patched = patchContinueWatchingDisplayProgress(
+            this.continueWatchingDisplay,
+            progressItem
+          );
+          if (patched) {
+            this.continueWatchingDisplay = patched;
+          }
+        });
+      }
       this.render();
       this.loadData({
         background: true,
@@ -8818,6 +8836,15 @@ export const HomeScreen = {
     }
     const loadStart = HOME_PERF_DEBUG ? homePerfNow() : 0;
     const token = this.homeLoadToken;
+    // cleanup() no longer bumps homeLoadToken (see cleanup()'s comment), so a
+    // load that was in flight when the user merely navigated away from Home
+    // is allowed to keep resolving and land its rows/hasLoadedOnce once done,
+    // instead of being discarded just because Home wasn't the active route
+    // for a moment. The token still catches a real new generation (mount()
+    // always bumps it). This profile id is the second, explicit guard: it
+    // catches the one case the token alone would miss -- a profile switch
+    // that happens while this load is still in flight.
+    const loadProfileId = String(ProfileManager.getActiveProfileId() || "");
     const preserveHomeReturnState = Boolean(background && preserveReturnState);
     const preservedHeroItem = preserveHomeReturnState ? this.heroItem : null;
     const preservedHeroIdentity = preserveHomeReturnState ? buildHeroIdentity(this.heroItem) : "";
@@ -8957,7 +8984,14 @@ export const HomeScreen = {
         this.requestBackgroundRender();
       }
     });
-    if (token !== this.homeLoadToken) {
+    if (
+      !isHomeLoadGenerationCurrent({
+        token,
+        currentToken: this.homeLoadToken,
+        profileId: loadProfileId,
+        currentProfileId: ProfileManager.getActiveProfileId()
+      })
+    ) {
       return;
     }
     const nextInitialRows = preserveHomeReturnState
@@ -12005,7 +12039,20 @@ export const HomeScreen = {
     this.posterHoldMenu = null;
     this.posterListPicker = null;
     this.persistCurrentFocusState();
-    this.homeLoadToken = (this.homeLoadToken || 0) + 1;
+    // Deliberately NOT bumping homeLoadToken here. Home can be cleaned up
+    // (e.g. the persistent-parent release when Detail hands off to Stream
+    // Selection, or any plain navigate-away) while its very first loadData()
+    // is still fetching catalog rows. Invalidating that in-flight load here
+    // used to discard it outright, so hasLoadedOnce/this.rows never got set
+    // and the next mount() had no choice but a full cold reload -- even
+    // though the fetch was still good data for the same profile. mount()
+    // itself always bumps the token on every entry (both the warm and cold
+    // paths), which is what actually needs to supersede a prior generation,
+    // so this bump was redundant for that purpose. Rendering from a stale
+    // route stays safe regardless: requestRender()/requestBackgroundRender()
+    // already no-op unless Router.getCurrent() === "home". The one thing the
+    // token alone would miss -- a profile switch while this load is still in
+    // flight -- is covered explicitly in loadData() via loadProfileId.
     this._trackPaginationInFlight?.clear();
     this.cancelScheduledRender();
     this.cancelModernCameraFollow({ stopAnimations: true });
