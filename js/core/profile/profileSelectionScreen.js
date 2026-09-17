@@ -2,14 +2,14 @@ import { Router } from "../../ui/navigation/router.js";
 import { MAX_PROFILES, ProfileManager } from "../../core/profile/profileManager.js";
 import { ProfileSyncService } from "../../core/profile/profileSyncService.js";
 import { StartupSyncService } from "../../core/profile/startupSyncService.js";
-import { CollectionSyncService } from "../../core/profile/collectionSyncService.js";
 import { ScreenUtils } from "../../ui/navigation/screen.js";
 import { AvatarRepository } from "../../data/remote/supabase/avatarRepository.js";
-import { ThemeManager } from "../../ui/theme/themeManager.js";
 import { I18n } from "../../i18n/index.js";
 import { NuvioDialog } from "../../ui/components/nuvioDialog.js";
 import { detailWatchedEnrichmentService } from "../../data/repository/detailWatchedEnrichmentService.js";
 import { resolveExperienceRoute } from "./experienceModeRouting.js";
+import { renderLoadingIndicator } from "../../ui/components/loadingIndicator.js";
+import { HomeScreen } from "../../ui/screens/home/homeScreen.js";
 import {
   removeBrowserProfileAvatar,
   resolveBrowserProfileAvatar
@@ -114,6 +114,42 @@ function escapeHtml(value) {
 function getProfileInitial(name) {
   const trimmed = String(name || "").trim();
   return trimmed ? trimmed.charAt(0).toUpperCase() : "?";
+}
+
+// A standalone full-screen overlay (appended to document.body, not part of
+// either screen's own markup) that bridges the tap on a profile card to
+// Home's shell appearing. It never touches the profile-selection screen's or
+// Home's own DOM/layout, so neither page's shape changes because of it.
+const PROFILE_ACTIVATION_OVERLAY_CLASS = "profile-activation-transition-overlay";
+const PROFILE_ACTIVATION_OVERLAY_HIDE_MS = 220;
+
+function showProfileActivationTransitionOverlay() {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const existing = document.querySelector(`.${PROFILE_ACTIVATION_OVERLAY_CLASS}`);
+  if (existing) {
+    return existing;
+  }
+  const overlay = document.createElement("div");
+  overlay.className = PROFILE_ACTIVATION_OVERLAY_CLASS;
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.innerHTML = `
+    <img src="assets/brand/app_logo_wordmark.png" class="profile-activation-transition-overlay-logo" alt="Nuvio" />
+    ${renderLoadingIndicator({ className: "profile-activation-transition-overlay-spinner" })}
+  `;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function hideProfileActivationTransitionOverlay(overlay) {
+  if (!overlay || typeof document === "undefined") {
+    return;
+  }
+  overlay.classList.add("is-hidden");
+  setTimeout(() => {
+    overlay.remove();
+  }, PROFILE_ACTIVATION_OVERLAY_HIDE_MS);
 }
 
 function resolveProfileAvatarUrl(profile, avatarUrlResolver) {
@@ -2251,22 +2287,35 @@ export const ProfileSelectionScreen = {
     }
     this.isActivatingProfile = true;
     const activationStartedAt = profileSelectionNow();
+    logProfileSelectionTiming("profile-activation-start", activationStartedAt);
     this.activatingProfileId = String(profileId);
     const profileCard =
       Array.from(this.container?.querySelectorAll(".profile-card[data-profile-id]") || []).find(
         (node) => String(node.dataset.profileId || "") === String(profileId)
       ) || null;
     profileCard?.classList?.add("is-activating");
+    const transitionOverlay = showProfileActivationTransitionOverlay();
+    if (transitionOverlay) {
+      // Guarantee the overlay actually commits a paint before any further
+      // synchronous/microtask work runs. Without this, on some browsers
+      // (observed on iOS Safari PWA) the whole activation sequence below can
+      // race through without ever yielding to the render loop, so the
+      // overlay is appended and removed without the user ever seeing it.
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
+    }
     try {
       await ProfileManager.setActiveProfile(profileId);
       StartupSyncService.enableProfileScopedSync();
-      // Keep a rapid profile switch from resolving Collections against a later
-      // active profile while the broader startup sync is still in flight.
-      void CollectionSyncService.pull(profileId);
+      // Kick off critical hydration but do not block the screen transition on
+      // it. Home's own mount (js/ui/screens/home/homeScreen.js) awaits this
+      // same in-flight pull before it fetches catalog rows, so the profile
+      // card no longer sits idle for the ~1-2s this can take before the tap
+      // visibly does anything. hydrateCriticalHome dedupes concurrent calls
+      // for the same profileId, so this and Home's own call share one pull.
+      const criticalHydrationPromise = StartupSyncService.hydrateCriticalHome(profileId);
       detailWatchedEnrichmentService.invalidateAllCache();
-      await I18n.init();
-      ThemeManager.apply();
-      I18n.apply();
       const experienceRoute = await resolveExperienceRoute(profileId, {
         pullRemoteSettings: false
       });
@@ -2276,11 +2325,24 @@ export const ProfileSelectionScreen = {
         experienceRoute === "home" ? {} : { replaceHistory: true, skipStackPush: true }
       );
       logProfileSelectionTiming("profile-activation-route-mounted", activationStartedAt);
-      void StartupSyncService.requestSyncNow().catch((error) => {
-        console.warn("Profile background sync failed", error);
-      });
+      // Keep the overlay up until Home has actually painted its first real
+      // content (catalog rows/hero), not just until hydration resolves or
+      // the route mounts — otherwise the overlay disappears early and Home's
+      // own loading skeleton takes over for the remainder of the fetch,
+      // which reads as two different loading states stacked back to back.
+      const criticalHydration = await criticalHydrationPromise;
+      if (HomeScreen.initialLoadPromise) {
+        await HomeScreen.initialLoadPromise;
+      }
+      hideProfileActivationTransitionOverlay(transitionOverlay);
+      if (criticalHydration.current) {
+        void StartupSyncService.requestSyncNow({ criticalHydration }).catch((error) => {
+          console.warn("Profile background sync failed", error);
+        });
+      }
     } catch (error) {
       console.warn("Failed to activate profile", error);
+      hideProfileActivationTransitionOverlay(transitionOverlay);
       this.isActivatingProfile = false;
       this.activatingProfileId = "";
       profileCard?.classList?.remove("is-activating");

@@ -169,6 +169,7 @@ async function shouldShowProfileSelection() {
 
 async function enterWithLastProfile() {
   const startedAt = startupNow();
+  logStartupTiming("enter-last-profile-activation-start", startedAt);
   hasSelectedProfileThisSession = true;
   const profiles = await ProfileManager.getProfiles();
   const activeProfileId = ProfileManager.getActiveProfileId();
@@ -176,13 +177,17 @@ async function enterWithLastProfile() {
     profiles.find((profile) => String(profile.id) === String(activeProfileId)) ||
     profiles[0] ||
     null;
+  // Critical hydration is kicked off but not awaited here, so the app shell
+  // transitions to Home immediately instead of sitting on the boot screen
+  // for it. Home's own mount awaits this same in-flight pull (deduped by
+  // profileId, see StartupSyncService.hydrateCriticalHome) before it fetches
+  // catalog rows, preserving the "no stale-catalog flash" guarantee.
+  let criticalHydrationPromise = null;
   if (activeProfile) {
     await ProfileManager.setActiveProfile(activeProfile.id);
     StartupSyncService.enableProfileScopedSync();
+    criticalHydrationPromise = StartupSyncService.hydrateCriticalHome(activeProfile.id);
     detailWatchedEnrichmentService.invalidateAllCache();
-    await I18n.init();
-    ThemeManager.apply();
-    I18n.apply();
     void preloadStreamBadgeImages().catch((error) => {
       console.warn("Stream badge image prerender failed", error);
     });
@@ -197,9 +202,14 @@ async function enterWithLastProfile() {
   } else {
     await Router.navigate("home");
   }
-  void StartupSyncService.requestSyncNow().catch((error) => {
-    console.warn("Profile background sync failed", error);
-  });
+  if (criticalHydrationPromise) {
+    const criticalHydration = await criticalHydrationPromise;
+    if (criticalHydration.current) {
+      void StartupSyncService.requestSyncNow({ criticalHydration }).catch((error) => {
+        console.warn("Profile background sync failed", error);
+      });
+    }
+  }
   logStartupTiming("enter-last-profile-route-mounted", startedAt, { route: experienceRoute });
 }
 

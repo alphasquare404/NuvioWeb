@@ -24,6 +24,7 @@ import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/t
 import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { mdbListRepository } from "../../../data/repository/mdbListRepository.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
+import { StartupSyncService } from "../../../core/profile/startupSyncService.js";
 import { AvatarRepository } from "../../../data/remote/supabase/avatarRepository.js";
 import { resolveBrowserProfileAvatar } from "../../../core/profile/browserProfileAvatarCache.js";
 import { Platform } from "../../../platform/index.js";
@@ -8520,12 +8521,33 @@ export const HomeScreen = {
     this.sidebarProfile = await getLocalSidebarProfileState().catch(() => null);
     this.render();
     if (Platform.isBrowser()) {
-      // Browser Home paints its local shell immediately. Catalog and optional
-      // remote data continue progressively, so one unavailable addon cannot
-      // make profile activation look frozen.
-      void this.loadData({ background: false }).catch((error) => {
-        console.warn("Home initial background load failed", error);
-      });
+      // Browser Home paints its local shell (this skeleton) immediately so
+      // the transition away from profile selection is instant. Critical
+      // profile/catalog/addon hydration is awaited here, inside Home's own
+      // loading state, rather than by the caller before it navigates here
+      // (profileSelectionScreen.js / app.js kick it off without waiting) —
+      // Home must still not fetch catalog rows from pre-hydration config and
+      // visibly replace them once the pull lands. hydrateCriticalHome dedupes
+      // against whichever caller already started this same profile's pull.
+      // Exposed so a caller that is bridging this transition with its own
+      // loading UI (profileSelectionScreen.js's activation overlay) can wait
+      // for Home's actual first paint instead of guessing how long that
+      // takes. Resolves once catalog rows/hero are ready — it does not wait
+      // for Continue Watching's own background enrichment.
+      this.initialLoadPromise = StartupSyncService.hydrateCriticalHome(activeProfileId)
+        .catch((error) => {
+          console.warn("Home critical hydration failed", error);
+          return null;
+        })
+        .then(() => {
+          if (String(ProfileManager.getActiveProfileId() || "") !== activeProfileId) {
+            return null;
+          }
+          return this.loadData({ background: false });
+        })
+        .catch((error) => {
+          console.warn("Home initial background load failed", error);
+        });
       logHomePerf("mount", {
         ms: Number((homePerfNow() - mountStart).toFixed(2)),
         route: "home",
