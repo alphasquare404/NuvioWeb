@@ -1658,7 +1658,17 @@ function dbToGain(db = 0) {
 }
 
 function supportsWebAudioAmplification() {
-  return true;
+  const video = PlayerController.video;
+  const source = video?.currentSrc || video?.src;
+  const origin = globalThis.location?.origin;
+  if (!source || !origin) return false;
+  // Native remote media can play without CORS, but Web Audio may silence it.
+  // Keep direct playback intact rather than changing the video's CORS mode.
+  try {
+    return new URL(source, origin).origin === origin;
+  } catch (_) {
+    return false;
+  }
 }
 
 function isMagnetUrl(value = "") {
