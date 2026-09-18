@@ -5854,11 +5854,14 @@ export const HomeScreen = {
       return;
     }
     node.classList.remove("is-focus-gif-active");
+    gifNode.removeAttribute("src");
   },
 
-  syncFocusedCollectionCardState() {
-    const focused = this.getCurrentFocusedNode();
-    const focusedCollection = focused?.classList?.contains("home-collection-card") ? focused : null;
+  syncFocusedCollectionCardState(focused = this.getCurrentFocusedNode()) {
+    const focusedCollection =
+      focused?.classList?.contains("home-collection-card") && this.container?.contains(focused)
+        ? focused
+        : null;
     if (
       this.activeCollectionFocusGifNode &&
       this.activeCollectionFocusGifNode !== focusedCollection &&
@@ -7651,12 +7654,7 @@ export const HomeScreen = {
     ensureSpatialFocusVisible(target);
     this.setCurrentFocusedNode(target);
     this.scheduleHomeLazyImageHydration(target);
-    if (this.isCollectionFolderNode(current)) {
-      this.hydrateCollectionFocusGif(current, false);
-    }
-    if (this.isCollectionFolderNode(target)) {
-      this.hydrateCollectionFocusGif(target, true);
-    }
+    this.syncFocusedCollectionCardState(target);
     this.setSidebarExpanded(this.isSidebarNode(target));
     if (this.isMainNode(target)) {
       this.lastMainFocus = target;
@@ -7993,6 +7991,7 @@ export const HomeScreen = {
             return;
           }
         }
+        this.syncFocusedCollectionCardState(target);
         if (target.closest(".home-sidebar .focusable, .modern-sidebar-panel .focusable")) {
           this.setSidebarExpanded(true);
           return;
@@ -8003,7 +8002,6 @@ export const HomeScreen = {
         if (this.isMainNode(target)) {
           this.lastMainFocus = target;
         }
-        this.syncFocusedCollectionCardState();
         this.scheduleModernHeroUpdate(target);
         this.scheduleFocusedPosterFlow(target);
       };
@@ -8050,6 +8048,10 @@ export const HomeScreen = {
     if (!this.boundHomeMouseOverHandler) {
       this.boundHomeMouseOverHandler = (event) => {
         if (Platform.isBrowser()) {
+          const card = event?.target?.closest?.(".home-collection-card");
+          if (card && this.container?.contains(card) && !card.contains(event.relatedTarget)) {
+            this.syncFocusedCollectionCardState(card);
+          }
           return;
         }
         const target = event?.target?.closest?.(".home-main .home-content-card.focusable");
@@ -8068,6 +8070,16 @@ export const HomeScreen = {
         this.syncFocusedCollectionCardState();
         this.scheduleModernHeroUpdate(target);
         this.scheduleFocusedPosterFlow(target);
+      };
+    }
+    if (!this.boundHomeCollectionLeaveHandler) {
+      this.boundHomeCollectionLeaveHandler = (event) => {
+        if (!Platform.isBrowser()) return;
+        const card = event?.target?.closest?.(".home-collection-card");
+        if (!card || card.contains(event.relatedTarget)) return;
+        this.syncFocusedCollectionCardState(
+          event.type === "focusout" ? event.relatedTarget : document.activeElement
+        );
       };
     }
     if (!this.boundHomeWheelHandler) {
@@ -8111,11 +8123,15 @@ export const HomeScreen = {
       this.boundHomeEventContainer.removeEventListener("focusin", this.boundHomeFocusInHandler);
       this.boundHomeEventContainer.removeEventListener("click", this.boundHomeClickHandler);
       this.boundHomeEventContainer.removeEventListener("mouseover", this.boundHomeMouseOverHandler);
+      this.boundHomeEventContainer.removeEventListener("mouseout", this.boundHomeCollectionLeaveHandler);
+      this.boundHomeEventContainer.removeEventListener("focusout", this.boundHomeCollectionLeaveHandler);
       this.boundHomeEventContainer.removeEventListener("wheel", this.boundHomeWheelHandler);
     }
     this.container.addEventListener("focusin", this.boundHomeFocusInHandler);
     this.container.addEventListener("click", this.boundHomeClickHandler);
     this.container.addEventListener("mouseover", this.boundHomeMouseOverHandler);
+    this.container.addEventListener("mouseout", this.boundHomeCollectionLeaveHandler);
+    this.container.addEventListener("focusout", this.boundHomeCollectionLeaveHandler);
     this.container.addEventListener("wheel", this.boundHomeWheelHandler, { passive: false });
     this.boundHomeEventContainer = this.container;
   },
@@ -12165,10 +12181,13 @@ export const HomeScreen = {
     this.lastHomeLazyImageHydrationAnchorRow = null;
     this.lastDirectionalKeyAtByDirection = {};
     this.homeTruncationScope = null;
+    this.syncFocusedCollectionCardState(null);
     if (this.boundHomeEventContainer) {
       this.boundHomeEventContainer.removeEventListener("focusin", this.boundHomeFocusInHandler);
       this.boundHomeEventContainer.removeEventListener("click", this.boundHomeClickHandler);
       this.boundHomeEventContainer.removeEventListener("mouseover", this.boundHomeMouseOverHandler);
+      this.boundHomeEventContainer.removeEventListener("mouseout", this.boundHomeCollectionLeaveHandler);
+      this.boundHomeEventContainer.removeEventListener("focusout", this.boundHomeCollectionLeaveHandler);
       this.boundHomeEventContainer.removeEventListener("wheel", this.boundHomeWheelHandler);
       this.boundHomeEventContainer = null;
     }
