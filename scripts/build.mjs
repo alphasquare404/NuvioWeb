@@ -10,6 +10,7 @@ import autoprefixer from "autoprefixer";
 import { readAppMetadata, syncVersionFiles } from "./appMetadata.mjs";
 import { browserCompatibilityPolicy } from "./browserCompatibilityPolicy.mjs";
 import { writeRuntimeEnvScriptFile } from "./envProperties.mjs";
+import { appShellFingerprint } from "./appShellFingerprint.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -486,10 +487,11 @@ async function buildBrowserServiceWorker() {
   const { version } = await readAppMetadata();
   const source = await readFile(path.join(rootDir, "sw.js"), "utf8");
   const localeAssets = await collectLocaleAssets(path.join(rootDir, "res"));
+  const fingerprint = await appShellFingerprint(distDir);
   await writeFile(
     path.join(distDir, "sw.js"),
     source
-      .replaceAll("__NUVIO_APP_VERSION__", String(version))
+      .replaceAll("__NUVIO_APP_VERSION__", `${version}-${fingerprint}`)
       .replace("__NUVIO_LOCALE_ASSETS__", JSON.stringify(localeAssets))
   );
 }
@@ -512,7 +514,6 @@ async function runBuild() {
       cp(path.join(rootDir, "docs", "youtube-proxy.html"), path.join(distDir, "youtube-proxy.html")),
       cp(path.join(rootDir, "manifest.webmanifest"), path.join(distDir, "manifest.webmanifest"))
     ]);
-    await buildBrowserServiceWorker();
     await buildCoreJsBundle();
     await Promise.all([
       cp(
@@ -565,6 +566,7 @@ async function runBuild() {
       console.warn("WARNING: using local.example.properties as fallback.");
     }
 
+    await buildBrowserServiceWorker();
     console.log(`\nbuild finished successfully in: ${distDir}`);
   } catch (error) {
     console.error("\nbuild failed:");
