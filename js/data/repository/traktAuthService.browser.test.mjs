@@ -108,3 +108,46 @@ test("browser bridge unavailability is graceful and does not expose a confidenti
     globalThis.fetch = originalFetch;
   }
 });
+
+test("a multi-day token stays valid after one day without refreshing through the bridge", async (t) => {
+  storage.clear();
+  TraktAuthStore.saveToken({
+    access_token: "still-valid",
+    refresh_token: "refresh-token",
+    created_at: Math.floor(Date.now() / 1000) - 2 * 86400,
+    expires_in: 604800
+  });
+  t.mock.method(globalThis, "fetch", async () => assert.fail("An unexpired token must not refresh"));
+  assert.equal(TraktAuthStore.get().expiresIn, 604800);
+  assert.equal(await TraktAuthService.getValidAccessToken(), "still-valid");
+});
+
+test("credential push and pull preserve the provider lifetime, including an actual one-day token", async (t) => {
+  storage.clear();
+  const { AuthManager } = await import("../../core/auth/authManager.js");
+  const { SupabaseApi } = await import("../remote/supabase/supabaseApi.js");
+  const { TraktCredentialSyncService } = await import("../../core/profile/traktCredentialSyncService.js");
+  const originalAuth = Object.getOwnPropertyDescriptor(AuthManager, "isAuthenticated");
+  Object.defineProperty(AuthManager, "isAuthenticated", { get: () => true, configurable: true });
+  t.after(() => {
+    if (originalAuth) Object.defineProperty(AuthManager, "isAuthenticated", originalAuth);
+    else delete AuthManager.isAuthenticated;
+  });
+  let remoteCredential;
+  t.mock.method(SupabaseApi, "rpc", async (name, params) => {
+    if (name === "sync_push_provider_credentials") {
+      remoteCredential = params.p_credentials[0].credential_json;
+      return null;
+    }
+    assert.equal(name, "sync_pull_provider_credentials");
+    return [{ provider: "trakt", credential_json: remoteCredential }];
+  });
+  for (const expiresIn of [3600, 86400, 604800, 1209600]) {
+    TraktAuthStore.saveToken({ access_token: "access", refresh_token: "refresh", expires_in: expiresIn }, 1);
+    assert.equal(await TraktCredentialSyncService.pushCurrentToRemote(1), true);
+    assert.equal(remoteCredential.expires_in, expiresIn);
+    TraktAuthStore.clearAuth(1);
+    assert.equal(await TraktCredentialSyncService.pullFromRemote(1), true);
+    assert.equal(TraktAuthStore.get(1).expiresIn, expiresIn);
+  }
+});

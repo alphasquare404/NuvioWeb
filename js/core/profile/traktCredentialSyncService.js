@@ -25,7 +25,7 @@ function normalizeLifetimeSeconds(value) {
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return TOKEN_FALLBACK_LIFETIME_SECONDS;
   }
-  return Math.min(TOKEN_FALLBACK_LIFETIME_SECONDS, Math.trunc(seconds));
+  return Math.trunc(seconds);
 }
 
 function credentialJsonFromState(state = {}) {
