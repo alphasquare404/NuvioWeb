@@ -61,9 +61,8 @@ const DEFAULTS = {
   streamReuseLastLinkEnabled: false,
   streamReuseLastLinkCacheHours: 24,
   streamAutoPlayTimeoutSeconds: 3,
-  // Apple browser users without a stored preference receive the verified
-  // Lenna path; platform-specific consumers keep Android on its own options.
-  browserExternalPlayer: "lenna",
+  // External playback requires the user to choose an installed player.
+  browserExternalPlayer: "disabled",
   externalPlayerProgress: "automatic"
 };
 
