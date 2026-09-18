@@ -6,6 +6,11 @@ import { watchedItemsRepository } from "../../../data/repository/watchedItemsRep
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import { Platform } from "../../../platform/index.js";
+import {
+  getBrowserVerticalScrollOwner,
+  getBrowserVerticalScrollTop,
+  setBrowserVerticalScrollTop
+} from "../../navigation/browserScrollPosition.js";
 import { renderContentFilterPicker } from "../../components/filterPicker.js";
 import {
   PosterOptionsDialogController,
@@ -678,12 +683,15 @@ export const DiscoverScreen = {
     if (this.loading || !this.hasMore) {
       return false;
     }
-    const scrollOwner = document.scrollingElement || document.documentElement;
+    // Whatever is really scrolling: the document when Discover is the bottom
+    // screen, its own container when it is layered over another. Reading the
+    // document unconditionally made infinite scroll stop firing in the latter.
+    const scrollOwner = getBrowserVerticalScrollOwner(this.container);
     if (!scrollOwner) {
       return false;
     }
-    const scrollTop = Number(window.scrollY || scrollOwner.scrollTop || 0);
-    const viewportHeight = Number(window.innerHeight || scrollOwner.clientHeight || 0);
+    const scrollTop = Number(scrollOwner.scrollTop || 0);
+    const viewportHeight = Number(scrollOwner.clientHeight || 0);
     const remaining = scrollOwner.scrollHeight - (scrollTop + viewportHeight);
     return remaining <= 640;
   },
@@ -1165,8 +1173,10 @@ export const DiscoverScreen = {
 
   captureViewState() {
     if (Platform.isBrowser()) {
-      const scrollOwner = document.scrollingElement || document.documentElement;
-      this.savedScrollTop = Number(window.scrollY || scrollOwner?.scrollTop || 0);
+      // window.scrollY / document.scrollingElement are not actually where
+      // this page scrolls in the browser shell -- see browserScrollPosition.js
+      // for why geometry alone can't find the real scrolling element.
+      this.savedScrollTop = getBrowserVerticalScrollTop(this.container);
     }
     const main = this.container?.querySelector(".discover-main");
     if (main && !Platform.isBrowser()) {
@@ -1185,8 +1195,7 @@ export const DiscoverScreen = {
 
   restoreScrollState() {
     if (Platform.isBrowser()) {
-      const top = Math.max(0, Number(this.savedScrollTop || 0));
-      window.scrollTo({ top, behavior: "auto" });
+      setBrowserVerticalScrollTop(Number(this.savedScrollTop || 0), this.container);
       return;
     }
     const main = this.container?.querySelector(".discover-main");
@@ -1330,7 +1339,7 @@ export const DiscoverScreen = {
   scrollContentToTop() {
     if (Platform.isBrowser()) {
       this.savedScrollTop = 0;
-      window.scrollTo({ top: 0, behavior: "auto" });
+      setBrowserVerticalScrollTop(0, this.container);
       return;
     }
     const scroller = this.getContentScroller();
@@ -1702,13 +1711,18 @@ export const DiscoverScreen = {
       if (!this.container || Router.getCurrent() !== "discover") {
         return;
       }
-      const scrollOwner = document.scrollingElement || document.documentElement;
-      this.savedScrollTop = Number(window.scrollY || scrollOwner?.scrollTop || 0);
+      this.savedScrollTop = getBrowserVerticalScrollTop(this.container);
       if (this.shouldAutoLoadMoreFromDocument()) {
         void this.loadNextPage({ preserveViewport: true });
       }
     };
-    window.addEventListener("scroll", this.browserDocumentScrollHandler, { passive: true });
+    // Capture phase: scroll events do not bubble, so a listener on window only
+    // sees document scrolls. Capture travels top-down and therefore also sees
+    // Discover scrolling inside its own container while it is layered.
+    document.addEventListener("scroll", this.browserDocumentScrollHandler, {
+      passive: true,
+      capture: true
+    });
   },
 
   bindPointerEvents() {
@@ -1963,7 +1977,7 @@ export const DiscoverScreen = {
     this.browserCardTouchIntentCleanup = null;
     this.loadToken = (this.loadToken || 0) + 1;
     if (this.browserDocumentScrollHandler) {
-      window.removeEventListener("scroll", this.browserDocumentScrollHandler);
+      document.removeEventListener("scroll", this.browserDocumentScrollHandler, { capture: true });
       this.browserDocumentScrollHandler = null;
     }
     this.cancelScheduledRender();

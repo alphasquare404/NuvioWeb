@@ -9948,7 +9948,12 @@ body.desktop-browser {
   position: fixed;
   top: max(10px, env(safe-area-inset-top));
   left: 50%;
-  z-index: 70;
+  /* Sits above the router's layer band -- navigation stacks each screen as a
+     fixed layer starting at z-index 1000 (see LAYER_SUSPEND / applyLayerChrome
+     in router.js), which would otherwise paint straight over this indicator and
+     leave the gesture with no visible feedback at all. Still far below the
+     10000+ used by modals and dialogs. */
+  z-index: 1100;
   display: flex;
   align-items: center;
   gap: 7px;

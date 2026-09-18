@@ -276,7 +276,8 @@ function resetRouter(routes) {
   Router.ignoreNextPopstate = false;
   Router.browserHistoryIndex = null;
   Router.browserHistoryProvenance = null;
-  Router.suspendedDetailParent = null;
+  Router.suspendedRouteStack = [];
+  Router.suspendedDocumentChrome = null;
   Router.pendingPreviousRouteBack = null;
   Router.browserPullToRefreshCleanup?.();
   Router.browserPullToRefreshCleanup = null;
@@ -820,15 +821,17 @@ test("fresh parent navigation never reuses an unrelated suspended Detail parent"
   assert.equal(home.cleanupCalls, 1, "the old suspended parent is released normally");
 });
 
-test("Home -> Detail -> Stream -> Detail -> Home releases the suspended Home parent, while Home -> Detail -> Home alone resumes it", async () => {
+test("Home -> Detail -> Stream -> Detail -> Home keeps both Home and Detail suspended through the whole detour", async () => {
   const home = makeScreen("home");
   const detail = makeScreen("detail");
   const stream = makeScreen("stream");
   home.container = makeContainer();
   detail.container = makeContainer();
+  stream.container = makeContainer();
   resetRouter({ home, detail, stream });
   screenContainers.set("home", home.container);
   screenContainers.set("detail", detail.container);
+  screenContainers.set("stream", stream.container);
   Router.init();
 
   // Comparison A: Home -> Detail -> back -> Home. Home is only ever
@@ -844,28 +847,362 @@ test("Home -> Detail -> Stream -> Detail -> Home releases the suspended Home par
   assert.equal(home.cleanupCalls, 0);
 
   // Comparison B: from that same suspended arrangement, detour through
-  // Stream Selection before coming back. Leaving Detail for Stream must
-  // release the suspended Home parent (with cleanup), so Home's eventual
-  // return is a genuine fresh mount -- this is the router-level mechanism
-  // the "Home reconstructs after a Stream Selection detour" bug depends on
-  // (the fix itself is in homeScreen.js: a still-in-flight load started by
-  // that fresh mount must not be discarded just because it started while
-  // Home was mid-navigation away).
+  // Stream Selection before coming back. Detail -> Stream now extends the
+  // suspended-layer stack by one more level (Detail joins Home) instead of
+  // releasing it, so both stay suspended -- never cleaned up, never
+  // remounted -- all the way through the detour. This is the fix for the
+  // visible "paints at top, then jumps" glitch on exactly this path: a
+  // resumed layer's DOM was never touched, so there is nothing to correct
+  // after paint.
   await Router.navigate("detail", { itemId: "movie-b" });
   assert.equal(home.cleanupCalls, 0, "Home is suspended again under this second Detail visit");
   await Router.navigate("stream", { itemId: "movie-b" });
-  assert.equal(home.cleanupCalls, 1, "leaving Detail for Stream releases the suspended Home parent");
+  assert.equal(home.cleanupCalls, 0, "leaving Detail for Stream must not release the suspended Home parent");
+  assert.equal(stream.container.style.getPropertyValue("z-index"), "1001", "Stream layers above the already-suspended Home/Detail pair");
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "detail");
+  assert.equal(detail.mounts.length, 2, "Detail resumes the suspended instance, it is not remounted a third time");
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "home");
-  assert.equal(home.mounts.length, 2, "Home must be mounted fresh after the Stream Selection detour");
+  assert.equal(home.mounts.length, 1, "Home resumes the same suspended instance after the Stream Selection detour, it is never remounted");
+  assert.equal(home.cleanupCalls, 0);
 });
 
-test("forceReload is a one-time directive and is not replayed by a later popstate return to Home", async () => {
+test("leaving a chain for an unrelated route keeps every entry behind it live, because Back still goes there", async () => {
   const home = makeScreen("home");
+  const detail = makeScreen("detail");
+  const stream = makeScreen("stream");
+  const library = makeScreen("library");
+  for (const [name, screen] of [["home", home], ["detail", detail], ["stream", stream], ["library", library]]) {
+    screen.container = makeContainer();
+    screenContainers.set(name, screen.container);
+  }
+  resetRouter({ home, detail, stream, library });
+  for (const [name, screen] of [["home", home], ["detail", detail], ["stream", stream], ["library", library]]) {
+    screenContainers.set(name, screen.container);
+  }
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-a" });
+  await Router.navigate("stream", { itemId: "movie-a" });
+  // A bottom-nav tap is still a forward push, so Back from Library genuinely
+  // returns to Stream, then Detail, then Home. The layer stack mirrors that
+  // rather than second-guessing which transitions "belong" to a flow.
+  await Router.navigate("library");
+  assert.deepEqual(
+    Router.suspendedRouteStack.map((layer) => layer.route),
+    ["home", "detail", "stream"]
+  );
+  assert.equal(home.cleanupCalls, 0);
+  assert.equal(detail.cleanupCalls, 0);
+  assert.equal(stream.cleanupCalls, 0);
+
+  for (const expected of ["stream", "detail", "home"]) {
+    history.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), expected);
+  }
+  assert.equal(home.mounts.length, 1, "every step back revealed a live screen, none were rebuilt");
+  assert.equal(detail.mounts.length, 1);
+  assert.equal(stream.mounts.length, 1);
+  assert.equal(Router.suspendedRouteStack.length, 0);
+});
+
+test("the layer stack is bounded: the oldest entry is evicted and falls back to its own snapshot", async () => {
+  const screens = {
+    home: makeScreen("home"),
+    detail: makeScreen("detail"),
+    stream: makeScreen("stream"),
+    castDetail: makeScreen("castDetail"),
+    library: makeScreen("library"),
+    search: makeScreen("search")
+  };
+  resetRouter(screens);
+  for (const [name, screen] of Object.entries(screens)) {
+    screen.container = makeContainer();
+    screenContainers.set(name, screen.container);
+  }
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-a" });
+  await Router.navigate("stream", { itemId: "movie-a" });
+  await Router.navigate("castDetail", { castId: "42" });
+  await Router.navigate("library");
+  assert.deepEqual(
+    Router.suspendedRouteStack.map((layer) => layer.route),
+    ["home", "detail", "stream", "castDetail"],
+    "four layers is the cap, still all live"
+  );
+  assert.equal(screens.home.cleanupCalls, 0);
+
+  await Router.navigate("search");
+  assert.deepEqual(
+    Router.suspendedRouteStack.map((layer) => layer.route),
+    ["detail", "stream", "castDetail", "library"],
+    "the fifth push evicts the oldest layer rather than growing without limit"
+  );
+  assert.equal(screens.home.cleanupCalls, 1, "the evicted layer is cleaned up, not merely dropped");
+});
+
+test("Stream suspends under Player and resumes on Back, without suspending Player itself", async () => {
+  const detail = makeScreen("detail");
+  const stream = makeScreen("stream");
+  const player = makeScreen("player", {
+    shouldReturnToStreamOnBack: () => true,
+    hasBackDismissableOverlay: () => false
+  });
+  detail.container = makeContainer();
+  stream.container = makeContainer();
+  player.container = makeContainer();
+  resetRouter({ detail, stream, player });
+  screenContainers.set("detail", detail.container);
+  screenContainers.set("stream", stream.container);
+  screenContainers.set("player", player.container);
+  Router.init();
+
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("stream", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("player", { itemId: "movie-1", itemType: "movie" });
+  assert.equal(stream.cleanupCalls, 0, "Stream stays suspended under Player");
+  assert.equal(player.container.inert, false, "Player itself is never the one made inert");
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "stream");
+  assert.equal(stream.mounts.length, 1, "Stream resumes the same suspended instance");
+  assert.equal(stream.cleanupCalls, 0);
+  assert.equal(player.cleanupCalls, 1, "Player's own DOM/decoders are torn down like any other plain route");
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+});
+
+test("castDetail (Actor/Person) suspends Detail and resumes it on Back without remounting", async () => {
+  const detail = makeScreen("detail");
+  const castDetail = makeScreen("castDetail");
+  detail.container = makeContainer();
+  castDetail.container = makeContainer();
+  resetRouter({ detail, castDetail });
+  screenContainers.set("detail", detail.container);
+  screenContainers.set("castDetail", castDetail.container);
+  Router.init();
+
+  await Router.navigate("detail", { itemId: "movie-1" });
+  await Router.navigate("castDetail", { castId: "42" });
+  assert.equal(detail.cleanupCalls, 0, "Detail stays suspended under Actor/Person");
+
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(detail.mounts.length, 1, "Detail resumes the same suspended instance, unaffected by the Actor detour");
+  assert.equal(detail.cleanupCalls, 0);
+});
+
+test("a route can never be layered under itself: one live layer per screen container", async () => {
+  const detail = makeScreen("detail");
+  const castDetail = makeScreen("castDetail");
+  detail.container = makeContainer();
+  castDetail.container = makeContainer();
+  resetRouter({ detail, castDetail });
+  screenContainers.set("detail", detail.container);
+  screenContainers.set("castDetail", castDetail.container);
+  Router.init();
+
+  await Router.navigate("detail", { itemId: "movie-1" });
+  await Router.navigate("castDetail", { castId: "42" });
+  // Opening a filmography credit mounts a different title into the one and
+  // only #detail container, so the layer still holding it must be released
+  // first -- this is what forces Detail A -> Detail B to be a real remount
+  // rather than a policy choice.
+  await Router.navigate("detail", { itemId: "movie-2" });
+
+  assert.equal(detail.cleanupCalls, 1, "the layer holding #detail is released before the new title mounts into it");
+  assert.equal(detail.mounts.length, 2, "the new title is a genuine fresh mount");
+  assert.deepEqual(
+    Router.suspendedRouteStack.map((layer) => layer.route),
+    ["castDetail"],
+    "the Actor page it was opened from stays live behind it"
+  );
+});
+
+for (const [from, to] of [
+  ["home", "settings"],
+  ["search", "catalogSeeAll"],
+  ["library", "collectionEdit"],
+  ["discover", "detail"],
+  ["settings", "plugins"]
+]) {
+  test(`${from} -> ${to} -> Back reveals the live ${from}, like every other pair`, async () => {
+    const source = makeScreen(from);
+    const target = makeScreen(to);
+    source.container = makeContainer();
+    target.container = makeContainer();
+    resetRouter({ [from]: source, [to]: target });
+    screenContainers.set(from, source.container);
+    screenContainers.set(to, target.container);
+    Router.init();
+
+    await Router.navigate(from, { entry: from });
+    await Router.navigate(to, { entry: to });
+    assert.equal(source.cleanupCalls, 0, `${from} is layered under ${to}, not torn down`);
+    assert.equal(source.container.inert, true);
+
+    history.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), from);
+    assert.equal(source.mounts.length, 1, `${from} is revealed, never rebuilt`);
+    assert.equal(source.container.inert, false);
+    assert.equal(target.cleanupCalls, 1);
+  });
+}
+
+test("paint order always matches stack order, so the current screen is never covered by a suspended one", async () => {
+  const screens = {
+    home: makeScreen("home"),
+    library: makeScreen("library"),
+    settings: makeScreen("settings")
+  };
+  resetRouter(screens);
+  for (const [name, screen] of Object.entries(screens)) {
+    screen.container = makeContainer();
+    screenContainers.set(name, screen.container);
+  }
+  Router.init();
+
+  // Returning to a route already in the stack frees the depth it occupied.
+  // Reusing that depth for the next layer once put two containers on the same
+  // z-index, and the one later in the app shell's markup covered the screen
+  // that was actually current -- tapping Home still showed Settings.
+  await Router.navigate("home");
+  await Router.navigate("library");
+  await Router.navigate("settings");
+  await Router.navigate("home");
+
+  const zIndexOf = (name) => screens[name].container.style.getPropertyValue("z-index");
+  assert.deepEqual(
+    Router.suspendedRouteStack.map((layer) => layer.route),
+    ["library", "settings"]
+  );
+  assert.equal(zIndexOf("settings"), "1000", "the layer below sits under the current screen");
+  assert.equal(zIndexOf("home"), "1001", "the current screen paints above every suspended layer");
+  assert.notEqual(zIndexOf("home"), zIndexOf("settings"));
+});
+
+test("replacing the current entry while layers are live still puts the new screen on top, not under them", async () => {
+  const screens = {
+    home: makeScreen("home"),
+    detail: makeScreen("detail"),
+    stream: makeScreen("stream")
+  };
+  resetRouter(screens);
+  for (const [name, screen] of Object.entries(screens)) {
+    screen.container = makeContainer();
+    screenContainers.set(name, screen.container);
+  }
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1", autoOpenContinueWatching: true });
+  assert.equal(screens.detail.container.style.getPropertyValue("position"), "fixed");
+
+  // Continue Watching replaces its transient Detail with Stream. Detail's entry
+  // is being overwritten so there is correctly nothing to suspend -- but Home is
+  // still layered underneath with the document scroll locked, so Stream must
+  // take Detail's place as the screen on top. It previously stayed unstyled and
+  // was laid out below the suspended Home, which covered the viewport: the
+  // viewer was left staring at an inert Home with no way to scroll or tap out.
+  await Router.navigate(
+    "stream",
+    { itemId: "movie-1", continueWatchingBackHome: true },
+    { skipStackPush: true, replaceHistory: true }
+  );
+
+  assert.equal(Router.getCurrent(), "stream");
+  assert.equal(screens.stream.container.style.getPropertyValue("position"), "fixed", "Stream must be the layer on top");
+  assert.equal(screens.stream.container.style.getPropertyValue("z-index"), "1000");
+  assert.equal(
+    screens.detail.container.style.getPropertyValue("position"),
+    "",
+    "the screen it replaced gets its own styles back"
+  );
+  assert.deepEqual(
+    Router.suspendedRouteStack.map((layer) => layer.route),
+    ["home"],
+    "Home stays suspended -- the replacement swapped what is above it, not the stack"
+  );
+  assert.equal(Router.suspendedRouteStack[0].childContainer, screens.stream.container);
+
+  // Back must still reveal the live Home and unlock the document.
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(screens.home.mounts.length, 1, "Home is revealed, not rebuilt");
+  assert.equal(screens.home.container.inert, false);
+  assert.equal(Router.suspendedRouteStack.length, 0);
+});
+
+test("a screen that clears its own container styles while mounting cannot drop out of the layer stack", async () => {
+  const home = makeScreen("home");
+  const detail = makeScreen("detail");
+  home.container = makeContainer();
+  detail.container = makeContainer();
+  // Reproduces the real failure: a screen stripping inline position/inset on
+  // mount kept its z-index but lost `position: fixed`, so it sat in a frozen
+  // document and could not scroll at all.
+  detail.mount = async function mount(params, context) {
+    this.params = params;
+    this.mounts.push({ params, context });
+    for (const property of ["position", "inset", "top", "left"]) {
+      this.container.style.removeProperty(property);
+    }
+  };
+  resetRouter({ home, detail });
+  screenContainers.set("home", home.container);
+  screenContainers.set("detail", detail.container);
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-a" });
+
+  assert.equal(detail.container.style.getPropertyValue("position"), "fixed");
+  assert.equal(detail.container.style.getPropertyValue("inset"), "0");
+  assert.equal(detail.container.style.getPropertyValue("z-index"), "1000");
+});
+
+test("a multi-entry Back jump reveals its target and tears down only the layers it skipped", async () => {
+  const screens = {
+    home: makeScreen("home"),
+    detail: makeScreen("detail"),
+    stream: makeScreen("stream")
+  };
+  resetRouter(screens);
+  for (const [name, screen] of Object.entries(screens)) {
+    screen.container = makeContainer();
+    screenContainers.set(name, screen.container);
+  }
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-a" });
+  await Router.navigate("stream", { itemId: "movie-a" });
+
+  // The browser's own history menu can skip entries; landing two back must
+  // still reveal the live Home rather than rebuilding it.
+  history.index = 0;
+  await dispatchPopstate(history.state);
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(screens.home.mounts.length, 1, "the jump target is revealed, not remounted");
+  assert.equal(screens.detail.cleanupCalls, 1, "the skipped layer is torn down");
+  assert.equal(Router.suspendedRouteStack.length, 0);
+});
+
+test("Home's scroll position survives a Detail -> Stream Selection detour, not just a direct Detail -> Home return", async () => {
+  const home = makeVisualRouteStateScreen("home", "route:home");
   const detail = makeScreen("detail");
   const stream = makeScreen("stream");
   home.container = makeContainer();
@@ -873,6 +1210,93 @@ test("forceReload is a one-time directive and is not replayed by a later popstat
   resetRouter({ home, detail, stream });
   screenContainers.set("home", home.container);
   screenContainers.set("detail", detail.container);
+  Router.init();
+
+  await Router.navigate("home");
+  home.visualState = { scrollTop: 1200, railLeft: 0, focusId: null };
+  await Router.navigate("detail", { itemId: "movie-a" });
+  await Router.navigate("stream", { itemId: "movie-a" });
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(
+    home.visualState.scrollTop,
+    1200,
+    "Home must restore the scroll it had before the Stream Selection detour, not reset to the top"
+  );
+});
+
+test("the same nested-history restoration applies to Library, not just Home", async () => {
+  const library = makeVisualRouteStateScreen("library", "route:library");
+  const detail = makeScreen("detail");
+  const stream = makeScreen("stream");
+  library.container = makeContainer();
+  detail.container = makeContainer();
+  resetRouter({ library, detail, stream });
+  screenContainers.set("library", library.container);
+  screenContainers.set("detail", detail.container);
+  Router.init();
+
+  await Router.navigate("library");
+  library.visualState = { scrollTop: 800, railLeft: 0, focusId: null };
+  await Router.navigate("detail", { itemId: "movie-a" });
+  await Router.navigate("stream", { itemId: "movie-a" });
+  history.back();
+  await history.whenSettled();
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "library");
+  assert.equal(library.visualState.scrollTop, 800, "Library restores its own scroll the same way Home does");
+});
+
+test("Detail A -> Detail B -> Back restores Detail A's own captured scroll position", async () => {
+  const home = makeScreen("home");
+  const detail = makeVisualRouteStateScreen("detail", "");
+  detail.getRouteStateKey = (params = {}) => {
+    const itemId = String(params?.itemId || "");
+    return itemId ? `detail:movie:${itemId}` : null;
+  };
+  resetRouter({ home, detail });
+  Router.init();
+
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-a" });
+  detail.visualState = { scrollTop: 650, railLeft: 0, focusId: null };
+  await Router.navigate("detail", { itemId: "movie-b" });
+  assert.equal(
+    detail.visualState.scrollTop,
+    0,
+    "a fresh Detail entry (movie-b) must not inherit movie-a's scroll"
+  );
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(detail.params.itemId, "movie-a");
+  assert.equal(
+    detail.visualState.scrollTop,
+    650,
+    "returning to Detail A must restore the scroll captured for that exact item, not the top"
+  );
+});
+
+test("forceReload is a one-time directive and is not replayed by a later popstate return to Home", async () => {
+  const screens = {
+    home: makeScreen("home"),
+    detail: makeScreen("detail"),
+    stream: makeScreen("stream"),
+    castDetail: makeScreen("castDetail"),
+    library: makeScreen("library"),
+    search: makeScreen("search")
+  };
+  const home = screens.home;
+  resetRouter(screens);
+  for (const [name, screen] of Object.entries(screens)) {
+    screen.container = makeContainer();
+    screenContainers.set(name, screen.container);
+  }
   Router.init();
 
   // Simulate profile activation entering Home with a one-time reload
@@ -887,20 +1311,23 @@ test("forceReload is a one-time directive and is not replayed by a later popstat
     "forceReload must not be persisted into the stored history entry"
   );
 
+  // Push past the layer cap so Home's own layer is evicted. Its return is then
+  // a genuine popstate-driven fresh mount from its entry snapshot -- exactly
+  // the scenario where a stale forceReload could otherwise force Home into a
+  // full cold reload on every later return, not just the first one.
   await Router.navigate("detail", { itemId: "movie-a" });
   await Router.navigate("stream", { itemId: "movie-a" });
-  // Leaving Detail for Stream releases the suspended Home parent, so the
-  // eventual return below is a genuine fresh mount (not a resume) -- the
-  // scenario where a stale forceReload could otherwise force Home back into
-  // a full cold reload on every such return, not just the first one.
-  assert.equal(home.cleanupCalls, 1);
+  await Router.navigate("castDetail", { castId: "42" });
+  await Router.navigate("library");
+  await Router.navigate("search");
+  assert.equal(home.cleanupCalls, 1, "Home's layer was evicted once the cap was exceeded");
 
-  history.back();
-  await history.whenSettled();
-  assert.equal(Router.getCurrent(), "detail");
-  history.back();
-  await history.whenSettled();
-  assert.equal(Router.getCurrent(), "home");
+  for (const expected of ["library", "castDetail", "stream", "detail", "home"]) {
+    history.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), expected);
+  }
+  assert.equal(home.mounts.length, 2, "Home really was rebuilt, not revealed");
 
   const secondMount = home.mounts[home.mounts.length - 1];
   assert.equal(

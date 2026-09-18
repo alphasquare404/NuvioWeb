@@ -115,8 +115,10 @@ import {
 } from "./homeConstants.js";
 import { resolveNextUpCandidates } from "./nextUpCandidateResolver.js";
 import { shouldRefreshContinueWatchingForChange } from "./continueWatchingRefreshPolicy.js";
+import { continueWatchingEnrichmentSignatureFor } from "./continueWatchingEnrichmentSignature.js";
 import { patchContinueWatchingDisplayProgress } from "./continueWatchingProgressPatch.js";
 import { isHomeLoadGenerationCurrent } from "./homeLoadGeneration.js";
+import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
 import {
   getContinueWatchingRenderItems,
   shouldAppendContinueWatchingItems
@@ -1712,6 +1714,13 @@ function continueWatchingEnrichmentCacheKey(item = {}) {
   return contentId ? `${type}:${contentId}:${season}:${episode}` : "";
 }
 
+function continueWatchingEnrichmentSignature() {
+  return continueWatchingEnrichmentSignatureFor(
+    TmdbSettingsStore.get(),
+    Boolean(getEffectiveTmdbApiKey())
+  );
+}
+
 function readContinueWatchingEnrichmentCache() {
   const cache = LocalStore.get(CW_ENRICHMENT_CACHE_KEY, {});
   return cache && typeof cache === "object" ? cache : {};
@@ -1789,7 +1798,8 @@ function saveContinueWatchingEnrichment(item = {}) {
     country: normalized.country,
     episodeTitle: normalized.episodeTitle,
     episodeDescription: normalized.episodeDescription,
-    continueWatchingMetaResolved: true
+    continueWatchingMetaResolved: true,
+    enrichmentSignature: continueWatchingEnrichmentSignature()
   };
   const enrichmentCacheLimit = 200;
   const entries = Object.entries(cache)
@@ -3034,9 +3044,9 @@ export const HomeScreen = {
       return false;
     }
 
-    this.setHomeVerticalScrollTop(Number(focusState.mainScrollTop || 0));
+    this.applyRestorableScrollTop(focusState.mainScrollTop);
     this.setFocusedNode(target, { suppressDelegatedFocus: true });
-    this.setHomeVerticalScrollTop(Number(focusState.mainScrollTop || 0));
+    this.applyRestorableScrollTop(focusState.mainScrollTop);
     this.lastMainFocus = target;
     this.rememberMainRowFocus(target);
     this.syncFocusedCollectionCardState();
@@ -3150,7 +3160,7 @@ export const HomeScreen = {
       }
     });
 
-    this.setHomeVerticalScrollTop(Number(focusState.mainScrollTop || 0));
+    this.applyRestorableScrollTop(focusState.mainScrollTop);
 
     const targetNodes = this.getNavigationRowNodes(focusState.rowKey);
     if (this.isRestoringFocusFromBack && focusState.rowKey && !targetNodes.length) {
@@ -3197,7 +3207,7 @@ export const HomeScreen = {
       }
     });
 
-    this.setHomeVerticalScrollTop(Number(focusState.mainScrollTop || 0));
+    this.applyRestorableScrollTop(focusState.mainScrollTop);
 
     let target = null;
     if (focusState.focusKind === "hero") {
@@ -3624,13 +3634,7 @@ export const HomeScreen = {
 
   getHomeVerticalScrollOwner() {
     if (Platform.isBrowser()) {
-      const candidates = [document.scrollingElement, document.body, document.documentElement]
-        .filter((element, index, list) => element && list.indexOf(element) === index);
-      return (
-        candidates.find(
-          (element) => Number(element.scrollHeight || 0) > Number(element.clientHeight || 0) + 1
-        ) || candidates[0] || null
-      );
+      return getBrowserVerticalScrollOwner(this.container);
     }
     return this.getHomeViewport();
   },
@@ -3639,7 +3643,32 @@ export const HomeScreen = {
     return Number(this.getHomeVerticalScrollOwner()?.scrollTop || 0);
   },
 
+  // Restores a scroll position only when the saved state actually carries one.
+  // An absent value means "this state says nothing about scroll", which is not
+  // the same as "scroll to the top" -- reading it as 0 is how a stale focus
+  // state ended up dragging Home upwards.
+  applyRestorableScrollTop(value) {
+    if (value == null) {
+      return;
+    }
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return;
+    }
+    this.setHomeVerticalScrollTop(numeric);
+  },
+
   setHomeVerticalScrollTop(value = 0) {
+    // Home stays mounted underneath whatever is layered over it, and its own
+    // async renders (catalog rows, Continue Watching) keep arriving while it is
+    // covered -- each one running focus restoration that writes a scroll
+    // position. Moving a screen nobody is looking at is wrong on its own, and
+    // while Home is the bottom screen that position IS the shared document
+    // scroll, so a stale `0` silently threw away exactly what Back was supposed
+    // to return to.
+    if (Router.getCurrent() !== "home") {
+      return;
+    }
     const owner = this.getHomeVerticalScrollOwner();
     if (!owner) {
       return;
@@ -3649,7 +3678,13 @@ export const HomeScreen = {
   },
 
   schedulePendingBrowserHomeScrollRestore() {
-    const requestedScrollTop = Number(this.pendingBrowserHomeReturnScrollTop);
+    // `null` means there is nothing to restore -- it must not go through
+    // Number(), which turns it into a perfectly finite 0. Every render calls
+    // this, so that 0 was read as a real "restore to the top" target and, on a
+    // warm start where Home paints immediately, kept yanking the viewer back up
+    // while they were already scrolling.
+    const pendingScrollTop = this.pendingBrowserHomeReturnScrollTop;
+    const requestedScrollTop = pendingScrollTop == null ? NaN : Number(pendingScrollTop);
     if (
       !Platform.isBrowser() ||
       !Number.isFinite(requestedScrollTop) ||
@@ -3670,34 +3705,25 @@ export const HomeScreen = {
     };
     this.browserHomeReturnScrollRestoreFrame = requestAnimationFrame(() => {
       restore();
-      if (Number.isFinite(Number(this.pendingBrowserHomeReturnScrollTop))) {
+      if (this.pendingBrowserHomeReturnScrollTop != null) {
         this.browserHomeReturnScrollRestoreFrame = requestAnimationFrame(restore);
       }
     });
   },
 
   scheduleInitialBrowserScrollNormalization() {
-    if (
-      !Platform.isBrowser() ||
-      !this.browserHomeInitialScrollNormalizationPending ||
-      this.browserHomeInitialScrollNormalizationFrame
-    ) {
+    if (!Platform.isBrowser() || !this.browserHomeInitialScrollNormalizationPending) {
       return;
     }
     this.browserHomeInitialScrollNormalizationPending = false;
-    this.browserHomeInitialScrollNormalizationFrame = requestAnimationFrame(() => {
-      this.browserHomeInitialScrollNormalizationFrame = 0;
-      if (Router.getCurrent() !== "home") {
-        return;
-      }
-      this.browserHomeScrollInitialized = true;
-      this.setHomeVerticalScrollTop(0);
-      requestAnimationFrame(() => {
-        if (Router.getCurrent() === "home") {
-          this.setHomeVerticalScrollTop(0);
-        }
-      });
-    });
+    this.browserHomeScrollInitialized = true;
+    // Entering Home fresh must not inherit a scroll position left behind by the
+    // screen that was here before it. That has to happen now, in the same task
+    // as the render that asked for it -- deferring it across animation frames
+    // put the write *after* the viewer could already be scrolling, so on a warm
+    // start (where Home paints with cached content straight away) it dragged
+    // them back to the top mid-gesture.
+    this.setHomeVerticalScrollTop(0);
   },
 
   shouldSuppressAutomaticTrailerPlayback() {
@@ -4498,7 +4524,7 @@ export const HomeScreen = {
         track.scrollLeft = Number(scrollLeft || 0);
       }
     });
-    this.setHomeVerticalScrollTop(Number(state.mainScrollTop || 0));
+    this.applyRestorableScrollTop(state.mainScrollTop);
     return true;
   },
 
@@ -8453,14 +8479,6 @@ export const HomeScreen = {
       };
     }
 
-    this.container.style.removeProperty("position");
-    this.container.style.removeProperty("top");
-    this.container.style.removeProperty("right");
-    this.container.style.removeProperty("bottom");
-    this.container.style.removeProperty("left");
-    this.container.style.removeProperty("visibility");
-    this.container.style.removeProperty("pointer-events");
-
     if (this.hasLoadedOnce && Array.isArray(this.rows) && this.rows.length) {
       this.homeLoadToken = (this.homeLoadToken || 0) + 1;
       // Settings can change catalog order or visibility while Home is unmounted.
@@ -10900,7 +10918,19 @@ export const HomeScreen = {
         // without touching any of its several existing return points.
         const enrichedItem = await (async () => {
         const cachedItem = applyCachedContinueWatchingEnrichment(item);
-        if (!options?.forceRefreshMetadata && !needsContinueWatchingMetadataRefresh([cachedItem])) {
+        // The "does this still need work?" test below only asks whether
+        // anything is *missing*, so an item that already carried artwork from
+        // its addon counted as finished and TMDB was never consulted -- which
+        // is why enrichment never changed a card image it could have improved.
+        // A cache entry built under different TMDB settings is stale no matter
+        // how complete it looks.
+        const enrichmentIsCurrent =
+          cachedItem.enrichmentSignature === continueWatchingEnrichmentSignature();
+        if (
+          !options?.forceRefreshMetadata &&
+          enrichmentIsCurrent &&
+          !needsContinueWatchingMetadataRefresh([cachedItem])
+        ) {
           return cachedItem;
         }
         try {
@@ -12120,10 +12150,6 @@ export const HomeScreen = {
       cancelAnimationFrame(this.homeTruncationFrame);
       this.homeTruncationFrame = null;
     }
-    if (this.browserHomeInitialScrollNormalizationFrame) {
-      cancelAnimationFrame(this.browserHomeInitialScrollNormalizationFrame);
-      this.browserHomeInitialScrollNormalizationFrame = null;
-    }
     if (this.browserHomeReturnScrollRestoreFrame) {
       cancelAnimationFrame(this.browserHomeReturnScrollRestoreFrame);
       this.browserHomeReturnScrollRestoreFrame = null;
@@ -12148,13 +12174,6 @@ export const HomeScreen = {
     }
     this.cachedModernPortraitPosterMetrics = null;
     this.cachedModernLandscapePosterMetrics = null;
-    this.container.style.removeProperty("position");
-    this.container.style.removeProperty("top");
-    this.container.style.removeProperty("right");
-    this.container.style.removeProperty("bottom");
-    this.container.style.removeProperty("left");
-    this.container.style.removeProperty("visibility");
-    this.container.style.removeProperty("pointer-events");
     this.renderedMarkup = null;
     ScreenUtils.hide(this.container);
   }
