@@ -2306,6 +2306,10 @@ export const ProfileSelectionScreen = {
       });
     }
     try {
+      // A layer suspended under a previous profile's navigation (e.g. Home
+      // suspended under Detail) must never survive into the next profile --
+      // its DOM belongs to data that no longer applies.
+      Router.releaseAllSuspendedLayers?.({ cleanup: true });
       await ProfileManager.setActiveProfile(profileId);
       StartupSyncService.enableProfileScopedSync();
       // Kick off critical hydration but do not block the screen transition on

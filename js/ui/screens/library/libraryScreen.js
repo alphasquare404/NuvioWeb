@@ -1,5 +1,10 @@
 import { Router } from "../../navigation/router.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
+import {
+  getBrowserVerticalScrollOwner,
+  getBrowserVerticalScrollTop,
+  setBrowserVerticalScrollTop
+} from "../../navigation/browserScrollPosition.js";
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
@@ -280,7 +285,14 @@ export const LibraryScreen = {
   },
 
   captureRouteState() {
-    return this.controller?.captureRouteState?.() || null;
+    const controllerState = this.controller?.captureRouteState?.() || null;
+    if (!controllerState) {
+      return null;
+    }
+    return {
+      ...controllerState,
+      verticalScrollTop: Platform.isBrowser() ? getBrowserVerticalScrollTop(this.container) : 0
+    };
   },
 
   clearClosingPicker() {
@@ -373,8 +385,13 @@ export const LibraryScreen = {
       this.handleControllerChange(state, change)
     );
     this.controller = controller;
+    this.pendingVerticalScrollTop = null;
     if (navigationContext?.restoreRouteState) {
       controller.hydrateFromRouteState(navigationContext?.restoredState || null);
+      const restoredScrollTop = Number(navigationContext?.restoredState?.verticalScrollTop);
+      if (Platform.isBrowser() && Number.isFinite(restoredScrollTop) && restoredScrollTop > 0) {
+        this.pendingVerticalScrollTop = restoredScrollTop;
+      }
     }
     this.libraryRouteEnterPending = true;
     this.sidebarProfile = await getSidebarProfileState();
@@ -1562,6 +1579,10 @@ export const LibraryScreen = {
       });
     }
     this.bindDesktopMediaHoverPreview();
+    if (this.pendingVerticalScrollTop != null) {
+      setBrowserVerticalScrollTop(this.pendingVerticalScrollTop, this.container);
+      this.pendingVerticalScrollTop = null;
+    }
     if (this.isModalFocusLocked()) {
       return;
     }
@@ -1821,8 +1842,17 @@ export const LibraryScreen = {
       return;
     }
     const navbarOffset = 88;
-    const top = Math.max(0, window.scrollY + header.getBoundingClientRect().top - navbarOffset);
-    window.scrollTo({ top, left: 0, behavior: "auto" });
+    // Relative to whatever is really scrolling -- the document when Library is
+    // the bottom screen, its own container when it is layered over another.
+    const owner = getBrowserVerticalScrollOwner(this.container);
+    if (!owner) {
+      return;
+    }
+    const top = Math.max(
+      0,
+      Number(owner.scrollTop || 0) + header.getBoundingClientRect().top - navbarOffset
+    );
+    setBrowserVerticalScrollTop(top, this.container);
   },
 
   getFocusScopeSelector() {

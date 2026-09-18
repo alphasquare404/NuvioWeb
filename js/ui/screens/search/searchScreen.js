@@ -1,5 +1,7 @@
 import { Router } from "../../navigation/router.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
+import { Platform } from "../../../platform/index.js";
+import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
@@ -301,7 +303,6 @@ export const SearchScreen = {
 
   captureRouteState() {
     this.captureLiveViewState();
-    const content = this.container?.querySelector(".search-content");
     const rowScrollLeftByKey = {};
     Array.from(this.container?.querySelectorAll(".search-results-row") || []).forEach((rowNode) => {
       const rowKey = String(rowNode.dataset.rowKey || "").trim();
@@ -325,7 +326,7 @@ export const SearchScreen = {
       sidebarExpanded: Boolean(this.sidebarExpanded),
       sidebarFocusIndex: Number.isFinite(this.sidebarFocusIndex) ? this.sidebarFocusIndex : 0,
       pillIconOnly: Boolean(this.pillIconOnly),
-      contentScrollTop: Number(content?.scrollTop || 0),
+      contentScrollTop: Number(this.contentScrollTop || 0),
       rowScrollLeftByKey,
       rowFocusedIndexByKey: this.rowFocusedIndexByKey ? { ...this.rowFocusedIndexByKey } : {},
       pendingAutoFocusResults: false,
@@ -422,7 +423,13 @@ export const SearchScreen = {
   },
 
   captureLiveViewState() {
-    const content = this.container?.querySelector(".search-content");
+    // .search-content is not actually the scrolling element in the browser
+    // shell -- see browserScrollPosition.js for why geometry alone can't
+    // find the real scrolling element. Native/TV platforms do scroll it
+    // internally.
+    const content = Platform.isBrowser()
+      ? getBrowserVerticalScrollOwner(this.container)
+      : this.container?.querySelector(".search-content");
     if (content) {
       this.contentScrollTop = Number(content.scrollTop || 0);
     }
@@ -1308,7 +1315,9 @@ export const SearchScreen = {
   },
 
   restoreScrollState() {
-    const content = this.container?.querySelector(".search-content");
+    const content = Platform.isBrowser()
+      ? getBrowserVerticalScrollOwner(this.container)
+      : this.container?.querySelector(".search-content");
     if (content) {
       content.scrollTop = Number(this.contentScrollTop || 0);
     }

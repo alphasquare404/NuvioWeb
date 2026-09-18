@@ -63,7 +63,15 @@ function createIndicator(documentRef) {
   return indicator;
 }
 
-export function bindBrowserPullToRefresh({ documentRef = document, windowRef = window, onRefresh } = {}) {
+export function bindBrowserPullToRefresh({
+  documentRef = document,
+  windowRef = window,
+  onRefresh,
+  // A layered screen scrolls inside its own container while the document
+  // behind it is frozen, so "am I at the top?" cannot be asked of the document.
+  // The caller passes whatever is really scrolling right now.
+  resolveScrollOwner = null
+} = {}) {
   if (
     !documentRef?.addEventListener ||
     !windowRef?.addEventListener ||
@@ -110,7 +118,7 @@ export function bindBrowserPullToRefresh({ documentRef = document, windowRef = w
     if (refreshing || event.touches?.length !== 1 || hasOpenOverlay(documentRef) || isInteractiveStart(event.target)) {
       return;
     }
-    const owner = BrowserPullToRefresh.getScrollOwner(documentRef);
+    const owner = resolveScrollOwner?.() || BrowserPullToRefresh.getScrollOwner(documentRef);
     if (!owner || Number(owner.scrollTop || 0) > 0) return;
     const touch = event.touches[0];
     gesture = { owner, startX: touch.clientX, startY: touch.clientY, intent: "pending", rawDistance: 0 };

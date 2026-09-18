@@ -29,6 +29,7 @@ import {
 } from "../../../data/repository/traktAuthService.js";
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
+import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
 import {
   TRAKT_API_URL,
   TRAKT_CLIENT_ID,
@@ -1490,7 +1491,7 @@ export const MetaDetailsScreen = {
   },
 
   captureRouteState() {
-    const content = this.container?.querySelector(".series-detail-content");
+    const content = this.getDetailVerticalScrollOwner();
     return {
       params: this.params ? { ...this.params } : {},
       meta: this.meta ? { ...this.meta } : null,
@@ -4067,7 +4068,7 @@ export const MetaDetailsScreen = {
   },
 
   captureRenderedChromeState() {
-    const content = this.getDetailContentScroller();
+    const content = this.getDetailVerticalScrollOwner();
     this.restoredContentScrollTop = Number(content?.scrollTop || 0);
     this.restoredTrackScrollLeftByKey = captureHorizontalScrollMap(this.container);
   },
@@ -7923,7 +7924,7 @@ export const MetaDetailsScreen = {
   },
 
   restoreChromeState() {
-    const content = this.container?.querySelector(".series-detail-content");
+    const content = this.getDetailVerticalScrollOwner();
     if (content) {
       content.scrollTop = Number(this.restoredContentScrollTop || 0);
     }
@@ -8112,7 +8113,7 @@ export const MetaDetailsScreen = {
   },
 
   shouldSuppressTrailerAutoplay() {
-    const content = this.getDetailContentScroller();
+    const content = this.getDetailVerticalScrollOwner();
     const focused = this.container?.querySelector(".focusable.focused") || null;
     return Boolean(
       this.trailerHasAutoplayed ||
@@ -9654,6 +9655,24 @@ export const MetaDetailsScreen = {
 
   getDetailContentScroller() {
     return this.container?.querySelector(".series-detail-content") || null;
+  },
+
+  // .series-detail-content (getDetailContentScroller above) is not actually
+  // the scrolling element in the browser shell -- it has overflow-y: visible
+  // and never scrolls; the page scrolls at the document level, same as Home.
+  // Reading/writing scrollTop there always reads/writes 0, which is why
+  // route-state and internal scroll preservation (e.g. season tab changes)
+  // silently never worked on browser. This is deliberately a separate
+  // accessor from getDetailContentScroller(), which callers also use as a
+  // DOM container for querying/bounds-checking focusable descendants --
+  // substituting the document scroll owner there would broaden those
+  // queries to the whole page. Native/TV platforms do scroll
+  // .series-detail-content internally, so only the browser path differs.
+  getDetailVerticalScrollOwner() {
+    if (Platform.isBrowser()) {
+      return getBrowserVerticalScrollOwner(this.container);
+    }
+    return this.getDetailContentScroller();
   },
 
   getDetailFocusGroup(node) {
