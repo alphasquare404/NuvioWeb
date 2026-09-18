@@ -3,6 +3,7 @@ import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
+import { getWatchProgressFraction as progressFractionForContinueWatching } from "../../../domain/model/watchProgress.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
 import { watchedSeriesReconciliationService } from "../../../data/repository/watchedSeriesReconciliationService.js";
 import { savedLibraryRepository } from "../../../data/repository/savedLibraryRepository.js";
@@ -1058,24 +1059,6 @@ async function resolveTrailerMetaWithTmdbFallback(meta = {}, itemType = "movie")
 function getContinueWatchingMetaTimeout(timeoutMs) {
   const requestedTimeout = Math.max(500, Number(timeoutMs || 0) || CW_META_TIMEOUT_MS);
   return requestedTimeout;
-}
-
-function progressFractionForContinueWatching(item = {}) {
-  const explicitPercent = Number(item.progressPercent);
-  if (Number.isFinite(explicitPercent) && explicitPercent > 0) {
-    return Math.max(0, Math.min(1, explicitPercent / 100));
-  }
-  const durationMs = Number(item.durationMs || 0);
-  const positionMs = Number(item.positionMs || 0);
-  if (
-    !Number.isFinite(durationMs) ||
-    durationMs <= 0 ||
-    !Number.isFinite(positionMs) ||
-    positionMs <= 0
-  ) {
-    return 0;
-  }
-  return Math.max(0, Math.min(1, positionMs / durationMs));
 }
 
 function isSeriesTypeForContinueWatching(type) {
@@ -2289,7 +2272,7 @@ function renderContinueWatchingCard(item, index, options = {}) {
               : ""
           }
         </div>
-        <div class="home-continue-progress"><span style="width:${Math.round((normalized.progressFraction || 0) * 100)}%"></span></div>
+        ${normalized.progressFraction > 0 ? `<div class="home-continue-progress"><span style="width:${Math.round(normalized.progressFraction * 100)}%"></span></div>` : ""}
       </div>
     </article>
   `;
