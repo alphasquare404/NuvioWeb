@@ -56,3 +56,28 @@ test("episode completion clears matching season/episode progress and reconciles 
     }
   ]);
 });
+
+test("a completion the provider already heard about as a scrobble is not written twice", async () => {
+  // A scrobble stop both marks watched and clears the provider's resume entry.
+  // Writing the history again here would duplicate the entry.
+  const options = [];
+  const mark = createMarkPlaybackWatched({
+    watchedRepository: { mark: async (_item, opts) => options.push(opts) },
+    progressRepository: { removePlaybackProgress: async () => {} },
+    seriesReconciliation: { isSeriesType: () => false }
+  });
+  await mark({ itemId: "movie:1", itemType: "movie" }, { skipTrackingWrite: true });
+  assert.equal(options[0].skipTrackingWrite, true);
+});
+
+test("an ordinary completion still writes the provider history itself", async () => {
+  const options = [];
+  const mark = createMarkPlaybackWatched({
+    watchedRepository: { mark: async (_item, opts) => options.push(opts) },
+    progressRepository: { removePlaybackProgress: async () => {} },
+    seriesReconciliation: { isSeriesType: () => false }
+  });
+  await mark({ itemId: "movie:1", itemType: "movie" });
+  assert.equal(options[0].skipTrackingWrite, false);
+  assert.equal(options[0].authoritative, false);
+});

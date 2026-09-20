@@ -24,9 +24,18 @@ function createRuntime() {
 
 const progressContext = { itemId: "movie:1", itemType: "movie", title: "A title" };
 
+// The first collection attempt runs in the same task as the wake-up rather
+// than through a timer, so the queue has to be given a chance to fill before
+// it is drained, and again after each retry schedules the next one.
+async function settle() {
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
+}
+
 async function drainTimers(timers) {
+  await settle();
   while (timers.length) {
     await timers.shift()();
+    await settle();
   }
 }
 
@@ -268,12 +277,13 @@ test("a slow automatic report application remains protected from manual fallback
       prompts += 1;
     }
   });
-  const firstTimer = timers.shift();
-  const applying = firstTimer();
+  // The page is already visible, so the first attempt goes out during install
+  // rather than waiting on a timer.
   await enteredApply;
+  assert.equal(timers.length, 0, "a report found immediately schedules no retry");
   assert.equal(prompts, 0);
   resolveApply(true);
-  await applying;
+  await settle();
   assert.equal(prompts, 0);
 });
 
@@ -424,4 +434,99 @@ test("a valid automatic Lenna callback is consumed without a manual prompt", asy
   });
   await drainTimers(timers);
   assert.equal(prompts, 0);
+});
+
+test("the first collection attempt does not wait on a timer", async () => {
+  // Coming back wakes the rest of the app too, and a queued first attempt sat
+  // behind all of it -- measured at 1.6s on a device before a request had even
+  // left. Only the retries are allowed to wait.
+  const runtime = createRuntime();
+  const timers = [];
+  runtime.document = { visibilityState: "visible", addEventListener() {} };
+  runtime.addEventListener = () => {};
+  runtime.setTimeout = (listener) => timers.push(listener);
+  beginExternalPlaybackHandoff({
+    runtime,
+    playerMode: "outplayer",
+    automatic: true,
+    progressContext
+  });
+  let requests = 0;
+  installExternalPlaybackReturnCoordinator({
+    runtime,
+    fetchImpl: async () => {
+      requests += 1;
+      return { ok: true, json: async () => ({ found: false }) };
+    }
+  });
+  await settle();
+  assert.equal(requests, 1, "asked before any timer ran");
+  assert.equal(timers.length, 1, "the retry after it is still scheduled");
+});
+
+test("a report that arrives after the prompt is still collected and takes it away", async () => {
+  // The dead end this replaces: once the prompt had gone up, the handoff was
+  // marked manual-required and every later return was refused for the ten
+  // minutes it lives -- even with the report sitting on the relay by then. The
+  // progress stayed lost until the page was reloaded.
+  const runtime = createRuntime();
+  const timers = [];
+  const documentListeners = new Map();
+  runtime.document = {
+    visibilityState: "hidden",
+    addEventListener: (name, listener) => documentListeners.set(name, listener)
+  };
+  runtime.addEventListener = () => {};
+  runtime.setTimeout = (listener) => timers.push(listener);
+  runtime.clearTimeout = () => {};
+  // Lenna is the player that offers the prompt when its callback cannot be read.
+  beginExternalPlaybackHandoff({
+    runtime,
+    playerMode: "lenna",
+    automatic: true,
+    manualPromptEligible: true,
+    progressContext
+  });
+  let hasReport = false;
+  let prompts = 0;
+  let dismissals = 0;
+  let applied = 0;
+  installExternalPlaybackReturnCoordinator({
+    runtime,
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () =>
+        hasReport
+          ? { found: true, outcome: "stopped", position: 30, duration: 60 }
+          : { found: false }
+    }),
+    onAutomaticReport: async () => {
+      applied += 1;
+      return true;
+    },
+    onManualFallback: () => {
+      prompts += 1;
+    },
+    onManualFallbackResolved: () => {
+      dismissals += 1;
+    }
+  });
+
+  // First return: the report has not landed, so all attempts come up empty.
+  runtime.document.visibilityState = "visible";
+  documentListeners.get("visibilitychange")();
+  await drainTimers(timers);
+  assert.equal(prompts, 1, "the prompt appears once");
+  assert.equal(applied, 0);
+
+  // The report lands, and the viewer comes back again.
+  hasReport = true;
+  runtime.document.visibilityState = "hidden";
+  documentListeners.get("visibilitychange")();
+  runtime.document.visibilityState = "visible";
+  documentListeners.get("visibilitychange")();
+  await drainTimers(timers);
+  assert.equal(applied, 1, "the late report is collected, not refused");
+  assert.equal(dismissals, 1, "and the prompt is taken away");
+  assert.equal(prompts, 1, "without ever asking twice");
 });

@@ -160,6 +160,14 @@ export const TraktScrobbleService = {
     lastAction = null;
   },
 
+  // See SimklScrobbleService.reportPosition: a pause that stands on its own,
+  // for the band a stop cannot carry without claiming the title is finished.
+  reportPosition(context) {
+    clearStartTimer();
+    void sendScrobbleRequest("pause", context);
+    lastAction = null;
+  },
+
   cancel() {
     clearStartTimer();
     lastAction = null;

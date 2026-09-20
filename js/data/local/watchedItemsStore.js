@@ -7,7 +7,10 @@ function notifyChange(profileId, reason, meta = {}) {
   const payload = {
     profileId: String(profileId || "1"),
     reason: String(reason || "update"),
-    authoritative: Boolean(meta.authoritative)
+    authoritative: Boolean(meta.authoritative),
+    // Carried so a listener can act on this one entry without re-reading the
+    // whole store -- Home drops the finished card straight away with it.
+    ...(meta.item ? { item: meta.item } : {})
   };
   changeListeners.forEach((listener) => {
     try {
@@ -102,7 +105,7 @@ export const WatchedItemsStore = {
       )
     ]).slice(0, 5000);
     LocalStore.set(WATCHED_ITEMS_KEY, next);
-    notifyChange(pid, "upsert", { authoritative });
+    notifyChange(pid, "upsert", { authoritative, item: normalized });
   },
 
   remove(contentId, profileId, options = null) {

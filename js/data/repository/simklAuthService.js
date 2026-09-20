@@ -91,7 +91,12 @@ async function executeSimklRequest(
         {
           method,
           headers,
-          body: body == null ? undefined : JSON.stringify(body)
+          body: body == null ? undefined : JSON.stringify(body),
+          // A scrobble is usually written while the page is going away -- the tab
+          // is closing, or the app is being backgrounded -- and an ordinary fetch
+          // is cancelled with the document. Payloads here are far below the 64KB
+          // keepalive limit.
+          keepalive: body != null
         },
         method
       );

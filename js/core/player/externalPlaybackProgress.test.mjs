@@ -171,7 +171,10 @@ test("an accepted finish report marks watched as authoritative", async () => {
     true
   );
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], [handoff.progressContext, { authoritative: true }]);
+  assert.deepEqual(calls[0], [
+    handoff.progressContext,
+    { authoritative: true, skipTrackingWrite: false }
+  ]);
 });
 
 test("a real flushProgress call forwards externalAuthoritative into watchProgressRepository.saveProgress", async () => {

@@ -109,6 +109,16 @@ export const SimklScrobbleService = {
     if (lastAction === "start") void send("pause", context);
   },
 
+  // A terminal position past the watched threshold, where a stop would finish
+  // the title instead of recording where the viewer got to. Unlike pause() this
+  // needs no scrobble session behind it: the report it carries is the whole
+  // story, and there may never have been a session at all.
+  reportPosition(context) {
+    clearStartTimer();
+    void send("pause", context);
+    lastAction = null;
+  },
+
   stop(context) {
     clearStartTimer();
     void send("stop", context);

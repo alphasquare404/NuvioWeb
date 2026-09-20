@@ -53,3 +53,20 @@ export function patchContinueWatchingDisplayProgress(displayItems, progressItem)
   next[index] = { ...next[index], positionMs, durationMs };
   return next;
 }
+
+// Returns a new array with the finished item dropped, or null when nothing
+// displayed matches it. A completion removes its progress row rather than
+// updating it, so there is no position left to patch -- and under a tracking
+// provider the row that produced the card lives on the provider's server, so
+// the full refresh has to wait on the network before the card can go. Dropping
+// it here is what makes finishing a title feel immediate; the refresh still
+// runs afterwards and decides everything else, including whether a Next Up
+// card should take its place.
+export function removeContinueWatchingDisplayItem(displayItems, finishedItem) {
+  const key = buildContinueWatchingIdentityKey(finishedItem);
+  if (!key || !Array.isArray(displayItems) || !displayItems.length) {
+    return null;
+  }
+  const next = displayItems.filter((item) => buildContinueWatchingIdentityKey(item) !== key);
+  return next.length === displayItems.length ? null : next;
+}

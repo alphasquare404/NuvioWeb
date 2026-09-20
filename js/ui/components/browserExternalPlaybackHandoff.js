@@ -193,11 +193,16 @@ export async function collectExternalPlaybackReport({
   const handoff = readPendingExternalPlaybackHandoff({ runtime, profileId });
   if (!handoff || !handoff.automatic || typeof fetchImpl !== "function")
     return { found: false, handoff };
+  const url = `${handoff.returnOrigin}/api/external-return/collect/${handoff.token}`;
   try {
-    const response = await fetchImpl(
-      `${handoff.returnOrigin}/api/external-return/collect/${handoff.token}`,
-      { method: "GET", cache: "no-store", credentials: "omit" }
-    );
+    const response = await fetchImpl(url, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+      // The app has just woken and everything else is asking for the network at
+      // the same moment. This one request is the reason it woke.
+      priority: "high"
+    });
     if (!response.ok) return { found: false, handoff };
     const report = normalizeReport(await response.json());
     if (!report) return { found: false, handoff };
@@ -207,12 +212,18 @@ export async function collectExternalPlaybackReport({
   }
 }
 
+// A returning external playback is invisible from the outside: the seconds
+// between coming back and the card moving could be the wake-up, the collection,
+// a retry, or the write, and there is no way to tell them apart on a phone.
+// Each step is stamped against the moment the app came back and reported as one
+// line, which Settings > About > Debug Console can show.
 export function installExternalPlaybackReturnCoordinator({
   runtime = globalThis,
   fetchImpl = runtime.fetch,
   getProfileId = () => null,
   onAutomaticReport = async () => false,
-  onManualFallback = () => {}
+  onManualFallback = () => {},
+  onManualFallbackResolved = () => {}
 } = {}) {
   let wasBackgrounded = runtime.document?.visibilityState === "hidden";
   let collecting = false;
@@ -238,7 +249,13 @@ export function installExternalPlaybackReturnCoordinator({
       if (confirmedReturn) promptManually(handoff);
       return;
     }
-    if (handoff.state === "applying-report" || handoff.state === "manual-required") return;
+    // Only a cycle that is mid-apply blocks another. "manual-required" used to
+    // block too, which meant that once the prompt had appeared -- because the
+    // report had not arrived within the retry window -- every later return was
+    // refused for the ten minutes the handoff lives, even though the report was
+    // by then sitting in the relay. The progress simply stayed lost until the
+    // page was reloaded. The prompt has its own guard against appearing twice.
+    if (handoff.state === "applying-report") return;
     updatePendingHandoff(
       handoff,
       {
@@ -251,52 +268,61 @@ export function installExternalPlaybackReturnCoordinator({
     const finishCollecting = () => {
       collecting = false;
     };
-    const attempt = (index) =>
-      runtime.setTimeout?.(async () => {
-        try {
-          const result = await collectExternalPlaybackReport({
-            runtime,
-            fetchImpl,
-            profileId: getProfileId()
-          });
-          if (result.found) {
-            const applying = updatePendingHandoff(
-              result.handoff,
-              { state: "applying-report" },
-              runtime
-            );
-            const applied = await onAutomaticReport({ ...result, handoff: applying });
-            if (applied) {
-              // Keep the identity-bearing handoff until its application has
-              // succeeded. The relay record is one-time, so consuming first
-              // would leave an explicit completion unable to recover safely.
-              clearExternalPlaybackHandoff({ runtime });
-            } else {
-              // The relay report is one-time. Automatic is deliberately not a
-              // synonym for manual fallback: preserve the chosen mode and leave
-              // existing progress unchanged if application cannot proceed.
-              if (applying.manualPromptEligible) promptManually(applying);
-            }
-            finishCollecting();
-            return;
+    const run = async (index) => {
+      try {
+        const result = await collectExternalPlaybackReport({
+          runtime,
+          fetchImpl,
+          profileId: getProfileId()
+        });
+        if (result.found) {
+          const applying = updatePendingHandoff(
+            result.handoff,
+            { state: "applying-report" },
+            runtime
+          );
+          const applied = await onAutomaticReport({ ...result, handoff: applying });
+          if (applied) {
+            // A report that arrives after the prompt went up answers the very
+            // question it is asking, so the prompt must go rather than let the
+            // viewer overwrite the real position with a guess.
+            onManualFallbackResolved();
+            // Keep the identity-bearing handoff until its application has
+            // succeeded. The relay record is one-time, so consuming first
+            // would leave an explicit completion unable to recover safely.
+            clearExternalPlaybackHandoff({ runtime });
+          } else {
+            // The relay report is one-time. Automatic is deliberately not a
+            // synonym for manual fallback: preserve the chosen mode and leave
+            // existing progress unchanged if application cannot proceed.
+            if (applying.manualPromptEligible) promptManually(applying);
           }
-          if (index + 1 < FOREGROUND_RETRY_DELAYS_MS.length) {
-            attempt(index + 1);
-            return;
-          }
-          const pending = readPendingExternalPlaybackHandoff({
-            runtime,
-            profileId: getProfileId()
-          });
-          // A bounded retry window has elapsed after a real return/startup. It
-          // is now safe to offer the manual path exactly once.
-          if (pending?.manualPromptEligible) promptManually(pending);
           finishCollecting();
-        } finally {
-          // Completion is owned by the terminal report/no-report branches so a
-          // slow report application remains protected from duplicate events.
+          return;
         }
-      }, FOREGROUND_RETRY_DELAYS_MS[index]);
+        if (index + 1 < FOREGROUND_RETRY_DELAYS_MS.length) {
+          attempt(index + 1);
+          return;
+        }
+        const pending = readPendingExternalPlaybackHandoff({ runtime, profileId: getProfileId() });
+        // A bounded retry window has elapsed after a real return/startup. It
+        // is now safe to offer the manual path exactly once.
+        if (pending?.manualPromptEligible) promptManually(pending);
+        finishCollecting();
+      } finally {
+        // Completion is owned by the terminal report/no-report branches so a
+        // slow report application remains protected from duplicate events.
+      }
+    };
+    // The first ask goes out in this same task, not through a timer. Coming
+    // back also wakes the rest of the app, and a queued first attempt waited
+    // behind all of it -- measured at 1.6s on a device, before a request had
+    // even left. The retries stay on their timers; only the first one is
+    // racing anything.
+    const attempt = (index) =>
+      index === 0
+        ? void run(0)
+        : runtime.setTimeout?.(() => void run(index), FOREGROUND_RETRY_DELAYS_MS[index]);
     attempt(0);
   };
   const onForeground = () => {
