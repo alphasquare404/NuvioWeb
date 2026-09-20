@@ -1,5 +1,7 @@
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
 import { markPlaybackWatched } from "./markPlaybackWatched.js";
+import { buildExternalScrobbleContext } from "./externalScrobbleContext.js";
+import { TrackingScrobbleService } from "../../data/repository/trackingScrobbleService.js";
 import { WatchProgressSyncService } from "../profile/watchProgressSyncService.js";
 import { nativeVideoEngine } from "./engines/nativeVideoEngine.js";
 import { hlsJsEngine } from "./engines/hlsJsEngine.js";
@@ -384,10 +386,7 @@ export const PlayerController = {
   },
 
   handlePlaybackStartedUnderStartupGate(playPromise = null) {
-    if (
-      !this.startupAudioGateActive ||
-      !this.startupAudioGatePausesPlayback
-    ) {
+    if (!this.startupAudioGateActive || !this.startupAudioGatePausesPlayback) {
       return playPromise;
     }
     if (playPromise && typeof playPromise.then === "function") {
@@ -1650,6 +1649,7 @@ export const PlayerController = {
       this.lifecycleBound = true;
       this.lifecycleFlushHandler = () => {
         this.flushCurrentProgress({ forceCloudSync: true });
+        this.scrobbleTerminalReport();
       };
       this.visibilityFlushHandler = () => {
         if (document.visibilityState === "hidden") {
@@ -1863,6 +1863,13 @@ export const PlayerController = {
     this.playbackSessionActive = false;
     this.setStartupAudioGate(false, { resume: false });
 
+    // Report to the tracking providers here, beside the local flush above and
+    // before the teardown below. Every way out of the player funnels through
+    // stop(), and the back-to-Stream path calls it long before the route
+    // actually changes -- so a report left to route cleanup runs after
+    // video.load() has reset currentTime, and has no position left to send.
+    this.scrobbleTerminalReport();
+
     try {
       this.video.pause();
     } catch (_) {
@@ -1976,6 +1983,21 @@ export const PlayerController = {
     return snapshot;
   },
 
+  // Backgrounding or closing the app is how playback usually ends on a phone,
+  // and until now that path only ever wrote locally: the tracking provider kept
+  // whatever position it last heard about, so it looked like NuvioWeb had
+  // stopped reporting progress entirely.
+  scrobbleTerminalReport() {
+    const context = this.createProgressContext();
+    if (!context?.itemId) return;
+    const snapshot = this.getRecordedProgressSnapshot(context);
+    const positionMs =
+      Math.floor(this.getCurrentTimeSeconds() * 1000) || Number(snapshot?.positionMs || 0);
+    const durationMs =
+      Math.floor(this.getDurationSeconds() * 1000) || Number(snapshot?.durationMs || 0);
+    TrackingScrobbleService.report(buildExternalScrobbleContext(context, positionMs, durationMs));
+  },
+
   async flushCurrentProgress({ forceCloudSync = false, allowCloudSync = true } = {}) {
     const context = this.createProgressContext();
     if (!context.itemId) {
@@ -2005,7 +2027,11 @@ export const PlayerController = {
 
   beginExternalPlaybackHandoff(handoff) {
     const context = handoff?.progressContext;
-    if (!context?.itemId || this.buildProgressSnapshotKey(context) !== this.buildProgressSnapshotKey()) return false;
+    if (
+      !context?.itemId ||
+      this.buildProgressSnapshotKey(context) !== this.buildProgressSnapshotKey()
+    )
+      return false;
     this.externalProgressHandoff = {
       key: this.buildProgressSnapshotKey(context),
       token: String(handoff.token || ""),
@@ -2015,7 +2041,11 @@ export const PlayerController = {
     // Start one final best-effort save without delaying the user-gesture
     // custom-scheme launch (iOS can reject a launch after an await).
     void this.flushCurrentProgress({ forceCloudSync: true });
-    try { this.video?.pause?.(); } catch (_) { /* Best effort before app handoff. */ }
+    try {
+      this.video?.pause?.();
+    } catch (_) {
+      /* Best effort before app handoff. */
+    }
     this.isPlaying = false;
     return true;
   },
@@ -2026,7 +2056,12 @@ export const PlayerController = {
 
   shouldSuppressStaleInternalProgress(context, positionMs) {
     const handoff = this.externalProgressHandoff;
-    if (!handoff || handoff.key !== this.buildProgressSnapshotKey(context) || handoff.authoritativePositionMs == null) return false;
+    if (
+      !handoff ||
+      handoff.key !== this.buildProgressSnapshotKey(context) ||
+      handoff.authoritativePositionMs == null
+    )
+      return false;
     if (handoff.completed) return true;
     return Number(positionMs || 0) <= Number(handoff.authoritativePositionMs) + 1000;
   },
@@ -2035,10 +2070,19 @@ export const PlayerController = {
     const handoff = this.externalProgressHandoff;
     if (!handoff || handoff.key !== this.buildProgressSnapshotKey(context)) return;
     handoff.authoritativePositionMs = Math.max(0, Number(positionMs) || 0);
-    handoff.completed = Number(durationMs) > 0 && handoff.authoritativePositionMs / Number(durationMs) >= 0.9;
+    handoff.completed =
+      Number(durationMs) > 0 && handoff.authoritativePositionMs / Number(durationMs) >= 0.9;
     if (this.video) {
-      try { this.video.currentTime = handoff.authoritativePositionMs / 1000; } catch (_) { /* Media may be detached. */ }
-      try { this.video.pause(); } catch (_) { /* Keep the built-in player paused. */ }
+      try {
+        this.video.currentTime = handoff.authoritativePositionMs / 1000;
+      } catch (_) {
+        /* Media may be detached. */
+      }
+      try {
+        this.video.pause();
+      } catch (_) {
+        /* Keep the built-in player paused. */
+      }
     }
     this.isPlaying = false;
   },
@@ -2048,22 +2092,56 @@ export const PlayerController = {
     if (!handoff || handoff.key !== this.buildProgressSnapshotKey(context)) return;
     handoff.completed = true;
     if (this.video) {
-      try { this.video.pause(); } catch (_) { /* Keep the built-in player paused. */ }
+      try {
+        this.video.pause();
+      } catch (_) {
+        /* Keep the built-in player paused. */
+      }
     }
     this.isPlaying = false;
   },
 
-  async completePlayback(context = null, { allowCloudSync = true, externalAuthoritative = false } = {}) {
+  // A provider drops its own resume entry when a scrobble stops at the end; a
+  // history write cannot, which is why an external player's completion left the
+  // title sitting in SIMKL's playback list -- and therefore in Continue
+  // Watching -- at whatever percentage it last heard about, however many times
+  // it was finished. The built-in player's natural end already scrobbles; this
+  // is the same message for the external path.
+  scrobbleExternalCompletion(context) {
+    const snapshot = this.getRecordedProgressSnapshot(context);
+    const durationMs =
+      Math.floor(this.getDurationSeconds() * 1000) || Number(snapshot?.durationMs || 0);
+    // Reported at the full duration: a completion is 100%, whatever position
+    // the external player happened to stop at.
+    const scrobbleContext = buildExternalScrobbleContext(context, durationMs, durationMs);
+    if (!scrobbleContext || !TrackingScrobbleService.isEnabled()) return false;
+    TrackingScrobbleService.stop(scrobbleContext);
+    return true;
+  },
+
+  async completePlayback(
+    context = null,
+    { allowCloudSync = true, externalAuthoritative = false } = {}
+  ) {
     const active = context || this.createProgressContext();
     if (!active?.itemId) return false;
     if (!externalAuthoritative && this.shouldSuppressStaleInternalProgress(active, 0)) return true;
-    await this.markPlaybackWatched(active, { authoritative: externalAuthoritative });
+    const scrobbled = Boolean(externalAuthoritative && this.scrobbleExternalCompletion?.(active));
+    await this.markPlaybackWatched(active, {
+      authoritative: externalAuthoritative,
+      skipTrackingWrite: scrobbled
+    });
     if (externalAuthoritative) this.acceptExternalPlaybackCompletion(active);
     if (allowCloudSync) await this.pushProgressIfDue(true);
     return true;
   },
 
-  async applyExternalPlaybackReport({ handoff, outcome, positionSeconds = null, durationSeconds = null } = {}) {
+  async applyExternalPlaybackReport({
+    handoff,
+    outcome,
+    positionSeconds = null,
+    durationSeconds = null
+  } = {}) {
     const context = handoff?.progressContext;
     if (!context?.itemId || !["finished", "stopped"].includes(outcome)) {
       return false;
@@ -2076,7 +2154,10 @@ export const PlayerController = {
     const reportedDurationMs = toMilliseconds(durationSeconds);
     const knownDurationMs = Math.max(0, Number(handoff?.knownDurationMs || 0));
     const durationMs = reportedDurationMs || knownDurationMs;
-    if ((positionSeconds != null && !reportedPositionMs) || (durationSeconds != null && !reportedDurationMs)) {
+    if (
+      (positionSeconds != null && !reportedPositionMs) ||
+      (durationSeconds != null && !reportedDurationMs)
+    ) {
       return false;
     }
     if (durationMs > 0 && reportedPositionMs > durationMs * 1.1 + 60000) {
@@ -2086,8 +2167,19 @@ export const PlayerController = {
       return PlayerController.completePlayback.call(this, context, { externalAuthoritative: true });
     }
     if (reportedPositionMs <= 0) return false;
-    const applied = await this.flushProgress(reportedPositionMs, durationMs, false, context, { externalAuthoritative: true });
-    if (applied) this.acceptExternalPlaybackProgress?.(context, reportedPositionMs, durationMs);
+    const applied = await this.flushProgress(reportedPositionMs, durationMs, false, context, {
+      externalAuthoritative: true
+    });
+    if (applied) {
+      this.acceptExternalPlaybackProgress?.(context, reportedPositionMs, durationMs);
+      // The report is terminal, so this is the only chance to tell the tracking
+      // providers where the user got to. "finished" needs nothing here: it goes
+      // through markPlaybackWatched, which already writes the history entry.
+      const scrobbleContext = buildExternalScrobbleContext(context, reportedPositionMs, durationMs);
+      if (scrobbleContext) {
+        TrackingScrobbleService.report(scrobbleContext);
+      }
+    }
     return applied;
   },
 
@@ -2105,7 +2197,8 @@ export const PlayerController = {
 
     const safePosition = Number(positionMs || 0);
     const safeDuration = Number(durationMs || 0);
-    if (!externalAuthoritative && this.shouldSuppressStaleInternalProgress(active, safePosition)) return true;
+    if (!externalAuthoritative && this.shouldSuppressStaleInternalProgress(active, safePosition))
+      return true;
     const hasFiniteDuration = Number.isFinite(safeDuration) && safeDuration > 0;
     const hasReachedMinimumSyncPosition =
       Number.isFinite(safePosition) && safePosition >= MIN_PROGRESS_SYNC_DURATION_MS;
@@ -2142,30 +2235,36 @@ export const PlayerController = {
       return false;
     }
 
-    await watchProgressRepository.saveProgress({
-      contentId: active.itemId,
-      contentType: active.itemType || "movie",
-      videoId: active.videoId || null,
-      season: active.season,
-      episode: active.episode,
-      title: active.title || null,
-      poster: active.poster || null,
-      background: active.background || null,
-      logo: active.logo || null,
-      episodeTitle: active.episodeTitle || null,
-      // Persist the stream identity so Continue Watching can resume the same
-      // source instead of reopening the stream picker.
-      streamIdentity: active.streamIdentity || null,
-      positionMs: Math.max(0, Math.trunc(safePosition)),
-      durationMs: hasFiniteDuration ? Math.max(0, Math.trunc(safeDuration)) : 0
-    }, { authoritative: externalAuthoritative });
+    await watchProgressRepository.saveProgress(
+      {
+        contentId: active.itemId,
+        contentType: active.itemType || "movie",
+        videoId: active.videoId || null,
+        season: active.season,
+        episode: active.episode,
+        title: active.title || null,
+        poster: active.poster || null,
+        background: active.background || null,
+        logo: active.logo || null,
+        episodeTitle: active.episodeTitle || null,
+        // Persist the stream identity so Continue Watching can resume the same
+        // source instead of reopening the stream picker.
+        streamIdentity: active.streamIdentity || null,
+        positionMs: Math.max(0, Math.trunc(safePosition)),
+        durationMs: hasFiniteDuration ? Math.max(0, Math.trunc(safeDuration)) : 0
+      },
+      { authoritative: externalAuthoritative }
+    );
     if (!allowCloudSync) {
       return true;
     }
     // Saving progress locally succeeded. Cloud sync is best effort and has
     // its own retry path, so callers must not show a manual fallback merely
-    // because this particular push was deferred or offline.
-    await this.pushProgressIfDue(false);
+    // because this particular push was deferred or offline -- and for the same
+    // reason they must not wait for it either. Awaiting it here put a network
+    // round trip between an accepted external-player report and the card
+    // moving, for a write nothing was waiting on.
+    void this.pushProgressIfDue(false);
     return true;
   },
 

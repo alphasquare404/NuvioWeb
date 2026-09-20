@@ -1,14 +1,17 @@
 import { LocalStore } from "../../core/storage/localStore.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
-import {
-  SimklAnimeIdPreference,
-  TraktSettingsStore
-} from "../local/traktSettingsStore.js";
+import { SimklAnimeIdPreference, TraktSettingsStore } from "../local/traktSettingsStore.js";
 import { SimklAuthService } from "./simklAuthService.js";
 import { simklRequest } from "./simklAuthService.js";
 
 const STORE_KEY = "simklSyncState";
 const AUTOMATIC_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+// Continue Watching is user-facing: opening Home or returning to it should be
+// able to pick up progress recorded on another device. Fifteen minutes is fine
+// for background upkeep but made NuvioWeb look like it had stopped syncing, so
+// a CW resolve is allowed to re-check far sooner while still being debounced
+// enough that ordinary navigation cannot hammer the API.
+const CONTINUE_WATCHING_REFRESH_INTERVAL_MS = 60 * 1000;
 const EXTENDED_QUERY =
   "extended=full_anime_seasons&episode_watched_at=yes&episode_tvdb_id=yes&include_all_episodes=yes&language=en";
 const STATUS_DEFINITIONS = [
@@ -64,7 +67,12 @@ function readEnvelope() {
 function getSnapshot(profileId = activeProfileId()) {
   const stored = readEnvelope().profiles[String(profileId)];
   return stored && typeof stored === "object"
-    ? { ...emptySnapshot(), ...stored, entries: stored.entries || [], playback: stored.playback || [] }
+    ? {
+        ...emptySnapshot(),
+        ...stored,
+        entries: stored.entries || [],
+        playback: stored.playback || []
+      }
     : emptySnapshot();
 }
 
@@ -89,6 +97,26 @@ function idValue(ids = {}, key) {
   const value = ids?.[key];
   if (value == null || value === "") return null;
   return String(value);
+}
+
+// Every alias SIMKL knows for a title, carried alongside the canonical
+// contentId. SIMKL is the only side of a Continue Watching merge that knows all
+// of them: a local playback row holds whichever single id its addon used, so
+// the aliases have to travel with the SIMKL item for the two to be recognised
+// as the same title.
+function identityIds(media = {}) {
+  const ids = media.ids || {};
+  const resolved = {
+    imdb: idValue(ids, "imdb"),
+    tmdb: idValue(ids, "tmdb"),
+    tvdb: idValue(ids, "tvdb"),
+    mal: idValue(ids, "mal"),
+    anidb: idValue(ids, "anidb"),
+    anilist: idValue(ids, "anilist"),
+    kitsu: idValue(ids, "kitsu"),
+    simkl: simklId(ids) == null ? null : String(simklId(ids))
+  };
+  return Object.fromEntries(Object.entries(resolved).filter(([, value]) => value));
 }
 
 function simklId(ids = {}) {
@@ -120,7 +148,10 @@ function canonicalContentId(media = {}, mediaType = "shows") {
 
 function entryMediaType(entry = {}) {
   if (entry.mediaType === "movies") return "movie";
-  if (entry.mediaType === "anime" && String(entry.anime_type || entry.animeType || "") === "movie") {
+  if (
+    entry.mediaType === "anime" &&
+    String(entry.anime_type || entry.animeType || "") === "movie"
+  ) {
     return "movie";
   }
   return "series";
@@ -191,9 +222,7 @@ async function initialSync(profileId) {
     activities: activities || null,
     entries: Array.from(
       new Map(
-        entries
-          .map((entry) => [entryStableKey(entry), entry])
-          .filter(([key]) => Boolean(key))
+        entries.map((entry) => [entryStableKey(entry), entry]).filter(([key]) => Boolean(key))
       ).values()
     ),
     playback: Array.isArray(playback) ? playback : [],
@@ -202,15 +231,16 @@ async function initialSync(profileId) {
   };
 }
 
-async function incrementalSync(current, profileId) {
+async function incrementalSync(current, profileId, { rereadPlayback = false } = {}) {
   const { payload: activities } = await simklRequest("/sync/activities", { profileId });
-  if (
-    activities?.settings?.all &&
-    activities.settings.all !== current.activities?.settings?.all
-  ) {
+  if (activities?.settings?.all && activities.settings.all !== current.activities?.settings?.all) {
     await SimklAuthService.fetchUserSettings(profileId).catch(() => null);
   }
-  if (activities?.all && activities.all === current.watermark) {
+  // Simkl's activity summary can still report the previous watermark for a
+  // short while after a write lands, so someone asking for their positions by
+  // hand must not be told "nothing changed" and sent away -- that is exactly
+  // the moment they are standing in front of the app waiting for it.
+  if (!rereadPlayback && activities?.all && activities.all === current.watermark) {
     return { ...current, activities, lastCheckedAt: Date.now() };
   }
   if (!current.watermark) return initialSync(profileId);
@@ -238,7 +268,10 @@ async function incrementalSync(current, profileId) {
     );
   }
   let playback = current.playback || [];
-  if (anyDomainChanged(current.activities, activities, ["playback"])) {
+  // Playback positions are what Continue Watching is built from, so a refresh
+  // asked for on their behalf re-reads them rather than trusting the activity
+  // summary to have caught up yet.
+  if (rereadPlayback || anyDomainChanged(current.activities, activities, ["playback"])) {
     const result = await simklRequest("/sync/playback", { profileId });
     playback = Array.isArray(result.payload) ? result.payload : [];
   }
@@ -362,7 +395,10 @@ function externalIds(item = {}, fallbackEntry = null) {
   return Object.fromEntries(
     Object.entries(values)
       .filter(([, value]) => value != null && value !== "")
-      .map(([key, value]) => [key, /^\d+$/.test(String(value)) && key !== "imdb" ? Number(value) : value])
+      .map(([key, value]) => [
+        key,
+        /^\d+$/.test(String(value)) && key !== "imdb" ? Number(value) : value
+      ])
   );
 }
 
@@ -377,13 +413,13 @@ function mutationMedia(item = {}, fallbackEntry = null) {
 
 function isMovieItem(item = {}, fallbackEntry = null) {
   if (fallbackEntry) return entryMediaType(fallbackEntry) === "movie";
-  return String(item.itemType || item.type || item.contentType || "movie").toLowerCase() === "movie";
+  return (
+    String(item.itemType || item.type || item.contentType || "movie").toLowerCase() === "movie"
+  );
 }
 
 function historyMutationBody(item, fallbackEntry, includeWatchedAt) {
-  const animeVideo = String(item.videoId || "").match(
-    /^(mal|anidb|anilist|kitsu):(\d+):(\d+)/i
-  );
+  const animeVideo = String(item.videoId || "").match(/^(mal|anidb|anilist|kitsu):(\d+):(\d+)/i);
   const media = animeVideo
     ? {
         title: item.title || mediaForEntry(fallbackEntry || {})?.title || undefined,
@@ -396,7 +432,11 @@ function historyMutationBody(item, fallbackEntry, includeWatchedAt) {
     return { movies: [{ ...media, ...(watchedAt ? { watched_at: watchedAt } : {}) }], shows: [] };
   }
   const season = animeVideo ? null : item.season == null ? null : Number(item.season);
-  const episode = animeVideo ? Number(animeVideo[3]) : item.episode == null ? null : Number(item.episode);
+  const episode = animeVideo
+    ? Number(animeVideo[3])
+    : item.episode == null
+      ? null
+      : Number(item.episode);
   if (episode == null) {
     return {
       movies: [],
@@ -438,6 +478,7 @@ function progressFromPlayback(session, snapshot) {
     year: media.year == null ? null : Number(media.year),
     imdbId: idValue(media.ids, "imdb"),
     tmdbId: Number(idValue(media.ids, "tmdb")) || null,
+    ids: identityIds(media),
     source: "simkl_playback",
     updatedAt: parseDate(session.paused_at || session.watched_at, snapshot.lastSyncedAt),
     positionMs: durationMs ? Math.round((durationMs * progress) / 100) : 0,
@@ -473,6 +514,7 @@ function watchedProjection(snapshot) {
       year: media.year == null ? null : Number(media.year),
       imdbId: idValue(media.ids, "imdb"),
       tmdbId: Number(idValue(media.ids, "tmdb")) || null,
+      ids: identityIds(media),
       trackingProviderId: "simkl"
     };
     if (type === "movie") {
@@ -550,21 +592,29 @@ export const SimklSyncService = {
 
   getSnapshot,
 
-  async refresh({ force = false } = {}) {
+  /**
+   * @param force Ignore the pacing interval and check now.
+   * @param rereadPlayback Also re-read the playback positions, whatever the
+   *   activity summary claims. Only Continue Watching needs this; a library or
+   *   settings refresh asking merely to be current must not pay for it.
+   */
+  async refresh({
+    force = false,
+    rereadPlayback = false,
+    maxAgeMs = AUTOMATIC_REFRESH_INTERVAL_MS
+  } = {}) {
     if (!SimklAuthService.isAuthenticated()) return false;
     const profileId = activeProfileId();
     const current = getSnapshot(profileId);
-    if (
-      !force &&
-      current.lastCheckedAt &&
-      Date.now() - current.lastCheckedAt < AUTOMATIC_REFRESH_INTERVAL_MS
-    ) {
+    if (!force && current.lastCheckedAt && Date.now() - current.lastCheckedAt < maxAgeMs) {
       return false;
     }
     if (refreshInFlight?.profileId === profileId) return refreshInFlight.promise;
-    const promise = (current.initialized
-      ? incrementalSync(current, profileId)
-      : initialSync(profileId))
+    const promise = (
+      current.initialized
+        ? incrementalSync(current, profileId, { rereadPlayback })
+        : initialSync(profileId)
+    )
       .then((snapshot) => {
         if (activeProfileId() !== profileId) return false;
         saveSnapshot(snapshot, profileId);
@@ -629,11 +679,11 @@ export const SimklSyncService = {
     if (!destination) {
       const hasHistory = Boolean(
         entry &&
-          (entry.last_watched_at ||
-            entry.user_rating != null ||
-            (entry.seasons || []).some((season) =>
-              (season.episodes || []).some((episode) => episode.watched_at)
-            ))
+        (entry.last_watched_at ||
+          entry.user_rating != null ||
+          (entry.seasons || []).some((season) =>
+            (season.episodes || []).some((episode) => episode.watched_at)
+          ))
       );
       if (hasHistory && !destructiveRemovalConfirmed) {
         const error = new Error(
@@ -652,7 +702,9 @@ export const SimklSyncService = {
       const media = { ...mutationMedia(item, entry), to: destination.status };
       await simklRequest("/sync/add-to-list", {
         method: "POST",
-        body: isMovieItem(item, entry) ? { movies: [media], shows: [] } : { movies: [], shows: [media] },
+        body: isMovieItem(item, entry)
+          ? { movies: [media], shows: [] }
+          : { movies: [], shows: [media] },
         profileId
       });
       if (entry) entry.status = destination.status;
@@ -688,8 +740,8 @@ export const SimklSyncService = {
     saveSnapshot(snapshot, profileId);
   },
 
-  async getProgressSnapshot() {
-    await this.refresh().catch(() => false);
+  async getProgressSnapshot({ maxAgeMs = CONTINUE_WATCHING_REFRESH_INTERVAL_MS } = {}) {
+    await this.refresh({ maxAgeMs }).catch(() => false);
     const snapshot = getSnapshot();
     const watched = watchedProjection(snapshot);
     return {

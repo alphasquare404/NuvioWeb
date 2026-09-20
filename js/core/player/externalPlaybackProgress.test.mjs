@@ -9,10 +9,21 @@ const handoff = {
 
 test("a stopped Outplayer report converts fractional seconds and reuses canonical progress", async () => {
   const calls = [];
-  const controller = { flushProgress: async (...args) => { calls.push(args); return true; } };
-  assert.equal(await PlayerController.applyExternalPlaybackReport.call(controller, {
-    handoff, outcome: "stopped", positionSeconds: 45.625, durationSeconds: 120
-  }), true);
+  const controller = {
+    flushProgress: async (...args) => {
+      calls.push(args);
+      return true;
+    }
+  };
+  assert.equal(
+    await PlayerController.applyExternalPlaybackReport.call(controller, {
+      handoff,
+      outcome: "stopped",
+      positionSeconds: 45.625,
+      durationSeconds: 120
+    }),
+    true
+  );
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], 45_625);
   assert.equal(calls[0][1], 120_000);
@@ -21,17 +32,48 @@ test("a stopped Outplayer report converts fractional seconds and reuses canonica
 
 test("Outplayer partial reports remain ordinary canonical progress", async () => {
   const calls = [];
-  const controller = { flushProgress: async (...args) => { calls.push(["progress", ...args]); return true; } };
-  assert.equal(await PlayerController.applyExternalPlaybackReport.call(controller, {
-    handoff, outcome: "stopped", positionSeconds: 117.6, durationSeconds: 120
-  }), true);
-  assert.deepEqual(calls[0], ["progress", 117_600, 120_000, false, handoff.progressContext, { externalAuthoritative: true }]);
-  assert.equal(await PlayerController.applyExternalPlaybackReport.call(controller, { handoff, outcome: "stopped", positionSeconds: 300, durationSeconds: 120 }), false);
+  const controller = {
+    flushProgress: async (...args) => {
+      calls.push(["progress", ...args]);
+      return true;
+    }
+  };
+  assert.equal(
+    await PlayerController.applyExternalPlaybackReport.call(controller, {
+      handoff,
+      outcome: "stopped",
+      positionSeconds: 117.6,
+      durationSeconds: 120
+    }),
+    true
+  );
+  assert.deepEqual(calls[0], [
+    "progress",
+    117_600,
+    120_000,
+    false,
+    handoff.progressContext,
+    { externalAuthoritative: true }
+  ]);
+  assert.equal(
+    await PlayerController.applyExternalPlaybackReport.call(controller, {
+      handoff,
+      outcome: "stopped",
+      positionSeconds: 300,
+      durationSeconds: 120
+    }),
+    false
+  );
 });
 
 test("pre-seeded episode finish reports preserve their stable identity through canonical completion", async () => {
   const calls = [];
-  const controller = { flushProgress: async (...args) => { calls.push(args); return true; } };
+  const controller = {
+    flushProgress: async (...args) => {
+      calls.push(args);
+      return true;
+    }
+  };
   const episodeHandoff = {
     knownDurationMs: 1_800_000,
     progressContext: {
@@ -44,9 +86,15 @@ test("pre-seeded episode finish reports preserve their stable identity through c
       episodeTitle: "Episode 2"
     }
   };
-  assert.equal(await PlayerController.applyExternalPlaybackReport.call(controller, {
-    handoff: episodeHandoff, outcome: "stopped", positionSeconds: 1764, durationSeconds: 1800
-  }), true);
+  assert.equal(
+    await PlayerController.applyExternalPlaybackReport.call(controller, {
+      handoff: episodeHandoff,
+      outcome: "stopped",
+      positionSeconds: 1764,
+      durationSeconds: 1800
+    }),
+    true
+  );
   assert.equal(calls[0][0], 1_764_000);
   assert.equal(calls[0][1], 1_800_000);
   assert.equal(calls[0][3], episodeHandoff.progressContext);
@@ -54,42 +102,89 @@ test("pre-seeded episode finish reports preserve their stable identity through c
 
 test("an Infuse position in seconds uses the saved known duration through canonical progress", async () => {
   const calls = [];
-  const controller = { flushProgress: async (...args) => { calls.push(args); return true; } };
+  const controller = {
+    flushProgress: async (...args) => {
+      calls.push(args);
+      return true;
+    }
+  };
   const infuseHandoff = { ...handoff, knownDurationMs: 1_440_000 };
-  assert.equal(await PlayerController.applyExternalPlaybackReport.call(controller, {
-    handoff: infuseHandoff, outcome: "stopped", positionSeconds: 840, durationSeconds: 1440
-  }), true);
-  assert.deepEqual(calls[0], [840_000, 1_440_000, false, infuseHandoff.progressContext, { externalAuthoritative: true }]);
+  assert.equal(
+    await PlayerController.applyExternalPlaybackReport.call(controller, {
+      handoff: infuseHandoff,
+      outcome: "stopped",
+      positionSeconds: 840,
+      durationSeconds: 1440
+    }),
+    true
+  );
+  assert.deepEqual(calls[0], [
+    840_000,
+    1_440_000,
+    false,
+    infuseHandoff.progressContext,
+    { externalAuthoritative: true }
+  ]);
 });
 
 test("an explicit Outplayer finish completes without a reported or metadata duration", async () => {
   const calls = [];
   const controller = {
-    markPlaybackWatched: async (context) => { calls.push(["watched", context]); },
-    pushProgressIfDue: async (force) => { calls.push(["sync", force]); },
-    acceptExternalPlaybackCompletion: (context) => { calls.push(["ownership", context]); }
+    markPlaybackWatched: async (context) => {
+      calls.push(["watched", context]);
+    },
+    pushProgressIfDue: async (force) => {
+      calls.push(["sync", force]);
+    },
+    acceptExternalPlaybackCompletion: (context) => {
+      calls.push(["ownership", context]);
+    }
   };
-  assert.equal(await PlayerController.applyExternalPlaybackReport.call(controller, { handoff: { ...handoff, knownDurationMs: 3_000_000 }, outcome: "finished" }), true);
-  assert.deepEqual(calls, [["watched", handoff.progressContext], ["ownership", handoff.progressContext], ["sync", true]]);
+  assert.equal(
+    await PlayerController.applyExternalPlaybackReport.call(controller, {
+      handoff: { ...handoff, knownDurationMs: 3_000_000 },
+      outcome: "finished"
+    }),
+    true
+  );
+  assert.deepEqual(calls, [
+    ["watched", handoff.progressContext],
+    ["ownership", handoff.progressContext],
+    ["sync", true]
+  ]);
 });
 
 test("an accepted finish report marks watched as authoritative", async () => {
   const calls = [];
   const controller = {
-    markPlaybackWatched: async (...args) => { calls.push(args); },
+    markPlaybackWatched: async (...args) => {
+      calls.push(args);
+    },
     pushProgressIfDue: async () => {},
     acceptExternalPlaybackCompletion: () => {}
   };
-  assert.equal(await PlayerController.applyExternalPlaybackReport.call(controller, { handoff, outcome: "finished" }), true);
+  assert.equal(
+    await PlayerController.applyExternalPlaybackReport.call(controller, {
+      handoff,
+      outcome: "finished"
+    }),
+    true
+  );
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], [handoff.progressContext, { authoritative: true }]);
+  assert.deepEqual(calls[0], [
+    handoff.progressContext,
+    { authoritative: true, skipTrackingWrite: false }
+  ]);
 });
 
 test("a real flushProgress call forwards externalAuthoritative into watchProgressRepository.saveProgress", async () => {
-  const { watchProgressRepository } = await import("../../data/repository/watchProgressRepository.js");
+  const { watchProgressRepository } =
+    await import("../../data/repository/watchProgressRepository.js");
   const originalSaveProgress = watchProgressRepository.saveProgress;
   const calls = [];
-  watchProgressRepository.saveProgress = async (...args) => { calls.push(args); };
+  watchProgressRepository.saveProgress = async (...args) => {
+    calls.push(args);
+  };
   const controller = {
     shouldSuppressStaleInternalProgress: () => false,
     recordProgressSnapshot: () => {}
@@ -111,10 +206,13 @@ test("a real flushProgress call forwards externalAuthoritative into watchProgres
 });
 
 test("an ordinary (non-external) flushProgress call saves progress as non-authoritative", async () => {
-  const { watchProgressRepository } = await import("../../data/repository/watchProgressRepository.js");
+  const { watchProgressRepository } =
+    await import("../../data/repository/watchProgressRepository.js");
   const originalSaveProgress = watchProgressRepository.saveProgress;
   const calls = [];
-  watchProgressRepository.saveProgress = async (...args) => { calls.push(args); };
+  watchProgressRepository.saveProgress = async (...args) => {
+    calls.push(args);
+  };
   const controller = {
     shouldSuppressStaleInternalProgress: () => false,
     recordProgressSnapshot: () => {}

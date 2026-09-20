@@ -1,5 +1,6 @@
 import { AuthManager } from "../auth/authManager.js";
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
+import { isNuvioSyncOwnedProgress } from "../../data/repository/watchProgressProvenance.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { ProfileManager } from "./profileManager.js";
 import { LocalStore } from "../storage/localStore.js";
@@ -75,8 +76,15 @@ function preserveLocalProgressMetadata(progress, localItem) {
   }
   const localTitle = String(localItem.title || "").trim();
   const localStreamIdentity = String(localItem.streamIdentity || "").trim();
+  // Which source a row was recorded under is local-only knowledge: the cloud
+  // payload has no column for it, so every pull used to hand the row back as
+  // plain "local". That erased the mark Continue Watching uses to keep one
+  // source's viewing out of another's, and playback recorded while SIMKL owned
+  // progress resurfaced under Nuvio Sync.
+  const localSource = String(localItem.source || "").trim();
   return {
     ...progress,
+    ...(localSource ? { source: localItem.source } : {}),
     ...(localTitle ? { title: localItem.title } : {}),
     ...(localItem.poster ? { poster: localItem.poster } : {}),
     ...(localItem.background ? { background: localItem.background } : {}),
@@ -469,8 +477,8 @@ async function pushOnce() {
       return false;
     }
     const sessionGeneration = AuthManager.getSessionGeneration();
-    const items = coalesceSyncItems(await watchProgressRepository.getAll()).filter((item) =>
-      isSyncableProgressItem(item)
+    const items = coalesceSyncItems(await watchProgressRepository.getAll()).filter(
+      (item) => isSyncableProgressItem(item) && isNuvioSyncOwnedProgress(item)
     );
     if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
     const profileId = resolveProfileId();

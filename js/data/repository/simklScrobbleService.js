@@ -1,6 +1,8 @@
 import { SimklAuthService } from "./simklAuthService.js";
 import { simklRequest } from "./simklAuthService.js";
 import { SimklSyncService } from "./simklSyncService.js";
+import { WatchProgressSource } from "../local/traktSettingsStore.js";
+import { ownsWatchProgress } from "./trackingWriteScope.js";
 
 const START_DEBOUNCE_MS = 15000;
 const WATCHED_THRESHOLD_PERCENT = 80;
@@ -91,7 +93,7 @@ async function send(action, context) {
 
 export const SimklScrobbleService = {
   isEnabled() {
-    return SimklAuthService.isAuthenticated();
+    return ownsWatchProgress(WatchProgressSource.SIMKL) && SimklAuthService.isAuthenticated();
   },
 
   start(context) {
@@ -105,6 +107,16 @@ export const SimklScrobbleService = {
   pause(context) {
     clearStartTimer();
     if (lastAction === "start") void send("pause", context);
+  },
+
+  // A terminal position past the watched threshold, where a stop would finish
+  // the title instead of recording where the viewer got to. Unlike pause() this
+  // needs no scrobble session behind it: the report it carries is the whole
+  // story, and there may never have been a session at all.
+  reportPosition(context) {
+    clearStartTimer();
+    void send("pause", context);
+    lastAction = null;
   },
 
   stop(context) {

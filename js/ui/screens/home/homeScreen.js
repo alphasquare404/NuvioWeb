@@ -20,7 +20,10 @@ import { WatchProgressStore } from "../../../data/local/watchProgressStore.js";
 import { WatchedItemsStore } from "../../../data/local/watchedItemsStore.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
-import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
+import {
+  getEffectiveTmdbApiKey,
+  TmdbSettingsStore
+} from "../../../data/local/tmdbSettingsStore.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { mdbListRepository } from "../../../data/repository/mdbListRepository.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
@@ -115,8 +118,15 @@ import {
 } from "./homeConstants.js";
 import { resolveNextUpCandidates } from "./nextUpCandidateResolver.js";
 import { shouldRefreshContinueWatchingForChange } from "./continueWatchingRefreshPolicy.js";
+import {
+  selectWatchedItemsForContinueWatching,
+  shouldSeedNextUpFromLocalWatchedItems
+} from "./nextUpSeedPolicy.js";
 import { continueWatchingEnrichmentSignatureFor } from "./continueWatchingEnrichmentSignature.js";
-import { patchContinueWatchingDisplayProgress } from "./continueWatchingProgressPatch.js";
+import {
+  patchContinueWatchingDisplayProgress,
+  removeContinueWatchingDisplayItem
+} from "./continueWatchingProgressPatch.js";
 import { isHomeLoadGenerationCurrent } from "./homeLoadGeneration.js";
 import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
 import {
@@ -137,6 +147,7 @@ import {
   limitTextToWordCount,
   parseCssPx,
   prettyId,
+  resolveContinueWatchingEpisodeStill,
   uniqueNonEmptyValues
 } from "./homeUtils.js";
 
@@ -148,12 +159,7 @@ export { escapeAttribute, escapeHtml, formatCatalogRowTitle } from "./homeUtils.
 const MODERN_SIDEBAR_PILL_AUTO_COLLAPSE_MS = 4000;
 const CW_RELEASE_ALERT_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
 const BROWSER_HOME_DRILL_DOWN_ROUTES = new Set(["detail", "folderDetail", "stream", "player"]);
-const BROWSER_HOME_GLOBAL_ROUTES = new Set([
-  "search",
-  "library",
-  "settings",
-  "profileSelection"
-]);
+const BROWSER_HOME_GLOBAL_ROUTES = new Set(["search", "library", "settings", "profileSelection"]);
 
 const HOME_LAZY_IMAGE_SELECTOR =
   ".home-main .content-poster[data-src], .home-main .home-poster-landscape-logo[data-src], .home-main .home-continue-bg[data-src]";
@@ -212,7 +218,8 @@ async function getLocalSidebarProfileState() {
     t("sidebar.profileFallback");
   // Do not hold the first Home paint behind the optional avatar catalog RPC.
   // The regular sidebar refresh below resolves catalog avatars in the background.
-  const avatarSource = activeProfile?.avatarUrl || AvatarRepository.getAvatarImageUrl(activeProfile?.avatarId);
+  const avatarSource =
+    activeProfile?.avatarUrl || AvatarRepository.getAvatarImageUrl(activeProfile?.avatarId);
   const avatarUrl = await resolveBrowserProfileAvatar(activeProfile, avatarSource, {
     allowNetwork: false
   }).catch(() => "");
@@ -1542,13 +1549,8 @@ function normalizeContinueWatchingItem(item) {
       item.poster,
       item.episodeThumbnail
     ),
-    episodeThumbnail: firstNonEmpty(
-      item.episodeThumbnail,
-      item.thumbnail,
-      item.backdrop,
-      item.background,
-      item.poster
-    ),
+    // Series-only, for the same reason episodeCode and episodeTitle below are.
+    episodeThumbnail: resolveContinueWatchingEpisodeStill(item, isSeries),
     poster: isSeries
       ? firstNonEmpty(
           item.poster,
@@ -2666,7 +2668,9 @@ export function createPosterCardMarkup(
           ${focusGifOverlay}
         </div>
         ${
-          (layoutMode !== "modern" || Platform.isBrowser()) && showLabels && !collectionItem.hideTitle
+          (layoutMode !== "modern" || Platform.isBrowser()) &&
+          showLabels &&
+          !collectionItem.hideTitle
             ? `
           <div class="home-poster-copy">
             <div class="home-poster-title">${escapeHtml(collectionItem.name || collectionItem.collectionTitle || "Collection")}</div>
@@ -2816,10 +2820,7 @@ export const HomeScreen = {
   captureRouteState({ nextRoute } = {}) {
     const route = String(nextRoute || "");
     const isBrowserDrillDown = BROWSER_HOME_DRILL_DOWN_ROUTES.has(route);
-    if (
-      Platform.isBrowser() &&
-      !isBrowserDrillDown
-    ) {
+    if (Platform.isBrowser() && !isBrowserDrillDown) {
       this.clearStoredReturnFocusState();
       this.savedFocusStates = {};
       return null;
@@ -3673,7 +3674,10 @@ export const HomeScreen = {
     if (!owner) {
       return;
     }
-    const maxScrollTop = Math.max(0, Number(owner.scrollHeight || 0) - Number(owner.clientHeight || 0));
+    const maxScrollTop = Math.max(
+      0,
+      Number(owner.scrollHeight || 0) - Number(owner.clientHeight || 0)
+    );
     owner.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(value || 0)));
   },
 
@@ -3809,20 +3813,17 @@ export const HomeScreen = {
     if (!target) {
       return;
     }
-    this.deferredContinueWatchingFocusTimer = setTimeout(
-      () => {
-        this.deferredContinueWatchingFocusTimer = null;
-        if (
-          Router.getCurrent() !== "home" ||
-          !target.isConnected ||
-          this.getCurrentFocusedNode() !== target
-        ) {
-          return;
-        }
-        this.scheduleModernHeroUpdate(target);
-      },
-      220
-    );
+    this.deferredContinueWatchingFocusTimer = setTimeout(() => {
+      this.deferredContinueWatchingFocusTimer = null;
+      if (
+        Router.getCurrent() !== "home" ||
+        !target.isConnected ||
+        this.getCurrentFocusedNode() !== target
+      ) {
+        return;
+      }
+      this.scheduleModernHeroUpdate(target);
+    }, 220);
   },
 
   getBackgroundRenderDelay() {
@@ -3869,6 +3870,11 @@ export const HomeScreen = {
 
   requestRender(options = {}) {
     if (!this.container || Router.getCurrent() !== "home") {
+      // Dropping it outright is what left an already-correct row unpainted: a
+      // return from an external player lands on Stream, so the write that
+      // carries the new position arrives while Home is covered, and Back only
+      // reveals the layer it left standing rather than drawing it again.
+      this.deferredRenderPending = true;
       return;
     }
     const delayMs = Math.max(0, Number(options?.delayMs || 0));
@@ -3896,6 +3902,7 @@ export const HomeScreen = {
     this.homeRenderFrame = requestAnimationFrame(() => {
       this.homeRenderFrame = null;
       if (!this.container || Router.getCurrent() !== "home") {
+        this.deferredRenderPending = true;
         return;
       }
       this.render();
@@ -4535,9 +4542,7 @@ export const HomeScreen = {
 
   restoreContinueWatchingMenuFocus() {
     this.unlockHomeHoldFocus();
-    const rowKey = String(
-      this.pendingContinueWatchingFocusRowKey || "continue_watching"
-    );
+    const rowKey = String(this.pendingContinueWatchingFocusRowKey || "continue_watching");
     const cards = this.getNavigationRowNodes(rowKey);
     const target =
       cards[
@@ -4824,12 +4829,15 @@ export const HomeScreen = {
       normalizedAction === "confirmDestructiveSimklRemoval"
     ) {
       try {
-        await libraryRepository.applyMembershipChanges(this.posterListPicker.item, {
-          desiredMembership: this.posterListPicker.membership || {}
-        }, {
-          destructiveRemovalConfirmed:
-            normalizedAction === "confirmDestructiveSimklRemoval"
-        });
+        await libraryRepository.applyMembershipChanges(
+          this.posterListPicker.item,
+          {
+            desiredMembership: this.posterListPicker.membership || {}
+          },
+          {
+            destructiveRemovalConfirmed: normalizedAction === "confirmDestructiveSimklRemoval"
+          }
+        );
         this.posterListPicker = null;
         this.destroyHomeHoldDialog();
         this.restorePosterHoldMenuFocus();
@@ -5350,9 +5358,7 @@ export const HomeScreen = {
       return false;
     }
     const anchorIndex = Math.max(0, Number(this.continueWatchingMenu?.index || 0));
-    const anchorRowKey = String(
-      this.continueWatchingMenu?.rowKey || "continue_watching"
-    );
+    const anchorRowKey = String(this.continueWatchingMenu?.rowKey || "continue_watching");
     if (option.action === "resume") {
       return this.openContinueWatchingFromItem(item);
     }
@@ -7461,10 +7467,7 @@ export const HomeScreen = {
       return;
     }
 
-    if (
-      (direction === "up" || direction === "down") &&
-      this.isPerformanceConstrained()
-    ) {
+    if ((direction === "up" || direction === "down") && this.isPerformanceConstrained()) {
       if (this._mainClassicVertRaf) {
         cancelAnimationFrame(this._mainClassicVertRaf);
       }
@@ -8082,7 +8085,8 @@ export const HomeScreen = {
             ".home-modern-catalogs .home-track, .home-row-continue .home-track"
           );
           const hasHorizontalWheelIntent =
-            Boolean(event.shiftKey) || Math.abs(Number(event.deltaX || 0)) > Math.abs(Number(event.deltaY || 0));
+            Boolean(event.shiftKey) ||
+            Math.abs(Number(event.deltaX || 0)) > Math.abs(Number(event.deltaY || 0));
           if (track && this.container?.contains(track) && hasHorizontalWheelIntent) {
             const deltaX = Number(event.deltaX || 0);
             const deltaY = Number(event.deltaY || 0);
@@ -8141,7 +8145,10 @@ export const HomeScreen = {
 
   renderBrowserOfflineHome() {
     this.stopHeroRotation();
-    const rootNavigation = renderDesktopNavigation({ selectedRoute: "home", profile: this.sidebarProfile });
+    const rootNavigation = renderDesktopNavigation({
+      selectedRoute: "home",
+      profile: this.sidebarProfile
+    });
     const reconnectMessage = this.browserOfflineHomeRecoverable
       ? "Back online — pull down to refresh."
       : "Reconnect to the internet and pull down to refresh to restore online content.";
@@ -8322,13 +8329,15 @@ export const HomeScreen = {
       3500,
       null
     ).catch(() => null);
-    const result = await withTimeout(
-      metaRepository.getMetaFromAllAddons(itemType, itemId),
-      4000,
-      { status: "error", message: "timeout" }
-    ).catch(() => ({ status: "error" }));
+    const result = await withTimeout(metaRepository.getMetaFromAllAddons(itemType, itemId), 4000, {
+      status: "error",
+      message: "timeout"
+    }).catch(() => ({ status: "error" }));
     if (result?.status !== "success" || !result.data) return null;
-    const meta = normalizeCatalogItem({ ...result.data, id: itemId, type: result.data.type || itemType }, itemType);
+    const meta = normalizeCatalogItem(
+      { ...result.data, id: itemId, type: result.data.type || itemType },
+      itemType
+    );
     const mdbImdbRating = await mdbImdbRatingPromise;
     return {
       ...meta,
@@ -8378,15 +8387,15 @@ export const HomeScreen = {
     this.bindLayoutPreferencesSubscription();
     const browserDrillDownReturn = Boolean(
       Platform.isBrowser() &&
-        navigationContext?.isBackNavigation &&
-        BROWSER_HOME_DRILL_DOWN_ROUTES.has(String(navigationContext?.previousRoute || ""))
+      navigationContext?.isBackNavigation &&
+      BROWSER_HOME_DRILL_DOWN_ROUTES.has(String(navigationContext?.previousRoute || ""))
     );
     const shouldRestoreHomeReturnState = Platform.isBrowser()
       ? browserDrillDownReturn
       : Boolean(navigationContext?.isBackNavigation);
     const browserGlobalHomeEntry = Boolean(
       Platform.isBrowser() &&
-        BROWSER_HOME_GLOBAL_ROUTES.has(String(navigationContext?.previousRoute || ""))
+      BROWSER_HOME_GLOBAL_ROUTES.has(String(navigationContext?.previousRoute || ""))
     );
     const restoredRouteFocusState =
       shouldRestoreHomeReturnState && navigationContext?.restoredState?.layoutMode
@@ -8396,10 +8405,10 @@ export const HomeScreen = {
       ? this.pendingBackFocusState || this.readStoredReturnFocusState()
       : null;
     const returnFocusState = restoredRouteFocusState || storedReturnFocusState;
-    this.pendingBrowserHomeReturnScrollTop = browserDrillDownReturn &&
-      Number.isFinite(Number(returnFocusState?.mainScrollTop))
-      ? Number(returnFocusState.mainScrollTop)
-      : null;
+    this.pendingBrowserHomeReturnScrollTop =
+      browserDrillDownReturn && Number.isFinite(Number(returnFocusState?.mainScrollTop))
+        ? Number(returnFocusState.mainScrollTop)
+        : null;
     this.browserHomeInitialScrollNormalizationPending = Boolean(
       Platform.isBrowser() &&
       !shouldRestoreHomeReturnState &&
@@ -8419,9 +8428,7 @@ export const HomeScreen = {
       shouldRestoreHomeReturnState && returnFocusState?.focusKind !== "sidebar"
     );
     this.cancelModernSidebarPillAutoCollapse();
-    this.homeRouteEnterPending = !(
-      shouldRestoreHomeReturnState || returnFocusState?.layoutMode
-    );
+    this.homeRouteEnterPending = !(shouldRestoreHomeReturnState || returnFocusState?.layoutMode);
     this.destroyHomeHoldDialog();
     this.unlockHomeHoldFocus();
     this.continueWatchingMenu = null;
@@ -8506,9 +8513,7 @@ export const HomeScreen = {
       this.render();
       this.loadData({
         background: true,
-        preserveReturnState: Boolean(
-          shouldRestoreHomeReturnState || returnFocusState?.layoutMode
-        )
+        preserveReturnState: Boolean(shouldRestoreHomeReturnState || returnFocusState?.layoutMode)
       }).catch((error) => {
         console.warn("Home background refresh failed", error);
       });
@@ -8698,12 +8703,33 @@ export const HomeScreen = {
       handleChange(change);
     };
     if (!this.unsubscribeWatchProgressStoreChanges) {
-      this.unsubscribeWatchProgressStoreChanges = WatchProgressStore.subscribe(
-        handleWatchProgressChange
-      );
+      this.unsubscribeWatchProgressStoreChanges =
+        WatchProgressStore.subscribe(handleWatchProgressChange);
     }
+    const handleWatchedItemsChange = (change) => {
+      const { reason, authoritative, item } = change || {};
+      if (
+        authoritative &&
+        reason === "upsert" &&
+        item &&
+        shouldRefreshContinueWatchingForChange(change, ProfileManager.getActiveProfileId())
+      ) {
+        // Finishing a title removes its progress row instead of updating it, so
+        // there is nothing for the progress patch above to touch. Under a
+        // tracking provider the card is built from the provider's own list, and
+        // the refresh below cannot drop it until the network answers -- long
+        // enough that a finished title visibly lingered.
+        const remaining = removeContinueWatchingDisplayItem(this.continueWatchingDisplay, item);
+        if (remaining) {
+          this.continueWatchingDisplay = remaining;
+          this.requestBackgroundRender();
+        }
+      }
+      handleChange(change);
+    };
     if (!this.unsubscribeWatchedItemsStoreChanges) {
-      this.unsubscribeWatchedItemsStoreChanges = WatchedItemsStore.subscribe(handleChange);
+      this.unsubscribeWatchedItemsStoreChanges =
+        WatchedItemsStore.subscribe(handleWatchedItemsChange);
     }
   },
 
@@ -8717,20 +8743,43 @@ export const HomeScreen = {
     if (this.unsubscribeLayoutPreferencesChanges) {
       return;
     }
-    this.unsubscribeLayoutPreferencesChanges = LayoutPreferences.subscribe(({ profileId, value }) => {
-      if (
-        Router.getCurrent() !== "home" ||
-        String(profileId || "") !== String(ProfileManager.getActiveProfileId() || "")
-      ) {
-        return;
+    this.unsubscribeLayoutPreferencesChanges = LayoutPreferences.subscribe(
+      ({ profileId, value }) => {
+        if (
+          Router.getCurrent() !== "home" ||
+          String(profileId || "") !== String(ProfileManager.getActiveProfileId() || "")
+        ) {
+          return;
+        }
+        const showUnairedNextUp = value?.showUnairedNextUp !== false;
+        if (showUnairedNextUp === this.observedShowUnairedNextUp) {
+          return;
+        }
+        this.observedShowUnairedNextUp = showUnairedNextUp;
+        this.scheduleContinueWatchingStoreRefresh();
       }
-      const showUnairedNextUp = value?.showUnairedNextUp !== false;
-      if (showUnairedNextUp === this.observedShowUnairedNextUp) {
-        return;
-      }
-      this.observedShowUnairedNextUp = showUnairedNextUp;
-      this.scheduleContinueWatchingStoreRefresh();
-    });
+    );
+  },
+
+  // Called by the router when Home is revealed again as a live layer, where
+  // mount() -- and therefore the source-change check and the Continue Watching
+  // resolve -- never runs. Without it the only way to see playback that just
+  // happened, or a Watch Progress source switched while Home was covered, was
+  // to reload the page.
+  onRouteRevealed() {
+    // A render was owed while Home was covered, and its data is already correct
+    // -- paint it now rather than leaving the old row standing until a network
+    // refresh happens to finish.
+    if (this.deferredRenderPending) {
+      this.deferredRenderPending = false;
+      this.render();
+    }
+    const sourceKey = watchProgressRepository.getContinueWatchingSourceKey();
+    if (sourceKey !== String(this.loadedWatchProgressSourceKey || "")) {
+      void this.loadData({ background: true, preserveReturnState: true });
+      return;
+    }
+    this.scheduleContinueWatchingStoreRefresh();
   },
 
   scheduleContinueWatchingStoreRefresh() {
@@ -8764,8 +8813,12 @@ export const HomeScreen = {
       String(ProfileManager.getActiveProfileId() || "") === String(profileId || "");
     const prefs = LayoutPreferences.get();
     this.layoutPrefs = prefs;
+    const continueWatchingSource = watchProgressRepository.getContinueWatchingSource?.();
     const includeWatchedItemNextUpSeeds =
-      watchProgressRepository.getContinueWatchingSource?.() !== "trakt";
+      shouldSeedNextUpFromLocalWatchedItems(continueWatchingSource);
+    // The 60-day Next Up cutoff stays a Trakt-only rule. Reusing the seed flag
+    // for it would silently start hiding older SIMKL shows too.
+    const applyTraktNextUpDaysCap = continueWatchingSource === "trakt";
     try {
       const [allProgress, continueWatching, watchedItems] = await Promise.all([
         watchProgressRepository.getAllForContinueWatching(),
@@ -8783,9 +8836,9 @@ export const HomeScreen = {
       this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(
         this.allProgress,
         this.continueWatching,
-        this.watchedItems,
+        this.getContinueWatchingWatchedItems(),
         {
-          applyDaysCap: !includeWatchedItemNextUpSeeds,
+          applyDaysCap: applyTraktNextUpDaysCap,
           includeProgressSeeds: !includeWatchedItemNextUpSeeds,
           includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
           nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
@@ -8807,7 +8860,7 @@ export const HomeScreen = {
 
       const enriched = await this.enrichContinueWatching(this.continueWatching, {
         allProgress: this.allProgress,
-        watchedItems: this.watchedItems,
+        watchedItems: this.getContinueWatchingWatchedItems(),
         nextUpProgressCandidates: this.nextUpProgressCandidates
       });
       if (!isCurrent()) {
@@ -8870,8 +8923,12 @@ export const HomeScreen = {
     this.layoutPrefs = prefs;
     this.sidebarExpanded = Boolean(this.layoutPrefs?.modernSidebar && this.sidebarExpanded);
     this.layoutMode = String(prefs.homeLayout || "classic").toLowerCase();
+    const continueWatchingSource = watchProgressRepository.getContinueWatchingSource?.();
     const includeWatchedItemNextUpSeeds =
-      watchProgressRepository.getContinueWatchingSource?.() !== "trakt";
+      shouldSeedNextUpFromLocalWatchedItems(continueWatchingSource);
+    // The 60-day Next Up cutoff stays a Trakt-only rule. Reusing the seed flag
+    // for it would silently start hiding older SIMKL shows too.
+    const applyTraktNextUpDaysCap = continueWatchingSource === "trakt";
     const watchedItemsPromise = watchedItemsRepository.getAll(2000).catch(() => []);
     watchedItemsPromise.then((watchedItems) => {
       if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
@@ -9168,9 +9225,9 @@ export const HomeScreen = {
         this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(
           this.allProgress,
           this.continueWatching,
-          this.watchedItems,
+          this.getContinueWatchingWatchedItems(),
           {
-            applyDaysCap: !includeWatchedItemNextUpSeeds,
+            applyDaysCap: applyTraktNextUpDaysCap,
             includeProgressSeeds: !includeWatchedItemNextUpSeeds,
             includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
             nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
@@ -9188,7 +9245,10 @@ export const HomeScreen = {
         // already showing when it started, treat it the same way — an empty
         // read here is just as likely to be racing the same cloud pull.
         const wasAlreadyShowingContinueWatchingSkeleton = Boolean(this.continueWatchingLoading);
-        if ((waitForInitialContinueWatching || wasAlreadyShowingContinueWatchingSkeleton) && !shouldShowLoading) {
+        if (
+          (waitForInitialContinueWatching || wasAlreadyShowingContinueWatchingSkeleton) &&
+          !shouldShowLoading
+        ) {
           // The local store can still be empty here even though this
           // profile has real history, if the background watch-progress
           // cloud pull (part of this same activation) simply hasn't landed
@@ -9236,9 +9296,9 @@ export const HomeScreen = {
           this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(
             this.allProgress,
             this.continueWatching,
-            this.watchedItems,
+            this.getContinueWatchingWatchedItems(),
             {
-              applyDaysCap: !includeWatchedItemNextUpSeeds,
+              applyDaysCap: applyTraktNextUpDaysCap,
               includeProgressSeeds: !includeWatchedItemNextUpSeeds,
               includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
               nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
@@ -9312,7 +9372,7 @@ export const HomeScreen = {
           const progressiveInProgressItems = [];
           const enriched = await this.enrichContinueWatching(this.continueWatching, {
             allProgress: this.allProgress,
-            watchedItems: this.watchedItems,
+            watchedItems: this.getContinueWatchingWatchedItems(),
             nextUpProgressCandidates: this.nextUpProgressCandidates,
             onInProgressItemReady: waitForInitialContinueWatching
               ? (item) => {
@@ -9465,14 +9525,15 @@ export const HomeScreen = {
     // Rebuild the runtime registry before deriving catalog descriptors. A
     // previous offline attempt may have produced an empty success-only list.
     await addonRepository.reloadConfiguredAddons?.({ force: true }).catch(() => null);
+    // A pull-to-refresh has to mean "ask the tracking provider now". Without
+    // this the reload only re-ran the ordinary once-a-minute check, so a second
+    // pull within that minute did nothing at all and the gesture looked dead.
+    await watchProgressRepository.forceRefreshSelectedSource?.().catch(() => false);
     await this.loadData({ background: false, preserveReturnState: false, reason });
   },
 
   filterUnreleasedResult(result) {
-    if (
-      !this.layoutPrefs?.hideUnreleasedContent ||
-      result?.status !== "success"
-    ) {
+    if (!this.layoutPrefs?.hideUnreleasedContent || result?.status !== "success") {
       return result;
     }
     const items = result.data?.items;
@@ -9684,6 +9745,7 @@ export const HomeScreen = {
 
   render() {
     const renderStart = HOME_PERF_DEBUG ? homePerfNow() : 0;
+    this.deferredRenderPending = false;
     this.cancelScheduledRender();
     this.cancelModernCameraFollow({ stopAnimations: true });
     this.teardownModernTrackScrollPagination();
@@ -9719,7 +9781,8 @@ export const HomeScreen = {
     let heroItem = null;
     if (!shouldHoldHeroForContinueWatching) {
       const browserHasNoHeroCandidates =
-        Platform.isBrowser() && (!Array.isArray(this.heroCandidates) || !this.heroCandidates.length);
+        Platform.isBrowser() &&
+        (!Array.isArray(this.heroCandidates) || !this.heroCandidates.length);
       const rawHeroItem = browserHasNoHeroCandidates
         ? null
         : backFocusHero ||
@@ -9753,9 +9816,10 @@ export const HomeScreen = {
     const depthClass = this.layoutPrefs?.cardDepthEnabled
       ? ` home-card-depth${this.layoutPrefs.cardDepthPostersEnabled !== false ? " depth-posters" : ""}${this.layoutPrefs.cardDepthContinueWatchingEnabled !== false ? " depth-continue-watching" : ""}`
       : "";
-    const classicGradientClass = this.layoutMode === "classic" && this.layoutPrefs?.classicFocusGradientEnabled
-      ? " home-classic-focus-gradient"
-      : "";
+    const classicGradientClass =
+      this.layoutMode === "classic" && this.layoutPrefs?.classicFocusGradientEnabled
+        ? " home-classic-focus-gradient"
+        : "";
     const heroVisibilityClass = showHeroSection ? "" : " home-hero-disabled";
     const layoutClass = `home-layout-${this.layoutMode}${heroVisibilityClass}${modernLandscapeLayoutClass}${modernHeroFullScreenBackdropClass}${modernSidebarLayoutClass}${depthClass}${classicGradientClass}`;
     const sizingStyle = [
@@ -9763,8 +9827,11 @@ export const HomeScreen = {
       `--card-depth-edge:${Number(this.layoutPrefs?.cardDepthEdgeStrength ?? 28) / 100}`,
       `--card-depth-sheen:${Number(this.layoutPrefs?.cardDepthSheenStrength ?? 10) / 100}`,
       `--card-depth-coverage:${Number(this.layoutPrefs?.cardDepthEdgeCoverage ?? 0)}%`
-    ].filter(Boolean).join(";");
-    const showPosterLabels = Platform.isBrowser() || this.layoutPrefs?.posterLabelsEnabled !== false;
+    ]
+      .filter(Boolean)
+      .join(";");
+    const showPosterLabels =
+      Platform.isBrowser() || this.layoutPrefs?.posterLabelsEnabled !== false;
     const showCatalogAddonName = this.layoutPrefs?.catalogAddonNameEnabled !== false;
     const showCatalogTypeSuffix = this.layoutPrefs?.catalogTypeSuffixEnabled !== false;
     const pendingPosterFocusState = this.pendingPosterHoldFocus?.rowKey
@@ -9997,7 +10064,8 @@ export const HomeScreen = {
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
-        cardSelector: ".home-content-card[data-action='openDetail'], .home-content-card[data-action='openCollection'], .home-continue-title-link, .home-continue-episode-link"
+        cardSelector:
+          ".home-content-card[data-action='openDetail'], .home-content-card[data-action='openCollection'], .home-continue-title-link, .home-continue-episode-link"
       });
     }
     this.setupContinueWatchingProgressiveRendering();
@@ -10048,9 +10116,7 @@ export const HomeScreen = {
       !backFocusState &&
       Number.isFinite(this.pendingContinueWatchingFocusIndex)
     ) {
-      const pendingRowKey = String(
-        this.pendingContinueWatchingFocusRowKey || "continue_watching"
-      );
+      const pendingRowKey = String(this.pendingContinueWatchingFocusRowKey || "continue_watching");
       const cards = this.getNavigationRowNodes(pendingRowKey);
       const target =
         cards[
@@ -10166,9 +10232,7 @@ export const HomeScreen = {
 
   scheduleHomeLazyImageHydration(anchorNode = null, { refreshIndex = false } = {}) {
     const anchorRow =
-      anchorNode instanceof HTMLElement
-        ? anchorNode.closest(HOME_LAZY_IMAGE_ROW_SELECTOR)
-        : null;
+      anchorNode instanceof HTMLElement ? anchorNode.closest(HOME_LAZY_IMAGE_ROW_SELECTOR) : null;
     if (
       anchorRow instanceof HTMLElement &&
       anchorRow === this.lastHomeLazyImageHydrationAnchorRow &&
@@ -10408,6 +10472,16 @@ export const HomeScreen = {
 
     return Array.from(latestCompletedByContent.values()).sort(
       (left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0)
+    );
+  },
+
+  // Continue Watching must reason only about the selected source's watched
+  // state -- both for which titles seed Next Up and for which episode each
+  // card resumes at.
+  getContinueWatchingWatchedItems() {
+    return selectWatchedItemsForContinueWatching(
+      this.watchedItems,
+      watchProgressRepository.getContinueWatchingSource?.()
     );
   },
 
@@ -10791,7 +10865,12 @@ export const HomeScreen = {
 
   async enrichContinueWatchingMetaWithTmdb(meta = {}, item = {}) {
     const settings = TmdbSettingsStore.get();
-    if (!settings.enabled || !settings.enrichContinueWatching || !getEffectiveTmdbApiKey() || !meta) {
+    if (
+      !settings.enabled ||
+      !settings.enrichContinueWatching ||
+      !getEffectiveTmdbApiKey() ||
+      !meta
+    ) {
       return meta;
     }
     const contentType = item.contentType || meta.type || "movie";
@@ -10917,137 +10996,137 @@ export const HomeScreen = {
         // notified as each item resolves (for progressive rendering)
         // without touching any of its several existing return points.
         const enrichedItem = await (async () => {
-        const cachedItem = applyCachedContinueWatchingEnrichment(item);
-        // The "does this still need work?" test below only asks whether
-        // anything is *missing*, so an item that already carried artwork from
-        // its addon counted as finished and TMDB was never consulted -- which
-        // is why enrichment never changed a card image it could have improved.
-        // A cache entry built under different TMDB settings is stale no matter
-        // how complete it looks.
-        const enrichmentIsCurrent =
-          cachedItem.enrichmentSignature === continueWatchingEnrichmentSignature();
-        if (
-          !options?.forceRefreshMetadata &&
-          enrichmentIsCurrent &&
-          !needsContinueWatchingMetadataRefresh([cachedItem])
-        ) {
-          return cachedItem;
-        }
-        try {
-          let meta =
-            item.enrichedMeta ||
-            (await this.fetchMetaForContinueWatching(
-              item.contentType || "movie",
-              item.contentId,
-              options?.metaTimeoutMs || 1800,
-              [item.imdbId]
-            ));
-          if (!meta) {
-            meta = {
-              id: item.contentId,
-              type: item.contentType || "movie",
-              name: item.title || prettyId(item.contentId)
-            };
+          const cachedItem = applyCachedContinueWatchingEnrichment(item);
+          // The "does this still need work?" test below only asks whether
+          // anything is *missing*, so an item that already carried artwork from
+          // its addon counted as finished and TMDB was never consulted -- which
+          // is why enrichment never changed a card image it could have improved.
+          // A cache entry built under different TMDB settings is stale no matter
+          // how complete it looks.
+          const enrichmentIsCurrent =
+            cachedItem.enrichmentSignature === continueWatchingEnrichmentSignature();
+          if (
+            !options?.forceRefreshMetadata &&
+            enrichmentIsCurrent &&
+            !needsContinueWatchingMetadataRefresh([cachedItem])
+          ) {
+            return cachedItem;
           }
-          if (meta) {
-            const enrichedMeta = await this.enrichContinueWatchingMetaWithTmdb(meta, item);
-            const episodeEntry = findEpisodeEntry(enrichedMeta.videos, item.season, item.episode);
-            const runtimeMinutes = parseRuntimeMinutes(
-              episodeEntry?.runtimeMinutes ??
-                enrichedMeta.episodeRuntime ??
-                enrichedMeta.runtimeMinutes ??
-                enrichedMeta.runtime ??
-                0
-            );
-            const enriched = {
-              ...item,
-              title: enrichedMeta.name || prettyId(item.contentId),
-              landscapePoster:
-                enrichedMeta.landscapePoster ||
-                enrichedMeta.thumbnail ||
-                enrichedMeta.backdrop ||
-                enrichedMeta.background ||
-                null,
-              episodeThumbnail:
-                episodeEntry?.thumbnail ||
-                enrichedMeta.episodeThumbnail ||
-                item.episodeThumbnail ||
-                null,
-              poster:
-                enrichedMeta.poster ||
-                enrichedMeta.thumbnail ||
-                enrichedMeta.background ||
-                enrichedMeta.backdrop ||
-                null,
-              background:
-                enrichedMeta.background ||
-                enrichedMeta.backdrop ||
-                enrichedMeta.thumbnail ||
-                enrichedMeta.poster ||
-                null,
-              backdrop: enrichedMeta.backdrop || enrichedMeta.background || null,
-              thumbnail: enrichedMeta.thumbnail || enrichedMeta.poster || null,
-              logo: enrichedMeta.logo || null,
-              description: enrichedMeta.description || "",
-              releaseInfo: enrichedMeta.releaseInfo || "",
-              imdbRating: resolveImdbRating(enrichedMeta),
-              genres: Array.isArray(enrichedMeta.genres) ? enrichedMeta.genres : [],
-              runtimeMinutes,
-              durationMs:
-                Number(item.durationMs || 0) > 0
-                  ? Number(item.durationMs || 0)
-                  : runtimeMinutes > 0
-                    ? Math.round(runtimeMinutes * 60000)
-                    : 0,
-              ageRating: firstNonEmpty(enrichedMeta.ageRating, enrichedMeta.age_rating),
-              status: firstNonEmpty(enrichedMeta.status),
-              language: firstNonEmpty(enrichedMeta.language),
-              country: firstNonEmpty(enrichedMeta.country),
-              episodeTitle: firstNonEmpty(
-                enrichedMeta.episodeTitle,
-                episodeEntry?.title,
-                item.episodeTitle,
-                item.subtitle
-              ),
-              episodeDescription: firstNonEmpty(
-                enrichedMeta.episodeDescription,
-                episodeEntry?.overview,
-                item.episodeDescription,
-                item.episode_description
-              ),
-              continueWatchingMetaResolved: true
-            };
-            saveContinueWatchingEnrichment(enriched);
-            return enriched;
+          try {
+            let meta =
+              item.enrichedMeta ||
+              (await this.fetchMetaForContinueWatching(
+                item.contentType || "movie",
+                item.contentId,
+                options?.metaTimeoutMs || 1800,
+                [item.imdbId]
+              ));
+            if (!meta) {
+              meta = {
+                id: item.contentId,
+                type: item.contentType || "movie",
+                name: item.title || prettyId(item.contentId)
+              };
+            }
+            if (meta) {
+              const enrichedMeta = await this.enrichContinueWatchingMetaWithTmdb(meta, item);
+              const episodeEntry = findEpisodeEntry(enrichedMeta.videos, item.season, item.episode);
+              const runtimeMinutes = parseRuntimeMinutes(
+                episodeEntry?.runtimeMinutes ??
+                  enrichedMeta.episodeRuntime ??
+                  enrichedMeta.runtimeMinutes ??
+                  enrichedMeta.runtime ??
+                  0
+              );
+              const enriched = {
+                ...item,
+                title: enrichedMeta.name || prettyId(item.contentId),
+                landscapePoster:
+                  enrichedMeta.landscapePoster ||
+                  enrichedMeta.thumbnail ||
+                  enrichedMeta.backdrop ||
+                  enrichedMeta.background ||
+                  null,
+                episodeThumbnail:
+                  episodeEntry?.thumbnail ||
+                  enrichedMeta.episodeThumbnail ||
+                  item.episodeThumbnail ||
+                  null,
+                poster:
+                  enrichedMeta.poster ||
+                  enrichedMeta.thumbnail ||
+                  enrichedMeta.background ||
+                  enrichedMeta.backdrop ||
+                  null,
+                background:
+                  enrichedMeta.background ||
+                  enrichedMeta.backdrop ||
+                  enrichedMeta.thumbnail ||
+                  enrichedMeta.poster ||
+                  null,
+                backdrop: enrichedMeta.backdrop || enrichedMeta.background || null,
+                thumbnail: enrichedMeta.thumbnail || enrichedMeta.poster || null,
+                logo: enrichedMeta.logo || null,
+                description: enrichedMeta.description || "",
+                releaseInfo: enrichedMeta.releaseInfo || "",
+                imdbRating: resolveImdbRating(enrichedMeta),
+                genres: Array.isArray(enrichedMeta.genres) ? enrichedMeta.genres : [],
+                runtimeMinutes,
+                durationMs:
+                  Number(item.durationMs || 0) > 0
+                    ? Number(item.durationMs || 0)
+                    : runtimeMinutes > 0
+                      ? Math.round(runtimeMinutes * 60000)
+                      : 0,
+                ageRating: firstNonEmpty(enrichedMeta.ageRating, enrichedMeta.age_rating),
+                status: firstNonEmpty(enrichedMeta.status),
+                language: firstNonEmpty(enrichedMeta.language),
+                country: firstNonEmpty(enrichedMeta.country),
+                episodeTitle: firstNonEmpty(
+                  enrichedMeta.episodeTitle,
+                  episodeEntry?.title,
+                  item.episodeTitle,
+                  item.subtitle
+                ),
+                episodeDescription: firstNonEmpty(
+                  enrichedMeta.episodeDescription,
+                  episodeEntry?.overview,
+                  item.episodeDescription,
+                  item.episode_description
+                ),
+                continueWatchingMetaResolved: true
+              };
+              saveContinueWatchingEnrichment(enriched);
+              return enriched;
+            }
+          } catch (error) {
+            console.warn("Continue watching enrichment failed", error);
           }
-        } catch (error) {
-          console.warn("Continue watching enrichment failed", error);
-        }
-        return {
-          ...cachedItem,
-          title: firstNonEmpty(cachedItem.title, cachedItem.name),
-          landscapePoster:
-            cachedItem.landscapePoster ||
-            cachedItem.thumbnail ||
-            cachedItem.backdrop ||
-            cachedItem.background ||
-            null,
-          episodeThumbnail: cachedItem.episodeThumbnail || null,
-          poster: cachedItem.poster || cachedItem.thumbnail || null,
-          background: cachedItem.background || cachedItem.backdrop || cachedItem.poster || null,
-          backdrop: cachedItem.backdrop || cachedItem.background || null,
-          thumbnail: cachedItem.thumbnail || cachedItem.poster || null,
-          logo: cachedItem.logo || null,
-          description: cachedItem.description || "",
-          releaseInfo: cachedItem.releaseInfo || "",
-          genres: Array.isArray(cachedItem.genres) ? cachedItem.genres : [],
-          runtimeMinutes: Number(cachedItem.runtimeMinutes ?? cachedItem.runtime ?? 0) || 0,
-          ageRating: firstNonEmpty(cachedItem.ageRating, cachedItem.age_rating),
-          status: firstNonEmpty(cachedItem.status),
-          language: firstNonEmpty(cachedItem.language),
-          country: firstNonEmpty(cachedItem.country),
-          episodeTitle: firstNonEmpty(cachedItem.episodeTitle, cachedItem.subtitle)
-        };
+          return {
+            ...cachedItem,
+            title: firstNonEmpty(cachedItem.title, cachedItem.name),
+            landscapePoster:
+              cachedItem.landscapePoster ||
+              cachedItem.thumbnail ||
+              cachedItem.backdrop ||
+              cachedItem.background ||
+              null,
+            episodeThumbnail: cachedItem.episodeThumbnail || null,
+            poster: cachedItem.poster || cachedItem.thumbnail || null,
+            background: cachedItem.background || cachedItem.backdrop || cachedItem.poster || null,
+            backdrop: cachedItem.backdrop || cachedItem.background || null,
+            thumbnail: cachedItem.thumbnail || cachedItem.poster || null,
+            logo: cachedItem.logo || null,
+            description: cachedItem.description || "",
+            releaseInfo: cachedItem.releaseInfo || "",
+            genres: Array.isArray(cachedItem.genres) ? cachedItem.genres : [],
+            runtimeMinutes: Number(cachedItem.runtimeMinutes ?? cachedItem.runtime ?? 0) || 0,
+            ageRating: firstNonEmpty(cachedItem.ageRating, cachedItem.age_rating),
+            status: firstNonEmpty(cachedItem.status),
+            language: firstNonEmpty(cachedItem.language),
+            country: firstNonEmpty(cachedItem.country),
+            episodeTitle: firstNonEmpty(cachedItem.episodeTitle, cachedItem.subtitle)
+          };
         })();
         options?.onInProgressItemReady?.(enrichedItem, index);
         return enrichedItem;
@@ -11142,9 +11221,7 @@ export const HomeScreen = {
     const eligibleRows = selectedKeys.length
       ? Platform.isBrowser()
         ? selectedKeys
-            .map((key) =>
-              sourceRows.find((row) => String(row?.homeCatalogKey || "") === key)
-            )
+            .map((key) => sourceRows.find((row) => String(row?.homeCatalogKey || "") === key))
             .filter(Boolean)
         : sourceRows.filter((row) => selectedKeys.includes(String(row?.homeCatalogKey || "")))
       : sourceRows;
@@ -11282,7 +11359,8 @@ export const HomeScreen = {
     if (!Platform.isBrowser() || this.desktopHeroVisibilityHandler) return;
     this.desktopHeroVisibilityHandler = () => {
       if (document.hidden) this.stopHeroRotation();
-      else if (!document.body.classList.contains("detail-trailer-modal-open")) this.startHeroRotation();
+      else if (!document.body.classList.contains("detail-trailer-modal-open"))
+        this.startHeroRotation();
     };
     document.addEventListener("visibilitychange", this.desktopHeroVisibilityHandler);
   },
@@ -11404,10 +11482,9 @@ export const HomeScreen = {
   onKeyDown(event) {
     if (
       Platform.isBrowser() &&
-      event
-        ?.target?.closest?.(
-          ".desktop-navigation, .desktop-hero-details-button, .desktop-hero-carousel"
-        )
+      event?.target?.closest?.(
+        ".desktop-navigation, .desktop-hero-details-button, .desktop-hero-carousel"
+      )
     ) {
       return;
     }
@@ -11802,7 +11879,8 @@ export const HomeScreen = {
         const currentItems = Array.isArray(rowPayload.items) ? rowPayload.items : [];
         const rowIndex = (this.rows || []).indexOf(rowData);
         const layoutPrefs = this.layoutPrefs || {};
-        const showPosterLabels = Platform.isBrowser() || Boolean(layoutPrefs.showPosterLabels !== false);
+        const showPosterLabels =
+          Platform.isBrowser() || Boolean(layoutPrefs.showPosterLabels !== false);
         const preferLandscape = Boolean(layoutPrefs.modernLandscapePostersEnabled);
         const chunkSize = Math.max(
           1,

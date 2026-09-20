@@ -1,26 +1,29 @@
 import { WatchedItemsStore } from "../local/watchedItemsStore.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
-import { TraktSettingsStore, WatchProgressSource } from "../local/traktSettingsStore.js";
+import { WatchProgressSource } from "../local/traktSettingsStore.js";
 import { SimklAuthStore } from "../local/simklAuthStore.js";
 import { SimklSyncService } from "./simklSyncService.js";
 import { TraktAuthService, requestJson as traktRequestJson } from "./traktAuthService.js";
+import { ownsWatchProgress } from "./trackingWriteScope.js";
 
 function activeProfileId() {
   return String(ProfileManager.getActiveProfileId() || "1");
 }
 
+// Mirrors the progress rows' tag: which source owned Continue Watching when
+// this completion was recorded, so Nuvio's cloud only ever receives its own.
+function selectedLocalWatchedSource() {
+  if (ownsWatchProgress(WatchProgressSource.TRAKT)) return "trakt_local";
+  if (ownsWatchProgress(WatchProgressSource.SIMKL)) return "simkl_local";
+  return WatchProgressSource.NUVIO_SYNC;
+}
+
 function shouldUseSimkl() {
-  return (
-    TraktSettingsStore.get().watchProgressSource === WatchProgressSource.SIMKL &&
-    SimklAuthStore.isAuthenticated()
-  );
+  return ownsWatchProgress(WatchProgressSource.SIMKL) && SimklAuthStore.isAuthenticated();
 }
 
 function shouldUseTrakt() {
-  return (
-    TraktSettingsStore.get().watchProgressSource === WatchProgressSource.TRAKT &&
-    TraktAuthService.isAuthenticated()
-  );
+  return ownsWatchProgress(WatchProgressSource.TRAKT) && TraktAuthService.isAuthenticated();
 }
 
 function traktIds(item = {}) {
@@ -49,9 +52,7 @@ function traktHistoryBody(item = {}) {
   };
   const isEpisode = item.season != null && item.episode != null;
   if (isEpisode) {
-    media.seasons = [
-      { number: Number(item.season), episodes: [{ number: Number(item.episode) }] }
-    ];
+    media.seasons = [{ number: Number(item.season), episodes: [{ number: Number(item.episode) }] }];
   }
   const type = String(item.contentType || item.itemType || item.type || "movie").toLowerCase();
   return ["series", "show", "tv", "anime"].includes(type)
@@ -71,7 +72,9 @@ async function writeTraktHistory(item, remove = false) {
     }
   );
   if (!response.ok) {
-    throw new Error(payload?.message || `Could not update Trakt watched history (${response.status})`);
+    throw new Error(
+      payload?.message || `Could not update Trakt watched history (${response.status})`
+    );
   }
 }
 
@@ -141,12 +144,28 @@ async function deleteWatchedItemsFromCloud(items = []) {
 }
 
 class WatchedItemsRepository {
+  /**
+   * Watched items this device recorded, without a provider's history merged in.
+   *
+   * getAll() deliberately folds the selected provider's records into the list
+   * so screens can ask one question. Nuvio's own cloud sync must not use that
+   * view: pushing it republishes SIMKL's entire watch history as Nuvio Sync's
+   * own, and pulling against it writes those records into the local store, so
+   * they survive switching the source and reach the PWA and the official app.
+   */
+  async listLocal(limit = 2000) {
+    return WatchedItemsStore.listForProfile(activeProfileId()).slice(0, limit);
+  }
+
   async getAll(limit = 2000) {
     const local = WatchedItemsStore.listForProfile(activeProfileId());
     if (!shouldUseSimkl()) return local.slice(0, limit);
     const remote = await SimklSyncService.getWatchedItems().catch(() => []);
     const remoteKeys = new Set(remote.map(watchedKey));
-    return [...remote, ...local.filter((item) => !remoteKeys.has(watchedKey(item)))].slice(0, limit);
+    return [...remote, ...local.filter((item) => !remoteKeys.has(watchedKey(item)))].slice(
+      0,
+      limit
+    );
   }
 
   async isWatched(contentId, options = {}) {
@@ -170,6 +189,7 @@ class WatchedItemsRepository {
     WatchedItemsStore.upsert(
       {
         ...item,
+        source: String(item?.source || "").trim() || selectedLocalWatchedSource(),
         watchedAt: item.watchedAt || Date.now()
       },
       activeProfileId(),
@@ -204,13 +224,13 @@ class WatchedItemsRepository {
         : remoteMatches.length
           ? remoteMatches
           : [
-            {
-              contentId,
-              contentType: options?.contentType || "movie",
-              season: options?.season ?? null,
-              episode: options?.episode ?? null,
-              videoId: options?.videoId || null
-            }
+              {
+                contentId,
+                contentType: options?.contentType || "movie",
+                season: options?.season ?? null,
+                episode: options?.episode ?? null,
+                videoId: options?.videoId || null
+              }
             ];
       for (const item of targets) {
         await SimklSyncService.unmarkWatched(item);

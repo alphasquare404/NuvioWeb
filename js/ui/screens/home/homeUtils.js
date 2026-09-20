@@ -131,3 +131,25 @@ export function parseCssPx(value, fallback = 0) {
   const parsed = parseFloat(String(value || "").trim());
   return Number.isFinite(parsed) ? parsed : fallback;
 }
+
+/**
+ * The episode still a Continue Watching card may use.
+ *
+ * Only a series has one. A film reaching this chain would fall through to
+ * `thumbnail`, which enrichment fills from the poster whenever a title has no
+ * landscape still of its own -- and the Use Episode Thumbnails preference puts
+ * this value first, so a portrait poster ended up stretched across a landscape
+ * card whenever that preference was on.
+ */
+export function resolveContinueWatchingEpisodeStill(item = {}, isSeries = false) {
+  if (!isSeries) {
+    return "";
+  }
+  return firstNonEmpty(
+    item?.episodeThumbnail,
+    item?.thumbnail,
+    item?.backdrop,
+    item?.background,
+    item?.poster
+  );
+}

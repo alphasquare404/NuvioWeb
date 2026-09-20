@@ -23,7 +23,7 @@ export function createMarkPlaybackWatched({
 } = {}) {
   return async function markPlaybackWatched(
     context,
-    { reconcileSeries = true, authoritative = false } = {}
+    { reconcileSeries = true, authoritative = false, skipTrackingWrite = false } = {}
   ) {
     const active = normalizeContext(context);
     if (!active) return false;
@@ -38,7 +38,11 @@ export function createMarkPlaybackWatched({
         title: active.episodeTitle || active.title || active.itemId,
         watchedAt: Date.now()
       },
-      { authoritative }
+      // A scrobble stop already tells the provider this finished, and it also
+      // clears the provider's own resume entry -- something a history write
+      // cannot do. When one was sent, writing the history again here would only
+      // duplicate the entry.
+      { authoritative, skipTrackingWrite }
     );
 
     // Completion is represented by watched state, not a synthetic 100%

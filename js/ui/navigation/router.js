@@ -23,7 +23,10 @@ import { StreamScreen } from "../screens/stream/streamScreen.js";
 import { CastDetailScreen } from "../screens/cast/castDetailScreen.js";
 import { CatalogSeeAllScreen } from "../screens/catalog/catalogSeeAllScreen.js";
 import { FolderDetailScreen } from "../screens/collection/folderDetailScreen.js";
-import { CollectionEditorScreen, CollectionFolderEditorScreen } from "../screens/collection/collectionEditorScreen.js";
+import {
+  CollectionEditorScreen,
+  CollectionFolderEditorScreen
+} from "../screens/collection/collectionEditorScreen.js";
 import { Platform } from "../../platform/index.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
 import { RouteStateStore } from "./routeStateStore.js";
@@ -53,7 +56,9 @@ function logRouterPerf(stage, data = {}) {
 function getBrowserPullRefreshHandler(routeName, screen) {
   switch (routeName) {
     case "home":
-      return () => screen.reloadHomeContent?.({ reason: "pull-to-refresh" }) || screen.loadData?.({ background: true, preserveReturnState: true });
+      return () =>
+        screen.reloadHomeContent?.({ reason: "pull-to-refresh" }) ||
+        screen.loadData?.({ background: true, preserveReturnState: true });
     case "search":
       return () => screen.reloadRows?.();
     case "discover":
@@ -61,7 +66,8 @@ function getBrowserPullRefreshHandler(routeName, screen) {
     case "library":
       return () => screen.controller?.refreshNow?.();
     case "detail":
-      return () => screen.reloadDetailContent?.({ reason: "pull-to-refresh" }) || screen.loadDetail?.();
+      return () =>
+        screen.reloadDetailContent?.({ reason: "pull-to-refresh" }) || screen.loadDetail?.();
     case "castDetail":
       return () => screen.loadCastDetails?.();
     case "folderDetail":
@@ -78,9 +84,9 @@ const NON_BACKSTACK_ROUTES = new Set([
   "profileSelection",
   "authQrSignIn",
   "authSignIn",
-  "syncCode"
-  ,"experienceModeSelection"
-  ,"essentialAddonSetup"
+  "syncCode",
+  "experienceModeSelection",
+  "essentialAddonSetup"
 ]);
 
 const NUVIO_HISTORY_STATE_KEY = "__nuvioHistory";
@@ -112,7 +118,12 @@ const NEVER_SUSPEND_ROUTES = new Set(["player"]);
 
 // The inline styles the router owns on whichever screen is drawn as a layer.
 const LAYER_CHROME_PROPERTIES = [
-  "position", "inset", "z-index", "overflow-y", "overscroll-behavior", "background"
+  "position",
+  "inset",
+  "z-index",
+  "overflow-y",
+  "overscroll-behavior",
+  "background"
 ];
 
 function rememberInlineStyles(element, properties) {
@@ -252,12 +263,15 @@ export const Router = {
   resolveNavigationContext(routeName, params = {}, options = {}) {
     const screen = this.routes[routeName];
     const key = this.getRouteStateStorageKey(routeName, params);
-    const restoreRouteState = Boolean(options?.restoreRouteState ?? (options?.fromHistory || options?.isBackNavigation));
+    const restoreRouteState = Boolean(
+      options?.restoreRouteState ?? (options?.fromHistory || options?.isBackNavigation)
+    );
     const shouldClear = Boolean(screen?.clearRouteStateOnMount?.(params || {}));
     if (shouldClear && key) {
       RouteStateStore.clear(key);
     }
-    const restoredState = restoreRouteState && !shouldClear && key ? RouteStateStore.get(key) : null;
+    const restoredState =
+      restoreRouteState && !shouldClear && key ? RouteStateStore.get(key) : null;
     return {
       restoredState,
       routeStateKey: key,
@@ -277,14 +291,20 @@ export const Router = {
     }
     this.popstateBound = true;
     window.addEventListener("popstate", async (event) => {
+      // Both of these discard the popstate. A Back that someone is waiting on
+      // has to be told it did not land, or its caller waits forever -- which is
+      // how a swallowed popstate left the player unable to be exited at all,
+      // every later Back silently dropped by its own in-progress guard.
       if (this.ignoreNextPopstate) {
         this.ignoreNextPopstate = false;
+        this.settlePreviousRouteBack(false);
         return;
       }
       if (Date.now() < Number(this.suppressPopstateUntil || 0)) {
         if (window?.history && typeof window.history.pushState === "function") {
           window.history.pushState(this.createBrowserHistoryState(), "");
         }
+        this.settlePreviousRouteBack(false);
         return;
       }
       const state = event?.state || null;
@@ -375,7 +395,10 @@ export const Router = {
   },
 
   createBrowserHistoryProvenance(previousIndex, previousRoute) {
-    return Number.isInteger(previousIndex) && previousIndex >= 0 && typeof previousRoute === "string" && previousRoute
+    return Number.isInteger(previousIndex) &&
+      previousIndex >= 0 &&
+      typeof previousRoute === "string" &&
+      previousRoute
       ? { previousIndex, previousRoute }
       : null;
   },
@@ -412,11 +435,11 @@ export const Router = {
     const provenance = this.browserHistoryProvenance;
     return Boolean(
       Platform.isBrowser() &&
-        this.historyInitialized &&
-        Number.isInteger(this.browserHistoryIndex) &&
-        provenance &&
-        provenance.previousRoute === routeName &&
-        provenance.previousIndex === this.browserHistoryIndex - 1
+      this.historyInitialized &&
+      Number.isInteger(this.browserHistoryIndex) &&
+      provenance &&
+      provenance.previousRoute === routeName &&
+      provenance.previousIndex === this.browserHistoryIndex - 1
     );
   },
 
@@ -453,18 +476,18 @@ export const Router = {
     this.pendingPreviousRouteBack = null;
     pending.resolve(
       Boolean(
-        result &&
-          result.route === pending.expectedRoute &&
-          result.index === pending.expectedIndex
+        result && result.route === pending.expectedRoute && result.index === pending.expectedIndex
       )
     );
   },
 
   hasPreviousBrowserHistoryEntry() {
-    return Platform.isBrowser()
-      && this.historyInitialized
-      && Number.isInteger(this.browserHistoryIndex)
-      && this.browserHistoryIndex > 0;
+    return (
+      Platform.isBrowser() &&
+      this.historyInitialized &&
+      Number.isInteger(this.browserHistoryIndex) &&
+      this.browserHistoryIndex > 0
+    );
   },
 
   // A screen can only be layered under another when the entry it occupies is
@@ -475,12 +498,12 @@ export const Router = {
   canSuspendOutgoingRoute(routeName, outgoingHistoryIndex, options = {}) {
     return Boolean(
       Platform.isBrowser() &&
-        this.current &&
-        this.current !== routeName &&
-        !NEVER_SUSPEND_ROUTES.has(this.current) &&
-        !options?.replaceHistory &&
-        !NON_BACKSTACK_ROUTES.has(this.current) &&
-        Number.isInteger(outgoingHistoryIndex)
+      this.current &&
+      this.current !== routeName &&
+      !NEVER_SUSPEND_ROUTES.has(this.current) &&
+      !options?.replaceHistory &&
+      !NON_BACKSTACK_ROUTES.has(this.current) &&
+      Number.isInteger(outgoingHistoryIndex)
     );
   },
 
@@ -712,6 +735,25 @@ export const Router = {
         resolveScrollOwner: () => getBrowserVerticalScrollOwner(this.routes[routeName]?.container)
       });
     }
+    // A resumed layer never re-runs mount(), which is where screens check
+    // whether the world changed while they were covered. Without this a screen
+    // revealed by Back keeps whatever it rendered before -- Home kept showing
+    // Continue Watching from before the playback that just happened, and only a
+    // page reload brought it up to date.
+    this.notifyRouteRevealed({ previousRoute });
+  },
+
+  // Also called when the app itself comes back to the foreground: a screen that
+  // stayed mounted the whole time the app was backgrounded is in exactly the
+  // position of a revealed layer, and has the same reason to re-check.
+  notifyRouteRevealed({ previousRoute = null, reason = "layer" } = {}) {
+    const routeName = this.getCurrent();
+    if (!routeName) return;
+    this.routes[routeName]?.onRouteRevealed?.({
+      previousRoute,
+      reason,
+      params: this.currentParams
+    });
   },
 
   async navigate(routeName, params = {}, options = {}) {
@@ -915,10 +957,13 @@ export const Router = {
         window.__NUVIO_CURRENT_ROUTE__ = "home";
         this.currentParams = {};
         setBrowserRouteTitle("home");
-        await this.routes.home.mount({}, {
-          isBackNavigation: true,
-          previousRoute: departingRoute
-        });
+        await this.routes.home.mount(
+          {},
+          {
+            isBackNavigation: true,
+            previousRoute: departingRoute
+          }
+        );
         return;
       }
 

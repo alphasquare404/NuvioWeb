@@ -7,7 +7,10 @@ function notifyChange(profileId, reason, meta = {}) {
   const payload = {
     profileId: String(profileId || "1"),
     reason: String(reason || "update"),
-    authoritative: Boolean(meta.authoritative)
+    authoritative: Boolean(meta.authoritative),
+    // Carried so a listener can act on this one entry without re-reading the
+    // whole store -- Home drops the finished card straight away with it.
+    ...(meta.item ? { item: meta.item } : {})
   };
   changeListeners.forEach((listener) => {
     try {
@@ -34,6 +37,12 @@ function normalizeItem(item = {}, profileId) {
     title: String(item.title || ""),
     season: normalizeEpisodeNumber(item.season),
     episode: normalizeEpisodeNumber(item.episode),
+    // Which source owned Continue Watching when this was recorded. Rebuilding
+    // the row from a fixed field list dropped it, which left the writer
+    // stamping a value nothing ever saw and the cloud push unable to tell one
+    // source's completions from another's. Absent on rows that predate it, and
+    // on rows pulled from a cloud that has no column for it.
+    ...(String(item.source || "").trim() ? { source: String(item.source).trim() } : {}),
     watchedAt: Number(item.watchedAt || Date.now())
   };
 }
@@ -96,7 +105,7 @@ export const WatchedItemsStore = {
       )
     ]).slice(0, 5000);
     LocalStore.set(WATCHED_ITEMS_KEY, next);
-    notifyChange(pid, "upsert", { authoritative });
+    notifyChange(pid, "upsert", { authoritative, item: normalized });
   },
 
   remove(contentId, profileId, options = null) {

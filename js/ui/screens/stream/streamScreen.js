@@ -10,7 +10,10 @@ import {
   selectAutoPlayStream,
   isAutoPlayEffectivelyEnabled
 } from "../../../core/streams/streamAutoPlaySelector.js";
-import { orderSourceNames, orderStreamsByAddonOrder } from "../../../core/streams/streamOrdering.js";
+import {
+  orderSourceNames,
+  orderStreamsByAddonOrder
+} from "../../../core/streams/streamOrdering.js";
 import { buildStreamResumeIdentity } from "../../../core/streams/streamResumeIdentity.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import {
@@ -53,6 +56,7 @@ import {
   normalizeBrowserExternalPlayer,
   prepareBrowserExternalPlaybackLaunch
 } from "../../components/browserExternalPlayer.js";
+import { resolveExternalResumeSeconds } from "../../components/externalPlayerResume.js";
 import { bindBrowserPushReturn } from "../../components/browserPushReturn.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import {
@@ -770,8 +774,7 @@ export const StreamScreen = {
         fallbackTitle: this.params?.itemTitle || this.params?.playerTitle || "Untitled",
         returnToSearchOnBack: Boolean(this.params?.returnToSearchOnBack),
         returnHomeOnBack: Boolean(
-          !this.params?.returnToSearchOnBack &&
-          (this.params?.returnHomeOnBack || fallbackToHome)
+          !this.params?.returnToSearchOnBack && (this.params?.returnHomeOnBack || fallbackToHome)
         )
       },
       {
@@ -1455,7 +1458,10 @@ export const StreamScreen = {
       return cache.result;
     }
     const orderedStreams = sortStreamsByAddonOrder(this.streams, this.sourceChips);
-    const result = filter === "all" ? orderedStreams : orderedStreams.filter((stream) => stream.addonName === filter);
+    const result =
+      filter === "all"
+        ? orderedStreams
+        : orderedStreams.filter((stream) => stream.addonName === filter);
     this._filteredStreamsCache = {
       streams: this.streams,
       chips: this.sourceChips,
@@ -1815,7 +1821,9 @@ export const StreamScreen = {
       mediaId: this.params?.itemId || this.params?.tmdbId || this.params?.imdbId || "",
       tmdbId: this.params?.tmdbId || this.params?.tmdb_id || "",
       imdbId: this.params?.imdbId || "",
-      seriesId: isEpisode ? this.params?.itemId || this.params?.tmdbId || this.params?.imdbId || "" : "",
+      seriesId: isEpisode
+        ? this.params?.itemId || this.params?.tmdbId || this.params?.imdbId || ""
+        : "",
       seriesTitle: isEpisode ? this.params?.itemTitle || this.params?.playerTitle || "" : "",
       season: this.params?.season,
       episode: this.params?.episode,
@@ -1830,7 +1838,9 @@ export const StreamScreen = {
       genres: this.params?.genres || [],
       runtimeMinutes: this.params?.runtime || this.params?.runtimeMinutes || 0,
       episodeOverview: isEpisode ? this.params?.episodeOverview || "" : "",
-      episodeRuntimeMinutes: isEpisode ? this.params?.runtime || this.params?.runtimeMinutes || 0 : 0,
+      episodeRuntimeMinutes: isEpisode
+        ? this.params?.runtime || this.params?.runtimeMinutes || 0
+        : 0,
       sourceName: stream.addonName || "",
       filename: stream.behaviorHints?.filename || stream.raw?.behaviorHints?.filename || "",
       mimeType: this.resolveStreamMimeType(stream),
@@ -1856,7 +1866,9 @@ export const StreamScreen = {
     this.offlineQueuePositions = new Map(
       queued.map((download, index) => [String(download.downloadId || ""), index + 1])
     );
-    this.hasActiveOfflineDownload = allDownloads.some((download) => download?.status === "downloading");
+    this.hasActiveOfflineDownload = allDownloads.some(
+      (download) => download?.status === "downloading"
+    );
     const entries = await Promise.all(
       this.streams.map(async (stream) => {
         const downloadId = this.getOfflineDownloadId(stream);
@@ -1880,9 +1892,10 @@ export const StreamScreen = {
     if (status === "downloading") {
       const total = Number(download?.totalBytes || 0);
       const current = Number(download?.downloadedBytes || 0);
-      const progressLabel = total > 0
-        ? `${Math.min(100, Math.round((current / total) * 100))}%`
-        : formatBytes(current) || "Downloading";
+      const progressLabel =
+        total > 0
+          ? `${Math.min(100, Math.round((current / total) * 100))}%`
+          : formatBytes(current) || "Downloading";
       return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(progressLabel)}</span>${button("pause", "Ⅱ", "Pause", "secondary")}${button("cancel", "×", "Cancel", "secondary")}</div>`;
     }
     if (status === "queued") {
@@ -1894,7 +1907,8 @@ export const StreamScreen = {
       return `<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
     }
     if (["paused", "interrupted", "failed"].includes(status)) {
-      const label = status === "paused" ? "Paused" : status === "interrupted" ? "Interrupted" : "Retry";
+      const label =
+        status === "paused" ? "Paused" : status === "interrupted" ? "Interrupted" : "Retry";
       return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(label)}</span>${button("resume", "▶", status === "failed" ? "Retry" : "Resume", "download")}${button("cancel", "×", "Delete", "secondary")}</div>`;
     }
     if (!canQueueBrowserOfflineDownload(context)) return "";
@@ -2144,10 +2158,7 @@ export const StreamScreen = {
       if (clickAction?.kind === "offline") {
         event.preventDefault();
         event.stopPropagation();
-        void this.handleOfflineDownloadAction(
-          clickAction.action,
-          clickAction.streamId
-        );
+        void this.handleOfflineDownloadAction(clickAction.action, clickAction.streamId);
         return;
       }
       // onKeyDown already activates the focused TV/D-pad target. Let its
@@ -2236,14 +2247,18 @@ export const StreamScreen = {
 
   getPreferredOfflineDownloadSubtitle(subtitles = []) {
     const settings = PlayerSettingsStore.get();
-    const preferred = String(settings.subtitleStyle?.preferredLanguage || settings.subtitleLanguage || "off")
+    const preferred = String(
+      settings.subtitleStyle?.preferredLanguage || settings.subtitleLanguage || "off"
+    )
       .trim()
       .toLowerCase();
     if (!preferred || preferred === "off") return null;
-    return (subtitles || []).find((subtitle) => {
-      const language = String(subtitle.lang || subtitle.language || "").toLowerCase();
-      return language === preferred || language.startsWith(`${preferred}-`);
-    }) || null;
+    return (
+      (subtitles || []).find((subtitle) => {
+        const language = String(subtitle.lang || subtitle.language || "").toLowerCase();
+        return language === preferred || language.startsWith(`${preferred}-`);
+      }) || null
+    );
   },
 
   createOfflineSubtitleDescriptor(subtitle = null) {
@@ -2281,7 +2296,9 @@ export const StreamScreen = {
     const snapshot = state.subtitleSnapshot || [];
     const sourceDisplay = normalizeSourceForDisplay(source);
     const quality = sourceDisplay.quality;
-    const size = formatBytes(source.behaviorHints?.videoSize || source.raw?.behaviorHints?.videoSize || source.videoSize);
+    const size = formatBytes(
+      source.behaviorHints?.videoSize || source.raw?.behaviorHints?.videoSize || source.videoSize
+    );
     const header = document.createElement("div");
     header.className = "download-options-header";
     header.innerHTML = `<div class="stream-download-options-source">${escapeHtml([quality, size].filter(Boolean).join(" · ") || "Selected source")}<span>${escapeHtml(sourceDisplay.addonName || source.addonName || "")}</span></div><div class="stream-download-options-label">Subtitles</div>`;
@@ -2315,8 +2332,16 @@ export const StreamScreen = {
       actionsClassName: "stream-download-options-actions",
       content: () => this.renderOfflineDownloadOptionsContent(state),
       buttons: [
-        { label: "Cancel", className: "season-download-secondary-action", onAction: () => this.closeOfflineDownloadOptions() },
-        { label: "Download", className: "stream-download-primary-action", onAction: () => void this.confirmOfflineDownloadOptions(state) }
+        {
+          label: "Cancel",
+          className: "season-download-secondary-action",
+          onAction: () => this.closeOfflineDownloadOptions()
+        },
+        {
+          label: "Download",
+          className: "stream-download-primary-action",
+          onAction: () => void this.confirmOfflineDownloadOptions(state)
+        }
       ],
       onDismiss: () => this.closeOfflineDownloadOptions()
     });
@@ -2340,11 +2365,12 @@ export const StreamScreen = {
     this.showOfflineDownloadOptions(state);
     try {
       state.subtitles = await this.discoverOfflineDownloadSubtitles(state.context);
-      state.subtitleSnapshot = createBrowserOfflineSubtitleSnapshot(
-        state.subtitles,
-        (subtitle) => this.createOfflineSubtitleDescriptor(subtitle)
+      state.subtitleSnapshot = createBrowserOfflineSubtitleSnapshot(state.subtitles, (subtitle) =>
+        this.createOfflineSubtitleDescriptor(subtitle)
       );
-      const preferred = this.getPreferredOfflineDownloadSubtitle(state.subtitleSnapshot.map((entry) => entry.subtitle));
+      const preferred = this.getPreferredOfflineDownloadSubtitle(
+        state.subtitleSnapshot.map((entry) => entry.subtitle)
+      );
       state.preferredLabel = preferred ? normalizeSubtitleForDisplay(preferred).language : "";
     } catch (_) {
       state.error = true;
@@ -2357,21 +2383,31 @@ export const StreamScreen = {
   async confirmOfflineDownloadOptions(state = this.offlineDownloadOptionsState) {
     if (!state?.context) return;
     const snapshot = state.subtitleSnapshot || [];
-    const selectedSubtitle = Number.isInteger(state.selectedIndex) ? snapshot[state.selectedIndex]?.subtitle : null;
-    const preferredSubtitle = this.getPreferredOfflineDownloadSubtitle(snapshot.map((entry) => entry.subtitle));
+    const selectedSubtitle = Number.isInteger(state.selectedIndex)
+      ? snapshot[state.selectedIndex]?.subtitle
+      : null;
+    const preferredSubtitle = this.getPreferredOfflineDownloadSubtitle(
+      snapshot.map((entry) => entry.subtitle)
+    );
     const languageSubtitles = snapshot
       .filter((entry) => entry.language === state.selectedLanguage)
       .map((entry) => entry.subtitle);
     const selection =
       state.selectedMode === "all"
-        ? this.createOfflineSubtitleSelection("all", snapshot.map((entry) => entry.subtitle))
+        ? this.createOfflineSubtitleSelection(
+            "all",
+            snapshot.map((entry) => entry.subtitle)
+          )
         : state.selectedMode === "language"
-          ? { ...this.createOfflineSubtitleSelection("language", languageSubtitles), offlineSubtitleLanguage: state.selectedLanguage }
-        : state.selectedMode === "preferred"
-          ? this.createOfflineSubtitleSelection("preferred", preferredSubtitle)
-          : state.selectedMode === "specific"
-            ? this.createOfflineSubtitleSelection("specific", selectedSubtitle)
-            : this.createOfflineSubtitleSelection("none");
+          ? {
+              ...this.createOfflineSubtitleSelection("language", languageSubtitles),
+              offlineSubtitleLanguage: state.selectedLanguage
+            }
+          : state.selectedMode === "preferred"
+            ? this.createOfflineSubtitleSelection("preferred", preferredSubtitle)
+            : state.selectedMode === "specific"
+              ? this.createOfflineSubtitleSelection("specific", selectedSubtitle)
+              : this.createOfflineSubtitleSelection("none");
     try {
       await enqueueBrowserOfflineDownload({
         ...state.context,
@@ -2397,8 +2433,15 @@ export const StreamScreen = {
       return;
     }
     try {
-      const source = stream || { id: `offline-${downloadId}`, addonName: playback.download.sourceName || "Offline" };
-      await this.playStream(source.id, { offlineObjectUrl: playback.objectUrl, offlineDownload: playback.download, offlineStream: source });
+      const source = stream || {
+        id: `offline-${downloadId}`,
+        addonName: playback.download.sourceName || "Offline"
+      };
+      await this.playStream(source.id, {
+        offlineObjectUrl: playback.objectUrl,
+        offlineDownload: playback.download,
+        offlineStream: source
+      });
     } catch (_) {
       releaseBrowserOfflinePlayback(playback);
       this.showStreamToast("Could not play the offline file.");
@@ -2412,7 +2455,8 @@ export const StreamScreen = {
     if (!stream) return;
     const downloadId = this.getOfflineDownloadId(stream);
     if (action === "download") return this.startOfflineDownload(streamId);
-    if (action === "resume") return resumeQueuedBrowserOfflineDownload(downloadId, this.getOfflineDownloadContext(stream));
+    if (action === "resume")
+      return resumeQueuedBrowserOfflineDownload(downloadId, this.getOfflineDownloadContext(stream));
     if (action === "pause") return pauseQueuedBrowserOfflineDownload(downloadId);
     if (action === "cancel") return cancelQueuedBrowserOfflineDownload(downloadId);
     if (action === "playOffline") return this.playOfflineDownload(streamId);
@@ -2430,8 +2474,14 @@ export const StreamScreen = {
       mediaUrl: selected?.url || selected?.externalUrl || "",
       title: this.params?.episodeTitle || this.params?.itemTitle || this.params?.playerTitle || "",
       subtitleUrl: "",
-      resumePositionSeconds: Number(context.resumePositionMs || 0) / 1000,
-      knownDurationMs: Number(context.resumeDurationMs || 0) || Math.max(0, Number(this.params?.runtime || this.params?.runtimeMinutes || 0)) * 60_000,
+      resumePositionSeconds: resolveExternalResumeSeconds({
+        positionMs: context.resumePositionMs,
+        progressPercent: context.resumeProgressPercent,
+        durationMs: context.resumeDurationMs
+      }),
+      knownDurationMs:
+        Number(context.resumeDurationMs || 0) ||
+        Math.max(0, Number(this.params?.runtime || this.params?.runtimeMinutes || 0)) * 60_000,
       progressMode: PlayerSettingsStore.get().externalPlayerProgress,
       progressContext: {
         itemId: this.params?.itemId || null,
@@ -2454,16 +2504,20 @@ export const StreamScreen = {
     return true;
   },
 
-  async playStream(streamId, {
-    offlineObjectUrl = "",
-    offlineDownload = null,
-    offlineStream = null,
-    skipExternalRoute = false
-  } = {}) {
+  async playStream(
+    streamId,
+    {
+      offlineObjectUrl = "",
+      offlineDownload = null,
+      offlineStream = null,
+      skipExternalRoute = false
+    } = {}
+  ) {
     this.cancelAutoPlayCountdown();
     this.cancelAutoPlaySelectionWait();
     const filtered = this.getFilteredStreams();
-    const selected = offlineStream || filtered.find((stream) => stream.id === streamId) || filtered[0];
+    const selected =
+      offlineStream || filtered.find((stream) => stream.id === streamId) || filtered[0];
     if (!selected) {
       return;
     }
@@ -2481,8 +2535,8 @@ export const StreamScreen = {
           }
         ]
       : Environment.isBrowser()
-      ? this.streams
-      : this.getFilteredStreams();
+        ? this.streams
+        : this.getFilteredStreams();
     const itemType = normalizeType(this.params?.itemType);
     const startFromBeginning = Boolean(this.params?.startFromBeginning);
     const routeResumeProgress = {
@@ -2513,13 +2567,17 @@ export const StreamScreen = {
       resumeProgressPercent = resumeProgress?.progressPercent ?? resumeProgressPercent;
       resumeDurationMs = Number(resumeProgress?.durationMs || 0) || resumeDurationMs;
     }
-    if (!skipExternalRoute && await this.routeSelectedStream(selected, {
-      offlineObjectUrl,
-      offlineDownload,
-      offlineStream,
-      resumePositionMs,
-      resumeDurationMs
-    })) {
+    if (
+      !skipExternalRoute &&
+      (await this.routeSelectedStream(selected, {
+        offlineObjectUrl,
+        offlineDownload,
+        offlineStream,
+        resumePositionMs,
+        resumeProgressPercent,
+        resumeDurationMs
+      }))
+    ) {
       return;
     }
 

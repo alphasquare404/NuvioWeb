@@ -229,12 +229,17 @@ async function routeAfterAuthentication() {
 }
 
 function setupProviderCredentialForegroundLifecycle() {
-  let wasBackgrounded =
-    document.visibilityState === "hidden" || document.webkitHidden === true;
+  let wasBackgrounded = document.visibilityState === "hidden" || document.webkitHidden === true;
   const requestAfterBackground = () => {
     if (!wasBackgrounded) return;
     wasBackgrounded = false;
     ProviderCredentialSyncService.requestForegroundPull();
+    // Watching on another device is the whole point of a tracking provider, so
+    // coming back to the app has to re-check. Nothing did: the screen stayed
+    // mounted the entire time it was backgrounded, so no mount and no layer
+    // reveal ever ran, and Continue Watching kept whatever it had until the
+    // page was reloaded.
+    Router.notifyRouteRevealed({ reason: "foreground" });
   };
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
@@ -367,38 +372,78 @@ async function bootstrapApp() {
   installExternalPlaybackReturnCoordinator({
     getProfileId: () => ProfileManager.getActiveProfileId(),
     onAutomaticReport: async (report) => {
-      const provider = report.handoff?.playerMode;
-      const infuseRuntimeSeconds = Number(report.handoff?.knownDurationMs || 0) / 1000;
-      const outplayerFinish = await dispatchOutplayerExplicitFinish({ report, controller: PlayerController });
-      if (outplayerFinish.handled) return outplayerFinish.applied;
-      return (
-        provider === "infuse" && report.sourceOutcome !== "error" && Number.isFinite(report.positionSeconds) && report.positionSeconds >= 0 && infuseRuntimeSeconds > 0
-          ? await PlayerController.applyExternalPlaybackReport({
-              handoff: report.handoff,
-              outcome: "stopped",
-              // Infuse x-success is emitted for both close and playlist end;
-              // canonical completion decides from its returned position.
-              // TODO: Infuse can report a stale end position after replaying a
-              // previously completed item; retain the official value until a
-              // reproducible device signal can distinguish that edge case.
-              positionSeconds: report.positionSeconds,
-              durationSeconds: infuseRuntimeSeconds
-            })
-          : provider === "lenna" && report.sourceOutcome !== "error" && Number.isFinite(report.positionSeconds) && report.positionSeconds >= 0 && infuseRuntimeSeconds > 0
-            ? await PlayerController.applyExternalPlaybackReport({
-                handoff: report.handoff,
-                outcome: "stopped",
-                positionSeconds: report.positionSeconds,
-                durationSeconds: infuseRuntimeSeconds
-              })
-          : provider === "vlc"
-            ? false
-            : await PlayerController.applyExternalPlaybackReport(report)
-      );
+      const applied = await applyExternalPlaybackReportForProvider(report);
+      if (!applied) {
+        // A discarded callback is invisible otherwise: the user only sees the
+        // manual prompt, and only for the one player that offers it. Recorded
+        // as a warning so Settings > About > Debug Console can show what the
+        // player actually returned.
+        console.warn("[ExternalPlayback] report not applied", {
+          provider: report?.handoff?.playerMode || "",
+          outcome: report?.outcome ?? null,
+          sourceOutcome: report?.sourceOutcome ?? null,
+          positionSeconds: report?.positionSeconds ?? null,
+          durationSeconds: report?.durationSeconds ?? null,
+          progressFraction: report?.progressFraction ?? null,
+          knownDurationMs: Number(report?.handoff?.knownDurationMs || 0),
+          startingPositionMs: Number(report?.handoff?.startingPositionMs || 0),
+          itemType: report?.handoff?.progressContext?.itemType || "",
+          hasEpisode: report?.handoff?.progressContext?.episode != null,
+          parameterNames: report?.parameterNames || []
+        });
+      }
+      return applied;
     },
-    onManualFallback: (handoff) => PlayerScreen.showExternalPlaybackManualFallback(handoff)
+    onManualFallback: (handoff) => PlayerScreen.showExternalPlaybackManualFallback(handoff),
+    onManualFallbackResolved: () => PlayerScreen.dismissExternalPlaybackManualFallback?.()
   });
   logStartupTiming("auth-bootstrap-complete", bootstrapStartedAt);
+}
+
+// Infuse and Lenna report a position but never a duration, so they borrow the
+// runtime NuvioWeb already knows. A film that is not in Continue Watching used
+// to have none, which is why a brand-new film behaved differently from a resume.
+function canBorrowKnownDuration(report, knownDurationSeconds) {
+  return (
+    report.sourceOutcome !== "error" &&
+    Number.isFinite(report.positionSeconds) &&
+    report.positionSeconds >= 0 &&
+    knownDurationSeconds > 0
+  );
+}
+
+async function applyExternalPlaybackReportForProvider(report) {
+  const provider = report.handoff?.playerMode;
+  const knownDurationSeconds = Number(report.handoff?.knownDurationMs || 0) / 1000;
+  const outplayerFinish = await dispatchOutplayerExplicitFinish({
+    report,
+    controller: PlayerController
+  });
+  if (outplayerFinish.handled) return outplayerFinish.applied;
+
+  if (provider === "infuse" && canBorrowKnownDuration(report, knownDurationSeconds)) {
+    return PlayerController.applyExternalPlaybackReport({
+      handoff: report.handoff,
+      outcome: "stopped",
+      // Infuse x-success is emitted for both close and playlist end;
+      // canonical completion decides from its returned position.
+      // TODO: Infuse can report a stale end position after replaying a
+      // previously completed item; retain the official value until a
+      // reproducible device signal can distinguish that edge case.
+      positionSeconds: report.positionSeconds,
+      durationSeconds: knownDurationSeconds
+    });
+  }
+  if (provider === "lenna" && canBorrowKnownDuration(report, knownDurationSeconds)) {
+    return PlayerController.applyExternalPlaybackReport({
+      handoff: report.handoff,
+      outcome: "stopped",
+      positionSeconds: report.positionSeconds,
+      durationSeconds: knownDurationSeconds
+    });
+  }
+  if (provider === "vlc") return false;
+  return PlayerController.applyExternalPlaybackReport(report);
 }
 
 async function bootstrapAddonRemoteMode() {
