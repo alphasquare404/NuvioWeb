@@ -1,13 +1,64 @@
-# Check only the files being committed. A repo-wide check fails on formatting
-# inherited from upstream and would block every commit regardless of its
-# contents.
+# Prettier ratchet on the staged files.
+#
+# A repo-wide check blocked every commit: 365 files were already non-compliant
+# at HEAD, and reformatting one of them to change a single value costs thousands
+# of unrelated lines. So formatting is ratcheted rather than demanded:
+#
+#   new file                      -> must pass
+#   modified, HEAD version passed -> must still pass
+#   modified, HEAD version failed -> allowed for this commit, with a warning
+#
+# Nothing that is clean today can become unclean. Only inherited debt is
+# forgiven, and only on the files already carrying it.
 #
 # The emptiness guard stands in for `xargs -r`, a GNU extension that BSD xargs
-# only added later as a compatibility no-op -- relying on it is not portable
-# across every environment a contributor may be on. `xargs -0` is supported by
-# both, and keeps paths containing spaces intact.
+# only added later as a compatibility no-op.
+
 staged=$(git diff --cached --name-only --diff-filter=ACM)
 [ -n "$staged" ] || exit 0
 
-git diff --cached --name-only --diff-filter=ACM -z |
-  xargs -0 npx prettier --check --ignore-unknown
+# Fast path: everything staged is formatted, which is the usual case.
+if git diff --cached --name-only --diff-filter=ACM -z |
+  xargs -0 npx prettier --check --ignore-unknown >/dev/null 2>&1; then
+  exit 0
+fi
+
+work=$(mktemp -d) || exit 1
+trap 'rm -rf "$work"' EXIT
+
+# Something failed. Classify each file; only pre-existing debt is forgiven.
+printf '%s\n' "$staged" | while IFS= read -r path; do
+  [ -n "$path" ] || continue
+  npx prettier --check --ignore-unknown "$path" >/dev/null 2>&1 && continue
+
+  # Absent from HEAD means newly added: it has no debt to inherit.
+  if ! git cat-file -e "HEAD:$path" 2>/dev/null; then
+    printf '%s\n' "$path" >>"$work/blocked"
+    continue
+  fi
+
+  # Was this file already failing before the change? Compare HEAD's version
+  # against Prettier's own output for it rather than trusting a status letter.
+  git show "HEAD:$path" >"$work/head" 2>/dev/null
+  npx prettier --stdin-filepath "$path" <"$work/head" >"$work/formatted" 2>/dev/null
+  if cmp -s "$work/head" "$work/formatted"; then
+    printf '%s\n' "$path" >>"$work/blocked"
+  else
+    printf '%s\n' "$path" >>"$work/legacy"
+  fi
+done
+
+if [ -s "$work/legacy" ]; then
+  echo "Prettier: legacy formatting left as-is (already non-compliant at HEAD):"
+  sed 's/^/  /' "$work/legacy"
+  echo "  Reformatting these is its own change, not a side effect of this commit."
+fi
+
+if [ -s "$work/blocked" ]; then
+  echo "Prettier: these staged files must be formatted before committing:"
+  sed 's/^/  /' "$work/blocked"
+  echo "  Run: npx prettier --write <file>"
+  exit 1
+fi
+
+exit 0
