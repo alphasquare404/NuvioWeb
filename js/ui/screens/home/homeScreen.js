@@ -11991,8 +11991,12 @@ export const HomeScreen = {
           // Estimate card width from first real card or fallback to CSS variable
           const firstCard = cards[0];
           const cardWidth = firstCard ? firstCard.offsetWidth : 212;
-          const gapApprox = 24; // --home-poster-gap
-          const nearEndThreshold = (cardWidth + gapApprox) * 4;
+          // Read the real gap rather than assume the desktop one: compact
+          // phone rails use a 12px gap, so a hardcoded 24 overstated the
+          // stride and shortened the prefetch runway as cards got smaller.
+          const trackStyles = globalThis.getComputedStyle?.(track);
+          const gap = Number.parseFloat(trackStyles?.columnGap || trackStyles?.gap || "0") || 0;
+          const nearEndThreshold = (cardWidth + gap) * 4;
           const distanceFromEnd = track.scrollWidth - (track.scrollLeft + track.clientWidth);
           if (distanceFromEnd > nearEndThreshold) {
             return;

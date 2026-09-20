@@ -1833,7 +1833,11 @@ export const FolderDetailScreen = {
         const cards = track.querySelectorAll(".home-content-card:not(.home-poster-card-loading)");
         const firstCard = cards[0];
         const cardWidth = firstCard ? firstCard.offsetWidth : 230;
-        const nearEndThreshold = (cardWidth + 24) * 4;
+        // Same as Home: the gap is read, not assumed, so compact rails keep a
+        // proportionate prefetch runway.
+        const trackStyles = globalThis.getComputedStyle?.(track);
+        const gap = Number.parseFloat(trackStyles?.columnGap || trackStyles?.gap || "0") || 0;
+        const nearEndThreshold = (cardWidth + gap) * 4;
         const distanceFromEnd = track.scrollWidth - (track.scrollLeft + track.clientWidth);
         if (distanceFromEnd > nearEndThreshold) {
           return;

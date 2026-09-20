@@ -4085,6 +4085,14 @@ button:focus-visible {
   padding-bottom: 16px;
 }
 
+/* Library poster geometry. Declared here rather than written inline by
+   libraryScreen.js, so a breakpoint can still reach it. */
+.library-shell {
+  --library-poster-width: 252px;
+  --library-poster-height: 378px;
+  --library-poster-radius: 24px;
+}
+
 .library-grid {
   display: grid;
   grid-template-columns: repeat(

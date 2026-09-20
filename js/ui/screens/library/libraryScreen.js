@@ -1537,9 +1537,9 @@ export const LibraryScreen = {
       this.clearClosingPicker();
     }
     this.lastRenderedExpandedPicker = expandedPicker;
-    const posterWidth = 252;
-    const posterRadius = 24;
-    const libraryStyle = `--library-poster-width:${posterWidth}px;--library-poster-height:${Math.round(posterWidth * 1.5)}px;--library-poster-radius:${posterRadius}px;`;
+    // Poster geometry lives in CSS (.library-shell). It used to be written here
+    // as an inline custom property, which no stylesheet can override, so a
+    // responsive breakpoint could never retune it.
     if ((state.isLoading || state.isSyncing) && !this.isDownloadedView()) {
       this.renderLoading();
       ScreenUtils.indexFocusables(this.container);
@@ -1551,7 +1551,7 @@ export const LibraryScreen = {
 
     this.desktopMediaHoverPreview?.cancelForDrag?.();
     this.container.innerHTML = `
-      <div class="home-shell library-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.libraryRouteEnterPending ? " library-route-enter" : ""}" style="${escapeHtml(libraryStyle)}">
+      <div class="home-shell library-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.libraryRouteEnterPending ? " library-route-enter" : ""}">
         ${
           useDesktopNavigation
             ? renderDesktopNavigation({ selectedRoute: "library", profile: this.sidebarProfile })
