@@ -6,6 +6,12 @@ import { simklRequest } from "./simklAuthService.js";
 
 const STORE_KEY = "simklSyncState";
 const AUTOMATIC_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+// Continue Watching is user-facing: opening Home or returning to it should be
+// able to pick up progress recorded on another device. Fifteen minutes is fine
+// for background upkeep but made NuvioWeb look like it had stopped syncing, so
+// a CW resolve is allowed to re-check far sooner while still being debounced
+// enough that ordinary navigation cannot hammer the API.
+const CONTINUE_WATCHING_REFRESH_INTERVAL_MS = 60 * 1000;
 const EXTENDED_QUERY =
   "extended=full_anime_seasons&episode_watched_at=yes&episode_tvdb_id=yes&include_all_episodes=yes&language=en";
 const STATUS_DEFINITIONS = [
@@ -225,12 +231,16 @@ async function initialSync(profileId) {
   };
 }
 
-async function incrementalSync(current, profileId) {
+async function incrementalSync(current, profileId, { rereadPlayback = false } = {}) {
   const { payload: activities } = await simklRequest("/sync/activities", { profileId });
   if (activities?.settings?.all && activities.settings.all !== current.activities?.settings?.all) {
     await SimklAuthService.fetchUserSettings(profileId).catch(() => null);
   }
-  if (activities?.all && activities.all === current.watermark) {
+  // Simkl's activity summary can still report the previous watermark for a
+  // short while after a write lands, so someone asking for their positions by
+  // hand must not be told "nothing changed" and sent away -- that is exactly
+  // the moment they are standing in front of the app waiting for it.
+  if (!rereadPlayback && activities?.all && activities.all === current.watermark) {
     return { ...current, activities, lastCheckedAt: Date.now() };
   }
   if (!current.watermark) return initialSync(profileId);
@@ -258,7 +268,10 @@ async function incrementalSync(current, profileId) {
     );
   }
   let playback = current.playback || [];
-  if (anyDomainChanged(current.activities, activities, ["playback"])) {
+  // Playback positions are what Continue Watching is built from, so a refresh
+  // asked for on their behalf re-reads them rather than trusting the activity
+  // summary to have caught up yet.
+  if (rereadPlayback || anyDomainChanged(current.activities, activities, ["playback"])) {
     const result = await simklRequest("/sync/playback", { profileId });
     playback = Array.isArray(result.payload) ? result.payload : [];
   }
@@ -579,20 +592,28 @@ export const SimklSyncService = {
 
   getSnapshot,
 
-  async refresh({ force = false } = {}) {
+  /**
+   * @param force Ignore the pacing interval and check now.
+   * @param rereadPlayback Also re-read the playback positions, whatever the
+   *   activity summary claims. Only Continue Watching needs this; a library or
+   *   settings refresh asking merely to be current must not pay for it.
+   */
+  async refresh({
+    force = false,
+    rereadPlayback = false,
+    maxAgeMs = AUTOMATIC_REFRESH_INTERVAL_MS
+  } = {}) {
     if (!SimklAuthService.isAuthenticated()) return false;
     const profileId = activeProfileId();
     const current = getSnapshot(profileId);
-    if (
-      !force &&
-      current.lastCheckedAt &&
-      Date.now() - current.lastCheckedAt < AUTOMATIC_REFRESH_INTERVAL_MS
-    ) {
+    if (!force && current.lastCheckedAt && Date.now() - current.lastCheckedAt < maxAgeMs) {
       return false;
     }
     if (refreshInFlight?.profileId === profileId) return refreshInFlight.promise;
     const promise = (
-      current.initialized ? incrementalSync(current, profileId) : initialSync(profileId)
+      current.initialized
+        ? incrementalSync(current, profileId, { rereadPlayback })
+        : initialSync(profileId)
     )
       .then((snapshot) => {
         if (activeProfileId() !== profileId) return false;
@@ -719,8 +740,8 @@ export const SimklSyncService = {
     saveSnapshot(snapshot, profileId);
   },
 
-  async getProgressSnapshot() {
-    await this.refresh().catch(() => false);
+  async getProgressSnapshot({ maxAgeMs = CONTINUE_WATCHING_REFRESH_INTERVAL_MS } = {}) {
+    await this.refresh({ maxAgeMs }).catch(() => false);
     const snapshot = getSnapshot();
     const watched = watchedProjection(snapshot);
     return {

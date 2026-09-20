@@ -717,6 +717,43 @@ class WatchProgressRepository {
     return selectedContinueWatchingSource();
   }
 
+  /**
+   * Re-read the selected source now, ignoring the usual pacing.
+   *
+   * Continue Watching normally re-checks its source on a timer, which is right
+   * for ordinary navigation but wrong for an explicit pull-to-refresh: the user
+   * is standing in front of the app asking for the newest state, and being told
+   * "checked recently, come back later" makes the gesture look broken.
+   *
+   * Nuvio Sync needs this as much as a tracking provider does. Its state is
+   * local, but playback recorded in another app reaches that local store only
+   * through a cloud pull, and nothing was forcing one -- so a pull-to-refresh
+   * showed the same rows until the background cycle came round on its own.
+   */
+  async forceRefreshSelectedSource() {
+    const source = selectedContinueWatchingSource();
+    if (source === WatchProgressSource.SIMKL && SimklAuthStore.isAuthenticated()) {
+      await SimklSyncService.refresh({ force: true, rereadPlayback: true }).catch(() => false);
+      return true;
+    }
+    if (source === WatchProgressSource.TRAKT && TraktAuthStore.isAuthenticated()) {
+      traktProgressSnapshotCache = null;
+      return true;
+    }
+    // Imported here because the sync services import this module in turn.
+    const [{ WatchProgressSyncService }, { WatchedItemsSyncService }] = await Promise.all([
+      import("../../core/profile/watchProgressSyncService.js"),
+      import("../../core/profile/watchedItemsSyncService.js")
+    ]);
+    // Watched items travel with progress: they decide which Next Up card a
+    // finished episode leaves behind.
+    await Promise.all([
+      WatchProgressSyncService.pull().catch(() => []),
+      WatchedItemsSyncService.pull().catch(() => [])
+    ]);
+    return true;
+  }
+
   async replaceAll(items, profileId = activeProfileId()) {
     WatchProgressStore.replaceForProfile(profileId, items || []);
     invalidateContinueWatchingDisplaySnapshot();
