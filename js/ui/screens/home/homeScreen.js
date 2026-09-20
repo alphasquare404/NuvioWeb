@@ -72,6 +72,13 @@ import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
+import {
+  posterItemFromNode,
+  PosterOptionsDialogController
+} from "../../components/posterOptionsMenu.js";
+import { openDesktopContextMenu } from "../../components/desktopContextMenu.js";
+import { openTouchActionSheet } from "../../components/touchActionSheet.js";
 import {
   getDesktopMediaLibraryMembership,
   openDesktopMediaLibraryDestinationMenu,
@@ -2817,6 +2824,14 @@ export function createPosterCardMarkup(
   `;
 }
 
+const CONTINUE_WATCHING_ACTION_ICONS = {
+  details: "info",
+  playManually: "play_arrow",
+  startOver: "replay",
+  resume: "play_arrow",
+  remove: "delete_outline"
+};
+
 export const HomeScreen = {
   getRouteStateKey() {
     return "home";
@@ -4647,27 +4662,67 @@ export const HomeScreen = {
     this.lockHomeHoldFocus();
     this.destroyHomeHoldDialog();
     const options = this.getContinueWatchingMenuOptions();
-    this._homeHoldDialog = new NuvioDialog({
-      title: item.title || "Untitled",
-      subtitle: t("cw_dialog_subtitle", {}, "Choose what you want to do with this item."),
-      widthVw: 37.5,
-      suppressEnterUntilKeyUp: true,
-      buttons: options.map((option, index) => ({
-        label: option.label,
-        key: option.action,
-        onAction: () => {
-          this.continueWatchingMenu = {
-            ...(this.continueWatchingMenu || {}),
-            optionIndex: index
-          };
-          void this.activateContinueWatchingMenuOption();
-        }
-      })),
-      onDismiss: () => this.dismissContinueWatchingMenu()
-    }).mount(document.body);
+    const invocation = this.continueWatchingMenu?.invocation || null;
+    // One action list and one executor for all three invocations. Only the
+    // presentation differs: a sheet under a thumb, a compact menu elsewhere.
+    const actions = options.map((option, index) => ({
+      key: option.action,
+      label: option.label,
+      icon: CONTINUE_WATCHING_ACTION_ICONS[option.action] || "",
+      danger: option.action === "remove",
+      index
+    }));
+    const run = (action) => {
+      this.continueWatchingMenu = {
+        ...(this.continueWatchingMenu || {}),
+        optionIndex: Number(action.index || 0)
+      };
+      void this.activateContinueWatchingMenuOption();
+    };
+    const handle =
+      invocation?.type === "touch"
+        ? openTouchActionSheet({
+            header: {
+              title: item.title || "Untitled",
+              subtitle: item.episodeCode || item.progressStatus || "",
+              poster: item.poster || item.episodeThumbnail || item.thumbnail || ""
+            },
+            items: actions,
+            onSelect: run,
+            onDismiss: () => this.dismissContinueWatchingMenu()
+          })
+        : openDesktopContextMenu({
+            x: Number(invocation?.x || 0),
+            y: Number(invocation?.y || 0),
+            // No pointer coordinates means Hold Enter: anchor to the card so
+            // it stays visually attached to its own menu.
+            anchorRect:
+              invocation?.type === "pointer"
+                ? null
+                : this.getContinueWatchingMenuAnchor()?.getBoundingClientRect() || null,
+            restoreFocusTo:
+              invocation?.type === "pointer" ? null : this.getContinueWatchingMenuAnchor(),
+            items: actions,
+            onSelect: run,
+            onDismiss: () => this.dismissContinueWatchingMenu()
+          });
+    if (!handle) return false;
+    // Forward the close options: openContinueWatchingDetails hangs its
+    // Router.navigate off afterExit, and swallowing it left "Go to details"
+    // closing the menu without ever leaving Home.
+    this._homeHoldDialog = {
+      destroy: (closeOptions) => handle.destroy(closeOptions)
+    };
     this.suppressHoldMenuEnterUntilKeyUp = true;
-    this.scheduleHoldMenuScrollRestore();
     return true;
+  },
+
+  getContinueWatchingMenuAnchor() {
+    return (
+      this.container?.querySelector(".home-continue-card.focusable.focused") ||
+      this.container?.querySelector(".home-continue-card.focusable") ||
+      null
+    );
   },
 
   mountPosterHoldDialog() {
@@ -4932,7 +4987,7 @@ export const HomeScreen = {
     return true;
   },
 
-  openContinueWatchingMenu(node) {
+  openContinueWatchingMenu(node, invokeOptions = {}) {
     const item = this.getContinueWatchingItemFromNode(node);
     if (!item?.contentId) {
       return false;
@@ -4941,6 +4996,7 @@ export const HomeScreen = {
     this.posterHoldMenu = null;
     this.holdMenuScrollState = this.captureHoldMenuScrollState();
     this.continueWatchingMenu = {
+      invocation: invokeOptions?.invocation || null,
       contentId: item.contentId,
       videoId: item.videoId || "",
       index: Number(node?.dataset?.navCol || 0),
@@ -4981,15 +5037,42 @@ export const HomeScreen = {
     return this.isContinueWatchingHoldTarget(node) || this.isPosterHoldTarget(node);
   },
 
-  openHoldMenuForNode(node) {
+  // Pointer and touch entry point. Continue Watching keeps its own action
+  // set; every other card goes through the shared poster action system that
+  // Search, Discover, Library, Collection and the rest already use.
+  openContextActionsForNode(node, invocation) {
     if (this.isContinueWatchingHoldTarget(node)) {
-      return this.openContinueWatchingMenu(node);
+      return this.openContinueWatchingMenu(node, { invocation });
     }
-    if (this.isPosterHoldTarget(node)) {
-      void this.openPosterHoldMenu(node);
-      return true;
+    if (!this.isPosterHoldTarget(node)) {
+      return false;
     }
-    return false;
+    const item = posterItemFromNode(node, node?.dataset?.itemType || "movie");
+    if (!item?.id) {
+      return false;
+    }
+    // The controller is shared by every card, so the details callback has to
+    // resolve the card this open started from. Closing over `node` bound the
+    // first card of the session forever and sent every later "Go to details"
+    // to it. openDetailFromNode needs the real element (return-focus capture
+    // and collection-folder handling both read more than the item carries),
+    // so the node is tracked per open rather than reconstructed from the item.
+    this.sharedPosterOptionsNode = node;
+    if (!this.sharedPosterOptionsController) {
+      this.sharedPosterOptionsController = new PosterOptionsDialogController({
+        onDetails: () => this.openDetailFromNode(this.sharedPosterOptionsNode),
+        onChanged: () => this.requestBackgroundRender()
+      });
+    }
+    void this.sharedPosterOptionsController.open(item, { invocation });
+    return true;
+  },
+
+  // Hold Enter goes through the same entry point as right-click and
+  // long-press. Routing posters here too means one action list and one
+  // executor per target, and no invocation opens the old centred modal.
+  openHoldMenuForNode(node) {
+    return this.openContextActionsForNode(node, null);
   },
 
   cancelPendingContinueWatchingEnter() {
@@ -5341,11 +5424,15 @@ export const HomeScreen = {
     }
     if (normalized.isNextUp) {
       ContinueWatchingPreferences.addDismissedNextUpKey(normalized.contentId);
-      this.pruneContinueWatchingItem(normalized);
+      // Dismissing Next Up dismisses the title, including any other Next Up
+      // entry for the same content.
+      this.pruneContinueWatchingItem({ ...normalized, videoId: null });
       return true;
     }
-    await watchProgressRepository.removeProgress(normalized.contentId, normalized.videoId || null);
-    this.pruneContinueWatchingItem(normalized);
+    // Title-wide: removing a series removes its progress, not only the episode
+    // whose card happened to be used. Watched history is never touched.
+    await watchProgressRepository.removeContinueWatchingTitle(normalized.contentId);
+    this.pruneContinueWatchingItem({ ...normalized, videoId: null });
     return true;
   },
 
@@ -10095,7 +10182,19 @@ export const HomeScreen = {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
         cardSelector:
-          ".home-content-card[data-action='openDetail'], .home-content-card[data-action='openCollection'], .home-continue-title-link, .home-continue-episode-link"
+          ".home-continue-card.focusable, .home-content-card[data-action='openDetail'], .home-content-card[data-action='openCollection'], .home-continue-title-link, .home-continue-episode-link",
+        onLongPress: (node) => this.openContextActionsForNode(node, { type: "touch" })
+      });
+      this.mediaContextMenuCleanup?.();
+      this.mediaContextMenuCleanup = bindMediaContextMenu(this.container, {
+        cardSelector:
+          ".home-continue-card.focusable, .home-poster-card.focusable[data-action='openDetail']",
+        onInvoke: (node, pointer) =>
+          this.openContextActionsForNode(node, {
+            type: "pointer",
+            x: pointer.x,
+            y: pointer.y
+          })
       });
     }
     this.setupContinueWatchingProgressiveRendering();
@@ -12165,6 +12264,8 @@ export const HomeScreen = {
     }
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = null;
     this.desktopMediaHoverPreview?.destroy();
     this.desktopMediaHoverPreview = null;
     this.cancelModernSidebarPillAutoCollapse();

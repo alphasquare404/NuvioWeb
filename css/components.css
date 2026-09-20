@@ -21050,3 +21050,201 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
     width: 100%;
   }
 }
+/* Context actions: compact desktop menu and touch action sheet.
+   One design language, two containers. Both sit above the Home hover preview
+   (1200) and below dialogs (10000+), so a dialog opened from an action still
+   covers them. */
+.nuvio-context-menu {
+  position: fixed;
+  z-index: 1300;
+  min-width: 196px;
+  max-width: 300px;
+  width: max-content;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1b1b1f;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity 110ms ease, transform 110ms ease;
+}
+.nuvio-context-menu.is-open {
+  opacity: 1;
+  transform: scale(1);
+}
+.nuvio-context-menu:focus,
+.nuvio-context-menu:focus-visible {
+  outline: none;
+}
+.nuvio-context-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+.nuvio-context-menu-item:first-child {
+  border-top: 0;
+}
+.nuvio-context-menu-item:hover,
+.nuvio-context-menu-item:focus,
+.nuvio-context-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+  outline: none;
+}
+.nuvio-context-menu-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nuvio-context-menu-icon {
+  flex: 0 0 auto;
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.nuvio-context-menu-item.is-danger .nuvio-context-menu-label,
+.nuvio-context-menu-item.is-danger .nuvio-context-menu-icon {
+  color: #ff8a8a;
+}
+.nuvio-context-menu-item.is-danger:hover,
+.nuvio-context-menu-item.is-danger:focus,
+.nuvio-context-menu-item.is-danger:focus-visible {
+  background: rgba(255, 82, 82, 0.14);
+}
+
+.nuvio-action-sheet-scrim {
+  position: fixed;
+  z-index: 1299;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.nuvio-action-sheet-scrim.is-open {
+  opacity: 1;
+}
+.nuvio-action-sheet {
+  position: fixed;
+  z-index: 1300;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden auto;
+  max-height: 80vh;
+  border-radius: 16px 16px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1b1b1f;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  transform: translateY(100%);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.nuvio-action-sheet.is-open {
+  transform: translateY(0);
+}
+.nuvio-action-sheet-grabber {
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.nuvio-action-sheet-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+}
+.nuvio-action-sheet-poster {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 70px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #26262b;
+}
+.nuvio-action-sheet-poster img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.nuvio-action-sheet-poster.is-text {
+  padding: 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+}
+.nuvio-action-sheet-text {
+  min-width: 0;
+}
+.nuvio-action-sheet-title {
+  margin: 0 0 2px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.nuvio-action-sheet-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+.nuvio-action-sheet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: #ffffff;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.nuvio-action-sheet-row:active {
+  background: rgba(255, 255, 255, 0.07);
+}
+.nuvio-action-sheet-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nuvio-action-sheet-icon {
+  flex: 0 0 auto;
+  order: 2;
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.nuvio-action-sheet-row.is-danger .nuvio-action-sheet-icon,
+.nuvio-action-sheet-row.is-danger .nuvio-action-sheet-label {
+  color: #ff8a8a;
+}

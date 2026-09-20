@@ -740,6 +740,64 @@ export const SimklSyncService = {
     saveSnapshot(snapshot, profileId);
   },
 
+  /**
+   * Delete the SIMKL playback sessions backing a title.
+   *
+   * Only /sync/playback is touched. SIMKL watched history lives behind
+   * /sync/history and removing a Continue Watching card must never reach it.
+   */
+  async removePlaybackForContent(contentId, { profileId = activeProfileId() } = {}) {
+    const wanted = String(contentId || "")
+      .trim()
+      .toLowerCase();
+    if (!wanted || !SimklAuthService.isAuthenticated()) {
+      return { attempted: 0, deleted: 0, failed: 0 };
+    }
+    const snapshot = getSnapshot(profileId);
+    const sessions = Array.isArray(snapshot.playback) ? snapshot.playback : [];
+    const sessionIds = Array.from(
+      new Set(
+        sessions
+          .filter((session) => {
+            const projected = progressFromPlayback(session, snapshot);
+            return (
+              projected &&
+              String(projected.contentId || "")
+                .trim()
+                .toLowerCase() === wanted
+            );
+          })
+          .map((session) => Number(session?.id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      )
+    );
+    if (!sessionIds.length) {
+      return { attempted: 0, deleted: 0, failed: 0 };
+    }
+
+    const removed = new Set();
+    let failed = 0;
+    for (const sessionId of sessionIds) {
+      try {
+        await simklRequest(`/sync/playback/${sessionId}`, { method: "DELETE", profileId });
+        removed.add(sessionId);
+      } catch (error) {
+        failed += 1;
+        console.warn("[CW] Simkl playback removal failed", sessionId, error);
+      }
+    }
+    if (removed.size) {
+      saveSnapshot(
+        {
+          ...snapshot,
+          playback: sessions.filter((session) => !removed.has(Number(session?.id)))
+        },
+        profileId
+      );
+    }
+    return { attempted: sessionIds.length, deleted: removed.size, failed };
+  },
+
   async getProgressSnapshot({ maxAgeMs = CONTINUE_WATCHING_REFRESH_INTERVAL_MS } = {}) {
     await this.refresh({ maxAgeMs }).catch(() => false);
     const snapshot = getSnapshot();

@@ -14,6 +14,7 @@ import {
 } from "../../components/posterOptionsMenu.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w780";
@@ -372,7 +373,16 @@ export const CastDetailScreen = {
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
-        cardSelector: ".cast-credit-card[data-action='openDetail']"
+        cardSelector: ".cast-credit-card[data-action='openDetail']",
+        onLongPress: (node) =>
+          void this.openPosterOptionsMenu(node, { invocation: { type: "touch" } })
+      });
+      this.mediaContextMenuCleanup = bindMediaContextMenu(this.container, {
+        cardSelector: ".cast-credit-card[data-action='openDetail']",
+        onInvoke: (node, pointer) =>
+          void this.openPosterOptionsMenu(node, {
+            invocation: { type: "pointer", x: pointer.x, y: pointer.y }
+          })
       });
     }
     bindDesktopNavigationEvents(this.container);
@@ -497,7 +507,7 @@ export const CastDetailScreen = {
     return true;
   },
 
-  async openPosterOptionsMenu(node) {
+  async openPosterOptionsMenu(node, invokeOptions = {}) {
     const item = posterItemFromNode(node);
     if (!item?.id) {
       return false;
@@ -538,7 +548,7 @@ export const CastDetailScreen = {
         }
       });
     }
-    return this.posterOptionsController.open(item);
+    return this.posterOptionsController.open(item, invokeOptions);
   },
 
   closePosterOptionsMenu() {
@@ -615,6 +625,8 @@ export const CastDetailScreen = {
   cleanup() {
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = null;
     this.loadToken = (this.loadToken || 0) + 1;
     this.cancelPendingPosterHold();
     this.posterOptionsController?.destroy?.({ restoreFocus: false });

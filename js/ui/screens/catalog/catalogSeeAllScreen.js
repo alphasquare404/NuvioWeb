@@ -19,6 +19,7 @@ import {
 } from "../../components/watchedTitleBadge.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
 import {
   getDesktopMediaLibraryMembership,
@@ -216,6 +217,8 @@ export const CatalogSeeAllScreen = {
     this.pendingPosterHoldTimer = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = null;
     this.desktopMediaHoverPreview?.destroy?.();
     this.desktopMediaHoverPreview = null;
     await this.refreshWatchedTitleIds();
@@ -541,7 +544,7 @@ export const CatalogSeeAllScreen = {
     return true;
   },
 
-  async openPosterOptionsMenu(node) {
+  async openPosterOptionsMenu(node, invokeOptions = {}) {
     const item = posterItemFromNode(node, this.params?.type || "movie");
     if (!item?.id) {
       return false;
@@ -587,7 +590,8 @@ export const CatalogSeeAllScreen = {
     }
     return this.posterOptionsController.open(item, {
       focusKey: this.posterOptionsFocusKey,
-      itemIndex: Number(node.dataset.itemIndex || -1)
+      itemIndex: Number(node.dataset.itemIndex || -1),
+      ...invokeOptions
     });
   },
 
@@ -650,7 +654,16 @@ export const CatalogSeeAllScreen = {
     }
 
     this.browserCardTouchIntentCleanup ||= bindBrowserCardTouchIntent(this.container, {
-      cardSelector: ".seeall-card[data-action='openDetail']"
+      cardSelector: ".seeall-card[data-action='openDetail']",
+      onLongPress: (node) =>
+        void this.openPosterOptionsMenu(node, { invocation: { type: "touch" } })
+    });
+    this.mediaContextMenuCleanup ||= bindMediaContextMenu(this.container, {
+      cardSelector: ".seeall-card[data-action='openDetail']",
+      onInvoke: (node, pointer) =>
+        void this.openPosterOptionsMenu(node, {
+          invocation: { type: "pointer", x: pointer.x, y: pointer.y }
+        })
     });
 
     this.desktopMediaHoverPreview ||= createDesktopMediaHoverPreview({
@@ -863,6 +876,8 @@ export const CatalogSeeAllScreen = {
     this.posterOptionsFocusKey = "";
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = null;
     this.desktopMediaHoverPreview?.destroy?.();
     this.desktopMediaHoverPreview = null;
     ScreenUtils.hide(this.container);

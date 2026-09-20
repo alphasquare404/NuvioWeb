@@ -37,6 +37,7 @@ import {
 } from "../../components/watchedTitleBadge.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
 import {
   getDesktopMediaLibraryMembership,
@@ -599,7 +600,17 @@ export const SearchScreen = {
     this.bindDesktopMediaHoverPreview();
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
-      cardSelector: ".search-result-card[data-action='openDetail']"
+      cardSelector: ".search-result-card[data-action='openDetail']",
+      onLongPress: (node) =>
+        void this.openPosterOptionsMenu(node, { invocation: { type: "touch" } })
+    });
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = bindMediaContextMenu(this.container, {
+      cardSelector: ".search-result-card[data-action='openDetail']",
+      onInvoke: (node, pointer) =>
+        void this.openPosterOptionsMenu(node, {
+          invocation: { type: "pointer", x: pointer.x, y: pointer.y }
+        })
     });
     input.value = this.query || "";
     input.focus?.();
@@ -1214,7 +1225,7 @@ export const SearchScreen = {
     return true;
   },
 
-  async openPosterOptionsMenu(node) {
+  async openPosterOptionsMenu(node, invokeOptions = {}) {
     const item = posterItemFromNode(node);
     if (!item?.id) {
       return false;
@@ -1256,7 +1267,7 @@ export const SearchScreen = {
       });
     }
     this.suppressHoldMenuEnterUntilKeyUp = true;
-    return this.posterOptionsController.open(item);
+    return this.posterOptionsController.open(item, invokeOptions);
   },
 
   closePosterOptionsMenu() {
@@ -2269,6 +2280,8 @@ export const SearchScreen = {
     this.desktopMediaHoverPreview = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = null;
     this.cancelScheduledRender();
     this.clearDesktopSearchShelfDrag();
     if (this.boundDesktopSearchDragClickHandler) {

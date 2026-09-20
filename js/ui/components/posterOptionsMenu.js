@@ -5,6 +5,16 @@ import { watchedItemsRepository } from "../../data/repository/watchedItemsReposi
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
 import { watchedSeriesReconciliationService } from "../../data/repository/watchedSeriesReconciliationService.js";
 import { NuvioDialog } from "./nuvioDialog.js";
+import { openDesktopContextMenu } from "./desktopContextMenu.js";
+import { openTouchActionSheet } from "./touchActionSheet.js";
+
+// Icons mirror the touch sheet so the two presentations read as one family.
+const POSTER_ACTION_ICONS = {
+  details: "info",
+  toggleLibrary: "bookmark_border",
+  manageLists: "playlist_add",
+  toggleWatched: "check_circle_outline"
+};
 
 function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
@@ -240,6 +250,9 @@ export class PosterOptionsDialogController {
     this.state = null;
     this.listPicker = null;
     this.dialog = null;
+    // How the menu was invoked. Chooses the presentation only -- the action
+    // definitions and executor below are the same for all three.
+    this.invocation = null;
   }
 
   destroy({ restoreFocus = true, afterExit = null } = {}) {
@@ -260,6 +273,7 @@ export class PosterOptionsDialogController {
       return false;
     }
     this.destroy({ restoreFocus: false });
+    this.invocation = options?.invocation || null;
     this.state = await createPosterOptionsState(item, options);
     return this.mountOptionsDialog();
   }
@@ -271,26 +285,67 @@ export class PosterOptionsDialogController {
     this.dialog?.destroy?.();
     const item = this.state.item;
     const options = getPosterOptions(this.state);
-    this.dialog = new NuvioDialog({
-      title: item.title || item.name || item.id || "Untitled",
-      subtitle: t("home_poster_dialog_subtitle", {}, "Title actions"),
-      widthVw: 37.5,
-      suppressEnterUntilKeyUp: true,
-      buttons: options.map((option) => ({
-        label: option.label,
-        key: option.action,
-        onAction: () => {
-          void this.activateOption(option.action);
+    const closeState = () => {
+      this.dialog = null;
+      this.state = null;
+      this.listPicker = null;
+      this.onDismiss?.();
+    };
+    const actions = options.map((option) => ({
+      key: option.action,
+      label: option.label,
+      icon: POSTER_ACTION_ICONS[option.action] || "",
+      danger: option.action === "remove"
+    }));
+    const adopt = (handle) => {
+      if (!handle) return false;
+      this.dialog = {
+        destroy: ({ afterExit } = {}) => {
+          handle.destroy();
+          if (typeof afterExit === "function") setTimeout(afterExit, 0);
         }
-      })),
-      onDismiss: () => {
-        this.dialog = null;
-        this.state = null;
-        this.listPicker = null;
-        this.onDismiss?.();
-      }
-    }).mount(document.body);
-    return true;
+      };
+      return true;
+    };
+
+    if (this.invocation?.type !== "touch") {
+      // Right-click anchors to the pointer; Hold Enter has no coordinates, so
+      // it anchors to the focused card and restores focus there on close.
+      const focused =
+        this.invocation?.type === "pointer"
+          ? null
+          : document.querySelector(".focusable.focused");
+      return adopt(
+        openDesktopContextMenu({
+          x: Number(this.invocation?.x || 0),
+          y: Number(this.invocation?.y || 0),
+          anchorRect: focused?.getBoundingClientRect?.() || null,
+          restoreFocusTo: focused || null,
+          items: actions,
+          onSelect: (action) => void this.activateOption(action.key),
+          onDismiss: closeState
+        })
+      );
+    }
+    if (this.invocation?.type === "touch") {
+      return adopt(
+        openTouchActionSheet({
+          header: {
+            title: item.title || item.name || item.id || "Untitled",
+            subtitle: item.year ? String(item.year) : "",
+            poster: item.poster || ""
+          },
+          items: actions,
+          onSelect: (action) => void this.activateOption(action.key),
+          onDismiss: closeState
+        })
+      );
+    }
+
+    // Unreachable in practice: every invocation is handled above. Kept as a
+    // guard rather than a dialog, so a future invocation type fails loudly
+    // instead of silently opening the modal this issue replaced.
+    return false;
   }
 
   async activateOption(action) {
