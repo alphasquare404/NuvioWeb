@@ -1,5 +1,13 @@
 # Check only the files being committed. A repo-wide check fails on formatting
 # inherited from upstream and would block every commit regardless of its
 # contents.
+#
+# The emptiness guard stands in for `xargs -r`, a GNU extension that BSD xargs
+# only added later as a compatibility no-op -- relying on it is not portable
+# across every environment a contributor may be on. `xargs -0` is supported by
+# both, and keeps paths containing spaces intact.
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -n "$staged" ] || exit 0
+
 git diff --cached --name-only --diff-filter=ACM -z |
-  xargs -0 -r npx prettier --check --ignore-unknown
+  xargs -0 npx prettier --check --ignore-unknown
