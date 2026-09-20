@@ -148,6 +148,7 @@ import {
   parseCssPx,
   prettyId,
   resolveContinueWatchingEpisodeStill,
+  shouldRenderContinueWatchingProgress,
   uniqueNonEmptyValues
 } from "./homeUtils.js";
 
@@ -2291,7 +2292,11 @@ function renderContinueWatchingCard(item, index, options = {}) {
               : ""
           }
         </div>
-        <div class="home-continue-progress"><span style="width:${Math.round((normalized.progressFraction || 0) * 100)}%"></span></div>
+        ${
+          shouldRenderContinueWatchingProgress(normalized)
+            ? `<div class="home-continue-progress"><span style="width:${Math.round((normalized.progressFraction || 0) * 100)}%"></span></div>`
+            : ""
+        }
       </div>
     </article>
   `;
