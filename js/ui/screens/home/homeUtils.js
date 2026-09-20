@@ -153,3 +153,19 @@ export function resolveContinueWatchingEpisodeStill(item = {}, isSeries = false)
     item?.poster
   );
 }
+
+/**
+ * Whether a Continue Watching card should render its progress element at all.
+ *
+ * A Next Up card is the next episode you have not started, so it is built with
+ * `progressFraction: 0` deliberately. The track is the visible part of the bar
+ * -- the inner span is only the fill -- so emitting it at 0% drew an empty bar
+ * across a card that has no playback behind it.
+ *
+ * Only Next Up is excluded. A normal Continue Watching item keeps exactly what
+ * it renders today, including the case where its fraction is 0 because the
+ * duration is not known yet; that is not this rule's business.
+ */
+export function shouldRenderContinueWatchingProgress(item = {}) {
+  return !item?.isNextUp;
+}
