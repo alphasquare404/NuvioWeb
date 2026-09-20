@@ -1,6 +1,8 @@
 import { SimklAuthService } from "./simklAuthService.js";
 import { simklRequest } from "./simklAuthService.js";
 import { SimklSyncService } from "./simklSyncService.js";
+import { WatchProgressSource } from "../local/traktSettingsStore.js";
+import { ownsWatchProgress } from "./trackingWriteScope.js";
 
 const START_DEBOUNCE_MS = 15000;
 const WATCHED_THRESHOLD_PERCENT = 80;
@@ -91,7 +93,7 @@ async function send(action, context) {
 
 export const SimklScrobbleService = {
   isEnabled() {
-    return SimklAuthService.isAuthenticated();
+    return ownsWatchProgress(WatchProgressSource.SIMKL) && SimklAuthService.isAuthenticated();
   },
 
   start(context) {

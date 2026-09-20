@@ -1,6 +1,7 @@
 import { AuthManager } from "../auth/authManager.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { watchedItemsRepository } from "../../data/repository/watchedItemsRepository.js";
+import { isNuvioSyncOwnedProgress } from "../../data/repository/watchProgressProvenance.js";
 import { ProfileManager } from "./profileManager.js";
 import { LocalStore } from "../storage/localStore.js";
 import { TraktAuthStore } from "../../data/local/traktAuthStore.js";
@@ -160,7 +161,9 @@ export const WatchedItemsSyncService = {
         return [];
       }
       const profileId = resolveProfileId();
-      const localItems = await watchedItemsRepository.getAll(5000);
+      // The local store only: merging in the selected provider's history here
+      // would persist it as Nuvio Sync's own on the next replaceAll.
+      const localItems = await watchedItemsRepository.listLocal(5000);
       const rows = await pullRemoteWatchedItems(profileId);
       if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
       const remoteItems = (rows || [])
@@ -191,7 +194,9 @@ export const WatchedItemsSyncService = {
         return false;
       }
       const sessionGeneration = AuthManager.getSessionGeneration();
-      const items = await watchedItemsRepository.getAll(5000);
+      const items = (await watchedItemsRepository.listLocal(5000)).filter((item) =>
+        isNuvioSyncOwnedProgress(item)
+      );
       await SupabaseApi.rpc(
         PUSH_RPC,
         {

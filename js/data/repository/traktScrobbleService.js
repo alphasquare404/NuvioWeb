@@ -1,4 +1,6 @@
 import { TraktAuthService, requestJson } from "./traktAuthService.js";
+import { WatchProgressSource } from "../local/traktSettingsStore.js";
+import { ownsWatchProgress } from "./trackingWriteScope.js";
 
 const START_DEBOUNCE_MS = 15000;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -134,7 +136,7 @@ async function sendScrobbleRequest(action, context) {
 
 export const TraktScrobbleService = {
   isEnabled() {
-    return TraktAuthService.isAuthenticated();
+    return ownsWatchProgress(WatchProgressSource.TRAKT) && TraktAuthService.isAuthenticated();
   },
 
   start(context) {

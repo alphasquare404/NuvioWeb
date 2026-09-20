@@ -34,6 +34,12 @@ function normalizeItem(item = {}, profileId) {
     title: String(item.title || ""),
     season: normalizeEpisodeNumber(item.season),
     episode: normalizeEpisodeNumber(item.episode),
+    // Which source owned Continue Watching when this was recorded. Rebuilding
+    // the row from a fixed field list dropped it, which left the writer
+    // stamping a value nothing ever saw and the cloud push unable to tell one
+    // source's completions from another's. Absent on rows that predate it, and
+    // on rows pulled from a cloud that has no column for it.
+    ...(String(item.source || "").trim() ? { source: String(item.source).trim() } : {}),
     watchedAt: Number(item.watchedAt || Date.now())
   };
 }

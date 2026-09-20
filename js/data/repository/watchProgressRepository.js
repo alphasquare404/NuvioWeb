@@ -2,6 +2,7 @@ import { WatchProgressStore } from "../local/watchProgressStore.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
 import { LocalStore } from "../../core/storage/localStore.js";
 import { ContinueWatchingPreferences } from "../local/continueWatchingPreferences.js";
+import { watchProgressOwner } from "./watchProgressProvenance.js";
 import {
   TraktSettingsStore,
   WatchProgressSource,
@@ -175,15 +176,11 @@ async function deleteWatchProgressFromCloud(items = []) {
 }
 
 function isTraktProgressItem(item = {}) {
-  return String(item.source || "")
-    .toLowerCase()
-    .startsWith("trakt");
+  return watchProgressOwner(item) === WatchProgressSource.TRAKT;
 }
 
 function isSimklProgressItem(item = {}) {
-  return String(item.source || "")
-    .toLowerCase()
-    .startsWith("simkl");
+  return watchProgressOwner(item) === WatchProgressSource.SIMKL;
 }
 
 function isTraktCompatibleContentId(contentId) {

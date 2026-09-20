@@ -1,26 +1,29 @@
 import { WatchedItemsStore } from "../local/watchedItemsStore.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
-import { TraktSettingsStore, WatchProgressSource } from "../local/traktSettingsStore.js";
+import { WatchProgressSource } from "../local/traktSettingsStore.js";
 import { SimklAuthStore } from "../local/simklAuthStore.js";
 import { SimklSyncService } from "./simklSyncService.js";
 import { TraktAuthService, requestJson as traktRequestJson } from "./traktAuthService.js";
+import { ownsWatchProgress } from "./trackingWriteScope.js";
 
 function activeProfileId() {
   return String(ProfileManager.getActiveProfileId() || "1");
 }
 
+// Mirrors the progress rows' tag: which source owned Continue Watching when
+// this completion was recorded, so Nuvio's cloud only ever receives its own.
+function selectedLocalWatchedSource() {
+  if (ownsWatchProgress(WatchProgressSource.TRAKT)) return "trakt_local";
+  if (ownsWatchProgress(WatchProgressSource.SIMKL)) return "simkl_local";
+  return WatchProgressSource.NUVIO_SYNC;
+}
+
 function shouldUseSimkl() {
-  return (
-    TraktSettingsStore.get().watchProgressSource === WatchProgressSource.SIMKL &&
-    SimklAuthStore.isAuthenticated()
-  );
+  return ownsWatchProgress(WatchProgressSource.SIMKL) && SimklAuthStore.isAuthenticated();
 }
 
 function shouldUseTrakt() {
-  return (
-    TraktSettingsStore.get().watchProgressSource === WatchProgressSource.TRAKT &&
-    TraktAuthService.isAuthenticated()
-  );
+  return ownsWatchProgress(WatchProgressSource.TRAKT) && TraktAuthService.isAuthenticated();
 }
 
 function traktIds(item = {}) {
@@ -141,6 +144,19 @@ async function deleteWatchedItemsFromCloud(items = []) {
 }
 
 class WatchedItemsRepository {
+  /**
+   * Watched items this device recorded, without a provider's history merged in.
+   *
+   * getAll() deliberately folds the selected provider's records into the list
+   * so screens can ask one question. Nuvio's own cloud sync must not use that
+   * view: pushing it republishes SIMKL's entire watch history as Nuvio Sync's
+   * own, and pulling against it writes those records into the local store, so
+   * they survive switching the source and reach the PWA and the official app.
+   */
+  async listLocal(limit = 2000) {
+    return WatchedItemsStore.listForProfile(activeProfileId()).slice(0, limit);
+  }
+
   async getAll(limit = 2000) {
     const local = WatchedItemsStore.listForProfile(activeProfileId());
     if (!shouldUseSimkl()) return local.slice(0, limit);
@@ -173,6 +189,7 @@ class WatchedItemsRepository {
     WatchedItemsStore.upsert(
       {
         ...item,
+        source: String(item?.source || "").trim() || selectedLocalWatchedSource(),
         watchedAt: item.watchedAt || Date.now()
       },
       activeProfileId(),
