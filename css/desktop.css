@@ -9545,8 +9545,12 @@ html.desktop-browser {
   }
 }
 
-/* Home desktop hover preview: a document-level portal avoids shelf clipping. */
-.desktop-browser .desktop-media-hover-preview { position: fixed; z-index: 120; overflow: hidden; border: 1px solid rgba(255,255,255,.18); border-radius: 16px; background: rgba(22,22,26,.98); box-shadow: 0 22px 58px rgba(0,0,0,.52); opacity: 0; pointer-events: auto; transform: translateY(8px) scale(.98); transition: opacity 170ms ease, transform 170ms ease; }
+/* Home desktop hover preview: a document-level portal avoids shelf clipping.
+   z-index must clear the router's layer band. Home is drawn as a fixed layer
+   whenever it is re-entered over a suspended screen (router.js applyLayerChrome,
+   1000 + depth), and at 120 the portal was painted underneath it -- the preview
+   opened correctly and was simply invisible. Stays below dialogs (10000+). */
+.desktop-browser .desktop-media-hover-preview { position: fixed; z-index: 1200; overflow: hidden; border: 1px solid rgba(255,255,255,.18); border-radius: 16px; background: rgba(22,22,26,.98); box-shadow: 0 22px 58px rgba(0,0,0,.52); opacity: 0; pointer-events: auto; transform: translateY(8px) scale(.98); transition: opacity 170ms ease, transform 170ms ease; }
 .desktop-browser .desktop-media-hover-preview.is-open { opacity: 1; transform: translateY(0) scale(1); }
 .desktop-browser .desktop-media-hover-preview.is-closing { opacity: 0; pointer-events: none; transform: translateY(5px) scale(.985); }
 .desktop-browser .desktop-media-hover-preview-media { position: relative; isolation: isolate; aspect-ratio: 16 / 9; overflow: hidden; background: #111; }
