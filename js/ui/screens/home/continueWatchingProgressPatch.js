@@ -7,15 +7,32 @@
 // wrong Next-Up episode or misorder the row. The full refresh still runs
 // afterward to reconcile everything else.
 
+// One title reaches this from two directions that spell it differently. A film
+// arrives from a provider carrying its own title id as the video id and zeros
+// for season and episode, while the same film written by playback here leaves
+// all three empty. Compared literally they never matched, so the fast path
+// silently never ran for a film and its card only moved once the whole row had
+// been rebuilt over the network -- seconds, for a number already in hand.
 function buildContinueWatchingIdentityKey({ contentId, videoId, season, episode } = {}) {
   const normalizedContentId = String(contentId || "").trim();
   if (!normalizedContentId) {
     return "";
   }
-  const normalizedVideoId = videoId == null ? "main" : String(videoId).trim();
-  const normalizedSeason = season == null ? "" : String(Number(season));
-  const normalizedEpisode = episode == null ? "" : String(Number(episode));
-  return `${normalizedContentId}::${normalizedVideoId}::${normalizedSeason}::${normalizedEpisode}`;
+  const rawVideoId = videoId == null ? "" : String(videoId).trim();
+  // A film's own id is not a distinct video within it.
+  const normalizedVideoId = !rawVideoId || rawVideoId === normalizedContentId ? "main" : rawVideoId;
+  // Episodes are numbered from one, so a zero means "not an episode at all".
+  // Season is only meaningful alongside one, which leaves a real season zero --
+  // a specials run -- intact.
+  const episodeNumber = Number(episode);
+  const hasEpisode = Number.isFinite(episodeNumber) && episodeNumber > 0;
+  const seasonNumber = Number(season);
+  return [
+    normalizedContentId,
+    normalizedVideoId,
+    hasEpisode && Number.isFinite(seasonNumber) ? String(seasonNumber) : "",
+    hasEpisode ? String(episodeNumber) : ""
+  ].join("::");
 }
 
 // Returns a new array with the matching item's positionMs/durationMs patched

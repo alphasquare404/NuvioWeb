@@ -93,6 +93,26 @@ function idValue(ids = {}, key) {
   return String(value);
 }
 
+// Every alias SIMKL knows for a title, carried alongside the canonical
+// contentId. SIMKL is the only side of a Continue Watching merge that knows all
+// of them: a local playback row holds whichever single id its addon used, so
+// the aliases have to travel with the SIMKL item for the two to be recognised
+// as the same title.
+function identityIds(media = {}) {
+  const ids = media.ids || {};
+  const resolved = {
+    imdb: idValue(ids, "imdb"),
+    tmdb: idValue(ids, "tmdb"),
+    tvdb: idValue(ids, "tvdb"),
+    mal: idValue(ids, "mal"),
+    anidb: idValue(ids, "anidb"),
+    anilist: idValue(ids, "anilist"),
+    kitsu: idValue(ids, "kitsu"),
+    simkl: simklId(ids) == null ? null : String(simklId(ids))
+  };
+  return Object.fromEntries(Object.entries(resolved).filter(([, value]) => value));
+}
+
 function simklId(ids = {}) {
   return idValue(ids, "simkl") || idValue(ids, "simkl_id");
 }
@@ -445,6 +465,7 @@ function progressFromPlayback(session, snapshot) {
     year: media.year == null ? null : Number(media.year),
     imdbId: idValue(media.ids, "imdb"),
     tmdbId: Number(idValue(media.ids, "tmdb")) || null,
+    ids: identityIds(media),
     source: "simkl_playback",
     updatedAt: parseDate(session.paused_at || session.watched_at, snapshot.lastSyncedAt),
     positionMs: durationMs ? Math.round((durationMs * progress) / 100) : 0,
@@ -480,6 +501,7 @@ function watchedProjection(snapshot) {
       year: media.year == null ? null : Number(media.year),
       imdbId: idValue(media.ids, "imdb"),
       tmdbId: Number(idValue(media.ids, "tmdb")) || null,
+      ids: identityIds(media),
       trackingProviderId: "simkl"
     };
     if (type === "movie") {

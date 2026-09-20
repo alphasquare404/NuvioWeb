@@ -111,3 +111,73 @@ test("returns null when the progress item has no contentId", () => {
     null
   );
 });
+
+test("a film matches however each side spells it", () => {
+  // The provider hands a film its own title id as the video id and zeros for
+  // season and episode; playback here writes null for all three. Compared
+  // literally they never matched, so a film's card never took the fast path.
+  const providerCard = [
+    {
+      contentId: "tt28014327",
+      videoId: "tt28014327",
+      season: 0,
+      episode: 0,
+      positionMs: 0,
+      durationMs: 0
+    }
+  ];
+  const localWrite = {
+    contentId: "tt28014327",
+    videoId: null,
+    season: null,
+    episode: null,
+    positionMs: 90000,
+    durationMs: 6624928
+  };
+  const patched = patchContinueWatchingDisplayProgress(providerCard, localWrite);
+  assert.equal(patched[0].positionMs, 90000);
+});
+
+test("a film with no video id on either side still matches", () => {
+  const card = [{ contentId: "tt27165187", videoId: null, season: 0, episode: 0 }];
+  const write = {
+    contentId: "tt27165187",
+    videoId: null,
+    season: null,
+    episode: null,
+    positionMs: 60000,
+    durationMs: 5984672
+  };
+  assert.equal(patchContinueWatchingDisplayProgress(card, write)[0].positionMs, 60000);
+});
+
+test("a specials episode is still its own entry", () => {
+  // Season zero is a real season; only a zero episode means "not an episode".
+  const card = [
+    { contentId: "tt2", videoId: "tt2:0:3", season: 0, episode: 3 },
+    { contentId: "tt2", videoId: "tt2:1:3", season: 1, episode: 3 }
+  ];
+  const next = patchContinueWatchingDisplayProgress(card, {
+    contentId: "tt2",
+    videoId: "tt2:0:3",
+    season: 0,
+    episode: 3,
+    positionMs: 1000,
+    durationMs: 2000
+  });
+  assert.equal(next[0].positionMs, 1000);
+  assert.equal(next[1].positionMs, undefined);
+});
+
+test("a film never collapses into an episode of the same title", () => {
+  const card = [{ contentId: "tt2", videoId: "tt2:1:3", season: 1, episode: 3 }];
+  assert.equal(
+    patchContinueWatchingDisplayProgress(card, {
+      contentId: "tt2",
+      videoId: null,
+      season: null,
+      episode: null
+    }),
+    null
+  );
+});

@@ -12,14 +12,16 @@ import { TraktAuthService } from "./traktAuthService.js";
 import { SimklAuthStore } from "../local/simklAuthStore.js";
 import { SimklSyncService } from "./simklSyncService.js";
 import { metaRepository } from "./metaRepository.js";
+import {
+  deduplicateContinueWatchingItems,
+  isSeriesType,
+  shouldTreatAsInProgressForContinueWatching
+} from "./continueWatchingDeduplication.js";
 import { mapWithConcurrency } from "../../core/network/mapWithConcurrency.js";
 import {
   WATCH_PROGRESS_COMPLETED_THRESHOLD,
   WATCH_PROGRESS_STARTED_THRESHOLD,
   getWatchProgressFraction,
-  hasWatchProgressStarted,
-  isWatchProgressCompleted,
-  isWatchProgressInProgress,
   resolveWatchProgressResumePositionMs
 } from "../../domain/model/watchProgress.js";
 
@@ -147,11 +149,6 @@ function patchOrInvalidateContinueWatchingDisplaySnapshot(progressItem) {
   LocalStore.set(CW_DISPLAY_SNAPSHOT_KEY, nextStore);
 }
 
-function isSeriesType(type) {
-  const normalized = String(type || "").toLowerCase();
-  return normalized === "series" || normalized === "tv";
-}
-
 function matchesProgressTarget(item = {}, contentId, videoId = null) {
   const wantedContentId = String(contentId || "").trim();
   if (!wantedContentId || String(item.contentId || "").trim() !== wantedContentId) {
@@ -175,24 +172,6 @@ async function deleteWatchProgressFromCloud(items = []) {
     console.warn("Watch progress cloud delete failed", error);
     return false;
   }
-}
-
-function isCompletedForContinueWatching(item = {}) {
-  return isWatchProgressCompleted(item);
-}
-
-function isInProgressForContinueWatching(item = {}) {
-  return isWatchProgressInProgress(item);
-}
-
-function shouldTreatAsInProgressForContinueWatching(item = {}) {
-  if (isInProgressForContinueWatching(item)) {
-    return true;
-  }
-  if (isCompletedForContinueWatching(item)) {
-    return false;
-  }
-  return hasWatchProgressStarted(item);
 }
 
 function isTraktProgressItem(item = {}) {
@@ -259,40 +238,6 @@ function filterForSelectedContinueWatchingSource(items = []) {
     );
   }
   return all.filter((item) => !isTraktProgressItem(item) && !isSimklProgressItem(item));
-}
-
-function deduplicateInProgress(items = []) {
-  const nonSeriesItems = [];
-  const latestSeriesItems = [];
-  const seenContentIds = new Set();
-
-  (Array.isArray(items) ? items : [])
-    .slice()
-    .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
-    .forEach((item) => {
-      if (!isSeriesType(item?.contentType)) {
-        if (shouldTreatAsInProgressForContinueWatching(item)) {
-          nonSeriesItems.push(item);
-        }
-        return;
-      }
-
-      const contentId = String(item?.contentId || "").trim();
-      if (!contentId || seenContentIds.has(contentId)) {
-        return;
-      }
-      seenContentIds.add(contentId);
-      // Decide Continue Watching eligibility only after selecting the newest
-      // episode state for the series. Otherwise a completed episode is removed
-      // first and an older partial record can reappear beside the real Next Up.
-      if (shouldTreatAsInProgressForContinueWatching(item)) {
-        latestSeriesItems.push(item);
-      }
-    });
-
-  return [...nonSeriesItems, ...latestSeriesItems].sort(
-    (left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0)
-  );
 }
 
 function normalizeContentIdList(values = []) {
@@ -740,7 +685,7 @@ class WatchProgressRepository {
       .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
       .slice(0, 300);
 
-    const inProgressOnly = deduplicateInProgress(recentItems);
+    const inProgressOnly = deduplicateContinueWatchingItems(recentItems);
 
     const limitedItems = inProgressOnly.slice(0, limit);
     return enrichMetadata ? batchEnrichProgressItems(limitedItems) : limitedItems;
