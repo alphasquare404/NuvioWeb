@@ -32,6 +32,11 @@ import {
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
+import {
+  posterItemFromNode,
+  PosterOptionsDialogController
+} from "../../components/posterOptionsMenu.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 
@@ -817,6 +822,8 @@ async function fetchSourceItems(source = {}, page = 1) {
   return fetchAddonSourceItems(source, page);
 }
 
+const COLLECTION_POSTER_HOLD_DELAY_MS = 650;
+
 export const FolderDetailScreen = {
   getRouteStateKey(params = {}) {
     const collectionId = String(params?.collectionId || "").trim();
@@ -1247,7 +1254,17 @@ export const FolderDetailScreen = {
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
-        cardSelector: ".seeall-card[data-action='openDetail']"
+        cardSelector: ".seeall-card[data-action='openDetail']",
+        onLongPress: (node) =>
+          void this.openPosterOptionsMenu(node, { invocation: { type: "touch" } })
+      });
+      this.mediaContextMenuCleanup?.();
+      this.mediaContextMenuCleanup = bindMediaContextMenu(this.container, {
+        cardSelector: ".seeall-card[data-action='openDetail']",
+        onInvoke: (node, pointer) =>
+          void this.openPosterOptionsMenu(node, {
+            invocation: { type: "pointer", x: pointer.x, y: pointer.y }
+          })
       });
       this.browserHorizontalTabScrollCleanup?.();
       this.browserHorizontalTabScrollCleanup = bindBrowserHorizontalTabScroll(this.container, [
@@ -2072,6 +2089,74 @@ export const FolderDetailScreen = {
     return true;
   },
 
+  // Collection adopts the shared poster action system used by Search,
+  // Discover, Library and the rest, rather than growing its own copy. The
+  // broad useHomeFollowLayout gate is deliberately left alone: it governs far
+  // more than menus, so menus are wired independently of it.
+  isPosterOptionsTarget(node) {
+    return Boolean(node?.matches?.(".seeall-card[data-action='openDetail']")) && Boolean(this.container?.contains(node));
+  },
+
+  async openPosterOptionsMenu(node, invokeOptions = {}) {
+    const item = posterItemFromNode(node, node?.dataset?.itemType || "movie");
+    if (!item?.id) {
+      return false;
+    }
+    if (!this.posterOptionsController) {
+      this.posterOptionsController = new PosterOptionsDialogController({
+        onDetails: () => this.openDetailFromNode(node),
+        onDismiss: () => {
+          const focused = this.container?.querySelector(".focusable.focused");
+          if (focused) this.focusNode(focused);
+        }
+      });
+    }
+    return this.posterOptionsController.open(item, invokeOptions);
+  },
+
+  cancelPendingPosterHold() {
+    if (this.pendingPosterHoldTimer) {
+      clearTimeout(this.pendingPosterHoldTimer);
+      this.pendingPosterHoldTimer = null;
+    }
+    this.pendingPosterHoldTarget = null;
+  },
+
+  startPendingPosterHold(node) {
+    this.cancelPendingPosterHold();
+    if (!this.isPosterOptionsTarget(node)) {
+      return;
+    }
+    this.pendingPosterHoldTarget = node;
+    this.pendingPosterHoldTimer = setTimeout(() => {
+      this.pendingPosterHoldTimer = null;
+      const target = this.pendingPosterHoldTarget;
+      this.pendingPosterHoldTarget = null;
+      if (target?.isConnected && target.classList.contains("focused")) {
+        void this.openPosterOptionsMenu(target);
+      }
+    }, COLLECTION_POSTER_HOLD_DELAY_MS);
+  },
+
+  completePendingPosterHold(node, event = null) {
+    if (!this.pendingPosterHoldTarget) {
+      return false;
+    }
+    const target = this.pendingPosterHoldTarget;
+    const hadTimer = Boolean(this.pendingPosterHoldTimer);
+    const heldLongEnough =
+      Number(event?.keyDownDurationMs || 0) >= COLLECTION_POSTER_HOLD_DELAY_MS;
+    this.cancelPendingPosterHold();
+    if (hadTimer && target === node) {
+      if (heldLongEnough) {
+        void this.openPosterOptionsMenu(target);
+      } else {
+        this.openDetailFromNode(target);
+      }
+    }
+    return true;
+  },
+
   async onKeyDown(event) {
     if (isBackEvent(event)) {
       event?.preventDefault?.();
@@ -2112,7 +2197,9 @@ export const FolderDetailScreen = {
         return;
       }
       if (action === "openDetail") {
-        this.openDetailFromNode(current);
+        // Hold opens context actions; a normal press still opens Detail on
+        // key up, matching Hold Enter everywhere else.
+        this.startPendingPosterHold(current);
       }
       return;
     }
@@ -2183,6 +2270,14 @@ export const FolderDetailScreen = {
   onKeyUp(event) {
     if (this.useHomeFollowLayout) {
       HomeScreen.onKeyUp.call(this, event);
+      return;
+    }
+    if (Number(event?.keyCode || 0) !== 13) {
+      return;
+    }
+    const current = this.container?.querySelector(".focusable.focused") || null;
+    if (current) {
+      this.completePendingPosterHold(current, event);
     }
   },
 
@@ -2208,6 +2303,9 @@ export const FolderDetailScreen = {
   cleanup() {
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = null;
+    this.cancelPendingPosterHold();
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
     this.cancelScheduledRender();

@@ -41,6 +41,7 @@ import {
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 
 const POSTER_HOLD_DELAY_MS = 650;
 const PICKER_MENU_EXIT_MS = 160;
@@ -954,7 +955,7 @@ export const DiscoverScreen = {
     return true;
   },
 
-  async openPosterOptionsMenu(node) {
+  async openPosterOptionsMenu(node, invokeOptions = {}) {
     const item = posterItemFromNode(node, this.selectedType || "movie");
     if (!item?.id) {
       return false;
@@ -993,7 +994,8 @@ export const DiscoverScreen = {
     this.suppressHoldMenuEnterUntilKeyUp = true;
     return this.posterOptionsController.open(item, {
       focusKey: node.dataset.focusKey || "",
-      itemIndex: Number(node.dataset.itemIndex || -1)
+      itemIndex: Number(node.dataset.itemIndex || -1),
+      ...invokeOptions
     });
   },
 
@@ -1659,7 +1661,17 @@ export const DiscoverScreen = {
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
-        cardSelector: ".discover-card[data-action='openDetail']"
+        cardSelector: ".discover-card[data-action='openDetail']",
+        onLongPress: (node) =>
+          void this.openPosterOptionsMenu(node, { invocation: { type: "touch" } })
+      });
+      this.mediaContextMenuCleanup?.();
+      this.mediaContextMenuCleanup = bindMediaContextMenu(this.container, {
+        cardSelector: ".discover-card[data-action='openDetail']",
+        onInvoke: (node, pointer) =>
+          void this.openPosterOptionsMenu(node, {
+            invocation: { type: "pointer", x: pointer.x, y: pointer.y }
+          })
       });
     }
     this.container?.querySelectorAll(".seeall-card.focusable").forEach((node) => {
@@ -1975,6 +1987,8 @@ export const DiscoverScreen = {
   cleanup() {
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = null;
     this.loadToken = (this.loadToken || 0) + 1;
     if (this.browserDocumentScrollHandler) {
       document.removeEventListener("scroll", this.browserDocumentScrollHandler, { capture: true });

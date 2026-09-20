@@ -365,6 +365,45 @@ export const TraktAuthService = {
     return payload.map(normalizePlaybackItem).filter(Boolean).slice(0, limit);
   },
 
+  /**
+   * Delete Trakt playback entries by id.
+   *
+   * Only /sync/playback is touched. Trakt watched history lives behind
+   * /sync/history and is never removed by a Continue Watching removal.
+   */
+  async removePlaybackEntries(playbackIds = []) {
+    const ids = Array.from(
+      new Set(
+        (Array.isArray(playbackIds) ? playbackIds : [])
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      )
+    );
+    if (!ids.length) return { attempted: 0, deleted: 0, failed: 0 };
+    const token = await this.getValidAccessToken();
+    if (!token) return { attempted: ids.length, deleted: 0, failed: ids.length };
+
+    let deleted = 0;
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        const { response } = await requestJson(`/sync/playback/${id}`, {
+          method: "DELETE",
+          authorization: `Bearer ${token}`
+        });
+        if (response.ok) {
+          deleted += 1;
+        } else {
+          failed += 1;
+        }
+      } catch (error) {
+        failed += 1;
+        console.warn("[CW] Trakt playback removal failed", id, error);
+      }
+    }
+    return { attempted: ids.length, deleted, failed };
+  },
+
   async fetchWatchedShows() {
     const token = await this.getValidAccessToken();
     if (!token) return [];
@@ -478,6 +517,9 @@ function normalizePlaybackItem(entry) {
 
   return {
     type: isEpisode ? "episode" : "movie",
+    // Trakt's own playback entry id. Required to remove a paused item:
+    // DELETE /sync/playback/{id}. Dropping it made provider removal impossible.
+    traktPlaybackId: entry.id == null ? null : Number(entry.id),
     contentId,
     videoId: isEpisode && media.ids?.tmdb ? `tmdb:${media.ids.tmdb}` : contentId,
     progressPercent: Math.max(0, Math.min(100, Number(entry.progress) || 0)),

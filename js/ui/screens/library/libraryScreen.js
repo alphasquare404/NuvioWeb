@@ -46,6 +46,7 @@ import {
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
 import {
@@ -450,7 +451,17 @@ export const LibraryScreen = {
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
-        cardSelector: ".library-grid-card[data-action='openDetail']"
+        cardSelector: ".library-grid-card[data-action='openDetail']",
+        onLongPress: (node) =>
+          void this.openPosterOptionsMenu(node, { invocation: { type: "touch" } })
+      });
+      this.mediaContextMenuCleanup?.();
+      this.mediaContextMenuCleanup = bindMediaContextMenu(this.container, {
+        cardSelector: ".library-grid-card[data-action='openDetail']",
+        onInvoke: (node, pointer) =>
+          void this.openPosterOptionsMenu(node, {
+            invocation: { type: "pointer", x: pointer.x, y: pointer.y }
+          })
       });
       this.browserHorizontalTabScrollCleanup?.();
       this.browserHorizontalTabScrollCleanup = bindBrowserHorizontalTabScroll(this.container, [
@@ -1654,7 +1665,7 @@ export const LibraryScreen = {
     return true;
   },
 
-  async openPosterOptionsMenu(node) {
+  async openPosterOptionsMenu(node, invokeOptions = {}) {
     const item = posterItemFromNode(node, node?.dataset?.itemType || "movie");
     if (!item?.id) {
       return false;
@@ -1692,7 +1703,8 @@ export const LibraryScreen = {
     }
     this.suppressHoldMenuEnterUntilKeyUp = true;
     return this.posterOptionsController.open(item, {
-      focusKey: node.dataset.focusKey || ""
+      focusKey: node.dataset.focusKey || "",
+      ...invokeOptions
     });
   },
 
@@ -2921,6 +2933,8 @@ export const LibraryScreen = {
     this.desktopMediaHoverPreview = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = null;
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
     this.cancelScheduledRender();
