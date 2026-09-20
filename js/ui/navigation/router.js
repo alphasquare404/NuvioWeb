@@ -291,14 +291,20 @@ export const Router = {
     }
     this.popstateBound = true;
     window.addEventListener("popstate", async (event) => {
+      // Both of these discard the popstate. A Back that someone is waiting on
+      // has to be told it did not land, or its caller waits forever -- which is
+      // how a swallowed popstate left the player unable to be exited at all,
+      // every later Back silently dropped by its own in-progress guard.
       if (this.ignoreNextPopstate) {
         this.ignoreNextPopstate = false;
+        this.settlePreviousRouteBack(false);
         return;
       }
       if (Date.now() < Number(this.suppressPopstateUntil || 0)) {
         if (window?.history && typeof window.history.pushState === "function") {
           window.history.pushState(this.createBrowserHistoryState(), "");
         }
+        this.settlePreviousRouteBack(false);
         return;
       }
       const state = event?.state || null;
@@ -729,6 +735,25 @@ export const Router = {
         resolveScrollOwner: () => getBrowserVerticalScrollOwner(this.routes[routeName]?.container)
       });
     }
+    // A resumed layer never re-runs mount(), which is where screens check
+    // whether the world changed while they were covered. Without this a screen
+    // revealed by Back keeps whatever it rendered before -- Home kept showing
+    // Continue Watching from before the playback that just happened, and only a
+    // page reload brought it up to date.
+    this.notifyRouteRevealed({ previousRoute });
+  },
+
+  // Also called when the app itself comes back to the foreground: a screen that
+  // stayed mounted the whole time the app was backgrounded is in exactly the
+  // position of a revealed layer, and has the same reason to re-check.
+  notifyRouteRevealed({ previousRoute = null, reason = "layer" } = {}) {
+    const routeName = this.getCurrent();
+    if (!routeName) return;
+    this.routes[routeName]?.onRouteRevealed?.({
+      previousRoute,
+      reason,
+      params: this.currentParams
+    });
   },
 
   async navigate(routeName, params = {}, options = {}) {
