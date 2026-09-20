@@ -135,9 +135,7 @@ function patchOrInvalidateContinueWatchingDisplaySnapshot(progressItem) {
   if (!entry || !Array.isArray(entry.items)) {
     return;
   }
-  const index = entry.items.findIndex(
-    (item) => continueWatchingSnapshotItemKey(item) === itemKey
-  );
+  const index = entry.items.findIndex((item) => continueWatchingSnapshotItemKey(item) === itemKey);
   if (index === -1) {
     return;
   }
@@ -645,9 +643,7 @@ class WatchProgressRepository {
     const localItems = WatchProgressStore.listForProfile(activeProfileId());
     let sourceItems = filterForSelectedContinueWatchingSource(localItems);
 
-    if (
-      selectedContinueWatchingSource() !== WatchProgressSource.NUVIO_SYNC
-    ) {
+    if (selectedContinueWatchingSource() !== WatchProgressSource.NUVIO_SYNC) {
       sourceItems = await this.getRecent(300, { enrichMetadata: false }).catch((error) => {
         console.warn("[CW] Resume lookup failed", error);
         return sourceItems;

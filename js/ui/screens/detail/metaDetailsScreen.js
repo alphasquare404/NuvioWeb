@@ -7,7 +7,10 @@ import { watchProgressRepository } from "../../../data/repository/watchProgressR
 import { savedLibraryRepository } from "../../../data/repository/savedLibraryRepository.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
-import { LibrarySourceMode, libraryRepository } from "../../../data/repository/libraryRepository.js";
+import {
+  LibrarySourceMode,
+  libraryRepository
+} from "../../../data/repository/libraryRepository.js";
 import { detailWatchedEnrichmentService } from "../../../data/repository/detailWatchedEnrichmentService.js";
 import { watchedSeriesReconciliationService } from "../../../data/repository/watchedSeriesReconciliationService.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
@@ -16,7 +19,10 @@ import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { imdbEpisodeRatingsRepository } from "../../../data/repository/imdbEpisodeRatingsRepository.js";
 import { normalizeEpisodeImdbRating, parseEpisodeRuntimeMinutes } from "./episodeCardMetadata.js";
 import { mdbListRepository } from "../../../data/repository/mdbListRepository.js";
-import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
+import {
+  getEffectiveTmdbApiKey,
+  TmdbSettingsStore
+} from "../../../data/local/tmdbSettingsStore.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
 import { subtitleRepository } from "../../../data/repository/subtitleRepository.js";
 import {
@@ -30,11 +36,7 @@ import {
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
 import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
-import {
-  TRAKT_API_URL,
-  TRAKT_CLIENT_ID,
-  YOUTUBE_PROXY_URL
-} from "../../../config.js";
+import { TRAKT_API_URL, TRAKT_CLIENT_ID, YOUTUBE_PROXY_URL } from "../../../config.js";
 import { I18n } from "../../../i18n/index.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import {
@@ -46,7 +48,10 @@ import {
   createBrowserOfflineSubtitleSnapshot
 } from "../../components/browserOfflineSubtitlePicker.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
-import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
+import {
+  bindDesktopNavigationEvents,
+  renderDesktopNavigation
+} from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
@@ -593,9 +598,7 @@ function extractCast(meta = {}) {
   // It is intentionally generic Stremio metadata, not addon-specific handling.
   const appExtras = meta?.app_extras;
   const appExtraCast =
-    appExtras && typeof appExtras === "object" && !Array.isArray(appExtras)
-      ? appExtras.cast
-      : [];
+    appExtras && typeof appExtras === "object" && !Array.isArray(appExtras) ? appExtras.cast : [];
   const appExtraEntries = mapCastEntries(appExtraCast, (entry) => {
     if (typeof entry === "string") {
       return { name: entry, character: "", photo: "", tmdbId: null };
@@ -650,7 +653,9 @@ function extractCast(meta = {}) {
     ? mapCastEntries(
         (Array.isArray(meta?.credits?.crew) ? meta.credits.crew : []).filter((entry) =>
           ["director", "creator", "writer", "writing"].includes(
-            String(entry?.job || entry?.department || "").trim().toLowerCase()
+            String(entry?.job || entry?.department || "")
+              .trim()
+              .toLowerCase()
           )
         ),
         (entry) => ({
@@ -663,7 +668,9 @@ function extractCast(meta = {}) {
     : [];
   const linkCastEntries = mapCastEntries(
     (Array.isArray(meta?.links) ? meta.links : []).filter((entry) => {
-      const category = String(entry?.category || "").trim().toLowerCase();
+      const category = String(entry?.category || "")
+        .trim()
+        .toLowerCase();
       return category === "cast" || category === "actor" || category === "actors";
     }),
     (entry) => ({
@@ -692,7 +699,11 @@ function extractCast(meta = {}) {
     ]).slice(0, 12);
   }
   if (directEntries.length) {
-    return mergeCastEntries(directEntries, [...linkCastEntries, ...creditEntries, ...crewEntries]).slice(0, 12);
+    return mergeCastEntries(directEntries, [
+      ...linkCastEntries,
+      ...creditEntries,
+      ...crewEntries
+    ]).slice(0, 12);
   }
   if (linkCastEntries.length) {
     return mergeCastEntries(linkCastEntries, [...creditEntries, ...crewEntries]).slice(0, 12);
@@ -1714,7 +1725,9 @@ export const MetaDetailsScreen = {
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("detail");
     ScreenUtils.show(this.container);
-    this.sidebarProfile = Platform.isBrowser() ? await getSidebarProfileState().catch(() => null) : null;
+    this.sidebarProfile = Platform.isBrowser()
+      ? await getSidebarProfileState().catch(() => null)
+      : null;
     this.closeDesktopTrailerModal({ restoreFocus: false });
     this.stopTrailerPlayback({
       keepDom: false,
@@ -1777,7 +1790,9 @@ export const MetaDetailsScreen = {
     this.localOfflineEpisodes = [];
     this.localOfflineDownloads = [];
     this.offlineArtworkResolver?.releaseAll?.();
-    this.offlineArtworkResolver = Platform.isBrowser() ? createBrowserOfflineArtworkResolver() : null;
+    this.offlineArtworkResolver = Platform.isBrowser()
+      ? createBrowserOfflineArtworkResolver()
+      : null;
     this.remoteMetaUnavailable = false;
     this.remoteEpisodeDataUnavailable = false;
     this.unsubscribeOfflineDownloads?.();
@@ -1861,7 +1876,10 @@ export const MetaDetailsScreen = {
       : null;
     const browserCanRestoreOfflineSnapshot =
       Platform.isBrowser() && globalThis.navigator?.onLine === false;
-    if (this.hydrateFromRouteState(restoredRouteState, params) && (!Platform.isBrowser() || browserCanRestoreOfflineSnapshot)) {
+    if (
+      this.hydrateFromRouteState(restoredRouteState, params) &&
+      (!Platform.isBrowser() || browserCanRestoreOfflineSnapshot)
+    ) {
       this.isLoadingDetail = false;
       if (Platform.isBrowser()) {
         this.isSavedInLibrary = false;
@@ -2015,16 +2033,23 @@ export const MetaDetailsScreen = {
         ? listOfflineDownloads().catch(() => [])
         : Promise.resolve([]);
 
-    const [metaResult, isSaved, initialProgress, watchedItem, allProgressItems, allWatchedItems, offlineDownloads] =
-      await Promise.all([
-        metaPromise,
-        isSavedPromise,
-        progressPromise,
-        watchedItemPromise,
-        allProgressPromise,
-        allWatchedPromise,
-        offlineDownloadsPromise
-      ]);
+    const [
+      metaResult,
+      isSaved,
+      initialProgress,
+      watchedItem,
+      allProgressItems,
+      allWatchedItems,
+      offlineDownloads
+    ] = await Promise.all([
+      metaPromise,
+      isSavedPromise,
+      progressPromise,
+      watchedItemPromise,
+      allProgressPromise,
+      allWatchedPromise,
+      offlineDownloadsPromise
+    ]);
     let meta =
       metaResult.status === "success"
         ? metaResult.data
@@ -2044,7 +2069,8 @@ export const MetaDetailsScreen = {
       String(this.params?.itemType || meta?.type || "").toLowerCase()
     );
     this.remoteEpisodeDataUnavailable =
-      this.remoteMetaUnavailable || (detailIsSeries && !Array.isArray(meta?.videos)) ||
+      this.remoteMetaUnavailable ||
+      (detailIsSeries && !Array.isArray(meta?.videos)) ||
       (detailIsSeries && meta.videos.length === 0);
     await this.loadVerifiedOfflineDetailDownloads(offlineDownloads, [
       itemId,
@@ -2058,20 +2084,30 @@ export const MetaDetailsScreen = {
       const local = this.localOfflineDownloads[0];
       const artwork = await this.getOfflineDetailArtwork(local);
       const browserOffline = Platform.isBrowser() && globalThis.navigator?.onLine === false;
-      meta = applyOfflineDisplaySnapshot({
-        ...meta,
-        name:
-          (this.params?.offlineItem ? "" : meta?.name) || local.seriesTitle || local.title || meta?.name,
-        description: meta?.description || local.description || "",
-        genres: Array.isArray(meta?.genres) && meta.genres.length ? meta.genres : local.genres || [],
-        runtime: meta?.runtime || "",
-        runtimeMinutes: Number(meta?.runtimeMinutes || local.runtimeMinutes || 0) || 0,
-        releaseInfo: meta?.releaseInfo || local.year || "",
-        poster: artwork.poster || (browserOffline ? null : meta?.poster) || null,
-        logo: artwork.logo || (browserOffline ? null : meta?.logo) || null,
-        background:
-          artwork.backdrop || artwork.poster || (browserOffline ? null : meta?.background || meta?.poster) || null
-      }, local.displaySnapshot || local);
+      meta = applyOfflineDisplaySnapshot(
+        {
+          ...meta,
+          name:
+            (this.params?.offlineItem ? "" : meta?.name) ||
+            local.seriesTitle ||
+            local.title ||
+            meta?.name,
+          description: meta?.description || local.description || "",
+          genres:
+            Array.isArray(meta?.genres) && meta.genres.length ? meta.genres : local.genres || [],
+          runtime: meta?.runtime || "",
+          runtimeMinutes: Number(meta?.runtimeMinutes || local.runtimeMinutes || 0) || 0,
+          releaseInfo: meta?.releaseInfo || local.year || "",
+          poster: artwork.poster || (browserOffline ? null : meta?.poster) || null,
+          logo: artwork.logo || (browserOffline ? null : meta?.logo) || null,
+          background:
+            artwork.backdrop ||
+            artwork.poster ||
+            (browserOffline ? null : meta?.background || meta?.poster) ||
+            null
+        },
+        local.displaySnapshot || local
+      );
     }
     this.resumeContentIds = buildResumeContentIds(meta, this.params);
     let progress = initialProgress;
@@ -2115,7 +2151,10 @@ export const MetaDetailsScreen = {
       this.resumeProgress || progress,
       progressItemsForDetail
     );
-    if (preservedSeason > 0 && this.episodes.some((episode) => Number(episode.season) === preservedSeason)) {
+    if (
+      preservedSeason > 0 &&
+      this.episodes.some((episode) => Number(episode.season) === preservedSeason)
+    ) {
       this.selectedSeason = preservedSeason;
     }
     this.applyPendingEpisodeNavigationSeason();
@@ -2191,7 +2230,10 @@ export const MetaDetailsScreen = {
         this.resumeProgress || progress,
         progressItemsForDetail
       );
-      if (preservedSeason > 0 && this.episodes.some((episode) => Number(episode.season) === preservedSeason)) {
+      if (
+        preservedSeason > 0 &&
+        this.episodes.some((episode) => Number(episode.season) === preservedSeason)
+      ) {
         this.selectedSeason = preservedSeason;
       }
       this.applyPendingEpisodeNavigationSeason();
@@ -2876,15 +2918,15 @@ export const MetaDetailsScreen = {
       (Array.isArray(watchedItems) ? watchedItems : [])
         .filter((entry) => entry?.episode != null)
         .map(
-          (entry) =>
-            `${String(entry.contentId || "").toLowerCase()}:${Number(entry.episode || 0)}`
+          (entry) => `${String(entry.contentId || "").toLowerCase()}:${Number(entry.episode || 0)}`
         )
     );
     (this.episodes || []).forEach((video) => {
-      const match = String(video?.id || "").match(
-        /^(mal|anidb|anilist|kitsu):(\d+):(\d+)/i
-      );
-      if (!match || !animeWatchedKeys.has(`${match[1].toLowerCase()}:${match[2]}:${Number(match[3])}`)) {
+      const match = String(video?.id || "").match(/^(mal|anidb|anilist|kitsu):(\d+):(\d+)/i);
+      if (
+        !match ||
+        !animeWatchedKeys.has(`${match[1].toLowerCase()}:${match[2]}:${Number(match[3])}`)
+      ) {
         return;
       }
       const season = Number(video?.season || 0);
@@ -3460,7 +3502,10 @@ export const MetaDetailsScreen = {
   async getOfflineDetailArtwork(download) {
     const resolver = this.offlineArtworkResolver;
     const [poster, backdrop, logo] = await Promise.all([
-      resolver?.resolve(download?.downloadId, download?.contentType === "episode" ? "seriesPoster" : "poster"),
+      resolver?.resolve(
+        download?.downloadId,
+        download?.contentType === "episode" ? "seriesPoster" : "poster"
+      ),
       resolver?.resolve(download?.downloadId, "backdrop"),
       resolver?.resolve(download?.downloadId, "logo")
     ]);
@@ -3477,7 +3522,9 @@ export const MetaDetailsScreen = {
   },
 
   shouldPreferOfflineMovie() {
-    return Boolean(this.remoteMetaUnavailable && hasPlayableOfflineDownload(this.offlineMovieDownload));
+    return Boolean(
+      this.remoteMetaUnavailable && hasPlayableOfflineDownload(this.offlineMovieDownload)
+    );
   },
 
   async playOfflineDetailDownload(download, episode = null) {
@@ -3511,12 +3558,19 @@ export const MetaDetailsScreen = {
         season: episode?.season ?? null,
         episode: episode?.episode ?? null,
         episodeLabel: episode ? `S${episode.season}E${episode.episode}` : null,
-        playerTitle: this.meta?.name || this.params?.fallbackTitle || playback.download.title || "Untitled",
-        playerSubtitle: episode ? `S${episode.season}E${episode.episode} - ${episode.title || ""}` : "",
+        playerTitle:
+          this.meta?.name || this.params?.fallbackTitle || playback.download.title || "Untitled",
+        playerSubtitle: episode
+          ? `S${episode.season}E${episode.episode} - ${episode.title || ""}`
+          : "",
         playerEpisodeTitle: episode?.title || "",
         playerReleaseYear: playback.download.year || "",
         playerBackdropUrl:
-          this.meta?.background || this.meta?.poster || playback.download.backdrop || playback.download.poster || null,
+          this.meta?.background ||
+          this.meta?.poster ||
+          playback.download.backdrop ||
+          playback.download.poster ||
+          null,
         playerLogoUrl: this.meta?.logo || null,
         episodes: this.episodes || [],
         streamCandidates: [source],
@@ -3551,21 +3605,27 @@ export const MetaDetailsScreen = {
     const movieMediaId = this.getOfflineMovieMediaId();
     const nextMovieDownloaded = Boolean(
       this.offlineMovieDownload ||
-        (movieMediaId &&
-          completedDownloads.some(
-            (download) =>
-              download?.contentType === "movie" &&
-              String(download?.mediaIdentity || createOfflineMediaId(download)).trim() === movieMediaId
-          ))
+      (movieMediaId &&
+        completedDownloads.some(
+          (download) =>
+            download?.contentType === "movie" &&
+            String(download?.mediaIdentity || createOfflineMediaId(download)).trim() ===
+              movieMediaId
+        ))
     );
     const seriesId = this.getOfflineSeriesId();
     const nextEpisodeMediaIds = new Set();
     if (seriesId) {
       completedDownloads.forEach((download) => {
-        if (download?.contentType !== "episode" || String(download?.seriesId || "").trim() !== seriesId) {
+        if (
+          download?.contentType !== "episode" ||
+          String(download?.seriesId || "").trim() !== seriesId
+        ) {
           return;
         }
-        const mediaIdentity = String(download?.mediaIdentity || createOfflineMediaId(download)).trim();
+        const mediaIdentity = String(
+          download?.mediaIdentity || createOfflineMediaId(download)
+        ).trim();
         if (mediaIdentity) {
           nextEpisodeMediaIds.add(mediaIdentity);
         }
@@ -3574,7 +3634,9 @@ export const MetaDetailsScreen = {
 
     const episodeStatusChanged =
       nextEpisodeMediaIds.size !== (this.offlineEpisodeMediaIds?.size || 0) ||
-      [...nextEpisodeMediaIds].some((mediaIdentity) => !this.offlineEpisodeMediaIds?.has(mediaIdentity));
+      [...nextEpisodeMediaIds].some(
+        (mediaIdentity) => !this.offlineEpisodeMediaIds?.has(mediaIdentity)
+      );
     if (!episodeStatusChanged && nextMovieDownloaded === this.offlineMovieDownloaded) {
       return;
     }
@@ -4428,11 +4490,12 @@ export const MetaDetailsScreen = {
     const completed = episodes.filter((episode) =>
       this.offlineEpisodeMediaIds?.has(this.getEpisodeOfflineMediaId(episode))
     ).length;
-    const label = completed === episodes.length
-      ? t("offline.seasonDownloaded", {}, "Season downloaded")
-      : completed > 0
-        ? `${completed} / ${episodes.length} ${t("offline.downloaded", {}, "Downloaded")}`
-        : t("offline.downloadSeason", {}, "Download Season");
+    const label =
+      completed === episodes.length
+        ? t("offline.seasonDownloaded", {}, "Season downloaded")
+        : completed > 0
+          ? `${completed} / ${episodes.length} ${t("offline.downloaded", {}, "Downloaded")}`
+          : t("offline.downloadSeason", {}, "Download Season");
     return `
       <div class="series-season-download-row">
         <button type="button" class="series-season-download-action focusable" data-action="downloadSeason"
@@ -4487,7 +4550,8 @@ export const MetaDetailsScreen = {
       episodeRuntimeMinutes: episode.runtimeMinutes || 0,
       displaySnapshot: createOfflineDisplaySnapshot({ ...(this.meta || {}), episode }),
       sourceName: stream.addonName || "",
-      filename: stream.behaviorHints?.filename || stream.raw?.behaviorHints?.filename || stream.title || "",
+      filename:
+        stream.behaviorHints?.filename || stream.raw?.behaviorHints?.filename || stream.title || "",
       mimeType: stream.mimeType || stream.raw?.mimeType || "",
       stream
     };
@@ -4544,21 +4608,34 @@ export const MetaDetailsScreen = {
 
   getPreferredSeasonSubtitle(subtitles = []) {
     const settings = PlayerSettingsStore.get();
-    const preferred = String(settings.subtitleStyle?.preferredLanguage || settings.subtitleLanguage || "off")
+    const preferred = String(
+      settings.subtitleStyle?.preferredLanguage || settings.subtitleLanguage || "off"
+    )
       .trim()
       .toLowerCase();
     if (!preferred || preferred === "off") return null;
-    return subtitles.find((subtitle) => String(subtitle.lang || subtitle.language || "").toLowerCase() === preferred || String(subtitle.lang || subtitle.language || "").toLowerCase().startsWith(`${preferred}-`)) || null;
+    return (
+      subtitles.find(
+        (subtitle) =>
+          String(subtitle.lang || subtitle.language || "").toLowerCase() === preferred ||
+          String(subtitle.lang || subtitle.language || "")
+            .toLowerCase()
+            .startsWith(`${preferred}-`)
+      ) || null
+    );
   },
 
   getSeasonDownloadSourceLabel(stream = {}, { includeFilename = false } = {}) {
     const bytes = Number(stream.behaviorHints?.videoSize || stream.videoSize || 0);
-    const size = bytes >= 1024 * 1024 * 1024
-      ? `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-      : bytes >= 1024 * 1024
-        ? `${Math.round(bytes / (1024 * 1024))} MB`
-        : "";
-    const filename = String(stream.behaviorHints?.filename || stream.title || stream.name || "").trim();
+    const size =
+      bytes >= 1024 * 1024 * 1024
+        ? `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+        : bytes >= 1024 * 1024
+          ? `${Math.round(bytes / (1024 * 1024))} MB`
+          : "";
+    const filename = String(
+      stream.behaviorHints?.filename || stream.title || stream.name || ""
+    ).trim();
     return [
       stream.addonName || "Source",
       stream.quality || stream.qualityValue || "Video",
@@ -4585,7 +4662,14 @@ export const MetaDetailsScreen = {
     if (cancelPreparation) this.seasonDownloadFlow = null;
   },
 
-  showSeasonDownloadDialog({ title, subtitle = "", content = null, buttons = [], actionsClassName = "", panelClassName = "season-download-dialog" } = {}) {
+  showSeasonDownloadDialog({
+    title,
+    subtitle = "",
+    content = null,
+    buttons = [],
+    actionsClassName = "",
+    panelClassName = "season-download-dialog"
+  } = {}) {
     this.seasonDownloadDialog?.destroy?.();
     this.seasonDownloadDialog = new NuvioDialog({
       title,
@@ -4625,13 +4709,14 @@ export const MetaDetailsScreen = {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "season-download-select-source";
-      const subtitleLabel = selected?.subtitleMode === "all"
-        ? "All subtitles"
-        : selected?.subtitleMode === "language"
-          ? `All ${selected?.context?.offlineSubtitleLanguage || "subtitles"}`
-          : selected?.subtitleMode === "preferred"
-            ? "Preferred"
-            : selected?.subtitle?.lang || "None";
+      const subtitleLabel =
+        selected?.subtitleMode === "all"
+          ? "All subtitles"
+          : selected?.subtitleMode === "language"
+            ? `All ${selected?.context?.offlineSubtitleLanguage || "subtitles"}`
+            : selected?.subtitleMode === "preferred"
+              ? "Preferred"
+              : selected?.subtitle?.lang || "None";
       const sourceLabel = selected
         ? `${this.getSeasonDownloadSourceLabel(selected.stream)} · Subtitle: ${subtitleLabel}`
         : "Select Source";
@@ -4658,7 +4743,12 @@ export const MetaDetailsScreen = {
       this.showSeasonDownloadDialog({
         title: t("offline.downloadSeason", {}, "Download Season"),
         subtitle: "Sources unavailable while offline",
-        buttons: [{ label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }]
+        buttons: [
+          {
+            label: t("common.close", {}, "Close"),
+            onAction: () => this.closeSeasonDownloadDialog()
+          }
+        ]
       });
       return;
     }
@@ -4681,7 +4771,12 @@ export const MetaDetailsScreen = {
       this.showSeasonDownloadDialog({
         title: `Download ${season === 0 ? "Specials" : `Season ${season}`}`,
         subtitle: "Season already downloaded",
-        buttons: [{ label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }]
+        buttons: [
+          {
+            label: t("common.close", {}, "Close"),
+            onAction: () => this.closeSeasonDownloadDialog()
+          }
+        ]
       });
       return;
     }
@@ -4704,7 +4799,8 @@ export const MetaDetailsScreen = {
         {
           label: "Automatic + Preferred Subtitle",
           className: "season-download-mode-action",
-          onAction: () => void this.startAutomaticSeasonDownload(flow, { subtitleMode: "preferred" })
+          onAction: () =>
+            void this.startAutomaticSeasonDownload(flow, { subtitleMode: "preferred" })
         },
         {
           label: "Automatic + All Subtitles",
@@ -4716,12 +4812,19 @@ export const MetaDetailsScreen = {
           className: "season-download-mode-action",
           onAction: () => this.showManualSeasonDownloadDialog(flow)
         },
-        { label: t("common.cancel", {}, "Cancel"), className: "season-download-secondary-action", onAction: () => this.closeSeasonDownloadDialog() }
+        {
+          label: t("common.cancel", {}, "Cancel"),
+          className: "season-download-secondary-action",
+          onAction: () => this.closeSeasonDownloadDialog()
+        }
       ]
     });
   },
 
-  async startAutomaticSeasonDownload(flow = this.seasonDownloadFlow, { subtitleMode = "none" } = {}) {
+  async startAutomaticSeasonDownload(
+    flow = this.seasonDownloadFlow,
+    { subtitleMode = "none" } = {}
+  ) {
     if (!flow || flow.preparing) return;
     flow.preparing = true;
     flow.preparedCount = 0;
@@ -4729,7 +4832,13 @@ export const MetaDetailsScreen = {
       title: `Download ${flow.season === 0 ? "Specials" : `Season ${flow.season}`}`,
       subtitle: "Automatic",
       content: () => this.createSeasonDownloadSummaryContent(flow),
-      buttons: [{ label: t("common.cancel", {}, "Cancel"), className: "season-download-secondary-action", onAction: () => this.closeSeasonDownloadDialog() }]
+      buttons: [
+        {
+          label: t("common.cancel", {}, "Cancel"),
+          className: "season-download-secondary-action",
+          onAction: () => this.closeSeasonDownloadDialog()
+        }
+      ]
     });
     const prepared = await prepareAutomaticSeasonDownloads({
       episodes: flow.candidates,
@@ -4740,12 +4849,18 @@ export const MetaDetailsScreen = {
       isCancelled: () => flow.cancelled,
       onProgress: ({ completed }) => {
         flow.preparedCount = completed;
-        if (!flow.cancelled) this.showSeasonDownloadDialog({
-          title: `Download ${flow.season === 0 ? "Specials" : `Season ${flow.season}`}`,
-          subtitle: "Automatic",
-          content: () => this.createSeasonDownloadSummaryContent(flow),
-          buttons: [{ label: t("common.cancel", {}, "Cancel"), onAction: () => this.closeSeasonDownloadDialog() }]
-        });
+        if (!flow.cancelled)
+          this.showSeasonDownloadDialog({
+            title: `Download ${flow.season === 0 ? "Specials" : `Season ${flow.season}`}`,
+            subtitle: "Automatic",
+            content: () => this.createSeasonDownloadSummaryContent(flow),
+            buttons: [
+              {
+                label: t("common.cancel", {}, "Cancel"),
+                onAction: () => this.closeSeasonDownloadDialog()
+              }
+            ]
+          });
       }
     });
     if (flow.cancelled) return;
@@ -4758,7 +4873,8 @@ export const MetaDetailsScreen = {
             const subtitles = this.createSeasonOfflineSubtitleSnapshot(
               await this.discoverSeasonEpisodeSubtitles(selection.episode)
             );
-            const chosen = subtitleMode === "all" ? subtitles : this.getPreferredSeasonSubtitle(subtitles);
+            const chosen =
+              subtitleMode === "all" ? subtitles : this.getPreferredSeasonSubtitle(subtitles);
             Object.assign(
               selection.context,
               this.createSeasonOfflineSubtitleSelection(subtitleMode, chosen)
@@ -4772,7 +4888,8 @@ export const MetaDetailsScreen = {
     const outcomes = await enqueueSeasonDownloadSelections(selected, enqueueBrowserOfflineDownload);
     if (flow.cancelled) return;
     const added = outcomes.filter((entry) => !entry.error).length;
-    const skipped = flow.candidates.length - selected.length + outcomes.filter((entry) => entry.error).length;
+    const skipped =
+      flow.candidates.length - selected.length + outcomes.filter((entry) => entry.error).length;
     this.closeSeasonDownloadDialog({ cancelPreparation: false });
     this.seasonDownloadFlow = null;
     this.showSeasonDownloadResult(added, skipped);
@@ -4791,7 +4908,11 @@ export const MetaDetailsScreen = {
           onAction: () => void this.addManualSeasonDownloads(flow),
           className: `season-download-queue-action${selectedCount ? "" : " season-download-disabled"}`
         },
-        { label: t("common.cancel", {}, "Cancel"), className: "season-download-secondary-action", onAction: () => this.closeSeasonDownloadDialog() }
+        {
+          label: t("common.cancel", {}, "Cancel"),
+          className: "season-download-secondary-action",
+          onAction: () => this.closeSeasonDownloadDialog()
+        }
       ]
     });
   },
@@ -4802,7 +4923,13 @@ export const MetaDetailsScreen = {
     this.showSeasonDownloadDialog({
       title: `S${Number(episode.season)}E${Number(episode.episode)}`,
       subtitle: "Finding sources…",
-      buttons: [{ label: t("common.cancel", {}, "Cancel"), className: "season-download-secondary-action", onAction: () => this.closeSeasonDownloadDialog() }]
+      buttons: [
+        {
+          label: t("common.cancel", {}, "Cancel"),
+          className: "season-download-secondary-action",
+          onAction: () => this.closeSeasonDownloadDialog()
+        }
+      ]
     });
     let streams = [];
     try {
@@ -4812,10 +4939,14 @@ export const MetaDetailsScreen = {
     const eligible = streams.filter((stream) =>
       canQueueBrowserOfflineDownload(this.createSeasonOfflineDownloadContext(episode, stream))
     );
-    const selectedStreamId = String(flow.selections.get(String(episode.id || ""))?.stream?.id || "");
+    const selectedStreamId = String(
+      flow.selections.get(String(episode.id || ""))?.stream?.id || ""
+    );
     const buttons = eligible.map((stream) => {
       const sourceModel = normalizeSourceForDisplay(stream);
-      const sourceLabel = sourceModel.accessibleLabel || this.getSeasonDownloadSourceLabel(stream, { includeFilename: true });
+      const sourceLabel =
+        sourceModel.accessibleLabel ||
+        this.getSeasonDownloadSourceLabel(stream, { includeFilename: true });
       return {
         label: sourceLabel,
         title: sourceLabel,
@@ -4851,7 +4982,11 @@ export const MetaDetailsScreen = {
           },
       buttons: [
         ...buttons,
-        { label: t("common.back", {}, "Back"), className: "season-download-secondary-action", onAction: () => this.showManualSeasonDownloadDialog(flow) }
+        {
+          label: t("common.back", {}, "Back"),
+          className: "season-download-secondary-action",
+          onAction: () => this.showManualSeasonDownloadDialog(flow)
+        }
       ],
       actionsClassName: "season-download-source-picker-actions"
     });
@@ -4863,7 +4998,13 @@ export const MetaDetailsScreen = {
     this.showSeasonDownloadDialog({
       title: `S${Number(episode.season)}E${Number(episode.episode)}`,
       subtitle: "Finding subtitles…",
-      buttons: [{ label: t("common.back", {}, "Back"), className: "season-download-secondary-action", onAction: () => this.openManualSeasonSourcePicker(episode) }]
+      buttons: [
+        {
+          label: t("common.back", {}, "Back"),
+          className: "season-download-secondary-action",
+          onAction: () => this.openManualSeasonSourcePicker(episode)
+        }
+      ]
     });
     let subtitles = [];
     try {
@@ -4872,9 +5013,8 @@ export const MetaDetailsScreen = {
       );
     } catch (_) {}
     if (flow.cancelled) return;
-    const snapshot = createBrowserOfflineSubtitleSnapshot(
-      subtitles,
-      (subtitle) => this.createSeasonOfflineSubtitleDescriptor(subtitle)
+    const snapshot = createBrowserOfflineSubtitleSnapshot(subtitles, (subtitle) =>
+      this.createSeasonOfflineSubtitleDescriptor(subtitle)
     );
     const preferred = this.getPreferredSeasonSubtitle(snapshot.map((entry) => entry.subtitle));
     const pickerState = { selectedMode: "none", selectedIndex: null, selectedLanguage: "" };
@@ -4886,15 +5026,17 @@ export const MetaDetailsScreen = {
       header.className = "download-options-header";
       header.innerHTML = `<div class="stream-download-options-source">${escapeHtml([`S${Number(episode.season)}E${Number(episode.episode)}`, episode.title || "", sourceDisplay.quality || ""].filter(Boolean).join(" · "))}<span>${escapeHtml(sourceDisplay.addonName || selected.stream?.addonName || "")}</span></div><div class="stream-download-options-label">Subtitles</div>`;
       content.appendChild(header);
-      content.appendChild(createBrowserOfflineSubtitlePicker({
-        snapshot,
-        selection: pickerState,
-        preferredLabel: preferred ? normalizeSubtitleForDisplay(preferred).language : "",
-        onSelect: (next) => {
-          Object.assign(pickerState, next);
-          showPicker();
-        }
-      }));
+      content.appendChild(
+        createBrowserOfflineSubtitlePicker({
+          snapshot,
+          selection: pickerState,
+          preferredLabel: preferred ? normalizeSubtitleForDisplay(preferred).language : "",
+          onSelect: (next) => {
+            Object.assign(pickerState, next);
+            showPicker();
+          }
+        })
+      );
       this.showSeasonDownloadDialog({
         title: "Choose Subtitle",
         subtitle: "",
@@ -4912,14 +5054,18 @@ export const MetaDetailsScreen = {
               const languageSubtitles = snapshot
                 .filter((entry) => entry.language === pickerState.selectedLanguage)
                 .map((entry) => entry.subtitle);
-              const chosen = pickerState.selectedMode === "all"
-                ? snapshot.map((entry) => entry.subtitle)
-                : pickerState.selectedMode === "language"
-                  ? languageSubtitles
-                  : pickerState.selectedMode === "preferred"
-                    ? preferred
-                    : selectedSubtitle;
-              const subtitleSelection = this.createSeasonOfflineSubtitleSelection(pickerState.selectedMode, chosen);
+              const chosen =
+                pickerState.selectedMode === "all"
+                  ? snapshot.map((entry) => entry.subtitle)
+                  : pickerState.selectedMode === "language"
+                    ? languageSubtitles
+                    : pickerState.selectedMode === "preferred"
+                      ? preferred
+                      : selectedSubtitle;
+              const subtitleSelection = this.createSeasonOfflineSubtitleSelection(
+                pickerState.selectedMode,
+                chosen
+              );
               flow.selections.set(String(episode.id || ""), {
                 episode,
                 ...selected,
@@ -4927,14 +5073,20 @@ export const MetaDetailsScreen = {
                 context: {
                   ...selected.context,
                   ...subtitleSelection,
-                  ...(pickerState.selectedMode === "language" ? { offlineSubtitleLanguage: pickerState.selectedLanguage } : {})
+                  ...(pickerState.selectedMode === "language"
+                    ? { offlineSubtitleLanguage: pickerState.selectedLanguage }
+                    : {})
                 },
                 subtitle: selectedSubtitle
               });
               this.showManualSeasonDownloadDialog(flow);
             }
           },
-          { label: t("common.back", {}, "Back"), className: "season-download-secondary-action", onAction: () => this.openManualSeasonSourcePicker(episode) }
+          {
+            label: t("common.back", {}, "Back"),
+            className: "season-download-secondary-action",
+            onAction: () => this.openManualSeasonSourcePicker(episode)
+          }
         ]
       });
     };
@@ -4949,7 +5101,8 @@ export const MetaDetailsScreen = {
     const outcomes = await enqueueSeasonDownloadSelections(ordered, enqueueBrowserOfflineDownload);
     if (flow.cancelled) return;
     const added = outcomes.filter((entry) => !entry.error).length;
-    const skipped = flow.candidates.length - ordered.length + outcomes.filter((entry) => entry.error).length;
+    const skipped =
+      flow.candidates.length - ordered.length + outcomes.filter((entry) => entry.error).length;
     this.closeSeasonDownloadDialog({ cancelPreparation: false });
     this.seasonDownloadFlow = null;
     this.showSeasonDownloadResult(added, skipped);
@@ -4959,7 +5112,9 @@ export const MetaDetailsScreen = {
     this.showSeasonDownloadDialog({
       title: t("offline.downloadSeason", {}, "Download Season"),
       subtitle: `${added} episode${added === 1 ? "" : "s"} added to download queue${skipped ? ` · ${skipped} skipped` : ""}`,
-      buttons: [{ label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }]
+      buttons: [
+        { label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }
+      ]
     });
   },
 
@@ -5143,7 +5298,7 @@ export const MetaDetailsScreen = {
     });
     const isDownloaded = Boolean(
       episode.offlineDownloadId ||
-        (offlineEpisodeMediaId && this.offlineEpisodeMediaIds?.has(offlineEpisodeMediaId))
+      (offlineEpisodeMediaId && this.offlineEpisodeMediaIds?.has(offlineEpisodeMediaId))
     );
     const metaParts = [
       episode.runtimeMinutes > 0 ? renderEpisodeRuntimeLabel(episode.runtimeMinutes) : "",
@@ -6044,7 +6199,9 @@ export const MetaDetailsScreen = {
       this.desktopLibraryDestinationMenu = null;
       this.destroyDetailHoldDialog();
       await this.refreshCurrentLibraryMembership();
-      this.focusDetailDescriptor({ selector: ".series-detail-actions [data-action='toggleLibrary']" });
+      this.focusDetailDescriptor({
+        selector: ".series-detail-actions [data-action='toggleLibrary']"
+      });
       return true;
     } catch (error) {
       console.warn("Failed to update selected library destination", error);
@@ -6169,9 +6326,10 @@ export const MetaDetailsScreen = {
     if (!this.heroPlayMenu && !this.libraryListMenu && !this.desktopLibraryDestinationMenu) {
       return false;
     }
-    const focusDescriptor = this.libraryListMenu || this.desktopLibraryDestinationMenu
-      ? { selector: ".series-detail-actions [data-action='toggleLibrary']" }
-      : { selector: ".series-detail-actions [data-action='playDefault']" };
+    const focusDescriptor =
+      this.libraryListMenu || this.desktopLibraryDestinationMenu
+        ? { selector: ".series-detail-actions [data-action='toggleLibrary']" }
+        : { selector: ".series-detail-actions [data-action='playDefault']" };
     this.heroPlayMenu = null;
     this.libraryListMenu = null;
     this.desktopLibraryDestinationMenu = null;
@@ -6272,9 +6430,7 @@ export const MetaDetailsScreen = {
     if (!item.itemId) {
       return false;
     }
-    const sourceMode = await libraryRepository
-      .getSourceMode()
-      .catch(() => LibrarySourceMode.LOCAL);
+    const sourceMode = await libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL);
     const snapshot = await libraryRepository
       .getMembershipSnapshot(item)
       .catch(() => ({ listMembership: {} }));
@@ -6322,10 +6478,7 @@ export const MetaDetailsScreen = {
             ? Object.fromEntries(
                 tabs
                   .filter((tab) => tab.isMembershipDestination !== false)
-                  .map((tab) => [
-                    tab.key,
-                    membership[defaultKey] ? false : tab.key === defaultKey
-                  ])
+                  .map((tab) => [tab.key, membership[defaultKey] ? false : tab.key === defaultKey])
               )
             : { [defaultKey]: !membership[defaultKey] };
         await libraryRepository.applyMembershipChanges(item, { desiredMembership });
@@ -7076,11 +7229,15 @@ export const MetaDetailsScreen = {
     }
     if (action === "saveLibraryLists" || action === "confirmDestructiveSimklRemoval") {
       try {
-        await libraryRepository.applyMembershipChanges(this.libraryListMenu.item, {
-          desiredMembership: this.libraryListMenu.membership || {}
-        }, {
-          destructiveRemovalConfirmed: action === "confirmDestructiveSimklRemoval"
-        });
+        await libraryRepository.applyMembershipChanges(
+          this.libraryListMenu.item,
+          {
+            desiredMembership: this.libraryListMenu.membership || {}
+          },
+          {
+            destructiveRemovalConfirmed: action === "confirmDestructiveSimklRemoval"
+          }
+        );
         this.isSavedInLibrary = Object.values(this.libraryListMenu.membership || {}).some(Boolean);
         this.closeHeroMenus({ restoreFocus: false });
         this.syncDetailActionButtons();
@@ -7319,7 +7476,9 @@ export const MetaDetailsScreen = {
         name: entry?.name || "",
         logo: toLogo(entry?.logo || entry?.logoPath || entry?.logo_path || "")
       }))
-      .filter((entry) => (production && Platform.isBrowser() ? entry.logo : entry.logo || entry.name));
+      .filter((entry) =>
+        production && Platform.isBrowser() ? entry.logo : entry.logo || entry.name
+      );
     if (!companies.length) {
       return "";
     }
@@ -7387,9 +7546,7 @@ export const MetaDetailsScreen = {
   },
 
   bindDesktopPreviewRailDragScrolling() {
-    const tracks = Array.from(
-      this.container?.querySelectorAll(".detail-morelike-track") || []
-    );
+    const tracks = Array.from(this.container?.querySelectorAll(".detail-morelike-track") || []);
     tracks.forEach((track) => {
       this.bindDesktopHorizontalRailDragScrolling({
         track,
@@ -7510,7 +7667,10 @@ export const MetaDetailsScreen = {
       }
       const distance = event.clientX - state.startX;
       const verticalDistance = event.clientY - state.startY;
-      if (!state.dragging && (Math.abs(distance) < 6 || Math.abs(distance) <= Math.abs(verticalDistance))) {
+      if (
+        !state.dragging &&
+        (Math.abs(distance) < 6 || Math.abs(distance) <= Math.abs(verticalDistance))
+      ) {
         return;
       }
       if (!state.dragging) {
@@ -7537,7 +7697,11 @@ export const MetaDetailsScreen = {
     });
     track.addEventListener("pointerleave", (event) => {
       const state = this[stateKey];
-      if (state?.track === track && state.pointerId === event.pointerId && !track.hasPointerCapture?.(event.pointerId)) {
+      if (
+        state?.track === track &&
+        state.pointerId === event.pointerId &&
+        !track.hasPointerCapture?.(event.pointerId)
+      ) {
         clear();
       }
     });
@@ -7602,13 +7766,15 @@ export const MetaDetailsScreen = {
         return;
       }
       const action = String(actionNode.dataset.action || "");
-      if (![
-        "playDefault",
-        "playFromBeginning",
-        "toggleLibrary",
-        "toggleWatched",
-        "toggleTrailer"
-      ].includes(action)) {
+      if (
+        ![
+          "playDefault",
+          "playFromBeginning",
+          "toggleLibrary",
+          "toggleWatched",
+          "toggleTrailer"
+        ].includes(action)
+      ) {
         return;
       }
       if (action === "toggleLibrary" && this.desktopLibraryLongPressTriggered) {
@@ -7796,7 +7962,8 @@ export const MetaDetailsScreen = {
       }
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
-        cardSelector: ".movie-cast-card[data-action='openCastPerson'], .series-episode-card[data-action='openEpisodeStreams'], .detail-trailer-card[data-action='openSharedTrailer'], .detail-morelike-card[data-action='openMoreLikeDetail']"
+        cardSelector:
+          ".movie-cast-card[data-action='openCastPerson'], .series-episode-card[data-action='openEpisodeStreams'], .detail-trailer-card[data-action='openSharedTrailer'], .detail-morelike-card[data-action='openMoreLikeDetail']"
       });
       this.browserHorizontalTabScrollCleanup?.();
       this.browserHorizontalTabScrollCleanup = bindBrowserHorizontalTabScroll(this.container, [
@@ -8317,9 +8484,12 @@ export const MetaDetailsScreen = {
     ) {
       return;
     }
-    this.trailerAutoplayTimer = setTimeout(() => {
-      this.playTrailer({ muted: false, restart: true, initiatedByUser: false });
-    }, Math.min(15, Math.max(0, Number(PlayerSettingsStore.get().trailerDelaySeconds ?? 7))) * 1000);
+    this.trailerAutoplayTimer = setTimeout(
+      () => {
+        this.playTrailer({ muted: false, restart: true, initiatedByUser: false });
+      },
+      Math.min(15, Math.max(0, Number(PlayerSettingsStore.get().trailerDelaySeconds ?? 7))) * 1000
+    );
   },
 
   detachTrailerMediaListeners() {
@@ -8793,11 +8963,7 @@ export const MetaDetailsScreen = {
     this.desktopTrailerModal = null;
     modal.session?.close?.();
     closeSharedDesktopTrailerModal({ notify: false });
-    if (
-      restoreFocus &&
-      modal.detailToken === this.detailLoadToken &&
-      this.container?.isConnected
-    ) {
+    if (restoreFocus && modal.detailToken === this.detailLoadToken && this.container?.isConnected) {
       this.focusDetailDescriptor(modal.focusRestore);
     }
     return true;
@@ -8814,8 +8980,8 @@ export const MetaDetailsScreen = {
     const modalState = {
       detailToken,
       requestToken,
-      focusRestore:
-        focusRestore || this.captureDetailFocus() || {
+      focusRestore: focusRestore ||
+        this.captureDetailFocus() || {
           selector: '.series-detail-actions [data-action="toggleTrailer"]'
         },
       session: null
@@ -11506,20 +11672,33 @@ export const MetaDetailsScreen = {
     }
     if (this.container) {
       if (this.boundDesktopLibraryPointerDownHandler) {
-        this.container.removeEventListener("pointerdown", this.boundDesktopLibraryPointerDownHandler);
+        this.container.removeEventListener(
+          "pointerdown",
+          this.boundDesktopLibraryPointerDownHandler
+        );
       }
       if (this.boundDesktopLibraryPointerMoveHandler) {
-        this.container.removeEventListener("pointermove", this.boundDesktopLibraryPointerMoveHandler);
+        this.container.removeEventListener(
+          "pointermove",
+          this.boundDesktopLibraryPointerMoveHandler
+        );
       }
       if (this.boundDesktopLibraryPointerLeaveHandler) {
-        this.container.removeEventListener("pointerleave", this.boundDesktopLibraryPointerLeaveHandler);
+        this.container.removeEventListener(
+          "pointerleave",
+          this.boundDesktopLibraryPointerLeaveHandler
+        );
       }
     }
     if (this.boundDesktopLibraryPointerUpHandler) {
       window.removeEventListener("pointerup", this.boundDesktopLibraryPointerUpHandler, true);
     }
     if (this.boundDesktopLibraryPointerCancelHandler) {
-      window.removeEventListener("pointercancel", this.boundDesktopLibraryPointerCancelHandler, true);
+      window.removeEventListener(
+        "pointercancel",
+        this.boundDesktopLibraryPointerCancelHandler,
+        true
+      );
     }
     this.boundDesktopLibraryPointerDownHandler = null;
     this.boundDesktopLibraryPointerMoveHandler = null;

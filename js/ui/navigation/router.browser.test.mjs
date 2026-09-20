@@ -100,8 +100,16 @@ const testWindow = {
 
 const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
-Object.defineProperty(globalThis, "document", { configurable: true, writable: true, value: testDocument });
-Object.defineProperty(globalThis, "window", { configurable: true, writable: true, value: testWindow });
+Object.defineProperty(globalThis, "document", {
+  configurable: true,
+  writable: true,
+  value: testDocument
+});
+Object.defineProperty(globalThis, "window", {
+  configurable: true,
+  writable: true,
+  value: testWindow
+});
 
 const { Platform } = await import("../../platform/index.js");
 Platform.current = null;
@@ -136,9 +144,10 @@ function makeRouteStateScreen(name, routeStateKey) {
   screen.captureRouteState = () => ({ value: screen.value });
   screen.mount = async function mount(params, context) {
     this.params = params;
-    this.value = context?.restoreRouteState && context?.restoredState
-      ? String(context.restoredState.value || "")
-      : String(params?.value || "");
+    this.value =
+      context?.restoreRouteState && context?.restoredState
+        ? String(context.restoredState.value || "")
+        : String(params?.value || "");
     this.mounts.push({ params, context, value: this.value });
   };
   return screen;
@@ -174,9 +183,10 @@ function makeFolderRouteStateScreen() {
   screen.captureRouteState = () => ({ tab: screen.tab });
   screen.mount = async function mount(params, context) {
     this.params = params;
-    this.tab = context?.restoreRouteState && context?.restoredState
-      ? Number(context.restoredState.tab || 0)
-      : 0;
+    this.tab =
+      context?.restoreRouteState && context?.restoredState
+        ? Number(context.restoredState.tab || 0)
+        : 0;
     this.mounts.push({ params, context, tab: this.tab });
   };
   return screen;
@@ -328,12 +338,14 @@ test("visual route state restores only on the same history entry and ignores a m
   search.captureRouteState = () => ({ value: search.value, visualState: search.visual });
   search.mount = async function mount(params, context) {
     this.params = params;
-    this.value = context?.restoreRouteState && context?.restoredState
-      ? String(context.restoredState.value || "")
-      : String(params?.value || "");
-    this.visual = context?.restoreRouteState && context?.restoredState?.visualState
-      ? context.restoredState.visualState
-      : { scrollTop: 0, railLeft: 0, focusId: null };
+    this.value =
+      context?.restoreRouteState && context?.restoredState
+        ? String(context.restoredState.value || "")
+        : String(params?.value || "");
+    this.visual =
+      context?.restoreRouteState && context?.restoredState?.visualState
+        ? context.restoredState.visualState
+        : { scrollTop: 0, railLeft: 0, focusId: null };
     this.mounts.push({ params, context, value: this.value, visual: this.visual });
   };
   resetRouter({ home, search, detail });
@@ -350,14 +362,22 @@ test("visual route state restores only on the same history entry and ignores a m
 
   await Router.navigate("home");
   await Router.navigate("search");
-  assert.deepEqual(search.visual, { scrollTop: 0, railLeft: 0, focusId: null }, "a fresh entry must not reuse visual state");
+  assert.deepEqual(
+    search.visual,
+    { scrollTop: 0, railLeft: 0, focusId: null },
+    "a fresh entry must not reuse visual state"
+  );
 
   search.value = "superman";
   search.visual = { scrollTop: 240, railLeft: 80, focusId: "missing-card" };
   await Router.navigate("detail", { itemId: "movie-b" });
   history.back();
   await history.whenSettled();
-  assert.equal(search.value, "superman", "logical Issue #5 state and visual Issue #6 state restore together");
+  assert.equal(
+    search.value,
+    "superman",
+    "logical Issue #5 state and visual Issue #6 state restore together"
+  );
   assert.deepEqual(search.visual, { scrollTop: 240, railLeft: 80, focusId: "missing-card" });
 });
 
@@ -410,7 +430,11 @@ test("replaceHistory clears obsolete entry snapshots before a different route oc
   await history.whenSettled();
 
   assert.equal(Router.getCurrent(), "detail");
-  assert.equal(detail.value, "", "a replacement route must not inherit the replaced Search snapshot");
+  assert.equal(
+    detail.value,
+    "",
+    "a replacement route must not inherit the replaced Search snapshot"
+  );
 });
 
 test("browser Forward restores the snapshot captured for the forward entry", async () => {
@@ -558,7 +582,9 @@ test("browser Back restores Player → Stream → Detail through existing entrie
   await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
   await Router.navigate("stream", { itemId: "movie-1", itemType: "movie" });
   await Router.navigate("player", { itemId: "movie-1", itemType: "movie" });
-  const writesBeforeBack = historyCalls.filter((call) => call.type === "push" || call.type === "replace").length;
+  const writesBeforeBack = historyCalls.filter(
+    (call) => call.type === "push" || call.type === "replace"
+  ).length;
 
   history.back();
   await history.whenSettled();
@@ -571,7 +597,10 @@ test("browser Back restores Player → Stream → Detail through existing entrie
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "detail");
-  assert.equal(historyCalls.filter((call) => call.type === "push" || call.type === "replace").length, writesBeforeBack);
+  assert.equal(
+    historyCalls.filter((call) => call.type === "push" || call.type === "replace").length,
+    writesBeforeBack
+  );
   assert.deepEqual(historyRoutes(), ["detail", "stream", "player"]);
 });
 
@@ -651,7 +680,9 @@ test("Player app Back returns to the original Stream entry, then Detail", async 
     returnToStreamOnBack: true,
     streamRouteParams: { itemId: "movie-1", itemType: "movie" }
   });
-  const writesBeforeBack = historyCalls.filter((call) => call.type === "push" || call.type === "replace").length;
+  const writesBeforeBack = historyCalls.filter(
+    (call) => call.type === "push" || call.type === "replace"
+  ).length;
 
   await Router.back();
   await history.whenSettled();
@@ -660,7 +691,10 @@ test("Player app Back returns to the original Stream entry, then Detail", async 
   assert.equal(history.index, 1);
   assert.equal(history.state.__nuvioHistory.index, 1);
   assert.deepEqual(historyRoutes(), ["detail", "stream", "player"]);
-  assert.equal(historyCalls.filter((call) => call.type === "push" || call.type === "replace").length, writesBeforeBack);
+  assert.equal(
+    historyCalls.filter((call) => call.type === "push" || call.type === "replace").length,
+    writesBeforeBack
+  );
 
   await Router.back();
   await history.whenSettled();
@@ -843,7 +877,11 @@ test("Home -> Detail -> Stream -> Detail -> Home keeps both Home and Detail susp
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "home");
-  assert.equal(home.mounts.length, 1, "returning directly from Detail resumes Home instead of remounting it");
+  assert.equal(
+    home.mounts.length,
+    1,
+    "returning directly from Detail resumes Home instead of remounting it"
+  );
   assert.equal(home.cleanupCalls, 0);
 
   // Comparison B: from that same suspended arrangement, detour through
@@ -857,16 +895,32 @@ test("Home -> Detail -> Stream -> Detail -> Home keeps both Home and Detail susp
   await Router.navigate("detail", { itemId: "movie-b" });
   assert.equal(home.cleanupCalls, 0, "Home is suspended again under this second Detail visit");
   await Router.navigate("stream", { itemId: "movie-b" });
-  assert.equal(home.cleanupCalls, 0, "leaving Detail for Stream must not release the suspended Home parent");
-  assert.equal(stream.container.style.getPropertyValue("z-index"), "1001", "Stream layers above the already-suspended Home/Detail pair");
+  assert.equal(
+    home.cleanupCalls,
+    0,
+    "leaving Detail for Stream must not release the suspended Home parent"
+  );
+  assert.equal(
+    stream.container.style.getPropertyValue("z-index"),
+    "1001",
+    "Stream layers above the already-suspended Home/Detail pair"
+  );
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "detail");
-  assert.equal(detail.mounts.length, 2, "Detail resumes the suspended instance, it is not remounted a third time");
+  assert.equal(
+    detail.mounts.length,
+    2,
+    "Detail resumes the suspended instance, it is not remounted a third time"
+  );
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "home");
-  assert.equal(home.mounts.length, 1, "Home resumes the same suspended instance after the Stream Selection detour, it is never remounted");
+  assert.equal(
+    home.mounts.length,
+    1,
+    "Home resumes the same suspended instance after the Stream Selection detour, it is never remounted"
+  );
   assert.equal(home.cleanupCalls, 0);
 });
 
@@ -875,12 +929,22 @@ test("leaving a chain for an unrelated route keeps every entry behind it live, b
   const detail = makeScreen("detail");
   const stream = makeScreen("stream");
   const library = makeScreen("library");
-  for (const [name, screen] of [["home", home], ["detail", detail], ["stream", stream], ["library", library]]) {
+  for (const [name, screen] of [
+    ["home", home],
+    ["detail", detail],
+    ["stream", stream],
+    ["library", library]
+  ]) {
     screen.container = makeContainer();
     screenContainers.set(name, screen.container);
   }
   resetRouter({ home, detail, stream, library });
-  for (const [name, screen] of [["home", home], ["detail", detail], ["stream", stream], ["library", library]]) {
+  for (const [name, screen] of [
+    ["home", home],
+    ["detail", detail],
+    ["stream", stream],
+    ["library", library]
+  ]) {
     screenContainers.set(name, screen.container);
   }
   Router.init();
@@ -975,7 +1039,11 @@ test("Stream suspends under Player and resumes on Back, without suspending Playe
   assert.equal(Router.getCurrent(), "stream");
   assert.equal(stream.mounts.length, 1, "Stream resumes the same suspended instance");
   assert.equal(stream.cleanupCalls, 0);
-  assert.equal(player.cleanupCalls, 1, "Player's own DOM/decoders are torn down like any other plain route");
+  assert.equal(
+    player.cleanupCalls,
+    1,
+    "Player's own DOM/decoders are torn down like any other plain route"
+  );
 
   history.back();
   await history.whenSettled();
@@ -999,7 +1067,11 @@ test("castDetail (Actor/Person) suspends Detail and resumes it on Back without r
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "detail");
-  assert.equal(detail.mounts.length, 1, "Detail resumes the same suspended instance, unaffected by the Actor detour");
+  assert.equal(
+    detail.mounts.length,
+    1,
+    "Detail resumes the same suspended instance, unaffected by the Actor detour"
+  );
   assert.equal(detail.cleanupCalls, 0);
 });
 
@@ -1021,7 +1093,11 @@ test("a route can never be layered under itself: one live layer per screen conta
   // rather than a policy choice.
   await Router.navigate("detail", { itemId: "movie-2" });
 
-  assert.equal(detail.cleanupCalls, 1, "the layer holding #detail is released before the new title mounts into it");
+  assert.equal(
+    detail.cleanupCalls,
+    1,
+    "the layer holding #detail is released before the new title mounts into it"
+  );
   assert.equal(detail.mounts.length, 2, "the new title is a genuine fresh mount");
   assert.deepEqual(
     Router.suspendedRouteStack.map((layer) => layer.route),
@@ -1123,7 +1199,11 @@ test("replacing the current entry while layers are live still puts the new scree
   );
 
   assert.equal(Router.getCurrent(), "stream");
-  assert.equal(screens.stream.container.style.getPropertyValue("position"), "fixed", "Stream must be the layer on top");
+  assert.equal(
+    screens.stream.container.style.getPropertyValue("position"),
+    "fixed",
+    "Stream must be the layer on top"
+  );
   assert.equal(screens.stream.container.style.getPropertyValue("z-index"), "1000");
   assert.equal(
     screens.detail.container.style.getPropertyValue("position"),
@@ -1249,7 +1329,11 @@ test("the same nested-history restoration applies to Library, not just Home", as
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "library");
-  assert.equal(library.visualState.scrollTop, 800, "Library restores its own scroll the same way Home does");
+  assert.equal(
+    library.visualState.scrollTop,
+    800,
+    "Library restores its own scroll the same way Home does"
+  );
 });
 
 test("Detail A -> Detail B -> Back restores Detail A's own captured scroll position", async () => {
@@ -1509,12 +1593,17 @@ test("browser Back from Stream restores the existing Detail without a synthetic 
 
   await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
   await Router.navigate("stream", { itemId: "movie-1", itemType: "movie", returnToDetail: true });
-  const writesBeforeBack = historyCalls.filter((call) => call.type === "push" || call.type === "replace").length;
+  const writesBeforeBack = historyCalls.filter(
+    (call) => call.type === "push" || call.type === "replace"
+  ).length;
 
   history.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "detail");
-  assert.equal(historyCalls.filter((call) => call.type === "push" || call.type === "replace").length, writesBeforeBack);
+  assert.equal(
+    historyCalls.filter((call) => call.type === "push" || call.type === "replace").length,
+    writesBeforeBack
+  );
 });
 
 test("valid popstate targets remain authoritative for Detail and Stream", async () => {
@@ -1603,21 +1692,29 @@ test("direct Continue Watching movie and episode routes safely fall back to Home
   Router.init();
 
   await Router.navigate("home");
-  await Router.navigate("stream", {
-    itemId: "movie-1",
-    itemType: "movie",
-    continueWatchingBackHome: true
-  }, { skipStackPush: true, replaceHistory: true });
+  await Router.navigate(
+    "stream",
+    {
+      itemId: "movie-1",
+      itemType: "movie",
+      continueWatchingBackHome: true
+    },
+    { skipStackPush: true, replaceHistory: true }
+  );
   await Router.back();
   await flushNavigation();
   assert.equal(Router.getCurrent(), "home");
   assert.deepEqual(historyRoutes(), ["home"]);
 
-  await Router.navigate("stream", {
-    itemId: "series-1",
-    itemType: "series",
-    continueWatchingBackHome: true
-  }, { skipStackPush: true, replaceHistory: true });
+  await Router.navigate(
+    "stream",
+    {
+      itemId: "series-1",
+      itemType: "series",
+      continueWatchingBackHome: true
+    },
+    { skipStackPush: true, replaceHistory: true }
+  );
   await Router.back();
   await flushNavigation();
   assert.equal(Router.getCurrent(), "home");

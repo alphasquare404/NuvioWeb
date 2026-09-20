@@ -26,9 +26,7 @@ export function patchContinueWatchingDisplayProgress(displayItems, progressItem)
   if (!key || !Array.isArray(displayItems) || !displayItems.length) {
     return null;
   }
-  const index = displayItems.findIndex(
-    (item) => buildContinueWatchingIdentityKey(item) === key
-  );
+  const index = displayItems.findIndex((item) => buildContinueWatchingIdentityKey(item) === key);
   if (index === -1) {
     return null;
   }

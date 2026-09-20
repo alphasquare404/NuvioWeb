@@ -49,9 +49,7 @@ function traktHistoryBody(item = {}) {
   };
   const isEpisode = item.season != null && item.episode != null;
   if (isEpisode) {
-    media.seasons = [
-      { number: Number(item.season), episodes: [{ number: Number(item.episode) }] }
-    ];
+    media.seasons = [{ number: Number(item.season), episodes: [{ number: Number(item.episode) }] }];
   }
   const type = String(item.contentType || item.itemType || item.type || "movie").toLowerCase();
   return ["series", "show", "tv", "anime"].includes(type)
@@ -71,7 +69,9 @@ async function writeTraktHistory(item, remove = false) {
     }
   );
   if (!response.ok) {
-    throw new Error(payload?.message || `Could not update Trakt watched history (${response.status})`);
+    throw new Error(
+      payload?.message || `Could not update Trakt watched history (${response.status})`
+    );
   }
 }
 
@@ -146,7 +146,10 @@ class WatchedItemsRepository {
     if (!shouldUseSimkl()) return local.slice(0, limit);
     const remote = await SimklSyncService.getWatchedItems().catch(() => []);
     const remoteKeys = new Set(remote.map(watchedKey));
-    return [...remote, ...local.filter((item) => !remoteKeys.has(watchedKey(item)))].slice(0, limit);
+    return [...remote, ...local.filter((item) => !remoteKeys.has(watchedKey(item)))].slice(
+      0,
+      limit
+    );
   }
 
   async isWatched(contentId, options = {}) {
@@ -204,13 +207,13 @@ class WatchedItemsRepository {
         : remoteMatches.length
           ? remoteMatches
           : [
-            {
-              contentId,
-              contentType: options?.contentType || "movie",
-              season: options?.season ?? null,
-              episode: options?.episode ?? null,
-              videoId: options?.videoId || null
-            }
+              {
+                contentId,
+                contentType: options?.contentType || "movie",
+                season: options?.season ?? null,
+                episode: options?.episode ?? null,
+                videoId: options?.videoId || null
+              }
             ];
       for (const item of targets) {
         await SimklSyncService.unmarkWatched(item);

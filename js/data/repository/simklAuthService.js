@@ -53,7 +53,9 @@ async function readPayload(response) {
 
 function errorMessage(payload, status) {
   if (payload && typeof payload === "object") {
-    return String(payload.message || payload.error_description || payload.error || `HTTP ${status}`);
+    return String(
+      payload.message || payload.error_description || payload.error || `HTTP ${status}`
+    );
   }
   return `Simkl request failed (${status})`;
 }
@@ -84,11 +86,15 @@ async function executeSimklRequest(
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     let response;
     try {
-      response = await rateLimitedFetch(url.toString(), {
-        method,
-        headers,
-        body: body == null ? undefined : JSON.stringify(body)
-      }, method);
+      response = await rateLimitedFetch(
+        url.toString(),
+        {
+          method,
+          headers,
+          body: body == null ? undefined : JSON.stringify(body)
+        },
+        method
+      );
     } catch (error) {
       if (attempt + 1 >= attempts) throw error;
       await sleep(Math.min(60000, 1000 * 2 ** attempt));

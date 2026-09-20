@@ -1,1 +1,5 @@
-npm run format:check
+# Check only the files being committed. A repo-wide check fails on formatting
+# inherited from upstream and would block every commit regardless of its
+# contents.
+git diff --cached --name-only --diff-filter=ACM -z |
+  xargs -0 -r npx prettier --check --ignore-unknown

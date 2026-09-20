@@ -5,8 +5,24 @@ const { patchContinueWatchingDisplayProgress } = await import("./continueWatchin
 
 test("patches positionMs/durationMs on the matching displayed movie", () => {
   const display = [
-    { contentId: "tt1", videoId: null, season: null, episode: null, positionMs: 1000, durationMs: 9000, title: "A" },
-    { contentId: "tt2", videoId: null, season: null, episode: null, positionMs: 2000, durationMs: 9000, title: "B" }
+    {
+      contentId: "tt1",
+      videoId: null,
+      season: null,
+      episode: null,
+      positionMs: 1000,
+      durationMs: 9000,
+      title: "A"
+    },
+    {
+      contentId: "tt2",
+      videoId: null,
+      season: null,
+      episode: null,
+      positionMs: 2000,
+      durationMs: 9000,
+      title: "B"
+    }
   ];
   const result = patchContinueWatchingDisplayProgress(display, {
     contentId: "tt2",
@@ -26,8 +42,22 @@ test("patches positionMs/durationMs on the matching displayed movie", () => {
 
 test("matches a series item by contentId + season + episode, not just contentId", () => {
   const display = [
-    { contentId: "series1", videoId: null, season: 1, episode: 2, positionMs: 1000, durationMs: 9000 },
-    { contentId: "series1", videoId: null, season: 1, episode: 3, positionMs: 500, durationMs: 9000 }
+    {
+      contentId: "series1",
+      videoId: null,
+      season: 1,
+      episode: 2,
+      positionMs: 1000,
+      durationMs: 9000
+    },
+    {
+      contentId: "series1",
+      videoId: null,
+      season: 1,
+      episode: 3,
+      positionMs: 500,
+      durationMs: 9000
+    }
   ];
   const result = patchContinueWatchingDisplayProgress(display, {
     contentId: "series1",
@@ -43,7 +73,14 @@ test("matches a series item by contentId + season + episode, not just contentId"
 
 test("returns null when the item is not currently displayed (falls back to full refresh)", () => {
   const display = [
-    { contentId: "tt1", videoId: null, season: null, episode: null, positionMs: 1000, durationMs: 9000 }
+    {
+      contentId: "tt1",
+      videoId: null,
+      season: null,
+      episode: null,
+      positionMs: 1000,
+      durationMs: 9000
+    }
   ];
   const result = patchContinueWatchingDisplayProgress(display, {
     contentId: "tt-not-shown",
@@ -69,5 +106,8 @@ test("returns null for an empty or missing display list", () => {
 
 test("returns null when the progress item has no contentId", () => {
   const display = [{ contentId: "tt1", positionMs: 1000, durationMs: 9000 }];
-  assert.equal(patchContinueWatchingDisplayProgress(display, { positionMs: 1, durationMs: 2 }), null);
+  assert.equal(
+    patchContinueWatchingDisplayProgress(display, { positionMs: 1, durationMs: 2 }),
+    null
+  );
 });

@@ -6,7 +6,9 @@ const HANDOFF_TTL_MS = 10 * 60 * 1000;
 // that page a small, bounded window to finish before asking the user instead.
 const FOREGROUND_RETRY_DELAYS_MS = [0, 500, 1000, 2000];
 
-function getStorage(runtime) { return runtime?.localStorage; }
+function getStorage(runtime) {
+  return runtime?.localStorage;
+}
 
 function writeHandoff(handoff, runtime = globalThis) {
   try {
@@ -21,7 +23,9 @@ function getReturnOrigin(runtime) {
   try {
     const url = new URL(String(runtime?.location?.href || ""));
     return url.protocol === "https:" ? url.origin : "";
-  } catch (_) { return ""; }
+  } catch (_) {
+    return "";
+  }
 }
 
 export function isValidExternalPlaybackToken(token) {
@@ -31,7 +35,8 @@ export function isValidExternalPlaybackToken(token) {
 function sanitizeProgressContext(context) {
   if (!context?.itemId) return null;
   return {
-    itemId: String(context.itemId), itemType: String(context.itemType || "movie"),
+    itemId: String(context.itemId),
+    itemType: String(context.itemType || "movie"),
     videoId: context.videoId == null ? null : String(context.videoId),
     season: Number.isFinite(context.season) ? Number(context.season) : null,
     episode: Number.isFinite(context.episode) ? Number(context.episode) : null,
@@ -66,8 +71,14 @@ export function createOutplayerReturnCallbacks({ token, returnOrigin } = {}) {
   return { ...callbacks, success: success.href };
 }
 
-export function createExternalPlaybackCallbacks({ token, returnOrigin, provider, outcomes = {} } = {}) {
-  if (!isValidExternalPlaybackToken(token) || !String(returnOrigin || "").startsWith("https://")) return null;
+export function createExternalPlaybackCallbacks({
+  token,
+  returnOrigin,
+  provider,
+  outcomes = {}
+} = {}) {
+  if (!isValidExternalPlaybackToken(token) || !String(returnOrigin || "").startsWith("https://"))
+    return null;
   const reportUrl = new URL(`/api/external-return/report/${token}`, returnOrigin);
   const callback = (outcome) => {
     const url = new URL(reportUrl);
@@ -75,19 +86,37 @@ export function createExternalPlaybackCallbacks({ token, returnOrigin, provider,
     if (provider) url.searchParams.set("provider", provider);
     return url.href;
   };
-  return Object.fromEntries(Object.entries(outcomes).map(([name, outcome]) => [name, callback(outcome)]));
+  return Object.fromEntries(
+    Object.entries(outcomes).map(([name, outcome]) => [name, callback(outcome)])
+  );
 }
 
-
-export function beginExternalPlaybackHandoff({ runtime = globalThis, playerMode, progressContext, profileId, startingPositionMs = 0, knownDurationMs = 0, automatic = false, progressMode = automatic ? "automatic" : "manual", callbackCapable = automatic, manualPromptEligible = !(progressMode === "automatic" && callbackCapable) } = {}) {
+export function beginExternalPlaybackHandoff({
+  runtime = globalThis,
+  playerMode,
+  progressContext,
+  profileId,
+  startingPositionMs = 0,
+  knownDurationMs = 0,
+  automatic = false,
+  progressMode = automatic ? "automatic" : "manual",
+  callbackCapable = automatic,
+  manualPromptEligible = !(progressMode === "automatic" && callbackCapable)
+} = {}) {
   const token = createOutplayerReturnToken(runtime);
   const returnOrigin = getReturnOrigin(runtime);
   const context = sanitizeProgressContext(progressContext);
   if (!token || !returnOrigin || !context || !String(playerMode || "").trim()) return null;
   const launchedAt = Date.now();
   const handoff = {
-    token, returnOrigin, playerMode: String(playerMode), automatic: Boolean(automatic), profileId: String(profileId || ""), progressContext: context,
-    launchedAt, expiresAt: launchedAt + HANDOFF_TTL_MS,
+    token,
+    returnOrigin,
+    playerMode: String(playerMode),
+    automatic: Boolean(automatic),
+    profileId: String(profileId || ""),
+    progressContext: context,
+    launchedAt,
+    expiresAt: launchedAt + HANDOFF_TTL_MS,
     startingPositionMs: Math.max(0, Math.round(Number(startingPositionMs) || 0)),
     knownDurationMs: Math.max(0, Math.round(Number(knownDurationMs) || 0)),
     progressMode: progressMode === "automatic" ? "automatic" : "manual",
@@ -101,18 +130,36 @@ export function beginExternalPlaybackHandoff({ runtime = globalThis, playerMode,
 }
 
 export function clearExternalPlaybackHandoff({ runtime = globalThis } = {}) {
-  try { getStorage(runtime)?.removeItem?.(STORAGE_KEY); } catch (_) { /* Storage is optional. */ }
+  try {
+    getStorage(runtime)?.removeItem?.(STORAGE_KEY);
+  } catch (_) {
+    /* Storage is optional. */
+  }
 }
 
-export function readPendingExternalPlaybackHandoff({ runtime = globalThis, profileId = null } = {}) {
+export function readPendingExternalPlaybackHandoff({
+  runtime = globalThis,
+  profileId = null
+} = {}) {
   try {
     const handoff = JSON.parse(getStorage(runtime)?.getItem?.(STORAGE_KEY) || "null");
-    if (!handoff || !isValidExternalPlaybackToken(handoff.token) || !String(handoff.returnOrigin || "").startsWith("https://") || !sanitizeProgressContext(handoff.progressContext) || !Number.isFinite(Number(handoff.expiresAt)) || Date.now() > Number(handoff.expiresAt) || (profileId != null && String(handoff.profileId || "") !== String(profileId || ""))) {
+    if (
+      !handoff ||
+      !isValidExternalPlaybackToken(handoff.token) ||
+      !String(handoff.returnOrigin || "").startsWith("https://") ||
+      !sanitizeProgressContext(handoff.progressContext) ||
+      !Number.isFinite(Number(handoff.expiresAt)) ||
+      Date.now() > Number(handoff.expiresAt) ||
+      (profileId != null && String(handoff.profileId || "") !== String(profileId || ""))
+    ) {
       clearExternalPlaybackHandoff({ runtime });
       return null;
     }
     return handoff;
-  } catch (_) { clearExternalPlaybackHandoff({ runtime }); return null; }
+  } catch (_) {
+    clearExternalPlaybackHandoff({ runtime });
+    return null;
+  }
 }
 
 function updatePendingHandoff(handoff, patch, runtime = globalThis) {
@@ -122,11 +169,15 @@ function updatePendingHandoff(handoff, patch, runtime = globalThis) {
 
 function normalizeReport(report) {
   if (!report?.found || !["finished", "stopped"].includes(report.outcome)) return null;
-  const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+  const finite = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
   return {
     outcome: report.outcome,
     provider: String(report.provider || ""),
-    sourceOutcome: ["finished", "stopped", "success", "cancel", "error"].includes(report.sourceOutcome) ? report.sourceOutcome : report.outcome,
+    sourceOutcome: ["finished", "stopped", "success", "cancel", "error"].includes(
+      report.sourceOutcome
+    )
+      ? report.sourceOutcome
+      : report.outcome,
     positionSeconds: finite(report.position),
     durationSeconds: finite(report.duration),
     progressFraction: finite(report.progress),
@@ -134,28 +185,48 @@ function normalizeReport(report) {
   };
 }
 
-export async function collectExternalPlaybackReport({ runtime = globalThis, fetchImpl = runtime.fetch, profileId = null } = {}) {
+export async function collectExternalPlaybackReport({
+  runtime = globalThis,
+  fetchImpl = runtime.fetch,
+  profileId = null
+} = {}) {
   const handoff = readPendingExternalPlaybackHandoff({ runtime, profileId });
-  if (!handoff || !handoff.automatic || typeof fetchImpl !== "function") return { found: false, handoff };
+  if (!handoff || !handoff.automatic || typeof fetchImpl !== "function")
+    return { found: false, handoff };
   try {
-    const response = await fetchImpl(`${handoff.returnOrigin}/api/external-return/collect/${handoff.token}`, { method: "GET", cache: "no-store", credentials: "omit" });
+    const response = await fetchImpl(
+      `${handoff.returnOrigin}/api/external-return/collect/${handoff.token}`,
+      { method: "GET", cache: "no-store", credentials: "omit" }
+    );
     if (!response.ok) return { found: false, handoff };
     const report = normalizeReport(await response.json());
     if (!report) return { found: false, handoff };
     return { found: true, handoff, ...report };
-  } catch (_) { return { found: false, handoff }; }
+  } catch (_) {
+    return { found: false, handoff };
+  }
 }
 
-export function installExternalPlaybackReturnCoordinator({ runtime = globalThis, fetchImpl = runtime.fetch, getProfileId = () => null, onAutomaticReport = async () => false, onManualFallback = () => {} } = {}) {
+export function installExternalPlaybackReturnCoordinator({
+  runtime = globalThis,
+  fetchImpl = runtime.fetch,
+  getProfileId = () => null,
+  onAutomaticReport = async () => false,
+  onManualFallback = () => {}
+} = {}) {
   let wasBackgrounded = runtime.document?.visibilityState === "hidden";
   let collecting = false;
   const promptManually = (handoff) => {
     if (!handoff?.manualPromptEligible) return;
-    if (!handoff || handoff.state === "manual-required" && handoff.manualPromptedAt) return;
-    const pending = updatePendingHandoff(handoff, {
-      state: "manual-required",
-      manualPromptedAt: Date.now()
-    }, runtime);
+    if (!handoff || (handoff.state === "manual-required" && handoff.manualPromptedAt)) return;
+    const pending = updatePendingHandoff(
+      handoff,
+      {
+        state: "manual-required",
+        manualPromptedAt: Date.now()
+      },
+      runtime
+    );
     onManualFallback(pending);
   };
   const runAfterForeground = ({ confirmedReturn = true } = {}) => {
@@ -168,53 +239,83 @@ export function installExternalPlaybackReturnCoordinator({ runtime = globalThis,
       return;
     }
     if (handoff.state === "applying-report" || handoff.state === "manual-required") return;
-    updatePendingHandoff(handoff, {
-      state: "awaiting-auto-report",
-      returnObservedAt: confirmedReturn ? Date.now() : handoff.returnObservedAt || null
-    }, runtime);
+    updatePendingHandoff(
+      handoff,
+      {
+        state: "awaiting-auto-report",
+        returnObservedAt: confirmedReturn ? Date.now() : handoff.returnObservedAt || null
+      },
+      runtime
+    );
     collecting = true;
-    const finishCollecting = () => { collecting = false; };
-    const attempt = (index) => runtime.setTimeout?.(async () => {
-      try {
-        const result = await collectExternalPlaybackReport({ runtime, fetchImpl, profileId: getProfileId() });
-        if (result.found) {
-          const applying = updatePendingHandoff(result.handoff, { state: "applying-report" }, runtime);
-          const applied = await onAutomaticReport({ ...result, handoff: applying });
-          if (applied) {
-            // Keep the identity-bearing handoff until its application has
-            // succeeded. The relay record is one-time, so consuming first
-            // would leave an explicit completion unable to recover safely.
-            clearExternalPlaybackHandoff({ runtime });
-          } else {
-            // The relay report is one-time. Automatic is deliberately not a
-            // synonym for manual fallback: preserve the chosen mode and leave
-            // existing progress unchanged if application cannot proceed.
-            if (applying.manualPromptEligible) promptManually(applying);
+    const finishCollecting = () => {
+      collecting = false;
+    };
+    const attempt = (index) =>
+      runtime.setTimeout?.(async () => {
+        try {
+          const result = await collectExternalPlaybackReport({
+            runtime,
+            fetchImpl,
+            profileId: getProfileId()
+          });
+          if (result.found) {
+            const applying = updatePendingHandoff(
+              result.handoff,
+              { state: "applying-report" },
+              runtime
+            );
+            const applied = await onAutomaticReport({ ...result, handoff: applying });
+            if (applied) {
+              // Keep the identity-bearing handoff until its application has
+              // succeeded. The relay record is one-time, so consuming first
+              // would leave an explicit completion unable to recover safely.
+              clearExternalPlaybackHandoff({ runtime });
+            } else {
+              // The relay report is one-time. Automatic is deliberately not a
+              // synonym for manual fallback: preserve the chosen mode and leave
+              // existing progress unchanged if application cannot proceed.
+              if (applying.manualPromptEligible) promptManually(applying);
+            }
+            finishCollecting();
+            return;
           }
+          if (index + 1 < FOREGROUND_RETRY_DELAYS_MS.length) {
+            attempt(index + 1);
+            return;
+          }
+          const pending = readPendingExternalPlaybackHandoff({
+            runtime,
+            profileId: getProfileId()
+          });
+          // A bounded retry window has elapsed after a real return/startup. It
+          // is now safe to offer the manual path exactly once.
+          if (pending?.manualPromptEligible) promptManually(pending);
           finishCollecting();
-          return;
+        } finally {
+          // Completion is owned by the terminal report/no-report branches so a
+          // slow report application remains protected from duplicate events.
         }
-        if (index + 1 < FOREGROUND_RETRY_DELAYS_MS.length) {
-          attempt(index + 1);
-          return;
-        }
-        const pending = readPendingExternalPlaybackHandoff({ runtime, profileId: getProfileId() });
-        // A bounded retry window has elapsed after a real return/startup. It
-        // is now safe to offer the manual path exactly once.
-        if (pending?.manualPromptEligible) promptManually(pending);
-        finishCollecting();
-      } finally {
-        // Completion is owned by the terminal report/no-report branches so a
-        // slow report application remains protected from duplicate events.
-      }
-    }, FOREGROUND_RETRY_DELAYS_MS[index]);
+      }, FOREGROUND_RETRY_DELAYS_MS[index]);
     attempt(0);
   };
-  const onForeground = () => { if (wasBackgrounded) { wasBackgrounded = false; runAfterForeground({ confirmedReturn: true }); } };
-  runtime.document?.addEventListener?.("visibilitychange", () => { if (runtime.document.visibilityState === "hidden") wasBackgrounded = true; else if (runtime.document.visibilityState === "visible") onForeground(); });
-  runtime.addEventListener?.("pagehide", () => { wasBackgrounded = true; });
+  const onForeground = () => {
+    if (wasBackgrounded) {
+      wasBackgrounded = false;
+      runAfterForeground({ confirmedReturn: true });
+    }
+  };
+  runtime.document?.addEventListener?.("visibilitychange", () => {
+    if (runtime.document.visibilityState === "hidden") wasBackgrounded = true;
+    else if (runtime.document.visibilityState === "visible") onForeground();
+  });
+  runtime.addEventListener?.("pagehide", () => {
+    wasBackgrounded = true;
+  });
   runtime.addEventListener?.("pageshow", onForeground);
-  runtime.addEventListener?.("blur", () => { wasBackgrounded = true; });
+  runtime.addEventListener?.("blur", () => {
+    wasBackgrounded = true;
+  });
   runtime.addEventListener?.("focus", onForeground);
   // A callback can open Safari and the user can later cold-launch the PWA.
   // In that case there is no prior visibility transition in this JS context.

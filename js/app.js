@@ -229,8 +229,7 @@ async function routeAfterAuthentication() {
 }
 
 function setupProviderCredentialForegroundLifecycle() {
-  let wasBackgrounded =
-    document.visibilityState === "hidden" || document.webkitHidden === true;
+  let wasBackgrounded = document.visibilityState === "hidden" || document.webkitHidden === true;
   const requestAfterBackground = () => {
     if (!wasBackgrounded) return;
     wasBackgrounded = false;
@@ -369,32 +368,41 @@ async function bootstrapApp() {
     onAutomaticReport: async (report) => {
       const provider = report.handoff?.playerMode;
       const infuseRuntimeSeconds = Number(report.handoff?.knownDurationMs || 0) / 1000;
-      const outplayerFinish = await dispatchOutplayerExplicitFinish({ report, controller: PlayerController });
+      const outplayerFinish = await dispatchOutplayerExplicitFinish({
+        report,
+        controller: PlayerController
+      });
       if (outplayerFinish.handled) return outplayerFinish.applied;
-      return (
-        provider === "infuse" && report.sourceOutcome !== "error" && Number.isFinite(report.positionSeconds) && report.positionSeconds >= 0 && infuseRuntimeSeconds > 0
+      return provider === "infuse" &&
+        report.sourceOutcome !== "error" &&
+        Number.isFinite(report.positionSeconds) &&
+        report.positionSeconds >= 0 &&
+        infuseRuntimeSeconds > 0
+        ? await PlayerController.applyExternalPlaybackReport({
+            handoff: report.handoff,
+            outcome: "stopped",
+            // Infuse x-success is emitted for both close and playlist end;
+            // canonical completion decides from its returned position.
+            // TODO: Infuse can report a stale end position after replaying a
+            // previously completed item; retain the official value until a
+            // reproducible device signal can distinguish that edge case.
+            positionSeconds: report.positionSeconds,
+            durationSeconds: infuseRuntimeSeconds
+          })
+        : provider === "lenna" &&
+            report.sourceOutcome !== "error" &&
+            Number.isFinite(report.positionSeconds) &&
+            report.positionSeconds >= 0 &&
+            infuseRuntimeSeconds > 0
           ? await PlayerController.applyExternalPlaybackReport({
               handoff: report.handoff,
               outcome: "stopped",
-              // Infuse x-success is emitted for both close and playlist end;
-              // canonical completion decides from its returned position.
-              // TODO: Infuse can report a stale end position after replaying a
-              // previously completed item; retain the official value until a
-              // reproducible device signal can distinguish that edge case.
               positionSeconds: report.positionSeconds,
               durationSeconds: infuseRuntimeSeconds
             })
-          : provider === "lenna" && report.sourceOutcome !== "error" && Number.isFinite(report.positionSeconds) && report.positionSeconds >= 0 && infuseRuntimeSeconds > 0
-            ? await PlayerController.applyExternalPlaybackReport({
-                handoff: report.handoff,
-                outcome: "stopped",
-                positionSeconds: report.positionSeconds,
-                durationSeconds: infuseRuntimeSeconds
-              })
           : provider === "vlc"
             ? false
-            : await PlayerController.applyExternalPlaybackReport(report)
-      );
+            : await PlayerController.applyExternalPlaybackReport(report);
     },
     onManualFallback: (handoff) => PlayerScreen.showExternalPlaybackManualFallback(handoff)
   });

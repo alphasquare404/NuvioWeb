@@ -36,7 +36,10 @@ import { Environment } from "../../../platform/environment.js";
 import { Router } from "../../navigation/router.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
-import { bindBrowserPlayerGestures, getBrowserPlayerVideoTapAction } from "../../components/browserPlayerGestures.js";
+import {
+  bindBrowserPlayerGestures,
+  getBrowserPlayerVideoTapAction
+} from "../../components/browserPlayerGestures.js";
 import {
   BROWSER_PICTURE_IN_PICTURE_STANDARD,
   BROWSER_PICTURE_IN_PICTURE_WEBKIT,
@@ -117,7 +120,6 @@ function isSelectKeyCode(keyCode) {
   return keyCode === 13 || keyCode === 23;
 }
 
-
 function buildPendingPlaybackRestore(params = {}) {
   if (params?.startFromBeginning) {
     return null;
@@ -144,7 +146,6 @@ function buildPendingPlaybackRestore(params = {}) {
   }
   return null;
 }
-
 
 const AUDIO_TRACK_LANGUAGE_KEY_BY_CODE = {
   ar: "common.arabic",
@@ -1235,16 +1236,17 @@ function escapeAttribute(value) {
 function cleanPlaybackDiagnosticValue(value, maxLength = 320) {
   const text = String(value ?? "")
     .replace(/(?:https?|wss?|file|blob|magnet):[^\s"'<>]+/gi, "[redacted]")
-    .replace(
-      /\b(?:authorization|cookie)\s*:\s*[^\s,;]+/gi,
-      (match) => match.replace(/(:\s*)[^\s,;]+$/, "$1[redacted]")
+    .replace(/\b(?:authorization|cookie)\s*:\s*[^\s,;]+/gi, (match) =>
+      match.replace(/(:\s*)[^\s,;]+$/, "$1[redacted]")
     )
     .replace(/\bbearer\s+[^\s,;]+/gi, "Bearer [redacted]")
-    .replace(
-      /\b(?:access[_-]?token|refresh[_-]?token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi,
-      (match) => match.replace(/([:=]\s*)[^\s,;]+$/, "$1[redacted]")
+    .replace(/\b(?:access[_-]?token|refresh[_-]?token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, (match) =>
+      match.replace(/([:=]\s*)[^\s,;]+$/, "$1[redacted]")
     )
-    .replace(/([?&](?:token|access_token|refresh_token|apikey|api_key|key)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(
+      /([?&](?:token|access_token|refresh_token|apikey|api_key|key)=)[^&\s]+/gi,
+      "$1[redacted]"
+    )
     .replace(/\s+/g, " ")
     .trim();
   if (!text) {
@@ -2385,8 +2387,8 @@ export const PlayerScreen = {
       this.activePlaybackUrl = initialStreamUrl;
       this.resetPictureInPictureAvailability();
       const allowPlaybackDuringStartupAudioGate = shouldAllowPlaybackDuringStartupAudioGate({
-          isHlsPlayback: this.isCurrentSourceLikelyHls(initialStreamUrl, sourceCandidate)
-        });
+        isHlsPlayback: this.isCurrentSourceLikelyHls(initialStreamUrl, sourceCandidate)
+      });
       this.enableStartupAudioGate({
         allowPlayback: allowPlaybackDuringStartupAudioGate
       });
@@ -2400,10 +2402,7 @@ export const PlayerScreen = {
       this.schedulePlaybackStallGuard();
     } else if (!this.isExternalFrameMode()) {
       const sourceCandidate = initialStreamCandidate || this.getCurrentStreamCandidate();
-      if (
-        sourceCandidate &&
-        DirectDebridResolver.canResolveStream(sourceCandidate)
-      ) {
+      if (sourceCandidate && DirectDebridResolver.canResolveStream(sourceCandidate)) {
         void this.playStreamCandidate(sourceCandidate, {
           preservePendingRestore: true,
           mountToken
@@ -2434,7 +2433,11 @@ export const PlayerScreen = {
     const enrichedMeta = this.pauseOverlayMeta || {};
     setBrowserMediaTitle({
       title:
-        this.params?.playerTitle || this.params?.itemTitle || this.params?.title || enrichedMeta.title || "",
+        this.params?.playerTitle ||
+        this.params?.itemTitle ||
+        this.params?.title ||
+        enrichedMeta.title ||
+        "",
       year:
         this.params?.playerReleaseYear ||
         this.params?.releaseYear ||
@@ -3542,7 +3545,7 @@ export const PlayerScreen = {
         : null;
     return Boolean(
       isLikelyHlsMimeType.call(PlayerController, declaredSourceType) ||
-        isLikelyHlsMimeType.call(PlayerController, inferredSourceType)
+      isLikelyHlsMimeType.call(PlayerController, inferredSourceType)
     );
   },
 
@@ -3630,7 +3633,9 @@ export const PlayerScreen = {
         subtitle.offlineSubtitleId ||
           subtitle.offlineFingerprint ||
           createOfflineSubtitleFingerprint(subtitle) ||
-          `${String(subtitle.url).trim()}::${String(subtitle.lang || "").trim().toLowerCase()}`
+          `${String(subtitle.url).trim()}::${String(subtitle.lang || "")
+            .trim()
+            .toLowerCase()}`
       );
       if (seen.has(key)) {
         return;
@@ -3721,7 +3726,6 @@ export const PlayerScreen = {
     this.offlineSubtitleObjectUrls = tracks.map((track) => track.url).filter(Boolean);
     return tracks;
   },
-
 
   getCurrentStreamRequestHeaders(streamCandidate = this.getCurrentStreamCandidate()) {
     const requestHeaders =
@@ -4544,7 +4548,9 @@ export const PlayerScreen = {
 
   getExternalPlayerContext() {
     if (!Environment.isBrowser()) return null;
-    const mediaUrl = String(this.activePlaybackUrl || this.getCurrentStreamCandidate()?.url || "").trim();
+    const mediaUrl = String(
+      this.activePlaybackUrl || this.getCurrentStreamCandidate()?.url || ""
+    ).trim();
     if (!isTransferableExternalMediaUrl(mediaUrl)) return null;
     const selectedSubtitle = (this.subtitles || []).find((subtitle) => {
       const id = subtitle?.id || subtitle?.url || "";
@@ -4559,7 +4565,9 @@ export const PlayerScreen = {
   },
 
   canOpenInExternalPlayer() {
-    return Boolean(this.getExternalPlayerContext() && getManualBrowserExternalPlayerOptions().length);
+    return Boolean(
+      this.getExternalPlayerContext() && getManualBrowserExternalPlayerOptions().length
+    );
   },
 
   openExternalPlayerChooser() {
@@ -4573,11 +4581,25 @@ export const PlayerScreen = {
       actionsClassName: "desktop-external-player-actions",
       buttons: [
         ...getManualBrowserExternalPlayerOptions().map((player) => ({
-          label: player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : player === "outplayer" ? "Outplayer" : "VLC",
+          label:
+            player === "lenna"
+              ? "Lenna"
+              : player === "infuse"
+                ? "Infuse"
+                : player === "outplayer"
+                  ? "Outplayer"
+                  : "VLC",
           className: "desktop-external-player-choice",
           content: () => {
             const copy = document.createElement("span");
-            const playerName = player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : player === "outplayer" ? "Outplayer" : "VLC";
+            const playerName =
+              player === "lenna"
+                ? "Lenna"
+                : player === "infuse"
+                  ? "Infuse"
+                  : player === "outplayer"
+                    ? "Outplayer"
+                    : "VLC";
             copy.className = "desktop-external-player-choice-copy";
             copy.innerHTML = `<strong>${playerName}</strong><small>Open this stream in ${playerName}</small>`;
             return copy;
@@ -4591,7 +4613,9 @@ export const PlayerScreen = {
           label: "Copy Stream Link",
           className: "desktop-external-player-choice",
           onAction: async () => {
-            const copied = await copyBrowserExternalStreamLink({ mediaUrl: this.getExternalPlayerContext()?.mediaUrl });
+            const copied = await copyBrowserExternalStreamLink({
+              mediaUrl: this.getExternalPlayerContext()?.mediaUrl
+            });
             this.externalPlayerChooserDialog?.destroy?.();
             this.showAspectToast(copied ? "Stream link copied" : "Could not copy stream link");
           }
@@ -4612,7 +4636,8 @@ export const PlayerScreen = {
   async launchExternalPlayer(player) {
     const context = this.getExternalPlayerContext();
     if (!context) return false;
-    const progressMode = PlayerSettingsStore.get().externalPlayerProgress === "manual" ? "manual" : "automatic";
+    const progressMode =
+      PlayerSettingsStore.get().externalPlayerProgress === "manual" ? "manual" : "automatic";
     const prepared = prepareBrowserExternalPlaybackLaunch({
       player,
       platform: getBrowserExternalPlayerPlatform(),
@@ -4642,9 +4667,13 @@ export const PlayerScreen = {
     const routePositionMs = Number(this.params?.resumePositionMs || 0);
     const routeDurationMs = Number(this.params?.resumeDurationMs || 0);
     if (
-      Number.isFinite(routePositionMs) && routePositionMs > 0 &&
-      (!Number.isFinite(routeDurationMs) || routeDurationMs <= 0 || routePositionMs < routeDurationMs * 0.9)
-    ) return routePositionMs / 1000;
+      Number.isFinite(routePositionMs) &&
+      routePositionMs > 0 &&
+      (!Number.isFinite(routeDurationMs) ||
+        routeDurationMs <= 0 ||
+        routePositionMs < routeDurationMs * 0.9)
+    )
+      return routePositionMs / 1000;
     return 0;
   },
 
@@ -4659,7 +4688,8 @@ export const PlayerScreen = {
   showExternalPlaybackManualFallback(handoff) {
     if (!handoff?.progressContext?.itemId || this.externalPlaybackReturnDialog) return false;
     let submitting = false;
-    const title = handoff.progressContext.episodeTitle || handoff.progressContext.title || "this title";
+    const title =
+      handoff.progressContext.episodeTitle || handoff.progressContext.title || "this title";
     const close = () => {
       this.externalPlaybackReturnDialog?.destroy?.();
       this.externalPlaybackReturnDialog = null;
@@ -4672,17 +4702,46 @@ export const PlayerScreen = {
       panelClassName: "desktop-external-player-dialog",
       actionsClassName: "desktop-external-player-actions desktop-external-player-manual-actions",
       buttons: [
-        { label: "Keep current progress", className: "desktop-external-player-manual-keep", onAction: () => { consume(); close(); } },
-        { label: "Set playback position", className: "desktop-external-player-manual-set", onAction: () => { close(); this.showExternalPlaybackPositionDialog(handoff); } },
-        { label: "Mark as finished", className: "desktop-external-player-primary desktop-external-player-manual-finish", onAction: async () => {
-          if (submitting) return;
-          submitting = true;
-          const applied = await markBrowserExternalPlaybackFinished({ handoff, controller: PlayerController });
-          if (!applied) { submitting = false; this.showAspectToast("Could not mark as finished"); return; }
-          consume(); close(); this.showAspectToast("Marked as finished");
-        } }
+        {
+          label: "Keep current progress",
+          className: "desktop-external-player-manual-keep",
+          onAction: () => {
+            consume();
+            close();
+          }
+        },
+        {
+          label: "Set playback position",
+          className: "desktop-external-player-manual-set",
+          onAction: () => {
+            close();
+            this.showExternalPlaybackPositionDialog(handoff);
+          }
+        },
+        {
+          label: "Mark as finished",
+          className: "desktop-external-player-primary desktop-external-player-manual-finish",
+          onAction: async () => {
+            if (submitting) return;
+            submitting = true;
+            const applied = await markBrowserExternalPlaybackFinished({
+              handoff,
+              controller: PlayerController
+            });
+            if (!applied) {
+              submitting = false;
+              this.showAspectToast("Could not mark as finished");
+              return;
+            }
+            consume();
+            close();
+            this.showAspectToast("Marked as finished");
+          }
+        }
       ],
-      onDismiss: () => { this.externalPlaybackReturnDialog = null; }
+      onDismiss: () => {
+        this.externalPlaybackReturnDialog = null;
+      }
     }).mount(document.body);
     return true;
   },
@@ -4693,12 +4752,13 @@ export const PlayerScreen = {
     let error = null;
     let saveButton = null;
     let submitting = false;
-    const validate = () => validateExternalPlaybackPositionParts(
-      inputs[0]?.value,
-      inputs[1]?.value,
-      inputs[2]?.value,
-      manualDurationMs
-    );
+    const validate = () =>
+      validateExternalPlaybackPositionParts(
+        inputs[0]?.value,
+        inputs[1]?.value,
+        inputs[2]?.value,
+        manualDurationMs
+      );
     const updateSaveState = ({ showError = false } = {}) => {
       const result = validate();
       if (saveButton) {
@@ -4712,16 +4772,24 @@ export const PlayerScreen = {
       const wrapper = document.createElement("div");
       wrapper.className = "desktop-external-player-choice-copy";
       const runtimeSeconds = Math.round(manualDurationMs / 1000);
-      const runtime = runtimeSeconds ? `${Math.floor(runtimeSeconds / 60)}:${String(runtimeSeconds % 60).padStart(2, "0")}` : "Unknown";
+      const runtime = runtimeSeconds
+        ? `${Math.floor(runtimeSeconds / 60)}:${String(runtimeSeconds % 60).padStart(2, "0")}`
+        : "Unknown";
       wrapper.innerHTML = `<small>Runtime: ${runtime}</small>`;
       const fields = document.createElement("div");
       fields.className = "desktop-external-player-time-fields";
       ["HH", "MM", "SS"].forEach((label, index) => {
         const input = document.createElement("input");
-        input.type = "text"; input.inputMode = "numeric"; input.maxLength = 2; input.placeholder = label;
+        input.type = "text";
+        input.inputMode = "numeric";
+        input.maxLength = 2;
+        input.placeholder = label;
         input.className = "desktop-external-player-time-input";
         input.setAttribute("data-nuvio-dialog-preserve-deletion", "");
-        input.setAttribute("aria-label", label === "HH" ? "Hours" : label === "MM" ? "Minutes" : "Seconds");
+        input.setAttribute(
+          "aria-label",
+          label === "HH" ? "Hours" : label === "MM" ? "Minutes" : "Seconds"
+        );
         input.addEventListener("focus", () => {
           if (input.value.length >= 2) input.select();
         });
@@ -4733,9 +4801,11 @@ export const PlayerScreen = {
         input.addEventListener("keydown", (event) => {
           if (event.key !== "Backspace" && event.key !== "Delete") return;
           event.stopPropagation();
-          if (event.key === "Backspace" && !input.value && inputs[index - 1]) inputs[index - 1].focus();
+          if (event.key === "Backspace" && !input.value && inputs[index - 1])
+            inputs[index - 1].focus();
         });
-        inputs.push(input); fields.appendChild(input);
+        inputs.push(input);
+        fields.appendChild(input);
         if (index < 2) {
           const separator = document.createElement("span");
           separator.className = "desktop-external-player-time-separator";
@@ -4750,30 +4820,54 @@ export const PlayerScreen = {
       wrapper.appendChild(error);
       return wrapper;
     };
-    const close = () => { this.externalPlaybackPositionDialog?.destroy?.(); this.externalPlaybackPositionDialog = null; };
+    const close = () => {
+      this.externalPlaybackPositionDialog?.destroy?.();
+      this.externalPlaybackPositionDialog = null;
+    };
     this.externalPlaybackPositionDialog = new NuvioDialog({
-      title: "Set playback position", content, widthVw: 32,
-      panelClassName: "desktop-external-player-dialog", actionsClassName: "desktop-external-player-actions",
+      title: "Set playback position",
+      content,
+      widthVw: 32,
+      panelClassName: "desktop-external-player-dialog",
+      actionsClassName: "desktop-external-player-actions",
       buttons: [
-        { label: "Save", onAction: async () => {
-          if (submitting) return;
-          const result = updateSaveState({ showError: true });
-          if (!result.valid) return;
-          submitting = true;
-          updateSaveState();
-          try {
-            const applied = await PlayerController.applyExternalPlaybackReport({ handoff, outcome: "stopped", positionSeconds: result.positionMs / 1000, durationSeconds: manualDurationMs / 1000 });
-            if (!applied) throw new Error("Progress was not applied");
-            clearExternalPlaybackHandoff(); close(); this.showAspectToast("Playback position saved");
-          } catch (_) {
-            submitting = false;
-            if (error) error.textContent = "Could not save playback position. Try again.";
+        {
+          label: "Save",
+          onAction: async () => {
+            if (submitting) return;
+            const result = updateSaveState({ showError: true });
+            if (!result.valid) return;
+            submitting = true;
             updateSaveState();
+            try {
+              const applied = await PlayerController.applyExternalPlaybackReport({
+                handoff,
+                outcome: "stopped",
+                positionSeconds: result.positionMs / 1000,
+                durationSeconds: manualDurationMs / 1000
+              });
+              if (!applied) throw new Error("Progress was not applied");
+              clearExternalPlaybackHandoff();
+              close();
+              this.showAspectToast("Playback position saved");
+            } catch (_) {
+              submitting = false;
+              if (error) error.textContent = "Could not save playback position. Try again.";
+              updateSaveState();
+            }
           }
-        } },
-        { label: "Back", onAction: () => { close(); this.showExternalPlaybackManualFallback(handoff); } }
+        },
+        {
+          label: "Back",
+          onAction: () => {
+            close();
+            this.showExternalPlaybackManualFallback(handoff);
+          }
+        }
       ],
-      onDismiss: () => { this.externalPlaybackPositionDialog = null; }
+      onDismiss: () => {
+        this.externalPlaybackPositionDialog = null;
+      }
     }).mount(document.body);
     saveButton = this.externalPlaybackPositionDialog?._buttonEls?.[0] || null;
     updateSaveState();
@@ -4782,9 +4876,9 @@ export const PlayerScreen = {
   isCompactBrowserPlayerToolbar() {
     return Boolean(
       Environment.isBrowser() &&
-        typeof window !== "undefined" &&
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(max-width: 600px) and (orientation: portrait)").matches
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 600px) and (orientation: portrait)").matches
     );
   },
 
@@ -4949,7 +5043,6 @@ export const PlayerScreen = {
         void this.onPointerActivate(actionTarget, event);
         return;
       }
-
     };
 
     this.container.addEventListener("pointermove", this.boundDesktopPlayerPointerMoveHandler);
@@ -4971,10 +5064,12 @@ export const PlayerScreen = {
     document.addEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
     this.boundDesktopPlayerResizeHandler = () => this.scheduleDesktopPlayerViewportSync();
     window.addEventListener("resize", this.boundDesktopPlayerResizeHandler);
-    this.boundDesktopPlayerOrientationChangeHandler = () => this.scheduleDesktopPlayerViewportSync();
+    this.boundDesktopPlayerOrientationChangeHandler = () =>
+      this.scheduleDesktopPlayerViewportSync();
     window.addEventListener("orientationchange", this.boundDesktopPlayerOrientationChangeHandler);
     this.desktopPlayerVisualViewport = window.visualViewport || null;
-    this.boundDesktopPlayerVisualViewportResizeHandler = () => this.scheduleDesktopPlayerViewportSync();
+    this.boundDesktopPlayerVisualViewportResizeHandler = () =>
+      this.scheduleDesktopPlayerViewportSync();
     this.desktopPlayerVisualViewport?.addEventListener(
       "resize",
       this.boundDesktopPlayerVisualViewportResizeHandler
@@ -4984,9 +5079,18 @@ export const PlayerScreen = {
       this.boundDesktopVolumeChangeHandler = () => this.syncDesktopPlaybackTools();
       video.addEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
       this.boundDesktopPictureInPictureChangeHandler = () => this.syncDesktopPlaybackTools();
-      video.addEventListener("enterpictureinpicture", this.boundDesktopPictureInPictureChangeHandler);
-      video.addEventListener("leavepictureinpicture", this.boundDesktopPictureInPictureChangeHandler);
-      video.addEventListener("webkitpresentationmodechanged", this.boundDesktopPictureInPictureChangeHandler);
+      video.addEventListener(
+        "enterpictureinpicture",
+        this.boundDesktopPictureInPictureChangeHandler
+      );
+      video.addEventListener(
+        "leavepictureinpicture",
+        this.boundDesktopPictureInPictureChangeHandler
+      );
+      video.addEventListener(
+        "webkitpresentationmodechanged",
+        this.boundDesktopPictureInPictureChangeHandler
+      );
     }
     this.browserPlayerGestureCleanup?.();
     this.browserPlayerGestureCleanup = bindBrowserPlayerGestures(this.container, {
@@ -5006,17 +5110,26 @@ export const PlayerScreen = {
     this.container.removeEventListener("pointermove", this.boundDesktopPlayerPointerMoveHandler);
     this.container.removeEventListener("pointerdown", this.boundDesktopPlayerPointerDownHandler);
     this.container.removeEventListener("pointerup", this.boundDesktopPlayerPointerUpHandler);
-    this.container.removeEventListener("pointercancel", this.boundDesktopPlayerPointerCancelHandler);
+    this.container.removeEventListener(
+      "pointercancel",
+      this.boundDesktopPlayerPointerCancelHandler
+    );
     this.container.removeEventListener("click", this.boundDesktopPlayerClickHandler);
     this.container.removeEventListener("input", this.boundDesktopPlayerInputHandler);
     document.removeEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
     window.removeEventListener("resize", this.boundDesktopPlayerResizeHandler);
-    window.removeEventListener("orientationchange", this.boundDesktopPlayerOrientationChangeHandler);
+    window.removeEventListener(
+      "orientationchange",
+      this.boundDesktopPlayerOrientationChangeHandler
+    );
     this.desktopPlayerVisualViewport?.removeEventListener(
       "resize",
       this.boundDesktopPlayerVisualViewportResizeHandler
     );
-    this.getDesktopPlaybackVideo()?.removeEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
+    this.getDesktopPlaybackVideo()?.removeEventListener(
+      "volumechange",
+      this.boundDesktopVolumeChangeHandler
+    );
     this.getDesktopPlaybackVideo()?.removeEventListener(
       "enterpictureinpicture",
       this.boundDesktopPictureInPictureChangeHandler
@@ -5082,7 +5195,11 @@ export const PlayerScreen = {
   },
 
   isDesktopVideoAreaClick(target) {
-    if (!Environment.isBrowser() || this.isExternalFrameMode() || !this.container?.contains(target)) {
+    if (
+      !Environment.isBrowser() ||
+      this.isExternalFrameMode() ||
+      !this.container?.contains(target)
+    ) {
       return false;
     }
     const blockedSelector = [
@@ -5138,7 +5255,10 @@ export const PlayerScreen = {
     feedback.dataset.side = side;
     feedback.classList.remove("hidden");
     if (!persistent) {
-      this.browserGestureFeedbackTimer = setTimeout(() => this.hideBrowserPlayerGestureFeedback(), 720);
+      this.browserGestureFeedbackTimer = setTimeout(
+        () => this.hideBrowserPlayerGestureFeedback(),
+        720
+      );
     }
   },
 
@@ -5184,7 +5304,11 @@ export const PlayerScreen = {
     const currentVolume = clamp(Number(video.volume ?? 1), 0, 1);
     const currentlyMuted = Boolean(video.muted) || currentVolume <= 0;
     if (currentlyMuted) {
-      const restoredVolume = clamp(Number(this.desktopLastAudibleVolume || currentVolume || 1), 0, 1);
+      const restoredVolume = clamp(
+        Number(this.desktopLastAudibleVolume || currentVolume || 1),
+        0,
+        1
+      );
       video.volume = restoredVolume > 0 ? restoredVolume : 1;
       video.muted = false;
     } else {
@@ -5237,8 +5361,10 @@ export const PlayerScreen = {
 
   getSafariPictureInPictureCapability() {
     if (!Environment.isBrowser()) return null;
-    return getBrowserPictureInPictureCapability(this.getDesktopPlaybackVideo(), document) ===
-      BROWSER_PICTURE_IN_PICTURE_WEBKIT;
+    return (
+      getBrowserPictureInPictureCapability(this.getDesktopPlaybackVideo(), document) ===
+      BROWSER_PICTURE_IN_PICTURE_WEBKIT
+    );
   },
 
   isSafariPictureInPictureSupported() {
@@ -5461,16 +5587,16 @@ export const PlayerScreen = {
   isDesktopEditableTarget(target) {
     return Boolean(
       target instanceof Element &&
-        target.closest("input, textarea, select, [contenteditable], [contenteditable='true']")
+      target.closest("input, textarea, select, [contenteditable], [contenteditable='true']")
     );
   },
 
   isDesktopPanelInteractiveTarget(target) {
     return Boolean(
       target instanceof Element &&
-        target.closest(
-          ".player-modal, .player-sources-panel, .player-episode-panel, [data-player-desktop-volume]"
-        )
+      target.closest(
+        ".player-modal, .player-sources-panel, .player-episode-panel, [data-player-desktop-volume]"
+      )
     );
   },
 
@@ -5787,11 +5913,7 @@ export const PlayerScreen = {
       raw?.externalUrl ||
       "";
 
-    pushPlaybackDiagnosticLine(
-      lines,
-      "Platform",
-      "browser"
-    );
+    pushPlaybackDiagnosticLine(lines, "Platform", "browser");
     pushPlaybackDiagnosticLine(lines, "Reason", reason);
     pushPlaybackDiagnosticLine(lines, "Media code", this.getPlaybackErrorCodeLabel(mediaErrorCode));
     pushPlaybackDiagnosticLine(lines, "HTTP status", httpStatus || "unavailable");
@@ -6431,11 +6553,7 @@ export const PlayerScreen = {
   },
 
   syncNativePausedStateForPauseOverlay() {
-    if (
-      this.isExternalFrameMode() ||
-      this.loadingVisible ||
-      this.startupAudioGateActive
-    ) {
+    if (this.isExternalFrameMode() || this.loadingVisible || this.startupAudioGateActive) {
       return false;
     }
 
@@ -7006,7 +7124,10 @@ export const PlayerScreen = {
   },
 
   navigateBackToStreamScreen({ forceDetail = false } = {}) {
-    if (this.playerBackNavigationInProgress || (Router.getCurrent?.() && Router.getCurrent() !== "player")) {
+    if (
+      this.playerBackNavigationInProgress ||
+      (Router.getCurrent?.() && Router.getCurrent() !== "player")
+    ) {
       return true;
     }
     this.playerBackNavigationInProgress = true;
@@ -7806,7 +7927,9 @@ export const PlayerScreen = {
     const boldShadow = style.bold
       ? `0.45px 0 0 ${subtitleColor}, -0.45px 0 0 ${subtitleColor}, 0 0.45px 0 ${subtitleColor}, 0 -0.45px 0 ${subtitleColor}`
       : "";
-    const outlineShadow = style.outlineEnabled ? `0 0 2px ${outlineColor}, 0 0 4px ${outlineColor}` : "";
+    const outlineShadow = style.outlineEnabled
+      ? `0 0 2px ${outlineColor}, 0 0 4px ${outlineColor}`
+      : "";
     const subtitleShadow = [outlineShadow, boldShadow].filter(Boolean).join(", ") || "none";
     const subtitleFontSize = normalizeSubtitleFontSize(style.fontSize);
     const htmlSubtitleFontSize = formatHtmlSubtitleFontSize(subtitleFontSize);
@@ -8167,9 +8290,9 @@ export const PlayerScreen = {
       if (
         typeof track.addEventListener === "function" &&
         !this.subtitleCueStyleBindings.has(track)
-        ) {
-          const handler = () => {
-            this.syncSubtitleCueStylesForTrack(track);
+      ) {
+        const handler = () => {
+          this.syncSubtitleCueStylesForTrack(track);
         };
         try {
           track.addEventListener("cuechange", handler);
@@ -8473,7 +8596,7 @@ export const PlayerScreen = {
         });
         console.warn("Playback failed during startup", {
           url: this.activePlaybackUrl,
-            mediaErrorCode
+          mediaErrorCode
         });
         return;
       }
@@ -8661,9 +8784,10 @@ export const PlayerScreen = {
     base.push({
       action: "more",
       icon: "assets/icons/ic_player_more.svg",
-      title: this.moreActionsVisible && compactBrowserToolbar
-        ? t("common_close", {}, "Close more actions")
-        : t("player_more_actions_title", {}, "More Actions")
+      title:
+        this.moreActionsVisible && compactBrowserToolbar
+          ? t("common_close", {}, "Close more actions")
+          : t("player_more_actions_title", {}, "More Actions")
     });
 
     if (!this.moreActionsVisible || compactBrowserToolbar) {
@@ -10311,9 +10435,9 @@ export const PlayerScreen = {
     const previousPlaybackUrl = String(this.activePlaybackUrl || "").trim();
     const shouldReplaceBrowserMediaSession = Boolean(
       Environment.isBrowser() &&
-        preservePlaybackState &&
-        previousPlaybackUrl &&
-        previousPlaybackUrl !== String(streamUrl).trim()
+      preservePlaybackState &&
+      previousPlaybackUrl &&
+      previousPlaybackUrl !== String(streamUrl).trim()
     );
 
     const selectedIndex = this.streamCandidates.findIndex((entry) => entry.url === streamUrl);
@@ -10329,8 +10453,8 @@ export const PlayerScreen = {
       this.activePlaybackSourceContext = sourceContext;
     }
     const allowPlaybackDuringStartupAudioGate = shouldAllowPlaybackDuringStartupAudioGate({
-        isHlsPlayback: this.isCurrentSourceLikelyHls(streamUrl, sourceCandidate)
-      });
+      isHlsPlayback: this.isCurrentSourceLikelyHls(streamUrl, sourceCandidate)
+    });
 
     this.hasPresentedPlaybackFrame = false;
     this.startupPlaybackBaselineSeconds = null;
@@ -10534,7 +10658,11 @@ export const PlayerScreen = {
         }
         const sourceErrorMessage =
           fallbackError ||
-          t("stream.debrid.unavailable", {}, "This Debrid source needs a configured Debrid account.");
+          t(
+            "stream.debrid.unavailable",
+            {},
+            "This Debrid source needs a configured Debrid account."
+          );
         this.sourcesError = this.formatPlaybackErrorForSources(sourceErrorMessage, {
           streamCandidate,
           reason: "stream-resolve",
@@ -10770,7 +10898,8 @@ export const PlayerScreen = {
       this.updateMediaSessionPlaybackState();
       this.setControlsVisible(true, { focus: false });
       this.sourcesError = this.formatPlaybackErrorForSources(
-        `${this.mediaErrorMessage(mediaErrorCode, "", sourceCandidate)}. Choose another source manually.`, {
+        `${this.mediaErrorMessage(mediaErrorCode, "", sourceCandidate)}. Choose another source manually.`,
+        {
           mediaErrorCode,
           streamCandidate: sourceCandidate,
           playbackUrl: this.activePlaybackUrl,
@@ -11021,7 +11150,12 @@ export const PlayerScreen = {
       : this.applySubtitleAssAlignmentToVtt(body);
   },
 
-  createSubtitleObjectUrl(body, sourceUrl = "", contentType = "", objectUrlCollection = this.externalSubtitleObjectUrls) {
+  createSubtitleObjectUrl(
+    body,
+    sourceUrl = "",
+    contentType = "",
+    objectUrlCollection = this.externalSubtitleObjectUrls
+  ) {
     const vttText = this.normalizeExternalSubtitleText(body, sourceUrl, contentType);
     const objectUrl = URL.createObjectURL(new Blob([vttText], { type: "text/vtt" }));
     objectUrlCollection.push(objectUrl);
@@ -12549,7 +12683,6 @@ export const PlayerScreen = {
       this.startupAudioPreferenceApplying = false;
     }
 
-
     const appliedOption = this.collectAudioOptionItems().find((entry) => entry.selected);
     const applied = Boolean(
       appliedOption?.supported &&
@@ -13342,9 +13475,7 @@ export const PlayerScreen = {
       Math.max(0, styleItems.length - 1)
     );
     const subtitleLoadingVisible = Boolean(
-      this.subtitleLoading ||
-      this.manifestLoading ||
-      this.trackDiscoveryInProgress
+      this.subtitleLoading || this.manifestLoading || this.trackDiscoveryInProgress
     );
     const showOptionsRail = activeLanguage !== SUBTITLE_LANGUAGE_OFF_KEY || subtitleLoadingVisible;
     const focusedStyleSide =
@@ -14176,13 +14307,7 @@ export const PlayerScreen = {
     // A reload only updates the Sources panel. It must never redirect playback
     // to whichever source happens to occupy the old array index.
     this.currentStreamIndex =
-      currentIndex >= 0
-        ? currentIndex
-        : activePlaybackUrl
-          ? -1
-          : canonicalStreams.length
-            ? 0
-            : -1;
+      currentIndex >= 0 ? currentIndex : activePlaybackUrl ? -1 : canonicalStreams.length ? 0 : -1;
 
     if (!this.getSourceFilters().includes(this.sourceFilter)) {
       this.sourceFilter = "all";
@@ -14295,7 +14420,7 @@ export const PlayerScreen = {
       if (Environment.isBrowser()) {
         nextCanonicalStreams = mergeStreamItems(nextCanonicalStreams, resultStreams);
         this.replaceBrowserStreamCandidates(nextCanonicalStreams);
-    } else {
+      } else {
         const merged = mergeStreamItems(this.streamCandidates, resultStreams);
         if (merged.length) {
           this.streamCandidates = merged;
@@ -14403,7 +14528,8 @@ export const PlayerScreen = {
                     ? this.getCurrentStreamCandidate()
                     : null;
                   const isCurrent = Environment.isBrowser()
-                    ? Boolean(currentStream) && streamMergeKey(currentStream) === streamMergeKey(stream)
+                    ? Boolean(currentStream) &&
+                      streamMergeKey(currentStream) === streamMergeKey(stream)
                     : this.streamCandidates[this.currentStreamIndex]?.url === stream.url;
                   const badges = renderPlayerSourceBadges(stream, badgeSettings);
                   const topBadges = badgePlacement === "TOP" ? badges : "";
@@ -14886,7 +15012,8 @@ export const PlayerScreen = {
     const rowHeight = Environment.isBrowser() ? 28 : PARENTAL_GUIDE_ROW_HEIGHT;
     const rowGap = Environment.isBrowser() ? 3 : PARENTAL_GUIDE_ROW_GAP;
     const lineHeight =
-      rowHeight * this.parentalWarnings.length + rowGap * Math.max(0, this.parentalWarnings.length - 1);
+      rowHeight * this.parentalWarnings.length +
+      rowGap * Math.max(0, this.parentalWarnings.length - 1);
     this.scheduleParentalGuideLineAnimation(
       lineHeight,
       PARENTAL_GUIDE_CONTAINER_IN_MS,
@@ -15749,8 +15876,14 @@ export const PlayerScreen = {
         });
       }
 
-      this.remoteSubtitleCandidates = this.mergeSubtitleCandidates(sidecarSubtitles, repositorySubtitles);
-      this.subtitles = this.mergeSubtitleCandidates(offlineSubtitles, this.remoteSubtitleCandidates);
+      this.remoteSubtitleCandidates = this.mergeSubtitleCandidates(
+        sidecarSubtitles,
+        repositorySubtitles
+      );
+      this.subtitles = this.mergeSubtitleCandidates(
+        offlineSubtitles,
+        this.remoteSubtitleCandidates
+      );
       if (this.subtitleDialogVisible && this.subtitleDialogTab === "builtIn") {
         const builtInBoundary = this.resolveBuiltInSubtitleBoundary(this.getTextTracks());
         const hasUsableBuiltIns = Environment.isBrowser()
@@ -15767,7 +15900,10 @@ export const PlayerScreen = {
     } catch (error) {
       console.error("Subtitle attach failed", error);
       this.remoteSubtitleCandidates = this.mergeSubtitleCandidates(sidecarSubtitles, []);
-      this.subtitles = this.mergeSubtitleCandidates(this.offlineSubtitleTracks, this.remoteSubtitleCandidates);
+      this.subtitles = this.mergeSubtitleCandidates(
+        this.offlineSubtitleTracks,
+        this.remoteSubtitleCandidates
+      );
       this.refreshTrackDialogs();
     } finally {
       if (requestToken === this.subtitleLoadToken) {
@@ -15903,8 +16039,8 @@ export const PlayerScreen = {
       this.controlFocusZone = "buttons";
       this.controlFocusIndex = Math.max(
         0,
-        this.getControlDefinitions().findIndex((entry) =>
-          entry.action === (compactBrowserToolbar ? "more" : "speed")
+        this.getControlDefinitions().findIndex(
+          (entry) => entry.action === (compactBrowserToolbar ? "more" : "speed")
         )
       );
       this.renderControlButtons();
