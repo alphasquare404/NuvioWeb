@@ -9742,6 +9742,13 @@ export const MetaDetailsScreen = {
         logo: this.meta?.logo || null,
         parentalWarnings: this.meta?.parentalWarnings || null,
         parentalGuide: this.meta?.parentalGuide || null,
+        // The episode route has always carried this. Without it a film that is
+        // not already in Continue Watching reaches an external player with no
+        // known duration at all, and the players that report a position but no
+        // duration of their own -- Lenna, Infuse -- have nothing to measure it
+        // against, so their callback is discarded.
+        runtime:
+          parseEpisodeRuntimeMinutes(this.meta?.runtimeMinutes || this.meta?.runtime) || null,
         videoId,
         preferredStreamId: StreamPreferencesStore.get(itemId, videoId) || null,
         episodes: [],

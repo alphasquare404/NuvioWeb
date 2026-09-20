@@ -59,6 +59,7 @@ import {
   prepareBrowserExternalPlaybackLaunch
 } from "../../components/browserExternalPlayer.js";
 import { clearExternalPlaybackHandoff } from "../../components/browserExternalPlaybackHandoff.js";
+import { resolveExternalResumeSeconds } from "../../components/externalPlayerResume.js";
 import { bindBrowserPushReturn } from "../../components/browserPushReturn.js";
 import { markBrowserExternalPlaybackFinished } from "../../components/browserExternalPlaybackFinish.js";
 import { validateExternalPlaybackPositionParts } from "../../components/browserExternalPlaybackTime.js";
@@ -4664,17 +4665,11 @@ export const PlayerScreen = {
     if (this.params?.startFromBeginning) return 0;
     const activeSeconds = Number(this.getPlaybackCurrentSeconds());
     if (Number.isFinite(activeSeconds) && activeSeconds > 0) return activeSeconds;
-    const routePositionMs = Number(this.params?.resumePositionMs || 0);
-    const routeDurationMs = Number(this.params?.resumeDurationMs || 0);
-    if (
-      Number.isFinite(routePositionMs) &&
-      routePositionMs > 0 &&
-      (!Number.isFinite(routeDurationMs) ||
-        routeDurationMs <= 0 ||
-        routePositionMs < routeDurationMs * 0.9)
-    )
-      return routePositionMs / 1000;
-    return 0;
+    return resolveExternalResumeSeconds({
+      positionMs: this.params?.resumePositionMs,
+      progressPercent: this.params?.resumeProgressPercent,
+      durationMs: this.params?.resumeDurationMs || this.getExternalPlayerKnownDurationMs()
+    });
   },
 
   getExternalPlayerKnownDurationMs() {
@@ -4743,6 +4738,20 @@ export const PlayerScreen = {
         this.externalPlaybackReturnDialog = null;
       }
     }).mount(document.body);
+    return true;
+  },
+
+  /**
+   * Takes the prompt away once the real report turns up.
+   *
+   * The prompt asks where the viewer got to. A report that arrives afterwards
+   * answers that exactly, so leaving the prompt up invites a guess to be
+   * written over the true position.
+   */
+  dismissExternalPlaybackManualFallback() {
+    if (!this.externalPlaybackReturnDialog) return false;
+    this.externalPlaybackReturnDialog.destroy?.();
+    this.externalPlaybackReturnDialog = null;
     return true;
   },
 
@@ -7141,15 +7150,30 @@ export const PlayerScreen = {
     if (shouldReturnToStream) {
       const historyBack = Router.backToPreviousNuvioRoute?.("stream");
       if (historyBack?.accepted) {
-        void historyBack.settled.finally(() => {
+        void historyBack.settled.then((landed) => {
           this.playerBackNavigationInProgress = false;
+          // Accepting the Back only means history.back() was issued. When the
+          // entry it lands on is not the Stream parent we expected, nothing
+          // navigates -- and playback has already been stopped above, so the
+          // user is left looking at a dead player waiting for a Back that was
+          // never going to come. Recover onto the synthetic route instead of
+          // making them press Back again.
+          if (!landed && Router.getCurrent?.() === "player") {
+            this.navigateToPlayerBackFallback({ shouldReturnToStream, streamParams });
+          }
         });
         return true;
       }
     }
 
-    // Direct, legacy, and malformed Player entries have no proven Stream parent.
-    // Preserve the existing synthetic route fallback only for those safe cases.
+    this.navigateToPlayerBackFallback({ shouldReturnToStream, streamParams });
+    return true;
+  },
+
+  // Direct, legacy, and malformed Player entries have no proven Stream parent,
+  // and a history Back that failed to land leaves the player in the same state.
+  navigateToPlayerBackFallback({ shouldReturnToStream, streamParams }) {
+    this.playerBackNavigationInProgress = true;
     Router.suppressNextPopstate?.(1500);
     Router.ignoreSinglePopstate?.();
     const targetRoute = shouldReturnToStream ? "stream" : this.params?.itemId ? "detail" : "home";
@@ -7166,7 +7190,6 @@ export const PlayerScreen = {
     }).finally(() => {
       this.playerBackNavigationInProgress = false;
     });
-    return true;
   },
 
   shouldShowNextEpisodeCard() {

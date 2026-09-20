@@ -56,6 +56,7 @@ import {
   normalizeBrowserExternalPlayer,
   prepareBrowserExternalPlaybackLaunch
 } from "../../components/browserExternalPlayer.js";
+import { resolveExternalResumeSeconds } from "../../components/externalPlayerResume.js";
 import { bindBrowserPushReturn } from "../../components/browserPushReturn.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import {
@@ -2473,7 +2474,11 @@ export const StreamScreen = {
       mediaUrl: selected?.url || selected?.externalUrl || "",
       title: this.params?.episodeTitle || this.params?.itemTitle || this.params?.playerTitle || "",
       subtitleUrl: "",
-      resumePositionSeconds: Number(context.resumePositionMs || 0) / 1000,
+      resumePositionSeconds: resolveExternalResumeSeconds({
+        positionMs: context.resumePositionMs,
+        progressPercent: context.resumeProgressPercent,
+        durationMs: context.resumeDurationMs
+      }),
       knownDurationMs:
         Number(context.resumeDurationMs || 0) ||
         Math.max(0, Number(this.params?.runtime || this.params?.runtimeMinutes || 0)) * 60_000,
@@ -2569,6 +2574,7 @@ export const StreamScreen = {
         offlineDownload,
         offlineStream,
         resumePositionMs,
+        resumeProgressPercent,
         resumeDurationMs
       }))
     ) {
