@@ -725,6 +725,9 @@ class WatchProgressRepository {
       selectedContinueWatchingSource() === WatchProgressSource.TRAKT
         ? await fetchTraktProgressSnapshot()
         : await fetchSimklProgressSnapshot();
+    // A suppression only means something against the account it was made for,
+    // so drop the set outright when the profile or source changes.
+    continueWatchingRemovalSuppression.scopeTo(this.getContinueWatchingSourceKey());
     // Settle any in-flight removal against what the provider now reports.
     // Only the playback rows matter here: those are what a removal deletes,
     // and a lingering history row must not keep a card hidden.
@@ -817,6 +820,7 @@ class WatchProgressRepository {
       return true;
     }
 
+    continueWatchingRemovalSuppression.scopeTo(this.getContinueWatchingSourceKey());
     continueWatchingRemovalSuppression.suppress(normalizedContentId);
     const result = await removeRemote().catch(() => ({
       attempted: 0,

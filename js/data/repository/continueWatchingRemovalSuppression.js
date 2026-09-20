@@ -6,19 +6,25 @@
 // Remove and the provider confirming it, the next compose would hand the item
 // straight back and the card would visibly return.
 //
-// So a removed target is suppressed from the projection until a *fresh snapshot
-// proves it is gone*. That is deliberately not the same as "the refresh call
+// So a removed target is suppressed from the projection until the provider
+// itself settles it. That is deliberately not the same as "the refresh call
 // succeeded" -- a refresh can succeed and still carry the row, because the
 // provider had not applied the delete yet.
 //
-// This is reconciliation state, never a tombstone. Every path out of
-// suppression ends in the item being shown again if it really is still there:
-// a definitive delete failure drops it immediately, and otherwise it expires
-// after a bounded number of reconciles or a bounded time. A permanently
-// suppressed item would be a lie the user could not undo.
-
-const DEFAULT_MAX_RECONCILES = 3;
-const DEFAULT_MAX_AGE_MS = 60000;
+// There are exactly two ways out, and both are authoritative:
+//
+//   1. a fresh provider snapshot no longer carries the target -> the removal
+//      is real, stop suppressing it;
+//   2. the delete definitively failed while the provider still reports the
+//      target -> the provider wins, show it again.
+//
+// Nothing else releases a suppression. There is no time limit and no reconcile
+// budget: a card that came back because a timer fired would be a removal
+// silently undoing itself, with no provider fact behind it. This is also why
+// suppression is never persisted -- it lives in memory, dies with the page,
+// and is dropped wholesale by `scopeTo` when the profile or the Continue
+// Watching source changes, since a suppression only means anything against the
+// provider account it was created for.
 
 export function normalizeSuppressionKey(value) {
   return String(value ?? "")
@@ -30,19 +36,16 @@ export function normalizeSuppressionKey(value) {
  * Removal is title-wide, so suppression is keyed by contentId alone. Episode
  * identity deliberately plays no part: removing a series removes its progress.
  */
-export function createContinueWatchingRemovalSuppression({
-  maxReconciles = DEFAULT_MAX_RECONCILES,
-  maxAgeMs = DEFAULT_MAX_AGE_MS,
-  now = () => Date.now()
-} = {}) {
-  const entries = new Map();
+export function createContinueWatchingRemovalSuppression() {
+  const entries = new Set();
+  let scope = null;
 
   function suppress(contentId) {
     const key = normalizeSuppressionKey(contentId);
     if (!key) {
       return false;
     }
-    entries.set(key, { createdAt: now(), reconciles: 0 });
+    entries.add(key);
     return true;
   }
 
@@ -59,6 +62,27 @@ export function createContinueWatchingRemovalSuppression({
       return Array.isArray(items) ? items : [];
     }
     return (Array.isArray(items) ? items : []).filter((item) => !isSuppressed(item?.contentId));
+  }
+
+  /**
+   * Lifecycle cleanup, not expiry.
+   *
+   * A suppression is a claim about one provider account: it is meaningless
+   * against a different profile or a different Continue Watching source, and
+   * leaving it in place would hide somebody else's card. Dropping the whole set
+   * when the scope changes is the cleanup the removed timer used to approximate
+   * by accident.
+   *
+   * @returns whether the scope changed, which means entries were dropped.
+   */
+  function scopeTo(scopeKey) {
+    const key = String(scopeKey ?? "");
+    if (key === scope) {
+      return false;
+    }
+    scope = key;
+    entries.clear();
+    return true;
   }
 
   /**
@@ -79,23 +103,19 @@ export function createContinueWatchingRemovalSuppression({
         .filter(Boolean)
     );
     const released = [];
-    const currentTime = now();
-    entries.forEach((entry, key) => {
+    entries.forEach((key) => {
       if (!present.has(key)) {
         // The snapshot no longer carries it: the removal is real.
         released.push(key);
         return;
       }
       if (deletionFailed) {
-        released.push(key);
-        return;
-      }
-      entry.reconciles += 1;
-      const expired =
-        entry.reconciles >= maxReconciles || currentTime - entry.createdAt >= maxAgeMs;
-      if (expired) {
+        // The provider still has it and the delete definitively failed, so the
+        // provider is right and the card belongs back on screen.
         released.push(key);
       }
+      // Still present and nothing has failed: the delete is simply not applied
+      // yet. Keep suppressing and ask the provider again next compose.
     });
     released.forEach((key) => entries.delete(key));
     return released;
@@ -107,6 +127,7 @@ export function createContinueWatchingRemovalSuppression({
     release,
     filterItems,
     reconcile,
+    scopeTo,
     clear: () => entries.clear(),
     get size() {
       return entries.size;

@@ -5051,9 +5051,16 @@ export const HomeScreen = {
     if (!item?.id) {
       return false;
     }
+    // The controller is shared by every card, so the details callback has to
+    // resolve the card this open started from. Closing over `node` bound the
+    // first card of the session forever and sent every later "Go to details"
+    // to it. openDetailFromNode needs the real element (return-focus capture
+    // and collection-folder handling both read more than the item carries),
+    // so the node is tracked per open rather than reconstructed from the item.
+    this.sharedPosterOptionsNode = node;
     if (!this.sharedPosterOptionsController) {
       this.sharedPosterOptionsController = new PosterOptionsDialogController({
-        onDetails: () => this.openDetailFromNode(node),
+        onDetails: () => this.openDetailFromNode(this.sharedPosterOptionsNode),
         onChanged: () => this.requestBackgroundRender()
       });
     }

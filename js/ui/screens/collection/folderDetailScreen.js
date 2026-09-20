@@ -2102,9 +2102,14 @@ export const FolderDetailScreen = {
     if (!item?.id) {
       return false;
     }
+    // Tracked per open: the controller is reused across cards, so a callback
+    // that closed over `node` would keep sending "Go to details" to whichever
+    // card opened the first menu. openDetailFromNode needs the real element
+    // for its focusKey, which the resolved item does not carry.
+    this.posterOptionsNode = node;
     if (!this.posterOptionsController) {
       this.posterOptionsController = new PosterOptionsDialogController({
-        onDetails: () => this.openDetailFromNode(node),
+        onDetails: () => this.openDetailFromNode(this.posterOptionsNode),
         onDismiss: () => {
           const focused = this.container?.querySelector(".focusable.focused");
           if (focused) this.focusNode(focused);
