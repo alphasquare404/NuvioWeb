@@ -76,13 +76,20 @@ import {
   isBrowserOfflineDownloadSupported,
   getBrowserOfflineFile,
   enrichBrowserOfflineDownloadDisplay,
+  getOfflineDownload,
   listOfflineDownloads,
+  listOfflineSubtitles,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
 import {
   createBrowserOfflinePlayback,
   releaseBrowserOfflinePlayback
 } from "../../../core/offline/browserOfflinePlayback.js";
+import {
+  canOfferOfflineSubtitleHandoff,
+  sendOfflineSubtitleFor,
+  startOfflinePlayback
+} from "../../components/browserOfflinePlaybackChoice.js";
 import { createBrowserOfflineArtworkResolver } from "../../../core/offline/browserOfflineArtworkResolver.js";
 import {
   applyOfflineDisplaySnapshot,
@@ -3517,6 +3524,97 @@ export const MetaDetailsScreen = {
     };
   },
 
+  // A downloaded episode's card only carries its download id once the offline
+  // list has been merged in, which happens when remote data is missing. The
+  // lookup built during the status refresh answers in either case.
+  getOfflineDownloadIdForEpisode(episode = null) {
+    if (!Platform.isBrowser() || !episode) return "";
+    const direct = String(episode.offlineDownloadId || "");
+    if (direct) return direct;
+    const seriesId = this.getOfflineSeriesId();
+    if (!seriesId) return "";
+    const mediaIdentity = createOfflineMediaId({
+      contentType: "episode",
+      seriesId,
+      seasonNumber: episode.season,
+      episodeNumber: episode.episode
+    });
+    return mediaIdentity
+      ? String(this.offlineDownloadIdByEpisodeMedia?.get(mediaIdentity) || "")
+      : "";
+  },
+
+  // The file the hero plays. Not gated on being offline: sending a subtitle is
+  // an action on a downloaded file, and whether the network happens to be up
+  // has nothing to do with it.
+  getHeroOfflineDownloadId() {
+    if (!Platform.isBrowser()) return "";
+    if (isSeriesDetailMeta(this.meta, this.episodes)) {
+      return this.getOfflineDownloadIdForEpisode(
+        this.nextEpisodeToWatch ||
+          this.episodes?.find((entry) => entry.season === this.selectedSeason) ||
+          this.episodes?.[0] ||
+          null
+      );
+    }
+    return String(this.offlineMovieDownload?.downloadId || this.offlineMovieDownloadId || "");
+  },
+
+  getOfflineSubtitlesForDownload(downloadId) {
+    const key = String(downloadId || "");
+    return key ? this.offlineSubtitleByDownload?.get(key) || [] : [];
+  },
+
+  getHeroOfflineSubtitles() {
+    return this.getOfflineSubtitlesForDownload(this.getHeroOfflineDownloadId());
+  },
+
+  renderHeroOfflineSubtitleButton() {
+    if (!canOfferOfflineSubtitleHandoff(this.getHeroOfflineSubtitles())) return "";
+    const label = t("offline.sendSubtitle", {}, "Send subtitle to another app");
+    return `<button class="series-circle-btn focusable" data-action="sendOfflineSubtitle" aria-label="${escapeAttribute(label)}" title="${escapeAttribute(label)}"><span class="material-icons" aria-hidden="true">closed_caption</span></button>`;
+  },
+
+  getOfflineSubtitlesForEpisode(episode = null) {
+    return this.getOfflineSubtitlesForDownload(this.getOfflineDownloadIdForEpisode(episode));
+  },
+
+  async sendOfflineSubtitleForEpisode(episode = null) {
+    try {
+      const downloadId = this.getOfflineDownloadIdForEpisode(episode);
+      const download = downloadId ? await getOfflineDownload(downloadId).catch(() => null) : null;
+      await sendOfflineSubtitleFor(download, this.getOfflineSubtitlesForEpisode(episode), {
+        onError: (message) => this.showOfflineSubtitleError(message)
+      });
+    } catch (error) {
+      this.showOfflineSubtitleError(`Subtitle handoff failed: ${String(error?.message || error)}`);
+    }
+  },
+
+  async sendHeroOfflineSubtitle() {
+    try {
+      const downloadId = this.getHeroOfflineDownloadId();
+      const download = downloadId ? await getOfflineDownload(downloadId).catch(() => null) : null;
+      await sendOfflineSubtitleFor(download, this.getHeroOfflineSubtitles(), {
+        // This screen has no toast, and without somewhere to report to, a failed
+        // hand-over is indistinguishable from a button that does nothing.
+        onError: (message) => this.showOfflineSubtitleError(message)
+      });
+    } catch (error) {
+      this.showOfflineSubtitleError(`Subtitle handoff failed: ${String(error?.message || error)}`);
+    }
+  },
+
+  showOfflineSubtitleError(message) {
+    this.showSeasonDownloadDialog({
+      title: t("offline.sendSubtitle", {}, "Send subtitle to another app"),
+      subtitle: message,
+      buttons: [
+        { label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }
+      ]
+    });
+  },
+
   shouldPreferOfflineEpisode(episode = {}) {
     return Boolean(this.remoteEpisodeDataUnavailable && episode?.offlineDownloadId);
   },
@@ -3528,6 +3626,19 @@ export const MetaDetailsScreen = {
   },
 
   async playOfflineDetailDownload(download, episode = null) {
+    const resume = this.getResumeParamsForProgress(
+      episode ? this.getEpisodeMenuProgress(episode) : this.getActiveResumeProgress(),
+      { useActiveFallback: !episode }
+    );
+    return startOfflinePlayback({
+      downloadId: download?.downloadId,
+      playInternally: () => this.playOfflineDetailDownloadInternally(download, episode),
+      resumePositionMs: Number(resume.resumePositionMs || 0),
+      knownDurationMs: Number(resume.resumeDurationMs || 0)
+    });
+  },
+
+  async playOfflineDetailDownloadInternally(download, episode = null) {
     const playback = await createBrowserOfflinePlayback(download?.downloadId);
     if (!playback) {
       await this.refreshOfflineDownloadStatus();
@@ -3615,6 +3726,21 @@ export const MetaDetailsScreen = {
     );
     const seriesId = this.getOfflineSeriesId();
     const nextEpisodeMediaIds = new Set();
+    // An episode card only carries a download id when the offline list has been
+    // merged into it, which happens when remote data is missing. Keeping the
+    // mapping here means a downloaded episode can be acted on either way.
+    const nextDownloadIdByEpisodeMedia = new Map();
+    const nextMovieDownloadId = String(
+      this.offlineMovieDownload?.downloadId ||
+        completedDownloads.find(
+          (download) =>
+            download?.contentType === "movie" &&
+            movieMediaId &&
+            String(download?.mediaIdentity || createOfflineMediaId(download)).trim() ===
+              movieMediaId
+        )?.downloadId ||
+        ""
+    );
     if (seriesId) {
       completedDownloads.forEach((download) => {
         if (
@@ -3628,6 +3754,7 @@ export const MetaDetailsScreen = {
         ).trim();
         if (mediaIdentity) {
           nextEpisodeMediaIds.add(mediaIdentity);
+          nextDownloadIdByEpisodeMedia.set(mediaIdentity, String(download.downloadId || ""));
         }
       });
     }
@@ -3637,11 +3764,38 @@ export const MetaDetailsScreen = {
       [...nextEpisodeMediaIds].some(
         (mediaIdentity) => !this.offlineEpisodeMediaIds?.has(mediaIdentity)
       );
-    if (!episodeStatusChanged && nextMovieDownloaded === this.offlineMovieDownloaded) {
+    // The store of downloaded subtitles is small, and grouping all of them costs
+    // one read; asking per download would mean one read per episode on screen.
+    const nextSubtitlesByDownload = (await listOfflineSubtitles({}).catch(() => []))
+      .filter((subtitle) => subtitle?.offlineCopyId && subtitle?.subtitleId)
+      .reduce((byDownload, subtitle) => {
+        const key = String(subtitle.offlineCopyId);
+        byDownload.set(key, [...(byDownload.get(key) || []), subtitle]);
+        return byDownload;
+      }, new Map());
+    if (requestToken !== this.offlineDownloadStatusRefreshToken || !this.container) {
+      return;
+    }
+    const subtitleSignature = [...nextSubtitlesByDownload]
+      .map(([downloadId, subtitles]) => `${downloadId}:${subtitles.length}`)
+      .sort()
+      .join("|");
+    const subtitleStatusChanged = subtitleSignature !== (this.offlineSubtitleSignature || "");
+    // These two are lookup tables, not rendered state, so they are kept current
+    // even when nothing on screen needs redrawing.
+    this.offlineDownloadIdByEpisodeMedia = nextDownloadIdByEpisodeMedia;
+    this.offlineMovieDownloadId = nextMovieDownloadId;
+    if (
+      !episodeStatusChanged &&
+      !subtitleStatusChanged &&
+      nextMovieDownloaded === this.offlineMovieDownloaded
+    ) {
       return;
     }
     this.offlineMovieDownloaded = nextMovieDownloaded;
     this.offlineEpisodeMediaIds = nextEpisodeMediaIds;
+    this.offlineSubtitleByDownload = nextSubtitlesByDownload;
+    this.offlineSubtitleSignature = subtitleSignature;
     if (this.meta) {
       this.updateRenderedDetailSections(this.meta);
     }
@@ -3868,6 +4022,7 @@ export const MetaDetailsScreen = {
             </button>
             ${showWatchedButton ? `<button class="series-circle-btn focusable${this.isMarkedWatched ? " is-selected" : ""}" data-action="toggleWatched" aria-label="${escapeAttribute(this.isMarkedWatched ? t("common.markUnwatched", {}, "Mark Unwatched") : t("common.markWatched", {}, "Mark Watched"))}">${renderWatchedGlyph(this.isMarkedWatched)}</button>` : ""}
             ${trailerButton}
+            ${this.renderHeroOfflineSubtitleButton()}
             ${downloadedIndicator}
           </div>
           ${this.renderResumeIndicator()}
@@ -5320,6 +5475,7 @@ export const MetaDetailsScreen = {
           <div class="series-episode-overlay"></div>
           ${isWatched ? `<div class="series-episode-status complete">${renderWatchedBadgeGlyph()}</div>` : progressRatio < 0.02 ? `<div class="series-episode-status idle"></div>` : ""}
           ${Platform.isBrowser() && isDownloaded ? `<span class="series-episode-offline-status" role="img" aria-label="${escapeAttribute(t("offline.downloaded", {}, "Downloaded"))}"><span class="material-icons" aria-hidden="true">download</span></span>` : ""}
+          ${canOfferOfflineSubtitleHandoff(this.getOfflineSubtitlesForEpisode(episode)) ? `<button type="button" class="series-episode-subtitle-action" data-episode-subtitle="${escapeAttribute(episode.id)}" aria-label="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}" title="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}"><span class="material-icons" aria-hidden="true">closed_caption</span></button>` : ""}
           ${isUnavailable ? `<div class="series-episode-unavailable">${escapeHtml(t("episodes_unavailable", {}, "Unavailable").toUpperCase())}</div>` : ""}
           <div class="series-episode-copy">
             <div class="series-episode-badge">${escapeHtml(t("episodes_episode", {}, "Episode").toUpperCase())} ${Number(episode.episode || 0)}</div>
@@ -5708,6 +5864,14 @@ export const MetaDetailsScreen = {
       action: "playManually",
       label: t("play_manually", {}, "Play manually")
     });
+    // Per episode, because that is the file the subtitle belongs to. The hero
+    // button only ever covers whichever episode the hero itself would play.
+    if (canOfferOfflineSubtitleHandoff(this.getOfflineSubtitlesForEpisode(episode))) {
+      options.push({
+        action: "sendOfflineSubtitle",
+        label: t("offline.sendSubtitle", {}, "Send subtitle to another app")
+      });
+    }
     if (progress && isWatchProgressInProgress(progress)) {
       options.push({
         action: "playFromBeginning",
@@ -7174,6 +7338,10 @@ export const MetaDetailsScreen = {
       this.closeEpisodeHoldMenu({ restoreFocus: false });
       return this.markPreviousEpisodesWatched(episode);
     }
+    if (option.action === "sendOfflineSubtitle") {
+      this.closeEpisodeHoldMenu({ restoreFocus: false });
+      return this.sendOfflineSubtitleForEpisode(episode);
+    }
     return false;
   },
 
@@ -7772,7 +7940,8 @@ export const MetaDetailsScreen = {
           "playFromBeginning",
           "toggleLibrary",
           "toggleWatched",
-          "toggleTrailer"
+          "toggleTrailer",
+          "sendOfflineSubtitle"
         ].includes(action)
       ) {
         return;
@@ -7792,6 +7961,8 @@ export const MetaDetailsScreen = {
         void this.toggleWatchedFromHero();
       } else if (action === "toggleTrailer") {
         void this.openDesktopTrailerModal();
+      } else if (action === "sendOfflineSubtitle") {
+        void this.sendHeroOfflineSubtitle();
       }
       event.preventDefault();
     };
@@ -7959,6 +8130,21 @@ export const MetaDetailsScreen = {
       const seasonDownloadButton = this.container?.querySelector("[data-action='downloadSeason']");
       if (seasonDownloadButton instanceof HTMLButtonElement) {
         seasonDownloadButton.onclick = () => void this.openSeasonDownloadDialog();
+      }
+      if (!this.boundEpisodeSubtitleActionHandler) {
+        this.boundEpisodeSubtitleActionHandler = (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          const button = target?.closest?.("button[data-episode-subtitle]");
+          if (!button || !this.container?.contains(button)) return;
+          // The episode rail treats any click inside a card as "play this one",
+          // so this has to be claimed during capture, before the rail sees it.
+          event.preventDefault();
+          event.stopPropagation();
+          const videoId = String(button.dataset.episodeSubtitle || "");
+          const episode = this.episodes?.find((entry) => entry.id === videoId) || null;
+          void this.sendOfflineSubtitleForEpisode(episode);
+        };
+        this.container.addEventListener("click", this.boundEpisodeSubtitleActionHandler, true);
       }
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -11429,6 +11615,11 @@ export const MetaDetailsScreen = {
       return;
     }
 
+    if (action === "sendOfflineSubtitle") {
+      await this.sendHeroOfflineSubtitle();
+      return;
+    }
+
     if (action === "playStream" && current.dataset.streamUrl) {
       const imdbId = resolveMetaImdbId(this.meta, this.params);
       const tmdbId = resolveMetaTmdbId(this.meta, this.params);
@@ -11668,6 +11859,10 @@ export const MetaDetailsScreen = {
     if (this.boundDesktopDetailActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopDetailActionHandler);
       this.boundDesktopDetailActionHandler = null;
+    }
+    if (this.boundEpisodeSubtitleActionHandler && this.container) {
+      this.container.removeEventListener("click", this.boundEpisodeSubtitleActionHandler, true);
+      this.boundEpisodeSubtitleActionHandler = null;
     }
     if (this.boundDesktopInsightTabActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopInsightTabActionHandler);

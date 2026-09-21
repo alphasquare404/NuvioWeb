@@ -7,6 +7,7 @@ import {
   createOfflineSubtitleFingerprint,
   getOfflineSubtitleIdentityParts,
   downloadBrowserOfflineSubtitle,
+  isOfflineSubtitleStepUnfinished,
   deleteBrowserOfflineDownload,
   getOfflineDownload,
   getOfflineSubtitle,
@@ -225,7 +226,7 @@ export async function initializeBrowserOfflineDownloadQueue() {
       (download) =>
         download?.status === "completed" &&
         getOfflineSubtitleSelection(download).descriptors.length &&
-        ["pending", "downloading", "partial"].includes(String(download?.offlineSubtitleStatus || "pending"))
+        isOfflineSubtitleStepUnfinished(download?.offlineSubtitleStatus)
     );
     void Promise.all(pendingSubtitleDownloads.map((download) => downloadSelectedSubtitleAfterVideo(download)));
     void scheduleBrowserOfflineDownloads();

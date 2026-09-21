@@ -232,3 +232,47 @@ test("an ordinary (non-external) flushProgress call saves progress as non-author
     watchProgressRepository.saveProgress = originalSaveProgress;
   }
 });
+
+// Handing a downloaded file to another app reports nothing back, so the manual
+// prompt is the only source of progress -- and it was passing a zero duration
+// whenever the runtime was unknown. A zero is "never learned", not a
+// measurement, and sending it as one had the whole report refused: the viewer
+// typed a position, pressed Save, and nothing was written.
+test("a position sent with no known runtime is still saved", async () => {
+  const calls = [];
+  const controller = {
+    flushProgress: async (...args) => {
+      calls.push(args);
+      return true;
+    }
+  };
+  const withoutRuntime = {
+    knownDurationMs: 0,
+    progressContext: { itemId: "series:offline", itemType: "series", title: "Offline episode" }
+  };
+  assert.equal(
+    await PlayerController.applyExternalPlaybackReport.call(controller, {
+      handoff: withoutRuntime,
+      outcome: "stopped",
+      positionSeconds: 930,
+      durationSeconds: null
+    }),
+    true
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 930_000);
+  assert.equal(calls[0][1], 0);
+});
+
+test("a duration that is reported as zero is still refused, because that claims a measurement", async () => {
+  const controller = { flushProgress: async () => true };
+  assert.equal(
+    await PlayerController.applyExternalPlaybackReport.call(controller, {
+      handoff,
+      outcome: "stopped",
+      positionSeconds: 45,
+      durationSeconds: 0
+    }),
+    false
+  );
+});

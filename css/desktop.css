@@ -2651,6 +2651,19 @@ html.desktop-browser {
   color: rgba(255, 255, 255, 0.68);
 }
 
+.desktop-browser .desktop-external-player-dialog .nuvio-dialog-remember {
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.desktop-browser .desktop-external-player-dialog .nuvio-dialog-remember input {
+  width: 16px;
+  height: 16px;
+}
+
 .desktop-browser .nuvio-dialog-actions.desktop-external-player-actions {
   flex-direction: column;
   gap: 8px;
@@ -2700,6 +2713,58 @@ html.desktop-browser {
   color: rgba(255, 255, 255, 0.62);
   font-size: 12px;
   line-height: 1.3;
+}
+
+/* The failure message under the time fields is a <small> inside this same copy
+   block, so it inherited the caption colour and read as one more line of help.
+   A save that quietly failed looked like a button that did nothing at all. */
+.desktop-browser .desktop-external-player-choice-copy small.nuvio-dialog-error {
+  color: #ffb6b6;
+  font-weight: 600;
+}
+
+.desktop-browser .desktop-external-player-choice-copy small.nuvio-dialog-error:empty {
+  display: none;
+}
+
+/* "All subtitles" is a real download option, so this list has no fixed length --
+   without a cap a dozen languages would push the buttons off the screen. */
+/* Release names run long and are the whole point of this row, so they wrap
+   rather than truncate -- an elided name cannot be matched against a download. */
+.desktop-browser .desktop-offline-subtitle-choice {
+  min-height: 0;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.desktop-browser .desktop-offline-subtitle-choice .desktop-external-player-choice-copy {
+  display: block;
+}
+
+.desktop-browser .desktop-offline-subtitle-provider {
+  display: block;
+  font-size: 11px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.desktop-browser .desktop-offline-subtitle-choice strong {
+  display: block;
+}
+
+.desktop-browser .desktop-offline-subtitle-choice small {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.desktop-browser .desktop-offline-subtitle-dialog .nuvio-dialog-actions {
+  max-height: 46vh;
+  overflow-y: auto;
+  /* The vertical scrollbar eats into the row width, and full-width buttons then
+     overflow sideways -- which showed up as a horizontal bar under the list. */
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .desktop-browser .desktop-external-player-actions .desktop-external-player-cancel {
@@ -5058,6 +5123,35 @@ html.desktop-browser {
 }
 
 .desktop-browser #detail .series-episode-offline-status .material-icons {
+  font-size: 17px;
+}
+
+/* Sits beside the downloaded badge, and unlike that badge it is tappable: this
+   is the only way to reach a specific episode's subtitle while offline, where
+   the card plays straight away and never shows the stream list. The offset is
+   the badge's own right inset plus its width, plus a gap. */
+.desktop-browser #detail .series-episode-subtitle-action {
+  position: absolute;
+  top: 12px;
+  right: 50px;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  background: rgb(18 18 20 / 0.84);
+  color: #f2f2f2;
+  cursor: pointer;
+}
+
+.desktop-browser #detail .series-episode-subtitle-action:active {
+  background: rgb(52 52 56 / 0.92);
+}
+
+.desktop-browser #detail .series-episode-subtitle-action .material-icons {
   font-size: 17px;
 }
 

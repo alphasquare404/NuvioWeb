@@ -101,7 +101,8 @@ export function beginExternalPlaybackHandoff({
   automatic = false,
   progressMode = automatic ? "automatic" : "manual",
   callbackCapable = automatic,
-  manualPromptEligible = !(progressMode === "automatic" && callbackCapable)
+  manualPromptEligible = !(progressMode === "automatic" && callbackCapable),
+  navigationLaunch = false
 } = {}) {
   const token = createOutplayerReturnToken(runtime);
   const returnOrigin = getReturnOrigin(runtime);
@@ -122,6 +123,7 @@ export function beginExternalPlaybackHandoff({
     progressMode: progressMode === "automatic" ? "automatic" : "manual",
     callbackCapable: Boolean(callbackCapable),
     manualPromptEligible: Boolean(manualPromptEligible),
+    navigationLaunch: Boolean(navigationLaunch),
     state: automatic ? "awaiting-auto-report" : "manual-required",
     returnObservedAt: null,
     manualPromptedAt: null
@@ -347,7 +349,12 @@ export function installExternalPlaybackReturnCoordinator({
   // In that case there is no prior visibility transition in this JS context.
   if (runtime.document?.visibilityState !== "hidden") {
     const pending = readPendingExternalPlaybackHandoff({ runtime, profileId: getProfileId() });
-    if (pending?.automatic) runAfterForeground({ confirmedReturn: true });
+    // A handoff that navigated this page away takes the app's own reload as the
+    // return: the launch destroyed the JS context that would have seen the
+    // visibility change, so waiting for one means never prompting at all.
+    if (pending?.automatic || pending?.navigationLaunch) {
+      runAfterForeground({ confirmedReturn: true });
+    }
   }
   return { collect: runAfterForeground };
 }

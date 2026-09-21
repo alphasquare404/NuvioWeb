@@ -1,5 +1,9 @@
 import { createProfileScopedStore } from "./profileScopedStore.js";
 import {
+  OFFLINE_PLAYBACK_TARGETS,
+  normalizeOfflinePlaybackTarget
+} from "../../core/offline/offlineHandoffPolicy.js";
+import {
   SUBTITLE_VERTICAL_OFFSET_CONTRACT,
   SUBTITLE_VERTICAL_OFFSET_DEFAULT,
   normalizeSubtitleVerticalOffset
@@ -64,7 +68,10 @@ const DEFAULTS = {
   // Apple browser users without a stored preference receive the verified
   // Lenna path; platform-specific consumers keep Android on its own options.
   browserExternalPlayer: "lenna",
-  externalPlayerProgress: "automatic"
+  externalPlayerProgress: "automatic",
+  // A downloaded file can be played in Nuvio or handed to another app, and the
+  // handoff costs a second copy of the file, so the choice is never assumed.
+  offlinePlaybackTarget: OFFLINE_PLAYBACK_TARGETS.ASK
 };
 
 const STREAM_AUTO_PLAY_MODES = ["MANUAL", "FIRST_STREAM", "REGEX_MATCH"];
@@ -312,6 +319,9 @@ export function normalizePlayerSettings(settings = {}) {
     ),
     externalPlayerProgress: normalizeExternalPlayerProgress(
       persistentSettings.externalPlayerProgress ?? DEFAULTS.externalPlayerProgress
+    ),
+    offlinePlaybackTarget: normalizeOfflinePlaybackTarget(
+      persistentSettings.offlinePlaybackTarget ?? DEFAULTS.offlinePlaybackTarget
     ),
     nextEpisodeThresholdMode: normalizeNextEpisodeThresholdMode(
       persistentSettings.nextEpisodeThresholdMode ?? DEFAULTS.nextEpisodeThresholdMode

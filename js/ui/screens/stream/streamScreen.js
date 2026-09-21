@@ -75,12 +75,18 @@ import {
   isBrowserOfflineDownloadSupported,
   listOfflineDownloads,
   listOfflineDownloadsForMedia,
+  listOfflineSubtitles,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
 import {
   createBrowserOfflinePlayback,
   releaseBrowserOfflinePlayback
 } from "../../../core/offline/browserOfflinePlayback.js";
+import {
+  canOfferOfflineSubtitleHandoff,
+  sendOfflineSubtitleFor,
+  startOfflinePlayback
+} from "../../components/browserOfflinePlaybackChoice.js";
 import {
   cancelQueuedBrowserOfflineDownload,
   enqueueBrowserOfflineDownload,
@@ -886,6 +892,7 @@ export const StreamScreen = {
     this.offlineDownloadsSupported = false;
     this.offlineDownloadMetadata = new Map();
     this.offlineLocalCopies = [];
+    this.offlineSubtitleByDownload = new Map();
     this.offlineDownloadsUnsubscribe?.();
     this.offlineDownloadsUnsubscribe = null;
     if (isBrowserOfflineDownloadSupported()) {
@@ -972,6 +979,7 @@ export const StreamScreen = {
     this.streams = [];
     this.offlineDownloadMetadata = new Map();
     this.offlineLocalCopies = [];
+    this.offlineSubtitleByDownload = new Map();
     this.addonFilter = "all";
     this.focusState = { zone: "filter", index: 0 };
     this.listScrollTop = 0;
@@ -1877,6 +1885,20 @@ export const StreamScreen = {
     );
     this.offlineDownloadMetadata = new Map(entries.filter(([downloadId]) => Boolean(downloadId)));
     this.offlineLocalCopies = await listOfflineDownloadsForMedia(this.getOfflineDownloadContext());
+    // offlineSubtitleStatus only says whether the subtitle step finished. Which
+    // subtitles landed, and their ids, lives in the subtitle store -- and the id
+    // is what a hand-over needs.
+    const subtitles = await listOfflineSubtitles(this.getOfflineDownloadContext()).catch(() => []);
+    // Keyed to a single id this collapsed every extra language into whichever
+    // record happened to come last, so a download with three subtitles could
+    // only ever hand over one of them.
+    this.offlineSubtitleByDownload = subtitles
+      .filter((subtitle) => subtitle?.offlineCopyId && subtitle?.subtitleId)
+      .reduce((byDownload, subtitle) => {
+        const key = String(subtitle.offlineCopyId);
+        byDownload.set(key, [...(byDownload.get(key) || []), subtitle]);
+        return byDownload;
+      }, new Map());
     this.requestRender();
   },
 
@@ -1904,7 +1926,7 @@ export const StreamScreen = {
       return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(label)}</span>${button("cancel", "×", "Cancel", "secondary")}</div>`;
     }
     if (status === "completed") {
-      return `<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
+      return `<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${this.renderOfflineSubtitleButton(downloadId, stream.id)}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
     }
     if (["paused", "interrupted", "failed"].includes(status)) {
       const label =
@@ -1922,7 +1944,35 @@ export const StreamScreen = {
     if (isMatched) return "";
     const quality = String(download.quality || download.filename || "Offline media");
     const size = formatBytes(download.downloadedBytes || download.totalBytes) || "";
-    return `<div class="stream-route-card-row stream-route-offline-copy"><article class="stream-route-card stream-route-offline-card"><div class="stream-route-card-copy"><div class="stream-route-card-heading">OFFLINE COPY</div><div class="stream-route-card-quality">${escapeHtml([quality, size].filter(Boolean).join(" • "))}</div><div class="stream-route-card-line secondary">${escapeHtml(download.sourceName || "Downloaded")}</div></div><div class="stream-route-offline-actions">${this.renderOfflineButton("playOfflineCopy", "▶", "Play Offline", download.downloadId)}${this.renderOfflineButton("deleteOfflineCopy", "⌫", "Delete Offline", download.downloadId, "secondary")}</div></article></div>`;
+    return `<div class="stream-route-card-row stream-route-offline-copy"><article class="stream-route-card stream-route-offline-card"><div class="stream-route-card-copy"><div class="stream-route-card-heading">OFFLINE COPY</div><div class="stream-route-card-quality">${escapeHtml([quality, size].filter(Boolean).join(" • "))}</div><div class="stream-route-card-line secondary">${escapeHtml(download.sourceName || "Downloaded")}</div></div><div class="stream-route-offline-actions">${this.renderOfflineButton("playOfflineCopy", "▶", "Play Offline", download.downloadId)}${this.renderOfflineSubtitleButton(download.downloadId, download.downloadId)}${this.renderOfflineButton("deleteOfflineCopy", "⌫", "Delete Offline", download.downloadId, "secondary")}</div></article></div>`;
+  },
+
+  renderOfflineSubtitleButton(downloadId, streamId) {
+    // The player fetches its own subtitles online, but a downloaded film is
+    // watched offline -- where the only subtitle available is the one on disk.
+    const subtitles = this.offlineSubtitleByDownload?.get(String(downloadId || "")) || [];
+    if (!canOfferOfflineSubtitleHandoff(subtitles)) return "";
+    return this.renderOfflineButton(
+      "sendOfflineSubtitle",
+      "CC",
+      "Send Subtitle To Another App",
+      streamId,
+      "secondary"
+    );
+  },
+
+  async sendOfflineSubtitleForDownload(downloadId) {
+    const subtitles = this.offlineSubtitleByDownload?.get(String(downloadId || "")) || [];
+    try {
+      const download = await getOfflineDownload(downloadId).catch(() => null);
+      await sendOfflineSubtitleFor(download, subtitles, {
+        onError: (message) => this.showStreamToast(message)
+      });
+    } catch (error) {
+      // The caller runs this as void, so anything thrown here used to vanish and
+      // the button simply looked dead.
+      this.showStreamToast(`Subtitle handoff failed: ${String(error?.message || error)}`);
+    }
   },
 
   renderOfflineButton(action, icon, label, streamId = "", className = "") {
@@ -2426,6 +2476,13 @@ export const StreamScreen = {
   },
 
   async playOfflineDownloadById(downloadId, stream = null) {
+    return startOfflinePlayback({
+      downloadId,
+      playInternally: () => this.playOfflineDownloadInternally(downloadId, stream)
+    });
+  },
+
+  async playOfflineDownloadInternally(downloadId, stream = null) {
     const playback = await createBrowserOfflinePlayback(downloadId);
     if (!playback) {
       this.showStreamToast("Offline file is unavailable.");
@@ -2449,6 +2506,12 @@ export const StreamScreen = {
   },
 
   async handleOfflineDownloadAction(action, streamId) {
+    if (action === "sendOfflineSubtitle") {
+      const stream = this.streams.find((entry) => entry.id === streamId);
+      return this.sendOfflineSubtitleForDownload(
+        stream ? this.getOfflineDownloadId(stream) : streamId
+      );
+    }
     if (action === "playOfflineCopy") return this.playOfflineDownloadById(streamId);
     if (action === "deleteOfflineCopy") return deleteBrowserOfflineDownload(streamId);
     const stream = this.streams.find((entry) => entry.id === streamId);

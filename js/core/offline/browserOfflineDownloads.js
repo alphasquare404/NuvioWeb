@@ -819,6 +819,30 @@ export async function downloadBrowserOfflineSubtitle(input = {}) {
   }
 }
 
+// The startup retry and the write-off below have to agree on what "unfinished"
+// means, or a subtitle gets retired by one and never picked up by the other.
+export function isOfflineSubtitleStepUnfinished(status) {
+  return ["pending", "downloading", "partial"].includes(text(status) || "pending");
+}
+
+// A subtitle that has just been written off is only recoverable if something
+// asks for it again. The retry that already runs at startup looks at downloads
+// whose subtitle step is unfinished, and a download that once succeeded stays
+// marked completed forever -- so on its own, marking the subtitle failed retires
+// it permanently: the record says failed, every list filters it out, and nothing
+// ever tries again. Handing the parent back to that retry closes the loop.
+async function reopenOfflineSubtitleStep(offlineCopyId) {
+  const downloadId = text(offlineCopyId);
+  if (!downloadId) return;
+  try {
+    const download = await readDownload(downloadId);
+    if (!download || isOfflineSubtitleStepUnfinished(download.offlineSubtitleStatus)) return;
+    await writeDownload({ ...download, offlineSubtitleStatus: "partial" });
+  } catch (_) {
+    // Recovery is best effort; it must never take down the read that asked.
+  }
+}
+
 export async function getBrowserOfflineSubtitleFile(subtitleId) {
   const subtitle = await getOfflineSubtitle(subtitleId);
   if (subtitle?.status !== "completed" || !subtitle.opfsFileName) return null;
@@ -833,6 +857,7 @@ export async function getBrowserOfflineSubtitleFile(subtitleId) {
       completedAt: null,
       error: "Offline subtitle file is unavailable"
     }).catch(() => {});
+    await reopenOfflineSubtitleStep(subtitle.offlineCopyId);
     return null;
   }
 }
