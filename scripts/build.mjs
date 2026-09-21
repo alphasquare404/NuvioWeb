@@ -10,6 +10,7 @@ import autoprefixer from "autoprefixer";
 import { readAppMetadata, syncVersionFiles } from "./appMetadata.mjs";
 import { browserCompatibilityPolicy } from "./browserCompatibilityPolicy.mjs";
 import { writeRuntimeEnvScriptFile } from "./envProperties.mjs";
+import { buildServiceWorkerCacheId } from "./serviceWorkerCacheId.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -486,12 +487,15 @@ async function buildBrowserServiceWorker() {
   const { version } = await readAppMetadata();
   const source = await readFile(path.join(rootDir, "sw.js"), "utf8");
   const localeAssets = await collectLocaleAssets(path.join(rootDir, "res"));
+  const substituted = source.replace("__NUVIO_LOCALE_ASSETS__", JSON.stringify(localeAssets));
+  const cacheId = await buildServiceWorkerCacheId(substituted, version, (relative) =>
+    readFile(path.join(distDir, relative)).catch(() => null)
+  );
   await writeFile(
     path.join(distDir, "sw.js"),
-    source
-      .replaceAll("__NUVIO_APP_VERSION__", String(version))
-      .replace("__NUVIO_LOCALE_ASSETS__", JSON.stringify(localeAssets))
+    substituted.replaceAll("__NUVIO_APP_VERSION__", cacheId)
   );
+  console.log(`service worker cache: nuvio-app-shell-${cacheId}`);
 }
 
 async function runBuild() {
@@ -512,7 +516,6 @@ async function runBuild() {
       cp(path.join(rootDir, "docs", "youtube-proxy.html"), path.join(distDir, "youtube-proxy.html")),
       cp(path.join(rootDir, "manifest.webmanifest"), path.join(distDir, "manifest.webmanifest"))
     ]);
-    await buildBrowserServiceWorker();
     await buildCoreJsBundle();
     await Promise.all([
       cp(
@@ -546,6 +549,9 @@ async function runBuild() {
 
     const sourceIndex = await readFile(path.join(rootDir, "index.html"), "utf8");
     await writeFile(path.join(distDir, "index.html"), sourceIndex);
+
+    // After the shell it caches exists: the cache name is a hash of those files.
+    await buildBrowserServiceWorker();
 
     console.log("configuring runtime env from local.properties...");
     const envResult = await writeRuntimeEnvScriptFile(path.join(distDir, "nuvio.env.js"), {
