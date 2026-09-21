@@ -45,6 +45,12 @@ import {
   MODERN_HOME_CONSTANTS,
   renderModernHomeLayout
 } from "./modernHomeLayout.js";
+import { applySectionScopedUpdate } from "./homeSectionUpdate.js";
+import {
+  captureReusableRenderState,
+  restoreDecodedImages,
+  restoreTrackScroll
+} from "./reusableRenderState.js";
 import {
   buildCatalogDisableKey,
   buildCatalogOrderKey,
@@ -10144,9 +10150,39 @@ export const HomeScreen = {
     const shellMounted = Boolean(this.container.querySelector(".home-shell"));
     const markupUnchanged = shellMounted && this.renderedMarkup === nextMarkup;
 
+    // Carrying the decoded posters and the rails' positions across the rewrite
+    // is what keeps a late update from blanking the rows and throwing away the
+    // position the viewer scrolled to. See reusableRenderState.js.
+    let reusableRenderState = null;
     if (!markupUnchanged) {
-      this.container.innerHTML = nextMarkup;
+      // Captured up front because either path below can drop nodes: even the
+      // scoped update replaces whole levels it cannot align one-to-one, such as
+      // a row arriving above the others, and those posters deserve the same
+      // rescue as the blunt rewrite's.
+      reusableRenderState = Platform.isBrowser()
+        ? captureReusableRenderState(this.container)
+        : null;
+      // Touch only what differs, so the rest of the screen is never disturbed
+      // at all. It verifies its own result, and anything it will not or cannot
+      // do returns false and falls through to the rewrite. Home is the screen
+      // everything else returns to, so a throw here must not be able to leave
+      // it blank -- the rewrite is always able to stand in.
+      let updatedInPlace = false;
+      if (shellMounted && Platform.isBrowser()) {
+        try {
+          updatedInPlace = applySectionScopedUpdate(this.container, nextMarkup);
+        } catch (error) {
+          console.warn("Home section-scoped update failed; rewriting", error);
+          updatedInPlace = false;
+        }
+      }
+      if (!updatedInPlace) {
+        this.container.innerHTML = nextMarkup;
+      }
       this.renderedMarkup = nextMarkup;
+      // The posters go back immediately: a frame drawn without them is exactly
+      // the blank row this is here to prevent.
+      restoreDecodedImages(this.container, reusableRenderState);
     }
 
     if (modernLandscapePostersEnabled) {
@@ -10160,6 +10196,12 @@ export const HomeScreen = {
         )
       );
     }
+    // Only now do the rows have their final width: restoring a rail before the
+    // cached poster metrics are applied clamps it against a track that has not
+    // been sized yet, which silently lands it back at 0. Still synchronous, so
+    // the carried position is in place for the first paint.
+    restoreTrackScroll(this.container, reusableRenderState);
+
     if (useDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
       this.bindDesktopHeroDetailsButton();
