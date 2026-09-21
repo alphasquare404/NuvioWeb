@@ -62,7 +62,14 @@ test("manual external playback uses a valid non-wrapping time row and responsive
   assert.match(source, /validateExternalPlaybackPositionParts/);
   assert.match(source, /desktop-external-player-time-fields/);
   assert.match(source, /desktop-external-player-time-separator/);
-  assert.match(source, /durationSeconds: manualDurationMs \/ 1000/);
+  // This used to pin `manualDurationMs / 1000`, which sent a zero whenever the
+  // runtime was never learned. applyExternalPlaybackReport reads a zero as a
+  // claimed measurement and refuses the whole report, so Save wrote nothing and
+  // said so only in text coloured like the caption beside it.
+  assert.match(
+    source,
+    /durationSeconds: externalPlaybackReportDurationSeconds\(manualDurationMs\)/
+  );
   assert.match(
     source,
     /markBrowserExternalPlaybackFinished\(\{\s*handoff,\s*controller: PlayerController\s*\}\)/

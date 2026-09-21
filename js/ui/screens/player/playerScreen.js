@@ -62,7 +62,11 @@ import { clearExternalPlaybackHandoff } from "../../components/browserExternalPl
 import { resolveExternalResumeSeconds } from "../../components/externalPlayerResume.js";
 import { bindBrowserPushReturn } from "../../components/browserPushReturn.js";
 import { markBrowserExternalPlaybackFinished } from "../../components/browserExternalPlaybackFinish.js";
-import { validateExternalPlaybackPositionParts } from "../../components/browserExternalPlaybackTime.js";
+import {
+  externalPlaybackReportDurationSeconds,
+  formatExternalPlaybackDuration,
+  validateExternalPlaybackPositionParts
+} from "../../components/browserExternalPlaybackTime.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import {
@@ -4780,10 +4784,7 @@ export const PlayerScreen = {
     const content = () => {
       const wrapper = document.createElement("div");
       wrapper.className = "desktop-external-player-choice-copy";
-      const runtimeSeconds = Math.round(manualDurationMs / 1000);
-      const runtime = runtimeSeconds
-        ? `${Math.floor(runtimeSeconds / 60)}:${String(runtimeSeconds % 60).padStart(2, "0")}`
-        : "Unknown";
+      const runtime = formatExternalPlaybackDuration(manualDurationMs) || "Unknown";
       wrapper.innerHTML = `<small>Runtime: ${runtime}</small>`;
       const fields = document.createElement("div");
       fields.className = "desktop-external-player-time-fields";
@@ -4853,7 +4854,7 @@ export const PlayerScreen = {
                 handoff,
                 outcome: "stopped",
                 positionSeconds: result.positionMs / 1000,
-                durationSeconds: manualDurationMs / 1000
+                durationSeconds: externalPlaybackReportDurationSeconds(manualDurationMs)
               });
               if (!applied) throw new Error("Progress was not applied");
               clearExternalPlaybackHandoff();

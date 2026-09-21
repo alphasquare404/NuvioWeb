@@ -1846,6 +1846,28 @@ button:focus-visible {
 }
 
 /* Actions column — gap=16dp=32px */
+/* "Remember my choice" — lets a repeated prompt answer the setting behind it.
+   Sized against the dialog's own subtitle rather than the TV scale, or it
+   shouts over the buttons it belongs to. */
+.nuvio-dialog-remember {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 26px;
+  line-height: 1.3;
+  color: #b3b3b3;
+  cursor: pointer;
+}
+
+.nuvio-dialog-remember input {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  accent-color: var(--focus-color, #ffffff);
+  cursor: pointer;
+}
+
 .nuvio-dialog-actions {
   display: flex;
   flex-direction: column;
@@ -19424,6 +19446,60 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   opacity: 1;
 }
 
+/* Shown while iOS prepares the document sheet. Deliberately not a dialog: the
+   page is about to be navigated away, and a modal that outlives that would be
+   left covering the app with no way back. */
+.offline-handoff-notice {
+  position: fixed;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 14px 24px;
+  border-radius: 18px;
+  background: rgb(var(--bg-elevated-rgb) / 0.96);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.offline-handoff-notice-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.offline-handoff-notice-copy small {
+  font-size: 0.72em;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+
+/* The shared indicator is 96px, sized for a full-screen loading state. Here it
+   sits beside the text. */
+.offline-handoff-notice .nuvio-loading-indicator {
+  width: 28px;
+  height: 28px;
+}
+
+.desktop-browser .offline-handoff-notice {
+  top: max(16px, env(safe-area-inset-top));
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.desktop-browser .offline-handoff-notice .nuvio-loading-indicator {
+  width: 18px;
+  height: 18px;
+}
+
 .stream-route-skeleton-line {
   height: 16px;
   border-radius: 999px;
@@ -20932,6 +21008,18 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 
 .desktop-external-player-actions .nuvio-dialog-button:active {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* NuvioDialog focuses its first action at mount, and the TV focus scale then
+   makes that one button wider than every other, which on a touch device is
+   pure misalignment -- nothing there moves focus between buttons. The landscape
+   grid already had to undo this; a phone in landscape was simply the only shape
+   that ever hit that media query, so a tablet kept the stretched first button. */
+.desktop-external-player-actions .nuvio-dialog-button.focused,
+.desktop-external-player-actions .nuvio-dialog-button:focus-visible {
+  transform: none;
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
+  outline-offset: 1px;
 }
 
 .desktop-external-player-actions .nuvio-dialog-button:not([disabled]) {

@@ -530,3 +530,54 @@ test("a report that arrives after the prompt is still collected and takes it awa
   assert.equal(dismissals, 1, "and the prompt is taken away");
   assert.equal(prompts, 1, "without ever asking twice");
 });
+
+// Handing a downloaded file to another app navigates this page away, so the app
+// comes back as a cold start. Waiting for a visibility transition that the
+// destroyed JS context never saw meant the watch was silently never recorded.
+test("a handoff that navigated the page away prompts on the reload that follows", () => {
+  const runtime = createRuntime();
+  runtime.document = { visibilityState: "visible", addEventListener() {} };
+  runtime.addEventListener = () => {};
+  runtime.setTimeout = () => {};
+  beginExternalPlaybackHandoff({
+    runtime,
+    playerMode: "offline-file",
+    automatic: false,
+    navigationLaunch: true,
+    progressContext
+  });
+  let prompts = 0;
+  installExternalPlaybackReturnCoordinator({
+    runtime,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ found: false }) }),
+    onManualFallback: () => {
+      prompts += 1;
+    }
+  });
+  assert.equal(prompts, 1);
+});
+
+// A URL-scheme launch leaves the page alive, so a pending manual handoff seen at
+// startup means an ordinary later launch, not a return -- prompting there would
+// ask about a playback the viewer never started.
+test("an ordinary manual handoff still stays silent at startup", () => {
+  const runtime = createRuntime();
+  runtime.document = { visibilityState: "visible", addEventListener() {} };
+  runtime.addEventListener = () => {};
+  runtime.setTimeout = () => {};
+  beginExternalPlaybackHandoff({
+    runtime,
+    playerMode: "vlc",
+    automatic: false,
+    progressContext
+  });
+  let prompts = 0;
+  installExternalPlaybackReturnCoordinator({
+    runtime,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ found: false }) }),
+    onManualFallback: () => {
+      prompts += 1;
+    }
+  });
+  assert.equal(prompts, 0);
+});

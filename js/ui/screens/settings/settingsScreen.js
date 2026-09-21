@@ -55,6 +55,10 @@ import {
   getBrowserExternalPlayerStoreUrl,
   normalizeBrowserExternalPlayer
 } from "../../components/browserExternalPlayer.js";
+import {
+  OFFLINE_PLAYBACK_TARGETS,
+  normalizeOfflinePlaybackTarget
+} from "../../../core/offline/offlineHandoffPolicy.js";
 import { enableBrowserPushReturn, disableBrowserPushReturn, getBrowserPushReturnState } from "../../components/browserPushReturn.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import {
@@ -8355,6 +8359,23 @@ export const SettingsScreen = {
     this.actionMap.set("downloads:requestPersistent", async () => {
       await requestBrowserOfflinePersistentStorage();
     });
+    this.actionMap.set("downloads:playbackTarget", () => {
+      this.openOptionDialog({
+        title: "Play downloaded media with",
+        options: [
+          { id: OFFLINE_PLAYBACK_TARGETS.ASK, label: "Ask every time", subtitle: "Recommended" },
+          { id: OFFLINE_PLAYBACK_TARGETS.INTERNAL, label: "Nuvio player" },
+          {
+            id: OFFLINE_PLAYBACK_TARGETS.EXTERNAL,
+            label: "Another app",
+            subtitle: "The player keeps its own copy of the file."
+          }
+        ],
+        selectedId: normalizeOfflinePlaybackTarget(PlayerSettingsStore.get().offlinePlaybackTarget),
+        returnFocusKey: "downloads:playbackTarget",
+        onSelect: (option) => PlayerSettingsStore.set({ offlinePlaybackTarget: option.id })
+      });
+    });
     this.actionMap.set("downloads:manage", async () => {
       await Router.navigate("library", { downloadManager: true });
     });
@@ -8373,6 +8394,10 @@ export const SettingsScreen = {
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "downloads"))}
       ${this.downloadCleanupMessage ? `<div class="settings-text-dialog-message">${escapeHtml(this.downloadCleanupMessage)}</div>` : ""}
+      <div class="settings-group-heading"><div class="settings-group-title">Playback</div></div>
+      <div class="settings-group-card"><div class="settings-stack">
+        ${this.renderActionRow({ focusKey: "downloads:playbackTarget", title: "Play downloaded media with", subtitle: "Handing a file to another app copies it; that app then keeps its own copy.", value: ({ ask: "Ask every time", internal: "Nuvio player", external: "Another app" })[normalizeOfflinePlaybackTarget(model.player?.offlinePlaybackTarget)], leadingIcon: "play_circle" })}
+      </div></div>
       <div class="settings-group-heading"><div class="settings-group-title">Storage</div></div>
       <div class="settings-group-card"><div class="settings-stack settings-download-summary">
         ${this.renderActionRow({ focusKey: "downloads:offlineMedia", title: "Offline media", value: formatOfflineStorageBytes(downloads.mediaBytes), icon: null, disabled: true })}
