@@ -11,14 +11,16 @@ import test from "node:test";
 // checkable and that regressed before: that the density is declared once and
 // consumed, rather than copied per screen.
 
-const desktopCss = await readFile(new URL("../../../css/desktop.css", import.meta.url), "utf8");
-const componentsCss = await readFile(
-  new URL("../../../css/components.css", import.meta.url),
-  "utf8"
-);
-const libraryScreen = await readFile(
-  new URL("../screens/library/libraryScreen.js", import.meta.url),
-  "utf8"
+// Git hands these files to a Windows working tree with CRLF endings, and one
+// assertion below slices on a literal line break. Read raw, the test failed on
+// any fresh checkout there while passing everywhere else -- a property of the
+// checkout, not of the CSS it is supposed to be guarding.
+const readSource = async (url) => (await readFile(url, "utf8")).replace(/\r\n/g, "\n");
+
+const desktopCss = await readSource(new URL("../../../css/desktop.css", import.meta.url));
+const componentsCss = await readSource(new URL("../../../css/components.css", import.meta.url));
+const libraryScreen = await readSource(
+  new URL("../screens/library/libraryScreen.js", import.meta.url)
 );
 
 const countOf = (source, pattern) => (source.match(pattern) || []).length;
