@@ -88,62 +88,79 @@ function cacheSet(cacheKey, result) {
   });
 }
 
-async function runWithConcurrency(items, limit, worker) {
-  const results = new Array(items.length);
-  let nextIndex = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await worker(items[index]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
+// MDBList's per-provider endpoint is a POST carrying a JSON body, so a browser
+// sends a CORS preflight first -- and that preflight is answered 405, so the
+// request never leaves. An installed iOS PWA does not enforce this the same
+// way, which is the whole reason ratings appeared there and nowhere else.
+//
+// The media endpoint is a plain GET, so it is a simple request with no
+// preflight, and it answers with every source at once rather than one request
+// per provider.
+const MDBLIST_SOURCE_BY_PROVIDER = {
+  trakt: "trakt",
+  imdb: "imdb",
+  tmdb: "tmdb",
+  letterboxd: "letterboxd",
+  tomatoes: "tomatoes",
+  // MDBList names the Rotten Tomatoes audience score "popcorn", so matching on
+  // this app's own provider key would drop it without a word.
+  audience: "popcorn",
+  metacritic: "metacritic",
+  // Carried for the same reason, though Detail does not surface a MyAnimeList
+  // rating today: the selector below has no `mal` field, exactly as before.
+  mal: "myanimelist"
+};
 
-async function fetchProviderRating({ mediaType, provider, apiKey, requestBody }) {
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/rating/${encodeURIComponent(mediaType)}/${encodeURIComponent(provider.apiValue)}?apikey=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(requestBody)
-      }
-    );
-    if (!response.ok) {
-      console.warn(`MDBList ${provider.apiValue} request failed (${response.status})`);
-      return [provider.key, null];
+export function selectMdbListRatings(payload, providers = []) {
+  const valueBySource = new Map(
+    (Array.isArray(payload?.ratings) ? payload.ratings : [])
+      .filter((entry) => entry?.source)
+      .map((entry) => [String(entry.source), entry.value])
+  );
+  const enabledKeys = new Set(providers.map((provider) => provider?.key));
+  const ratingFor = (providerKey) => {
+    if (!enabledKeys.has(providerKey)) {
+      return null;
     }
-    const payload = await response.json();
-    const rating = payload?.ratings?.[0]?.rating;
-    const numeric = Number(rating);
-    return [provider.key, Number.isFinite(numeric) ? numeric : null];
-  } catch (error) {
-    console.warn(`MDBList ${provider.apiValue} request failed`, error);
-    return [provider.key, null];
-  }
+    // `value` is the source's own scale -- IMDb out of 10, Letterboxd out of 5.
+    // `score` rescales every source to 100, which would change both on screen.
+    const raw = valueBySource.get(MDBLIST_SOURCE_BY_PROVIDER[providerKey]);
+    // This endpoint states an unrated source as an explicit null, and Number()
+    // turns that into a perfectly finite 0 -- which would render as a rating.
+    if (raw === null || raw === undefined || raw === "") {
+      return null;
+    }
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+  return {
+    trakt: ratingFor(PROVIDERS.TRAKT.key),
+    imdb: ratingFor(PROVIDERS.IMDB.key),
+    tmdb: ratingFor(PROVIDERS.TMDB.key),
+    letterboxd: ratingFor(PROVIDERS.LETTERBOXD.key),
+    tomatoes: ratingFor(PROVIDERS.TOMATOES.key),
+    audience: ratingFor(PROVIDERS.AUDIENCE.key),
+    metacritic: ratingFor(PROVIDERS.METACRITIC.key)
+  };
 }
 
 async function fetchRatings({ imdbId, mediaType, apiKey, providers }) {
-  const requestBody = {
-    ids: [imdbId],
-    provider: "imdb"
-  };
-  const entries = await runWithConcurrency(providers, 4, (provider) =>
-    fetchProviderRating({ mediaType, provider, apiKey, requestBody })
-  );
-  const ratings = Object.fromEntries(entries);
-  const normalizedRatings = {
-    trakt: ratings.trakt ?? null,
-    imdb: ratings.imdb ?? null,
-    tmdb: ratings.tmdb ?? null,
-    letterboxd: ratings.letterboxd ?? null,
-    tomatoes: ratings.tomatoes ?? null,
-    audience: ratings.audience ?? null,
-    metacritic: ratings.metacritic ?? null
-  };
+  let payload = null;
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/imdb/${encodeURIComponent(mediaType)}/${encodeURIComponent(imdbId)}?apikey=${encodeURIComponent(apiKey)}`
+    );
+    if (!response.ok) {
+      console.warn(`MDBList request failed (${response.status})`);
+      return null;
+    }
+    payload = await response.json();
+  } catch (error) {
+    console.warn("MDBList request failed", error);
+    return null;
+  }
+
+  const normalizedRatings = selectMdbListRatings(payload, providers || []);
   const hasAnyRating = Object.values(normalizedRatings).some((value) => value != null);
   if (!hasAnyRating) {
     return null;
