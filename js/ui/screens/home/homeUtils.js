@@ -1,4 +1,21 @@
 import { I18n } from "../../../i18n/index.js";
+import { getWatchProgressFraction } from "../../../domain/model/watchProgress.js";
+
+// How far along a Continue Watching card is, for the bar it draws.
+//
+// Home used to answer this itself, preferring a provider's percentage over the
+// position -- the exact opposite of the canonical rule. The two agree until
+// playback moves, because only the position is updated then: a percentage
+// recorded earlier survives untouched and kept winning, so one card could read
+// "1m left" beside a bar drawn at ten per cent.
+//
+// Deferred to the domain model rather than restated, so the bar, the badge and
+// every eligibility check read the same number. Position answers whenever there
+// is one; a percentage is the fallback for rows that carry no position at all,
+// which is how a provider's own paused entries arrive.
+export function continueWatchingProgressFraction(item = {}) {
+  return getWatchProgressFraction(item);
+}
 
 export function escapeHtml(value) {
   return String(value ?? "")

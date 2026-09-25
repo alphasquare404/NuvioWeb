@@ -159,6 +159,7 @@ import {
   formatCatalogRowTitle,
   limitTextToWordCount,
   parseCssPx,
+  continueWatchingProgressFraction,
   prettyId,
   resolveContinueWatchingEpisodeStill,
   shouldRenderContinueWatchingProgress,
@@ -1081,24 +1082,6 @@ function getContinueWatchingMetaTimeout(timeoutMs) {
   return requestedTimeout;
 }
 
-function progressFractionForContinueWatching(item = {}) {
-  const explicitPercent = Number(item.progressPercent);
-  if (Number.isFinite(explicitPercent) && explicitPercent > 0) {
-    return Math.max(0, Math.min(1, explicitPercent / 100));
-  }
-  const durationMs = Number(item.durationMs || 0);
-  const positionMs = Number(item.positionMs || 0);
-  if (
-    !Number.isFinite(durationMs) ||
-    durationMs <= 0 ||
-    !Number.isFinite(positionMs) ||
-    positionMs <= 0
-  ) {
-    return 0;
-  }
-  return Math.max(0, Math.min(1, positionMs / durationMs));
-}
-
 function isSeriesTypeForContinueWatching(type) {
   const normalized = String(type || "").toLowerCase();
   return ["series", "tv", "anime"].includes(normalized);
@@ -1110,11 +1093,11 @@ function isPosterWatchedType(type) {
 }
 
 function isCompletedForContinueWatching(item = {}) {
-  return progressFractionForContinueWatching(item) >= CW_PROGRESS_END_THRESHOLD;
+  return continueWatchingProgressFraction(item) >= CW_PROGRESS_END_THRESHOLD;
 }
 
 function isInProgressForContinueWatching(item = {}) {
-  const fraction = progressFractionForContinueWatching(item);
+  const fraction = continueWatchingProgressFraction(item);
   return fraction >= CW_PROGRESS_START_THRESHOLD && fraction < CW_PROGRESS_END_THRESHOLD;
 }
 
@@ -1467,7 +1450,7 @@ function buildProgressFraction(item) {
   if (item?.isNextUp) {
     return 0;
   }
-  return progressFractionForContinueWatching(item);
+  return continueWatchingProgressFraction(item);
 }
 
 function buildCatalogLoadingItems(rowKey, count = HOME_LOADING_ROW_ITEMS_DEFAULT) {
