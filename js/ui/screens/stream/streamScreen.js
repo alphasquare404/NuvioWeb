@@ -2611,7 +2611,13 @@ export const StreamScreen = {
     let resumePositionMs = hasRouteResume ? routeResumeProgress.positionMs : 0;
     let resumeProgressPercent = hasRouteResume ? routeResumeProgress.progressPercent : null;
     let resumeDurationMs = hasRouteResume ? routeResumeProgress.durationMs : 0;
-    if (!startFromBeginning && resumePositionMs <= 0 && !(Number(resumeProgressPercent) > 0)) {
+    // The route's position is a hint captured when this screen was opened, and
+    // it does not move when playback does. Closing the player comes back to
+    // this same screen with those same parameters, so pressing play again
+    // resumed from where the session started rather than where it ended. The
+    // store is the record of what was actually watched, so it answers whenever
+    // it has a row and the hint only covers the case where it has none.
+    if (!startFromBeginning) {
       const resumeTarget =
         itemType === "series" || itemType === "tv"
           ? {
@@ -2626,9 +2632,12 @@ export const StreamScreen = {
           console.warn("Stream resume lookup failed", error);
           return null;
         });
-      resumePositionMs = Number(resumeProgress?.positionMs || 0) || 0;
-      resumeProgressPercent = resumeProgress?.progressPercent ?? resumeProgressPercent;
-      resumeDurationMs = Number(resumeProgress?.durationMs || 0) || resumeDurationMs;
+      const storedPositionMs = Number(resumeProgress?.positionMs || 0) || 0;
+      if (storedPositionMs > 0 || Number(resumeProgress?.progressPercent) > 0) {
+        resumePositionMs = storedPositionMs;
+        resumeProgressPercent = resumeProgress?.progressPercent ?? resumeProgressPercent;
+        resumeDurationMs = Number(resumeProgress?.durationMs || 0) || resumeDurationMs;
+      }
     }
     if (
       !skipExternalRoute &&
