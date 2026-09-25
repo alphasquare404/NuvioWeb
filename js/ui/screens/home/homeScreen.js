@@ -9505,6 +9505,28 @@ export const HomeScreen = {
         }
 
         try {
+          // The snapshot painted a moment ago carries the positions it was
+          // saved with, and the fresh ones are already in hand from the store
+          // read above. Only artwork and Next-Up resolution need the network,
+          // so waiting for that whole pipeline before correcting a number we
+          // already know is what left the row showing the previous session's
+          // position for several seconds after opening the app.
+          //
+          // The same patch the store refresh does, on the path that actually
+          // runs at startup. It touches only position and duration on a card
+          // already resolved and showing, so it cannot reorder the row, invent
+          // a card, or guess a Next-Up episode; the full pass below still
+          // decides all of that. On a cold start the display is empty and this
+          // is a no-op, which is what the progressive reveal below is for.
+          const patchedFromStore = (this.continueWatching || []).reduce(
+            (display, item) => patchContinueWatchingDisplayProgress(display, item) || display,
+            this.continueWatchingDisplay
+          );
+          if (patchedFromStore !== this.continueWatchingDisplay) {
+            this.continueWatchingDisplay = patchedFromStore;
+            this.requestBackgroundRender();
+          }
+
           // On a true cold start (no snapshot to paint from), reveal each
           // in-progress card as its own enrichment resolves instead of
           // waiting for the whole batch (which can legitimately take several
