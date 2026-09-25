@@ -54,6 +54,9 @@ import {
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
+import { openDesktopContextMenu } from "../../components/desktopContextMenu.js";
+import { openTouchActionSheet } from "../../components/touchActionSheet.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
@@ -5984,34 +5987,73 @@ export const MetaDetailsScreen = {
     }
     const options = this.getEpisodeHoldMenuOptions();
     const focusRestore = this.getEpisodeFocusDescriptor(episode.id);
+    const invocation = this.episodeHoldMenu?.invocation || null;
     this.destroyDetailHoldDialog();
-    this.detailHoldDialog = new NuvioDialog({
-      title: this.meta?.name || this.params?.fallbackTitle || this.params?.itemId || "Untitled",
-      subtitle: [
-        `S${Number(episode.season || 0)}E${Number(episode.episode || 0)}`,
-        episode.title || ""
-      ]
-        .filter(Boolean)
-        .join(" - "),
-      widthVw: 37.5,
-      suppressEnterUntilKeyUp: true,
-      buttons: options.map((option, index) => ({
-        label: option.label,
-        key: option.action,
-        onAction: () => {
-          this.episodeHoldMenu = {
-            ...(this.episodeHoldMenu || {}),
-            optionIndex: index
-          };
-          void this.activateEpisodeHoldMenuOption();
-        }
-      })),
-      onDismiss: () => {
-        this.detailHoldDialog = null;
-        this.episodeHoldMenu = null;
-        this.focusDetailDescriptor(focusRestore);
-      }
-    }).mount(document.body);
+
+    const actions = options.map((option, index) => ({
+      key: option.action,
+      label: option.label,
+      icon: this.getEpisodeHoldMenuIcon(option.action),
+      index
+    }));
+    const run = (action) => {
+      this.episodeHoldMenu = {
+        ...(this.episodeHoldMenu || {}),
+        optionIndex: Number(action.index || 0)
+      };
+      void this.activateEpisodeHoldMenuOption();
+    };
+    const onDismiss = () => {
+      this.detailHoldDialog = null;
+      this.episodeHoldMenu = null;
+      this.focusDetailDescriptor(focusRestore);
+    };
+
+    // The same two presentations Home gives its own card menu: a sheet under a
+    // thumb, a compact menu beside a pointer. This used to be a full-width
+    // centre dialog, which read as a different kind of thing entirely -- and on
+    // touch its large title invited the system's own text-selection popup over
+    // the menu's own buttons.
+    const handle =
+      invocation?.type === "touch"
+        ? openTouchActionSheet({
+            header: {
+              title: this.meta?.name || this.params?.fallbackTitle || "Untitled",
+              subtitle: [
+                `S${Number(episode.season || 0)}E${Number(episode.episode || 0)}`,
+                episode.title || ""
+              ]
+                .filter(Boolean)
+                .join(" - "),
+              // An episode card is always a still, never a poster, so the
+              // series poster is not a stand-in for it: falling back to one
+              // put a portrait image in a frame shaped for a still.
+              poster: episode.thumbnail || episode.still || "",
+              artShape: "landscape"
+            },
+            items: actions,
+            onSelect: run,
+            onDismiss
+          })
+        : openDesktopContextMenu({
+            x: Number(invocation?.x || 0),
+            y: Number(invocation?.y || 0),
+            // Without pointer coordinates this was Hold Enter on a remote, so
+            // the menu anchors to the card it belongs to.
+            anchorRect:
+              invocation?.type === "pointer"
+                ? null
+                : this.getEpisodeHoldMenuAnchor(episode)?.getBoundingClientRect() || null,
+            restoreFocusTo:
+              invocation?.type === "pointer" ? null : this.getEpisodeHoldMenuAnchor(episode),
+            items: actions,
+            onSelect: run,
+            onDismiss
+          });
+    if (!handle) {
+      return false;
+    }
+    this.detailHoldDialog = { destroy: (closeOptions) => handle.destroy(closeOptions) };
     return true;
   },
 
@@ -7066,7 +7108,33 @@ export const MetaDetailsScreen = {
     return true;
   },
 
-  openEpisodeHoldMenu(node) {
+  // Same vocabulary Home uses for its own card menu, so one action reads the
+  // same wherever it appears.
+  getEpisodeHoldMenuAnchor(episode) {
+    const videoId = String(episode?.id || "");
+    return (
+      this.container?.querySelector(
+        `.series-episode-card[data-video-id="${escapeSelectorValue(videoId)}"]`
+      ) ||
+      this.container?.querySelector(".series-episode-card.focusable.focused") ||
+      null
+    );
+  },
+
+  getEpisodeHoldMenuIcon(action) {
+    return (
+      {
+        toggleWatched: "check_circle",
+        markSeasonWatched: "done_all",
+        markSeasonUnwatched: "remove_done",
+        markPreviousWatched: "playlist_add_check",
+        play: "play_arrow",
+        playManually: "play_arrow"
+      }[action] || ""
+    );
+  },
+
+  openEpisodeHoldMenu(node, invokeOptions = {}) {
     const episode = this.getEpisodeByVideoId(node?.dataset?.videoId || "");
     if (!episode) {
       return false;
@@ -7074,7 +7142,8 @@ export const MetaDetailsScreen = {
     this.episodeHoldMenu = {
       videoId: String(episode.id || ""),
       optionIndex: 0,
-      episode: { ...episode }
+      episode: { ...episode },
+      invocation: invokeOptions.invocation || null
     };
     return this.mountEpisodeHoldDialog();
   },
@@ -8149,7 +8218,27 @@ export const MetaDetailsScreen = {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
         cardSelector:
-          ".movie-cast-card[data-action='openCastPerson'], .series-episode-card[data-action='openEpisodeStreams'], .detail-trailer-card[data-action='openSharedTrailer'], .detail-morelike-card[data-action='openMoreLikeDetail']"
+          ".movie-cast-card[data-action='openCastPerson'], .series-episode-card[data-action='openEpisodeStreams'], .detail-trailer-card[data-action='openSharedTrailer'], .detail-morelike-card[data-action='openMoreLikeDetail']",
+        // The episode menu was built and reachable only by holding Enter on a
+        // remote: its triggers read a key-down duration and looked for the
+        // focused card. Touch and a right-click never opened it, so on a phone
+        // or a desktop the actions it carries -- mark this episode, the season,
+        // everything before it -- had no way in at all.
+        onLongPress: (node) => {
+          if (!node?.matches?.(".series-episode-card[data-action='openEpisodeStreams']")) {
+            return false;
+          }
+          return this.openEpisodeHoldMenu(node, { invocation: { type: "touch" } });
+        }
+      });
+      this.episodeContextMenuCleanup?.();
+      this.episodeContextMenuCleanup = bindMediaContextMenu(this.container, {
+        cardSelector: ".series-episode-card[data-action='openEpisodeStreams']",
+        onInvoke: (node, pointer) => {
+          this.openEpisodeHoldMenu(node, {
+            invocation: { type: "pointer", x: pointer.x, y: pointer.y }
+          });
+        }
       });
       this.browserHorizontalTabScrollCleanup?.();
       this.browserHorizontalTabScrollCleanup = bindBrowserHorizontalTabScroll(this.container, [
@@ -11774,6 +11863,8 @@ export const MetaDetailsScreen = {
     this.offlineArtworkResolver = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.episodeContextMenuCleanup?.();
+    this.episodeContextMenuCleanup = null;
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;

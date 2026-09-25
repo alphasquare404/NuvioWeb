@@ -21281,6 +21281,10 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   height: 100%;
   object-fit: cover;
 }
+.nuvio-action-sheet-poster.is-landscape {
+  width: 96px;
+  height: 54px;
+}
 .nuvio-action-sheet-poster.is-text {
   padding: 6px;
   font-size: 11px;
