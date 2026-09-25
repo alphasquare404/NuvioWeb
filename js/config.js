@@ -1,4 +1,24 @@
-const runtimeEnv = globalThis.__NUVIO_ENV__ || {};
+// What the bundle was built with. nuvio.env.js is a separate request, served
+// no-store, and it can simply not execute -- offline at the wrong moment, a
+// cache miss, or an insecure origin where no service worker can stand in for
+// it. Every value here then read as empty, and an empty SUPABASE_URL is the
+// dangerous one: `${SUPABASE_URL}/rest/v1/...` becomes a relative path, which
+// the host that served the page answers with its own 404. Every cloud call
+// then failed for the life of that page, looking exactly like a backend that
+// was down, and nothing short of a real page load could undo it.
+const buildEnv = typeof __NUVIO_BUILD_ENV__ === "undefined" ? {} : __NUVIO_BUILD_ENV__;
+
+// The runtime file still wins outright whenever it loads, so a redeployed
+// container keeps overriding what was built in. It only falls back.
+const runtimeEnv = globalThis.__NUVIO_ENV__ || buildEnv;
+
+if (!globalThis.__NUVIO_ENV__) {
+  console.warn(
+    Object.keys(buildEnv).length
+      ? "[Config] nuvio.env.js did not load; using the configuration built into this bundle."
+      : "[Config] nuvio.env.js did not load and no built-in configuration exists: cloud sync cannot work."
+  );
+}
 
 export const SUPABASE_URL = String(runtimeEnv.NUVIO_SUPABASE_URL || "").trim();
 export const SUPABASE_ANON_KEY = String(runtimeEnv.NUVIO_SUPABASE_ANON_KEY || "").trim();

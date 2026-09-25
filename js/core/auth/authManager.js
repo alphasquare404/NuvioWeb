@@ -111,6 +111,12 @@ class AuthManagerClass {
 
     const refreshed = await this.refreshSessionIfNeeded();
     if (!refreshed) {
+      // Signing out here stops every cloud pull and push for the rest of the
+      // run, and nothing retries afterwards -- so a session lost to a bad
+      // moment on the network looks exactly like a session the server
+      // rejected. `lastRefreshFailureKind` is the one fact that tells them
+      // apart, and it was never recorded anywhere the device could show it.
+      console.warn(`[Auth] bootstrap signed out: refresh ${this.lastRefreshFailureKind}`);
       this.setState(AuthState.SIGNED_OUT);
       return;
     }

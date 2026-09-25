@@ -33,8 +33,34 @@ function truncate(value, maxLength) {
   return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
+// A thrown Error carries its diagnosis in the message, and the ones from the
+// HTTP client carry it in `status` and `code` as well. `stack` was preferred
+// over all of that -- fine on V8, where the stack opens with "Name: message",
+// but WebKit's stack is only frames, so on iOS the message was dropped and
+// redacting the frames' URLs left a single line naming a minified function:
+// "ki@[redacted]", with nothing left to diagnose.
 function formatError(value) {
-  return String(value?.stack || value?.message || value);
+  const message = typeof value?.message === "string" ? value.message.trim() : "";
+  if (!message && !value?.stack) {
+    return String(value);
+  }
+  const name = String(value?.name || "Error");
+  const extras = ["status", "code", "detail"]
+    .map((key) => {
+      const detail = value?.[key];
+      return detail == null || detail === "" ? "" : `${key}=${detail}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+  const head = [message ? `${name}: ${message}` : name, extras].filter(Boolean).join(" · ");
+  const stack = String(value?.stack || "");
+  if (!stack) {
+    return head;
+  }
+  // V8 repeats "Name: message" as the stack's first line; replace it with the
+  // richer head rather than printing the message twice.
+  const [, ...frames] = stack.split("\n");
+  return stack.startsWith(name) ? [head, ...frames].join("\n") : `${head}\n${stack}`;
 }
 
 function formatObject(value) {

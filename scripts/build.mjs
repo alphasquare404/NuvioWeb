@@ -9,7 +9,7 @@ import cssnano from "cssnano";
 import autoprefixer from "autoprefixer";
 import { readAppMetadata, syncVersionFiles } from "./appMetadata.mjs";
 import { browserCompatibilityPolicy } from "./browserCompatibilityPolicy.mjs";
-import { writeRuntimeEnvScriptFile } from "./envProperties.mjs";
+import { readEnvProperties, writeRuntimeEnvScriptFile } from "./envProperties.mjs";
 import { buildServiceWorkerCacheId } from "./serviceWorkerCacheId.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -443,6 +443,15 @@ async function buildCoreJsBundle() {
 
 async function buildBundle() {
   const { version, identity } = await readAppMetadata();
+  // The same values nuvio.env.js will carry, baked in as a fallback. That file
+  // is served no-store and fetched separately, so anything that stops it
+  // executing -- offline at the wrong moment, a cache miss, an insecure origin
+  // where no service worker can stand in -- used to leave every config value
+  // empty. An empty SUPABASE_URL then turns each cloud call into a relative
+  // path that the page's own host answers with a 404, for the life of that
+  // page, with no way back. The runtime file still wins whenever it loads, so
+  // a redeployed container keeps overriding what was built in.
+  const { env: buildEnv } = await readEnvProperties({ rootDir });
 
   console.log("starting bundle build...");
   const result = await build({
@@ -457,7 +466,8 @@ async function buildBundle() {
     define: {
       "process.env.NODE_ENV": '"production"',
       __NUVIO_APP_VERSION__: JSON.stringify(version),
-      __NUVIO_APP_IDENTITY__: JSON.stringify(identity)
+      __NUVIO_APP_IDENTITY__: JSON.stringify(identity),
+      __NUVIO_BUILD_ENV__: JSON.stringify(buildEnv)
     }
   });
   if (
