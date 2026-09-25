@@ -54,6 +54,11 @@ export function openTouchActionSheet({
 
     const art = document.createElement("div");
     art.className = "nuvio-action-sheet-poster";
+    // An episode still is 16:9, and cropping one into the poster box cut the
+    // frame down to a slice of its middle. The caller says which it is holding.
+    if (header.artShape === "landscape") {
+      art.classList.add("is-landscape");
+    }
     if (header.poster) {
       const img = document.createElement("img");
       img.src = header.poster;
