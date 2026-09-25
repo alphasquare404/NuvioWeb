@@ -143,9 +143,26 @@ self.addEventListener("fetch", (event) => {
   }
   if (url.origin !== self.location.origin) return;
   // Runtime deployment configuration must always be fetched from the active
-  // container. Never return a stale value from the app-shell cache.
+  // container, so the network answers first and a redeployed container's
+  // values win. But a failed fetch is not "no configuration" -- it is offline,
+  // and letting the script fail leaves every config value empty. An empty
+  // SUPABASE_URL turns every cloud call into a relative URL, answered by
+  // whatever served the page with a 404, for the rest of that page's life and
+  // with no way back. So the last copy that was fetched stands in.
   if (url.pathname === "/nuvio.env.js") {
-    event.respondWith(fetch(request));
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            void caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(request, { ignoreSearch: true }).then((cached) => cached || Response.error())
+        )
+    );
     return;
   }
   if (request.mode === "navigate") {
