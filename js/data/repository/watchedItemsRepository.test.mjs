@@ -33,7 +33,9 @@ test("marking watched commits the local row before a tracking provider completes
     });
     assert.equal(providerStarted, true);
     assert.equal(
-      WatchedItemsStore.listForProfile("1").some((item) => item.contentId === "movie:external-finish"),
+      WatchedItemsStore.listForProfile("1").some(
+        (item) => item.contentId === "movie:external-finish"
+      ),
       true
     );
   } finally {
@@ -42,7 +44,11 @@ test("marking watched commits the local row before a tracking provider completes
   }
 });
 
-test("mark() forwards the authoritative flag to the WatchedItemsStore notification", async () => {
+// Every caller of mark() is a finish, a scrobble stop, a reconciliation sweep or
+// the user marking something watched -- never one of playback's periodic writes.
+// Announcing them as ordinary was why a title marked watched from a poster menu
+// kept its Continue Watching card until something else forced a refresh.
+test("a completion is announced as authoritative unless the caller says otherwise", async () => {
   values.clear();
   const notifications = [];
   const unsubscribe = WatchedItemsStore.subscribe((payload) => notifications.push(payload));
@@ -55,9 +61,14 @@ test("mark() forwards the authoritative flag to the WatchedItemsStore notificati
       { contentId: "movie:ordinary", contentType: "movie", title: "Ordinary" },
       { skipTrackingWrite: true }
     );
-    assert.equal(notifications.length, 2);
-    assert.equal(notifications[0].authoritative, true);
-    assert.equal(notifications[1].authoritative, false);
+    await watchedItemsRepository.mark(
+      { contentId: "movie:opted-out", contentType: "movie", title: "Opted out" },
+      { authoritative: false, skipTrackingWrite: true }
+    );
+    assert.deepEqual(
+      notifications.map((payload) => payload.authoritative),
+      [true, true, false]
+    );
   } finally {
     unsubscribe();
     values.clear();

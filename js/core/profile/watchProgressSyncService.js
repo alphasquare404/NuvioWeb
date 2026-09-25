@@ -8,12 +8,29 @@ import { TraktAuthStore } from "../../data/local/traktAuthStore.js";
 import { SimklAuthStore } from "../../data/local/simklAuthStore.js";
 import { TraktSettingsStore, WatchProgressSource } from "../../data/local/traktSettingsStore.js";
 import { getSyncClientId } from "../sync/syncClientIdentity.js";
+import {
+  buildWatchedAtByKey,
+  itemsByProgressKey,
+  mergeProgressItems,
+  normalizeProgressItems,
+  progressKey
+} from "./watchProgressMerge.js";
+import { WatchedItemsStore } from "../../data/local/watchedItemsStore.js";
+import { WatchedItemsSyncService } from "./watchedItemsSyncService.js";
 
 const PULL_RPC = "sync_pull_watch_progress";
 const PUSH_RPC = "sync_push_watch_progress";
 const DELETE_RPC = "sync_delete_watch_progress";
 const SYNTHETIC_EPISODE_VIDEO_PREFIX = "__nuvio_episode__:";
 const PUSH_RETRY_BACKOFF_MS = 120000;
+// Long enough for a session to come back after the network does, short enough
+// that the viewer is still there when it lands.
+const AUTH_RECOVERY_RETRY_MS = 4000;
+// iOS reports `online` as soon as the interface comes up, which is before the
+// network can actually carry a request: the first attempt after a reconnect
+// lands in a window where everything fails with "Load failed". One attempt was
+// all there was, and its failure re-armed the push backoff for two minutes.
+const RECONNECT_RETRY_DELAYS_MS = [0, 3000, 9000, 25000];
 const SYNC_STATE_KEY = "watchProgressSyncState";
 const MIN_PROGRESS_SYNC_DURATION_MS = 60000;
 const MAX_AMBIGUOUS_SECONDS_PROGRESS_VALUE = 8 * 60 * 60;
@@ -24,78 +41,22 @@ let pushAgainRequested = false;
 let lastSuccessfulPushSignature = "";
 let lastFailedPushSignature = "";
 let lastFailedPushAt = 0;
+// This device has been away and has not reconciled yet.
+//
+// A push publishes local state wholesale, against a baseline that was current
+// when this device last spoke to the cloud. After an outage that baseline is
+// stale by definition: another device may have watched the same title further
+// in the meantime. Playback queues its push on a short debounce, so the push
+// owed from an offline session fires the moment the network returns -- before
+// anything has pulled -- and overwrites the further position with the shorter
+// one. The cloud then agrees with this device, so nothing here looks wrong, and
+// the viewing is only restored when some other device happens to push again.
+//
+// So a return from an outage owes a pull, and until it is paid no push leaves.
+let reconnectPullOwed = false;
 
-function progressKey(item = {}) {
-  const contentId = String(item.contentId || "").trim();
-  const videoId = String(item.videoId || "main").trim();
-  const season = item.season == null ? "" : String(Number(item.season));
-  const episode = item.episode == null ? "" : String(Number(item.episode));
-  return `${contentId}::${videoId}::${season}::${episode}`;
-}
-
-function normalizeProgressItems(items = []) {
-  const byKey = new Map();
-  (Array.isArray(items) ? items : [])
-    .filter((item) => Boolean(item?.contentId))
-    .forEach((item) => {
-      const key = progressKey(item);
-      const existing = byKey.get(key);
-      if (!existing || Number(item.updatedAt || 0) > Number(existing.updatedAt || 0)) {
-        byKey.set(key, item);
-      }
-    });
-  return Array.from(byKey.values()).sort(
-    (left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0)
-  );
-}
-
-function progressContentSignature(item = {}) {
-  return JSON.stringify([
-    String(item.contentId || ""),
-    String(item.contentType || "movie"),
-    String(item.videoId || ""),
-    Number(item.season || 0),
-    Number(item.episode || 0),
-    Number(item.positionMs || 0),
-    Number(item.durationMs || 0),
-    Number(item.updatedAt || 0)
-  ]);
-}
-
-function itemsByProgressKey(items = []) {
-  return new Map(normalizeProgressItems(items).map((item) => [progressKey(item), item]));
-}
-
-// Supabase stores the portable progress fields only. Keep device-local metadata
-// when the matching remote row wins a merge, just as Android preserves display
-// metadata while merging watch progress. streamIdentity is also local-only and
-// is what Continue Watching uses to reopen the source selected for this item.
-function preserveLocalProgressMetadata(progress, localItem) {
-  if (!progress || !localItem) {
-    return progress;
-  }
-  const localTitle = String(localItem.title || "").trim();
-  const localStreamIdentity = String(localItem.streamIdentity || "").trim();
-  // Which source a row was recorded under is local-only knowledge: the cloud
-  // payload has no column for it, so every pull used to hand the row back as
-  // plain "local". That erased the mark Continue Watching uses to keep one
-  // source's viewing out of another's, and playback recorded while SIMKL owned
-  // progress resurfaced under Nuvio Sync.
-  const localSource = String(localItem.source || "").trim();
-  return {
-    ...progress,
-    ...(localSource ? { source: localItem.source } : {}),
-    ...(localTitle ? { title: localItem.title } : {}),
-    ...(localItem.poster ? { poster: localItem.poster } : {}),
-    ...(localItem.background ? { background: localItem.background } : {}),
-    ...(localItem.logo ? { logo: localItem.logo } : {}),
-    ...(localItem.episodeTitle ? { episodeTitle: localItem.episodeTitle } : {}),
-    ...(localItem.imdbId ? { imdbId: localItem.imdbId } : {}),
-    ...(localItem.tmdbId ? { tmdbId: localItem.tmdbId } : {}),
-    ...(localItem.traktId ? { traktId: localItem.traktId } : {}),
-    ...(localItem.year ? { year: localItem.year } : {}),
-    ...(localStreamIdentity ? { streamIdentity: localItem.streamIdentity } : {})
-  };
+export function noteWatchProgressReconnectPullOwed() {
+  reconnectPullOwed = true;
 }
 
 function readSyncState() {
@@ -116,64 +77,6 @@ function writeBaselineItems(profileId, items = []) {
     updatedAt: Date.now()
   };
   LocalStore.set(SYNC_STATE_KEY, state);
-}
-
-function mergeProgressItems(localItems = [], remoteItems = [], baselineItems = []) {
-  const localByKey = itemsByProgressKey(localItems);
-  const remoteByKey = itemsByProgressKey(remoteItems);
-  const baselineByKey = itemsByProgressKey(baselineItems);
-  const keys = new Set([...localByKey.keys(), ...remoteByKey.keys(), ...baselineByKey.keys()]);
-  const merged = [];
-
-  keys.forEach((key) => {
-    const localItem = localByKey.get(key) || null;
-    const remoteItem = remoteByKey.get(key) || null;
-    const baselineItem = baselineByKey.get(key) || null;
-
-    if (localItem && remoteItem) {
-      const localChanged =
-        !baselineItem ||
-        progressContentSignature(localItem) !== progressContentSignature(baselineItem);
-      const remoteChanged =
-        !baselineItem ||
-        progressContentSignature(remoteItem) !== progressContentSignature(baselineItem);
-      if (localChanged && !remoteChanged) {
-        merged.push(localItem);
-        return;
-      }
-      if (remoteChanged && !localChanged) {
-        merged.push(preserveLocalProgressMetadata(remoteItem, localItem));
-        return;
-      }
-      const winner =
-        Number(localItem.updatedAt || 0) > Number(remoteItem.updatedAt || 0)
-          ? localItem
-          : remoteItem;
-      merged.push(preserveLocalProgressMetadata(winner, localItem));
-      return;
-    }
-
-    if (remoteItem && !localItem) {
-      const remoteChanged =
-        baselineItem &&
-        progressContentSignature(remoteItem) !== progressContentSignature(baselineItem);
-      if (!baselineItem || remoteChanged) {
-        merged.push(remoteItem);
-      }
-      return;
-    }
-
-    if (localItem && !remoteItem) {
-      const localChanged =
-        baselineItem &&
-        progressContentSignature(localItem) !== progressContentSignature(baselineItem);
-      if (!baselineItem || localChanged) {
-        merged.push(localItem);
-      }
-    }
-  });
-
-  return normalizeProgressItems(merged);
 }
 
 function mapProgressRow(row = {}) {
@@ -476,12 +379,37 @@ async function pushOnce() {
     if (!AuthManager.isAuthenticated) {
       return false;
     }
+    if (reconnectPullOwed) {
+      // The reconnect sequence pulls and then pushes, so nothing is lost by
+      // waiting -- this only stops the debounced push from getting there first.
+      return false;
+    }
     const sessionGeneration = AuthManager.getSessionGeneration();
     const items = coalesceSyncItems(await watchProgressRepository.getAll()).filter(
       (item) => isSyncableProgressItem(item) && isNuvioSyncOwnedProgress(item)
     );
     if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
     const profileId = resolveProfileId();
+
+    // Rows the baseline still carries but this device no longer has: viewing it
+    // finished or removed. Deleting from the cloud is its own call, and when it
+    // was made offline it simply failed and nothing ever retried it -- while the
+    // push that followed rewrote the baseline from local, dropping the very
+    // record of the deletion. The cloud's surviving row then looked like a new
+    // one from another device and was adopted straight back, so a title
+    // finished offline returned to Continue Watching part-watched.
+    //
+    // Derived from the baseline rather than queued anywhere: the baseline is
+    // already persisted and already says what the cloud last held.
+    const localKeys = new Set(items.map((item) => progressKey(item)));
+    const retired = readBaselineItems(profileId).filter(
+      (item) => !localKeys.has(progressKey(item))
+    );
+    if (retired.length) {
+      await WatchProgressSyncService.deleteItems(retired);
+      if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
+    }
+
     const rows = buildRemoteProgressEntries(items);
     pushSignature = buildPushSignature(rows);
     if (pushSignature && pushSignature === lastSuccessfulPushSignature) {
@@ -520,7 +448,13 @@ async function pushOnce() {
 }
 
 export const WatchProgressSyncService = {
-  async pull() {
+  // `watchedItemsReady` matters because a completion reaches this device as the
+  // absence of a progress row, and only the watched records say so. Those are
+  // pulled by their own service, in parallel with this one -- so without waiting
+  // for it, the merge reads a store that has not learned about the completion
+  // yet and hands a stale partial back. The network calls still overlap; only
+  // the merge waits.
+  async pull({ watchedItemsReady = null } = {}) {
     try {
       if (!AuthManager.isAuthenticated) {
         return [];
@@ -548,15 +482,31 @@ export const WatchProgressSyncService = {
         .filter((item) => Boolean(item.contentId) && isSyncableProgressItem(item));
       const snapshotItems = normalizeProgressItems(remoteItems);
       const baselineItems = readBaselineItems(profileId);
-      const mergedItems = mergeProgressItems(localItems, snapshotItems, baselineItems);
+      // A failed watched pull must not hold up progress; a stale watched store
+      // is the state this already handles conservatively by keeping the row.
+      if (watchedItemsReady) await Promise.resolve(watchedItemsReady).catch(() => {});
       if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
         return localItems;
       }
+      const watchedAtByKey = buildWatchedAtByKey(WatchedItemsStore.listForProfile(profileId));
+      const mergedItems = mergeProgressItems(localItems, snapshotItems, baselineItems, {
+        watchedAtByKey
+      });
+      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
+        return localItems;
+      }
+      // Stored first, and only then recorded. The baseline is this device's
+      // claim about what the cloud holds and what it has taken in; recording it
+      // before the rows landed meant a failure in between left it claiming a
+      // cloud the device never merged. Every later pull then read as "only I
+      // moved" and the device stopped following the cloud, with nothing to say
+      // so. The order is the whole fix: a write that does not happen leaves the
+      // old baseline, which is merely out of date, and the next pull settles it.
+      await watchProgressRepository.replaceAll(mergedItems, profileId);
       writeBaselineItems(profileId, snapshotItems);
       lastSuccessfulPushSignature = buildPushSignature(
         buildRemoteProgressEntries(coalesceSyncItems(snapshotItems))
       );
-      await watchProgressRepository.replaceAll(mergedItems, profileId);
       return mergedItems;
     } catch (error) {
       console.warn("Watch progress sync pull failed", error);
@@ -580,6 +530,74 @@ export const WatchProgressSyncService = {
       activePushPromise = null;
     });
     return activePushPromise;
+  },
+
+  // Coming back online is the only moment worth retrying a push that failed for
+  // want of a network, and nothing did: pushes ride on playback events, so
+  // progress recorded offline could sit unsent until the next thing was played.
+  //
+  // Pull first, so anything another device did meanwhile is merged before this
+  // device's own state is sent back.
+  async syncAfterReconnect(trigger = "unknown") {
+    if (!AuthManager.isAuthenticated) {
+      // An app opened with no network has no session yet. One arrives shortly
+      // after the network does, and nothing else was going to try again -- which
+      // is why an offline start meant offline viewing never went up at all.
+      await new Promise((resolve) => setTimeout(resolve, AUTH_RECOVERY_RETRY_MS));
+      if (!AuthManager.isAuthenticated) {
+        console.warn(`[ProgressSync] reconnect(${trigger}) skipped: still no session`);
+        reconnectPullOwed = false;
+        return false;
+      }
+    }
+    if (!shouldUseSupabaseWatchProgressSync()) {
+      reconnectPullOwed = false;
+      return false;
+    }
+    // Completions made elsewhere have to be in hand before the merge runs, or a
+    // partial left behind here outlives them and is pushed back over them.
+    for (let attempt = 0; attempt < RECONNECT_RETRY_DELAYS_MS.length; attempt += 1) {
+      const delay = RECONNECT_RETRY_DELAYS_MS[attempt];
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      // Cleared on every attempt: the previous one failing is what arms it, and
+      // an outage that has just ended is exactly when it should not apply.
+      lastFailedPushSignature = "";
+      lastFailedPushAt = 0;
+      await this.pull({
+        watchedItemsReady: WatchedItemsSyncService.pull().catch(() => null)
+      });
+      // Reconciled: this device's state now accounts for what the cloud holds,
+      // so publishing it can no longer erase another device's viewing.
+      reconnectPullOwed = false;
+      const pushed = await this.push();
+      if (pushed) return true;
+    }
+    // Which of the two this is decides everything about what to do next: a
+    // dead session never recovers on its own, while a slow network does.
+    reconnectPullOwed = false;
+    console.warn(
+      `[ProgressSync] reconnect(${trigger}) gave up after all attempts ` +
+        `auth=${AuthManager.isAuthenticated} tokenExpired=${AuthManager.isAccessTokenExpired()}`
+    );
+    return false;
+  },
+
+  // Whether this device is holding viewing the cloud has not accepted. Asked of
+  // the data rather than of a failure flag: a push that was never attempted
+  // leaves no flag behind, and an offline session is exactly when one might not
+  // be. Unanswerable means yes, because syncing needlessly costs a round trip
+  // while skipping wrongly loses the viewing.
+  async hasUnsyncedProgress() {
+    try {
+      if (!shouldUseSupabaseWatchProgressSync()) return false;
+      if (!AuthManager.isAuthenticated) return true;
+      const items = coalesceSyncItems(await watchProgressRepository.getAll()).filter(
+        (item) => isSyncableProgressItem(item) && isNuvioSyncOwnedProgress(item)
+      );
+      return buildPushSignature(buildRemoteProgressEntries(items)) !== lastSuccessfulPushSignature;
+    } catch (_) {
+      return true;
+    }
   },
 
   async deleteItems(items = []) {
