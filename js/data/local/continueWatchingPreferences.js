@@ -103,11 +103,16 @@ export const ContinueWatchingPreferences = {
       return readForProfile(profileId);
     }
     const current = readForProfile(profileId);
-    return writeForProfile(profileId, {
-      ...current,
-      dismissedNextUpKeys: current.dismissedNextUpKeys.filter(
-        (key) => key !== normalizedContentId && !key.startsWith(`${normalizedContentId}|`)
-      )
-    });
+    const remaining = current.dismissedNextUpKeys.filter(
+      (key) => key !== normalizedContentId && !key.startsWith(`${normalizedContentId}|`)
+    );
+    // Every progress write for a series asks this, and the player writes every
+    // few seconds. Writing regardless rewrote the whole preferences blob and
+    // queued a profile-settings cloud push on each of those ticks, for a list
+    // that almost never has anything to drop.
+    if (remaining.length === current.dismissedNextUpKeys.length) {
+      return current;
+    }
+    return writeForProfile(profileId, { ...current, dismissedNextUpKeys: remaining });
   }
 };

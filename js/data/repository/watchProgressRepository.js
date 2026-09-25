@@ -24,9 +24,11 @@ import {
   WATCH_PROGRESS_COMPLETED_THRESHOLD,
   WATCH_PROGRESS_STARTED_THRESHOLD,
   getWatchProgressFraction,
-  resolveWatchProgressResumePositionMs
+  resolveWatchProgressResumePositionMs,
+  watchProgressCardKey
 } from "../../domain/model/watchProgress.js";
 
+// Must stay identical to homeConstants.js's copy, which reads the same entry.
 const CW_DISPLAY_SNAPSHOT_KEY = "homeContinueWatchingDisplaySnapshot";
 const CW_PROGRESS_START_THRESHOLD = WATCH_PROGRESS_STARTED_THRESHOLD;
 const CW_PROGRESS_END_THRESHOLD = WATCH_PROGRESS_COMPLETED_THRESHOLD;
@@ -104,17 +106,6 @@ function invalidateContinueWatchingDisplaySnapshot() {
   LocalStore.set(CW_DISPLAY_SNAPSHOT_KEY, next);
 }
 
-function continueWatchingSnapshotItemKey({ contentId, videoId, season, episode } = {}) {
-  const normalizedContentId = String(contentId || "").trim();
-  if (!normalizedContentId) {
-    return "";
-  }
-  const normalizedVideoId = videoId == null ? "main" : String(videoId).trim();
-  const normalizedSeason = season == null ? "" : String(Number(season));
-  const normalizedEpisode = episode == null ? "" : String(Number(episode));
-  return `${normalizedContentId}::${normalizedVideoId}::${normalizedSeason}::${normalizedEpisode}`;
-}
-
 // A plain progress write (position/duration only, same item identity) does
 // not change which items belong on Home's Continue Watching row or their
 // Next-Up resolution, so the on-disk display snapshot can be patched in
@@ -128,7 +119,7 @@ function continueWatchingSnapshotItemKey({ contentId, videoId, season, episode }
 // the next full resolve — better than forcing every card back through the
 // slow no-snapshot cold path for one item's update.
 function patchOrInvalidateContinueWatchingDisplaySnapshot(progressItem) {
-  const itemKey = continueWatchingSnapshotItemKey(progressItem);
+  const itemKey = watchProgressCardKey(progressItem);
   if (!itemKey) {
     invalidateContinueWatchingDisplaySnapshot();
     return;
@@ -139,7 +130,7 @@ function patchOrInvalidateContinueWatchingDisplaySnapshot(progressItem) {
   if (!entry || !Array.isArray(entry.items)) {
     return;
   }
-  const index = entry.items.findIndex((item) => continueWatchingSnapshotItemKey(item) === itemKey);
+  const index = entry.items.findIndex((item) => watchProgressCardKey(item) === itemKey);
   if (index === -1) {
     return;
   }
@@ -628,7 +619,13 @@ class WatchProgressRepository {
     const removedItems = WatchProgressStore.listForProfile(pid).filter((item) =>
       matchesProgressTarget(item, contentId, videoId)
     );
-    WatchProgressStore.remove(contentId, videoId, pid);
+    // A removal is never a routine playback tick: it is a completion, an
+    // un-watch, a reconciliation sweep or the user removing the card. Those are
+    // exactly the changes Continue Watching has to react to, and announcing them
+    // like a tick meant Home ignored every one of them -- marking a title
+    // watched from a poster menu, or un-watching a series, left its card
+    // standing until something else forced a refresh.
+    WatchProgressStore.remove(contentId, videoId, pid, { authoritative: true });
     await deleteWatchProgressFromCloud(removedItems);
     invalidateContinueWatchingDisplaySnapshot();
     queueWatchProgressCloudSync();
@@ -781,10 +778,15 @@ class WatchProgressRepository {
       import("../../core/profile/watchedItemsSyncService.js")
     ]);
     // Watched items travel with progress: they decide which Next Up card a
-    // finished episode leaves behind.
+    // finished episode leaves behind, and a title finished on another device
+    // reaches this one as the absence of its progress row -- which only the
+    // watched records explain. Run in parallel, the merge read a watched store
+    // that had not caught up, kept a partial the completion should have retired,
+    // and pushed it back over the completion on every other device.
+    const watchedItemsReady = WatchedItemsSyncService.pull().catch(() => []);
     await Promise.all([
-      WatchProgressSyncService.pull().catch(() => []),
-      WatchedItemsSyncService.pull().catch(() => [])
+      WatchProgressSyncService.pull({ watchedItemsReady }).catch(() => []),
+      watchedItemsReady
     ]);
     return true;
   }

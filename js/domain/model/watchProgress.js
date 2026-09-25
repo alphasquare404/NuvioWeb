@@ -39,6 +39,41 @@ export function getWatchProgressFraction(progress = {}) {
   return 0;
 }
 
+/**
+ * Which card a progress row belongs to.
+ *
+ * One title reaches Continue Watching from two directions that spell it
+ * differently. A film arrives from a tracking provider carrying its own title id
+ * as the video id and zeros for season and episode, while the same film written
+ * by playback here leaves all three empty. Compared literally they never match,
+ * so anything keyed on the raw fields silently fails to find the card it means.
+ *
+ * Lives here because the display snapshot on disk and the row Home holds in
+ * memory are the same list, and a key that disagreed between them patched one
+ * and not the other.
+ */
+export function watchProgressCardKey({ contentId, videoId, season, episode } = {}) {
+  const normalizedContentId = String(contentId || "").trim();
+  if (!normalizedContentId) {
+    return "";
+  }
+  const rawVideoId = videoId == null ? "" : String(videoId).trim();
+  // A film's own id is not a distinct video within it.
+  const normalizedVideoId = !rawVideoId || rawVideoId === normalizedContentId ? "main" : rawVideoId;
+  // Episodes are numbered from one, so a zero means "not an episode at all".
+  // Season is only meaningful alongside one, which leaves a real season zero --
+  // a specials run -- intact.
+  const episodeNumber = Number(episode);
+  const hasEpisode = Number.isFinite(episodeNumber) && episodeNumber > 0;
+  const seasonNumber = Number(season);
+  return [
+    normalizedContentId,
+    normalizedVideoId,
+    hasEpisode && Number.isFinite(seasonNumber) ? String(seasonNumber) : "",
+    hasEpisode ? String(episodeNumber) : ""
+  ].join("::");
+}
+
 export function isWatchProgressCompleted(progress = {}) {
   return getWatchProgressFraction(progress) >= WATCH_PROGRESS_COMPLETED_THRESHOLD;
 }
