@@ -12,9 +12,16 @@ function activeProfileId() {
 
 // Mirrors the progress rows' tag: which source owned Continue Watching when
 // this completion was recorded, so Nuvio's cloud only ever receives its own.
+// A provider only owns a completion it can actually receive. The setting
+// defaults to Trakt whether or not an account is connected, and this read only
+// the setting -- so on a profile that never linked one, every completion was
+// tagged `trakt_local`, filtered out of the push to Nuvio's own cloud, and never
+// left the device. Progress written at the same moment did go, because that side
+// checks the connection as well as the setting, which is why one device could
+// follow another's viewing but never learn it had finished.
 function selectedLocalWatchedSource() {
-  if (ownsWatchProgress(WatchProgressSource.TRAKT)) return "trakt_local";
-  if (ownsWatchProgress(WatchProgressSource.SIMKL)) return "simkl_local";
+  if (shouldUseTrakt()) return "trakt_local";
+  if (shouldUseSimkl()) return "simkl_local";
   return WatchProgressSource.NUVIO_SYNC;
 }
 
@@ -193,7 +200,12 @@ class WatchedItemsRepository {
         watchedAt: item.watchedAt || Date.now()
       },
       activeProfileId(),
-      { authoritative: Boolean(options.authoritative) }
+      // A completion is never one of playback's periodic writes: every caller
+      // is a finish, a scrobble stop, a reconciliation sweep or the user
+      // marking something watched. Announcing them like a tick left Home
+      // ignoring the change, so a title marked watched elsewhere kept its
+      // Continue Watching card. Callers may still opt out.
+      { authoritative: options.authoritative !== false }
     );
     queueWatchedItemsCloudSync();
     if (shouldUseSimkl() && options.skipTrackingWrite !== true) {

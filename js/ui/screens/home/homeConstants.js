@@ -29,9 +29,13 @@ export const CW_PROGRESS_END_THRESHOLD = WATCH_PROGRESS_COMPLETED_THRESHOLD;
 export const CW_ENTER_DELAY_MS = 320;
 export const CW_HOLD_DELAY_MS = 650;
 export const CW_META_TIMEOUT_MS = 1800;
-export const CW_META_TIMEOUT_TV_MS = 4200;
 export const CW_NEXT_UP_META_TIMEOUT_MS = 2200;
 export const CW_ENRICHMENT_CACHE_KEY = "homeContinueWatchingEnrichmentCache";
+// Must stay identical to the copy in watchProgressRepository.js, which patches
+// and invalidates the same entry. Kept restated rather than imported so this
+// constants module stays free of the repository's dependency graph -- and a
+// mismatch here fails loudly and at once, because Home would simply never
+// find its snapshot.
 export const CW_DISPLAY_SNAPSHOT_KEY = "homeContinueWatchingDisplaySnapshot";
 export const CW_DISPLAY_SNAPSHOT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 export const CW_DISPLAY_SNAPSHOT_MAX_SCOPES = 4;

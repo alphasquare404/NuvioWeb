@@ -295,13 +295,21 @@ export const StartupSyncService = {
             return false;
           })
           .finally(() => logSyncTiming("background-simkl-refresh", syncStartedAt));
+        const watchedItemsTask = includeProfileScoped
+          ? Promise.resolve().then(() => WatchedItemsSyncService.pull())
+          : null;
         const scopedTasks = includeProfileScoped
           ? {
               collections: Promise.resolve().then(() => CollectionSyncService.pull(activeProfileId)),
               plugins: Promise.resolve().then(() => PluginSyncService.pull()),
               savedLibrary: Promise.resolve().then(() => SavedLibrarySyncService.pull(activeProfileId)),
-              watchedItems: Promise.resolve().then(() => WatchedItemsSyncService.pull()),
-              watchProgress: Promise.resolve().then(() => WatchProgressSyncService.pull())
+              watchedItems: watchedItemsTask,
+              // Both requests still go out together; only the progress merge
+              // waits, because a completion made on another device arrives as a
+              // watched record and as the absence of a progress row.
+              watchProgress: Promise.resolve().then(() =>
+                WatchProgressSyncService.pull({ watchedItemsReady: watchedItemsTask })
+              )
             }
           : {};
         const settled = await Promise.allSettled([

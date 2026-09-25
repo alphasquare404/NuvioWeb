@@ -22,6 +22,7 @@ import { I18n } from "./i18n/index.js";
 import { resolveExperienceRoute } from "./core/profile/experienceModeRouting.js";
 import { initializeBrowserOfflineDownloadQueue } from "./core/offline/browserOfflineDownloadQueue.js";
 import { installExternalPlaybackReturnCoordinator } from "./ui/components/browserExternalPlaybackHandoff.js";
+import { installWatchProgressReconnectSync } from "./core/profile/watchProgressReconnect.js";
 import { dispatchOutplayerExplicitFinish } from "./ui/components/browserOutplayerFinishDispatch.js";
 import { PlayerScreen } from "./ui/screens/player/playerScreen.js";
 
@@ -369,6 +370,9 @@ async function bootstrapApp() {
 
   markBootStage("Checking authentication");
   await AuthManager.bootstrap();
+  // Progress written while offline had nothing to carry it up: pushes ride on
+  // playback events, so it could sit unsent until the next thing was played.
+  installWatchProgressReconnectSync();
   installExternalPlaybackReturnCoordinator({
     getProfileId: () => ProfileManager.getActiveProfileId(),
     onAutomaticReport: async (report) => {
