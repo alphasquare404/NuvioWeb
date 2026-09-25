@@ -391,3 +391,62 @@ test("resume survives the provider failing", async () => {
   };
   assert.equal(await device.repo.getResumeByContentId("tt1375666"), null);
 });
+
+// The suppression list is scoped by profile as well as by source, and nothing
+// drove that half through the repository. Deleting either `scopeTo` call left
+// the whole suite green, while a viewer would have seen a title they removed in
+// one profile go missing from another profile's Continue Watching -- a profile
+// where it was never removed, and where it only came back after a reload,
+// because the list lives in memory.
+test("a removal in one profile does not hide the title in another", async () => {
+  const device = await freshDevice();
+  signIntoTrakt(device);
+  selectSource(device, device.Source.TRAKT);
+  await stubTrakt(device, { playback: [traktPlaybackEntry()] });
+
+  // Profile 1 removes it. Trakt has not applied the delete yet, so it is
+  // suppressed rather than gone.
+  await device.repo.removeContinueWatchingTitle("tmdb:329865");
+  assert.deepEqual(await device.repo.getAllForContinueWatching(), []);
+  assert.equal(device.suppression.size, 1);
+
+  // Profile 2 never removed anything and must still see it.
+  device.storage.setItem("activeProfileId", JSON.stringify("2"));
+  device.LocalStore.set("traktAuthState", {
+    profiles: {
+      1: { accessToken: "trakt-token", refreshToken: "trakt-refresh" },
+      2: { accessToken: "trakt-token-2", refreshToken: "trakt-refresh-2" }
+    }
+  });
+  device.TraktSettingsStore.set({ watchProgressSource: device.Source.TRAKT });
+
+  assert.deepEqual(
+    idsOf(await device.repo.getAllForContinueWatching()),
+    ["tmdb:329865"],
+    "the other profile never removed it"
+  );
+});
+
+// The scope key names both, so a removal is settled against the account it was
+// made for and no other. A provider is signed in per profile, so the source
+// half follows that too: switching to a profile that never linked Trakt lands
+// on Nuvio Sync, and the key says so.
+test("the suppression scope key names the profile and that profile's own source", async () => {
+  const device = await freshDevice();
+  signIntoTrakt(device);
+  selectSource(device, device.Source.TRAKT);
+  assert.equal(device.repo.getContinueWatchingSourceKey(), "1:trakt");
+
+  // Profile 2 has no Trakt account of its own, whatever the setting says.
+  device.storage.setItem("activeProfileId", JSON.stringify("2"));
+  assert.equal(device.repo.getContinueWatchingSourceKey(), "2:nuvio_sync");
+
+  // Give it one, and the same setting now resolves to Trakt for this profile.
+  device.LocalStore.set("traktAuthState", {
+    profiles: {
+      1: { accessToken: "t1", refreshToken: "r1" },
+      2: { accessToken: "t2", refreshToken: "r2" }
+    }
+  });
+  assert.equal(device.repo.getContinueWatchingSourceKey(), "2:trakt");
+});
