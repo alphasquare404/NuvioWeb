@@ -8981,6 +8981,25 @@ export const HomeScreen = {
         return;
       }
 
+      // The positions are already in hand: they came out of the store above.
+      // Only artwork and Next-Up resolution need the network, and waiting for
+      // that whole pipeline before painting anything is why a card sat on its
+      // old position for about five seconds after a pull-to-refresh -- a
+      // each item's metadata lookup is allowed CW_META_TIMEOUT_MS and each
+      // Next-Up candidate CW_NEXT_UP_META_TIMEOUT_MS, and they add up.
+      //
+      // Patching only touches position and duration on a card that is already
+      // resolved and showing, so it cannot reorder the row, invent a card, or
+      // guess a Next-Up episode. The full pass below still decides all of that.
+      const patchedDisplay = this.continueWatching.reduce(
+        (display, item) => patchContinueWatchingDisplayProgress(display, item) || display,
+        this.continueWatchingDisplay
+      );
+      if (patchedDisplay !== this.continueWatchingDisplay) {
+        this.continueWatchingDisplay = patchedDisplay;
+        this.requestBackgroundRender();
+      }
+
       const enriched = await this.enrichContinueWatching(this.continueWatching, {
         allProgress: this.allProgress,
         watchedItems: this.getContinueWatchingWatchedItems(),
