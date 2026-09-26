@@ -121,6 +121,7 @@ import {
   normalizeSupporterDonations
 } from "../supporters/supportersData.js";
 import { LICENSES_ATTRIBUTION_SECTIONS } from "./licensesAttributionsScreen.js";
+import { AvatarRepository } from "../../../data/remote/supabase/avatarRepository.js";
 import {
   deleteAllBrowserOfflineMedia,
   deleteAllBrowserOfflineSubtitles,
@@ -1813,6 +1814,9 @@ async function fetchAccountSyncOverview() {
   const remoteProfiles =
     source.profiles && typeof source.profiles === "object" ? source.profiles : {};
   const profiles = await ProfileManager.getProfiles();
+  // A missing catalog costs the picture, not the row: the coloured initial is
+  // still a correct fallback, so this must not fail the overview.
+  const avatarCatalog = await AvatarRepository.getAvatarCatalog().catch(() => []);
   const allProfileIds = Array.from(
     new Set([
       ...Object.keys(addons),
@@ -1856,6 +1860,14 @@ async function fetchAccountSyncOverview() {
         profileId,
         profileName: localProfile?.name || remoteProfile.name || `Profile ${profileId}`,
         avatarColorHex: localProfile?.avatarColorHex || remoteProfile.color || "#1E88E5",
+        // The picture the profile is known by everywhere else in the app. The
+        // row drew a coloured disc with an initial in it instead, which is the
+        // fallback for a profile that has no picture, not a stand-in for one
+        // that has.
+        avatarUrl:
+          String(localProfile?.avatarUrl || "").trim() ||
+          AvatarRepository.getAvatarImageUrl(localProfile?.avatarId, avatarCatalog) ||
+          null,
         addons: readCount(addons, profileId),
         plugins: readCount(plugins, profileId),
         library: readCount(libraryItems, profileId),
@@ -1888,6 +1900,30 @@ function getVisibleSections(model) {
 
 function getSettingsSectionById(sectionId) {
   return SECTION_META.find((section) => section.id === sectionId) || null;
+}
+
+/**
+ * Whether Settings navigates as an index page rather than a rail beside the
+ * content.
+ *
+ * A finger cannot aim at a rail that has been squeezed into a strip of tabs,
+ * and a strip that scrolls sideways with its scrollbar hidden gives no sign
+ * that the rest of the sections exist at all. On a touch screen the sections
+ * become a page of their own, and choosing one replaces it.
+ *
+ * `any-pointer`, not `pointer`: a tablet with a trackpad attached reports a
+ * fine primary pointer and still has the touch screen this exists for. The
+ * question is whether a finger can reach the list, not which input is primary.
+ * It is paired with the browser check so a remote keeps the rail-and-content
+ * model its directional keys are built around.
+ */
+function settingsUsesTouchNav() {
+  if (!Platform.isBrowser()) return false;
+  try {
+    return Boolean(globalThis.matchMedia?.("(any-pointer: coarse)")?.matches);
+  } catch (_) {
+    return false;
+  }
 }
 
 function updateSettingsMarqueeTargets(root) {
@@ -2234,7 +2270,12 @@ export const SettingsScreen = {
     this.restoreRailScrollTop = persistedUiState.railScrollTop;
     this.railScrollTop = persistedUiState.railScrollTop;
     this.suppressNextRailFocusScroll = Boolean(navigationContext?.isBackNavigation);
-    this.activeSection = persistedUiState.activeSection || this.activeSection || null;
+    // Touch navigation opens on the index. Restoring the section the user
+    // was last in lands them inside a page with no sign of what they arrived
+    // from, which is only comfortable when the rail is still on screen.
+    this.activeSection = settingsUsesTouchNav()
+      ? null
+      : persistedUiState.activeSection || this.activeSection || null;
     this.focusZone = "nav";
     this.sidebarFocusIndex = Number.isFinite(this.sidebarFocusIndex) ? this.sidebarFocusIndex : 0;
     this.navIndex = Number.isFinite(persistedUiState.navIndex)
@@ -2364,6 +2405,17 @@ export const SettingsScreen = {
     this.expandedSections[sectionId] = createDefaultExpandedState(sectionId);
   },
 
+  // Leaving a section on touch returns to the index rather than out of
+  // Settings, which is the only reading of Back once the index is a page the
+  // user arrived from.
+  async closeSectionToIndex() {
+    if (!settingsUsesTouchNav() || this.activeSection === null) return false;
+    this.setActiveSection(null);
+    this.focusZone = "nav";
+    await this.render({ refreshModel: false });
+    return true;
+  },
+
   setActiveSection(sectionId) {
     const nextSectionId = sectionId || null;
     if (this.activeSection && this.activeSection !== nextSectionId) {
@@ -2481,8 +2533,20 @@ export const SettingsScreen = {
   },
 
   renderNav() {
-    return this.visibleSections
-      .map(
+    // The index page is a page, so it carries the screen's own title. The
+    // rail beside the content is not, and each section's own header titles
+    // it there.
+    const showsIndex = settingsUsesTouchNav() && this.activeSection === null;
+    const indexHeader = showsIndex
+      ? `
+      <header class="settings-nav-index-header">
+        <h1 class="settings-title">${escapeHtml(t("nav.settings", {}, "Settings"))}</h1>
+      </header>
+    `
+      : "";
+    return (
+      indexHeader +
+      this.visibleSections.map(
         (item, index) => `
       <button class="settings-nav-item focusable${this.activeSection === item.id ? " selected" : ""}"
               data-zone="nav"
@@ -2494,18 +2558,33 @@ export const SettingsScreen = {
           <span class="settings-nav-label-wrap">
             <span class="settings-nav-label">${escapeHtml(translateSectionCopy(item).label)}</span>
             ${item.id === "plugins" ? `<span class="settings-nav-badge">${escapeHtml(t("common.soon", {}, "Soon"))}</span>` : ""}
+            <span class="settings-nav-subtitle">${escapeHtml(translateSectionCopy(item).subtitle)}</span>
           </span>
         </span>
         ${iconSvg(ROW_ICONS.chevron, "settings-nav-chevron")}
       </button>
     `
-      )
-      .join("");
+      ).join("")
+    );
   },
 
   renderSectionHeader(section) {
     const copy = translateSectionCopy(section);
+    // A section opened from the index has replaced it, so it has to offer the
+    // way back. Every other layout keeps the rail on screen and needs none.
+    const back = settingsUsesTouchNav()
+      ? `
+      <button class="settings-section-back focusable"
+              data-zone="content"
+              data-focus-key="section:back"
+              data-action="section:back"
+              aria-label="${escapeHtml(t("auth_qr_back", {}, "Back"))}">
+        ${iconSvg(ROW_ICONS.back, "settings-section-back-icon")}
+      </button>
+    `
+      : "";
     return `
+      ${back}
       <header class="settings-content-header">
         <h1 class="settings-title">${escapeHtml(copy.label)}</h1>
         <p class="settings-subtitle">${escapeHtml(copy.subtitle)}</p>
@@ -3489,11 +3568,15 @@ export const SettingsScreen = {
           .map(
             (profile) => `
           <div class="settings-account-sync-row">
-            <span class="settings-account-profile-badge" style="background:${escapeHtml(profile.avatarColorHex || "#1E88E5")};">${escapeHtml(
-              String(profile.profileName || "?")
-                .charAt(0)
-                .toUpperCase() || "?"
-            )}</span>
+            ${
+              profile.avatarUrl
+                ? `<img class="settings-account-profile-avatar" src="${escapeHtml(profile.avatarUrl)}" alt="" loading="lazy" decoding="async" />`
+                : `<span class="settings-account-profile-badge" style="background:${escapeHtml(profile.avatarColorHex || "#1E88E5")};">${escapeHtml(
+                    String(profile.profileName || "?")
+                      .charAt(0)
+                      .toUpperCase() || "?"
+                  )}</span>`
+            }
             <span class="settings-account-profile-name">${escapeHtml(profile.profileName || `Profile ${profile.profileId || ""}`)}</span>
             <span class="settings-account-sync-stats">
               ${renderStats([
@@ -6813,18 +6896,6 @@ export const SettingsScreen = {
               })
             : ""
         }
-        ${isDesktopBrowser ? this.renderActionRow({ focusKey: this.pushReturnState === "enabled" ? "playback:pushReturnDisable" : "playback:pushReturn", title: "Return to NuvioWeb", subtitle: "Get a notification after external playback so you can quickly return to the NuvioWeb app.", value: ({ enabled: "Enabled", "not-enabled": "Not enabled", blocked: "Blocked", unavailable: "Unavailable", "server-not-configured": "Server not configured", checking: "Checking…" })[this.pushReturnState] || "Unavailable", classes: "settings-playback-external-player-row" }) : ""}
-        ${
-          isDesktopBrowser
-            ? this.renderActionRow({
-                focusKey: "playback:externalPlayerProgress",
-                title: "External Player Progress",
-                subtitle: "Choose automatic callbacks where supported or always report playback manually.",
-                value: model.player.externalPlayerProgress === "manual" ? "Always ask manually" : "Automatic when supported",
-                classes: "settings-playback-external-player-row"
-              })
-            : ""
-        }
         ${
           isDesktopBrowser && (() => {
             const player = normalizeBrowserExternalPlayer(model.player.browserExternalPlayer);
@@ -6844,6 +6915,18 @@ export const SettingsScreen = {
                   classes: "settings-external-player-store-row"
                 });
               })()
+            : ""
+        }
+        ${isDesktopBrowser ? this.renderActionRow({ focusKey: this.pushReturnState === "enabled" ? "playback:pushReturnDisable" : "playback:pushReturn", title: "Return to NuvioWeb", subtitle: "Get a notification after external playback so you can quickly return to the NuvioWeb app.", value: ({ enabled: "Enabled", "not-enabled": "Not enabled", blocked: "Blocked", unavailable: "Unavailable", "server-not-configured": "Server not configured", checking: "Checking…" })[this.pushReturnState] || "Unavailable", classes: "settings-playback-external-player-row" }) : ""}
+        ${
+          isDesktopBrowser
+            ? this.renderActionRow({
+                focusKey: "playback:externalPlayerProgress",
+                title: "External Player Progress",
+                subtitle: "Choose automatic callbacks where supported or always report playback manually.",
+                value: model.player.externalPlayerProgress === "manual" ? "Always ask manually" : "Automatic when supported",
+                classes: "settings-playback-external-player-row"
+              })
             : ""
         }
         ${this.renderToggleRow({
@@ -8475,7 +8558,14 @@ export const SettingsScreen = {
         SECTION_META.find((item) => item.id === "appearance") || SECTION_META[0]
       ];
     }
-    if (!this.visibleSections.some((section) => section.id === this.activeSection)) {
+    // Touch navigation has a real "nothing chosen yet" state -- that is the
+    // index page. Everywhere else a section is always open, so an unknown one
+    // falls back to the first rather than leaving the content blank.
+    const usesTouchNav = settingsUsesTouchNav();
+    if (
+      !this.visibleSections.some((section) => section.id === this.activeSection) &&
+      !(usesTouchNav && this.activeSection === null)
+    ) {
       this.setActiveSection(this.visibleSections[0]?.id || "appearance");
     }
     this.navIndex = clamp(
@@ -8499,6 +8589,14 @@ export const SettingsScreen = {
       shell.dataset.settingsStyle = String(
         this.model.theme.settingsUiStyle || "CLASSIC"
       ).toLowerCase();
+      // "index" shows the sections as a page and hides the content; "section"
+      // does the reverse. Absent entirely when the rail and the content sit
+      // side by side, which is every non-touch layout.
+      if (usesTouchNav) {
+        shell.dataset.settingsNavMode = this.activeSection === null ? "index" : "section";
+      } else {
+        delete shell.dataset.settingsNavMode;
+      }
       shell.classList.toggle("settings-route-enter", Boolean(this.settingsRouteEnterPending));
       if (this.settingsRouteEnterPending) {
         void shell.offsetWidth;
@@ -8558,11 +8656,16 @@ export const SettingsScreen = {
     updateSettingsRailIndicatorsSoon(navSlot);
     updateSettingsScrollIndicatorsSoon(navSlot);
 
-    const sectionChanged = this.renderedSectionId !== section.id;
+    // On the index page nothing is open yet, so there is no section to build.
+    // Rendering one anyway would cost a full section's markup on every visit
+    // to a page that never shows it.
+    const showsSection = !usesTouchNav || this.activeSection !== null;
+    const renderedId = showsSection ? section.id : null;
+    const sectionChanged = this.renderedSectionId !== renderedId;
     const previousScrollState = !sectionChanged ? captureSettingsScrollState(contentSlot) : null;
-    this.renderedSectionId = section.id;
+    this.renderedSectionId = renderedId;
     if (contentSlot) {
-      contentSlot.innerHTML = this.renderSection(section, this.model);
+      contentSlot.innerHTML = showsSection ? this.renderSection(section, this.model) : "";
       if (previousScrollState) {
         restoreSettingsScrollState(contentSlot, previousScrollState);
       }
@@ -8919,6 +9022,13 @@ export const SettingsScreen = {
       return;
     }
 
+    const backButton = event?.target?.closest?.(".settings-section-back");
+    if (backButton && this.container?.contains?.(backButton)) {
+      event?.preventDefault?.();
+      await this.closeSectionToIndex();
+      return;
+    }
+
     const target = event?.target?.closest?.(
       ".settings-nav-item, .settings-content-focusable, .settings-dialog-option, [data-text-dialog-role='field']"
     );
@@ -9123,6 +9233,9 @@ export const SettingsScreen = {
       if (this.optionDialog) {
         this.closeOptionDialog();
         await this.render({ refreshModel: false });
+        return;
+      }
+      if (await this.closeSectionToIndex()) {
         return;
       }
       if (this.focusZone === "sidebar") {

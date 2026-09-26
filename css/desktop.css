@@ -12350,3 +12350,344 @@ body.desktop-browser {
     padding-inline: var(--browser-home-tablet-gutter, var(--browser-page-gutter));
   }
 }
+
+/* Settings as an index page on touch.
+   ------------------------------------------------------------------
+   A finger cannot aim at a rail squeezed into a strip of tabs, and a strip
+   that scrolls sideways with its scrollbar hidden gives no sign the rest of
+   the sections exist. On a touch screen the sections become a page of their
+   own and choosing one replaces it.
+
+   Everything here hangs off [data-settings-nav-mode], which the screen sets
+   only when it navigates that way, so the rail-and-content layout every other
+   platform uses is untouched by all of it. */
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-workspace {
+  display: block;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-content-frame,
+.desktop-browser .settings-shell[data-settings-nav-mode="section"] .settings-sidebar-frame {
+  display: none;
+}
+
+/* The rail's horizontal-strip treatment is what this replaces, so every part
+   of it is unwound rather than overridden piecemeal. */
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 10px;
+  width: 100%;
+  max-width: none;
+  overflow: visible;
+  touch-action: auto;
+  /* The rail is a card beside the content. As a page it is the page, so
+     its own frame comes off and the rows carry the chrome. */
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-index-header {
+  padding: 12px 2px 18px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-item {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 68px;
+  padding: 14px 16px;
+  justify-content: space-between;
+  gap: 14px;
+  border-radius: 18px;
+  text-align: left;
+  white-space: normal;
+  /* Inside the rail's card these rows read against a lighter panel. As the
+     page itself there is no panel, so each row carries its own. */
+  border: 1px solid var(--border-color, #333);
+  background: var(--card-bg, #222);
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-leading {
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-label-wrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-label {
+  font-size: 17px;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+/* The subtitle is what makes an index row worth reading instead of guessing;
+   the rail has no room for it and hides it. */
+.settings-nav-subtitle {
+  display: none;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-subtitle {
+  display: block;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.62));
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-chevron {
+  display: block;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  opacity: 0.55;
+}
+
+/* A section opened from the index has replaced it, so it carries the way
+   back beside its own title. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
+  flex-direction: column;
+  gap: 5px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-heading {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Floating, on the navigation's own line -- the same placement every other
+   back control in the browser build uses, from Detail to Stream. Left in the
+   header flow it pushed the title sideways and sat at a different height on
+   every section. */
+.settings-section-back {
+  appearance: none;
+  position: fixed;
+  z-index: 30;
+  top: calc(
+    var(--browser-floating-nav-top) +
+      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+  );
+  left: clamp(16px, 2.4vw, 40px);
+  width: var(--browser-floating-back-control-size, 44px);
+  height: var(--browser-floating-back-control-size, 44px);
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.54);
+  color: #fff;
+  backdrop-filter: blur(10px);
+  display: grid;
+  place-items: center;
+}
+
+.settings-section-back-icon {
+  width: 22px;
+  height: 22px;
+  /* The chevron is a stroked path, so it needs a stroke. Left to inherit it
+     filled itself black inside a black button and vanished. */
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.settings-section-back:focus-visible {
+  outline: none;
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.42);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .settings-section-back:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+}
+
+/* Section header clearance on touch.
+   The floating navigation sits over the top of the page, and a header that
+   starts immediately under it leaves the back control sharing that band. */
+.desktop-browser .settings-shell[data-settings-nav-mode="section"] .settings-content-header {
+  padding-top: 14px;
+}
+
+/* Account: the signed-in address.
+   Side by side, the label took enough of the row that a 26-character address
+   had nowhere to go but through the middle of a word -- "…@gm / ail.com".
+   Stacked, the address has the full row and stays in one piece. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-status-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-status-label {
+  grid-column: 2;
+  font-size: 13px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-status-value {
+  grid-column: 2;
+  overflow-wrap: break-word;
+}
+
+/* Account: the per-profile counters.
+   Five columns were fixed regardless of width, which on a phone left about
+   sixty pixels each for a number and a ten-pixel label. Letting them wrap
+   keeps every counter readable and costs one extra row. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-sync-stats {
+  grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
+  gap: 8px 4px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-stat small {
+  /* Whole words. Wrapping let "progress" break into "progres / s", which is
+     worse than the clipped label it replaced; a point smaller fits it instead. */
+  overflow: visible;
+  font-size: 9px;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* Appearance: the colour swatches.
+   A fixed 116px card fits twice across a phone, so seven colours took four
+   rows and most of the screen. Letting the card flex fits three across and
+   still grows on a tablet. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-theme-card {
+  flex: 1 1 84px;
+  width: auto;
+  min-width: 84px;
+  max-width: 140px;
+  height: auto;
+  min-height: 96px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-theme-swatch-wrap {
+  min-height: 44px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-theme-swatch {
+  width: 44px;
+  height: 44px;
+}
+
+/* Index rows: an anchor, a value, and a break.
+   ------------------------------------------------------------------
+   Twelve identical rows with a grey glyph and a grey subtitle give the eye
+   nothing to hold and tell the reader nothing they did not get from the name.
+   The tile anchors each row and follows the accent the user picked in
+   Appearance; the value answers the question the section would be opened to
+   ask; the break stops the rarely-used sections carrying the weight of the
+   first ones. */
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-icon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: rgb(var(--secondary-color-rgb) / 0.16);
+  color: var(--secondary-color);
+}
+
+.desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-icon.settings-nav-icon-material {
+  font-size: 20px;
+}
+
+/* The playback glyph is an inline SVG rather than a font icon, so it needs the
+   tile's padding taken off its own box to sit at the same size as the rest. */
+.desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-icon.settings-nav-icon-svg {
+  padding: 8px;
+  fill: currentColor;
+}
+
+/* Advanced and About are the end of the list, not more of it. */
+.desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-item[data-section="advanced"] {
+  margin-top: 14px;
+}
+
+/* Account rows: one mark, centred against both of its lines.
+   ------------------------------------------------------------------
+   Stacking the label over the value, and the counters under the name, left
+   the leading mark pinned to the first line with the second hanging beneath
+   it. One mark belongs to the whole row, so it spans both lines and centres
+   against them. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-status-icon,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-profile-badge,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-profile-avatar {
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  align-self: center;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-sync-stats {
+  grid-column: 2;
+}
+
+/* The picture the profile is known by, at the size the initial disc used. */
+.settings-account-profile-avatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* "Total" heads the row rather than labelling a column beside it. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-sync-total-row {
+  justify-items: center;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-sync-total-label {
+  grid-column: 1 / -1;
+  text-align: center;
+}
+
+.desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-account-sync-total-row
+  .settings-account-sync-stats {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+/* The totals are a summary of the rows beneath them, not another row. A rule
+   between them says so, which stacked identical cards could not. It is drawn
+   in the gap rather than on either card, so neither loses its rounded edge. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-sync-total-row {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-sync-total-row::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: -9px;
+  left: 6px;
+  height: 1px;
+  background: var(--border-color, #333);
+}
