@@ -1796,11 +1796,16 @@ export const PlayerController = {
     }
 
     this.isPlaying = true;
+    this.startProgressSaveTimer();
+  },
 
-    if (this.progressSaveTimer) {
-      clearInterval(this.progressSaveTimer);
-    }
-
+  // One owner for the periodic save, because three places decide whether it
+  // should be running: play() starts a session, a handoff stops it while
+  // another app owns playback, and resume() takes playback back. When starting
+  // it lived inline in play() alone, resume() after a handoff left it off for
+  // the rest of the session.
+  startProgressSaveTimer() {
+    this.stopProgressSaveTimer();
     this.progressSaveTimer = setInterval(() => {
       const context = this.createProgressContext();
       this.flushProgress(
@@ -1810,6 +1815,13 @@ export const PlayerController = {
         context
       );
     }, 5000);
+  },
+
+  stopProgressSaveTimer() {
+    if (this.progressSaveTimer) {
+      clearInterval(this.progressSaveTimer);
+      this.progressSaveTimer = null;
+    }
   },
 
   pause() {
@@ -1827,6 +1839,7 @@ export const PlayerController = {
     // A user explicitly resumed the built-in player after an external return.
     // Its subsequent progress is authoritative again.
     this.releaseExternalPlaybackOwnership();
+    this.startProgressSaveTimer();
     this.flushCurrentProgress({ forceCloudSync: false });
     if (this.startupAudioGateActive) {
       this.applyStartupAudioGateToVideo();
@@ -1854,10 +1867,7 @@ export const PlayerController = {
       ? this.flushCurrentProgress({ forceCloudSync, allowCloudSync })
       : Promise.resolve(false);
     if (!this.playbackSessionActive) {
-      if (this.progressSaveTimer) {
-        clearInterval(this.progressSaveTimer);
-        this.progressSaveTimer = null;
-      }
+      this.stopProgressSaveTimer();
       return flushPromise;
     }
     this.playbackSessionActive = false;
@@ -1911,10 +1921,7 @@ export const PlayerController = {
     this.lastPlaybackErrorCode = 0;
     this.clearPlaybackEngineAttempts();
 
-    if (this.progressSaveTimer) {
-      clearInterval(this.progressSaveTimer);
-      this.progressSaveTimer = null;
-    }
+    this.stopProgressSaveTimer();
 
     return flushPromise;
   },
@@ -2032,15 +2039,25 @@ export const PlayerController = {
       this.buildProgressSnapshotKey(context) !== this.buildProgressSnapshotKey()
     )
       return false;
+    // One final best-effort save, before the handoff is armed and without
+    // delaying the user-gesture custom-scheme launch (iOS can reject a launch
+    // after an await). It has to run first: from the moment the handoff exists,
+    // the built-in player's own position is stale and gets suppressed, and this
+    // save is the record of where the user actually was when they left.
+    void this.flushCurrentProgress({ forceCloudSync: true });
     this.externalProgressHandoff = {
       key: this.buildProgressSnapshotKey(context),
       token: String(handoff.token || ""),
       authoritativePositionMs: null,
       completed: false
     };
-    // Start one final best-effort save without delaying the user-gesture
-    // custom-scheme launch (iOS can reject a launch after an await).
-    void this.flushCurrentProgress({ forceCloudSync: true });
+    // Pausing is not enough to stop writing. The periodic save runs on an
+    // interval that only stop() clears, and stop() is not part of a handoff --
+    // so the built-in player went on reporting the position it was parked at,
+    // every five seconds, for the whole external session. One of those ticks
+    // landing after the external player's report is what put an old position
+    // back into Continue Watching.
+    this.stopProgressSaveTimer();
     try {
       this.video?.pause?.();
     } catch (_) {
@@ -2056,13 +2073,15 @@ export const PlayerController = {
 
   shouldSuppressStaleInternalProgress(context, positionMs) {
     const handoff = this.externalProgressHandoff;
-    if (
-      !handoff ||
-      handoff.key !== this.buildProgressSnapshotKey(context) ||
-      handoff.authoritativePositionMs == null
-    )
-      return false;
-    if (handoff.completed) return true;
+    if (!handoff || handoff.key !== this.buildProgressSnapshotKey(context)) return false;
+    // No report yet is not a reason to stop filtering -- it is the window where
+    // filtering matters most. Playback belongs to another app from the moment
+    // the handoff is armed, so the built-in player's position is stale until it
+    // is deliberately handed back, which play() and resume() both do by
+    // releasing ownership. Treating "no report yet" as "nothing to suppress"
+    // left every write in that window unguarded, and the handoff lives only in
+    // memory, so a reload put the app back into that window permanently.
+    if (handoff.completed || handoff.authoritativePositionMs == null) return true;
     return Number(positionMs || 0) <= Number(handoff.authoritativePositionMs) + 1000;
   },
 
