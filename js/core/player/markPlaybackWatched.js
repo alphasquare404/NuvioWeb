@@ -2,6 +2,18 @@ import { watchProgressRepository } from "../../data/repository/watchProgressRepo
 import { watchedItemsRepository } from "../../data/repository/watchedItemsRepository.js";
 import { watchedSeriesReconciliationService } from "../../data/repository/watchedSeriesReconciliationService.js";
 
+// A movie has no season or episode, and saying so has to survive the trip.
+// `Number(null)` is 0, and 0 is finite, so a movie's empty season and episode
+// were written as zeros -- and `isWatched` asks for entries whose season and
+// episode are null before it will call a movie watched. The completion was
+// recorded and could not be found, which is why a finished film left Continue
+// Watching and never appeared as watched.
+function toEpisodeNumber(value) {
+  if (value == null || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function normalizeContext(context = {}) {
   const itemId = String(context.itemId || "").trim();
   if (!itemId) return null;
@@ -9,8 +21,8 @@ function normalizeContext(context = {}) {
     itemId,
     itemType: String(context.itemType || "movie").trim() || "movie",
     videoId: context.videoId == null ? null : String(context.videoId),
-    season: Number.isFinite(Number(context.season)) ? Number(context.season) : null,
-    episode: Number.isFinite(Number(context.episode)) ? Number(context.episode) : null,
+    season: toEpisodeNumber(context.season),
+    episode: toEpisodeNumber(context.episode),
     title: context.title || null,
     episodeTitle: context.episodeTitle || null
   };

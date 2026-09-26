@@ -378,3 +378,100 @@ test("local metadata survives the cloud winning here too", () => {
   assert.equal(merged.title, "Inception");
   assert.equal(merged.streamIdentity, "addon:abc");
 });
+
+// An episode finished on this device coming back a moment later.
+//
+// Reported on iPad: finish an episode in an external player, return to Home,
+// and Continue Watching moves to the next episode and then reverts. Other
+// devices show the next episode; a pull-to-refresh on the iPad settles it.
+//
+// The device log caught it. A completion removed the row locally, the watched
+// sync then failed with an HTTP 429 rate limit, and 1.7 seconds later a pull
+// wrote the finished episode back:
+//
+//   [Store] replaceForProfile n=8  (tt1355642 gone -- the completion)
+//   [CW] refresh-final s=1 e=11    (correct: the next episode)
+//   [Supabase] 429  Watched items sync push failed
+//   [Store] replaceForProfile n=9  tt1355642:s1e10:645000  (back again)
+//   [CW] refresh-final s=1 e=10    (reverted)
+//
+// A completion deletes the row and the cloud learns of it from this device's
+// next push. Until that push lands -- delayed here by the rate limit -- the
+// cloud still holds the row, and the pull restored it because the remote row
+// no longer matched the baseline. It need not differ in anything that matters:
+// `updatedAt` moves when another device rewrites the row, and is stamped with
+// the current time whenever the cloud sends no timestamp this device can read.
+
+const EPISODE = {
+  contentId: "tt1355642",
+  contentType: "series",
+  videoId: "tt1355642:1:10",
+  season: 1,
+  episode: 10,
+  positionMs: 645_000,
+  durationMs: 1_420_000
+};
+
+test("a finished episode is not restored by a newer timestamp alone", () => {
+  const baseline = [{ ...EPISODE, updatedAt: 1_790_000_000_000 }];
+  // The same row, the same position, a later stamp.
+  const remote = [{ ...EPISODE, updatedAt: 1_790_000_900_000 }];
+  const merged = mergeProgressItems([], remote, baseline);
+  assert.equal(merged.length, 0, "the completion must stand until the cloud is told");
+});
+
+// The exact case from the log: the cloud sent no readable timestamp, so the
+// pull stamped the row with its own clock and it differed on every pull.
+test("a row restamped by every pull does not undo a completion", () => {
+  const baseline = [{ ...EPISODE, updatedAt: Date.now() - 60_000 }];
+  const remote = [{ ...EPISODE, updatedAt: Date.now() }];
+  assert.equal(mergeProgressItems([], remote, baseline).length, 0);
+});
+
+// The cloud genuinely knowing more still wins: another device watched further
+// into the same episode, which is not a completion this device should erase.
+test("a cloud row that really moved is still restored", () => {
+  const baseline = [{ ...EPISODE, updatedAt: 1_790_000_000_000 }];
+  const remote = [{ ...EPISODE, positionMs: 900_000, updatedAt: 1_790_000_900_000 }];
+  const merged = mergeProgressItems([], remote, baseline);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].positionMs, 900_000);
+});
+
+// With no baseline there is nothing to say the row was ever taken in, so it is
+// news rather than a completion -- a fresh install is the ordinary case.
+test("a row with no baseline is still taken in", () => {
+  const merged = mergeProgressItems([], [{ ...EPISODE, updatedAt: 1_790_000_000_000 }], []);
+  assert.equal(merged.length, 1);
+});
+
+// Moving to another episode is a content change, not a timestamp one.
+test("a different episode from the cloud is restored", () => {
+  const baseline = [{ ...EPISODE, updatedAt: 1_790_000_000_000 }];
+  const remote = [
+    {
+      ...EPISODE,
+      videoId: "tt1355642:1:11",
+      episode: 11,
+      positionMs: 0,
+      updatedAt: 1_790_000_900_000
+    }
+  ];
+  assert.equal(mergeProgressItems([], remote, baseline).length, 1);
+});
+
+// The decision is reported rather than inferred, the way the retire decision
+// beside it already is.
+test("the restore decision says why", () => {
+  const seen = [];
+  mergeProgressItems(
+    [],
+    [{ ...EPISODE, updatedAt: 1_790_000_900_000 }],
+    [{ ...EPISODE, updatedAt: 1_790_000_000_000 }],
+    { onRestoreDecision: (decision) => seen.push(decision) }
+  );
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].restore, false);
+  assert.equal(seen[0].hadBaseline, true);
+  assert.equal(seen[0].remoteChanged, false);
+});
