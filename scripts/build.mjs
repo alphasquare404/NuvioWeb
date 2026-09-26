@@ -467,7 +467,12 @@ async function buildBundle() {
       "process.env.NODE_ENV": '"production"',
       __NUVIO_APP_VERSION__: JSON.stringify(version),
       __NUVIO_APP_IDENTITY__: JSON.stringify(identity),
-      __NUVIO_BUILD_ENV__: JSON.stringify(buildEnv)
+      __NUVIO_BUILD_ENV__: JSON.stringify(buildEnv),
+      // Which build produced a log. The service worker serves a cached bundle
+      // until it decides to update, so a device can be running an older build
+      // than the one on the server -- and a log read without knowing which is
+      // a log that proves nothing.
+      __NUVIO_BUILD_STAMP__: JSON.stringify(new Date().toISOString())
     }
   });
   if (
