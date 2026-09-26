@@ -499,14 +499,6 @@ button:focus-visible {
   animation: profileMainEnter 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-.profile-logo {
-  width: 380px;
-  height: 88px;
-  margin: 0 auto 56px;
-  display: block;
-  object-fit: contain;
-}
-
 .profile-title {
   margin: 0;
   font-size: 88px;

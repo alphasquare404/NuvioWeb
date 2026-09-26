@@ -210,3 +210,47 @@ test("Profile PIN overlay omits the virtual keypad and uses one native numeric i
   assert.doesNotMatch(markup, /profile-pin-keypad/);
   assert.match(markup, /data-role="native-pin-input"/);
 });
+
+// What a locked profile says when there is no connection to check the PIN
+// against.
+//
+// The PIN is verified on the server, so offline there is nothing to verify it
+// with and the attempt fails the same way a server error does. Both produced
+// "Could not verify PIN. Try again." -- advice that cannot be followed, since
+// trying again cannot work until the connection returns.
+async function pinErrorAfterFailedVerify(onLine) {
+  globalThis.__profileSyncService = {
+    verifyProfilePin: async () => null
+  };
+  const { ProfileSelectionScreen } = await loadProfileSelectionScreen();
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const originalShake = ProfileSelectionScreen.triggerPinShake;
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { onLine } });
+  preparePinEntry(ProfileSelectionScreen);
+  ProfileSelectionScreen.triggerPinShake = () => {};
+  try {
+    await ProfileSelectionScreen.submitCompletedPin("0123");
+    return ProfileSelectionScreen.pinOverlayError;
+  } finally {
+    ProfileSelectionScreen.triggerPinShake = originalShake;
+    if (originalNavigator) {
+      Object.defineProperty(globalThis, "navigator", originalNavigator);
+    } else {
+      delete globalThis.navigator;
+    }
+  }
+}
+
+test("a locked profile offline says it needs a connection, not to try again", async () => {
+  const message = await pinErrorAfterFailedVerify(false);
+  assert.match(message, /connection/i);
+  assert.doesNotMatch(message, /Try again\.$/);
+});
+
+// A failure with a connection is a different fault, and trying again is the
+// right advice for it.
+test("a verify failure with a connection still says to try again", async () => {
+  const message = await pinErrorAfterFailedVerify(true);
+  assert.match(message, /Try again/);
+  assert.doesNotMatch(message, /connection/i);
+});

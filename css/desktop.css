@@ -5382,28 +5382,11 @@ html.desktop-browser {
   min-height: 100vh;
   height: auto;
   padding: 64px clamp(24px, 4vw, 64px) 52px;
-  justify-content: flex-start;
-}
-
-.desktop-browser .profile-logo {
-  width: 156px;
-  height: 36px;
-  margin: 0;
-}
-
-.desktop-browser .profile-brand {
-  width: 156px;
-  min-height: 36px;
-  margin: 0 auto 30px;
-  display: grid;
-  place-items: center;
-}
-
-.desktop-browser .profile-logo-text-fallback {
-  color: var(--text-color);
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  /* Centred, because the wordmark that used to balance this block from above
+     is gone and everything sat against the top with the rest of the screen
+     empty below it. The layer still grows with its content, so a profile list
+     taller than the viewport pushes the padding out rather than being cut. */
+  justify-content: center;
 }
 
 .desktop-browser .profile-title {
@@ -5986,10 +5969,6 @@ html.desktop-browser {
 @media (max-width: 700px) {
   .desktop-browser .profile-main-layer {
     padding: 48px 20px 40px;
-  }
-
-  .desktop-browser .profile-logo {
-    margin-bottom: 24px;
   }
 
   .desktop-browser .profile-grid,
@@ -12690,4 +12669,171 @@ body.desktop-browser {
   left: 6px;
   height: 1px;
   background: var(--border-color, #333);
+}
+
+/* Who's Watching: larger faces where a finger picks one.
+   ------------------------------------------------------------------
+   The avatars are the whole point of this screen and were smaller than the
+   thumb that has to hit them. Room came from the wordmark above them, which
+   named an app the user had already opened and is now gone.
+
+   A pointer, not a width: a tablet has room for the old size and still no
+   cursor to aim it with. A desktop browser keeps the size it had. */
+@media (any-pointer: coarse) {
+  .desktop-browser .profile-avatar-ring,
+  .desktop-browser .profile-grid-compact .profile-avatar-ring,
+  .desktop-browser .profile-card.focused .profile-avatar-ring,
+  .desktop-browser .profile-grid-compact .profile-card.focused .profile-avatar-ring {
+    width: 120px;
+    height: 120px;
+  }
+
+  /* The face fills the ring. The ring's line is what the avatar was inset
+     from, and with the line gone at rest there is nothing for it to be inset
+     from -- which also makes the Add Profile circle, which is the ring's own
+     background, exactly the size of the faces beside it. */
+  .desktop-browser .profile-avatar,
+  .desktop-browser .profile-grid-compact .profile-avatar,
+  .desktop-browser .profile-card.focused .profile-avatar,
+  .desktop-browser .profile-grid-compact .profile-card.focused .profile-avatar {
+    width: 120px;
+    height: 120px;
+    font-size: 40px;
+  }
+
+  /* Transparent, not removed: the same border carries focus and the active
+     profile, and those still have to show. Keeping its width keeps every
+     circle the size it was. */
+  .desktop-browser .profile-avatar-ring,
+  .desktop-browser .profile-card-add .profile-avatar-ring {
+    border-color: transparent;
+  }
+}
+
+/* Avatar picker: a tile that cannot outgrow its cell.
+   ------------------------------------------------------------------
+   The browser grid sizes a tile from its column and squares it with
+   aspect-ratio. Two capability fallbacks break that, and both were written for
+   the TV panel and never revisited here: `no-css-math` pins the tile to 160px,
+   which cannot fit an 85px column, and `no-aspect-ratio` leaves `height: auto`
+   with nothing to square it, so the tile takes the image's own height. Either
+   one puts a tile taller than its row into the grid, and the rows run into each
+   other -- worst in All, which simply has the most rows to collide.
+
+   A square that fits the narrowest column the grid will make. The fallback path
+   is reached only by browsers without min() or aspect-ratio, where a slightly
+   smaller tile costs nothing and an overlapping one costs the picker. */
+.desktop-browser.no-css-math .profile-avatar-tile,
+.desktop-browser.no-aspect-ratio .profile-avatar-tile {
+  width: 68px;
+  height: 68px;
+  max-width: 68px;
+  margin: 0 auto;
+  aspect-ratio: auto;
+}
+
+.desktop-browser.no-css-math .profile-editor-avatar-grid {
+  gap: 12px;
+  max-height: 300px;
+  padding: 4px;
+}
+
+/* Profile Options, sized for the screen it is on.
+   ------------------------------------------------------------------
+   The shared dialog's defaults are a television's: 48px padding, a 32px
+   radius and gap, and a 40px title that wrapped "Profile Options" onto two
+   lines of a phone. The panel is named so this can be said here rather than
+   in the dialog every other caller shares.
+
+   max-width carries !important because the component writes its vw width as an
+   inline style, which a stylesheet cannot otherwise reach. */
+.desktop-browser .nuvio-dialog-panel.profile-options-dialog {
+  width: min(360px, calc(100vw - 32px));
+  max-width: min(360px, calc(100vw - 32px)) !important;
+  padding: 20px;
+  border-radius: 20px;
+  gap: 12px;
+}
+
+.desktop-browser .profile-options-dialog .nuvio-dialog-title {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+/* A comfortable target for a finger, which 40px is not. */
+.desktop-browser .profile-options-dialog button {
+  min-height: var(--browser-mobile-control-size, 44px);
+}
+
+/* Profile editor: one place to change a profile.
+   ------------------------------------------------------------------
+   The options that used to sit in a dialog of their own now sit in the editor
+   that dialog only ever led to, so choosing a profile opens the thing that
+   changes it rather than a menu about it.
+
+   Cancel joins Save in the header: the two ways out of one dialog belonged
+   together, not one in the header and the other halfway down the panel. Only
+   Save keeps the filled treatment -- both being filled made leaving look as
+   deliberate as saving. */
+.desktop-browser .profile-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.desktop-browser .profile-editor-header .profile-editor-heading-stack,
+.desktop-browser .profile-editor-header .profile-editor-heading-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.desktop-browser .profile-overlay-button-quiet {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: var(--text-color);
+}
+
+.desktop-browser .profile-editor-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.desktop-browser .profile-editor-action {
+  appearance: none;
+  width: 100%;
+  min-height: var(--browser-mobile-control-size, 44px);
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-color);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+
+.desktop-browser .profile-editor-action[disabled] {
+  opacity: 0.45;
+}
+
+.desktop-browser .profile-editor-action.focused,
+.desktop-browser .profile-editor-action:focus-visible {
+  outline: none;
+  border-color: var(--focus-color);
+}
+
+/* Deleting a profile takes its downloads and progress with it, so it does not
+   look like the rows above it. */
+.desktop-browser .profile-editor-action-danger {
+  border-color: rgba(229, 57, 53, 0.4);
+  color: #ef5350;
+}
+
+.desktop-browser .profile-editor-actions-note {
+  margin: 0;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 12px;
+  line-height: 1.35;
 }

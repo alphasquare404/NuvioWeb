@@ -60,6 +60,8 @@ const PROFILE_PIN_TEXT = {
   removed: (name) => `PIN lock removed for ${name}.`,
   saveFailed: "Could not save PIN. Try again.",
   verifyFailed: "Could not verify PIN. Try again.",
+  verifyOffline: "This profile is locked and needs a connection to unlock. Reconnect and try again.",
+  pinNeedsConnection: "PIN changes need a connection.",
   invalidPin: "Invalid PIN. Try again.",
   incorrectCurrent: "Current PIN is incorrect.",
   lockedRetry: (seconds) => `Profile is locked. Try again in ${seconds}s.`
@@ -391,9 +393,7 @@ export const ProfileSelectionScreen = {
     this.focusedNode = null;
     this.pendingFocusKey = "";
     this.lastProfileFocusKey = "profile:1";
-    this.optionsProfileId = null;
     this.deleteProfileId = null;
-    this._optionsDialog = null;
     this._deleteDialog = null;
     this.editorState = null;
     this.pinOverlayState = null;
@@ -553,11 +553,6 @@ export const ProfileSelectionScreen = {
             : ""
         }
         <div class="profile-main-layer"${isPinActive ? ' aria-hidden="true"' : ""}>
-          <div class="profile-brand">
-            <img src="assets/brand/app_logo_wordmark.png" class="profile-logo" alt="Nuvio"/>
-            <span class="profile-logo-text-fallback" hidden>Nuvio</span>
-          </div>
-
           <h1 class="profile-title">${escapeHtml(title)}</h1>
           <p class="profile-subtitle">${escapeHtml(subtitle)}</p>
 
@@ -654,6 +649,55 @@ export const ProfileSelectionScreen = {
     `;
   },
 
+  // The options that used to live in a dialog of their own, in the editor the
+  // dialog only ever led to. Creating a profile has none of them: there is no
+  // profile yet to lock or delete.
+  renderEditorProfileActions() {
+    if (this.editorState?.mode !== "edit") {
+      return "";
+    }
+    const profile = this.getProfileById(this.editorState.profileId);
+    if (!profile) {
+      return "";
+    }
+    const pinEnabled = this.isProfilePinEnabled(profile.id);
+    // A PIN is set, changed and removed on the server, so none of it can be
+    // done without a connection. Offering the buttons anyway would only fail
+    // after the fact.
+    const offline = globalThis.navigator?.onLine === false;
+    const pinAttrs = offline ? ' disabled aria-disabled="true"' : "";
+    const action = (key, label, extra = "") => `
+      <button class="profile-editor-action profile-overlay-focusable${extra}"
+              type="button"
+              data-action="${escapeHtml(key)}"
+              data-profile-id="${escapeHtml(String(profile.id))}"
+              data-focus-key="editor:${escapeHtml(key)}"
+              tabindex="0"${key.includes("pin") ? pinAttrs : ""}>
+        ${escapeHtml(label)}
+      </button>
+    `;
+    return `
+      <div class="profile-editor-actions">
+        ${action("open-profile-pin", pinEnabled ? PROFILE_PIN_TEXT.change : PROFILE_PIN_TEXT.set)}
+        ${pinEnabled ? action("remove-profile-pin", PROFILE_PIN_TEXT.remove) : ""}
+        ${
+          offline
+            ? `<p class="profile-editor-actions-note">${escapeHtml(PROFILE_PIN_TEXT.pinNeedsConnection)}</p>`
+            : ""
+        }
+        ${
+          profile.isPrimary
+            ? ""
+            : action(
+                "confirm-delete-profile",
+                t("profile_delete", {}, "Delete"),
+                " profile-editor-action-danger"
+              )
+        }
+      </div>
+    `;
+  },
+
   renderEditorOverlay() {
     if (!this.editorState) {
       return "";
@@ -697,6 +741,13 @@ export const ProfileSelectionScreen = {
         <div class="profile-editor-panel" data-overlay-root="editor">
           <div class="profile-editor-header">
             ${overlayHeading}
+            <button class="profile-overlay-button profile-overlay-button-quiet profile-overlay-focusable"
+                    type="button"
+                    data-action="cancel-editor"
+                    data-focus-key="editor:cancel"
+                    tabindex="0">
+              ${escapeHtml(t("profile_cancel", {}, "Cancel"))}
+            </button>
             <button class="profile-overlay-button profile-overlay-button-primary profile-overlay-focusable${this.isEditorSubmitDisabled() ? " is-disabled" : ""}"
                     type="button"
                     data-action="submit-editor"
@@ -717,8 +768,6 @@ export const ProfileSelectionScreen = {
                 }
               </div>
 
-              <div class="profile-editor-preview-name${String(this.editorState.name || "").trim() ? "" : " is-placeholder"}" data-role="editor-preview-name">${escapeHtml(previewName)}</div>
-
               <label class="profile-editor-field-shell">
                 <span class="sr-only">${escapeHtml(t("profile_name_placeholder", {}, "Profile name"))}</span>
                 <input class="profile-editor-name-input profile-overlay-focusable"
@@ -731,13 +780,7 @@ export const ProfileSelectionScreen = {
                        tabindex="0"/>
               </label>
 
-              <button class="profile-overlay-button profile-overlay-button-primary profile-overlay-focusable"
-                      type="button"
-                      data-action="cancel-editor"
-                      data-focus-key="editor:cancel"
-                      tabindex="0">
-                ${escapeHtml(t("profile_cancel", {}, "Cancel"))}
-              </button>
+              ${this.renderEditorProfileActions()}
             </div>
 
             <div class="profile-editor-divider" aria-hidden="true"></div>
@@ -966,15 +1009,6 @@ export const ProfileSelectionScreen = {
         { once: true }
       );
     });
-
-    this.container.querySelector(".profile-logo")?.addEventListener(
-      "error",
-      (event) => {
-        event.currentTarget.hidden = true;
-        this.container.querySelector(".profile-logo-text-fallback")?.removeAttribute("hidden");
-      },
-      { once: true }
-    );
 
     Array.from(this.container.querySelectorAll(".profile-overlay-focusable")).forEach((node) => {
       node.addEventListener("focus", () => this.handleFocusableFocus(node));
@@ -1533,7 +1567,6 @@ export const ProfileSelectionScreen = {
   },
 
   openCreateEditor() {
-    this.optionsProfileId = null;
     this.deleteProfileId = null;
     this.editorState = {
       mode: "create",
@@ -1556,7 +1589,6 @@ export const ProfileSelectionScreen = {
     if (!profile) {
       return;
     }
-    this.optionsProfileId = null;
     this.deleteProfileId = null;
     this.editorState = {
       mode: "edit",
@@ -1579,81 +1611,6 @@ export const ProfileSelectionScreen = {
     this.editorState = null;
     this.pendingFocusKey = this.lastProfileFocusKey || "profile:1";
     this.render();
-  },
-
-  openOptionsDialog(profile) {
-    if (!profile) {
-      return;
-    }
-    // Destroy any existing dialogs
-    this._destroyDialogs();
-
-    this.optionsProfileId = String(profile.id);
-    const pinEnabled = this.isProfilePinEnabled(profile.id);
-
-    const buttons = [
-      {
-        label: t("profile_edit_label", {}, "Edit"),
-        key: "edit",
-        onAction: () => {
-          this._optionsDialog?.destroy();
-          this._optionsDialog = null;
-          this.openEditEditor(this.getProfileById(profile.id));
-        }
-      },
-      {
-        label: pinEnabled ? PROFILE_PIN_TEXT.change : PROFILE_PIN_TEXT.set,
-        key: "pin",
-        onAction: () => {
-          this._optionsDialog?.destroy();
-          this._optionsDialog = null;
-          const p = this.getProfileById(profile.id);
-          if (p) this.openPinOverlay(this.isProfilePinEnabled(p.id) ? "verify-change" : "set", p);
-        }
-      },
-      ...(pinEnabled
-        ? [
-            {
-              label: PROFILE_PIN_TEXT.remove,
-              key: "remove-pin",
-              onAction: () => {
-                this._optionsDialog?.destroy();
-                this._optionsDialog = null;
-                const p = this.getProfileById(profile.id);
-                if (p) this.openPinOverlay("verify-remove", p);
-              }
-            }
-          ]
-        : []),
-      ...(!profile.isPrimary
-        ? [
-            {
-              label: t("profile_delete", {}, "Delete"),
-              key: "delete",
-              danger: true,
-              onAction: () => {
-                this._optionsDialog?.destroy();
-                this._optionsDialog = null;
-                this.openDeleteDialog(this.getProfileById(profile.id));
-              }
-            }
-          ]
-        : [])
-    ];
-
-    this._optionsDialog = new NuvioDialog({
-      title: t("profile_selection_options_title", {}, "Profile Options"),
-      widthVw: 37.5, // 360dp / 960dp screen = 37.5vw
-      suppressEnterUntilKeyUp: true,
-      buttons,
-      onDismiss: () => {
-        this._optionsDialog = null;
-        this.optionsProfileId = null;
-        this.pendingFocusKey = `profile:${profile.id}`;
-        this.restoreFocus();
-      }
-    }).mount(document.body);
-    this.suppressHoldMenuEnterUntilKeyUp = true;
   },
 
   canHoldManageProfile(node) {
@@ -1705,7 +1662,7 @@ export const ProfileSelectionScreen = {
         return;
       }
       pending.holdTriggered = true;
-      this.openOptionsDialog(profile);
+      this.openEditEditor(profile);
     }, PROFILE_HOLD_DELAY_MS);
     return true;
   },
@@ -1722,7 +1679,7 @@ export const ProfileSelectionScreen = {
     this.cancelPendingProfileHold();
     if (holdTriggered || shouldOpenHoldMenu) {
       if (shouldOpenHoldMenu && profile) {
-        this.openOptionsDialog(profile);
+        this.openEditEditor(profile);
       }
       return true;
     }
@@ -1731,19 +1688,6 @@ export const ProfileSelectionScreen = {
     }
     await this.activateFocusedNode(node);
     return true;
-  },
-
-  closeOptionsDialog() {
-    const profileId = this.optionsProfileId;
-    this.optionsProfileId = null;
-    if (this._optionsDialog) {
-      this._optionsDialog.destroy();
-      this._optionsDialog = null;
-    }
-    this.pendingFocusKey = profileId
-      ? `profile:${profileId}`
-      : this.lastProfileFocusKey || "profile:1";
-    this.restoreFocus();
   },
 
   openPinOverlay(type, profile, currentPin = null) {
@@ -1756,7 +1700,6 @@ export const ProfileSelectionScreen = {
     }
     this.pinTransitionCallback = null;
     this.editorState = null;
-    this.optionsProfileId = null;
     this.deleteProfileId = null;
     this.pinOverlayState = {
       type,
@@ -1901,7 +1844,13 @@ export const ProfileSelectionScreen = {
     const verification = await ProfileSyncService.verifyProfilePin(profile.id, pin);
     this.isPinOperationInProgress = false;
     if (!verification) {
-      this.pinOverlayError = PROFILE_PIN_TEXT.verifyFailed;
+      // The PIN is checked on the server, so without a connection there is
+      // nothing to check it against. "Try again" is wrong advice when trying
+      // again cannot work until the connection returns.
+      this.pinOverlayError =
+        globalThis.navigator?.onLine === false
+          ? PROFILE_PIN_TEXT.verifyOffline
+          : PROFILE_PIN_TEXT.verifyFailed;
       this.pinValue = "";
       this.render();
       this.triggerPinShake();
@@ -2269,7 +2218,7 @@ export const ProfileSelectionScreen = {
     }
 
     if (this.isManagementMode) {
-      this.openOptionsDialog(profile);
+      this.openEditEditor(profile);
       return;
     }
 
@@ -2450,7 +2399,6 @@ export const ProfileSelectionScreen = {
     if (
       Number(event?.keyCode || 0) !== 13 ||
       this.pinOverlayState ||
-      this.optionsProfileId ||
       this.deleteProfileId ||
       this.editorState
     ) {
@@ -2471,10 +2419,6 @@ export const ProfileSelectionScreen = {
       this.closeDeleteDialog();
       return true;
     }
-    if (this._optionsDialog || this.optionsProfileId) {
-      this.closeOptionsDialog();
-      return true;
-    }
     if (this.editorState) {
       this.closeEditor();
       return true;
@@ -2486,15 +2430,10 @@ export const ProfileSelectionScreen = {
   },
 
   _destroyDialogs() {
-    if (this._optionsDialog) {
-      this._optionsDialog.destroy();
-      this._optionsDialog = null;
-    }
     if (this._deleteDialog) {
       this._deleteDialog.destroy();
       this._deleteDialog = null;
     }
-    this.optionsProfileId = null;
     this.deleteProfileId = null;
   },
 

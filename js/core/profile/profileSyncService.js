@@ -1,6 +1,7 @@
 import { AuthManager } from "../auth/authManager.js";
 import { MAX_PROFILES, ProfileManager } from "./profileManager.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
+import { LocalStore } from "../storage/localStore.js";
 
 const TABLE = "tv_profiles";
 const FALLBACK_TABLE = "profiles";
@@ -11,6 +12,7 @@ const SET_PROFILE_PIN_RPC = "set_profile_pin";
 const CLEAR_PROFILE_PIN_RPC = "clear_profile_pin";
 const VERIFY_PROFILE_PIN_RPC = "verify_profile_pin";
 const DELETE_PROFILE_DATA_RPC = "sync_delete_profile_data";
+const PROFILE_LOCK_STATE_KEY = "profileLockStates";
 
 function shouldTryLegacyTable(error) {
   if (!error) {
@@ -188,13 +190,49 @@ export const ProfileSyncService = {
     }
   },
 
+  // Which profiles are locked, remembered locally.
+  //
+  // A lock that only exists in an answer from the network is not a lock. This
+  // returned an empty map whenever the pull failed -- offline, or before the
+  // session was restored -- and an empty map reads as "no profile has a PIN",
+  // so every locked profile opened without being asked for one. The PIN itself
+  // is verified server-side and always was; what went missing was the knowledge
+  // that a PIN existed to ask for.
+  //
+  // The last answer is kept, so a failed pull leaves the locks standing. A
+  // locked profile still cannot be entered offline, because verification needs
+  // the server -- it now says so instead of letting the profile through.
+  readCachedProfileLockStates() {
+    const cached = LocalStore.get(PROFILE_LOCK_STATE_KEY, null);
+    return cached && typeof cached === "object" && !Array.isArray(cached) ? cached : {};
+  },
+
+  // Set and cleared locks have to reach the cache as well, or a PIN added and
+  // then taken offline before the next pull leaves the cache saying otherwise.
+  rememberProfileLockState(profileId, enabled) {
+    const key = String(Math.trunc(Number(profileId) || 0));
+    if (!key || key === "0") return;
+    LocalStore.set(PROFILE_LOCK_STATE_KEY, {
+      ...this.readCachedProfileLockStates(),
+      [key]: Boolean(enabled)
+    });
+  },
+
+  forgetProfileLockState(profileId) {
+    const key = String(Math.trunc(Number(profileId) || 0));
+    const states = this.readCachedProfileLockStates();
+    if (!(key in states)) return;
+    delete states[key];
+    LocalStore.set(PROFILE_LOCK_STATE_KEY, states);
+  },
+
   async pullProfileLockStates() {
     try {
       if (!AuthManager.isAuthenticated) {
-        return {};
+        return this.readCachedProfileLockStates();
       }
       const rows = await SupabaseApi.rpc(PULL_LOCKS_RPC, {}, true);
-      return (Array.isArray(rows) ? rows : []).reduce((accumulator, row) => {
+      const states = (Array.isArray(rows) ? rows : []).reduce((accumulator, row) => {
         const profileIndex = Number(row?.profile_index ?? row?.profileIndex ?? row?.id ?? 0);
         if (Number.isFinite(profileIndex) && profileIndex > 0) {
           accumulator[String(Math.trunc(profileIndex))] = Boolean(
@@ -203,9 +241,11 @@ export const ProfileSyncService = {
         }
         return accumulator;
       }, {});
+      LocalStore.set(PROFILE_LOCK_STATE_KEY, states);
+      return states;
     } catch (error) {
       console.warn("Profile lock state pull failed", error);
-      return {};
+      return this.readCachedProfileLockStates();
     }
   },
 
@@ -222,6 +262,7 @@ export const ProfileSyncService = {
         params.p_current_pin = String(currentPin).trim();
       }
       await SupabaseApi.rpc(SET_PROFILE_PIN_RPC, params, true);
+      this.rememberProfileLockState(profileId, true);
       return true;
     } catch (error) {
       console.warn("Set profile PIN failed", error);
@@ -241,6 +282,7 @@ export const ProfileSyncService = {
         params.p_current_pin = String(currentPin).trim();
       }
       await SupabaseApi.rpc(CLEAR_PROFILE_PIN_RPC, params, true);
+      this.rememberProfileLockState(profileId, false);
       return true;
     } catch (error) {
       console.warn("Clear profile PIN failed", error);
@@ -276,6 +318,9 @@ export const ProfileSyncService = {
   },
 
   async deleteProfileData(profileId) {
+    // Profile numbers are handed out again after a delete, so a lock left in
+    // the cache would be inherited by whoever takes the number next.
+    this.forgetProfileLockState(profileId);
     try {
       if (!AuthManager.isAuthenticated) {
         return false;
