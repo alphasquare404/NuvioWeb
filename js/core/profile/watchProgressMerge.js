@@ -68,6 +68,31 @@ export function progressContentSignature(item = {}) {
   ]);
 }
 
+// The same row without its timestamp.
+//
+// A completion deletes its progress row, and the cloud learns that from this
+// device's next push. Until that push lands, the cloud still holds the row and
+// a pull has to decide whether to bring it back. It brings it back when the
+// remote row differs from the baseline -- and a row can differ by nothing but
+// its `updatedAt`, which moves whenever another device rewrites it and is
+// stamped with the current time whenever the cloud sends no timestamp this
+// device can read.
+//
+// A timestamp is not a reason to undo a completion. Only a change to what the
+// row says -- where playback reached, how long the title is, which episode --
+// means the cloud knows something this device does not.
+export function progressPayloadSignature(item = {}) {
+  return JSON.stringify([
+    String(item.contentId || ""),
+    String(item.contentType || "movie"),
+    String(item.videoId || ""),
+    Number(item.season || 0),
+    Number(item.episode || 0),
+    Number(item.positionMs || 0),
+    Number(item.durationMs || 0)
+  ]);
+}
+
 export function itemsByProgressKey(items = []) {
   return new Map(normalizeProgressItems(items).map((item) => [progressKey(item), item]));
 }
@@ -128,7 +153,7 @@ export function mergeProgressItems(
   localItems = [],
   remoteItems = [],
   baselineItems = [],
-  { watchedAtByKey = new Map(), onRetireDecision = null } = {}
+  { watchedAtByKey = new Map(), onRetireDecision = null, onRestoreDecision = null } = {}
 ) {
   const localByKey = itemsByProgressKey(localItems);
   const remoteByKey = itemsByProgressKey(remoteItems);
@@ -182,10 +207,21 @@ export function mergeProgressItems(
     }
 
     if (remoteItem && !localItem) {
+      // A row this device deleted and the cloud has not been told about yet.
+      // Compared without timestamps: see progressPayloadSignature.
       const remoteChanged =
         baselineItem &&
-        progressContentSignature(remoteItem) !== progressContentSignature(baselineItem);
-      if (!baselineItem || remoteChanged) {
+        progressPayloadSignature(remoteItem) !== progressPayloadSignature(baselineItem);
+      const restore = !baselineItem || Boolean(remoteChanged);
+      onRestoreDecision?.({
+        key,
+        hadBaseline: Boolean(baselineItem),
+        remoteChanged: Boolean(remoteChanged),
+        remoteUpdatedAt: Number(remoteItem.updatedAt || 0),
+        baselineUpdatedAt: Number(baselineItem?.updatedAt || 0),
+        restore
+      });
+      if (restore) {
         merged.push(remoteItem);
       }
       return;
