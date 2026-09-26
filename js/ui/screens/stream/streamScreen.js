@@ -1,4 +1,5 @@
 import { Router } from "../../navigation/router.js";
+import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -2320,7 +2321,7 @@ export const StreamScreen = {
       providerSubtitleId: identity.providerSubtitleId,
       urlIdentity: identity.urlIdentity,
       lang: String(subtitle.lang || subtitle.language || ""),
-      fileName: String(subtitle.fileName || subtitle.filename || ""),
+      fileName: subtitleReleaseName(subtitle),
       forced: subtitle.forced === true,
       sdh: subtitle.sdh === true || subtitle.hearingImpaired === true
     };

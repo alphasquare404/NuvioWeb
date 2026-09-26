@@ -1,3 +1,5 @@
+import { subtitleReleaseName } from "../../domain/model/subtitle.js";
+
 function text(value) {
   return String(value || "").trim();
 }
@@ -14,7 +16,7 @@ function languageLabel(value) {
 }
 
 export function normalizeSubtitleForDisplay(subtitle = {}) {
-  const release = text(subtitle.fileName || subtitle.filename || subtitle.name || subtitle.id);
+  const release = subtitleReleaseName(subtitle);
   const scoreValue = Number(subtitle.match || subtitle.score || subtitle.matchScore);
   const scoreMatch = release.match(/\[(\d{1,3})%\]/);
   const score = Number.isFinite(scoreValue) && scoreValue >= 0

@@ -1,4 +1,5 @@
 import { safeApiCall } from "../../core/network/safeApiCall.js";
+import { subtitleReleaseName } from "../../domain/model/subtitle.js";
 import { addonRepository } from "./addonRepository.js";
 import { catalogRepository } from "./catalogRepository.js";
 import { SubtitleApi } from "../remote/api/subtitleApi.js";
@@ -166,7 +167,7 @@ class SubtitleRepository {
           addonId: addon.id || "",
           addonName: addon.displayName,
           addonLogo: addon.logo,
-          fileName: subtitle.fileName || subtitle.filename || subtitle.name || "",
+          fileName: subtitleReleaseName(subtitle),
           forced: subtitle.forced === true || subtitle.isForced === true,
           sdh:
             subtitle.sdh === true ||

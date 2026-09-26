@@ -1,4 +1,5 @@
 import { DirectDebridResolver } from "../debrid/directDebridResolver.js";
+import { subtitleReleaseName } from "../../domain/model/subtitle.js";
 import {
   createOfflineMediaId,
   createOfflineDownloadId,
@@ -762,7 +763,7 @@ export async function downloadBrowserOfflineSubtitle(input = {}) {
     // Provider IDs are often derived from a signed URL. The local subtitle
     // identity is sufficient for selection, so retain no remote identifier.
     displayId: "",
-    fileName: text(track.fileName || track.filename),
+    fileName: subtitleReleaseName(track),
     extension: declaredFormat,
     format: "",
     opfsPath: "",
