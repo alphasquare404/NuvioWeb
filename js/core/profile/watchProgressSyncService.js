@@ -489,7 +489,18 @@ export const WatchProgressSyncService = {
         return localItems;
       }
       const watchedAtByKey = buildWatchedAtByKey(WatchedItemsStore.listForProfile(profileId));
-      const mergedItems = mergeProgressItems(localItems, snapshotItems, baselineItems, {
+      // Read local again, after the network. The list captured before the pull
+      // is a snapshot of a store that kept being written while the round trip
+      // was in flight -- a couple of seconds, which is exactly long enough for
+      // an external player's report to land. The merge then compared that stale
+      // copy against an equally old cloud row, concluded nothing had moved, and
+      // replaceAll wrote the old position back over the new one. It only
+      // happened on the first attempt because the second had no pull in flight.
+      const currentLocalItems = await watchProgressRepository.getAll();
+      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
+        return localItems;
+      }
+      const mergedItems = mergeProgressItems(currentLocalItems, snapshotItems, baselineItems, {
         watchedAtByKey
       });
       if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
