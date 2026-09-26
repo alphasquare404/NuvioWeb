@@ -6,6 +6,13 @@ import {
 import { Platform } from "../../../platform/index.js";
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { copyTextToClipboard } from "../../components/browserDeviceCodeActions.js";
+import {
+  buildLogText,
+  eventLevelLabel,
+  eventMessage,
+  formatEventTime
+} from "./consoleDebugLogText.js";
 
 function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
@@ -18,15 +25,6 @@ function escapeHtml(value = "") {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-}
-
-function formatEventTime(timestamp) {
-  const date = new Date(Number(timestamp || 0));
-  if (!Number.isFinite(date.getTime())) {
-    return "";
-  }
-  const pad = (value, size = 2) => String(value).padStart(size, "0");
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
 }
 
 function eventCountLabel(count) {
@@ -60,6 +58,8 @@ export const ConsoleDebugScreen = {
   focusKey: "log",
   unsubscribe: null,
   logScrollTop: 0,
+  copyState: "",
+  copyResetTimer: null,
 
   async mount() {
     this.container = document.getElementById("debugConsole");
@@ -102,12 +102,51 @@ export const ConsoleDebugScreen = {
     this.unsubscribe = null;
     this.handleClickBound = null;
     this.handleWheelBound = null;
+    if (this.copyResetTimer) {
+      clearTimeout(this.copyResetTimer);
+      this.copyResetTimer = null;
+    }
+    this.copyState = "";
     this.logScrollTop = Number(this.getLogList()?.scrollTop || this.logScrollTop || 0);
     ScreenUtils.hide(this.container);
   },
 
   getLogList() {
     return this.container?.querySelector?.(".debug-console-log-list") || null;
+  },
+
+  copyLabel() {
+    if (this.copyState === "copied") {
+      return t("debug_console_copy_done", {}, "Copied");
+    }
+    if (this.copyState === "failed") {
+      return t("debug_console_copy_failed", {}, "Copy failed");
+    }
+    return t("debug_console_copy", {}, "Copy log");
+  },
+
+  async copyLog() {
+    const events = getConsoleDebugEvents();
+    if (!events.length) {
+      return;
+    }
+    const copied = await copyTextToClipboard(buildLogText(events));
+    this.copyState = copied ? "copied" : "failed";
+    const label = this.container?.querySelector?.(".debug-console-copy-label");
+    if (label) {
+      label.textContent = this.copyLabel();
+    }
+    if (this.copyResetTimer) {
+      clearTimeout(this.copyResetTimer);
+    }
+    this.copyResetTimer = setTimeout(() => {
+      this.copyResetTimer = null;
+      this.copyState = "";
+      const node = this.container?.querySelector?.(".debug-console-copy-label");
+      if (node) {
+        node.textContent = this.copyLabel();
+      }
+    }, 2400);
   },
 
   renderEvents(events) {
@@ -123,8 +162,8 @@ export const ConsoleDebugScreen = {
 
     return events
       .map((event) => {
-        const level = event.level === "error" ? "ERROR" : "WARN";
-        const message = event.args?.length ? event.args.join("\n\n") : event.message || "";
+        const level = eventLevelLabel(event);
+        const message = eventMessage(event);
         return `
           <article class="debug-console-event debug-console-event-${escapeHtml(event.level)}">
             <header class="debug-console-event-header">
@@ -153,7 +192,18 @@ export const ConsoleDebugScreen = {
             <h1>${escapeHtml(t("about_debug_console_title", {}, "Console debug"))}</h1>
             <p>${escapeHtml(t("debug_console_subtitle", {}, "Last warnings and errors captured from this app session"))}</p>
           </div>
-          <div class="debug-console-count">${escapeHtml(eventCountLabel(events.length))}</div>
+          <div class="debug-console-actions">
+            <button
+              class="debug-console-copy focusable"
+              data-focus-key="copy"
+              data-action="copy"
+              ${events.length ? "" : "disabled"}
+            >
+              <span class="material-icons" aria-hidden="true">content_copy</span>
+              <span class="debug-console-copy-label">${escapeHtml(this.copyLabel())}</span>
+            </button>
+            <div class="debug-console-count">${escapeHtml(eventCountLabel(events.length))}</div>
+          </div>
         </header>
         <section class="debug-console-log-frame">
           ${scrollIndicatorMarkup()}
@@ -247,6 +297,10 @@ export const ConsoleDebugScreen = {
     this.applyFocus();
     if (target.dataset.action === "back") {
       await Router.back();
+      return;
+    }
+    if (target.dataset.action === "copy") {
+      await this.copyLog();
     }
   },
 
@@ -293,6 +347,23 @@ export const ConsoleDebugScreen = {
       event?.preventDefault?.();
       if (current?.dataset?.action === "back") {
         await Router.back();
+        return;
+      }
+      if (current?.dataset?.action === "copy") {
+        await this.copyLog();
+      }
+      return;
+    }
+
+    // Back and Copy share the header row, so they are reached sideways.
+    const isLeft = code === 37 || key === "arrowleft" || key === "left";
+    const isRight = code === 39 || key === "arrowright" || key === "right";
+    if (isLeft || isRight) {
+      const action = String(current?.dataset?.action || "");
+      if (action === "back" || action === "copy") {
+        event?.preventDefault?.();
+        this.focusKey = isRight ? "copy" : "back";
+        this.applyFocus();
       }
       return;
     }
@@ -304,7 +375,9 @@ export const ConsoleDebugScreen = {
     if (isUp || isDown) {
       event?.preventDefault?.();
       const direction = isUp ? -1 : 1;
-      if (current?.dataset?.action === "back" && direction > 0) {
+      const headerAction =
+        current?.dataset?.action === "back" || current?.dataset?.action === "copy";
+      if (headerAction && direction > 0) {
         this.focusKey = "log";
         this.applyFocus();
         return;

@@ -43,11 +43,16 @@ function copyWithDocumentFallback(value, documentRef) {
   }
 }
 
-export async function copyDeviceAuthorizationCode(
-  code,
+/**
+ * Copy text, preferring the async clipboard and falling back to the legacy
+ * user-gesture path. The fallback is what makes this work in an installed iOS
+ * PWA, where `navigator.clipboard` is frequently absent or rejects.
+ */
+export async function copyTextToClipboard(
+  text,
   { clipboard = globalThis.navigator?.clipboard, documentRef = globalThis.document } = {}
 ) {
-  const value = String(code || "");
+  const value = String(text || "");
   if (!value) return false;
   if (typeof clipboard?.writeText === "function") {
     try {
@@ -59,6 +64,8 @@ export async function copyDeviceAuthorizationCode(
   }
   return copyWithDocumentFallback(value, documentRef);
 }
+
+export const copyDeviceAuthorizationCode = copyTextToClipboard;
 
 export function openDeviceAuthorizationLink(
   providerId,

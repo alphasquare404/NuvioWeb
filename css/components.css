@@ -10374,6 +10374,14 @@ button:focus-visible {
   line-height: 1.2;
 }
 
+.debug-console-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
 .debug-console-count {
   min-height: 54px;
   padding: 0 22px;
@@ -10387,6 +10395,38 @@ button:focus-visible {
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
+}
+
+.debug-console-copy {
+  appearance: none;
+  min-height: 54px;
+  padding: 0 22px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--card-bg, #181d25);
+  color: #fff;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.debug-console-copy .material-icons {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.debug-console-copy[disabled] {
+  opacity: 0.42;
+}
+
+.debug-console-copy.focused {
+  border-color: var(--focus-color, #ffffff) !important;
 }
 
 .debug-console-log-frame {
