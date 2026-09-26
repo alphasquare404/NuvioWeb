@@ -1,5 +1,6 @@
 ﻿import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -4724,7 +4725,7 @@ export const MetaDetailsScreen = {
       providerSubtitleId: identity.providerSubtitleId,
       urlIdentity: identity.urlIdentity,
       lang: String(subtitle.lang || subtitle.language || ""),
-      fileName: String(subtitle.fileName || subtitle.filename || ""),
+      fileName: subtitleReleaseName(subtitle),
       forced: subtitle.forced === true,
       sdh: subtitle.sdh === true || subtitle.hearingImpaired === true
     };
