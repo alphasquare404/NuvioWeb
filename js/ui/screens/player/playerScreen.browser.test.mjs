@@ -1,3 +1,4 @@
+import vm from "node:vm";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -128,4 +129,21 @@ test("Player external launches bind the optional Push return subscription before
     source,
     /await bindBrowserPushReturn\(\{ token: prepared\.handoff\?\.token \}\);\s*launchBrowserExternalPlayer\(\{ href: prepared\.launch\.href \}\);/
   );
+});
+
+
+test("audio boost does not capture native cross-origin media", async () => {
+  const source = await readFile(playerScreenUrl, "utf8");
+  const declaration = source.match(/function supportsWebAudioAmplification\(\) \{[\s\S]*?\n\}/)[0];
+  const context = { URL, location: { origin: "https://nuvio.example" }, PlayerController: { video: {} } };
+  vm.runInNewContext(declaration, context);
+  const video = context.PlayerController.video;
+  video.currentSrc = "https://cdn.example/movie.mp4";
+  assert.equal(context.supportsWebAudioAmplification(), false);
+  video.currentSrc = "blob:https://nuvio.example/download";
+  assert.equal(context.supportsWebAudioAmplification(), true);
+  video.currentSrc = "/movie.mp4";
+  assert.equal(context.supportsWebAudioAmplification(), true);
+  video.currentSrc = "";
+  assert.equal(context.supportsWebAudioAmplification(), false);
 });
