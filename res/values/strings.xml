@@ -319,6 +319,9 @@
     <string name="about_debug_console_title">Console debug</string>
     <string name="about_debug_console_subtitle">Show latest error/warning events</string>
     <string name="debug_console_subtitle">Last warnings and errors captured from this app session</string>
+    <string name="debug_console_copy">Copy log</string>
+    <string name="debug_console_copy_done">Copied</string>
+    <string name="debug_console_copy_failed">Copy failed</string>
     <string name="debug_console_empty_title">No warnings or errors</string>
     <string name="debug_console_empty_subtitle">Console warning/error events will appear here until the app is closed.</string>
     <string name="debug_console_event_count">%d events</string>
@@ -1038,6 +1041,7 @@
     <string name="settings_fusion_badge_url_label">Fusion badge JSON URL</string>
     <string name="settings_fusion_badge_urls_imported">%1$d/%2$d Fusion URLs imported</string>
     <string name="settings_fusion_badge_url_active">Active</string>
+    <string name="profile_active">Active profile</string>
     <string name="settings_fusion_badge_url_inactive">Inactive</string>
     <string name="settings_fusion_badge_url_status_summary">%1$s, %2$d enabled badges, %3$d groups</string>
     <string name="settings_fusion_badge_preview_action">Preview</string>
@@ -2790,4 +2794,5 @@
     <string name="licenses_attributions_premiumize_body">Nuvio connects to Premiumize for account authentication, cloud library access, cache checks, and cloud playback features. Nuvio is not affiliated with or endorsed by Premiumize.</string>
     <string name="licenses_attributions_torbox_title">TorBox</string>
     <string name="licenses_attributions_torbox_body">Nuvio connects to TorBox for account authentication, cloud library access, cache checks, and cloud playback features. Nuvio is not affiliated with or endorsed by TorBox.</string>
+    <string name="offline.downloadSeason">Download Season</string>
 </resources>
