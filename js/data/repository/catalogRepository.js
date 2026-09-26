@@ -45,13 +45,22 @@ class CatalogRepository {
 
     return safeApiCall(() =>
       CatalogApi.getCatalog(url, signal ? { signal } : {}).then((dto) => {
-        const items = (dto?.metas || []).map((meta) => ({
-          ...this.mapMeta(meta),
-          addonBaseUrl,
-          addonId,
-          addonName,
-          catalogType: type
-        }));
+        const metas = Array.isArray(dto?.metas) ? dto.metas : [];
+        const items = metas
+          .filter(
+            (meta) =>
+              meta &&
+              typeof meta === "object" &&
+              String(meta.id || "").trim() &&
+              String(meta.name || "").trim()
+          )
+          .map((meta) => ({
+            ...this.mapMeta(meta),
+            addonBaseUrl,
+            addonId,
+            addonName,
+            catalogType: type
+          }));
 
         const row = {
           addonId,
@@ -62,7 +71,7 @@ class CatalogRepository {
           apiType: type,
           items,
           isLoading: false,
-          hasMore: Boolean(supportsSkip && items.length > 0),
+          hasMore: Boolean(supportsSkip && metas.length > 0),
           currentPage: Math.floor(skip / 100),
           supportsSkip
         };
