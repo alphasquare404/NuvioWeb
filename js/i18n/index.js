@@ -51,6 +51,11 @@ const KEY_ALIASES = {
   "sidebar.library": "nav_library",
   "sidebar.search": "nav_search",
   "sidebar.settings": "nav_settings",
+  // The same word, asked for under the name each screen already uses. Both
+  // targets are translated everywhere the alias is not, so pointing at them
+  // costs nothing and gives every locale the string it already has.
+  "nav.settings": "nav_settings",
+  "home_view_details": "common.viewDetails",
   "settings.account.signInWithQr": "account_signin_qr_title",
   "settings.account.signInWithQrSubtitle": "account_signin_qr_subtitle",
   "settings.account.signOut": "account_sign_out",
