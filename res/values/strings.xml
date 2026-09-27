@@ -1563,6 +1563,7 @@
     <string name="library_filter_list">List</string>
     <string name="library_filter_type">Type</string>
     <string name="library_filter_sort">Sort</string>
+    <string name="library_filter_toggle">Filters</string>
     <string name="library_filter_genre">Genre</string>
     <string name="library_filter_year">Year</string>
     <string name="genre_action">Action</string>

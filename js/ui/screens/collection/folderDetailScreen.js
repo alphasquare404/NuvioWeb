@@ -1205,6 +1205,36 @@ export const FolderDetailScreen = {
     });
   },
 
+  renderTabPicker() {
+    const selected = this.tabs[this.selectedTabIndex] || this.tabs[0] || {};
+    const options = this.tabs
+      .map(
+        (tab, index) =>
+          `<option value="${index}"${index === this.selectedTabIndex ? " selected" : ""}>${escapeHtml(
+            tab.label || "Tab"
+          )}</option>`
+      )
+      .join("");
+    return `
+      <div class="library-picker library-picker-flex folder-detail-tab-picker">
+        <div class="library-picker-anchor library-primary" aria-hidden="true">
+          <span class="library-picker-copy">
+            <span class="library-picker-title">Category</span>
+            <span class="library-picker-value">${escapeHtml(selected.label || "Tab")}</span>
+          </span>
+          <span class="library-picker-icon">
+            <svg viewBox="0 0 24 24" class="library-picker-chevron" aria-hidden="true" focusable="false">
+              <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z" fill="currentColor" />
+            </svg>
+          </span>
+        </div>
+        <select class="folder-detail-tab-select focusable" data-focus-key="tab:${this.selectedTabIndex}" aria-label="Category">
+          ${options}
+        </select>
+      </div>
+    `;
+  },
+
   openDetailFromNode(node) {
     if (!node) return;
     this.lastFocusedKey = String(node.dataset.focusKey || this.lastFocusedKey || "");
@@ -1251,6 +1281,22 @@ export const FolderDetailScreen = {
       this.openDetailFromNode(target);
     };
     this.container.addEventListener("click", this.boundDesktopCollectionClickHandler);
+    this.boundDesktopCollectionTabChangeHandler = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const select = target?.closest?.(".folder-detail-tab-select");
+      if (!(select instanceof HTMLSelectElement)) {
+        return;
+      }
+      const index = Math.max(0, Number(select.value || 0));
+      if (index === this.selectedTabIndex) {
+        return;
+      }
+      this.selectedTabIndex = index;
+      this.lastFocusedKey = `tab:${index}`;
+      this.savedScrollTop = 0;
+      this.render();
+    };
+    this.container.addEventListener("change", this.boundDesktopCollectionTabChangeHandler);
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -1661,7 +1707,9 @@ export const FolderDetailScreen = {
             }
             ${
               (!this.isDesktopBrowser || this.viewMode === "TABBED_GRID") && this.tabs.length > 1
-                ? `
+                ? this.isDesktopBrowser
+                  ? this.renderTabPicker()
+                  : `
               <div class="folder-detail-tabs">
                 ${this.tabs
                   .map(

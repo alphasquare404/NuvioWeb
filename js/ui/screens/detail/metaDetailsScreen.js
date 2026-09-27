@@ -4636,9 +4636,44 @@ export const MetaDetailsScreen = {
   },
 
   renderSeasonControls() {
+    if (!Platform.isBrowser() || !this.episodes?.length) {
+      return `
+        <div class="series-season-row" data-scroll-key="season-tabs">${this.renderSeasonButtons()}</div>
+        ${this.renderSeasonDownloadAction()}
+      `;
+    }
     return `
-      <div class="series-season-row" data-scroll-key="season-tabs">${this.renderSeasonButtons()}</div>
-      ${this.renderSeasonDownloadAction()}
+      <div class="series-season-controls">
+        ${this.renderSeasonSelect()}
+        ${this.renderSeasonDownloadAction()}
+      </div>
+    `;
+  },
+
+  getSeasonLabel(season) {
+    return season === 0
+      ? t("episodes_specials", {}, "Specials")
+      : t("detail.seasonLabel", { season }, "Season {{season}}");
+  },
+
+  renderSeasonSelect() {
+    const options = this.getAvailableSeasons()
+      .map(
+        (season) =>
+          `<option value="${season}"${season === this.selectedSeason ? " selected" : ""}>${escapeHtml(
+            this.getSeasonLabel(season)
+          )}</option>`
+      )
+      .join("");
+    return `
+      <div class="series-season-select-shell">
+        <span class="series-season-select-value">${escapeHtml(this.getSeasonLabel(this.selectedSeason))}</span>
+        <span class="material-icons series-season-select-chevron" aria-hidden="true">expand_more</span>
+        <select class="series-season-select focusable"
+                aria-label="${escapeAttribute(t("detail.seasonLabel", { season: this.selectedSeason }, "Season {{season}}"))}">
+          ${options}
+        </select>
+      </div>
     `;
   },
 
@@ -8037,6 +8072,21 @@ export const MetaDetailsScreen = {
       event.preventDefault();
     };
     this.container.addEventListener("click", this.boundDesktopDetailActionHandler);
+    this.boundSeasonSelectChangeHandler = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const select = target?.closest?.(".series-season-select");
+      if (!(select instanceof HTMLSelectElement) || !this.container?.contains(select)) {
+        return;
+      }
+      const season = Number(select.value);
+      if (!Number.isFinite(season) || season === this.selectedSeason) {
+        return;
+      }
+      this.hasManualSeasonSelection = true;
+      this.selectedSeason = season;
+      this.render(this.meta, { selector: ".series-season-select" });
+    };
+    this.container.addEventListener("change", this.boundSeasonSelectChangeHandler);
     this.boundDesktopLibraryPointerDownHandler = (event) => {
       if (event.pointerType !== "mouse" || Number(event.button) !== 0) {
         return;
@@ -11951,6 +12001,8 @@ export const MetaDetailsScreen = {
     if (this.boundDesktopDetailActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopDetailActionHandler);
       this.boundDesktopDetailActionHandler = null;
+      this.container.removeEventListener("change", this.boundSeasonSelectChangeHandler);
+      this.boundSeasonSelectChangeHandler = null;
     }
     if (this.boundEpisodeSubtitleActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundEpisodeSubtitleActionHandler, true);

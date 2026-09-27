@@ -280,6 +280,15 @@ function managerSourceLabel(download = {}) {
     .join(" · ");
 }
 
+// The sliders the filter button shows. Drawn here rather than pulled from a
+// set, because it is the only icon this screen adds.
+const LIBRARY_FILTER_ICON =
+  '<path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle>' +
+  '<path d="M4 17h6"></path><path d="M14 17h6"></path><circle cx="12" cy="17" r="2"></circle>';
+
+function iconSvg(path, className) {
+  return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${path}</svg>`;
+}
 export const LibraryScreen = {
   getRouteStateKey() {
     return "library";
@@ -404,6 +413,7 @@ export const LibraryScreen = {
     this.lastActionsRowAction = "openManageLists";
     this.pendingActionRestore = null;
     this.pendingCloudSearchFocus = false;
+    this.librarySecondaryFiltersExpanded = false;
     this.pendingPickerRestore = null;
     this.closingPicker = null;
     this.closingPickerTimer = null;
@@ -757,7 +767,7 @@ export const LibraryScreen = {
         </section>
       `;
     }
-    const primaryPickerMarkup = [
+    const listPickerMarkup =
       state.sourceMode === "trakt" || (Platform.isBrowser() && state.sourceMode === "simkl")
         ? this.renderPicker(
             "list",
@@ -768,24 +778,25 @@ export const LibraryScreen = {
             this.controller.getPickerOptions("list"),
             "library-picker-flex"
           )
-        : "",
-      this.renderPicker(
-        "type",
-        t("library_filter_type", {}, "Type"),
-        this.controller.getSelectedTypeLabel(),
-        this.controller.getPickerOptions("type"),
-        "library-picker-flex"
-      ),
-      this.renderPicker(
-        "sort",
-        t("library_filter_sort", {}, "Sort"),
-        this.controller.getSelectedSortLabel(),
-        this.controller.getPickerOptions("sort"),
-        "library-picker-flex"
-      )
-    ]
+        : "";
+    const typePickerMarkup = this.renderPicker(
+      "type",
+      t("library_filter_type", {}, "Type"),
+      this.controller.getSelectedTypeLabel(),
+      this.controller.getPickerOptions("type"),
+      "library-picker-flex"
+    );
+    const sortPickerMarkup = this.renderPicker(
+      "sort",
+      t("library_filter_sort", {}, "Sort"),
+      this.controller.getSelectedSortLabel(),
+      this.controller.getPickerOptions("sort"),
+      "library-picker-flex"
+    );
+    const primaryPickerMarkup = [listPickerMarkup, typePickerMarkup, sortPickerMarkup]
       .filter(Boolean)
       .join("");
+    const listAndSortMarkup = [listPickerMarkup, sortPickerMarkup].filter(Boolean).join("");
 
     const secondaryPickerMarkup = [
       state.availableGenres.length
@@ -813,21 +824,44 @@ export const LibraryScreen = {
     if (Platform.isBrowser()) {
       const hasActiveFilters =
         state.selectedTypeKey !== "__all__" || Boolean(state.selectedGenre) || Boolean(state.selectedYear);
+      // Four stacked pickers took a third of a phone screen before a single
+      // item appeared, and all four read "All" -- a third of the screen spent
+      // saying nothing is filtered. Type stays out, because it is the one most
+      // often changed; the rest fold behind a button. When they are folded and
+      // something is filtered, the button says so, so a narrowed library still
+      // explains itself.
+      const expanded = Boolean(this.librarySecondaryFiltersExpanded);
       return `
         <section class="library-picker-groups library-saved-picker-groups" id="libraryPickerGroupsMount">
           ${this.renderPresentationToggle(state)}
-          <div class="library-picker-row library-saved-picker-row">
-            ${primaryPickerMarkup}
-            ${secondaryPickerMarkup}
-            ${
-              hasActiveFilters
-                ? `<button class="library-clear-filters focusable"
-                           data-action="clearLibraryFilters">
-                     ${escapeHtml(t("library_clear_filters", {}, "Clear filters"))}
-                   </button>`
-                : ""
-            }
+          <div class="library-picker-row library-saved-picker-row library-primary-filter-row">
+            ${typePickerMarkup}
+            <button class="library-filter-toggle focusable${expanded ? " is-expanded" : ""}${
+              hasActiveFilters ? " has-active-filters" : ""
+            }"
+                    type="button"
+                    data-action="toggleLibraryFilters"
+                    aria-expanded="${expanded}"
+                    aria-label="${escapeHtml(t("library_filter_toggle", {}, "Filters"))}">
+              ${iconSvg(LIBRARY_FILTER_ICON, "library-filter-toggle-icon")}
+            </button>
           </div>
+          ${
+            expanded
+              ? `<div class="library-picker-row library-secondary-filter-row">
+                   ${secondaryPickerMarkup}
+                   ${listAndSortMarkup}
+                   ${
+                     hasActiveFilters
+                       ? `<button class="library-clear-filters focusable"
+                                  data-action="clearLibraryFilters">
+                            ${escapeHtml(t("library_clear_filters", {}, "Clear filters"))}
+                          </button>`
+                       : ""
+                   }
+                 </div>`
+              : ""
+          }
         </section>
       `;
     }
@@ -2620,6 +2654,11 @@ export const LibraryScreen = {
     }
     if (action === "refreshCloudLibrary") {
       await this.controller.refreshCloudLibrary();
+      return;
+    }
+    if (action === "toggleLibraryFilters") {
+      this.librarySecondaryFiltersExpanded = !this.librarySecondaryFiltersExpanded;
+      this.render();
       return;
     }
     if (action === "clearLibraryFilters") {

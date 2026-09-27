@@ -11560,6 +11560,39 @@ export const HomeScreen = {
     document.addEventListener("visibilitychange", this.desktopHeroVisibilityHandler);
   },
 
+  // The controls stay in the hero's corner, but their line is the details
+  // button's. That button's middle depends on the copy's padding and its own
+  // height, both of which change across seven breakpoints -- so it is measured
+  // once and handed to CSS rather than restated in each of them.
+  alignDesktopHeroControls(heroCard) {
+    const button = heroCard?.querySelector(".desktop-hero-details-button");
+    if (!button) {
+      return;
+    }
+    const cardRect = heroCard.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    if (!cardRect.height || !buttonRect.height) {
+      return;
+    }
+    const middleFromBottom = cardRect.bottom - (buttonRect.top + buttonRect.height / 2);
+    heroCard.style.setProperty("--hero-controls-middle", `${Math.round(middleFromBottom)}px`);
+  },
+
+  watchDesktopHeroControlsAlignment(heroCard) {
+    this.alignDesktopHeroControls(heroCard);
+    if (this.desktopHeroAlignmentObserver?.target === heroCard) {
+      return;
+    }
+    this.desktopHeroAlignmentObserver?.observer?.disconnect?.();
+    if (typeof ResizeObserver !== "function") {
+      this.desktopHeroAlignmentObserver = null;
+      return;
+    }
+    const observer = new ResizeObserver(() => this.alignDesktopHeroControls(heroCard));
+    observer.observe(heroCard);
+    this.desktopHeroAlignmentObserver = { target: heroCard, observer };
+  },
+
   bindDesktopHeroCarouselControls() {
     if (!Platform.isBrowser()) {
       return;
@@ -11607,7 +11640,61 @@ export const HomeScreen = {
       };
       heroCard.append(carousel);
     }
+    this.bindDesktopHeroSwipe(heroCard);
+    this.watchDesktopHeroControlsAlignment(heroCard);
     this.updateDesktopHeroCarouselControls();
+  },
+
+  // A finger reaches the hero long before it reaches a 30px arrow in the
+  // corner, so the artwork itself takes the gesture. Mouse drags are left
+  // alone: they select text and are not how a pointer changes the hero.
+  bindDesktopHeroSwipe(heroCard) {
+    if (!heroCard || heroCard.dataset.heroSwipeBound === "true") {
+      return;
+    }
+    heroCard.dataset.heroSwipeBound = "true";
+    const MIN_DISTANCE_PX = 40;
+    let gesture = null;
+    heroCard.addEventListener(
+      "pointerdown",
+      (event) => {
+        gesture =
+          event.pointerType === "mouse" || event.target?.closest?.("button, a")
+            ? null
+            : { x: event.clientX, y: event.clientY, spent: false };
+      },
+      { passive: true }
+    );
+    // The turn happens the moment the drag is unmistakably sideways, not on
+    // release: if the page starts scrolling it takes the pointer with it and
+    // no pointerup ever arrives, which is the swipe that "does nothing".
+    heroCard.addEventListener(
+      "pointermove",
+      (event) => {
+        if (!gesture || gesture.spent) {
+          return;
+        }
+        const dx = event.clientX - gesture.x;
+        const dy = event.clientY - gesture.y;
+        if (Math.abs(dy) > Math.abs(dx)) {
+          // Vertical wins: this is the page scrolling, and it stays that way.
+          gesture = null;
+          return;
+        }
+        if (Math.abs(dx) < MIN_DISTANCE_PX) {
+          return;
+        }
+        gesture.spent = true;
+        this.rotateHero(dx < 0 ? 1 : -1);
+        this.startHeroRotation();
+      },
+      { passive: true }
+    );
+    const clearGesture = () => {
+      gesture = null;
+    };
+    heroCard.addEventListener("pointerup", clearGesture, { passive: true });
+    heroCard.addEventListener("pointercancel", clearGesture, { passive: true });
   },
 
   updateDesktopHeroCarouselControls() {

@@ -611,22 +611,32 @@ html.desktop-browser {
   display: none;
 }
 
+/* The controls keep their corner; only their line is borrowed.
+   `--hero-controls-middle` is how far the details button's middle sits above
+   the card's bottom edge, measured in homeScreen.js -- the copy's padding and
+   the button's height both change across breakpoints, and restating either one
+   here would be a second place to keep them in step. */
+/* The browser may pan the page vertically from the hero, but a sideways drag
+   is the swipe and never a scroll -- otherwise the page rubber-bands and the
+   gesture is cancelled halfway. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+  touch-action: pan-y;
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
   position: absolute;
-  bottom: clamp(26px, 4vh, 48px);
+  bottom: var(--hero-controls-middle, clamp(26px, 4vh, 48px));
   right: clamp(24px, 5vw, 88px);
+  transform: translateY(50%);
   z-index: 5;
   display: inline-flex;
   max-width: calc(100vw - 40px);
   align-items: center;
   gap: 10px;
-  padding: 6px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  background: rgba(12, 12, 14, 0.58);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel[hidden] {
@@ -646,11 +656,12 @@ html.desktop-browser {
   width: 30px;
   height: 30px;
   place-items: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
+  background: none;
   color: #fff;
   font-size: 25px;
   line-height: 1;
+  /* Standing on the artwork now, not on a tube. */
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots {
@@ -687,7 +698,7 @@ html.desktop-browser {
 
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button:hover {
-    background: rgba(255, 255, 255, 0.24);
+    color: rgba(255, 255, 255, 0.72);
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot:hover {
@@ -695,13 +706,43 @@ html.desktop-browser {
   }
 }
 
-/* Desktop catalog shelves retain compact portrait cards. Continue Watching
-   is intentionally excluded because it remains a separate landscape section. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
-  box-sizing: border-box;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  padding-inline: clamp(24px, 2vw, 40px);
+/* Issue #14: on a touch screen the hero is swiped, so the arrows are a second
+   way to do what the finger already does. The dots stay -- they say where you
+   are, and remain tappable. */
+@media (any-pointer: coarse) {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel
+    .desktop-hero-carousel-button {
+    display: none;
+  }
+
+  /* Without the tube behind them the dots sit straight on the artwork. */
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-dot {
+    position: relative;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  }
+
+  /* The dots row scrolls sideways, and its overflow clips vertically too, so
+     the padding is what lets the target below reach past the dot. */
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-dots {
+    padding-block: 13px;
+    margin-block: -13px;
+  }
+
+  /* With the arrows gone a 7px dot is the only control a finger has, so it
+     gets a target around it without growing on screen. */
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-dot::before {
+    content: "";
+    position: absolute;
+    inset: -13px -4px;
+  }
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track {
@@ -714,6 +755,15 @@ html.desktop-browser {
   user-select: none;
   -webkit-user-select: none;
   touch-action: pan-y;
+}
+
+/* Desktop catalog shelves retain compact portrait cards. Continue Watching
+   is intentionally excluded because it remains a separate landscape section. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
+  box-sizing: border-box;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  padding-inline: clamp(24px, 2vw, 40px);
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) img {
@@ -1223,6 +1273,43 @@ html.desktop-browser {
   outline: none;
   border-color: var(--secondary-color);
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
+}
+
+/* Issue #24: the category rail becomes one full-width dropdown, wearing the
+   Library picker's shell with a transparent native select over it. */
+.desktop-browser #folderDetail .folder-detail-tab-picker {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  /* The header is a column flex, where the picker's inherited `flex: 1 1 0`
+     resolves against height and collapses it to nothing. */
+  flex: 0 0 auto;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-anchor {
+  width: 100%;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker:focus-within .library-picker-anchor {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  color-scheme: dark;
 }
 
 .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-grid {
@@ -4580,6 +4667,7 @@ html.desktop-browser {
   align-items: center;
   gap: 7px;
   min-height: 34px;
+  height: 100%;
   padding: 0 12px;
   border: 1px solid rgb(var(--secondary-color-rgb) / 0.38);
   border-radius: 999px;
@@ -4598,6 +4686,73 @@ html.desktop-browser {
 .desktop-browser #detail .series-season-download-action:focus-visible {
   outline: 2px solid var(--detail-focus-ring);
   outline-offset: 2px;
+}
+
+/* Issue #17: the season rail becomes a dropdown on the left, with Download
+   Season sharing the same row on the right. The select carries the options
+   natively -- it sits transparent over the pill, so touch gets the OS picker
+   and keyboard gets select semantics for free. */
+.desktop-browser #detail .series-season-controls {
+  display: flex;
+  /* Both pills take the dropdown's height rather than each sizing itself. */
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px clamp(20px, 3.4vw, 64px) 10px;
+}
+
+.desktop-browser #detail .series-season-controls .series-season-download-row {
+  padding: 0;
+}
+
+.desktop-browser #detail .series-season-select-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 10px 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--detail-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.desktop-browser #detail .series-season-select-shell:focus-within {
+  border-color: var(--detail-focus-ring);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
+}
+
+.desktop-browser #detail .series-season-select-chevron {
+  font-size: 20px;
+  color: var(--detail-text-secondary);
+}
+
+.desktop-browser #detail .series-season-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  color-scheme: dark;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #detail .series-season-controls {
+    padding-right: var(--browser-page-gutter);
+    padding-left: var(--browser-page-gutter);
+  }
 }
 
 .desktop-browser .nuvio-dialog-panel.season-download-dialog {
@@ -7256,7 +7411,8 @@ html.desktop-browser {
   flex: 0 1 clamp(200px, 18vw, 280px);
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-anchor {
   min-height: 54px;
   padding: 8px 14px;
   gap: 12px;
@@ -7265,23 +7421,27 @@ html.desktop-browser {
   background: rgba(26, 26, 29, 0.9);
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-title {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-title,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-title {
   font-size: 11px;
   line-height: 1.2;
   letter-spacing: 0.06em;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-value {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-value,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-value {
   font-size: 15px;
   line-height: 1.25;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-icon {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-icon,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-icon {
   width: 20px;
   height: 20px;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-chevron {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-chevron,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-chevron {
   width: 18px;
   height: 18px;
 }
@@ -7967,6 +8127,13 @@ html.desktop-browser {
 }
 
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+  position: fixed;
+  z-index: 30;
+  top: calc(
+    var(--browser-floating-nav-top) +
+      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+  );
+  left: clamp(20px, 3.4vw, 64px);
   display: inline-flex;
   flex: 0 0 44px;
   align-items: center;
@@ -8263,8 +8430,13 @@ html.desktop-browser {
 
 @media (max-width: 560px) {
   .desktop-browser .discover-shell.desktop-navigation-enabled > .discover-main {
-    padding: 84px 20px 40px;
-    scroll-padding-top: 84px;
+    /* The navigation floats at 20px plus whatever the device keeps for its
+       notch, so clearing it with a fixed 84px only works on a screen without
+       one. On a phone that has a notch the bar moves down and the title does
+       not, and "Discover" ends up behind it. The clearance the other screens
+       use already carries the inset. */
+    padding: calc(var(--browser-mobile-nav-clearance, 68px) + 16px) 20px 40px;
+    scroll-padding-top: calc(var(--browser-mobile-nav-clearance, 68px) + 16px);
   }
 
   .desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row {
@@ -10139,7 +10311,7 @@ body.desktop-browser {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary { gap: 6px; font-size: 13px; }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description { font-size: 14px; line-height: 1.42; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel { right: var(--browser-page-gutter); bottom: 18px; }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel { right: var(--browser-page-gutter); }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs { gap: var(--browser-mobile-section-gap); padding-inline: var(--browser-page-gutter); }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue { padding-inline: calc(var(--browser-page-gutter) - 8px); }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-track { padding-block: 8px 6px; }
@@ -10204,7 +10376,6 @@ body.desktop-browser {
 
   .desktop-browser .profile-pin-desktop-back,
   .desktop-browser #account .desktop-qr-back-button,
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button,
   .desktop-browser #debugConsole .debug-console-back { top: calc(8px + var(--browser-safe-area-top)); left: calc(8px + var(--browser-safe-area-left)); width: var(--browser-mobile-control-size); min-width: var(--browser-mobile-control-size); height: var(--browser-mobile-control-size); min-height: var(--browser-mobile-control-size); }
 
   .desktop-browser #detail .detail-desktop-back-button,
@@ -10212,6 +10383,7 @@ body.desktop-browser {
   .desktop-browser #folderDetail .folder-detail-desktop-back,
   .desktop-browser #stream .stream-desktop-back-button,
   .desktop-browser #player .player-desktop-back-button,
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button,
   .desktop-browser .profile-desktop-back-button {
     top: calc(
       var(--browser-floating-nav-top) +
@@ -10397,9 +10569,8 @@ body.desktop-browser {
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
     right: var(--browser-page-gutter);
-    bottom: 14px;
     gap: 8px;
-    padding: 5px 7px;
+    padding: 0;
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
@@ -10759,7 +10930,6 @@ body.desktop-browser {
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
     right: var(--browser-home-tablet-gutter);
-    bottom: 20px;
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
@@ -10847,7 +11017,6 @@ body.desktop-browser {
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
     right: max(16px, var(--browser-safe-area-right));
-    bottom: 10px;
   }
 }
 
@@ -11332,6 +11501,12 @@ body.desktop-browser {
 
   .desktop-browser #folderDetail .folder-detail-desktop-heading {
     gap: 7px;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-heading p {
+    text-align: center;
   }
 
   .desktop-browser #folderDetail .folder-detail-desktop-heading h1 {
@@ -11341,6 +11516,8 @@ body.desktop-browser {
   .desktop-browser #folderDetail .folder-detail-desktop-logo {
     max-width: min(280px, 72vw);
     max-height: 76px;
+    margin-inline: auto;
+    object-position: center;
   }
 
   .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs {
@@ -12836,4 +13013,138 @@ body.desktop-browser {
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   font-size: 12px;
   line-height: 1.35;
+}
+
+/* Library filters: one row out, the rest behind a button.
+   ------------------------------------------------------------------
+   Four stacked pickers took a third of a phone screen before a single item
+   appeared, and all four read "All" — a third of the screen spent saying
+   nothing was filtered. Type stays out, because it is the one most often
+   changed. Genre, Year and Sort fold behind the button beside it. */
+/* The shell-scoped row rules below 600px set wrap and a full-width basis, and
+   they carry more classes than a bare `.library-primary-filter-row`. Matching
+   their scope is what keeps the button beside the picker on a phone. */
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-primary-filter-row,
+.desktop-browser .library-primary-filter-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  /* The row must not wrap: the picker beside the button is what gives way,
+     not the button that drops to a line of its own. */
+  flex-wrap: nowrap;
+}
+
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-primary-filter-row
+  .library-picker,
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-primary-filter-row
+  .library-picker-anchor,
+.desktop-browser .library-primary-filter-row .library-picker,
+.desktop-browser .library-primary-filter-row .library-picker-anchor {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.desktop-browser .library-filter-toggle {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 52px;
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 14px;
+  background: var(--card-bg, #222);
+  color: var(--text-color);
+  position: relative;
+}
+
+.desktop-browser .library-filter-toggle-icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.desktop-browser .library-filter-toggle.is-expanded {
+  border-color: var(--secondary-color);
+  color: var(--secondary-color);
+}
+
+/* Folded away, a narrowed library would have nothing to explain it. The dot
+   is that explanation. */
+.desktop-browser .library-filter-toggle.has-active-filters::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--secondary-color);
+}
+
+.desktop-browser .library-filter-toggle.focused,
+.desktop-browser .library-filter-toggle:focus-visible {
+  outline: none;
+  border-color: var(--focus-color);
+}
+
+.desktop-browser .library-secondary-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.desktop-browser .library-secondary-filter-row .library-picker {
+  flex: 1 1 96px;
+  min-width: 0;
+}
+
+/* Discover borrows Library's folded filters, and has to beat its own row
+   rules to do it: `.discover-picker-row` sets wrap and a 240px basis, which
+   between them push the button onto a line of its own. */
+.desktop-browser .discover-shell.desktop-navigation-enabled .library-primary-filter-row {
+  flex-wrap: nowrap;
+  align-items: stretch;
+  margin-bottom: 0;
+}
+
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .library-primary-filter-row
+  .discover-filter-shell {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* The row's own bottom margin is off so the folded-out row can sit against it,
+   which left nothing between the pickers and the first card. The gap belongs to
+   the group, so it holds whether the filters are folded or not. */
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-groups {
+  margin-bottom: 24px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .library-secondary-filter-row {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .library-secondary-filter-row
+  .discover-filter-shell {
+  flex: 1 1 120px;
+  min-width: 0;
 }
