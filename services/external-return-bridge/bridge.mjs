@@ -2,7 +2,12 @@ import { createServer } from "node:http";
 import webpush from "web-push";
 
 const TOKEN_PATTERN = /^[a-f0-9]{32}$/i;
+// A report is written when the player reports back and collected seconds later.
 const REPORT_TTL_MS = 10 * 60 * 1000;
+// A Push binding is made when the player is launched and used when it reports,
+// so it has to outlive the playback, not the collection. Same window as the
+// client's handoff.
+const BINDING_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_RECORDS = 500;
 const MAX_VALUE = 1_000_000_000;
 
@@ -64,7 +69,7 @@ function validPosition(position, duration) {
   return position <= duration * 1.1 + 60;
 }
 
-export function createExternalReturnStore({ now = () => Date.now(), ttlMs = REPORT_TTL_MS, maxRecords = MAX_RECORDS } = {}) {
+export function createExternalReturnStore({ now = () => Date.now(), ttlMs = REPORT_TTL_MS, bindingTtlMs = BINDING_TTL_MS, maxRecords = MAX_RECORDS } = {}) {
   const records = new Map();
   const bindings = new Map();
   const cleanup = () => {
@@ -98,7 +103,7 @@ export function createExternalReturnStore({ now = () => Date.now(), ttlMs = REPO
     ,bind(token, subscription) {
       cleanup(); if (!isValidToken(token) || !subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) return false;
       while (bindings.size >= maxRecords) bindings.delete(bindings.keys().next().value);
-      bindings.set(token, { subscription, expiresAt: now() + ttlMs }); return true;
+      bindings.set(token, { subscription, expiresAt: now() + bindingTtlMs }); return true;
     },
     takeBinding(token) { cleanup(); const binding = bindings.get(token); bindings.delete(token); return binding?.subscription || null; }
   };

@@ -22,6 +22,8 @@ import { I18n } from "./i18n/index.js";
 import { resolveExperienceRoute } from "./core/profile/experienceModeRouting.js";
 import { initializeBrowserOfflineDownloadQueue } from "./core/offline/browserOfflineDownloadQueue.js";
 import { installExternalPlaybackReturnCoordinator } from "./ui/components/browserExternalPlaybackHandoff.js";
+import { watchBrowserInstallAvailability } from "./ui/components/browserInstallPrompt.js";
+import { installBrowserFocusModality } from "./ui/navigation/browserFocusModality.js";
 import { installWatchProgressReconnectSync } from "./core/profile/watchProgressReconnect.js";
 import { dispatchOutplayerExplicitFinish } from "./ui/components/browserOutplayerFinishDispatch.js";
 import { PlayerScreen } from "./ui/screens/player/playerScreen.js";
@@ -51,6 +53,13 @@ if (
   !["localhost", "127.0.0.1", "::1"].includes(globalThis.location?.hostname || "")
 ) {
   globalThis.navigator.serviceWorker.register("./sw.js").catch(() => {});
+}
+
+// beforeinstallprompt fires once, early. Catching it here rather than in the
+// sign-in screen is the difference between having an install button and not.
+if (Platform.isBrowser()) {
+  watchBrowserInstallAvailability();
+  installBrowserFocusModality();
 }
 
 function markBootStage(stage) {

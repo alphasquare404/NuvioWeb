@@ -337,6 +337,17 @@ export const AuthQrSignInScreen = {
   },
 
   getLeftDescription() {
+    // The shared line ends "TV stays QR-only for faster login", which is not
+    // true of the device reading it here.
+    if (!this.isSignedIn && this.isDesktopBrowser) {
+      return I18n.t(
+        "auth_qr_browser_hint",
+        {},
+        {
+          fallback: "Use another device to scan the code and approve the sign-in."
+        }
+      );
+    }
     if (this.isSignedIn) {
       return I18n.t("auth.qr.leftDescriptionSignedIn");
     }

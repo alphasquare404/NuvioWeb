@@ -102,7 +102,7 @@ test("external return expires reports and bounds storage", () => {
 
 test("temporary Push bindings share the bounded handoff lifetime", () => {
   let current = 1_000;
-  const store = createExternalReturnStore({ now: () => current, ttlMs: 10, maxRecords: 2 });
+  const store = createExternalReturnStore({ now: () => current, ttlMs: 10, bindingTtlMs: 10, maxRecords: 2 });
   const subscription = (id) => ({ endpoint: `https://push.example/${id}`, keys: { p256dh: "key", auth: "auth" } });
   const first = "a".repeat(32);
   const second = "b".repeat(32);

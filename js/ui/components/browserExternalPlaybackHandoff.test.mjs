@@ -581,3 +581,31 @@ test("an ordinary manual handoff still stays silent at startup", () => {
   });
   assert.equal(prompts, 0);
 });
+
+test("a handoff outlives the film it was launched for", () => {
+  // The bug this pins down: ten minutes measured from launch, while the thing
+  // being watched ran two hours. A short watch came back inside the window and
+  // saved its progress; a long one found the handoff already deleted as stale,
+  // never asked the relay for the report sitting there, and lost the lot.
+  const runtime = createRuntime();
+  const handoff = beginExternalPlaybackHandoff({
+    runtime,
+    playerMode: "outplayer",
+    automatic: true,
+    progressContext,
+    profileId: "1"
+  });
+
+  const realNow = Date.now;
+  try {
+    Date.now = () => realNow.call(Date) + 2 * 60 * 60 * 1000;
+    assert.equal(
+      readPendingExternalPlaybackHandoff({ runtime, profileId: "1" })?.token,
+      handoff.token
+    );
+    Date.now = () => realNow.call(Date) + 7 * 60 * 60 * 1000;
+    assert.equal(readPendingExternalPlaybackHandoff({ runtime, profileId: "1" }), null);
+  } finally {
+    Date.now = realNow;
+  }
+});

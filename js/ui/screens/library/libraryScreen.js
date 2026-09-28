@@ -84,6 +84,17 @@ import {
 const POSTER_HOLD_DELAY_MS = 650;
 const PICKER_MENU_EXIT_MS = 160;
 
+// Whether a finger is what reaches this screen; a pointer gets the search
+// field beside the tabs instead of behind a button.
+function libraryUsesTouchLayout() {
+  if (!Platform.isBrowser()) return true;
+  try {
+    return Boolean(globalThis.matchMedia?.("(any-pointer: coarse)")?.matches);
+  } catch (_) {
+    return true;
+  }
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -414,6 +425,8 @@ export const LibraryScreen = {
     this.pendingActionRestore = null;
     this.pendingCloudSearchFocus = false;
     this.librarySecondaryFiltersExpanded = false;
+    this.librarySearchOpen = false;
+    this.librarySearchQuery = "";
     this.pendingPickerRestore = null;
     this.closingPicker = null;
     this.closingPickerTimer = null;
@@ -514,6 +527,13 @@ export const LibraryScreen = {
         });
       } else if (target.matches(".library-cloud-search-input[data-cloud-search]")) {
         this.controller.setCloudSearchQuery(target.value);
+      } else if (target.matches(".library-search-input[data-library-search]")) {
+        this.librarySearchQuery = target.value;
+        if (this.controller?.getState?.()?.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
+          this.controller.setCloudSearchQuery(target.value);
+        } else {
+          this.refreshLibraryContentAndCount();
+        }
       }
     });
 
@@ -536,10 +556,6 @@ export const LibraryScreen = {
     const jobs = await listOfflineDownloads().catch(() => []);
     if (!this.container || Router.getCurrent() !== "library") return;
     this.downloadManagerJobs = listManageableBrowserOfflineDownloads(jobs);
-    if (this.downloadManagerView && !this.hasManageableDownloads()) {
-      this.downloadManagerView = false;
-      this.downloadedView = true;
-    }
     void this.refreshDownloadedLibrary();
   },
 
@@ -730,11 +746,24 @@ export const LibraryScreen = {
   },
 
   renderPickerGroups(state) {
-    if (this.isDownloadManagerView()) return "";
+    if (this.isDownloadManagerView()) {
+      // The filter has nothing to act on here, but the button has to stay:
+      // it is the way back out.
+      return `
+        <section class="library-picker-groups library-downloaded-picker-groups" id="libraryPickerGroupsMount">
+          <div class="library-picker-row library-downloaded-filter-row is-manager-only">
+            ${this.renderDownloadManagerButton()}
+          </div>
+        </section>
+      `;
+    }
     if (this.isDownloadedView()) {
       return `
         <section class="library-picker-groups library-downloaded-picker-groups" id="libraryPickerGroupsMount">
-          <div class="library-picker-row">${this.renderDownloadedTypePicker()}</div>
+          <div class="library-picker-row library-downloaded-filter-row">
+            ${this.renderDownloadedTypePicker()}
+            ${this.renderDownloadManagerButton()}
+          </div>
         </section>
       `;
     }
@@ -748,21 +777,28 @@ export const LibraryScreen = {
         t("cloud_library_type_all", {}, "All");
       return `
         <section class="library-picker-groups" id="libraryPickerGroupsMount">
-          <div class="library-picker-row">
+          <div class="library-picker-row library-cloud-filter-row">
             ${this.renderPicker(
               "cloud_provider",
-              t("cloud_library_select_provider", {}, "Select provider"),
+              t("cloud_library_provider_label", {}, "Provider"),
               providerLabel,
               this.controller.getPickerOptions("cloud_provider"),
               "library-picker-flex"
             )}
             ${this.renderPicker(
               "cloud_type",
-              t("cloud_library_select_type", {}, "Select type"),
+              t("cloud_library_type_label", {}, "Type"),
               typeLabel,
               this.controller.getPickerOptions("cloud_type"),
               "library-picker-flex"
             )}
+            <button class="library-cloud-refresh-button focusable"
+                    type="button"
+                    data-action="refreshCloudLibrary"
+                    ${state.cloudLibrary.isRefreshing ? "disabled" : ""}
+                    aria-label="${escapeHtml(t("cloud_library_refresh", {}, "Refresh cloud library"))}">
+              <span class="material-icons" aria-hidden="true">refresh</span>
+            </button>
           </div>
         </section>
       `;
@@ -918,12 +954,12 @@ export const LibraryScreen = {
       <div id="libraryContentAreaMount">
         ${this.renderActions(state)}
         ${
-          state.visibleItems.length
+          this.getVisibleSavedItems(state).length
             ? Platform.isBrowser() &&
               state.sourceMode === "simkl" &&
               state.presentationMode === LIBRARY_PRESENTATION_MODE.GROUPED
               ? this.renderGroupedLibraryContent()
-              : this.renderGrid(state.visibleItems)
+              : this.renderGrid(this.getVisibleSavedItems(state))
             : this.renderEmptyState()
         }
         ${state.transientMessage ? `<div class="library-toast">${escapeHtml(state.transientMessage)}</div>` : ""}
@@ -931,30 +967,137 @@ export const LibraryScreen = {
     `;
   },
 
+  // The header says which shelf you are on and how much is on it.
+  getLibraryHeaderLabel(state) {
+    if (this.isDownloadManagerView()) {
+      return t("library_count_queued", { count: this.downloadManagerJobs.length }, "Download manager");
+    }
+    if (this.isDownloadedView()) {
+      return `Downloaded · ${this.formatCount(this.countDownloadedItems(), "title")}`;
+    }
+    const label = this.controller.getSourceLabel();
+    if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
+      return `${label} · ${this.formatCount(state.visibleCloudItems.length, "file")}`;
+    }
+    return `${label} · ${this.formatCount(this.getVisibleSavedItems(state).length, "title")}`;
+  },
+
+  // One title, not one titles.
+  formatCount(count, unit) {
+    const n = Number(count) || 0;
+    if (unit === "file") {
+      return n === 1
+        ? t("library_count_file_one", { count: n }, "1 file")
+        : t("library_count_files", { count: n }, "files");
+    }
+    return n === 1
+      ? t("library_count_title_one", { count: n }, "1 title")
+      : t("library_count_titles", { count: n }, "titles");
+  },
+
+  countDownloadedItems() {
+    const downloads = this.downloadedLibrary || {};
+    if (!downloads.supported || downloads.loading) {
+      return 0;
+    }
+    return filterDownloadedLibraryItems(
+      normalizeDownloadedLibraryType(this.downloadedType),
+      (downloads.movies || []).map(offlineMovieCard),
+      (downloads.series || []).map(offlineSeriesCard)
+    ).length;
+  },
+
+  // Searching the saved shelf is a filter over what is already on screen, not
+  // a second trip to the provider.
+  // One field, but it only ever searches the shelf that is open.
+  applyLibrarySearch(items = []) {
+    const query = String(this.librarySearchQuery || "").trim().toLowerCase();
+    if (!query) {
+      return items;
+    }
+    return items.filter((item) =>
+      String(item?.name || item?.title || "").toLowerCase().includes(query)
+    );
+  },
+
+  getVisibleSavedItems(state) {
+    return this.applyLibrarySearch(state.visibleItems);
+  },
+
+  // Typing must not cost the caret, so only the grid and the count are
+  // rewritten -- never the field itself.
+  refreshLibraryContentAndCount() {
+    const state = this.controller?.getState?.();
+    if (!state || !this.container) {
+      return;
+    }
+    const mount = this.container.querySelector("#libraryContentAreaMount");
+    if (mount instanceof HTMLElement) {
+      mount.outerHTML = this.renderLibraryContentArea(state);
+    }
+    const source = this.container.querySelector("#libraryPageSource");
+    if (source instanceof HTMLElement) {
+      source.textContent = this.getLibraryHeaderLabel(state);
+    }
+    this.buildGridRows();
+    ScreenUtils.indexFocusables(this.container);
+  },
+
+  getLibrarySearchPlaceholder(state) {
+    if (this.isDownloadedView() || this.isDownloadManagerView()) {
+      return t("library_search_downloads", {}, "Search downloads");
+    }
+    if (state?.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
+      return t("cloud_library_search_placeholder", {}, "Search cloud files");
+    }
+    return t("library_search_placeholder", {}, "Search your library");
+  },
+
+  renderLibrarySearchButton() {
+    return `
+      <button class="library-search-button focusable${this.librarySearchOpen ? " is-open" : ""}"
+              type="button"
+              data-action="toggleLibrarySearch"
+              aria-expanded="${this.librarySearchOpen ? "true" : "false"}"
+              aria-label="${escapeHtml(t("library_search_action", {}, "Search library"))}">
+        <span class="material-icons" aria-hidden="true">${this.librarySearchOpen ? "close" : "search"}</span>
+      </button>
+    `;
+  },
+
+  renderLibrarySearchField(state) {
+    // A pointer has room for the field beside the tabs, so it is simply there.
+    // A finger does not, so the button asks for it.
+    if (!this.librarySearchOpen && libraryUsesTouchLayout()) {
+      return "";
+    }
+    return `
+      <div class="library-search-row">
+        <span class="material-icons library-search-row-icon" aria-hidden="true">search</span>
+        <input class="library-search-input focusable" type="search" data-library-search
+               value="${escapeHtml(this.librarySearchQuery || "")}"
+               placeholder="${escapeHtml(this.getLibrarySearchPlaceholder(state))}"
+               aria-label="${escapeHtml(t("library_search_action", {}, "Search library"))}" />
+      </div>
+    `;
+  },
+
   renderViewModeTabs(state) {
     return `
       <div class="library-view-mode-row">
-        <button class="library-view-mode-button focusable${!this.isDownloadedView() && state.viewMode === LIBRARY_VIEW_MODE.SAVED ? " selected" : ""}"
+        <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.SAVED ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="saved">
           ${escapeHtml(t("library_source_saved", {}, "Saved"))}
         </button>
-        <button class="library-view-mode-button focusable${!this.isDownloadedView() && state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
+        <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="cloud">
           ${escapeHtml(t("library_source_cloud", {}, "Cloud"))}
         </button>
         ${
           Platform.isBrowser()
-            ? `<button class="library-view-mode-button focusable${this.isDownloadedView() ? " selected" : ""}"
+            ? `<button class="library-view-mode-button focusable${this.isDownloadedView() || this.isDownloadManagerView() ? " selected" : ""}"
                        data-action="selectDownloadedLibraryView" data-view-mode="downloaded">
                  Downloaded
-               </button>`
-            : ""
-        }
-        ${
-          Platform.isBrowser() && this.hasManageableDownloads()
-            ? `<button class="library-view-mode-button focusable${this.isDownloadManagerView() ? " selected" : ""}"
-                       data-action="selectDownloadManagerLibraryView" data-view-mode="download-manager">
-                 Download Manager${this.downloadManagerJobs.length ? ` <span class="library-download-manager-count">${this.downloadManagerJobs.length}</span>` : ""}
                </button>`
             : ""
         }
@@ -962,8 +1105,32 @@ export const LibraryScreen = {
     `;
   },
 
+  renderDownloadManagerButton() {
+    if (!Platform.isBrowser()) {
+      return "";
+    }
+    const count = this.downloadManagerJobs.length;
+    return `
+      <button class="library-download-manager-button focusable${this.isDownloadManagerView() ? " is-active" : ""}"
+              type="button"
+              data-action="selectDownloadManagerLibraryView"
+              data-view-mode="download-manager"
+              aria-pressed="${this.isDownloadManagerView() ? "true" : "false"}"
+              aria-label="${escapeHtml(
+                this.isDownloadManagerView()
+                  ? t("library_download_manager_back", {}, "Back to downloaded")
+                  : t("library_download_manager", {}, "Download manager")
+              )}">
+        <span class="material-icons" aria-hidden="true">${
+          this.isDownloadManagerView() ? "arrow_back" : "downloading"
+        }</span>
+        ${count ? `<span class="library-download-manager-count">${count}</span>` : ""}
+      </button>
+    `;
+  },
+
   renderDownloadManagerContent() {
-    const jobs = this.downloadManagerJobs || [];
+    const jobs = this.applyLibrarySearch(this.downloadManagerJobs || []);
     if (!jobs.length) {
       return `<section class="library-empty-state"><h3 class="library-empty-title">No active downloads</h3><p class="library-empty-subtitle">Completed downloads are available in Downloaded.</p></section>`;
     }
@@ -1011,10 +1178,12 @@ export const LibraryScreen = {
       return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">Downloads unavailable</h3><p class="library-empty-subtitle">This browser does not support local offline downloads.</p></section>`;
     }
     this.downloadedType = normalizeDownloadedLibraryType(this.downloadedType);
-    const items = filterDownloadedLibraryItems(
-      this.downloadedType,
-      (downloads.movies || []).map(offlineMovieCard),
-      (downloads.series || []).map(offlineSeriesCard)
+    const items = this.applyLibrarySearch(
+      filterDownloadedLibraryItems(
+        this.downloadedType,
+        (downloads.movies || []).map(offlineMovieCard),
+        (downloads.series || []).map(offlineSeriesCard)
+      )
     );
     if (!items.length) {
       const title = this.downloadedType === "all" ? "No downloads yet" : `No downloaded ${this.downloadedType}`;
@@ -1023,32 +1192,9 @@ export const LibraryScreen = {
     return this.renderGrid(items, "library-downloaded-grid");
   },
 
-  renderCloudActions(state) {
-    return `
-      <section class="library-cloud-toolbar">
-        <label class="library-cloud-search-shell">
-          <span>${escapeHtml(t("cloud_library_search_label", {}, "Search cloud library"))}</span>
-          <input class="library-cloud-search-input focusable"
-                 data-cloud-search="true"
-                 type="text"
-                 value="${escapeHtml(state.cloudSearchQuery || "")}"
-                 placeholder="${escapeHtml(t("cloud_library_search_placeholder", {}, "Search files"))}" />
-        </label>
-        ${
-          state.cloudSearchQuery
-            ? `<button class="library-action-button focusable"
-                       data-action="clearCloudSearch">
-                 ${escapeHtml(t("cloud_library_search_clear", {}, "Clear search"))}
-               </button>`
-            : ""
-        }
-        <button class="library-action-button focusable library-primary"
-                data-action="refreshCloudLibrary"
-                ${state.cloudLibrary.isRefreshing ? "disabled" : ""}>
-          ${escapeHtml(t("cloud_library_refresh", {}, "Refresh cloud library"))}
-        </button>
-      </section>
-    `;
+  renderCloudActions() {
+    // The refresh control lives in the filter row now, beside the two pickers.
+    return "";
   },
 
   formatCloudSize(sizeBytes) {
@@ -1220,7 +1366,7 @@ export const LibraryScreen = {
 
     const sourceNode = this.container.querySelector("#libraryPageSource");
     if (sourceNode instanceof HTMLElement) {
-      sourceNode.textContent = this.isDownloadedView() ? "Downloaded" : this.controller.getSourceLabel();
+      sourceNode.textContent = this.getLibraryHeaderLabel(state);
     }
 
     const pickerMount = this.container.querySelector("#libraryPickerGroupsMount");
@@ -1340,6 +1486,20 @@ export const LibraryScreen = {
   },
 
   renderEmptyState() {
+    // The shelf is not empty when a search simply matched nothing, and the
+    // filter's wording ("No all yet") reads as nonsense there.
+    const query = String(this.librarySearchQuery || "").trim();
+    if (query) {
+      return `
+        <section class="library-empty-state">
+          ${bookmarkOutlineSvg()}
+          <h3 class="library-empty-title">${escapeHtml(t("library_search_empty_title", {}, "No matches"))}</h3>
+          <p class="library-empty-subtitle">${escapeHtml(
+            t("library_search_empty_subtitle", { query }, "Nothing in your library matches that.")
+          )}</p>
+        </section>
+      `;
+    }
     return `
       <section class="library-empty-state">
         ${bookmarkOutlineSvg()}
@@ -1594,11 +1754,17 @@ export const LibraryScreen = {
         <main class="home-main library-main">
           <section class="library-page">
             <header class="library-page-header">
-              <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
-              <div class="library-page-source" id="libraryPageSource">${escapeHtml(this.isDownloadedView() ? "Downloaded" : this.controller.getSourceLabel())}</div>
+              <div class="library-page-heading">
+                <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
+                <div class="library-page-source" id="libraryPageSource">${escapeHtml(this.getLibraryHeaderLabel(state))}</div>
+              </div>
+              ${this.renderLibrarySearchButton()}
             </header>
 
-            ${this.renderViewModeTabs(state)}
+            <div class="library-tabs-row">
+              ${this.renderViewModeTabs(state)}
+              ${this.renderLibrarySearchField(state)}
+            </div>
             ${this.renderPickerGroups(state)}
 
             ${this.renderLibraryContentArea(state)}
@@ -2603,6 +2769,14 @@ export const LibraryScreen = {
       this.requestRender();
       return;
     }
+    if (action === "toggleLibrarySearch") {
+      this.librarySearchOpen = !this.librarySearchOpen;
+      if (!this.librarySearchOpen) {
+        this.librarySearchQuery = "";
+      }
+      this.requestRender();
+      return;
+    }
     if (action === "selectLibraryViewMode") {
       this.downloadedView = false;
       this.downloadManagerView = false;
@@ -2619,13 +2793,13 @@ export const LibraryScreen = {
       return;
     }
     if (action === "selectDownloadManagerLibraryView") {
-      if (!this.hasManageableDownloads()) {
-        this.downloadedView = true;
-        this.downloadManagerView = false;
-      } else {
-        this.downloadedView = false;
-        this.downloadManagerView = true;
-      }
+      // The queue being empty is itself worth seeing, so the manager opens
+      // whether or not anything is downloading. Pressing the same button again
+      // is the way back: the Downloaded tab stays lit while the manager is
+      // open, so pressing it reads as a no-op.
+      const toManager = !this.isDownloadManagerView();
+      this.downloadManagerView = toManager;
+      this.downloadedView = !toManager;
       this.downloadedPickerOpen = false;
       this.controller.closePicker();
       this.requestRender();

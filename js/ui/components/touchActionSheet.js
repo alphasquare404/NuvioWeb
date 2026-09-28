@@ -27,11 +27,14 @@ export function actionSheetIconFor(action = {}) {
 export function openTouchActionSheet({
   header = null,
   items = [],
+  content = null,
   onSelect = () => {},
   onDismiss = () => {}
 } = {}) {
   const actions = (Array.isArray(items) ? items : []).filter((item) => item && item.label);
-  if (!actions.length) return null;
+  // A caller may bring its own body instead of a list of rows -- the sheet's
+  // job here is the chrome: the scrim, the grabber, Escape, and the exit.
+  if (!actions.length && !content) return null;
 
   let destroyed = false;
 
@@ -88,6 +91,10 @@ export function openTouchActionSheet({
     sheet.append(headerNode);
   }
 
+  if (content) {
+    sheet.append(content);
+  }
+
   const list = document.createElement("div");
   list.className = "nuvio-action-sheet-actions";
   actions.forEach((action) => {
@@ -110,7 +117,9 @@ export function openTouchActionSheet({
     });
     list.append(row);
   });
-  sheet.append(list);
+  if (!content) {
+    sheet.append(list);
+  }
 
   function destroy({ afterExit = null } = {}) {
     if (destroyed) {

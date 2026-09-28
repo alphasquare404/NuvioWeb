@@ -4,6 +4,15 @@ import { AuthManager } from "../../../core/auth/authManager.js";
 import { I18n } from "../../../i18n/index.js";
 import { Platform } from "../../../platform/index.js";
 import { continueWithoutAccount } from "./authQrSignInScreen.js";
+import {
+  dismissInstallOffer,
+  renderInstallBanner,
+  requestInstall
+} from "../../components/browserInstallPrompt.js";
+
+function t(key, fallback) {
+  return I18n.t(key, {}, { fallback });
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -81,37 +90,69 @@ export const AuthSignInScreen = {
       ? `<p class="desktop-auth-error" role="alert">${escapeHtml(this.desktopError)}</p>`
       : "";
     const submitting = Boolean(this.isDesktopSubmitting);
+    const passwordVisible = Boolean(this.desktopPasswordVisible);
 
     this.container.innerHTML = `
       <main class="desktop-auth-shell">
         <section class="desktop-auth-card" aria-labelledby="desktop-auth-title">
+          <img class="desktop-auth-logo" src="assets/brand/app_logo_wordmark.png" alt="Nuvio" />
           <h1 id="desktop-auth-title" class="desktop-auth-title">${escapeHtml(
-            I18n.t("auth.signIn.title")
+            t("account_signin_welcome", "Welcome back")
           )}</h1>
-          <p class="desktop-auth-subtitle">Sign in with your Nuvio account to sync your library, progress, and settings.</p>
+          <p class="desktop-auth-subtitle">${escapeHtml(
+            t(
+              "account_signin_welcome_sub",
+              "Sign in to sync your library, progress, and settings across devices."
+            )
+          )}</p>
           <form class="desktop-auth-form" novalidate>
             <label class="desktop-auth-field" for="desktop-auth-email">
               <span>${escapeHtml(I18n.t("auth.signIn.emailPrompt"))}</span>
-              <input id="desktop-auth-email" class="desktop-auth-input" type="email" name="email"
-                autocomplete="email" inputmode="email" required ${submitting ? "disabled" : ""} />
+              <span class="desktop-auth-input-wrap">
+                <span class="material-icons desktop-auth-input-icon" aria-hidden="true">mail_outline</span>
+                <input id="desktop-auth-email" class="desktop-auth-input" type="email" name="email"
+                  placeholder="${escapeHtml(t("account_signin_email_placeholder", "you@example.com"))}"
+                  autocomplete="email" inputmode="email" required ${submitting ? "disabled" : ""} />
+              </span>
             </label>
             <label class="desktop-auth-field" for="desktop-auth-password">
               <span>${escapeHtml(I18n.t("auth.signIn.passwordPrompt"))}</span>
-              <input id="desktop-auth-password" class="desktop-auth-input" type="password" name="password"
-                autocomplete="current-password" required ${submitting ? "disabled" : ""} />
+              <span class="desktop-auth-input-wrap">
+                <span class="material-icons desktop-auth-input-icon" aria-hidden="true">lock_outline</span>
+                <input id="desktop-auth-password" class="desktop-auth-input has-trailing-action"
+                  type="${passwordVisible ? "text" : "password"}" name="password"
+                  placeholder="${escapeHtml(t("account_signin_password_placeholder", "Enter your password"))}"
+                  autocomplete="current-password" required ${submitting ? "disabled" : ""} />
+                <button class="desktop-auth-input-toggle" type="button" data-action="togglePassword"
+                  aria-pressed="${passwordVisible ? "true" : "false"}"
+                  aria-label="${escapeHtml(
+                    passwordVisible ? t("common.hide", "Hide") : t("common.show", "Show")
+                  )}">
+                  <span class="material-icons" aria-hidden="true">${
+                    passwordVisible ? "visibility_off" : "visibility"
+                  }</span>
+                </button>
+              </span>
             </label>
             ${errorMessage}
             <button class="desktop-auth-submit" type="submit" ${submitting ? "disabled" : ""}>
               ${submitting ? "Signing in…" : "Sign In"}
             </button>
           </form>
-          <button class="desktop-auth-guest" type="button" data-action="continueGuest" ${
-            submitting ? "disabled" : ""
-          }>Continue without account</button>
+          <div class="desktop-auth-divider" role="separator">
+            <span>${escapeHtml(t("account_signin_divider", "or"))}</span>
+          </div>
           <button class="desktop-auth-qr" type="button" data-action="openQr" ${
             submitting ? "disabled" : ""
-          }>Sign in with QR</button>
+          }>
+            <span class="material-icons" aria-hidden="true">qr_code</span>
+            <span>${escapeHtml(t("account_signin_qr_action", "Sign in with QR"))}</span>
+          </button>
+          <button class="desktop-auth-guest" type="button" data-action="continueGuest" ${
+            submitting ? "disabled" : ""
+          }>${escapeHtml(t("account_signin_guest_action", "Continue without account"))}</button>
         </section>
+        ${renderInstallBanner()}
       </main>
     `;
 
@@ -124,6 +165,32 @@ export const AuthSignInScreen = {
     this.container.querySelector("[data-action='continueGuest']")?.addEventListener("click", () => {
       continueWithoutAccount();
     });
+    // Revealing the password re-renders the field, which would drop what has
+    // been typed and where the caret was. Both are carried over.
+    this.container
+      .querySelector("[data-action='togglePassword']")
+      ?.addEventListener("click", () => {
+        const field = this.container.querySelector("#desktop-auth-password");
+        const value = String(field?.value || "");
+        const caret = field?.selectionStart ?? value.length;
+        this.desktopPasswordVisible = !this.desktopPasswordVisible;
+        this.renderDesktopBrowser();
+        const restored = this.container.querySelector("#desktop-auth-password");
+        if (restored) {
+          restored.value = value;
+          restored.focus();
+          restored.setSelectionRange?.(caret, caret);
+        }
+      });
+    this.container.querySelector("[data-action='installApp']")?.addEventListener("click", () => {
+      void requestInstall();
+    });
+    this.container
+      .querySelector("[data-action='dismissInstall']")
+      ?.addEventListener("click", () => {
+        dismissInstallOffer();
+        this.renderDesktopBrowser();
+      });
   },
 
   async submitDesktopBrowserSignIn(event) {

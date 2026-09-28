@@ -1,7 +1,13 @@
 // Local development and the production bridge share this one return protocol.
 const STORAGE_KEY = "nuvioExternalPlaybackHandoff";
 const TOKEN_BYTES = 16;
-const HANDOFF_TTL_MS = 10 * 60 * 1000;
+// The handoff is written when the external player is launched and read when the
+// app comes back, so its life has to cover the playback itself. Ten minutes was
+// shorter than the thing being watched: a film ran past it, the handoff was
+// deleted as stale on return, and the report waiting on the relay was never
+// asked for -- which is why a short watch saved its progress and a long one
+// silently did not. Six hours outlasts anything worth sitting through.
+const HANDOFF_TTL_MS = 6 * 60 * 60 * 1000;
 // A report is written by a callback page in a separate browser context. Give
 // that page a small, bounded window to finish before asking the user instead.
 const FOREGROUND_RETRY_DELAYS_MS = [0, 500, 1000, 2000];

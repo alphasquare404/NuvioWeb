@@ -1503,6 +1503,18 @@ function captureHorizontalScrollMap(container) {
   return state;
 }
 
+// Whether a finger can reach this screen. Paired with the browser check so a
+// remote keeps the layout its directional keys are built around, and asking
+// `any-pointer` rather than `pointer` so a tablet with a trackpad still counts.
+function detailUsesTouchLayout() {
+  if (!Platform.isBrowser()) return false;
+  try {
+    return Boolean(globalThis.matchMedia?.("(any-pointer: coarse)")?.matches);
+  } catch (_) {
+    return false;
+  }
+}
+
 export const MetaDetailsScreen = {
   getRouteStateKey(params = {}) {
     const itemId = String(params?.itemId || "").trim();
@@ -4008,6 +4020,27 @@ export const MetaDetailsScreen = {
       Platform.isBrowser() && isMovie && this.offlineMovieDownloaded
         ? `<span class="detail-offline-indicator" role="status"><span class="material-icons" aria-hidden="true">download</span>${escapeHtml(t("offline.downloaded", {}, "Downloaded"))}</span>`
         : "";
+    // Under a finger the artwork is portrait and the copy is the full width, so
+    // everything but the title and the buttons would sit on top of the picture.
+    // It moves below the artwork instead. A mouse keeps the cinema framing, and
+    // TV keeps the single collapsible body its trailer transition animates.
+    const heroMetaBelowArtwork = detailUsesTouchLayout();
+    const heroMeta = `
+      ${this.renderResumeIndicator()}
+      ${creditLine ? `<p class="series-detail-support">${escapeHtml(creditPrefix)}: ${escapeHtml(creditLine)}</p>` : ""}
+      ${externalRatings}
+      ${
+        heroMetaBelowArtwork
+          ? `<p class="series-detail-description">${escapeHtml(
+              meta.description || t("detail.noDescription", {}, "No description.")
+            )}<button class="detail-description-toggle focusable" type="button"
+                       data-action="toggleHeroDescription" aria-expanded="false" hidden>${escapeHtml(
+                         t("detail_description_more", {}, "more")
+                       )}</button></p>`
+          : `<p class="series-detail-description">${escapeHtml(meta.description || t("detail.noDescription", {}, "No description."))}</p>`
+      }
+      ${this.renderHeroMetaRows(meta)}
+    `;
     return `
       <section class="detail-hero-section">
         <div class="detail-hero-brand">
@@ -4029,13 +4062,10 @@ export const MetaDetailsScreen = {
             ${this.renderHeroOfflineSubtitleButton()}
             ${downloadedIndicator}
           </div>
-          ${this.renderResumeIndicator()}
-          ${creditLine ? `<p class="series-detail-support">${escapeHtml(creditPrefix)}: ${escapeHtml(creditLine)}</p>` : ""}
-          ${externalRatings}
-          <p class="series-detail-description">${escapeHtml(meta.description || t("detail.noDescription", {}, "No description."))}</p>
-          ${this.renderHeroMetaRows(meta)}
+          ${heroMetaBelowArtwork ? "" : heroMeta}
         </div>
       </section>
+      ${heroMetaBelowArtwork ? `<section class="detail-hero-meta-section">${heroMeta}</section>` : ""}
     `;
   },
 
@@ -4675,6 +4705,41 @@ export const MetaDetailsScreen = {
         </select>
       </div>
     `;
+  },
+
+  // Choosing a season changes the episodes and the download action beside the
+  // dropdown, and nothing else on the page. Rendering the whole screen for it
+  // put the scroll back at the top and rebuilt the dropdown under the finger
+  // that had just used it -- which is the flash of it reappearing. Only what
+  // depends on the season is redrawn, so the page stays where it was, exactly
+  // as the rail behaved.
+  refreshSeasonSelection() {
+    const shell = this.container?.querySelector(".series-season-select-shell");
+    const controls = shell?.parentElement;
+    if (!shell || !controls) {
+      return false;
+    }
+    const value = shell.querySelector(".series-season-select-value");
+    if (value) {
+      value.textContent = this.getSeasonLabel(this.selectedSeason);
+    }
+    const select = shell.querySelector(".series-season-select");
+    if (select) {
+      select.value = String(this.selectedSeason);
+      select.setAttribute(
+        "aria-label",
+        t("detail.seasonLabel", { season: this.selectedSeason }, "Season {{season}}")
+      );
+    }
+    // The action is absent for a season with nothing to download, so it is
+    // removed and re-added rather than rewritten: a season that has episodes
+    // again needs somewhere to put it back.
+    controls.querySelector(".series-season-download-row")?.remove();
+    const downloadMarkup = this.renderSeasonDownloadAction();
+    if (downloadMarkup) {
+      controls.insertAdjacentHTML("beforeend", downloadMarkup);
+    }
+    return this.refreshEpisodeTrack();
   },
 
   renderSeasonDownloadAction() {
@@ -5542,6 +5607,42 @@ export const MetaDetailsScreen = {
       el.style.backgroundImage = "url('" + String(url).replace(/'/g, "%27") + "')";
       el.removeAttribute("data-thumb");
     } catch (_) {}
+  },
+
+  bindHeroDescriptionToggle() {
+    const description = this.container?.querySelector(".series-detail-description");
+    const toggle = this.container?.querySelector("[data-action='toggleHeroDescription']");
+    if (this.heroDescriptionResizeHandler) {
+      globalThis.removeEventListener?.("resize", this.heroDescriptionResizeHandler);
+      this.heroDescriptionResizeHandler = null;
+    }
+    if (!(description instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+      return;
+    }
+    const syncToggle = () => {
+      if (description.classList.contains("is-expanded")) {
+        return;
+      }
+      // A clamped paragraph is taller than it is allowed to be. Anything that
+      // fits has nothing to reveal, so the control stays away.
+      toggle.hidden = description.scrollHeight <= description.clientHeight + 1;
+    };
+    toggle.onclick = () => {
+      const expanded = description.classList.toggle("is-expanded");
+      toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      toggle.textContent = expanded
+        ? t("detail_description_less", {}, "less")
+        : t("detail_description_more", {}, "more");
+      if (!expanded) {
+        syncToggle();
+      }
+    };
+    syncToggle();
+    // Turning the phone changes how many lines fit, and so whether there is
+    // anything left to reveal. A ResizeObserver on the paragraph did not fire
+    // for this; the window's own resize does.
+    this.heroDescriptionResizeHandler = () => syncToggle();
+    globalThis.addEventListener?.("resize", this.heroDescriptionResizeHandler);
   },
 
   observeEpisodeThumbnails() {
@@ -8084,7 +8185,9 @@ export const MetaDetailsScreen = {
       }
       this.hasManualSeasonSelection = true;
       this.selectedSeason = season;
-      this.render(this.meta, { selector: ".series-season-select" });
+      if (!this.refreshSeasonSelection()) {
+        this.render(this.meta, { selector: ".series-season-select" });
+      }
     };
     this.container.addEventListener("change", this.boundSeasonSelectChangeHandler);
     this.boundDesktopLibraryPointerDownHandler = (event) => {
@@ -8234,6 +8337,7 @@ export const MetaDetailsScreen = {
 
   bindDetailChrome() {
     this.observeEpisodeThumbnails();
+    this.bindHeroDescriptionToggle();
     const content = this.container?.querySelector(".series-detail-content");
     if (!content) {
       return;
@@ -12003,6 +12107,10 @@ export const MetaDetailsScreen = {
       this.boundDesktopDetailActionHandler = null;
       this.container.removeEventListener("change", this.boundSeasonSelectChangeHandler);
       this.boundSeasonSelectChangeHandler = null;
+    }
+    if (this.heroDescriptionResizeHandler) {
+      globalThis.removeEventListener?.("resize", this.heroDescriptionResizeHandler);
+      this.heroDescriptionResizeHandler = null;
     }
     if (this.boundEpisodeSubtitleActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundEpisodeSubtitleActionHandler, true);

@@ -21380,3 +21380,111 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .nuvio-action-sheet-row.is-danger .nuvio-action-sheet-label {
   color: #ff8a8a;
 }
+
+/* Add to Home Screen steps, carried by the action sheet's own chrome. */
+.browser-install-sheet {
+  padding: 4px 16px 8px;
+}
+
+.browser-install-sheet-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 8px 0 16px;
+}
+
+.browser-install-sheet-icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.browser-install-sheet-title {
+  margin: 0;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.browser-install-sheet-body {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.browser-install-sheet-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.browser-install-sheet-step {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.browser-install-sheet-step-number {
+  flex: 0 0 auto;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.browser-install-sheet-step-label {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.browser-install-sheet-actions {
+  display: grid;
+  gap: 4px;
+  margin-top: 18px;
+}
+
+.browser-install-sheet-confirm {
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.browser-install-sheet-never {
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+}
+
+.browser-install-sheet-never:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.browser-install-sheet-confirm:focus-visible,
+.browser-install-sheet-never:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 2px;
+}
