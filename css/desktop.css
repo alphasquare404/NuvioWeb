@@ -5448,21 +5448,38 @@ html.desktop-browser {
   color: var(--detail-text-secondary);
 }
 
-.desktop-browser #detail .series-season-select {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  opacity: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
+/* The pill is the whole control now; the options open beneath it in the app's
+   own menu rather than in a panel the operating system draws. */
+.desktop-browser #detail .series-season-picker {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.desktop-browser #detail .series-season-select-shell {
   cursor: pointer;
-  appearance: none;
-  color-scheme: dark;
+  user-select: none;
+}
+
+/* The menu is Library's, borrowed whole -- but its sizes are written for the
+   television, where an option is 84px tall. Library restates them inside its
+   own shell, so the detail page, being somewhere else, has to do the same. */
+.desktop-browser #detail .series-season-picker .library-picker-menu {
+  top: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  min-width: max(100%, 180px);
+  max-height: 320px;
+  padding: 4px;
+  border-radius: 14px;
+  overflow-x: hidden;
+}
+
+.desktop-browser #detail .series-season-picker .library-picker-option {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.3;
 }
 
 @media (max-width: 600px) {
@@ -13500,6 +13517,28 @@ body.desktop-browser {
   background: transparent;
 }
 
+/* Home was left out because it opens on artwork -- but it does not always. The
+   hero can be turned off in Layout, and offline there is nothing to build one
+   from, and in both cases Home was the one page left with a flat background.
+   `home-hero-disabled` is the class the screen already sets when it renders no
+   hero, so the wash follows it rather than guessing. */
+.desktop-browser #home:has(.home-hero-disabled) {
+  background-image: radial-gradient(
+    circle 760px at 24% 4%,
+    rgb(var(--secondary-color-rgb) / 0.32) 0%,
+    rgb(var(--secondary-color-rgb) / 0.12) 34%,
+    transparent 70%
+  ) !important;
+}
+
+/* The shells inside paint the flat colour over the top, so on a heroless Home
+   they step aside the way Library's and Search's do. */
+.desktop-browser #home:has(.home-hero-disabled) .home-screen-shell,
+.desktop-browser #home:has(.home-hero-disabled) .home-shell,
+.desktop-browser #home:has(.home-hero-disabled) .home-main {
+  background: transparent;
+}
+
 /* Sign-in happens before there is a profile, so there is no chosen theme to
    follow. It takes the mark's own purple, sampled from the logo. */
 .desktop-browser #account {
@@ -14554,69 +14593,35 @@ body.desktop-browser {
   }
 }
 
-/* The hero's synopsis, clamped to two lines with the rest behind a "more" at
-   the end of the second -- the same control the detail page's synopsis carries.
-   Two lines is the most a hero can give a synopsis before the synopsis becomes
-   the hero, and a phone in portrait has the least room of all.
+/* The hero's synopsis, trimmed to two lines with a "more" that follows the
+   sentence -- the same control the detail page's synopsis carries. Two lines is
+   the most a hero can give a synopsis before the synopsis becomes the hero, and
+   a phone held upright has the least room of any shape it takes.
 
-   The fade is the hero card's own background, so the last words disappear into
-   the card rather than running under the label. */
+   Nothing here is positioned or painted. The detail page can fade its last
+   words out under the label, because behind them is a solid page; the hero
+   cannot, because behind them is the artwork, and any colour chosen for it
+   turns into a dark smudge the moment the picture is bright. homeScreen.js
+   fits the text and this button into the two lines together instead, so the
+   label follows the last word the way another word would.
+
+   The two-line height itself is an inline style set there, since nothing in a
+   stylesheet can outrank one. */
 @media (any-pointer: coarse) and (orientation: portrait) {
-  /* Home trims its synopsis by rewriting the text, which would take the button
-     inside the paragraph with it. Here the clamp owns the height instead and
-     homeScreen.js leaves the text whole -- the same arrangement the detail
-     page's synopsis uses. `!important` because the layout's own rule carries
-     five classes and is reaching for a different clamp. */
-  .desktop-browser .home-screen-shell .home-hero-description {
-    position: relative;
-    --home-hero-description-fade: #0d0d0d;
-    display: -webkit-box !important;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2 !important;
-    line-clamp: 2 !important;
-    max-height: none !important;
-    overflow: hidden;
-  }
-
-  .desktop-browser .home-screen-shell .home-hero-description.is-expanded {
-    display: block !important;
-    -webkit-line-clamp: unset !important;
-    line-clamp: unset !important;
-  }
-
   .desktop-browser .home-hero-description-toggle {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    display: inline-flex;
-    align-items: center;
-    width: auto;
-    height: 1.4em;
-    margin: 0;
-    /* Sits on the last line itself: same type, same line box, so its baseline
-       is the text's rather than a control parked below it. The pad is the fade
-       the last words disappear into. */
-    padding: 0 0 0 42px;
+    display: inline;
+    margin: 0 0 0 4px;
+    padding: 0;
     border: 0;
-    border-radius: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      var(--home-hero-description-fade) 46%,
-      var(--home-hero-description-fade) 100%
-    );
-    color: rgba(255, 255, 255, 0.72);
+    background: none;
+    color: #fff;
+    /* The synopsis over artwork already needs this to stay readable; the label
+       is the same text on the same picture. */
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
     cursor: pointer;
     font: inherit;
-    font-weight: 600;
-  }
-
-  /* Expanded there is nothing to sit at the end of, so it returns to a line. */
-  .desktop-browser .home-hero-description.is-expanded .home-hero-description-toggle {
-    position: static;
-    height: auto;
-    padding: 4px 0 0;
-    background: transparent;
+    font-weight: 700;
+    white-space: nowrap;
   }
 
   .desktop-browser .home-hero-description-toggle[hidden] {
@@ -14673,57 +14678,62 @@ body.desktop-browser {
   margin: 0 0 12px;
 }
 
-.desktop-browser #stream .stream-route-filter-select-shell {
-  position: relative;
-  display: inline-flex;
+/* The picker is the app's own menu, already built and styled -- but its sizes
+   are written for the television, where an option is 84px tall and a corner is
+   36px round. Library restates them for the browser inside its own shell, so
+   this row, being somewhere else, has to do the same.
+
+   The anchor takes the refresh button's height exactly, so the two read as one
+   row rather than a tall control with a small button beside it. */
+.desktop-browser #stream .stream-route-filter-row .library-picker {
   flex: 0 1 auto;
-  align-items: center;
-  gap: 8px;
   min-width: 0;
   max-width: min(100%, 280px);
+}
+
+.desktop-browser #stream .stream-route-filter-row .library-picker-anchor {
+  min-height: 42px;
   height: 42px;
   padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 12px;
-  background: rgba(26, 26, 31, 0.82);
-  color: var(--text-color, #fff);
+  gap: 8px;
+}
+
+.desktop-browser #stream .stream-route-filter-row .library-picker-title {
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+}
+
+.desktop-browser #stream .stream-route-filter-row .library-picker-value {
   font-size: 14px;
-  font-weight: 600;
+  line-height: 1.2;
 }
 
-.desktop-browser #stream .stream-route-filter-select-value {
-  overflow: hidden;
-  min-width: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.desktop-browser #stream .stream-route-filter-row .library-picker-chevron {
+  width: 18px;
+  height: 18px;
 }
 
-.desktop-browser #stream .stream-route-filter-select-chevron {
-  flex: 0 0 auto;
-  margin-left: auto;
-  font-size: 20px;
-  opacity: 0.7;
+.desktop-browser #stream .stream-route-filter-row .library-picker-menu {
+  top: calc(100% + 6px);
+  right: auto;
+  min-width: max(100%, 170px);
+  max-height: 320px;
+  padding: 4px;
+  border-radius: 14px;
+  /* The padding rounds a couple of pixels wider than the box, which was enough
+     to hang a scrollbar along the bottom of a menu with nothing to scroll. */
+  overflow-x: hidden;
 }
 
-/* The real control, laid transparently over the pill: the system picker opens
-   from it and a keyboard gets select semantics, while the pill above is what
-   anyone actually sees. */
-.desktop-browser #stream .stream-route-filter-select {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  opacity: 0;
-  appearance: none;
-  -webkit-appearance: none;
-  color-scheme: dark;
-  cursor: pointer;
-  font: inherit;
+.desktop-browser #stream .stream-route-filter-row .library-picker-option {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.3;
 }
-
 .desktop-browser #stream .stream-route-refresh {
   display: inline-flex;
   flex: 0 0 auto;
@@ -14743,14 +14753,46 @@ body.desktop-browser {
   font-size: 20px;
 }
 
-/* While sources are still arriving the picker says so rather than looking
-   settled on a list that is still growing. */
-.desktop-browser #stream .stream-route-filter-select-shell.is-loading .stream-route-filter-select-chevron {
-  animation: nuvio-stream-refresh-spin 1.1s linear infinite;
+
+
+/* The episode title and synopsis now sit under the card rather than printed
+   across its lower third. Over artwork they needed the card dimmed to stay
+   readable, which cost the picture the very part of the frame the thumbnail
+   was chosen for. Below it they need nothing: the page background is already
+   what the rest of the screen's text sits on. Only the episode number and the
+   runtime stay on the artwork, because those identify the card itself. */
+.desktop-browser #detail .series-episode-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 2px 0;
 }
 
-@keyframes nuvio-stream-refresh-spin {
-  to {
-    transform: rotate(360deg);
+.desktop-browser #detail .series-episode-caption .series-episode-title {
+  color: var(--detail-text, #fff);
+}
+
+.desktop-browser #detail .series-episode-caption .series-episode-overview {
+  color: var(--detail-text-secondary, rgba(255, 255, 255, 0.62));
+}
+
+/* Nothing is printed over the lower half any more, so the scrim that existed to
+   keep that text legible can go and the still is seen whole. */
+.desktop-browser #detail .series-episode-overlay {
+  background: linear-gradient(180deg, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+/* The detail backdrop is anchored to its right edge, which is right for the
+   desktop hero: the title and buttons sit down the left, so the picture is
+   pushed away from them and keeps its subject in the clear.
+
+   A phone has no left column. The hero is narrow, the text is centred along the
+   bottom, and a backdrop scaled to cover a tall box is far wider than the box --
+   so anchoring it right throws the subject off the side entirely. Centred, the
+   part of the frame the image was chosen for is the part that shows. Desktop is
+   untouched. */
+@media (any-pointer: coarse) {
+  .desktop-browser #detail .series-detail-backdrop {
+    background-position: center center;
   }
 }

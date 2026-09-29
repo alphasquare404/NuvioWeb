@@ -4674,7 +4674,7 @@ export const MetaDetailsScreen = {
     }
     return `
       <div class="series-season-controls">
-        ${this.renderSeasonSelect()}
+        ${this.renderSeasonPicker()}
         ${this.renderSeasonDownloadAction()}
       </div>
     `;
@@ -4686,27 +4686,55 @@ export const MetaDetailsScreen = {
       : t("detail.seasonLabel", { season }, "Season {{season}}");
   },
 
-  renderSeasonSelect() {
-    const options = this.getAvailableSeasons()
-      .map(
-        (season) =>
-          `<option value="${season}"${season === this.selectedSeason ? " selected" : ""}>${escapeHtml(
-            this.getSeasonLabel(season)
-          )}</option>`
-      )
-      .join("");
+  getSeasonOptions() {
+    return this.getAvailableSeasons().map((season) => ({
+      value: String(season),
+      label: this.getSeasonLabel(season)
+    }));
+  },
+
+  // The pill stays exactly as it was; only what opens beneath it changes. A
+  // native select carried the options before, and the panel it opened was drawn
+  // by the operating system -- white, square, and unlike anything else in the
+  // app. The menu below is the one Library and Discover already use, so it is
+  // borrowed rather than rebuilt: same classes, same styling, same behaviour.
+  renderSeasonPicker() {
+    const options = this.getSeasonOptions();
+    const open = Boolean(this.seasonPickerOpen);
+    const menu = open
+      ? `<div class="library-picker-menu library-picker-menu-open" role="listbox"
+                aria-label="${escapeAttribute(t("detail_season_picker_title", {}, "Season"))}">
+          ${options
+            .map(
+              (option, index) => `
+            <div class="library-picker-option focusable${option.value === String(this.selectedSeason) ? " selected" : ""}"
+                 data-action="selectSeasonOption"
+                 data-picker="season"
+                 data-option-index="${index}"
+                 role="option"
+                 aria-selected="${option.value === String(this.selectedSeason) ? "true" : "false"}"
+                 tabindex="-1">${escapeHtml(option.label)}</div>
+          `
+            )
+            .join("")}
+        </div>`
+      : "";
     return `
-      <div class="series-season-select-shell">
-        <span class="series-season-select-value">${escapeHtml(this.getSeasonLabel(this.selectedSeason))}</span>
-        <span class="material-icons series-season-select-chevron" aria-hidden="true">expand_more</span>
-        <select class="series-season-select focusable"
-                aria-label="${escapeAttribute(t("detail.seasonLabel", { season: this.selectedSeason }, "Season {{season}}"))}">
-          ${options}
-        </select>
+      <div class="library-picker series-season-picker${open ? " open" : ""}">
+        <div class="series-season-select-shell focusable"
+             data-action="toggleSeasonPicker"
+             data-picker="season"
+             role="button"
+             aria-haspopup="listbox"
+             aria-expanded="${open ? "true" : "false"}"
+             tabindex="-1">
+          <span class="series-season-select-value">${escapeHtml(this.getSeasonLabel(this.selectedSeason))}</span>
+          <span class="material-icons series-season-select-chevron" aria-hidden="true">expand_more</span>
+        </div>
+        ${menu}
       </div>
     `;
   },
-
   // Choosing a season changes the episodes and the download action beside the
   // dropdown, and nothing else on the page. Rendering the whole screen for it
   // put the scroll back at the top and rebuilt the dropdown under the finger
@@ -4714,23 +4742,22 @@ export const MetaDetailsScreen = {
   // depends on the season is redrawn, so the page stays where it was, exactly
   // as the rail behaved.
   refreshSeasonSelection() {
-    const shell = this.container?.querySelector(".series-season-select-shell");
-    const controls = shell?.parentElement;
-    if (!shell || !controls) {
+    const picker = this.container?.querySelector(".series-season-picker");
+    const anchor = picker?.querySelector(".series-season-select-shell");
+    const controls = picker?.parentElement;
+    if (!picker || !controls) {
       return false;
     }
-    const value = shell.querySelector(".series-season-select-value");
+    const value = picker.querySelector(".series-season-select-value");
     if (value) {
       value.textContent = this.getSeasonLabel(this.selectedSeason);
     }
-    const select = shell.querySelector(".series-season-select");
-    if (select) {
-      select.value = String(this.selectedSeason);
-      select.setAttribute(
-        "aria-label",
-        t("detail.seasonLabel", { season: this.selectedSeason }, "Season {{season}}")
-      );
-    }
+    // Choosing closes the menu, so it is taken down here rather than by a
+    // render of the whole screen.
+    picker.classList.remove("open", "closing");
+    picker.querySelector(".library-picker-menu")?.remove();
+    anchor?.setAttribute("aria-expanded", "false");
+    this.seasonPickerOpen = false;
     // The action is absent for a season with nothing to download, so it is
     // removed and re-added rather than rewritten: a season that has episodes
     // again needs somewhere to put it back.
@@ -4740,6 +4767,18 @@ export const MetaDetailsScreen = {
       controls.insertAdjacentHTML("beforeend", downloadMarkup);
     }
     return this.refreshEpisodeTrack();
+  },
+  // Opening or closing the menu redraws the control it belongs to and nothing
+  // else, for the same reason choosing a season does: a render of the screen
+  // would take the scroll back to the top.
+  renderSeasonControlsInPlace() {
+    const picker = this.container?.querySelector(".series-season-picker");
+    if (!picker) {
+      return false;
+    }
+    picker.outerHTML = this.renderSeasonPicker();
+    ScreenUtils.indexFocusables(this.container);
+    return true;
   },
 
   renderSeasonDownloadAction() {
@@ -5581,17 +5620,20 @@ export const MetaDetailsScreen = {
           ${Platform.isBrowser() && isDownloaded ? `<span class="series-episode-offline-status" role="img" aria-label="${escapeAttribute(t("offline.downloaded", {}, "Downloaded"))}"><span class="material-icons" aria-hidden="true">download</span></span>` : ""}
           ${canOfferOfflineSubtitleHandoff(this.getOfflineSubtitlesForEpisode(episode)) ? `<button type="button" class="series-episode-subtitle-action" data-episode-subtitle="${escapeAttribute(episode.id)}" aria-label="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}" title="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}"><span class="material-icons" aria-hidden="true">closed_caption</span></button>` : ""}
           ${isUnavailable ? `<div class="series-episode-unavailable">${escapeHtml(t("episodes_unavailable", {}, "Unavailable").toUpperCase())}</div>` : ""}
-          <!-- Which episode this is, then how long it runs, then what it is
-               called and what happens in it. The number and the runtime are
-               the same kind of fact and now sit together; the title and the
-               synopsis are what you actually read, and they finish the card. -->
+          <!-- On the artwork, only what identifies the episode: which one it
+               is and how long it runs. Both are the same kind of fact. -->
           <div class="series-episode-copy">
             <div class="series-episode-badge">${escapeHtml(t("episodes_episode", {}, "Episode").toUpperCase())} ${Number(episode.episode || 0)}</div>
             ${metaParts ? `<div class="series-episode-meta">${metaParts}</div>` : ""}
-            <div class="series-episode-title">${escapeHtml(normalizeEpisodeTitle(episode.title, episode.episode))}</div>
-            <div class="series-episode-overview">${escapeHtml(episode.overview || t("episodes_episode", {}, "Episode"))}</div>
           </div>
           ${progressRatio > 0.02 && progressRatio < 0.98 ? `<div class="series-episode-progress"><span style="width:${Math.round(progressRatio * 100)}%"></span></div>` : ""}
+        </div>
+        <!-- The title and the synopsis are not part of the artwork. They sit
+             under the card, where nothing has to be dimmed for them to be
+             readable and the picture keeps its whole frame. -->
+        <div class="series-episode-caption">
+          <div class="series-episode-title">${escapeHtml(normalizeEpisodeTitle(episode.title, episode.episode))}</div>
+          <div class="series-episode-overview">${escapeHtml(episode.overview || t("episodes_episode", {}, "Episode"))}</div>
         </div>
       </article>
     `;
@@ -8177,23 +8219,47 @@ export const MetaDetailsScreen = {
       event.preventDefault();
     };
     this.container.addEventListener("click", this.boundDesktopDetailActionHandler);
-    this.boundSeasonSelectChangeHandler = (event) => {
+    // The season picker is the app's own menu, so opening, choosing and
+    // dismissing it belong to this screen. Capture, so the screen's own click
+    // handling never sees these first.
+    this.boundSeasonPickerHandler = (event) => {
       const target = event.target instanceof Element ? event.target : null;
-      const select = target?.closest?.(".series-season-select");
-      if (!(select instanceof HTMLSelectElement) || !this.container?.contains(select)) {
+      if (!target || !this.container?.contains(target)) {
         return;
       }
-      const season = Number(select.value);
-      if (!Number.isFinite(season) || season === this.selectedSeason) {
+      const option = target.closest("[data-action='selectSeasonOption']");
+      if (option) {
+        event.preventDefault();
+        event.stopPropagation();
+        const index = Number(option.dataset.optionIndex || 0);
+        const season = Number(this.getSeasonOptions()[index]?.value);
+        this.seasonPickerOpen = false;
+        if (!Number.isFinite(season) || season === this.selectedSeason) {
+          this.refreshSeasonSelection();
+          return;
+        }
+        this.hasManualSeasonSelection = true;
+        this.selectedSeason = season;
+        if (!this.refreshSeasonSelection()) {
+          this.render(this.meta, { selector: ".series-season-select-shell" });
+        }
         return;
       }
-      this.hasManualSeasonSelection = true;
-      this.selectedSeason = season;
-      if (!this.refreshSeasonSelection()) {
-        this.render(this.meta, { selector: ".series-season-select" });
+      const anchor = target.closest("[data-action='toggleSeasonPicker']");
+      if (anchor) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.seasonPickerOpen = !this.seasonPickerOpen;
+        this.renderSeasonControlsInPlace();
+        return;
+      }
+      // Anywhere else closes it, the way every menu in the app behaves.
+      if (this.seasonPickerOpen) {
+        this.seasonPickerOpen = false;
+        this.renderSeasonControlsInPlace();
       }
     };
-    this.container.addEventListener("change", this.boundSeasonSelectChangeHandler);
+    this.container.addEventListener("click", this.boundSeasonPickerHandler, true);
     this.boundDesktopLibraryPointerDownHandler = (event) => {
       if (event.pointerType !== "mouse" || Number(event.button) !== 0) {
         return;
@@ -12109,8 +12175,9 @@ export const MetaDetailsScreen = {
     if (this.boundDesktopDetailActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopDetailActionHandler);
       this.boundDesktopDetailActionHandler = null;
-      this.container.removeEventListener("change", this.boundSeasonSelectChangeHandler);
-      this.boundSeasonSelectChangeHandler = null;
+      this.container.removeEventListener("click", this.boundSeasonPickerHandler, true);
+      this.boundSeasonPickerHandler = null;
+      this.seasonPickerOpen = false;
     }
     if (this.heroDescriptionResizeHandler) {
       globalThis.removeEventListener?.("resize", this.heroDescriptionResizeHandler);

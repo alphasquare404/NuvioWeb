@@ -303,7 +303,7 @@ function renderModernHeroMarkup({
           <div class="home-modern-hero-secondary${display.secondaryHighlightText || display.badges.length || display.showImdbSecondary || display.languageText ? "" : " is-empty"}">
             ${secondaryParts.join('<span class="home-hero-dot">•</span>')}
           </div>
-          <p class="home-hero-description${display.description ? "" : " is-empty"}">${escapeHtml(display.description)}</p>
+          <p class="home-hero-description${display.description ? "" : " is-empty"}"><span class="home-hero-description-text">${escapeHtml(display.description)}</span></p>
         </div>
         <div class="home-hero-indicators">${buildHeroIndicators(heroCandidates, heroItem)}</div>
       </article>

@@ -2786,7 +2786,23 @@ export const LibraryScreen = {
       if (!this.librarySearchOpen) {
         this.librarySearchQuery = "";
       }
-      this.requestRender();
+      // Rendered in this same task rather than on the next frame: a phone
+      // raises its keyboard only for a focus that is still part of the tap that
+      // asked for it, and a frame later is no longer part of it.
+      this.render();
+      if (this.librarySearchOpen) {
+        const input = this.container?.querySelector(".library-search-input");
+        if (input instanceof HTMLInputElement) {
+          input.focus({ preventScroll: true });
+          // The caret belongs after whatever is already typed, not before it.
+          const end = input.value.length;
+          try {
+            input.setSelectionRange(end, end);
+          } catch (_) {
+            /* Not every input type allows a selection range. */
+          }
+        }
+      }
       return;
     }
     if (action === "selectLibraryViewMode") {

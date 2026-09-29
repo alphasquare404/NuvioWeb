@@ -2176,7 +2176,7 @@ function renderHeroMarkup(layoutMode, heroItem, heroCandidates) {
           <div class="home-hero-meta-primary${display.metaPrimary.length ? "" : " is-empty"}">${renderMetaTokens(display.metaPrimary)}</div>
           <div class="home-hero-chip-row${display.chips.length ? "" : " is-empty"}">${display.chips.map((chip) => `<span class="home-hero-chip">${escapeHtml(chip)}</span>`).join("")}</div>
           <div class="home-hero-meta-secondary${display.metaSecondary.length ? "" : " is-empty"}">${renderMetaTokens(display.metaSecondary)}</div>
-          <p class="home-hero-description">${escapeHtml(display.description)}</p>
+          <p class="home-hero-description"><span class="home-hero-description-text">${escapeHtml(display.description)}</span></p>
         </div>
         <div class="home-hero-indicators">${buildHeroIndicators(heroCandidates, heroItem)}</div>
       </article>
@@ -4108,10 +4108,12 @@ export const HomeScreen = {
 
     const descriptionNode = heroNode.querySelector(".home-hero-description");
     if (descriptionNode) {
-      descriptionNode.textContent = display.description || " ";
+      const descriptionText =
+        descriptionNode.querySelector(".home-hero-description-text") || descriptionNode;
+      descriptionText.textContent = display.description || " ";
+      delete descriptionText.dataset.fullText;
+      delete descriptionText.dataset.sourceText;
       descriptionNode.classList.toggle("is-empty", !display.description);
-      // The assignment above takes the toggle with it, so it is put back and
-      // re-measured against the new synopsis, which may be shorter.
       this.bindHomeHeroDescriptionToggle(heroNode);
     }
     this.scheduleHomeTruncationUpdate({ scope: heroNode });
@@ -6621,18 +6623,32 @@ export const HomeScreen = {
       if (!(node instanceof HTMLElement)) {
         return;
       }
-      const currentText = node.textContent ?? "";
-      const storedText = node.dataset.fullText || "";
+      // The synopsis keeps its text in a span of its own, so trimming it does
+      // not take the "more" button that lives in the same paragraph along with
+      // it. The fit is judged on the paragraph, which means the button is part
+      // of what has to fit and the text stops short enough to leave room for
+      // it -- and that is what puts the two next to each other, with no gap to
+      // explain and nothing painted behind anything.
+      const textHost = node.querySelector(".home-hero-description-text") || node;
+      // The label has to be on screen while the text is being fitted, or the
+      // fit leaves no room for it and it lands on a line the height cuts off.
+      // Whether it belongs there at all is settled afterwards, once it is known
+      // how much had to be cut.
+      const toggleNode = node.querySelector(".home-hero-description-toggle");
+      if (toggleNode) {
+        toggleNode.hidden = false;
+      }
+      const currentText = textHost.textContent ?? "";
+      const storedText = textHost.dataset.fullText || "";
       const shouldRefresh =
         !storedText ||
         (currentText && currentText !== storedText && !currentText.trim().endsWith("..."));
       const sourceText = shouldRefresh ? currentText : storedText;
-      // Trimming the text here would rewrite the paragraph's contents and take
-      // the "more" button with it. Where the clamp owns the synopsis, the text
-      // is left whole and CSS decides what shows.
-      if (node.classList.contains("home-hero-description") && this.usesTwoLineHeroSynopsis()) {
-        node.classList.remove("is-truncated");
-        return;
+      // What arrived before anything was cut. `fullText` below is already the
+      // synopsis capped at forty words, so restoring that on "more" handed back
+      // a cut synopsis -- a shorter cut, but still not what was written.
+      if (shouldRefresh && currentText) {
+        textHost.dataset.sourceText = currentText;
       }
       const isModernHeroDescription =
         node.classList.contains("home-hero-description") &&
@@ -6643,8 +6659,8 @@ export const HomeScreen = {
       if (!fullText) {
         return;
       }
-      node.dataset.fullText = fullText;
-      node.textContent = wordTrimmed ? `${fullText}...` : fullText;
+      textHost.dataset.fullText = fullText;
+      textHost.textContent = wordTrimmed ? `${fullText}...` : fullText;
       const fits =
         node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1;
       if (fits) {
@@ -6657,7 +6673,7 @@ export const HomeScreen = {
       let high = fullText.length;
       while (low < high) {
         const mid = Math.ceil((low + high) / 2);
-        node.textContent = `${fullText.slice(0, mid).trimEnd()}${ellipsis}`;
+        textHost.textContent = `${fullText.slice(0, mid).trimEnd()}${ellipsis}`;
         const overflows =
           node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1;
         if (overflows) {
@@ -6667,16 +6683,22 @@ export const HomeScreen = {
         }
       }
       const finalText = `${fullText.slice(0, Math.max(0, low)).trimEnd()}${ellipsis}`;
-      node.textContent = finalText;
+      textHost.textContent = finalText;
       node.classList.add("is-truncated");
     });
+    // Whether there is anything left to reveal is only known once the text has
+    // been fitted, so the label is settled here rather than guessed at earlier.
+    this.syncHeroDescriptionToggle?.();
   },
 
   applyModernHeroDescriptionBounds(root = null) {
     if (!this.container || this.layoutMode !== "modern") {
       return;
     }
-    const modernHeroDescriptionMaxLines = 4;
+    // A phone held upright has the least room of any shape the hero takes, and
+    // two lines is the most it can give a synopsis before the synopsis becomes
+    // the hero.
+    const modernHeroDescriptionMaxLines = this.usesTwoLineHeroSynopsis() ? 2 : 4;
     const scope = root instanceof HTMLElement ? root : this.container;
     const heroNodes = scope.classList?.contains("home-hero-card")
       ? [scope]
@@ -6693,12 +6715,6 @@ export const HomeScreen = {
       if (description.classList.contains("is-empty")) {
         return;
       }
-      // An inline height outranks every rule, so where the clamp owns the
-      // synopsis the height is simply not set and the stylesheet is left alone.
-      if (this.usesTwoLineHeroSynopsis()) {
-        return;
-      }
-
       const descriptionStyle = getComputedStyle(description);
       const lineHeight = parseFloat(descriptionStyle.lineHeight || "0") || 0;
       const fontSize = parseFloat(descriptionStyle.fontSize || "0") || 0;
@@ -6710,15 +6726,13 @@ export const HomeScreen = {
     });
   },
 
-  // The hero's synopsis clamps to two lines on a phone, with the rest behind a
-  // "more" at the end of the second -- the same control the detail page's
-  // synopsis carries, for the same reason: two lines is the most a hero can
-  // give a synopsis before the synopsis becomes the hero.
+  // The hero's synopsis is trimmed to two lines on a phone held upright, with
+  // the rest behind a "more" that follows the sentence -- the same control the
+  // detail page's synopsis carries.
   //
   // The button is built here rather than in the hero's markup because swiping
-  // to the next hero assigns `textContent`, which would throw away any child it
-  // found there. One code path creates it, so both the first hero and every one
-  // after it get the same thing.
+  // to the next hero rewrites the synopsis, and one code path creating it means
+  // the first hero and every one after it get the same thing.
   bindHomeHeroDescriptionToggle(root = null) {
     if (!this.container) {
       return;
@@ -6726,6 +6740,13 @@ export const HomeScreen = {
     const scope = root instanceof HTMLElement ? root : this.container;
     const description = scope.querySelector(".home-hero-description");
     if (!(description instanceof HTMLElement)) {
+      return;
+    }
+    // Anywhere else the hero already trims its synopsis to fit and there is no
+    // control to offer, so one is not left behind unstyled.
+    if (!this.usesTwoLineHeroSynopsis()) {
+      description.querySelector(".home-hero-description-toggle")?.remove();
+      description.classList.remove("is-expanded");
       return;
     }
     let toggle = description.querySelector(".home-hero-description-toggle");
@@ -6745,21 +6766,39 @@ export const HomeScreen = {
       if (description.classList.contains("is-expanded")) {
         return;
       }
-      // A clamped paragraph is taller than it is allowed to be. Anything that
-      // fits has nothing to reveal, so the control stays away.
-      toggle.hidden = description.scrollHeight <= description.clientHeight + 1;
+      // The trimming fits the text and this button into two lines together, so
+      // what decides whether there is anything to reveal is whether it had to
+      // cut anything. Measured against the synopsis as written, not against the
+      // forty-word cut of it, or a synopsis longer than that would offer a
+      // "more" that reveals nothing -- or none at all.
+      const host = description.querySelector(".home-hero-description-text");
+      const shown = String(host?.textContent || "");
+      const whole = String(host?.dataset?.sourceText || "");
+      toggle.hidden = !whole || shown.trimEnd() === whole.trimEnd();
     };
     toggle.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
+      const host = description.querySelector(".home-hero-description-text");
       const expanded = description.classList.toggle("is-expanded");
       toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
       setLabel(expanded);
-      if (!expanded) {
-        syncToggle();
+      if (expanded) {
+        // The synopsis as written, and no height to keep it out of. Not
+        // `fullText`, which is already the forty-word cut.
+        if (host?.dataset?.sourceText) {
+          host.textContent = host.dataset.sourceText;
+        }
+        description.style.maxHeight = "none";
+      } else {
+        description.style.maxHeight = "";
+        this.scheduleHomeTruncationUpdate();
       }
     };
     description.classList.remove("is-expanded");
+    // The height belongs to applyModernHeroDescriptionBounds. Clearing it here
+    // too raced it: whichever ran last won, and when that was this one the
+    // synopsis kept its full height and no label appeared.
     toggle.setAttribute("aria-expanded", "false");
     setLabel(false);
     syncToggle();
@@ -6768,6 +6807,7 @@ export const HomeScreen = {
     }
     // Turning the phone changes how many lines fit, and so whether there is
     // anything left to reveal.
+    this.syncHeroDescriptionToggle = syncToggle;
     this.heroDescriptionResizeHandler = () => syncToggle();
     globalThis.addEventListener?.("resize", this.heroDescriptionResizeHandler);
   },

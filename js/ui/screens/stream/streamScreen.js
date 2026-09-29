@@ -36,6 +36,7 @@ import {
   requestAddonLogo,
   resolveAddonLogo
 } from "../../../core/media/addonLogoCache.js";
+import { renderContentFilterPicker } from "../../components/filterPicker.js";
 import { Platform } from "../../../platform/index.js";
 import { Environment } from "../../../platform/environment.js";
 import { I18n } from "../../../i18n/index.js";
@@ -982,6 +983,7 @@ export const StreamScreen = {
     this.offlineLocalCopies = [];
     this.offlineSubtitleByDownload = new Map();
     this.addonFilter = "all";
+    this.addonPickerOpen = false;
     this.focusState = { zone: "filter", index: 0 };
     this.listScrollTop = 0;
     this.addonLogoLookup = {};
@@ -1802,34 +1804,37 @@ export const StreamScreen = {
     return String(name) === "all" ? t("common.all", {}, "All") : String(name);
   },
 
-  // One addon per chip put a scrolling rail above the sources, and the sources
-  // are what the screen is for. The options are carried by a transparent native
-  // select over the pill, so a phone gets the system picker and a keyboard gets
-  // select semantics without a second picker state machine -- the same shape
-  // the season control uses on the detail page.
-  renderAddonFilterSelect() {
-    const names = ["all", ...this.getOrderedFilterNames()];
-    const options = names
-      .map(
-        (name) =>
-          `<option value="${escapeHtml(name)}"${name === this.addonFilter ? " selected" : ""}>${escapeHtml(
-            this.getAddonFilterLabel(name)
-          )}</option>`
-      )
-      .join("");
-    const busy = this.hasPendingSourceLoads("all");
-    return `
-      <div class="stream-route-filter-select-shell${busy ? " is-loading" : ""}">
-        <span class="stream-route-filter-select-value">${escapeHtml(this.getAddonFilterLabel(this.addonFilter))}</span>
-        <span class="material-icons stream-route-filter-select-chevron" aria-hidden="true">expand_more</span>
-        <select class="stream-route-filter-select focusable"
-                aria-label="${escapeHtml(t("stream_filter_source", {}, "Source"))}">
-          ${options}
-        </select>
-      </div>
-    `;
+  getAddonFilterOptions() {
+    return ["all", ...this.getOrderedFilterNames()].map((name) => ({
+      value: name,
+      label: this.getAddonFilterLabel(name)
+    }));
   },
 
+  // One addon per chip put a scrolling rail above the sources, and the sources
+  // are what the screen is for. It becomes a dropdown -- the app's own menu,
+  // the one Library and Discover already use, rather than a native select whose
+  // panel is drawn by the operating system and cannot be styled to match
+  // anything around it.
+  renderAddonFilterPicker() {
+    const options = this.getAddonFilterOptions();
+    const selectedIndex = Math.max(
+      0,
+      options.findIndex((option) => option.value === this.addonFilter)
+    );
+    return renderContentFilterPicker({
+      picker: "addon",
+      title: t("stream_filter_source", {}, "Source"),
+      value: this.getAddonFilterLabel(this.addonFilter),
+      options,
+      open: Boolean(this.addonPickerOpen),
+      focusIndex: selectedIndex,
+      selectedIndex,
+      widthClass: "library-picker-flex",
+      anchorAction: "toggleAddonPicker",
+      optionAction: "selectAddonOption"
+    });
+  },
   renderStreamRefreshAction() {
     const label = t("stream_refresh_sources", {}, "Refresh sources");
     return `
@@ -2180,7 +2185,7 @@ export const StreamScreen = {
             ${
               Platform.isBrowser()
                 ? `<div class="stream-route-filter-row">
-                     ${this.renderAddonFilterSelect()}
+                     ${this.renderAddonFilterPicker()}
                      ${this.renderStreamRefreshAction()}
                    </div>`
                 : `<div class="stream-route-chip-wrap">
@@ -2273,39 +2278,55 @@ export const StreamScreen = {
     };
     this.container.addEventListener("click", this.boundDesktopPointerActionHandler);
 
-    this.boundStreamFilterChangeHandler = (event) => {
-      const select =
-        event.target instanceof Element
-          ? event.target.closest(".stream-route-filter-select")
-          : null;
-      if (!(select instanceof HTMLSelectElement) || !this.container?.contains(select)) {
+    // The picker is the app's own menu, so opening, choosing and dismissing it
+    // are this screen's to handle. Capture, so the card handler above never
+    // sees these first.
+    this.boundStreamFilterRowHandler = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || !this.container?.contains(target)) {
         return;
       }
-      const next = String(select.value || "all");
-      if (next === this.addonFilter) {
+      const refresh = target.closest("[data-action='refreshStreams']");
+      if (refresh) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.addonPickerOpen = false;
+        // Bumping the token abandons whatever is still in flight, which is the
+        // point: a refresh that waited for the answers it is replacing would be
+        // no refresh at all.
+        this.loadToken = (this.loadToken || 0) + 1;
+        void this.loadStreams();
         return;
       }
-      this.setAddonFilter(next);
+      const option = target.closest("[data-action='selectAddonOption']");
+      if (option) {
+        event.preventDefault();
+        event.stopPropagation();
+        const index = Number(option.dataset.optionIndex || 0);
+        const chosen = this.getAddonFilterOptions()[index];
+        this.addonPickerOpen = false;
+        if (chosen) {
+          this.setAddonFilter(chosen.value);
+        } else {
+          this.render();
+        }
+        return;
+      }
+      const anchor = target.closest("[data-action='toggleAddonPicker']");
+      if (anchor) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.addonPickerOpen = !this.addonPickerOpen;
+        this.render();
+        return;
+      }
+      // Anywhere else closes it, the way every menu in the app behaves.
+      if (this.addonPickerOpen) {
+        this.addonPickerOpen = false;
+        this.render();
+      }
     };
-    this.container.addEventListener("change", this.boundStreamFilterChangeHandler);
-
-    // Bumping the token abandons whatever is still in flight, which is the
-    // point: a refresh that waited for the answers it is replacing would be no
-    // refresh at all. Capture, so the card handler above never sees it first.
-    this.boundStreamRefreshHandler = (event) => {
-      const button =
-        event.target instanceof Element
-          ? event.target.closest("[data-action='refreshStreams']")
-          : null;
-      if (!(button instanceof HTMLElement) || !this.container?.contains(button)) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      this.loadToken = (this.loadToken || 0) + 1;
-      void this.loadStreams();
-    };
-    this.container.addEventListener("click", this.boundStreamRefreshHandler, true);
+    this.container.addEventListener("click", this.boundStreamFilterRowHandler, true);
   },
 
   renderOfflineDownloadNotice() {
@@ -3012,14 +3033,11 @@ export const StreamScreen = {
     }
     this.renderedMarkup = null;
     this.boundStreamListNode = null;
-    if (this.boundStreamFilterChangeHandler && this.container) {
-      this.container.removeEventListener("change", this.boundStreamFilterChangeHandler);
+    if (this.boundStreamFilterRowHandler && this.container) {
+      this.container.removeEventListener("click", this.boundStreamFilterRowHandler, true);
     }
-    this.boundStreamFilterChangeHandler = null;
-    if (this.boundStreamRefreshHandler && this.container) {
-      this.container.removeEventListener("click", this.boundStreamRefreshHandler, true);
-    }
-    this.boundStreamRefreshHandler = null;
+    this.boundStreamFilterRowHandler = null;
+    this.addonPickerOpen = false;
     if (this.boundDesktopPointerActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopPointerActionHandler);
       this.boundDesktopPointerActionHandler = null;
