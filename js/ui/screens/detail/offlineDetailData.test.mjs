@@ -48,3 +48,54 @@ test("local episodes retain the stable offline copy identity used by direct play
   assert.equal(episode.seriesTitle, "Series One");
   assert.equal(episode.overview, "Local episode description");
 });
+
+test("offline, a series shows only the episodes that are on the device", () => {
+  // Opened after the app had been online, the metadata came from cache and the
+  // whole run appeared -- episodes with no file and no artwork. Opened in an app
+  // that started offline, only the downloads appeared. Same device, same files,
+  // two different pages.
+  const remote = [
+    { id: "s1e1", season: 1, episode: 1, title: "One" },
+    { id: "s1e2", season: 1, episode: 2, title: "Two" },
+    { id: "s1e3", season: 1, episode: 3, title: "Three" }
+  ];
+  const offline = [{ season: 1, episode: 2, offlineDownloadId: "d2", title: "Two" }];
+
+  const online = mergeDetailEpisodesWithOfflineDownloads(remote, offline);
+  assert.deepEqual(online.map((episode) => episode.episode), [1, 2, 3]);
+
+  const offlineOnly = mergeDetailEpisodesWithOfflineDownloads(remote, offline, { offlineOnly: true });
+  assert.deepEqual(offlineOnly.map((episode) => episode.episode), [2]);
+  assert.equal(offlineOnly[0].offlineDownloadId, "d2");
+  // The remote title survives the filter; it is the list that shrinks, not the
+  // metadata of what is left.
+  assert.equal(offlineOnly[0].title, "Two");
+});
+
+test("offline with nothing downloaded is an empty list, not the whole series", () => {
+  const remote = [{ id: "s1e1", season: 1, episode: 1 }];
+  assert.deepEqual(mergeDetailEpisodesWithOfflineDownloads(remote, [], { offlineOnly: true }), []);
+});
+
+test("offline, an episode still comes from the download, not the cached remote URL", () => {
+  // The cached metadata answers offline and carries a still URL that cannot be
+  // fetched. Keeping it drew empty cards; the download's own stored image is
+  // the one that loads. Online the remote still is the better picture and stays.
+  const remote = [{ id: "s1e2", season: 1, episode: 2, thumbnail: "https://images/still.jpg" }];
+  const offline = [
+    { season: 1, episode: 2, offlineDownloadId: "d2", thumbnail: "blob:local-still" }
+  ];
+
+  const [online] = mergeDetailEpisodesWithOfflineDownloads(remote, offline);
+  assert.equal(online.thumbnail, "https://images/still.jpg");
+
+  const [off] = mergeDetailEpisodesWithOfflineDownloads(remote, offline, { offlineOnly: true });
+  assert.equal(off.thumbnail, "blob:local-still");
+});
+
+test("offline, an episode with no stored image shows none rather than a broken one", () => {
+  const remote = [{ id: "s1e2", season: 1, episode: 2, thumbnail: "https://images/still.jpg" }];
+  const offline = [{ season: 1, episode: 2, offlineDownloadId: "d2", thumbnail: null }];
+  const [off] = mergeDetailEpisodesWithOfflineDownloads(remote, offline, { offlineOnly: true });
+  assert.equal(off.thumbnail, null);
+});

@@ -13,8 +13,8 @@ import { SettingsScreen } from "../screens/settings/settingsScreen.js";
 import { ConsoleDebugScreen } from "../screens/debug/consoleDebugScreen.js";
 import { TraktScreen } from "../screens/trakt/traktScreen.js";
 import { SupportersContributorsScreen } from "../screens/supporters/supportersContributorsScreen.js";
-import { ExperienceModeSelectionScreen } from "../screens/onboarding/experienceModeSelectionScreen.js";
 import { EssentialAddonSetupScreen } from "../screens/onboarding/essentialAddonSetupScreen.js";
+import { QuickSetupScreen } from "../screens/onboarding/quickSetupScreen.js";
 import { LicensesAttributionsScreen } from "../screens/settings/licensesAttributionsScreen.js";
 import { PluginScreen } from "../screens/plugin/pluginScreen.js";
 import { PluginsScreen } from "../screens/plugin/pluginsScreen.js";
@@ -85,8 +85,8 @@ const NON_BACKSTACK_ROUTES = new Set([
   "authQrSignIn",
   "authSignIn",
   "syncCode",
-  "experienceModeSelection",
-  "essentialAddonSetup"
+  "essentialAddonSetup",
+  "quickSetup"
 ]);
 
 const NUVIO_HISTORY_STATE_KEY = "__nuvioHistory";
@@ -191,8 +191,8 @@ export const Router = {
     authSignIn: AuthSignInScreen,
     syncCode: SyncCodeScreen,
     profileSelection: ProfileSelectionScreen,
-    experienceModeSelection: ExperienceModeSelectionScreen,
     essentialAddonSetup: EssentialAddonSetupScreen,
+    quickSetup: QuickSetupScreen,
     detail: MetaDetailsScreen,
     library: LibraryScreen,
     search: SearchScreen,

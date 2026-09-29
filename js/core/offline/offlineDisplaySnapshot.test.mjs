@@ -28,3 +28,19 @@ test("remote empty fields do not erase useful local display fields or episode st
   assert.equal(merged.episode.still, "still.jpg");
   assert.equal(applyOfflineDisplaySnapshot({ name: "Title" }, merged).description, "Saved overview");
 });
+
+test("offline, the snapshot does not hand back a logo that cannot be fetched", () => {
+  // The remembered logo is a remote URL. With no connection it drew a broken
+  // image box above the title -- worse than the plain text it replaced.
+  const snapshot = { logo: "https://images.example/logo.png", title: "The Wire" };
+
+  const online = applyOfflineDisplaySnapshot({ logo: null }, snapshot);
+  assert.equal(online.logo, "https://images.example/logo.png");
+
+  const offline = applyOfflineDisplaySnapshot({ logo: null }, snapshot, { allowRemoteArtwork: false });
+  assert.equal(offline.logo, null);
+
+  // A logo already resolved to a local copy survives either way.
+  const local = applyOfflineDisplaySnapshot({ logo: "blob:local-logo" }, snapshot, { allowRemoteArtwork: false });
+  assert.equal(local.logo, "blob:local-logo");
+});

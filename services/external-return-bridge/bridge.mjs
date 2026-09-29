@@ -30,7 +30,12 @@ function formatPosition(seconds) {
     : `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
 }
 
-function returnPage(response, status, { finished = false, position = null, error = "", pushSent = false } = {}) {
+// `pushOffer` is only ever true when this server can actually send the
+// notification and this playback had nobody to send it to -- so the offer is
+// never made to someone it cannot work for. It says where to turn it on rather
+// than offering a button: this page is a different origin from the app, and a
+// permission granted here would belong to the bridge, not to Nuvio.
+function returnPage(response, status, { finished = false, position = null, error = "", pushSent = false, pushOffer = false } = {}) {
   const positionLine = Number.isFinite(position) ? `<p class="detail">Position <strong>${formatPosition(position)}</strong></p>` : "";
   const heading = error ? "Playback unavailable" : finished ? "Playback completed" : "Playback received";
   const detail = error
@@ -44,8 +49,11 @@ function returnPage(response, status, { finished = false, position = null, error
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff"
   });
-  const action = `<p class="safe">${pushSent ? "Tap the notification to return to the app." : "Return to NuvioWeb from your Home Screen to continue."}</p>${pushSent ? `<script>setTimeout(function(){try{window.close()}catch(_){ }},800)</script>` : ""}`;
-  response.end(`<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="dark light"><title>NuvioWeb</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;background:#090a0d;color:#f7f7f8;font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:max(24px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}.card{width:min(100%,390px);padding:30px 24px;border:1px solid #30323a;border-radius:24px;background:#191a1f;box-shadow:0 20px 60px #0008;text-align:center}.brand{font-weight:800;letter-spacing:-.04em;font-size:20px}.check{width:48px;height:48px;margin:24px auto 16px;display:grid;place-items:center;border-radius:50%;background:#277a53;color:white;font-size:28px}h1{margin:0;font-size:26px;letter-spacing:-.035em}.copy,.detail,.safe{color:#c4c6ce;margin:12px 0}.detail strong{display:block;color:#fff;font-size:22px;margin-top:4px}.return{display:block;width:100%;margin-top:24px;padding:14px 16px;border:0;border-radius:14px;background:#fff;color:#15161a;text-decoration:none;font:750 16px inherit;cursor:pointer}.safe{font-size:13px;margin-top:15px}</style></head><body><main class="card"><div class="brand">NuvioWeb</div><div class="check" aria-hidden="true">✓</div><h1>${heading}</h1><p class="copy">${detail}</p>${positionLine}${action}</main></body></html>`);
+  const offer = !pushSent && !error && pushOffer
+    ? `<p class="offer">Next time, Nuvio can send you a notification from here, and one tap on it takes you straight back. Turn on <strong>Return to NuvioWeb</strong> in the app, under Settings &rsaquo; Playback.</p>`
+    : "";
+  const action = `<p class="safe">${pushSent ? "Tap the notification to return to the app." : "Return to NuvioWeb from your Home Screen to continue."}</p>${offer}${pushSent ? `<script>setTimeout(function(){try{window.close()}catch(_){ }},800)</script>` : ""}`;
+  response.end(`<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="dark light"><title>NuvioWeb</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;background:#090a0d;color:#f7f7f8;font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:max(24px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}.card{width:min(100%,390px);padding:30px 24px;border:1px solid #30323a;border-radius:24px;background:#191a1f;box-shadow:0 20px 60px #0008;text-align:center}.brand{font-weight:800;letter-spacing:-.04em;font-size:20px}.check{width:48px;height:48px;margin:24px auto 16px;display:grid;place-items:center;border-radius:50%;background:#277a53;color:white;font-size:28px}h1{margin:0;font-size:26px;letter-spacing:-.035em}.copy,.detail,.safe{color:#c4c6ce;margin:12px 0}.detail strong{display:block;color:#fff;font-size:22px;margin-top:4px}.return{display:block;width:100%;margin-top:24px;padding:14px 16px;border:0;border-radius:14px;background:#fff;color:#15161a;text-decoration:none;font:750 16px inherit;cursor:pointer}.safe{font-size:13px;margin-top:15px}.offer{margin:18px 0 0;padding:14px 16px;border:1px solid #2c4a3c;border-radius:14px;background:#12241c;color:#bfe3cf;font-size:13px;line-height:1.5;text-align:left}.offer strong{color:#eafff2}</style></head><body><main class="card"><div class="brand">NuvioWeb</div><div class="check" aria-hidden="true">✓</div><h1>${heading}</h1><p class="copy">${detail}</p>${positionLine}${action}</main></body></html>`);
 }
 
 function isValidToken(token) {
@@ -181,8 +189,12 @@ export function createExternalReturnHandler({ store = createExternalReturnStore(
       returnPage(response, 200, { error: "Infuse could not play this stream. Return to NuvioWeb to choose another source." });
       return;
     }
-    void sendReturnPush(store.takeBinding(token), provider === "outplayer" && sourceOutcome === "finished", pushConfig(env), sender).then((pushSent) => {
-      returnPage(response, 200, { finished: provider === "outplayer" && sourceOutcome === "finished", position: position.value, pushSent });
+    const binding = store.takeBinding(token);
+    // Push configured here but no binding means the app never subscribed: the
+    // one case where telling the viewer about notifications is worth anything.
+    const pushOffer = Boolean(pushConfig(env)) && !binding;
+    void sendReturnPush(binding, provider === "outplayer" && sourceOutcome === "finished", pushConfig(env), sender).then((pushSent) => {
+      returnPage(response, 200, { finished: provider === "outplayer" && sourceOutcome === "finished", position: position.value, pushSent, pushOffer });
     });
   };
 }

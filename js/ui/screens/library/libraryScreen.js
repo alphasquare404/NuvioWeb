@@ -7,6 +7,7 @@ import {
 } from "../../navigation/browserScrollPosition.js";
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
+import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import {
@@ -953,6 +954,14 @@ export const LibraryScreen = {
     if (this.isDownloadedView()) {
       return `<div id="libraryContentAreaMount">${this.renderDownloadedLibraryContent()}</div>`;
     }
+    // Saved and Cloud are both lists of things that live elsewhere. Offline,
+    // their artwork cannot load and none of them can be opened, so the shelf
+    // filled with grey rectangles is worse than an empty one: it offers
+    // seventeen titles and delivers none. Downloaded is untouched -- that shelf
+    // is exactly what still works.
+    if (isBrowserOfflineNow()) {
+      return `<div id="libraryContentAreaMount">${this.renderOfflineEmptyState()}</div>`;
+    }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       return `
         <div id="libraryContentAreaMount">
@@ -1495,6 +1504,24 @@ export const LibraryScreen = {
       subtitleSelector: ".library-grid-meta"
     });
     this.desktopMediaHoverPreview.bind(this.container);
+  },
+
+  renderOfflineEmptyState() {
+    return `
+      <section class="library-empty-state">
+        <span class="material-icons library-empty-icon" aria-hidden="true">cloud_off</span>
+        <h3 class="library-empty-title">${escapeHtml(
+          t("library_offline_title", {}, "You're offline")
+        )}</h3>
+        <p class="library-empty-subtitle">${escapeHtml(
+          t(
+            "library_offline_subtitle",
+            {},
+            "Saved and Cloud need a connection. Downloaded titles are still here."
+          )
+        )}</p>
+      </section>
+    `;
   },
 
   renderEmptyState() {

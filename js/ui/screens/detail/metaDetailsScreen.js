@@ -1,5 +1,6 @@
 ﻿import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
@@ -1570,7 +1571,9 @@ export const MetaDetailsScreen = {
     this.meta = { ...snapshot.meta };
     this.isSavedInLibrary = Boolean(snapshot.isSavedInLibrary);
     this.isMarkedWatched = Boolean(snapshot.isMarkedWatched);
-    this.episodes = Array.isArray(snapshot.episodes) ? [...snapshot.episodes] : [];
+    this.episodes = this.applyOfflineEpisodeVisibility(
+      Array.isArray(snapshot.episodes) ? [...snapshot.episodes] : []
+    );
     this.castItems = Array.isArray(snapshot.castItems) ? [...snapshot.castItems] : [];
     this.moreLikeThisItems = Array.isArray(snapshot.moreLikeThisItems)
       ? [...snapshot.moreLikeThisItems]
@@ -2103,10 +2106,15 @@ export const MetaDetailsScreen = {
     if (token !== this.detailLoadToken) {
       return;
     }
-    if (this.remoteMetaUnavailable && this.localOfflineDownloads.length) {
+    // A warm cache answers the metadata request even with no connection, so
+    // "the request failed" is not the same question as "can this device fetch a
+    // picture". Offline, the locally stored artwork is used either way; without
+    // this, a series opened after the app had been online kept remote artwork
+    // URLs and drew broken images where its logo and stills belong.
+    const browserOffline = isBrowserOfflineNow();
+    if ((this.remoteMetaUnavailable || browserOffline) && this.localOfflineDownloads.length) {
       const local = this.localOfflineDownloads[0];
       const artwork = await this.getOfflineDetailArtwork(local);
-      const browserOffline = Platform.isBrowser() && globalThis.navigator?.onLine === false;
       meta = applyOfflineDisplaySnapshot(
         {
           ...meta,
@@ -2129,7 +2137,8 @@ export const MetaDetailsScreen = {
             (browserOffline ? null : meta?.background || meta?.poster) ||
             null
         },
-        local.displaySnapshot || local
+        local.displaySnapshot || local,
+        { allowRemoteArtwork: !browserOffline }
       );
     }
     this.resumeContentIds = buildResumeContentIds(meta, this.params);
@@ -2157,10 +2166,7 @@ export const MetaDetailsScreen = {
     // Fast first paint with base metadata.
     this.meta = meta;
     setBrowserMediaTitle({ title: meta?.name, year: meta?.releaseInfo });
-    this.episodes = mergeDetailEpisodesWithOfflineDownloads(
-      normalizeEpisodes(meta?.videos || []),
-      this.localOfflineEpisodes
-    );
+    this.setEpisodesForConnectivity(meta);
     if (!this.remoteMetaUnavailable) {
       void this.backfillOfflineDisplayMetadata(meta);
     }
@@ -2227,10 +2233,7 @@ export const MetaDetailsScreen = {
 
       this.meta = enrichedMeta || meta;
       setBrowserMediaTitle({ title: this.meta?.name, year: this.meta?.releaseInfo });
-      this.episodes = mergeDetailEpisodesWithOfflineDownloads(
-        normalizeEpisodes(this.meta?.videos || []),
-        this.localOfflineEpisodes
-      );
+      this.setEpisodesForConnectivity(this.meta);
       if (!this.remoteMetaUnavailable) {
         void this.backfillOfflineDisplayMetadata(this.meta);
       }
@@ -3520,6 +3523,27 @@ export const MetaDetailsScreen = {
         ).catch(() => null);
       })
     );
+  },
+
+  // Every path that fills the episode list goes through here, because there is
+  // more than one and they do not all run. The first paint builds the list from
+  // whatever metadata arrived; an enrichment pass rebuilds it a moment later
+  // from a fuller copy; returning to the screen restores it from a snapshot.
+  // Filtering at only one of them meant the offline list was correct for an
+  // instant and then quietly replaced by the whole series.
+  setEpisodesForConnectivity(meta) {
+    this.episodes = mergeDetailEpisodesWithOfflineDownloads(
+      normalizeEpisodes(meta?.videos || []),
+      this.localOfflineEpisodes,
+      { offlineOnly: isBrowserOfflineNow() }
+    );
+  },
+
+  // A snapshot taken while online carries the whole series; restoring it while
+  // offline would put back exactly what the filter removed.
+  applyOfflineEpisodeVisibility(episodes = []) {
+    if (!isBrowserOfflineNow()) return episodes;
+    return episodes.filter((episode) => Boolean(episode?.offlineDownloadId));
   },
 
   async getOfflineDetailArtwork(download) {

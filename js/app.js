@@ -22,6 +22,8 @@ import { I18n } from "./i18n/index.js";
 import { resolveExperienceRoute } from "./core/profile/experienceModeRouting.js";
 import { initializeBrowserOfflineDownloadQueue } from "./core/offline/browserOfflineDownloadQueue.js";
 import { installExternalPlaybackReturnCoordinator } from "./ui/components/browserExternalPlaybackHandoff.js";
+import { markContinueWatchingStale } from "./ui/screens/home/continueWatchingStaleSignal.js";
+import { watchProgressRepository } from "./data/repository/watchProgressRepository.js";
 import { watchBrowserInstallAvailability } from "./ui/components/browserInstallPrompt.js";
 import { installBrowserFocusModality } from "./ui/navigation/browserFocusModality.js";
 import { installWatchProgressReconnectSync } from "./core/profile/watchProgressReconnect.js";
@@ -386,6 +388,19 @@ async function bootstrapApp() {
     getProfileId: () => ProfileManager.getActiveProfileId(),
     onAutomaticReport: async (report) => {
       const applied = await applyExternalPlaybackReportForProvider(report);
+      if (applied) {
+        // The local write has already been announced to Home. This is the
+        // second, slower correction, and nothing waits on it: Continue Watching
+        // read from Trakt or SIMKL is the provider's list, not this device's --
+        // the local write is filtered straight out of it, and the provider
+        // snapshot still holds the pre-completion state. So ask the selected
+        // source again, which is what a pull-to-refresh does and the reason a
+        // pull-to-refresh was the only way to see this.
+        void watchProgressRepository
+          .forceRefreshSelectedSource()
+          .catch(() => false)
+          .then(() => markContinueWatchingStale());
+      }
       if (!applied) {
         // A discarded callback is invisible otherwise: the user only sees the
         // manual prompt, and only for the one player that offers it. Recorded

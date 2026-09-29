@@ -76,19 +76,45 @@ export function restoreTrackScroll(container, state) {
     return;
   }
   const { trackScrollLeft } = state;
-  if (trackScrollLeft?.size) {
+  if (!trackScrollLeft?.size) {
+    return;
+  }
+
+  // One assignment is not enough. A rail the layout has not finished sizing is
+  // only as wide as its viewport, so the browser clamps the carried position
+  // down to what fits -- and a rail the viewer had scrolled halfway along
+  // slides back to the start by itself, a beat after marking a title watched.
+  // Measuring first does not prevent it: the row was replaced moments ago and
+  // its cards can still be widening.
+  //
+  // So try again over the next frames, and only where the rail is still short
+  // of where it was. A viewer who scrolls it in the meantime has gone further
+  // than the carried position or deliberately moved it, and is left alone.
+  const apply = () => {
+    let clampedShort = false;
     container.querySelectorAll(".home-track[data-track-row-key]").forEach((track) => {
-      const scrollLeft = trackScrollLeft.get(String(track.dataset?.trackRowKey || ""));
-      if (!scrollLeft) {
+      const wanted = trackScrollLeft.get(String(track.dataset?.trackRowKey || ""));
+      if (!wanted || Math.round(Number(track.scrollLeft) || 0) >= wanted) {
         return;
       }
-      // Reading the extent first settles layout, so the assignment is not
-      // clamped to 0 against a track the parser has not measured yet.
       const maxScrollLeft = Math.max(
         0,
         Number(track.scrollWidth || 0) - Number(track.clientWidth || 0)
       );
-      track.scrollLeft = Math.min(scrollLeft, maxScrollLeft);
+      track.scrollLeft = Math.min(wanted, maxScrollLeft);
+      if (maxScrollLeft < wanted) {
+        clampedShort = true;
+      }
     });
+    return clampedShort;
+  };
+
+  if (!apply() || typeof requestAnimationFrame !== "function") {
+    return;
   }
+  requestAnimationFrame(() => {
+    if (apply()) {
+      requestAnimationFrame(apply);
+    }
+  });
 }

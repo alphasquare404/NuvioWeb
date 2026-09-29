@@ -116,3 +116,45 @@ test("temporary Push bindings share the bounded handoff lifetime", () => {
   current += 11;
   assert.equal(store.takeBinding(third), null);
 });
+
+test("the callback page offers notifications only where they could have worked", async () => {
+  const env = {
+    NUVIO_WEB_PUSH_PUBLIC_KEY: "public",
+    NUVIO_WEB_PUSH_PRIVATE_KEY: "private",
+    NUVIO_WEB_PUSH_SUBJECT: "mailto:nuvio@example.com"
+  };
+  const subscription = { endpoint: "https://push.example/e", keys: { p256dh: "p", auth: "a" } };
+
+  // Push configured, nothing subscribed: this is the viewer who can act on it.
+  await withBridge({ env }, async (baseUrl) => {
+    const page = await (
+      await fetch(`${baseUrl}/api/external-return/report/${TOKEN}?outcome=stopped&position=120&duration=300`)
+    ).text();
+    assert.match(page, /class="offer"/);
+    assert.match(page, /Settings/);
+  });
+
+  // Already subscribed: the notification went out, so there is nothing to offer.
+  await withBridge(
+    { env, sender: { setVapidDetails() {}, async sendNotification() {} } },
+    async (baseUrl) => {
+      await fetch(`${baseUrl}/api/external-return/push/bind`, {
+        method: "POST",
+        body: JSON.stringify({ token: TOKEN, subscription })
+      });
+      const page = await (
+        await fetch(`${baseUrl}/api/external-return/report/${TOKEN}?outcome=stopped&position=120&duration=300`)
+      ).text();
+      assert.doesNotMatch(page, /class="offer"/);
+    }
+  );
+
+  // No push on this server at all: the offer would point at something that
+  // cannot be turned on, so it is never made.
+  await withBridge({ env: {} }, async (baseUrl) => {
+    const page = await (
+      await fetch(`${baseUrl}/api/external-return/report/${TOKEN}?outcome=stopped&position=120&duration=300`)
+    ).text();
+    assert.doesNotMatch(page, /class="offer"/);
+  });
+});

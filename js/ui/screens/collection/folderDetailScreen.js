@@ -1205,19 +1205,38 @@ export const FolderDetailScreen = {
     });
   },
 
+  // The app's own menu rather than a native select. The select opened a panel
+  // the operating system drew -- white, square, and unlike anything around it --
+  // and because it carried the screen's initial focus, a tablet opened that
+  // panel the moment the collection did, without anyone asking for it.
   renderTabPicker() {
     const selected = this.tabs[this.selectedTabIndex] || this.tabs[0] || {};
-    const options = this.tabs
-      .map(
-        (tab, index) =>
-          `<option value="${index}"${index === this.selectedTabIndex ? " selected" : ""}>${escapeHtml(
-            tab.label || "Tab"
-          )}</option>`
-      )
-      .join("");
+    const open = Boolean(this.tabPickerOpen);
+    const menu = open
+      ? `<div class="library-picker-menu library-picker-menu-open" role="listbox" aria-label="Category">
+          ${this.tabs
+            .map(
+              (tab, index) => `
+            <div class="library-picker-option focusable${index === this.selectedTabIndex ? " selected" : ""}"
+                 data-action="selectTabOption"
+                 data-tab-index="${index}"
+                 role="option"
+                 aria-selected="${index === this.selectedTabIndex ? "true" : "false"}"
+                 tabindex="-1">${escapeHtml(tab.label || "Tab")}</div>
+          `
+            )
+            .join("")}
+        </div>`
+      : "";
     return `
-      <div class="library-picker library-picker-flex folder-detail-tab-picker">
-        <div class="library-picker-anchor library-primary" aria-hidden="true">
+      <div class="library-picker library-picker-flex folder-detail-tab-picker${open ? " open" : ""}">
+        <div class="library-picker-anchor library-primary focusable"
+             data-action="toggleTabPicker"
+             data-focus-key="tab:${this.selectedTabIndex}"
+             role="button"
+             aria-haspopup="listbox"
+             aria-expanded="${open ? "true" : "false"}"
+             tabindex="-1">
           <span class="library-picker-copy">
             <span class="library-picker-title">Category</span>
             <span class="library-picker-value">${escapeHtml(selected.label || "Tab")}</span>
@@ -1228,9 +1247,7 @@ export const FolderDetailScreen = {
             </svg>
           </span>
         </div>
-        <select class="folder-detail-tab-select focusable" data-focus-key="tab:${this.selectedTabIndex}" aria-label="Category">
-          ${options}
-        </select>
+        ${menu}
       </div>
     `;
   },
@@ -1262,9 +1279,18 @@ export const FolderDetailScreen = {
     }
     this.boundDesktopCollectionClickHandler = async (event) => {
       const target = event?.target?.closest?.(
-        ".folder-detail-desktop-back, .folder-detail-tab, .seeall-card[data-action='openDetail']"
+        ".folder-detail-desktop-back, .folder-detail-tab, .seeall-card[data-action='openDetail']," +
+          " [data-action='toggleTabPicker'], [data-action='selectTabOption']"
       );
-      if (!target || !this.container?.contains(target)) return;
+      // A press that lands on none of them still has to be able to shut an open
+      // menu, which is why this falls through rather than returning outright.
+      if (!target || !this.container?.contains(target)) {
+        if (this.tabPickerOpen && this.container?.contains(event?.target)) {
+          this.tabPickerOpen = false;
+          this.render();
+        }
+        return;
+      }
       event.preventDefault?.();
       if (target.classList.contains("folder-detail-desktop-back")) {
         this.prepareHomeReturnAnimation();
@@ -1275,28 +1301,33 @@ export const FolderDetailScreen = {
         this.selectedTabIndex = Math.max(0, Number(target.dataset.tabIndex || 0));
         this.lastFocusedKey = `tab:${this.selectedTabIndex}`;
         this.savedScrollTop = 0;
+        this.tabPickerOpen = false;
+        this.render();
+        return;
+      }
+      const option = target.closest?.("[data-action='selectTabOption']");
+      if (option) {
+        this.selectedTabIndex = Math.max(0, Number(option.dataset.tabIndex || 0));
+        this.lastFocusedKey = `tab:${this.selectedTabIndex}`;
+        this.savedScrollTop = 0;
+        this.tabPickerOpen = false;
+        this.render();
+        return;
+      }
+      if (target.closest?.("[data-action='toggleTabPicker']")) {
+        this.tabPickerOpen = !this.tabPickerOpen;
+        this.render();
+        return;
+      }
+      if (this.tabPickerOpen) {
+        // Anywhere else closes it, the way every menu in the app behaves.
+        this.tabPickerOpen = false;
         this.render();
         return;
       }
       this.openDetailFromNode(target);
     };
     this.container.addEventListener("click", this.boundDesktopCollectionClickHandler);
-    this.boundDesktopCollectionTabChangeHandler = (event) => {
-      const target = event.target instanceof Element ? event.target : null;
-      const select = target?.closest?.(".folder-detail-tab-select");
-      if (!(select instanceof HTMLSelectElement)) {
-        return;
-      }
-      const index = Math.max(0, Number(select.value || 0));
-      if (index === this.selectedTabIndex) {
-        return;
-      }
-      this.selectedTabIndex = index;
-      this.lastFocusedKey = `tab:${index}`;
-      this.savedScrollTop = 0;
-      this.render();
-    };
-    this.container.addEventListener("change", this.boundDesktopCollectionTabChangeHandler);
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {

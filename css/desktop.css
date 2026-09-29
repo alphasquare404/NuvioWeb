@@ -1492,21 +1492,29 @@ html.desktop-browser {
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
 }
 
-.desktop-browser #folderDetail .folder-detail-tab-select {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  opacity: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-anchor {
   cursor: pointer;
-  appearance: none;
-  color-scheme: dark;
+  user-select: none;
+}
+
+/* Library's menu, borrowed whole -- and, as everywhere outside Library's own
+   shell, restated at browser scale rather than the television's. */
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-menu {
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 320px;
+  padding: 4px;
+  border-radius: 14px;
+  overflow-x: hidden;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.3;
 }
 
 .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-grid {
@@ -13522,7 +13530,8 @@ body.desktop-browser {
    from, and in both cases Home was the one page left with a flat background.
    `home-hero-disabled` is the class the screen already sets when it renders no
    hero, so the wash follows it rather than guessing. */
-.desktop-browser #home:has(.home-hero-disabled) {
+.desktop-browser #home:has(.home-hero-disabled),
+.desktop-browser #home:has(.home-offline-shell) {
   background-image: radial-gradient(
     circle 760px at 24% 4%,
     rgb(var(--secondary-color-rgb) / 0.32) 0%,
@@ -13535,7 +13544,10 @@ body.desktop-browser {
    they step aside the way Library's and Search's do. */
 .desktop-browser #home:has(.home-hero-disabled) .home-screen-shell,
 .desktop-browser #home:has(.home-hero-disabled) .home-shell,
-.desktop-browser #home:has(.home-hero-disabled) .home-main {
+.desktop-browser #home:has(.home-hero-disabled) .home-main,
+.desktop-browser #home:has(.home-offline-shell) .home-screen-shell,
+.desktop-browser #home:has(.home-offline-shell) .home-shell,
+.desktop-browser #home:has(.home-offline-shell) .home-main {
   background: transparent;
 }
 
@@ -14795,4 +14807,330 @@ body.desktop-browser {
   .desktop-browser #detail .series-detail-backdrop {
     background-position: center center;
   }
+}
+
+/* Quick Setup. One question per screen, the answer already standing on what the
+   profile has, and Skip always within reach -- a setup nobody can get stuck in
+   is one more people finish. */
+.desktop-browser #quickSetup .quick-setup-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(100%, 560px);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: max(28px, env(safe-area-inset-top)) var(--browser-page-gutter, 20px)
+    max(24px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.desktop-browser #quickSetup .quick-setup-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.desktop-browser #quickSetup .quick-setup-logo {
+  width: auto;
+  max-width: 150px;
+  max-height: 34px;
+  object-fit: contain;
+}
+
+.desktop-browser #quickSetup .quick-setup-progress-label {
+  margin: 0;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.desktop-browser #quickSetup .quick-setup-body {
+  flex: 1 1 auto;
+}
+
+.desktop-browser #quickSetup .quick-setup-body h1 {
+  margin: 0 0 8px;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.desktop-browser #quickSetup .quick-setup-body > p {
+  margin: 0 0 16px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.desktop-browser #quickSetup .quick-setup-note {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid rgb(var(--secondary-color-rgb) / 0.3);
+  border-radius: 12px;
+  background: rgb(var(--secondary-color-rgb) / 0.1);
+  color: var(--text-color, #fff);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.desktop-browser #quickSetup .quick-setup-figure {
+  margin: 0 0 18px;
+}
+
+.desktop-browser #quickSetup .quick-setup-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+.desktop-browser #quickSetup .quick-setup-figure figcaption {
+  margin-top: 10px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.desktop-browser #quickSetup .quick-setup-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.desktop-browser #quickSetup .quick-setup-option {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+/* The choice reads as chosen through its edge and fill, not through a tick that
+   has to be hunted for. */
+.desktop-browser #quickSetup .quick-setup-option.is-selected {
+  border-color: var(--secondary-color);
+  background: rgb(var(--secondary-color-rgb) / 0.14);
+}
+
+.desktop-browser #quickSetup .quick-setup-option-choose {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  color: var(--text-color, #fff);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-label {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-body {
+  flex: 1 0 100%;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.desktop-browser #quickSetup .quick-setup-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgb(var(--secondary-color-rgb) / 0.22);
+  color: var(--secondary-color);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-get {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  align-self: center;
+  margin-right: 12px;
+  padding: 0 14px;
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-color, #fff);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* An inline SVG with only a viewBox has no intrinsic size inside a flex row,
+   so the mark was there and drawn at zero width. */
+.desktop-browser #quickSetup .quick-setup-store-mark {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin-top: -1px;
+}
+
+.desktop-browser #quickSetup .quick-setup-footnote {
+  margin: 20px 0 0;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  font-size: 13px;
+}
+
+.desktop-browser #quickSetup .quick-setup-enable {
+  min-height: 46px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--secondary-color);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.desktop-browser #quickSetup .quick-setup-enable[disabled] {
+  opacity: 0.6;
+}
+
+.desktop-browser #quickSetup .quick-setup-status {
+  margin: 0;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.desktop-browser #quickSetup .quick-setup-status.is-done {
+  color: var(--secondary-color);
+  font-weight: 600;
+}
+
+.desktop-browser #quickSetup .quick-setup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.desktop-browser #quickSetup .quick-setup-actions-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.desktop-browser #quickSetup .quick-setup-skip,
+.desktop-browser #quickSetup .quick-setup-back {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+}
+
+.desktop-browser #quickSetup .quick-setup-next {
+  min-height: 44px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--secondary-color);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* The collection header centres on a phone and was left alone everywhere else,
+   which left a tablet with a heading hugging the left edge under a centred
+   navigation. The rule was gated on width, and a tablet is not narrow -- so it
+   is gated on the pointer instead: a finger means a tablet or a phone, and both
+   want the same centred header. Desktop keeps its left-aligned heading, where
+   the eye starts at the left of a wide page. */
+@media (any-pointer: coarse) and (min-width: 601px) {
+  .desktop-browser #folderDetail .folder-detail-desktop-heading {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-heading p {
+    text-align: center;
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-logo {
+    max-width: min(320px, 46vw);
+    margin-inline: auto;
+    object-position: center;
+  }
+}
+
+/* Home's shelves reach the right edge of a phone and stop short of a tablet's,
+   because the rule that moves the page's inset off the scroll container and
+   onto the rows themselves is gated at 760px -- eight pixels below an iPad in
+   portrait. A tablet is not a wide desktop here; it is a big phone, and the
+   same arrangement suits it: nothing pads the container, the heading and the
+   first card share the gutter, and the row runs off the edge so it is obvious
+   there is more of it. */
+@media (any-pointer: coarse) and (min-width: 761px) {
+  /* The inset lives here, not on the scroll container: one page gutter on each
+     side of the whole column of rows, which is what stops a row short of the
+     edge. */
+  /* Two containers carry that inset, not one: the catalog rows share a wrapper,
+     while Continue Watching is its own row and insets itself. Zeroing only the
+     wrapper left the two shelves starting at different places -- which is worse
+     than the padding was. The negative margins exist to offset the padding, so
+     they go with it. */
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-row-head,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-row-head {
+    padding-left: max(var(--browser-page-gutter), var(--browser-safe-area-left));
+    padding-right: max(var(--browser-page-gutter), var(--browser-safe-area-right));
+  }
+
+  /* The first card lines up with the heading above it; the last one is allowed
+     to run past the edge. */
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+    padding-left: max(var(--browser-page-gutter), var(--browser-safe-area-left));
+    padding-right: calc(var(--browser-safe-area-right) + 20px);
+    scroll-padding-left: max(var(--browser-page-gutter), var(--browser-safe-area-left));
+  }
+}
+
+/* The sync toast is written for a television: 28px type in a 36px-padded slab.
+   On a phone it covered the header and collided with the floating navigation.
+   Browser scale, centred text, and clear of the navigation it was sitting on
+   top of. */
+.desktop-browser .library-toast {
+  top: calc(
+    var(--browser-floating-nav-top, calc(12px + var(--browser-safe-area-top))) +
+      var(--browser-floating-nav-height, 56px) + 10px
+  );
+  max-width: min(360px, calc(100vw - 2 * var(--browser-page-gutter, 16px)));
+  padding: 10px 16px;
+  border-width: 1px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
 }

@@ -31,6 +31,7 @@ import { StartupSyncService } from "../../../core/profile/startupSyncService.js"
 import { AvatarRepository } from "../../../data/remote/supabase/avatarRepository.js";
 import { resolveBrowserProfileAvatar } from "../../../core/profile/browserProfileAvatarCache.js";
 import { Platform } from "../../../platform/index.js";
+import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
 import { isFastHorizontalNavigationEnabled } from "../../../platform/sharedKeys.js";
 import { LocalStore } from "../../../core/storage/localStore.js";
 import { YOUTUBE_PROXY_URL } from "../../../config.js";
@@ -131,6 +132,7 @@ import {
 } from "./homeConstants.js";
 import { resolveNextUpCandidates } from "./nextUpCandidateResolver.js";
 import { shouldRefreshContinueWatchingForChange } from "./continueWatchingRefreshPolicy.js";
+import { onContinueWatchingStale } from "./continueWatchingStaleSignal.js";
 import {
   selectWatchedItemsForContinueWatching,
   shouldSeedNextUpFromLocalWatchedItems
@@ -198,10 +200,6 @@ function logHomePerf(stage, data = {}) {
 
 function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
-}
-
-function isBrowserOfflineNow() {
-  return Platform.isBrowser() && typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
 function getDirectionFromKeyCode(keyCode) {
@@ -2907,6 +2905,34 @@ export const HomeScreen = {
       focusKind,
       trackStates
     };
+  },
+
+  // A retained focus state carries the rail positions from whenever it was
+  // captured, and the restore writes every one of them back. When nothing is
+  // focused -- a mouse drag or a finger swipe never focuses anything -- the
+  // live capture returns null and a much older saved state stands in, so its
+  // stale positions are written over rails the viewer has since moved. That is
+  // the rail sliding back on its own a beat after a card is marked watched.
+  //
+  // Rails that are on screen right now carry their own truth, so read it.
+  // Remembered positions are kept only for rails that are not there to ask,
+  // which is the case the memory exists for: coming back from another screen.
+  withLiveTrackStates(focusState) {
+    if (!focusState || this.isRestoringFocusFromBack) {
+      return focusState;
+    }
+    const tracks = Array.from(this.container?.querySelectorAll("[data-track-row-key]") || []);
+    if (!tracks.length) {
+      return focusState;
+    }
+    const trackStates = { ...(focusState.trackStates || {}) };
+    tracks.forEach((track) => {
+      const rowKey = String(track.dataset?.trackRowKey || "");
+      if (rowKey) {
+        trackStates[rowKey] = Math.round(Number(track.scrollLeft) || 0);
+      }
+    });
+    return { ...focusState, trackStates };
   },
 
   captureCurrentContentFocusState() {
@@ -8965,6 +8991,14 @@ export const HomeScreen = {
       this.unsubscribeWatchedItemsStoreChanges =
         WatchedItemsStore.subscribe(handleWatchedItemsChange);
     }
+    // Raised by a returning external-player report, which is applied during
+    // bootstrap -- before this binding exists on a cold start. A signal raised
+    // then is delivered here instead of being lost.
+    if (!this.unsubscribeContinueWatchingStaleSignal) {
+      this.unsubscribeContinueWatchingStaleSignal = onContinueWatchingStale(() => {
+        this.scheduleContinueWatchingStoreRefresh();
+      });
+    }
   },
 
   bindLayoutPreferencesSubscription() {
@@ -10044,7 +10078,7 @@ export const HomeScreen = {
         ? null
         : savedFocusState) ||
       null;
-    const retainedFocusState = rawRetainedFocusState;
+    const retainedFocusState = this.withLiveTrackStates(rawRetainedFocusState);
     this.cancelFocusedPosterFlow();
     this.expandedPosterNode = null;
     const backFocusHero = backFocusState ? this.getHeroSourceFromFocusState(backFocusState) : null;
@@ -12611,6 +12645,10 @@ export const HomeScreen = {
     if (this.unsubscribeWatchedItemsStoreChanges) {
       this.unsubscribeWatchedItemsStoreChanges();
       this.unsubscribeWatchedItemsStoreChanges = null;
+    }
+    if (this.unsubscribeContinueWatchingStaleSignal) {
+      this.unsubscribeContinueWatchingStaleSignal();
+      this.unsubscribeContinueWatchingStaleSignal = null;
     }
     if (this.unsubscribeLayoutPreferencesChanges) {
       this.unsubscribeLayoutPreferencesChanges();

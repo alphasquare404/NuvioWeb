@@ -2,6 +2,7 @@ import { addonRepository } from "../../data/repository/addonRepository.js";
 import { ExperienceModeStore } from "../../data/local/experienceModeStore.js";
 import { LayoutPreferences } from "../../data/local/layoutPreferences.js";
 import { ProfileSettingsSyncService } from "./profileSettingsSyncService.js";
+import { Platform } from "../../platform/index.js";
 
 export async function resolveExperienceRoute(profileId, { pullRemoteSettings = true } = {}) {
   // Browser profile activation must be able to choose its route from the local
@@ -30,12 +31,17 @@ export async function resolveExperienceRoute(profileId, { pullRemoteSettings = t
     );
   }
 
-  if (!experience.mode) {
-    return "experienceModeSelection";
-  }
+  // Every path above leaves a mode behind, so there is nothing left to ask:
+  // the screen that used to ask has gone with the question.
   if (experience.mode === "ESSENTIAL" && !experience.addonSetupSkipped) {
     const addons = await addonRepository.getInstalledAddons().catch(() => []);
     if (!addons.length) return "essentialAddonSetup";
+  }
+  // Quick Setup asks about the external player and the notification that brings
+  // you back from it, so it belongs where those exist: the browser and the PWA.
+  // It runs once per profile, tracked by a version rather than a flag.
+  if (Platform.isBrowser() && ExperienceModeStore.needsQuickSetup(profileId)) {
+    return "quickSetup";
   }
   return "home";
 }
