@@ -467,10 +467,15 @@ export const LibraryScreen = {
   },
 
   bindEvents() {
-    if (!this.container || this.container.__libraryEventsBound) {
+    if (!this.container) {
       return;
     }
-    this.container.__libraryEventsBound = true;
+    // These three are torn down in cleanup(), so they have to be put back on
+    // every mount. They sat behind the once-only guard below, which meant that
+    // after the first cleanup they were removed and never rebound: right-click
+    // and long-press opened the poster menu until the first time Library was
+    // left, and silently did nothing afterwards. Each binder runs its own
+    // previous cleanup first, so binding again is safe.
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -495,6 +500,13 @@ export const LibraryScreen = {
         }
       ]);
     }
+
+    // The listeners below are anonymous and never removed, so they are added
+    // exactly once for this container and the guard stays with them.
+    if (this.container.__libraryEventsBound) {
+      return;
+    }
+    this.container.__libraryEventsBound = true;
 
     this.container.addEventListener("click", async (event) => {
       const target = event.target?.closest?.(

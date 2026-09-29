@@ -4110,6 +4110,9 @@ export const HomeScreen = {
     if (descriptionNode) {
       descriptionNode.textContent = display.description || " ";
       descriptionNode.classList.toggle("is-empty", !display.description);
+      // The assignment above takes the toggle with it, so it is put back and
+      // re-measured against the new synopsis, which may be shorter.
+      this.bindHomeHeroDescriptionToggle(heroNode);
     }
     this.scheduleHomeTruncationUpdate({ scope: heroNode });
     this.syncCollectionHeroMedia(hero);
@@ -6591,6 +6594,17 @@ export const HomeScreen = {
     });
   },
 
+  // A phone held upright has the least room of any shape the hero takes, and
+  // two lines is the most it can give a synopsis before the synopsis becomes
+  // the hero. There the synopsis is clamped by CSS and carries a "more", the
+  // same way the detail page's does; everywhere else Home keeps trimming the
+  // text itself to fit the box.
+  usesTwoLineHeroSynopsis() {
+    return Boolean(
+      globalThis.matchMedia?.("(any-pointer: coarse) and (orientation: portrait)")?.matches
+    );
+  },
+
   applyHomeTruncationState() {
     if (!this.container) {
       return;
@@ -6613,6 +6627,13 @@ export const HomeScreen = {
         !storedText ||
         (currentText && currentText !== storedText && !currentText.trim().endsWith("..."));
       const sourceText = shouldRefresh ? currentText : storedText;
+      // Trimming the text here would rewrite the paragraph's contents and take
+      // the "more" button with it. Where the clamp owns the synopsis, the text
+      // is left whole and CSS decides what shows.
+      if (node.classList.contains("home-hero-description") && this.usesTwoLineHeroSynopsis()) {
+        node.classList.remove("is-truncated");
+        return;
+      }
       const isModernHeroDescription =
         node.classList.contains("home-hero-description") &&
         Boolean(node.closest(".home-modern-hero-copy"));
@@ -6672,6 +6693,11 @@ export const HomeScreen = {
       if (description.classList.contains("is-empty")) {
         return;
       }
+      // An inline height outranks every rule, so where the clamp owns the
+      // synopsis the height is simply not set and the stylesheet is left alone.
+      if (this.usesTwoLineHeroSynopsis()) {
+        return;
+      }
 
       const descriptionStyle = getComputedStyle(description);
       const lineHeight = parseFloat(descriptionStyle.lineHeight || "0") || 0;
@@ -6682,6 +6708,68 @@ export const HomeScreen = {
       );
       description.style.maxHeight = `${lineBoxHeight * modernHeroDescriptionMaxLines}px`;
     });
+  },
+
+  // The hero's synopsis clamps to two lines on a phone, with the rest behind a
+  // "more" at the end of the second -- the same control the detail page's
+  // synopsis carries, for the same reason: two lines is the most a hero can
+  // give a synopsis before the synopsis becomes the hero.
+  //
+  // The button is built here rather than in the hero's markup because swiping
+  // to the next hero assigns `textContent`, which would throw away any child it
+  // found there. One code path creates it, so both the first hero and every one
+  // after it get the same thing.
+  bindHomeHeroDescriptionToggle(root = null) {
+    if (!this.container) {
+      return;
+    }
+    const scope = root instanceof HTMLElement ? root : this.container;
+    const description = scope.querySelector(".home-hero-description");
+    if (!(description instanceof HTMLElement)) {
+      return;
+    }
+    let toggle = description.querySelector(".home-hero-description-toggle");
+    if (!toggle) {
+      toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "home-hero-description-toggle";
+      toggle.setAttribute("aria-expanded", "false");
+      description.append(toggle);
+    }
+    const setLabel = (expanded) => {
+      toggle.textContent = expanded
+        ? t("detail_description_less", {}, "less")
+        : t("detail_description_more", {}, "more");
+    };
+    const syncToggle = () => {
+      if (description.classList.contains("is-expanded")) {
+        return;
+      }
+      // A clamped paragraph is taller than it is allowed to be. Anything that
+      // fits has nothing to reveal, so the control stays away.
+      toggle.hidden = description.scrollHeight <= description.clientHeight + 1;
+    };
+    toggle.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const expanded = description.classList.toggle("is-expanded");
+      toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      setLabel(expanded);
+      if (!expanded) {
+        syncToggle();
+      }
+    };
+    description.classList.remove("is-expanded");
+    toggle.setAttribute("aria-expanded", "false");
+    setLabel(false);
+    syncToggle();
+    if (this.heroDescriptionResizeHandler) {
+      globalThis.removeEventListener?.("resize", this.heroDescriptionResizeHandler);
+    }
+    // Turning the phone changes how many lines fit, and so whether there is
+    // anything left to reveal.
+    this.heroDescriptionResizeHandler = () => syncToggle();
+    globalThis.addEventListener?.("resize", this.heroDescriptionResizeHandler);
   },
 
   ensureHomeTruncationObservers() {
@@ -10244,6 +10332,7 @@ export const HomeScreen = {
 
     this.buildNavigationModel();
     this.bindHomeViewportEvents();
+    this.bindHomeHeroDescriptionToggle();
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {

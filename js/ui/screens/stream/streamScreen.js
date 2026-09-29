@@ -1798,6 +1798,48 @@ export const StreamScreen = {
     return aliasMap[alias] || guessMimeTypeFromUrl(fallbackUrl) || "video/mp4";
   },
 
+  getAddonFilterLabel(name) {
+    return String(name) === "all" ? t("common.all", {}, "All") : String(name);
+  },
+
+  // One addon per chip put a scrolling rail above the sources, and the sources
+  // are what the screen is for. The options are carried by a transparent native
+  // select over the pill, so a phone gets the system picker and a keyboard gets
+  // select semantics without a second picker state machine -- the same shape
+  // the season control uses on the detail page.
+  renderAddonFilterSelect() {
+    const names = ["all", ...this.getOrderedFilterNames()];
+    const options = names
+      .map(
+        (name) =>
+          `<option value="${escapeHtml(name)}"${name === this.addonFilter ? " selected" : ""}>${escapeHtml(
+            this.getAddonFilterLabel(name)
+          )}</option>`
+      )
+      .join("");
+    const busy = this.hasPendingSourceLoads("all");
+    return `
+      <div class="stream-route-filter-select-shell${busy ? " is-loading" : ""}">
+        <span class="stream-route-filter-select-value">${escapeHtml(this.getAddonFilterLabel(this.addonFilter))}</span>
+        <span class="material-icons stream-route-filter-select-chevron" aria-hidden="true">expand_more</span>
+        <select class="stream-route-filter-select focusable"
+                aria-label="${escapeHtml(t("stream_filter_source", {}, "Source"))}">
+          ${options}
+        </select>
+      </div>
+    `;
+  },
+
+  renderStreamRefreshAction() {
+    const label = t("stream_refresh_sources", {}, "Refresh sources");
+    return `
+      <button type="button" class="stream-route-refresh focusable" data-action="refreshStreams"
+              aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+        <span class="material-icons" aria-hidden="true">refresh</span>
+      </button>
+    `;
+  },
+
   renderChip(name, selected, status) {
     const chipStatus = String(status || "success");
     const classes = [
@@ -2135,9 +2177,16 @@ export const StreamScreen = {
             </div>
           </section>
           <section class="stream-route-right">
-            <div class="stream-route-chip-wrap">
-              <div class="stream-route-chip-track">${chips}</div>
-            </div>
+            ${
+              Platform.isBrowser()
+                ? `<div class="stream-route-filter-row">
+                     ${this.renderAddonFilterSelect()}
+                     ${this.renderStreamRefreshAction()}
+                   </div>`
+                : `<div class="stream-route-chip-wrap">
+                     <div class="stream-route-chip-track">${chips}</div>
+                   </div>`
+            }
             <div class="stream-route-panel-shell">
               <div class="stream-route-panel">
                 <div class="stream-route-list">${body}</div>
@@ -2223,6 +2272,40 @@ export const StreamScreen = {
       void this.onPointerActivate(clickAction.element);
     };
     this.container.addEventListener("click", this.boundDesktopPointerActionHandler);
+
+    this.boundStreamFilterChangeHandler = (event) => {
+      const select =
+        event.target instanceof Element
+          ? event.target.closest(".stream-route-filter-select")
+          : null;
+      if (!(select instanceof HTMLSelectElement) || !this.container?.contains(select)) {
+        return;
+      }
+      const next = String(select.value || "all");
+      if (next === this.addonFilter) {
+        return;
+      }
+      this.setAddonFilter(next);
+    };
+    this.container.addEventListener("change", this.boundStreamFilterChangeHandler);
+
+    // Bumping the token abandons whatever is still in flight, which is the
+    // point: a refresh that waited for the answers it is replacing would be no
+    // refresh at all. Capture, so the card handler above never sees it first.
+    this.boundStreamRefreshHandler = (event) => {
+      const button =
+        event.target instanceof Element
+          ? event.target.closest("[data-action='refreshStreams']")
+          : null;
+      if (!(button instanceof HTMLElement) || !this.container?.contains(button)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      this.loadToken = (this.loadToken || 0) + 1;
+      void this.loadStreams();
+    };
+    this.container.addEventListener("click", this.boundStreamRefreshHandler, true);
   },
 
   renderOfflineDownloadNotice() {
@@ -2929,6 +3012,14 @@ export const StreamScreen = {
     }
     this.renderedMarkup = null;
     this.boundStreamListNode = null;
+    if (this.boundStreamFilterChangeHandler && this.container) {
+      this.container.removeEventListener("change", this.boundStreamFilterChangeHandler);
+    }
+    this.boundStreamFilterChangeHandler = null;
+    if (this.boundStreamRefreshHandler && this.container) {
+      this.container.removeEventListener("click", this.boundStreamRefreshHandler, true);
+    }
+    this.boundStreamRefreshHandler = null;
     if (this.boundDesktopPointerActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopPointerActionHandler);
       this.boundDesktopPointerActionHandler = null;

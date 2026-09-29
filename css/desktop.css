@@ -126,10 +126,16 @@ html.desktop-browser:not(.nuvio-keyboard-nav) .library-picker-anchor.focused:not
    The TV rule takes the border away on focus (`border: none !important`), and
    two classes plus !important beat the browser's own base rule -- so the whole
    card and the name under it shifted 2px the moment a tap moved focus there.
-   Nothing is drawn here; the edge is put back so nothing moves. */
+   Nothing is drawn here; the edge is put back so nothing moves.
+
+   The colour has to come back with it. `border: none` resets the colour to
+   `currentColor` as well as the width, so restoring only the width and style
+   left the card wearing a faint white rectangle -- the ring was gone from the
+   avatar and had reappeared around the card. */
 html.desktop-browser:not(.nuvio-keyboard-nav) .profile-card.focused {
   border-width: 1px !important;
   border-style: solid !important;
+  border-color: transparent !important;
 }
 
 /* Add Profile answers focus with a lighter circle and a brighter plus, neither
@@ -14522,4 +14528,229 @@ body.desktop-browser {
   .discover-filter-shell {
   flex: 1 1 120px;
   min-width: 0;
+}
+
+/* A long press on a card is the app's gesture, not the browser's. Safari and
+   Chrome answer the same hold with their own callout -- Save Image, Copy, and a
+   magnified preview of the poster -- which lands on top of the action sheet and
+   has to be dismissed before the sheet can be used. The poster is reachable at a
+   useful size from the sheet's own thumbnail instead.
+
+   Only the app's own focusable targets are covered, and only where a finger is
+   the pointer: a long press on ordinary text or a link keeps everything the
+   browser normally offers. `user-select` stays off inputs, where selecting text
+   is the whole point. */
+@media (any-pointer: coarse) {
+  html.desktop-browser .focusable {
+    -webkit-touch-callout: none;
+  }
+
+  html.desktop-browser .focusable img,
+  html.desktop-browser .nuvio-action-sheet-poster img {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+}
+
+/* The hero's synopsis, clamped to two lines with the rest behind a "more" at
+   the end of the second -- the same control the detail page's synopsis carries.
+   Two lines is the most a hero can give a synopsis before the synopsis becomes
+   the hero, and a phone in portrait has the least room of all.
+
+   The fade is the hero card's own background, so the last words disappear into
+   the card rather than running under the label. */
+@media (any-pointer: coarse) and (orientation: portrait) {
+  /* Home trims its synopsis by rewriting the text, which would take the button
+     inside the paragraph with it. Here the clamp owns the height instead and
+     homeScreen.js leaves the text whole -- the same arrangement the detail
+     page's synopsis uses. `!important` because the layout's own rule carries
+     five classes and is reaching for a different clamp. */
+  .desktop-browser .home-screen-shell .home-hero-description {
+    position: relative;
+    --home-hero-description-fade: #0d0d0d;
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2 !important;
+    line-clamp: 2 !important;
+    max-height: none !important;
+    overflow: hidden;
+  }
+
+  .desktop-browser .home-screen-shell .home-hero-description.is-expanded {
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+    line-clamp: unset !important;
+  }
+
+  .desktop-browser .home-hero-description-toggle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    height: 1.4em;
+    margin: 0;
+    /* Sits on the last line itself: same type, same line box, so its baseline
+       is the text's rather than a control parked below it. The pad is the fade
+       the last words disappear into. */
+    padding: 0 0 0 42px;
+    border: 0;
+    border-radius: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--home-hero-description-fade) 46%,
+      var(--home-hero-description-fade) 100%
+    );
+    color: rgba(255, 255, 255, 0.72);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+  }
+
+  /* Expanded there is nothing to sit at the end of, so it returns to a line. */
+  .desktop-browser .home-hero-description.is-expanded .home-hero-description-toggle {
+    position: static;
+    height: auto;
+    padding: 4px 0 0;
+    background: transparent;
+  }
+
+  .desktop-browser .home-hero-description-toggle[hidden] {
+    display: none;
+  }
+}
+
+/* The settings rail drew the same glyphs the phone does, but in a box the size
+   of the glyph itself -- 20px against the phone's 36 -- so the coloured tile
+   behind each one had nowhere to show and the row read as a bare icon. The
+   36px tile already existed; it was written for the index and the rail was
+   never given it. Same box, same radius, same 20px glyph inside.
+
+   `settings-nav-icon-svg` keeps the padding the index gives it: the playback
+   glyph is an inline SVG rather than a font icon, so the tile's inset has to
+   come off its own box for it to sit at the size of the rest. */
+@media not all and (any-pointer: coarse) {
+  .desktop-browser .settings-shell .settings-nav-icon,
+  .desktop-browser .settings-shell .settings-nav-icon-material,
+  .desktop-browser .settings-shell .settings-nav-icon-svg,
+  .desktop-browser .settings-shell .settings-nav-icon-image {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-icon {
+    display: grid;
+    place-items: center;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-icon.settings-nav-icon-material {
+    font-size: 20px;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-icon.settings-nav-icon-svg {
+    padding: 8px;
+    fill: currentColor;
+  }
+}
+
+/* Source picker and refresh, on one line above the sources. The dropdown takes
+   only the width it needs on the left; refresh sits at the right end, where
+   the same action sits in Library. Both are the row's height, so neither looks
+   bolted on. */
+.desktop-browser #stream .stream-route-filter-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 42px;
+  margin: 0 0 12px;
+}
+
+.desktop-browser #stream .stream-route-filter-select-shell {
+  position: relative;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: min(100%, 280px);
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(26, 26, 31, 0.82);
+  color: var(--text-color, #fff);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.desktop-browser #stream .stream-route-filter-select-value {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #stream .stream-route-filter-select-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 20px;
+  opacity: 0.7;
+}
+
+/* The real control, laid transparently over the pill: the system picker opens
+   from it and a keyboard gets select semantics, while the pill above is what
+   anyone actually sees. */
+.desktop-browser #stream .stream-route-filter-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: dark;
+  cursor: pointer;
+  font: inherit;
+}
+
+.desktop-browser #stream .stream-route-refresh {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(26, 26, 31, 0.82);
+  color: var(--text-color, #fff);
+  cursor: pointer;
+}
+
+.desktop-browser #stream .stream-route-refresh .material-icons {
+  font-size: 20px;
+}
+
+/* While sources are still arriving the picker says so rather than looking
+   settled on a list that is still growing. */
+.desktop-browser #stream .stream-route-filter-select-shell.is-loading .stream-route-filter-select-chevron {
+  animation: nuvio-stream-refresh-spin 1.1s linear infinite;
+}
+
+@keyframes nuvio-stream-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

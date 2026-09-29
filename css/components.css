@@ -21323,6 +21323,48 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   color: rgba(255, 255, 255, 0.55);
   text-align: center;
 }
+/* The thumbnail opens the poster, so it has to read as something you can press
+   and take a finger-sized hit without growing on screen. */
+.nuvio-action-sheet-poster.is-openable {
+  position: relative;
+  cursor: pointer;
+}
+.nuvio-action-sheet-poster.is-openable::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+/* The poster, opened. Fitted rather than sized: the width cap and the height
+   cap both apply, so whichever the screen runs out of first is the one that
+   decides -- a portrait poster fills a portrait phone, a landscape still fills
+   a landscape one, without either being cropped or stretched. */
+.nuvio-poster-viewer {
+  position: fixed;
+  z-index: 1400;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.88);
+  opacity: 0;
+  transition: opacity 180ms ease;
+  cursor: zoom-out;
+}
+.nuvio-poster-viewer.is-open {
+  opacity: 1;
+}
+.nuvio-poster-viewer-image {
+  display: block;
+  max-width: 90vw;
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
 .nuvio-action-sheet-text {
   min-width: 0;
 }

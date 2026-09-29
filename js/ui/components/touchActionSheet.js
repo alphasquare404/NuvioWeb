@@ -8,6 +8,55 @@
 // This is not the desktop menu. A compact cursor- or card-anchored menu
 // is wrong under a thumb.
 
+import { I18n } from "../../i18n/index.js";
+
+function t(key, params = {}, fallback = key) {
+  return I18n.t(key, params, { fallback });
+}
+
+// The sheet's thumbnail is the only place a poster is already loaded and in
+// front of someone, so it is the natural place to open a bigger one. The image
+// is fitted rather than sized: 90% of the width and 90% of the height at once,
+// so whichever runs out first decides, and one rule covers both a portrait
+// phone and a landscape one.
+function openPosterViewer(src, title = "") {
+  const viewer = document.createElement("div");
+  viewer.className = "nuvio-poster-viewer";
+  viewer.setAttribute("role", "dialog");
+  viewer.setAttribute("aria-modal", "true");
+  if (title) viewer.setAttribute("aria-label", String(title));
+
+  const image = document.createElement("img");
+  image.className = "nuvio-poster-viewer-image";
+  image.src = src;
+  image.alt = String(title || "");
+  image.decoding = "async";
+  viewer.append(image);
+
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", onKeyDown, true);
+    viewer.classList.remove("is-open");
+    // Let the fade finish before the node goes, but never leave it behind if
+    // the transition never fires.
+    setTimeout(() => viewer.remove(), 220);
+  };
+  const onKeyDown = (event) => {
+    if (event.key !== "Escape") return;
+    // The sheet underneath also closes on Escape; the topmost layer takes it.
+    event.stopPropagation();
+    close();
+  };
+
+  viewer.addEventListener("click", close);
+  document.addEventListener("keydown", onKeyDown, true);
+  document.body.append(viewer);
+  requestAnimationFrame(() => viewer.classList.add("is-open"));
+  return { close };
+}
+
 const DEFAULT_ACTION_ICONS = {
   details: "info",
   playManually: "play_arrow",
@@ -69,6 +118,19 @@ export function openTouchActionSheet({
       img.loading = "lazy";
       img.decoding = "async";
       art.append(img);
+      art.classList.add("is-openable");
+      art.setAttribute("role", "button");
+      art.setAttribute("tabindex", "0");
+      art.setAttribute("aria-label", t("poster_view_larger", {}, "View poster"));
+      const openPoster = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openPosterViewer(header.poster, header.title);
+      };
+      art.addEventListener("click", openPoster);
+      art.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") openPoster(event);
+      });
     } else {
       art.textContent = String(header.title || "").slice(0, 24);
       art.classList.add("is-text");
