@@ -76,7 +76,7 @@ export async function createPosterOptionsState(item, options = {}) {
   }
   const watchedItems = Array.isArray(options.watchedItems)
     ? options.watchedItems
-    : await watchedItemsRepository.getAll(2000).catch(() => []);
+    : await watchedItemsRepository.getAll().catch(() => []);
   const sourceMode = await libraryRepository.getSourceMode().catch(() => LibrarySourceMode.LOCAL);
   const libraryItem = toLibraryItem(item);
   const membershipSnapshot = await libraryRepository

@@ -50,7 +50,20 @@ export function createOfflineEpisodeEntries(downloads = []) {
   );
 }
 
-export function mergeDetailEpisodesWithOfflineDownloads(remoteEpisodes = [], offlineEpisodes = []) {
+// `offlineOnly` keeps just the episodes that are actually on the device.
+//
+// Without it, a series opened after the app had already been online showed its
+// whole run: the metadata was answered from cache, so nothing looked like a
+// failure, and the list filled with episodes that cannot be played and have no
+// artwork to show. Opening the same series in an app that started offline
+// showed only what was downloaded, because the cache had nothing to answer
+// with -- the same device, the same files, two different pages. Connectivity
+// decides it now, not whether a cache happened to be warm.
+export function mergeDetailEpisodesWithOfflineDownloads(
+  remoteEpisodes = [],
+  offlineEpisodes = [],
+  { offlineOnly = false } = {}
+) {
   const offlineByKey = new Map(
     (Array.isArray(offlineEpisodes) ? offlineEpisodes : []).map((episode) => [
       `${Number(episode?.season)}:${Number(episode?.episode)}`,
@@ -60,11 +73,19 @@ export function mergeDetailEpisodesWithOfflineDownloads(remoteEpisodes = [], off
   const merged = (Array.isArray(remoteEpisodes) ? remoteEpisodes : []).map((episode) => {
     const offline = offlineByKey.get(`${Number(episode?.season)}:${Number(episode?.episode)}`);
     if (offline) offlineByKey.delete(`${Number(episode?.season)}:${Number(episode?.episode)}`);
-    return offline
-      ? { ...episode, offlineDownloadId: offline.offlineDownloadId, offlineMediaIdentity: offline.offlineMediaIdentity }
-      : episode;
+    if (!offline) return episode;
+    return {
+      ...episode,
+      // Offline, the cached metadata still carries a remote still URL that
+      // cannot be fetched; the download's own stored image can.
+      ...(offlineOnly ? { thumbnail: offline.thumbnail || null } : {}),
+      offlineDownloadId: offline.offlineDownloadId,
+      offlineMediaIdentity: offline.offlineMediaIdentity
+    };
   });
-  return [...merged, ...offlineByKey.values()].sort(
+  const all = [...merged, ...offlineByKey.values()];
+  const kept = offlineOnly ? all.filter((episode) => Boolean(episode?.offlineDownloadId)) : all;
+  return kept.sort(
     (left, right) => Number(left?.season) - Number(right?.season) || Number(left?.episode) - Number(right?.episode)
   );
 }

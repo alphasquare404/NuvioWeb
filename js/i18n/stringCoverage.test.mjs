@@ -78,8 +78,6 @@ const KNOWN_GAPS = [
   "cast_detail_empty",
   "common.copied",
   "common.disabled",
-  "common.hide",
-  "common.show",
   "common_close",
   "debrid_device_auth_copy_code",
   "debrid_device_auth_open_link",

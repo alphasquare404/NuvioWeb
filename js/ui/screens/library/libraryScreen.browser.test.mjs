@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { readFile } from "node:fs/promises";
 
 async function loadLibraryScreen() {
   const result = await build({
@@ -15,11 +16,23 @@ async function loadLibraryScreen() {
         name: "library-screen-focus-mocks",
         setup(buildApi) {
           const mocks = new Map([
-            ["router", `export const Router = { getCurrent: () => "library", navigate: async () => {}, back: () => {} };`],
-            ["screen", `export const ensureSpatialFocusVisible = () => { globalThis.__libraryEnsureVisibleCalls = (globalThis.__libraryEnsureVisibleCalls || 0) + 1; }; export const ScreenUtils = { show: () => {}, hide: () => {}, indexFocusables: () => {} };`],
+            [
+              "router",
+              `export const Router = { getCurrent: () => "library", navigate: async () => {}, back: () => {} };`
+            ],
+            [
+              "screen",
+              `export const ensureSpatialFocusVisible = () => { globalThis.__libraryEnsureVisibleCalls = (globalThis.__libraryEnsureVisibleCalls || 0) + 1; }; export const ScreenUtils = { show: () => {}, hide: () => {}, indexFocusables: () => {} };`
+            ],
             ["platform", `export const Platform = { isBrowser: () => true };`],
-            ["layout", `export const LayoutPreferences = { get: () => ({ modernSidebar: true }) };`],
-            ["sidebar", `export const activateLegacySidebarAction = () => {}; export const bindRootSidebarEvents = () => {}; export const focusWithoutAutoScroll = () => {}; export const getRootSidebarNodes = () => []; export const getRootSidebarSelectedNode = () => null; export const getSidebarProfileState = async () => null; export const isSelectedSidebarAction = () => false; export const isRootSidebarNode = () => false; export const renderRootSidebar = () => ""; export const setLegacySidebarExpanded = () => {}; export const setModernSidebarExpanded = () => {}; export const setModernSidebarPillIconOnly = () => {};`]
+            [
+              "layout",
+              `export const LayoutPreferences = { get: () => ({ modernSidebar: true }) };`
+            ],
+            [
+              "sidebar",
+              `export const activateLegacySidebarAction = () => {}; export const bindRootSidebarEvents = () => {}; export const focusWithoutAutoScroll = () => {}; export const getRootSidebarNodes = () => []; export const getRootSidebarSelectedNode = () => null; export const getSidebarProfileState = async () => null; export const isSelectedSidebarAction = () => false; export const isRootSidebarNode = () => false; export const renderRootSidebar = () => ""; export const setLegacySidebarExpanded = () => {}; export const setModernSidebarExpanded = () => {}; export const setModernSidebarPillIconOnly = () => {};`
+            ]
           ]);
           for (const [filter, path] of [
             [/router\.js$/, "router"],
@@ -37,7 +50,9 @@ async function loadLibraryScreen() {
       }
     ]
   });
-  return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString("base64")}`);
+  return import(
+    `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString("base64")}`
+  );
 }
 
 function makeCard() {
@@ -59,9 +74,8 @@ function makePassiveRestoreScreen(LibraryScreen, card, state) {
   return {
     container: {
       querySelectorAll: () => [],
-      querySelector: (selector) => (
+      querySelector: (selector) =>
         selector.includes("data-focus-key") || selector.includes(".focusable") ? card : null
-      )
     },
     controller: {
       getState: () => state,
@@ -103,7 +117,11 @@ test("Library passive Genre and Year rerenders retain the card identity without 
     LibraryScreen.restoreFocus.call(screen);
 
     assert.equal(card.classList.contains("focused"), true);
-    assert.equal(globalThis.__libraryEnsureVisibleCalls, 0, "passive filter rendering must not scroll to Movie X");
+    assert.equal(
+      globalThis.__libraryEnsureVisibleCalls,
+      0,
+      "passive filter rendering must not scroll to Movie X"
+    );
   }
 });
 
@@ -118,4 +136,18 @@ test("Library explicit keyboard focus still keeps its target visible", async () 
   LibraryScreen.setFocusedNode.call(screen, card);
 
   assert.equal(globalThis.__libraryEnsureVisibleCalls, 1);
+});
+
+test("the library list re-reads when Back uncovers it", async () => {
+  // Remove a title from its Detail page, press Back, and the title was still
+  // listed with the old count until a pull to refresh. A revealed layer never
+  // re-runs mount, and this screen was the one left without the hook that Home
+  // and Detail already had.
+  const source = await readFile(new URL("./libraryScreen.js", import.meta.url), "utf8");
+
+  assert.match(source, /onRouteRevealed\(\) \{/);
+  assert.match(source, /onRouteRevealed\(\) \{[\s\S]*?this\.controller\.reload\(/);
+  // Not the pull-to-refresh path: that one owns a spinner and a "synced"
+  // message, and neither belongs to walking back into a screen.
+  assert.doesNotMatch(source, /onRouteRevealed\(\) \{[\s\S]*?refreshNow\(/);
 });

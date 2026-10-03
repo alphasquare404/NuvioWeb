@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   CARD_TOUCH_LONG_PRESS_MS,
   CARD_TOUCH_MOVE_TOLERANCE_PX,
@@ -64,4 +65,18 @@ test("scrolling past the tolerance cancels the hold", () => {
 test("diagonal drag is measured by distance, not by either axis alone", () => {
   // 8px right and 8px down is ~11.3px of travel: a swipe, not a hold.
   assert.equal(exceedsCardTouchMoveTolerance({ startX: 0, startY: 0, x: 8, y: 8 }), true);
+});
+
+test("a finger that has travelled suppresses the click the browser sends after it", async () => {
+  // A short drag starting on a card moved the finger without moving the page
+  // far enough for the browser to call it a scroll, so it still synthesized a
+  // click on release and the card opened. Travel past the tolerance now takes
+  // that click away, the same way a long press does.
+  const source = await readFile(new URL("./browserCardTouchIntent.js", import.meta.url), "utf8");
+  const moveHandler = source.slice(
+    source.indexOf("const onPointerMove ="),
+    source.indexOf("const finish =")
+  );
+
+  assert.match(moveHandler, /cancelLongPressTimer\(\);[\s\S]*?suppressCard\(active\.card\);/);
 });

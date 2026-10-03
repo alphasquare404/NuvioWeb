@@ -32,10 +32,17 @@ export function bindMediaContextMenu(
   }
 
   const onContextMenu = (event) => {
-    if (!isEnabled()) return;
     const node = resolveContextMenuTarget(event.target, { container, cardSelector });
     if (!node) return;
+    // A finger's long press emits this too, and the browser answers it with its
+    // own callout -- Save Image, Copy, a magnified poster -- which lands on top
+    // of the action sheet the same gesture just opened and has to be dismissed
+    // before the sheet can be used. The gesture already belongs to the touch
+    // intent binder, so here it is only taken away from the browser.
+    // `-webkit-touch-callout` covers Safari's magnifier; Chrome has no such
+    // property and only stops at the event.
     event.preventDefault();
+    if (!isEnabled()) return;
     event.stopPropagation();
     onInvoke(node, { x: event.clientX, y: event.clientY });
   };

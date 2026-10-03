@@ -136,8 +136,14 @@ export function bindBrowserCardTouchIntent(
         tolerancePx: moveTolerancePx
       })
     ) {
-      // Scrolling, not holding.
+      // Scrolling, not holding -- and not tapping either. A short drag that
+      // starts on a card often moves the finger without moving the page far
+      // enough for the browser to call it a scroll, so it still synthesizes a
+      // click on release and the card opens under a finger that was trying to
+      // get past it. Once the finger has travelled this far the press is a
+      // gesture, whatever the page did about it.
       cancelLongPressTimer();
+      suppressCard(active.card);
       active = null;
     }
   };

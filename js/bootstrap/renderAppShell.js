@@ -2,8 +2,8 @@ const APP_SHELL = `
   <div id="app">
     <div id="account" class="screen"></div>
     <div id="profileSelection" class="screen"></div>
-    <div id="experienceModeSelection" class="screen"></div>
     <div id="essentialAddonSetup" class="screen"></div>
+    <div id="quickSetup" class="screen"></div>
     <div id="home" class="screen"></div>
     <div id="detail" class="screen"></div>
     <div id="stream" class="screen"></div>

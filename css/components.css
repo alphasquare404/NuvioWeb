@@ -12932,8 +12932,8 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 
 .player-next-episode-card-inner {
   display: flex;
-  align-items: center;
-  gap: clamp(14px, 1vw, 20px);
+  flex-direction: column;
+  gap: clamp(10px, 0.8vw, 16px);
   padding: clamp(12px, 1vw, 18px);
   border-radius: clamp(18px, 1.2vw, 24px);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -12949,6 +12949,35 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .player-next-episode-card-inner.is-selected {
   border-width: 2px;
   border-color: var(--secondary-color);
+}
+
+.player-next-episode-head {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 1vw, 20px);
+}
+
+/* Pointer only: a remote closes the card with Back, and a second focus stop
+   inside it would sit in the way of the one thing the card is for. */
+.player-next-episode-dismiss {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 26px;
+  height: 26px;
+  margin: -2px -2px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.player-next-episode-dismiss:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
 }
 
 .player-next-episode-thumb-wrap {
@@ -12980,7 +13009,9 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 }
 
 .player-next-episode-kicker {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.62);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   font-size: clamp(14px, 0.85vw, 17px);
   font-weight: 500;
 }
@@ -12990,9 +13021,11 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   color: #ffffff;
   font-size: clamp(18px, 1.2vw, 24px);
   font-weight: 600;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .player-next-episode-status {
@@ -13005,10 +13038,11 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 }
 
 .player-next-episode-pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.72);
@@ -21323,6 +21357,48 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   color: rgba(255, 255, 255, 0.55);
   text-align: center;
 }
+/* The thumbnail opens the poster, so it has to read as something you can press
+   and take a finger-sized hit without growing on screen. */
+.nuvio-action-sheet-poster.is-openable {
+  position: relative;
+  cursor: pointer;
+}
+.nuvio-action-sheet-poster.is-openable::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+/* The poster, opened. Fitted rather than sized: the width cap and the height
+   cap both apply, so whichever the screen runs out of first is the one that
+   decides -- a portrait poster fills a portrait phone, a landscape still fills
+   a landscape one, without either being cropped or stretched. */
+.nuvio-poster-viewer {
+  position: fixed;
+  z-index: 1400;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.88);
+  opacity: 0;
+  transition: opacity 180ms ease;
+  cursor: zoom-out;
+}
+.nuvio-poster-viewer.is-open {
+  opacity: 1;
+}
+.nuvio-poster-viewer-image {
+  display: block;
+  max-width: 90vw;
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
 .nuvio-action-sheet-text {
   min-width: 0;
 }
@@ -21379,4 +21455,112 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .nuvio-action-sheet-row.is-danger .nuvio-action-sheet-icon,
 .nuvio-action-sheet-row.is-danger .nuvio-action-sheet-label {
   color: #ff8a8a;
+}
+
+/* Add to Home Screen steps, carried by the action sheet's own chrome. */
+.browser-install-sheet {
+  padding: 4px 16px 8px;
+}
+
+.browser-install-sheet-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 8px 0 16px;
+}
+
+.browser-install-sheet-icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.browser-install-sheet-title {
+  margin: 0;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.browser-install-sheet-body {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.browser-install-sheet-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.browser-install-sheet-step {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.browser-install-sheet-step-number {
+  flex: 0 0 auto;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.browser-install-sheet-step-label {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.browser-install-sheet-actions {
+  display: grid;
+  gap: 4px;
+  margin-top: 18px;
+}
+
+.browser-install-sheet-confirm {
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.browser-install-sheet-never {
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+}
+
+.browser-install-sheet-never:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.browser-install-sheet-confirm:focus-visible,
+.browser-install-sheet-never:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 2px;
 }

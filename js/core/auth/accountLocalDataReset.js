@@ -46,9 +46,21 @@ const ACCOUNT_LOCAL_STORAGE_PREFIXES = [
   "traktCachedStats:"
 ];
 
-// Torrent settings are intentionally device-level. Do not infer scope from an
-// envelope alone: this explicit exception preserves the existing behaviour.
-const PRESERVED_PROFILE_SCOPED_KEYS = new Set(["torrentSettings"]);
+// Nothing survives a sign-out.
+//
+// Torrent settings used to, on the reasoning that they describe this device
+// rather than this account: turning uploading off on a metered laptop should not
+// quietly turn itself back on. That holds only while the same person signs back
+// in. Let someone else in and the "device preference" is really the previous
+// person's, and two of the three switches decide whether this machine uploads --
+// which costs bandwidth and, in some places, rather more than that.
+//
+// Inheriting a stranger's upload setting is silent. Losing your own is visible
+// and takes one tap to put back. The visible mistake is the cheaper one.
+//
+// It also carried the previous account's profile ids across, so a new account's
+// storage still named profiles that had never belonged to it.
+const PRESERVED_PROFILE_SCOPED_KEYS = new Set();
 const runtimeResetHandlers = new Set();
 
 function isProfileScopedEnvelope(rawValue) {

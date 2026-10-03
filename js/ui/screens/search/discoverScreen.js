@@ -203,6 +203,10 @@ function scrollNodeIntoContainerView(
 }
 
 export const DiscoverScreen = {
+  // Catalog and Genre fold away, the way Library's do; Type stays out
+  // because it is the one most often changed.
+  discoverFiltersExpanded: false,
+
   clearClosingPicker() {
     if (this.closingPickerTimer) {
       clearTimeout(this.closingPickerTimer);
@@ -254,7 +258,7 @@ export const DiscoverScreen = {
   },
 
   async refreshWatchedTitleIds() {
-    const watchedItems = await watchedItemsRepository.getAll(5000).catch(() => []);
+    const watchedItems = await watchedItemsRepository.getAll().catch(() => []);
     this.watchedTitleIds = buildWatchedTitleIdSet(watchedItems);
   },
 
@@ -1603,10 +1607,27 @@ export const DiscoverScreen = {
                 <div class="seeall-subtitle" id="discoverContextLabel">${escapeHtml(contextLabel)}</div>
               </div>
             </header>
-            <section class="library-picker-row discover-picker-row" id="discoverPickerRow">
-              ${this.renderFilterPicker("type", "Type", formatAddonTypeLabel(this.selectedType))}
-              ${this.renderFilterPicker("catalog", "Catalog", selectedCatalog?.catalogName || "Select")}
-              ${this.renderFilterPicker("genre", "Genre", this.selectedGenre || "Default")}
+            <section class="discover-picker-groups" id="discoverPickerRow">
+              <div class="library-picker-row discover-picker-row library-primary-filter-row">
+                ${this.renderFilterPicker("type", "Type", formatAddonTypeLabel(this.selectedType))}
+                <button class="library-filter-toggle focusable${
+                  this.discoverFiltersExpanded ? " is-expanded" : ""
+                }${this.selectedGenre ? " has-active-filters" : ""}"
+                        type="button"
+                        data-action="toggleDiscoverFilters"
+                        aria-expanded="${Boolean(this.discoverFiltersExpanded)}"
+                        aria-label="${escapeHtml(t("library_filter_toggle", {}, "Filters"))}">
+                  <svg class="library-filter-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle><path d="M4 17h6"></path><path d="M14 17h6"></path><circle cx="12" cy="17" r="2"></circle></svg>
+                </button>
+              </div>
+              ${
+                this.discoverFiltersExpanded
+                  ? `<div class="library-picker-row discover-picker-row library-secondary-filter-row">
+                       ${this.renderFilterPicker("catalog", "Catalog", selectedCatalog?.catalogName || "Select")}
+                       ${this.renderFilterPicker("genre", "Genre", this.selectedGenre || "Default")}
+                     </div>`
+                  : ""
+              }
             </section>
             <section class="seeall-grid discover-grid" id="discoverGridMount">
               ${cards}
@@ -1754,6 +1775,13 @@ export const DiscoverScreen = {
           this.selectCurrentPickerOption();
           return;
         }
+      }
+
+      const filterToggle = event.target?.closest?.('[data-action="toggleDiscoverFilters"]');
+      if (filterToggle) {
+        this.discoverFiltersExpanded = !this.discoverFiltersExpanded;
+        this.render();
+        return;
       }
 
       const filterNode = event.target?.closest?.(".discover-filter");

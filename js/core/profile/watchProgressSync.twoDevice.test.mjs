@@ -493,3 +493,319 @@ test("a title finished offline stays finished once the network returns", async (
   await b.run((service) => service.pull());
   assert.deepEqual(positionsFor(await b.localProgress(), "tt1375666"), []);
 });
+
+// --- Three devices ---------------------------------------------------------
+//
+// Two devices answer "does the merge reconcile?". Three answer a different
+// question: does a device that was not part of an exchange still arrive at the
+// same answer as the two that were. A rule that resolves A against B correctly
+// can still leave C holding something neither of them has, because C's baseline
+// records a cloud that has moved twice since it last looked.
+
+test("a completion on one device reaches both of the others", async () => {
+  const cloud = createCloud();
+  const a = await createDevice("tri-a", cloud);
+  const b = await createDevice("tri-b", cloud);
+  const c = await createDevice("tri-c", cloud);
+
+  await play(a, movie(0.3));
+  await a.run((service) => service.push());
+  await b.run((service) => service.pull());
+  await c.run((service) => service.pull());
+  assert.deepEqual(positionsFor(await c.localProgress(), "tt1375666"), [at(0.3)]);
+
+  await finish(a, { contentId: "tt1375666", contentType: "movie", title: "Inception" });
+  await a.run((service) => service.push());
+
+  for (const device of [b, c]) {
+    await pullWatched(device);
+    await device.run((service) => service.pull());
+    assert.deepEqual(
+      positionsFor(await device.localProgress(), "tt1375666"),
+      [],
+      device.name + " kept a partial the completion retired"
+    );
+  }
+});
+
+test("the device that sat out an exchange still lands on the same position", async () => {
+  const cloud = createCloud();
+  const a = await createDevice("sat-a", cloud);
+  const b = await createDevice("sat-b", cloud);
+  const c = await createDevice("sat-c", cloud);
+
+  // All three agree at 30%.
+  await play(a, movie(0.3));
+  await a.run((service) => service.push());
+  await b.run((service) => service.pull());
+  await c.run((service) => service.pull());
+
+  // A and B trade twice while C is not looking.
+  await play(b, movie(0.5));
+  await b.run((service) => service.push());
+  await a.run((service) => service.pull());
+  await play(a, movie(0.7));
+  await a.run((service) => service.push());
+  await b.run((service) => service.pull());
+
+  // C catches up in one pull, and must not publish its own stale 30% doing it.
+  await c.run((service) => service.pull());
+  await c.run((service) => service.push());
+  assert.deepEqual(positionsFor(await c.localProgress(), "tt1375666"), [at(0.7)]);
+
+  for (const device of [a, b]) {
+    await device.run((service) => service.pull());
+    assert.deepEqual(
+      positionsFor(await device.localProgress(), "tt1375666"),
+      [at(0.7)],
+      device.name + " was dragged backwards by the device that caught up"
+    );
+  }
+});
+
+test("a device offline through two exchanges does not undo either of them", async () => {
+  const cloud = createCloud();
+  const a = await createDevice("off-a", cloud);
+  const b = await createDevice("off-b", cloud);
+  const c = await createDevice("off-c", cloud);
+
+  await play(a, movie(0.2));
+  await a.run((service) => service.push());
+  await b.run((service) => service.pull());
+  await c.run((service) => service.pull());
+
+  // C goes offline and keeps watching: local writes, no network.
+  await play(c, movie(0.4));
+
+  // Meanwhile A watches further and B finishes it.
+  await play(a, movie(0.6));
+  await a.run((service) => service.push());
+  await b.run((service) => service.pull());
+  await finish(b, { contentId: "tt1375666", contentType: "movie", title: "Inception" });
+  await b.run((service) => service.push());
+
+  // C comes back: pull, push, pull -- the reconnect sequence.
+  await pullWatched(c);
+  await c.run((service) => service.pull());
+  await c.run((service) => service.push());
+  await c.run((service) => service.pull());
+
+  assert.deepEqual(
+    positionsFor(await c.localProgress(), "tt1375666"),
+    [],
+    "the offline device resurrected a title finished elsewhere"
+  );
+  assert.equal(cloud.progress.size, 0, "the offline device republished the retired row");
+
+  await a.run((service) => service.pull());
+  assert.deepEqual(
+    positionsFor(await a.localProgress(), "tt1375666"),
+    [],
+    "the completion was undone for the device that never went offline"
+  );
+});
+
+// The race that cost a completion on a device, played across two of them: A
+// finishes while B's pull is already in flight. B's merge has to read its own
+// store as it is when the rows land, not as it was when the request left.
+test("a completion made while another device is mid-pull is not pushed back", async () => {
+  const cloud = createCloud();
+  const a = await createDevice("race-a", cloud);
+  const b = await createDevice("race-b", cloud);
+
+  await play(a, movie(0.3));
+  await a.run((service) => service.push());
+  await b.run((service) => service.pull());
+
+  // B is holding the partial. A finishes and publishes while B pulls.
+  await finish(a, { contentId: "tt1375666", contentType: "movie", title: "Inception" });
+  await a.run((service) => service.push());
+
+  await pullWatched(b);
+  await b.run((service) => service.pull());
+  await b.run((service) => service.push());
+
+  assert.deepEqual(positionsFor(await b.localProgress(), "tt1375666"), []);
+  assert.equal(cloud.progress.size, 0, "B pushed its stale partial back over the completion");
+
+  await a.run((service) => service.pull());
+  assert.deepEqual(
+    positionsFor(await a.localProgress(), "tt1375666"),
+    [],
+    "A's own completion came back from the cloud"
+  );
+});
+
+// Reported from a real pair of devices: A watched to 20 minutes with no network,
+// B then watched the same film to 5 minutes online, and after A reconnected the
+// two could not agree. The rule is the one the person would state themselves --
+// whichever was watched last is where the film is -- and it does not care which
+// direction that moves the position. Under the further-wins rule this replaced,
+// A's 20 minutes were permanent: B's 5 could not survive a pull, so starting the
+// film again was impossible on either device.
+//
+// The sibling case, an offline rewind that is itself the newest write, is
+// "a deliberate rewind made offline survives coming back online" above.
+test("the device that watched last wins, even when that moves the position back", async () => {
+  const cloud = createCloud();
+  const a = await createDevice("late-a", cloud);
+  const b = await createDevice("late-b", cloud);
+  const now = Date.now();
+
+  await play(a, { ...movie(0.3), updatedAt: now });
+  await a.run((service) => service.push());
+  await b.run((service) => service.pull());
+
+  // A is offline and gets further. B is online and deliberately starts over.
+  await play(a, { ...movie(0.6), updatedAt: now + 1000 });
+  await play(b, { ...movie(0.05), updatedAt: now + 2000 });
+  await b.run((service) => service.push());
+
+  // A reconnects.
+  await a.run((service) => service.pull());
+  assert.deepEqual(positionsFor(await a.localProgress(), "tt1375666"), [at(0.05)]);
+
+  // And A does not talk B back out of it on the next round trip.
+  await a.run((service) => service.push());
+  await b.run((service) => service.pull());
+  assert.deepEqual(positionsFor(await b.localProgress(), "tt1375666"), [at(0.05)]);
+});
+
+// What a device holds as finished, without going near the network.
+async function localWatched(device, contentId) {
+  return device.run(async () => {
+    const { watchedItemsRepository } =
+      await import("../../data/repository/watchedItemsRepository.js");
+    return (await watchedItemsRepository.listLocal()).filter(
+      (item) => item.contentId === contentId
+    );
+  });
+}
+
+// Reported from two devices: a title finished with no network advanced Continue
+// Watching on the device that watched it and reached the other one not at all.
+// The completion is a watched record, not a progress row, and the reconnect
+// sequence only ever *pulled* those -- its push was the progress push. The
+// completion's own push had failed on its 250ms timer while offline, and nothing
+// after that tried again, so it sat on the device until something else happened
+// to write a watched record.
+test("a completion made with no network reaches the other device on reconnect", async () => {
+  const cloud = createCloud();
+  const a = await createDevice("owed-a", cloud);
+  const b = await createDevice("owed-b", cloud);
+
+  await play(a, movie(0.6));
+  await a.run((service) => service.push());
+  await b.run((service) => service.pull());
+
+  // Offline on A: finished. The local row goes, the watched record arrives, and
+  // the cloud hears nothing -- no push is run here at all, which is the point.
+  await a.run(async () => {
+    const { watchProgressRepository } =
+      await import("../../data/repository/watchProgressRepository.js");
+    const { watchedItemsRepository } =
+      await import("../../data/repository/watchedItemsRepository.js");
+    await watchedItemsRepository.mark(
+      { contentId: "tt1375666", contentType: "movie", title: "Inception" },
+      { skipTrackingWrite: true }
+    );
+    await watchProgressRepository.removeProgress("tt1375666", null);
+  });
+  assert.equal((await localWatched(a, "tt1375666")).length, 1);
+  assert.deepEqual(await localWatched(b, "tt1375666"), []);
+
+  // A's network returns and the reconnect sequence runs.
+  await a.run((service) => service.syncAfterReconnect("test"));
+
+  // B catches up the way it would on its next foreground.
+  await pullWatched(b);
+  await b.run((service) => service.pull());
+
+  assert.equal(
+    (await localWatched(b, "tt1375666")).length,
+    1,
+    "the other device has to learn the title was finished"
+  );
+  assert.deepEqual(
+    positionsFor(await b.localProgress(), "tt1375666"),
+    [],
+    "and its partial has to retire rather than becoming next up again"
+  );
+});
+
+// Un-marking an episode: the row goes here and its cloud row is deleted, so the
+// other device learns by the absence. Reported from two devices as some episodes
+// still showing watched on the second one afterwards.
+//
+// The merge decides whether a local row the cloud lacks was deleted elsewhere or
+// simply not pushed yet, and it asked the last successful *push*. A row this
+// device received *from* the cloud is known to the cloud whatever its own push
+// history says -- and its watchedAt is whenever it was originally watched, which
+// on the receiving device is newer than its own last push. So it read as "mine,
+// not sent yet", survived, and went back up.
+test("an episode un-marked on one device does not come back from the other", async () => {
+  const cloud = createCloud();
+  const a = await createDevice("un-a", cloud);
+  const b = await createDevice("un-b", cloud);
+
+  const watched = {
+    contentId: "tt1196946",
+    contentType: "series",
+    season: 1,
+    episode: 4,
+    title: "The Mentalist"
+  };
+
+  // A finishes it and publishes. A second title keeps the cloud non-empty
+  // throughout: a cloud that answers with nothing at all is treated as a failed
+  // read rather than as everything having been deleted, which is its own
+  // safeguard and not what this is about.
+  await a.run(async () => {
+    const { watchedItemsRepository } =
+      await import("../../data/repository/watchedItemsRepository.js");
+    await watchedItemsRepository.mark(
+      {
+        contentId: "tt0903747",
+        contentType: "series",
+        season: 1,
+        episode: 1,
+        title: "Breaking Bad"
+      },
+      { skipTrackingWrite: true }
+    );
+    await watchedItemsRepository.mark(watched, { skipTrackingWrite: true });
+    const { WatchedItemsSyncService } = await import("./watchedItemsSyncService.js");
+    await WatchedItemsSyncService.push();
+  });
+
+  // B takes it in. B has pushed nothing of its own.
+  await pullWatched(b);
+  assert.equal((await localWatched(b, "tt1196946")).length, 1);
+
+  // A un-marks it. The local row goes and the cloud row is deleted.
+  await a.run(async () => {
+    const { watchedItemsRepository } =
+      await import("../../data/repository/watchedItemsRepository.js");
+    await watchedItemsRepository.unmark("tt1196946", { season: 1, episode: 4 });
+    // The cloud delete rides behind the local removal now. It has to land while
+    // this device"s storage and network are still the ones in place.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  assert.deepEqual(await localWatched(a, "tt1196946"), []);
+
+  // B pulls again and has to let it go.
+  await pullWatched(b);
+  assert.deepEqual(
+    await localWatched(b, "tt1196946"),
+    [],
+    "the other device must not keep an episode that was un-marked"
+  );
+
+  // And B must not put it back on its next push.
+  await b.run(async () => {
+    const { WatchedItemsSyncService } = await import("./watchedItemsSyncService.js");
+    await WatchedItemsSyncService.push();
+  });
+  await pullWatched(a);
+  assert.deepEqual(await localWatched(a, "tt1196946"), []);
+});

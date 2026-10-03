@@ -12,6 +12,203 @@ body.desktop-browser {
   font-size: 16px;
 }
 
+/* Focus rings belong to keyboard navigation. A click or a tap moves focus too,
+   and the ring that follows tells the person what they just pressed -- which
+   they know. `js/ui/navigation/browserFocusModality.js` puts the modality on
+   the document; until a navigation key is used, the ring stays off.
+
+   Only the ring is suppressed. Borders and backgrounds that mark a focused or
+   selected row are left alone, because on many screens they are the selection.
+   A remote is unaffected: this is scoped to the browser. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .focusable.focused,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focusable.focused::after,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focusable:focus,
+html.desktop-browser:not(.nuvio-keyboard-nav) .profile-card.focused,
+html.desktop-browser:not(.nuvio-keyboard-nav) .settings-nav-item.focused,
+html.desktop-browser:not(.nuvio-keyboard-nav) .library-view-mode-button.focused:not(.selected) {
+  /* The rings are declared in dozens of screen-scoped rules, several of them
+     more specific than anything written here could be without repeating all of
+     them. One deliberate override is the smaller thing to maintain. */
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* The other half of the same story: a card's ring is often a 2px border on its
+   poster wrapper, transparent at rest and tinted when the card has focus.
+   These are every such wrapper in the two stylesheets, found by listing the
+   `.focused <descendant>` rules that set a border -- not one at a time as they
+   were noticed. `.profile-avatar-ring` is deliberately absent: its ring is a
+   shadow, already covered, and its border carries the active-profile mark. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .detail-morelike-poster-wrap,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .discover-action-card-inner,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .discover-card-poster,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .home-continue-media,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .home-poster-frame,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .home-seeall-card-inner,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .library-grid-poster,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .search-result-poster-wrap,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .search-seeall-inner,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) .seeall-card-poster-wrap {
+  border-color: transparent !important;
+}
+
+/* Several focus rings are drawn on a child of the focusable rather than on it:
+   the Continue Watching ring sits on the card's artwork, not the card. The
+   sweep only compared the focusable itself, which is why they survived. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected) *,
+html.desktop-browser:not(.nuvio-keyboard-nav) .focusable:focus:not(.selected) * {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* A handful of focus styles paint with `--secondary-color` directly rather
+   than the focus tokens. That variable is the theme accent used for real
+   content too, so it cannot be emptied wholesale; these are named instead. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .library-view-mode-button.focused:not(.selected) {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+/* The picker anchors and search fields across Library, Search and Discover all
+   take `border-color: var(--secondary-color)` when focused, over a resting
+   edge of rgba(255,255,255,.15). They are named because that variable is the
+   theme accent, used by real content inside these screens. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .library-picker-anchor.focused:not(.selected),
+html.desktop-browser:not(.nuvio-keyboard-nav) .discover-filter.focused:not(.selected) {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+html.desktop-browser:not(.nuvio-keyboard-nav) .library-search-input.focused:not(.selected) {
+  border-color: var(--border-color, #333) !important;
+}
+
+/* Each resting edge measured rather than assumed: the search field sits at
+   .16, the discover button at the shared border colour. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .search-input-field.focused:not(.selected) {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+html.desktop-browser:not(.nuvio-keyboard-nav) .search-discover-btn.focused:not(.selected) {
+  border-color: var(--border-color, #333) !important;
+}
+
+/* The insight tab is selected and focused at once. The guard that protects
+   selection styling skips it, but here the edge is focus-only: a selected tab
+   at rest has a transparent border and keeps its tinted fill. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .series-insight-tab.focused {
+  border-color: transparent !important;
+}
+
+/* Stream's chips and source cards, resting values measured. The chip is also
+   `selected`, so like the insight tab it is named rather than guarded. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .stream-route-chip.focused {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+html.desktop-browser:not(.nuvio-keyboard-nav) .stream-route-card-action.focused:not(.selected) {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(26, 26, 31, 0.82) !important;
+}
+
+/* Sign Out reddens and swells by 2% on focus; its resting values, measured. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .settings-account-signout-button.focused:not(.selected) {
+  border-color: transparent !important;
+  background: rgba(198, 40, 40, 0.12) !important;
+  transform: none !important;
+}
+
+/* The picker anchor also lightens its fill on focus. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .library-picker-anchor.focused:not(.selected) {
+  background: rgba(26, 26, 29, 0.9) !important;
+}
+
+/* The profile card carries a 1px transparent border purely to hold its place.
+   The TV rule takes the border away on focus (`border: none !important`), and
+   two classes plus !important beat the browser's own base rule -- so the whole
+   card and the name under it shifted 2px the moment a tap moved focus there.
+   Nothing is drawn here; the edge is put back so nothing moves.
+
+   The colour has to come back with it. `border: none` resets the colour to
+   `currentColor` as well as the width, so restoring only the width and style
+   left the card wearing a faint white rectangle -- the ring was gone from the
+   avatar and had reappeared around the card. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .profile-card.focused {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: transparent !important;
+}
+
+/* Add Profile answers focus with a lighter circle and a brighter plus, neither
+   of which is drawn from a focus token. Resting values measured on the page. */
+html.desktop-browser:not(.nuvio-keyboard-nav)
+  .profile-card.focused.profile-card-add
+  .profile-avatar-ring {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+html.desktop-browser:not(.nuvio-keyboard-nav) .profile-card.focused .profile-avatar-add {
+  color: var(--text-tertiary) !important;
+}
+
+/* The avatar editor's category tab paints with `--secondary-color`, not the
+   focus tokens, so it is named like the others that do. A tab that is also
+   `is-selected` keeps its edge: there the colour is the selection. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .profile-avatar-category.focused:not(.is-selected) {
+  border-color: var(--profile-editor-neutral-border, var(--border-color)) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* The editor's own rows draw their focus edge over a real resting one, so
+   emptying the focus token would take the resting edge with it. The danger
+   variant keeps its own red edge and is left out deliberately. */
+html.desktop-browser:not(.nuvio-keyboard-nav)
+  .profile-editor-action.focused:not(.selected):not(.profile-editor-action-danger) {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* The avatar tile answers focus by growing a tenth. A selected tile keeps it:
+   there the size is the selection, not the focus. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .profile-avatar-tile.focused:not(.is-selected) {
+  transform: scale(1) !important;
+}
+
+/* Manage profiles: the row's resting edge is the shared border colour, and the
+   focused rule wins with `!important` of its own, so this needs the same. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .settings-profile-manage-row.focused:not(.selected) {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* A settings row left focused by a tap kept a coloured edge that read as a
+   second selection. Restoring the resting edge is safe here precisely because
+   the row is focused and not selected. */
+/* The focus decoration is drawn from tokens that exist only for focus:
+   `--focus-color` for the edge, `--focus-bg` for the fill, and the player's
+   and detail screen's own rings. Emptying them on the focused element turns
+   off every rule that draws with them -- four hundred of them across two
+   stylesheets -- without touching a single resting style.
+
+   `:not(.selected)` is what keeps this honest: where the same colour marks the
+   current item rather than the focused one, it stays. */
+html.desktop-browser:not(.nuvio-keyboard-nav) .focused:not(.selected),
+html.desktop-browser:not(.nuvio-keyboard-nav) .focusable:focus:not(.selected) {
+  --focus-color: transparent;
+  --focus-bg: transparent;
+  --detail-focus-ring: transparent;
+  --player-focus-ring: transparent;
+  --player-focus-background: transparent;
+}
+
+/* In the rail the resting edge is nothing at all, so that is what a tap
+   leaves behind there. */
+@media not all and (any-pointer: coarse) {
+  /* In the rail the resting edge is nothing at all, so that is what a tap
+     leaves behind there. */
+  html.desktop-browser:not(.nuvio-keyboard-nav) .settings-shell .settings-nav-item.focused {
+    border-color: transparent !important;
+  }
+}
+
 /* Browser-only foundation for later responsive work on notched displays. */
 html.desktop-browser {
   --browser-safe-area-top: env(safe-area-inset-top, 0px);
@@ -611,22 +808,32 @@ html.desktop-browser {
   display: none;
 }
 
+/* The controls keep their corner; only their line is borrowed.
+   `--hero-controls-middle` is how far the details button's middle sits above
+   the card's bottom edge, measured in homeScreen.js -- the copy's padding and
+   the button's height both change across breakpoints, and restating either one
+   here would be a second place to keep them in step. */
+/* The browser may pan the page vertically from the hero, but a sideways drag
+   is the swipe and never a scroll -- otherwise the page rubber-bands and the
+   gesture is cancelled halfway. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+  touch-action: pan-y;
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
   position: absolute;
-  bottom: clamp(26px, 4vh, 48px);
+  bottom: var(--hero-controls-middle, clamp(26px, 4vh, 48px));
   right: clamp(24px, 5vw, 88px);
+  transform: translateY(50%);
   z-index: 5;
   display: inline-flex;
   max-width: calc(100vw - 40px);
   align-items: center;
   gap: 10px;
-  padding: 6px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  background: rgba(12, 12, 14, 0.58);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel[hidden] {
@@ -646,11 +853,12 @@ html.desktop-browser {
   width: 30px;
   height: 30px;
   place-items: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
+  background: none;
   color: #fff;
   font-size: 25px;
   line-height: 1;
+  /* Standing on the artwork now, not on a tube. */
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots {
@@ -687,7 +895,7 @@ html.desktop-browser {
 
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button:hover {
-    background: rgba(255, 255, 255, 0.24);
+    color: rgba(255, 255, 255, 0.72);
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot:hover {
@@ -695,13 +903,43 @@ html.desktop-browser {
   }
 }
 
-/* Desktop catalog shelves retain compact portrait cards. Continue Watching
-   is intentionally excluded because it remains a separate landscape section. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
-  box-sizing: border-box;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  padding-inline: clamp(24px, 2vw, 40px);
+/* Issue #14: on a touch screen the hero is swiped, so the arrows are a second
+   way to do what the finger already does. The dots stay -- they say where you
+   are, and remain tappable. */
+@media (any-pointer: coarse) {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel
+    .desktop-hero-carousel-button {
+    display: none;
+  }
+
+  /* Without the tube behind them the dots sit straight on the artwork. */
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-dot {
+    position: relative;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  }
+
+  /* The dots row scrolls sideways, and its overflow clips vertically too, so
+     the padding is what lets the target below reach past the dot. */
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-dots {
+    padding-block: 13px;
+    margin-block: -13px;
+  }
+
+  /* With the arrows gone a 7px dot is the only control a finger has, so it
+     gets a target around it without growing on screen. */
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-dot::before {
+    content: "";
+    position: absolute;
+    inset: -13px -4px;
+  }
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track {
@@ -714,6 +952,15 @@ html.desktop-browser {
   user-select: none;
   -webkit-user-select: none;
   touch-action: pan-y;
+}
+
+/* Desktop catalog shelves retain compact portrait cards. Continue Watching
+   is intentionally excluded because it remains a separate landscape section. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
+  box-sizing: border-box;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  padding-inline: clamp(24px, 2vw, 40px);
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) img {
@@ -1225,6 +1472,51 @@ html.desktop-browser {
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
 }
 
+/* Issue #24: the category rail becomes one full-width dropdown, wearing the
+   Library picker's shell with a transparent native select over it. */
+.desktop-browser #folderDetail .folder-detail-tab-picker {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  /* The header is a column flex, where the picker's inherited `flex: 1 1 0`
+     resolves against height and collapses it to nothing. */
+  flex: 0 0 auto;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-anchor {
+  width: 100%;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker:focus-within .library-picker-anchor {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-anchor {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Library's menu, borrowed whole -- and, as everywhere outside Library's own
+   shell, restated at browser scale rather than the television's. */
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-menu {
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 320px;
+  padding: 4px;
+  border-radius: 14px;
+  overflow-x: hidden;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
 .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-grid {
   grid-template-columns: repeat(auto-fill, minmax(var(--browser-card-min, 156px), 1fr));
   justify-content: stretch;
@@ -1367,9 +1659,13 @@ html.desktop-browser {
 /* Browser-only email/password sign-in. TV keeps the existing QR-first cards. */
 .desktop-browser #account .desktop-auth-shell {
   box-sizing: border-box;
-  display: grid;
-  min-height: 100vh;
-  place-items: center;
+  /* A grid of two centred rows put the install offer halfway down the page.
+     A column keeps the card and the offer together as one centred group. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
   padding: clamp(24px, 5vw, 56px) 20px;
 }
 
@@ -1507,14 +1803,372 @@ html.desktop-browser {
   font-size: 14px;
 }
 
-.desktop-browser #account .desktop-auth-qr:hover:not(:disabled) {
+/* Issue #23: the sign-in screen, and the offer to install.
+   ------------------------------------------------------------------
+   The card keeps its shape; what it gained is a face (the wordmark and a
+   greeting), fields a thumb can read at a glance, and one clear order --
+   sign in, or, QR, or no account at all. */
+.desktop-browser #account .desktop-auth-logo {
+  display: block;
+  width: auto;
+  max-width: min(200px, 60%);
+  max-height: 44px;
+  margin: 0 auto 22px;
+  object-fit: contain;
+}
+
+.desktop-browser #account .desktop-auth-title {
+  text-align: center;
+  font-weight: 700;
+}
+
+.desktop-browser #account .desktop-auth-subtitle {
+  text-align: center;
+}
+
+.desktop-browser #account .desktop-auth-input-wrap {
+  position: relative;
+  display: block;
+}
+
+.desktop-browser #account .desktop-auth-input-icon {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 19px;
+  pointer-events: none;
+}
+
+.desktop-browser #account .desktop-auth-input-wrap .desktop-auth-input {
+  padding-left: 42px;
+  font-weight: 400;
+}
+
+.desktop-browser #account .desktop-auth-input.has-trailing-action {
+  padding-right: 46px;
+}
+
+.desktop-browser #account .desktop-auth-input::-ms-reveal,
+.desktop-browser #account .desktop-auth-input::-ms-clear {
+  display: none;
+}
+
+.desktop-browser #account .desktop-auth-input-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  transform: translateY(-50%);
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.56);
+  cursor: pointer;
+}
+
+.desktop-browser #account .desktop-auth-input-toggle:hover {
   color: #fff;
+}
+
+.desktop-browser #account .desktop-auth-input-toggle:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 2px;
+}
+
+.desktop-browser #account .desktop-auth-input-toggle .material-icons {
+  font-size: 20px;
+}
+
+.desktop-browser #account .desktop-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+}
+
+.desktop-browser #account .desktop-auth-divider::before,
+.desktop-browser #account .desktop-auth-divider::after {
+  content: "";
+  flex: 1 1 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* QR stops being a footnote: on a phone it is often the easier of the two. */
+.desktop-browser #account .desktop-auth-qr {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  height: 46px;
+  margin: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.desktop-browser #account .desktop-auth-qr:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.desktop-browser #account .desktop-auth-qr .material-icons {
+  font-size: 20px;
+}
+
+/* The offer sits under the card, not over it: nothing here blocks signing in. */
+.desktop-browser #account .browser-install-banner {
+  box-sizing: border-box;
+  display: flex;
+  width: min(100%, 460px);
+  margin-top: 20px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(24, 24, 28, 0.92);
+}
+
+.desktop-browser #account .browser-install-banner-icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+
+.desktop-browser #account .browser-install-banner-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.desktop-browser #account .browser-install-banner-title {
+  margin: 0;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.desktop-browser #account .browser-install-banner-body {
+  margin: 2px 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.desktop-browser #account .browser-install-banner-action {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--secondary-color);
+  /* The accent is near-white in this theme, so the label takes the token meant
+     to sit on it rather than a hardcoded white that would vanish. */
+  color: var(--on-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.desktop-browser #account .browser-install-banner-close {
+  flex: 0 0 auto;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+}
+
+.desktop-browser #account .browser-install-banner-close:hover {
+  color: #fff;
+}
+
+.desktop-browser #account .browser-install-banner-close .material-icons {
+  font-size: 18px;
+}
+
+.desktop-browser #account .browser-install-banner-action:focus-visible,
+.desktop-browser #account .browser-install-banner-close:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 2px;
 }
 
 /* Browser QR remains available as a secondary sign-in option. This control
    returns to the desktop email/password screen; TV keeps its remote Back flow. */
+
+/* Issue #23: the QR page, at browser scale.
+   ------------------------------------------------------------------
+   The shared markup is built for a television: two columns across 100vw, a
+   52px heading, a 360px code and 78px buttons. On a phone the columns landed
+   on top of each other and every block overflowed its panel. Here it becomes
+   one column built like the sign-in card beside it. TV keeps the values above
+   untouched. */
 .desktop-browser #account .qr-layout {
   position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  height: auto;
+  /* 100vh outlives the phone toolbars that shrink the viewport. */
+  min-height: 100dvh;
+  padding: clamp(72px, 12vw, 96px) 20px clamp(24px, 5vw, 56px);
+}
+
+.desktop-browser #account .qr-left-panel {
+  flex: 0 0 auto;
+  width: min(100%, 460px);
+  margin-bottom: 22px;
+}
+
+.desktop-browser #account .qr-brand-lockup {
+  margin-bottom: 18px;
+}
+
+.desktop-browser #account .qr-logo {
+  max-width: min(200px, 60%);
+  max-height: 44px;
+  height: auto;
+}
+
+.desktop-browser #account .qr-copy-block {
+  max-width: none;
+}
+
+.desktop-browser #account .qr-title {
+  font-size: clamp(26px, 3vw, 32px);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.desktop-browser #account .qr-description {
+  max-width: 420px;
+  margin: 10px auto 0;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.desktop-browser #account .qr-card-panel {
+  width: min(100%, 460px);
+}
+
+.desktop-browser #account .qr-card {
+  width: 100%;
+  height: auto;
+  gap: 14px;
+  padding: clamp(20px, 3vw, 28px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  background: rgba(18, 18, 22, 0.9);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.34);
+}
+
+.desktop-browser #account .qr-card-header {
+  gap: 6px;
+}
+
+.desktop-browser #account .qr-card-title {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.desktop-browser #account .qr-card-subtitle {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* The code is the point of the page, so it takes what the card can spare
+   rather than a fixed 360px that the card cannot. */
+.desktop-browser #account .qr-code-frame {
+  width: min(248px, 62vw);
+  height: min(248px, 62vw);
+  padding: 12px;
+  border-radius: 14px;
+}
+
+.desktop-browser #account .qr-code-text {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.desktop-browser #account .qr-status {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.desktop-browser #account .qr-actions {
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 2px;
+}
+
+.desktop-browser #account .qr-action-btn {
+  box-sizing: border-box;
+  width: 100%;
+  height: 46px;
+  padding: 0 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  transform: none;
+}
+
+.desktop-browser #account .qr-action-btn-primary {
+  border: 0;
+  background: var(--secondary-color);
+  color: var(--on-secondary);
+}
+
+.desktop-browser #account .qr-action-btn-secondary {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+/* On a remote, focus is shown by turning the button white. A pointer already
+   knows where it is, and a white secondary button would read as the primary. */
+.desktop-browser #account .qr-action-btn.focused {
+  transform: none;
+}
+
+.desktop-browser #account .qr-action-btn-secondary.focused {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.desktop-browser #account .qr-action-btn.focused,
+.desktop-browser #account .qr-action-btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 3px;
 }
 
 .desktop-browser #account .desktop-qr-back-button {
@@ -1546,6 +2200,19 @@ html.desktop-browser {
 .desktop-browser #account .desktop-qr-back-button:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.9);
   outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #account .desktop-qr-back-button span:not(.material-icons) {
+    display: none;
+  }
+
+  .desktop-browser #account .desktop-qr-back-button {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    border-radius: 50%;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1612,6 +2279,157 @@ html.desktop-browser {
   width: min(100%, 660px);
   max-height: none;
   overflow: visible;
+}
+
+/* The hero, centred on a touch screen.
+   ------------------------------------------------------------------
+   The left-to-right scrim and left-aligned copy are a widescreen idea: on a
+   phone the artwork is portrait and the copy is the whole width anyway, so
+   the scrim only darkened one edge for no reason. Everything moves to the
+   bottom centre and the downward fade alone carries the text. Desktop keeps
+   its cinema framing. */
+@media (any-pointer: coarse) {
+  .desktop-browser #detail .series-detail-vignette {
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 30%, var(--detail-bg) 100%);
+  }
+
+  .desktop-browser #detail .detail-hero-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    text-align: center;
+  }
+
+  .desktop-browser #detail .detail-hero-brand {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .desktop-browser #detail .detail-hero-body {
+    display: flex;
+    width: min(100%, 660px);
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  /* Everything but the title and the buttons lives here, below the picture
+     rather than over it. */
+  .desktop-browser #detail .detail-hero-meta-section {
+    display: flex;
+    width: 100%;
+    box-sizing: border-box;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 4px clamp(20px, 3.4vw, 64px) 0;
+    text-align: center;
+  }
+
+  /* The buttons' bottom margin used to separate them from the copy that sat
+     under them inside the hero. That copy is below the artwork now, and the
+     margin was only adding to the gap. */
+  .desktop-browser #detail .detail-hero-body .series-detail-actions {
+    margin-bottom: 0;
+  }
+
+  /* A later breakpoint rule sets this padding with the same weight, so the
+     content wrapper is named to outrank it. */
+  .desktop-browser #detail .series-detail-content .detail-hero-section {
+    padding-bottom: 6px;
+  }
+
+  .desktop-browser #detail .detail-hero-meta-section > * {
+    width: min(100%, 660px);
+  }
+
+  /* Portrait has room for two lines before the synopsis becomes the page.
+     Landscape is wider and shallower, so it keeps the longer clamp. */
+  .desktop-browser #detail .series-detail-description.is-expanded {
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    display: block;
+  }
+
+  /* The control belongs at the end of what it is cutting off, not on a line
+     below it. The fade keeps the last words from running under the label. */
+  .desktop-browser #detail .series-detail-description {
+    position: relative;
+  }
+
+  .desktop-browser #detail .detail-description-toggle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    display: inline-flex;
+    width: auto;
+    align-items: center;
+    margin: 0;
+    /* Sits on the last line itself: same type and the same line box, so its
+       baseline is the text's baseline rather than a control parked below it.
+       The pad is the fade the last words disappear into. */
+    padding: 0 0 0 46px;
+    border: 0;
+    border-radius: 0;
+    background: linear-gradient(90deg, transparent 0%, var(--detail-bg) 42%, var(--detail-bg) 100%);
+    color: var(--detail-text-secondary, rgba(255, 255, 255, 0.62));
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    height: 1.45em;
+  }
+
+  /* Expanded there is nothing to sit at the end of, so it returns to a line. */
+  .desktop-browser #detail .series-detail-description.is-expanded .detail-description-toggle {
+    position: static;
+    height: auto;
+    padding: 4px 8px;
+    background: transparent;
+  }
+
+  .desktop-browser #detail .detail-description-toggle[hidden] {
+    display: none;
+  }
+
+  .desktop-browser #detail .detail-description-toggle:focus-visible {
+    outline: 2px solid var(--detail-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .desktop-browser #detail .series-detail-actions,
+  .desktop-browser #detail .detail-ratings-row,
+  .desktop-browser #detail .detail-meta-row {
+    justify-content: center;
+  }
+
+  .desktop-browser #detail .detail-meta-stack {
+    align-items: center;
+  }
+
+  .desktop-browser #detail .series-detail-support,
+  .desktop-browser #detail .series-detail-description,
+  .desktop-browser #detail .detail-resume-indicator {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* The resume line is a flex row, and text-align does not move flex items --
+     it was the one thing on this page still sitting against the left edge. */
+  .desktop-browser #detail .detail-resume-indicator {
+    justify-content: center;
+  }
+}
+
+/* Portrait has room for two lines before the synopsis becomes the page.
+   Landscape is wider and shallower, so it keeps the longer clamp. */
+@media (any-pointer: coarse) and (orientation: portrait) {
+  .desktop-browser #detail .series-detail-description:not(.is-expanded) {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
 }
 
 .desktop-browser #detail .detail-desktop-back-button,
@@ -4580,6 +5398,7 @@ html.desktop-browser {
   align-items: center;
   gap: 7px;
   min-height: 34px;
+  height: 100%;
   padding: 0 12px;
   border: 1px solid rgb(var(--secondary-color-rgb) / 0.38);
   border-radius: 999px;
@@ -4598,6 +5417,90 @@ html.desktop-browser {
 .desktop-browser #detail .series-season-download-action:focus-visible {
   outline: 2px solid var(--detail-focus-ring);
   outline-offset: 2px;
+}
+
+/* Issue #17: the season rail becomes a dropdown on the left, with Download
+   Season sharing the same row on the right. The select carries the options
+   natively -- it sits transparent over the pill, so touch gets the OS picker
+   and keyboard gets select semantics for free. */
+.desktop-browser #detail .series-season-controls {
+  display: flex;
+  /* Both pills take the dropdown's height rather than each sizing itself. */
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px clamp(20px, 3.4vw, 64px) 10px;
+}
+
+.desktop-browser #detail .series-season-controls .series-season-download-row {
+  padding: 0;
+}
+
+.desktop-browser #detail .series-season-select-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 10px 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--detail-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.desktop-browser #detail .series-season-select-shell:focus-within {
+  border-color: var(--detail-focus-ring);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.24);
+}
+
+.desktop-browser #detail .series-season-select-chevron {
+  font-size: 20px;
+  color: var(--detail-text-secondary);
+}
+
+/* The pill is the whole control now; the options open beneath it in the app's
+   own menu rather than in a panel the operating system draws. */
+.desktop-browser #detail .series-season-picker {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.desktop-browser #detail .series-season-select-shell {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* The menu is Library's, borrowed whole -- but its sizes are written for the
+   television, where an option is 84px tall. Library restates them inside its
+   own shell, so the detail page, being somewhere else, has to do the same. */
+.desktop-browser #detail .series-season-picker .library-picker-menu {
+  top: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  min-width: max(100%, 180px);
+  max-height: 320px;
+  padding: 4px;
+  border-radius: 14px;
+  overflow-x: hidden;
+}
+
+.desktop-browser #detail .series-season-picker .library-picker-option {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #detail .series-season-controls {
+    padding-right: var(--browser-page-gutter);
+    padding-left: var(--browser-page-gutter);
+  }
 }
 
 .desktop-browser .nuvio-dialog-panel.season-download-dialog {
@@ -5269,6 +6172,91 @@ html.desktop-browser {
   background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
 }
 
+/* The rail carries the same grouping as the index page: twelve rows in a
+   column say nothing about which of them belong together. */
+.desktop-browser .settings-shell .settings-nav-rail-header {
+  padding: 6px 8px 10px;
+}
+
+.desktop-browser .settings-shell .settings-nav-rail-title {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.desktop-browser .settings-shell .settings-nav-group-title {
+  margin: 14px 8px 6px;
+  color: var(--text-tertiary, #808080);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.desktop-browser .settings-shell .settings-nav-group-title:first-of-type {
+  margin-top: 2px;
+}
+
+.desktop-browser .settings-shell .settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.desktop-browser .settings-shell .settings-nav-item[style*="--settings-nav-accent"] .settings-nav-icon {
+  color: rgb(var(--settings-nav-accent));
+  background: rgb(var(--settings-nav-accent) / 0.16);
+}
+
+/* The rail is a list, not a stack of cards. Each row wearing its own border
+   and background turned eleven entries into eleven boxes, and the chevrons
+   repeated what the whole rail already says.
+
+   The gate is the same one `settingsUsesTouchNav()` uses to choose between the
+   rail and the index page. The nav-mode attribute looked like the obvious
+   discriminator and is not: it is absent on the index, so keying off it
+   flattened the index too. */
+@media not all and (any-pointer: coarse) {
+  .desktop-browser .settings-shell .settings-nav-item {
+    min-height: 0;
+    padding: 9px 10px;
+    gap: 10px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-item .settings-nav-chevron,
+  .desktop-browser .settings-shell .settings-nav-item .settings-nav-subtitle {
+    display: none;
+  }
+
+  .desktop-browser .settings-shell .settings-sidebar .settings-nav-item.selected {
+    /* The mark of the current section is the fill, not a coloured edge. The
+       rule this overrides is itself `!important`, so nothing quieter wins. */
+    border-color: transparent !important;
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  .desktop-browser .settings-shell .settings-nav-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    font-size: 16px;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-label {
+    font-size: 14px;
+    font-weight: 550;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
 .desktop-browser .settings-shell .settings-scroll-indicator {
   display: none;
 }
@@ -5602,6 +6590,92 @@ html.desktop-browser {
   border-color: var(--focus-color);
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.2);
   outline: none;
+}
+
+/* The profile picker's footer: adding and managing are two actions of equal
+   weight, and signing out is the one that leaves. */
+.desktop-browser .profile-brand-logo {
+  display: block;
+  width: auto;
+  max-width: min(180px, 52%);
+  max-height: 38px;
+  margin: 0 auto clamp(28px, 6vh, 56px);
+  object-fit: contain;
+}
+
+/* The actions belong at the foot of the screen, not tucked under the faces.
+   The auto margin takes whatever space is left between them. */
+.desktop-browser .profile-selection-actions {
+  margin-top: auto;
+  padding-top: 32px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.desktop-browser .profile-action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.desktop-browser .profile-action-pill .material-icons {
+  font-size: 19px;
+}
+
+.desktop-browser .profile-signout-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin: 14px auto 0;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #ff6b6b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.desktop-browser .profile-signout-button .material-icons {
+  font-size: 19px;
+}
+
+.desktop-browser .profile-action-pill.focused,
+.desktop-browser .profile-action-pill:focus-visible,
+.desktop-browser .profile-signout-button.focused,
+.desktop-browser .profile-signout-button:focus-visible {
+  border-color: var(--focus-color);
+  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.2);
+  outline: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .profile-action-pill:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .desktop-browser .profile-signout-button:hover {
+    background: rgba(255, 107, 107, 0.12);
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -7256,7 +8330,8 @@ html.desktop-browser {
   flex: 0 1 clamp(200px, 18vw, 280px);
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-anchor {
   min-height: 54px;
   padding: 8px 14px;
   gap: 12px;
@@ -7265,23 +8340,27 @@ html.desktop-browser {
   background: rgba(26, 26, 29, 0.9);
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-title {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-title,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-title {
   font-size: 11px;
   line-height: 1.2;
   letter-spacing: 0.06em;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-value {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-value,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-value {
   font-size: 15px;
   line-height: 1.25;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-icon {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-icon,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-icon {
   width: 20px;
   height: 20px;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-chevron {
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-chevron,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-chevron {
   width: 18px;
   height: 18px;
 }
@@ -7967,6 +9046,13 @@ html.desktop-browser {
 }
 
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+  position: fixed;
+  z-index: 30;
+  top: calc(
+    var(--browser-floating-nav-top) +
+      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+  );
+  left: clamp(20px, 3.4vw, 64px);
   display: inline-flex;
   flex: 0 0 44px;
   align-items: center;
@@ -8263,8 +9349,13 @@ html.desktop-browser {
 
 @media (max-width: 560px) {
   .desktop-browser .discover-shell.desktop-navigation-enabled > .discover-main {
-    padding: 84px 20px 40px;
-    scroll-padding-top: 84px;
+    /* The navigation floats at 20px plus whatever the device keeps for its
+       notch, so clearing it with a fixed 84px only works on a screen without
+       one. On a phone that has a notch the bar moves down and the title does
+       not, and "Discover" ends up behind it. The clearance the other screens
+       use already carries the inset. */
+    padding: calc(var(--browser-mobile-nav-clearance, 68px) + 16px) 20px 40px;
+    scroll-padding-top: calc(var(--browser-mobile-nav-clearance, 68px) + 16px);
   }
 
   .desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row {
@@ -10139,7 +11230,7 @@ body.desktop-browser {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary { gap: 6px; font-size: 13px; }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description { font-size: 14px; line-height: 1.42; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel { right: var(--browser-page-gutter); bottom: 18px; }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel { right: var(--browser-page-gutter); }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs { gap: var(--browser-mobile-section-gap); padding-inline: var(--browser-page-gutter); }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue { padding-inline: calc(var(--browser-page-gutter) - 8px); }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-track { padding-block: 8px 6px; }
@@ -10204,7 +11295,6 @@ body.desktop-browser {
 
   .desktop-browser .profile-pin-desktop-back,
   .desktop-browser #account .desktop-qr-back-button,
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button,
   .desktop-browser #debugConsole .debug-console-back { top: calc(8px + var(--browser-safe-area-top)); left: calc(8px + var(--browser-safe-area-left)); width: var(--browser-mobile-control-size); min-width: var(--browser-mobile-control-size); height: var(--browser-mobile-control-size); min-height: var(--browser-mobile-control-size); }
 
   .desktop-browser #detail .detail-desktop-back-button,
@@ -10212,6 +11302,7 @@ body.desktop-browser {
   .desktop-browser #folderDetail .folder-detail-desktop-back,
   .desktop-browser #stream .stream-desktop-back-button,
   .desktop-browser #player .player-desktop-back-button,
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button,
   .desktop-browser .profile-desktop-back-button {
     top: calc(
       var(--browser-floating-nav-top) +
@@ -10397,9 +11488,8 @@ body.desktop-browser {
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
     right: var(--browser-page-gutter);
-    bottom: 14px;
     gap: 8px;
-    padding: 5px 7px;
+    padding: 0;
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
@@ -10759,7 +11849,6 @@ body.desktop-browser {
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
     right: var(--browser-home-tablet-gutter);
-    bottom: 20px;
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
@@ -10847,7 +11936,6 @@ body.desktop-browser {
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
     right: max(16px, var(--browser-safe-area-right));
-    bottom: 10px;
   }
 }
 
@@ -11332,6 +12420,12 @@ body.desktop-browser {
 
   .desktop-browser #folderDetail .folder-detail-desktop-heading {
     gap: 7px;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-heading p {
+    text-align: center;
   }
 
   .desktop-browser #folderDetail .folder-detail-desktop-heading h1 {
@@ -11341,6 +12435,8 @@ body.desktop-browser {
   .desktop-browser #folderDetail .folder-detail-desktop-logo {
     max-width: min(280px, 72vw);
     max-height: 76px;
+    margin-inline: auto;
+    object-position: center;
   }
 
   .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs {
@@ -12373,6 +13469,192 @@ body.desktop-browser {
   padding: 12px 2px 18px;
 }
 
+/* Grouped index: each group is one card with its rows divided inside it, an
+   account card above them, and the mark at the foot. The wash behind it all is
+   the theme's own colour, so it follows whatever Appearance is set to rather
+   than naming a hue here. */
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-sidebar {
+  gap: 0;
+}
+
+/* A band with an edge is what a box gives you. This is a light on the page
+   instead, in the theme's colour so it follows whatever Appearance is set to.
+
+   Two things fought it. The route container's background is written inline by
+   the screen manager, which no stylesheet rule can outrank -- hence the
+   `!important`, and only on the image so the inline colour still provides the
+   base. And the shell inside each route paints `--bg-color` over the top, so
+   on these routes it steps aside.
+
+   Routes that open on artwork are left out -- Home, Detail and Collection
+   already have a picture doing this job. The profile picker is out too: its
+   wash is the avatar's own colour. */
+.desktop-browser #library,
+.desktop-browser #search,
+.desktop-browser #discover,
+.desktop-browser #settings,
+.desktop-browser #account,
+.desktop-browser #castDetail,
+.desktop-browser #stream,
+.desktop-browser #catalogSeeAll,
+.desktop-browser #catalogOrder,
+.desktop-browser #plugins,
+.desktop-browser #plugin,
+.desktop-browser #trakt,
+.desktop-browser #supportersContributors,
+.desktop-browser #licensesAttributions,
+.desktop-browser #debugConsole {
+  background-image: radial-gradient(
+    circle 760px at 24% 4%,
+    rgb(var(--secondary-color-rgb) / 0.32) 0%,
+    rgb(var(--secondary-color-rgb) / 0.12) 34%,
+    transparent 70%
+  ) !important;
+}
+
+.desktop-browser #library .library-shell,
+.desktop-browser #library .library-main,
+.desktop-browser #search .search-screen-shell,
+.desktop-browser #discover .search-screen-shell,
+.desktop-browser #discover .discover-shell,
+.desktop-browser #settings .settings-shell,
+.desktop-browser #account .desktop-auth-shell,
+.desktop-browser #account .qr-layout,
+.desktop-browser #castDetail .cast-detail-shell,
+.desktop-browser #stream .stream-route-shell,
+.desktop-browser #catalogSeeAll .seeall-shell,
+.desktop-browser #debugConsole .debug-console-shell,
+/* Search renders inside the Home shell, whose main pane is an opaque sheet
+   over the whole route -- the one place the wash was genuinely hidden rather
+   than merely sitting behind cards. */
+.desktop-browser #search .home-main {
+  background: transparent;
+}
+
+/* Home was left out because it opens on artwork -- but it does not always. The
+   hero can be turned off in Layout, and offline there is nothing to build one
+   from, and in both cases Home was the one page left with a flat background.
+   `home-hero-disabled` is the class the screen already sets when it renders no
+   hero, so the wash follows it rather than guessing. */
+.desktop-browser #home:has(.home-hero-disabled),
+.desktop-browser #home:has(.home-offline-shell) {
+  background-image: radial-gradient(
+    circle 760px at 24% 4%,
+    rgb(var(--secondary-color-rgb) / 0.32) 0%,
+    rgb(var(--secondary-color-rgb) / 0.12) 34%,
+    transparent 70%
+  ) !important;
+}
+
+/* The shells inside paint the flat colour over the top, so on a heroless Home
+   they step aside the way Library's and Search's do. */
+.desktop-browser #home:has(.home-hero-disabled) .home-screen-shell,
+.desktop-browser #home:has(.home-hero-disabled) .home-shell,
+.desktop-browser #home:has(.home-hero-disabled) .home-main,
+.desktop-browser #home:has(.home-offline-shell) .home-screen-shell,
+.desktop-browser #home:has(.home-offline-shell) .home-shell,
+.desktop-browser #home:has(.home-offline-shell) .home-main {
+  background: transparent;
+}
+
+/* Sign-in happens before there is a profile, so there is no chosen theme to
+   follow. It takes the mark's own purple, sampled from the logo. */
+.desktop-browser #account {
+  background-image: radial-gradient(
+    circle 760px at 24% 4%,
+    rgb(171 76 239 / 0.34) 0%,
+    rgb(171 76 239 / 0.13) 34%,
+    transparent 70%
+  ) !important;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group-title {
+  margin: 22px 4px 8px;
+  color: var(--text-tertiary, #808080);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* One box per group. The rows inside it stop being cards and become rows. */
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 18px;
+  background: rgba(30, 30, 36, 0.86);
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item + .settings-nav-item {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-item[style*="--settings-nav-accent"] .settings-nav-icon {
+  color: rgb(var(--settings-nav-accent));
+  background: rgb(var(--settings-nav-accent) / 0.16);
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card {
+  min-height: 76px;
+  margin-bottom: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 18px;
+  background: rgba(30, 30, 36, 0.86);
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card-avatar {
+  flex: 0 0 auto;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 50%;
+  object-fit: cover;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: #4ade80;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card-status.is-offline {
+  color: var(--text-tertiary, #808080);
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-footer-logo {
+  display: block;
+  width: auto;
+  max-width: 116px;
+  max-height: 26px;
+  margin: 28px auto 8px;
+  object-fit: contain;
+  opacity: 0.5;
+}
+
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-item {
   flex: 0 0 auto;
   width: 100%;
@@ -12836,4 +14118,1255 @@ body.desktop-browser {
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   font-size: 12px;
   line-height: 1.35;
+}
+
+/* Library filters: one row out, the rest behind a button.
+   ------------------------------------------------------------------
+   Four stacked pickers took a third of a phone screen before a single item
+   appeared, and all four read "All" — a third of the screen spent saying
+   nothing was filtered. Type stays out, because it is the one most often
+   changed. Genre, Year and Sort fold behind the button beside it. */
+/* The shell-scoped row rules below 600px set wrap and a full-width basis, and
+   they carry more classes than a bare `.library-primary-filter-row`. Matching
+   their scope is what keeps the button beside the picker on a phone. */
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-primary-filter-row,
+.desktop-browser .library-primary-filter-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  /* The row must not wrap: the picker beside the button is what gives way,
+     not the button that drops to a line of its own. */
+  flex-wrap: nowrap;
+}
+
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-primary-filter-row
+  .library-picker,
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-primary-filter-row
+  .library-picker-anchor,
+.desktop-browser .library-primary-filter-row .library-picker,
+.desktop-browser .library-primary-filter-row .library-picker-anchor {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.desktop-browser .library-filter-toggle {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 52px;
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 14px;
+  background: var(--card-bg, #222);
+  color: var(--text-color);
+  position: relative;
+}
+
+.desktop-browser .library-filter-toggle-icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.desktop-browser .library-filter-toggle.is-expanded {
+  border-color: var(--secondary-color);
+  color: var(--secondary-color);
+}
+
+/* Folded away, a narrowed library would have nothing to explain it. The dot
+   is that explanation. */
+.desktop-browser .library-filter-toggle.has-active-filters::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--secondary-color);
+}
+
+.desktop-browser .library-filter-toggle.focused,
+.desktop-browser .library-filter-toggle:focus-visible {
+  outline: none;
+  border-color: var(--focus-color);
+}
+
+.desktop-browser .library-secondary-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.desktop-browser .library-secondary-filter-row .library-picker {
+  flex: 1 1 96px;
+  min-width: 0;
+}
+
+/* Downloaded keeps its filter and gains the download manager beside it. The
+   manager used to be a fourth tab that appeared only while something was
+   downloading, so the one page that could explain a stalled queue vanished
+   exactly when the queue emptied. */
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-downloaded-filter-row,
+.desktop-browser .library-downloaded-filter-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-downloaded-filter-row
+  .library-picker,
+.desktop-browser .library-downloaded-filter-row .library-picker {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.desktop-browser .library-downloaded-filter-row.is-manager-only {
+  justify-content: flex-end;
+}
+
+.desktop-browser .library-downloaded-filter-row.is-manager-only .library-download-manager-button {
+  margin-left: auto;
+}
+
+.desktop-browser .library-download-manager-button {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  width: 52px;
+  /* Alone in the manager's row there is no picker to stretch against, so it
+     carries its own height. */
+  min-height: 52px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 14px;
+  background: var(--card-bg, #222);
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.desktop-browser .library-download-manager-button.is-active {
+  border-color: var(--secondary-color);
+  color: var(--secondary-color);
+}
+
+.desktop-browser .library-download-manager-button .material-icons {
+  font-size: 22px;
+}
+
+.desktop-browser .library-download-manager-button .library-download-manager-count {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--secondary-color);
+  color: var(--on-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 17px;
+}
+
+.desktop-browser .library-download-manager-button.focused,
+.desktop-browser .library-download-manager-button:focus-visible {
+  outline: none;
+  border-color: var(--focus-color);
+}
+
+/* The header now carries a count and a way to search what is on the shelf. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+.desktop-browser .library-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.desktop-browser .library-page-heading {
+  min-width: 0;
+}
+
+.desktop-browser .library-search-button {
+  flex: 0 0 auto;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 50%;
+  background: var(--card-bg, #222);
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.desktop-browser .library-search-button.is-open {
+  border-color: var(--secondary-color);
+  color: var(--secondary-color);
+}
+
+.desktop-browser .library-search-button .material-icons {
+  font-size: 20px;
+}
+
+.desktop-browser .library-search-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.desktop-browser .library-search-row-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--text-tertiary, #808080);
+  font-size: 19px;
+  pointer-events: none;
+}
+
+.desktop-browser .library-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px 0 42px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 14px;
+  background: var(--card-bg, #222);
+  color: var(--text-color);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.desktop-browser .library-search-input:focus-visible {
+  border-color: var(--focus-color);
+}
+
+/* Saved, Cloud and Downloaded are one control, not three loose pills: they are
+   a choice between three shelves, and a shared box is what says so. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row,
+.desktop-browser .library-view-mode-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button,
+.desktop-browser .library-view-mode-button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button.selected,
+.desktop-browser .library-view-mode-button.selected {
+  background: rgb(var(--secondary-color-rgb) / 0.22);
+  color: var(--text-color);
+}
+
+/* Desktop spacing was already right at 18px. A phone has less height to give
+   away, so the gap tightens there and only there. */
+.desktop-browser .library-tabs-row {
+  margin-bottom: 18px;
+}
+
+@media (any-pointer: coarse) {
+  .desktop-browser .library-tabs-row {
+    margin-bottom: 12px;
+  }
+
+  /* A phone has the width to spare and nothing to put beside it, so the three
+     shelves divide the row between them. */
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row,
+  .desktop-browser .library-view-mode-row {
+    display: flex;
+    width: 100%;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button,
+  .desktop-browser .library-view-mode-button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+.desktop-browser .library-search-row {
+  margin-bottom: 0;
+}
+
+/* Filtering to one or two titles used to stretch them across the row. The
+   cards keep their size and the row simply ends early. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid,
+.desktop-browser .library-grid {
+  grid-template-columns: repeat(auto-fill, minmax(var(--browser-card-min, 156px), 1fr));
+  justify-content: start;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid > *,
+.desktop-browser .library-grid > * {
+  max-width: 260px;
+}
+
+/* Provider and Type are one pair of choices, so they stay on one line rather
+   than stacking into two full-width rows on a phone. */
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-cloud-filter-row,
+.desktop-browser .library-cloud-filter-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-cloud-filter-row
+  .library-picker,
+.desktop-browser .library-cloud-filter-row .library-picker {
+  flex: 0 1 200px;
+  width: auto;
+  min-width: 0;
+  max-width: 260px;
+}
+
+/* Refresh is an action, not a filter, so it sits at the far end as an icon. */
+.desktop-browser .library-cloud-refresh-button {
+  flex: 0 0 auto;
+  display: grid;
+  width: 52px;
+  min-height: 52px;
+  margin-left: auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 14px;
+  background: var(--card-bg, #222);
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.desktop-browser .library-cloud-refresh-button .material-icons {
+  font-size: 22px;
+}
+
+.desktop-browser .library-cloud-refresh-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Downloaded's only filter is a short list, so it stops taking the whole row. */
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-downloaded-filter-row
+  .library-picker,
+.desktop-browser .library-downloaded-filter-row .library-picker {
+  flex: 0 1 190px;
+  margin-right: auto;
+}
+
+/* Tabs and search share a line. On a phone the field drops below the tabs when
+   the button opens it; with a pointer it sits at the end of the same row. */
+.desktop-browser .library-tabs-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.desktop-browser .library-tabs-row .library-search-row {
+  width: 100%;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .library-tabs-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    .library-tabs-row
+    .library-view-mode-row,
+  .desktop-browser .library-tabs-row .library-view-mode-row {
+    flex: 0 1 auto;
+    /* The row's own bottom margin is what pushed it 9px off the field beside
+       it once they shared a centred line. */
+    margin-bottom: 0;
+  }
+
+  .desktop-browser .library-tabs-row .library-search-row {
+    flex: 0 1 320px;
+    margin-bottom: 0;
+  }
+
+  /* The button is the phone's way in; a pointer already has the field. */
+  .desktop-browser .library-search-button {
+    display: none;
+  }
+
+  /* The filter sits at the far end of its row, away from the picker. */
+  .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    .library-picker-row.library-primary-filter-row
+    .library-picker,
+  .desktop-browser .library-primary-filter-row .library-picker {
+    flex: 0 1 260px;
+    margin-right: auto;
+  }
+
+  .desktop-browser .library-downloaded-filter-row .library-picker {
+    flex: 0 1 260px;
+    margin-right: auto;
+  }
+}
+
+/* Discover borrows Library's folded filters, and has to beat its own row
+   rules to do it: `.discover-picker-row` sets wrap and a 240px basis, which
+   between them push the button onto a line of its own. */
+.desktop-browser .discover-shell.desktop-navigation-enabled .library-primary-filter-row {
+  flex-wrap: nowrap;
+  align-items: stretch;
+  margin-bottom: 0;
+}
+
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .library-primary-filter-row
+  .discover-filter-shell {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* The row's own bottom margin is off so the folded-out row can sit against it,
+   which left nothing between the pickers and the first card. The gap belongs to
+   the group, so it holds whether the filters are folded or not. */
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-groups {
+  margin-bottom: 24px;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .library-secondary-filter-row {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .library-secondary-filter-row
+  .discover-filter-shell {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+/* A long press on a card is the app's gesture, not the browser's. Safari and
+   Chrome answer the same hold with their own callout -- Save Image, Copy, and a
+   magnified preview of the poster -- which lands on top of the action sheet and
+   has to be dismissed before the sheet can be used. The poster is reachable at a
+   useful size from the sheet's own thumbnail instead.
+
+   Only the app's own focusable targets are covered, and only where a finger is
+   the pointer: a long press on ordinary text or a link keeps everything the
+   browser normally offers. `user-select` stays off inputs, where selecting text
+   is the whole point. */
+@media (any-pointer: coarse) {
+  html.desktop-browser .focusable {
+    -webkit-touch-callout: none;
+  }
+
+  html.desktop-browser .focusable img,
+  html.desktop-browser .nuvio-action-sheet-poster img {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+}
+
+/* The hero's synopsis, trimmed to two lines with a "more" that follows the
+   sentence -- the same control the detail page's synopsis carries. Two lines is
+   the most a hero can give a synopsis before the synopsis becomes the hero, and
+   a phone held upright has the least room of any shape it takes.
+
+   Nothing here is positioned or painted. The detail page can fade its last
+   words out under the label, because behind them is a solid page; the hero
+   cannot, because behind them is the artwork, and any colour chosen for it
+   turns into a dark smudge the moment the picture is bright. homeScreen.js
+   fits the text and this button into the two lines together instead, so the
+   label follows the last word the way another word would.
+
+   The two-line height itself is an inline style set there, since nothing in a
+   stylesheet can outrank one. */
+@media (any-pointer: coarse) and (orientation: portrait) {
+  .desktop-browser .home-hero-description-toggle {
+    display: inline;
+    margin: 0 0 0 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #fff;
+    /* The synopsis over artwork already needs this to stay readable; the label
+       is the same text on the same picture. */
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .desktop-browser .home-hero-description-toggle[hidden] {
+    display: none;
+  }
+}
+
+/* The settings rail drew the same glyphs the phone does, but in a box the size
+   of the glyph itself -- 20px against the phone's 36 -- so the coloured tile
+   behind each one had nowhere to show and the row read as a bare icon. The
+   36px tile already existed; it was written for the index and the rail was
+   never given it. Same box, same radius, same 20px glyph inside.
+
+   `settings-nav-icon-svg` keeps the padding the index gives it: the playback
+   glyph is an inline SVG rather than a font icon, so the tile's inset has to
+   come off its own box for it to sit at the size of the rest. */
+@media not all and (any-pointer: coarse) {
+  .desktop-browser .settings-shell .settings-nav-icon,
+  .desktop-browser .settings-shell .settings-nav-icon-material,
+  .desktop-browser .settings-shell .settings-nav-icon-svg,
+  .desktop-browser .settings-shell .settings-nav-icon-image {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-icon {
+    display: grid;
+    place-items: center;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-icon.settings-nav-icon-material {
+    font-size: 20px;
+  }
+
+  .desktop-browser .settings-shell .settings-nav-icon.settings-nav-icon-svg {
+    padding: 8px;
+    fill: currentColor;
+  }
+}
+
+/* Source picker and refresh, on one line above the sources. The dropdown takes
+   only the width it needs on the left; refresh sits at the right end, where
+   the same action sits in Library. Both are the row's height, so neither looks
+   bolted on. */
+.desktop-browser #stream .stream-route-filter-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 42px;
+  margin: 0 0 12px;
+}
+
+/* The picker is the app's own menu, already built and styled -- but its sizes
+   are written for the television, where an option is 84px tall and a corner is
+   36px round. Library restates them for the browser inside its own shell, so
+   this row, being somewhere else, has to do the same.
+
+   The anchor takes the refresh button's height exactly, so the two read as one
+   row rather than a tall control with a small button beside it. */
+.desktop-browser #stream .stream-route-filter-row .library-picker {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(100%, 280px);
+}
+
+.desktop-browser #stream .stream-route-filter-row .library-picker-anchor {
+  min-height: 42px;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 12px;
+  gap: 8px;
+}
+
+.desktop-browser #stream .stream-route-filter-row .library-picker-title {
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+}
+
+.desktop-browser #stream .stream-route-filter-row .library-picker-value {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.desktop-browser #stream .stream-route-filter-row .library-picker-chevron {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-browser #stream .stream-route-filter-row .library-picker-menu {
+  top: calc(100% + 6px);
+  right: auto;
+  min-width: max(100%, 170px);
+  max-height: 320px;
+  padding: 4px;
+  border-radius: 14px;
+  /* The padding rounds a couple of pixels wider than the box, which was enough
+     to hang a scrollbar along the bottom of a menu with nothing to scroll. */
+  overflow-x: hidden;
+}
+
+.desktop-browser #stream .stream-route-filter-row .library-picker-option {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.desktop-browser #stream .stream-route-refresh {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(26, 26, 31, 0.82);
+  color: var(--text-color, #fff);
+  cursor: pointer;
+}
+
+.desktop-browser #stream .stream-route-refresh .material-icons {
+  font-size: 20px;
+}
+
+
+
+/* The episode title and synopsis now sit under the card rather than printed
+   across its lower third. Over artwork they needed the card dimmed to stay
+   readable, which cost the picture the very part of the frame the thumbnail
+   was chosen for. Below it they need nothing: the page background is already
+   what the rest of the screen's text sits on. Only the episode number and the
+   runtime stay on the artwork, because those identify the card itself. */
+.desktop-browser #detail .series-episode-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 2px 0;
+}
+
+.desktop-browser #detail .series-episode-caption .series-episode-title {
+  color: var(--detail-text, #fff);
+}
+
+.desktop-browser #detail .series-episode-caption .series-episode-overview {
+  color: var(--detail-text-secondary, rgba(255, 255, 255, 0.62));
+}
+
+/* Nothing is printed over the lower half any more, so the scrim that existed to
+   keep that text legible can go and the still is seen whole. */
+.desktop-browser #detail .series-episode-overlay {
+  background: linear-gradient(180deg, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+/* The detail backdrop is anchored to its right edge, which is right for the
+   desktop hero: the title and buttons sit down the left, so the picture is
+   pushed away from them and keeps its subject in the clear.
+
+   A phone has no left column. The hero is narrow, the text is centred along the
+   bottom, and a backdrop scaled to cover a tall box is far wider than the box --
+   so anchoring it right throws the subject off the side entirely. Centred, the
+   part of the frame the image was chosen for is the part that shows. Desktop is
+   untouched. */
+@media (any-pointer: coarse) {
+  .desktop-browser #detail .series-detail-backdrop {
+    background-position: center center;
+  }
+}
+
+/* Quick Setup. One question per screen, the answer already standing on what the
+   profile has, and Skip always within reach -- a setup nobody can get stuck in
+   is one more people finish. */
+.desktop-browser #quickSetup .quick-setup-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(100%, 560px);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: max(28px, env(safe-area-inset-top)) var(--browser-page-gutter, 20px)
+    max(24px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.desktop-browser #quickSetup .quick-setup-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.desktop-browser #quickSetup .quick-setup-logo {
+  width: auto;
+  max-width: 150px;
+  max-height: 34px;
+  object-fit: contain;
+}
+
+.desktop-browser #quickSetup .quick-setup-progress-label {
+  margin: 0;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.desktop-browser #quickSetup .quick-setup-body {
+  flex: 1 1 auto;
+}
+
+.desktop-browser #quickSetup .quick-setup-body h1 {
+  margin: 0 0 8px;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.desktop-browser #quickSetup .quick-setup-body > p {
+  margin: 0 0 16px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.desktop-browser #quickSetup .quick-setup-note {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid rgb(var(--secondary-color-rgb) / 0.3);
+  border-radius: 12px;
+  background: rgb(var(--secondary-color-rgb) / 0.1);
+  color: var(--text-color, #fff);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.desktop-browser #quickSetup .quick-setup-figure {
+  margin: 0 0 18px;
+}
+
+.desktop-browser #quickSetup .quick-setup-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+.desktop-browser #quickSetup .quick-setup-figure figcaption {
+  margin-top: 10px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.desktop-browser #quickSetup .quick-setup-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.desktop-browser #quickSetup .quick-setup-option {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+/* The choice reads as chosen through its edge and fill, not through a tick that
+   has to be hunted for. */
+.desktop-browser #quickSetup .quick-setup-option.is-selected {
+  border-color: var(--secondary-color);
+  background: rgb(var(--secondary-color-rgb) / 0.14);
+}
+
+.desktop-browser #quickSetup .quick-setup-option-choose {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  color: var(--text-color, #fff);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-label {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-body {
+  flex: 1 0 100%;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.desktop-browser #quickSetup .quick-setup-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgb(var(--secondary-color-rgb) / 0.22);
+  color: var(--secondary-color);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.desktop-browser #quickSetup .quick-setup-badge.is-caution {
+  background: rgba(255, 107, 97, 0.2);
+  color: #ff6b61;
+}
+
+.desktop-browser #quickSetup .quick-setup-badge.is-neutral {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+}
+
+/* The one option that carries a warning rather than a recommendation. Red on
+   the copy and on the card's own edge, so it reads before the words do. */
+.desktop-browser #quickSetup .quick-setup-option-caution {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  color: #ff6b61;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-caution::before {
+  content: "warning";
+  font-family: "Material Icons";
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.desktop-browser #quickSetup .quick-setup-option.is-caution {
+  border-color: rgba(255, 107, 97, 0.45);
+}
+
+.desktop-browser #quickSetup .quick-setup-option.is-caution.is-selected {
+  border-color: #ff6b61;
+  background: rgba(255, 107, 97, 0.1);
+}
+
+.desktop-browser #quickSetup .quick-setup-option-get {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  align-self: center;
+  margin-right: 12px;
+  padding: 0 14px;
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-color, #fff);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* An inline SVG with only a viewBox has no intrinsic size inside a flex row,
+   so the mark was there and drawn at zero width. */
+.desktop-browser #quickSetup .quick-setup-store-mark {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin-top: -1px;
+}
+
+.desktop-browser #quickSetup .quick-setup-footnote {
+  margin: 20px 0 0;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  font-size: 13px;
+}
+
+.desktop-browser #quickSetup .quick-setup-enable {
+  min-height: 46px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--secondary-color);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.desktop-browser #quickSetup .quick-setup-enable[disabled] {
+  opacity: 0.6;
+}
+
+.desktop-browser #quickSetup .quick-setup-status {
+  margin: 0;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.desktop-browser #quickSetup .quick-setup-status.is-done {
+  color: var(--secondary-color);
+  font-weight: 600;
+}
+
+.desktop-browser #quickSetup .quick-setup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.desktop-browser #quickSetup .quick-setup-actions-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.desktop-browser #quickSetup .quick-setup-skip,
+.desktop-browser #quickSetup .quick-setup-back {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+}
+
+.desktop-browser #quickSetup .quick-setup-next {
+  min-height: 44px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--secondary-color);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* The collection header centres on a phone and was left alone everywhere else,
+   which left a tablet with a heading hugging the left edge under a centred
+   navigation. The rule was gated on width, and a tablet is not narrow -- so it
+   is gated on the pointer instead: a finger means a tablet or a phone, and both
+   want the same centred header. Desktop keeps its left-aligned heading, where
+   the eye starts at the left of a wide page. */
+@media (any-pointer: coarse) and (min-width: 601px) {
+  .desktop-browser #folderDetail .folder-detail-desktop-heading {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-heading p {
+    text-align: center;
+  }
+
+  .desktop-browser #folderDetail .folder-detail-desktop-logo {
+    max-width: min(320px, 46vw);
+    margin-inline: auto;
+    object-position: center;
+  }
+}
+
+/* Home's shelves reach the right edge of a phone and stop short of a tablet's,
+   because the rule that moves the page's inset off the scroll container and
+   onto the rows themselves is gated at 760px -- eight pixels below an iPad in
+   portrait. A tablet is not a wide desktop here; it is a big phone, and the
+   same arrangement suits it: nothing pads the container, the heading and the
+   first card share the gutter, and the row runs off the edge so it is obvious
+   there is more of it. */
+@media (any-pointer: coarse) and (min-width: 761px) {
+  /* The inset lives here, not on the scroll container: one page gutter on each
+     side of the whole column of rows, which is what stops a row short of the
+     edge. */
+  /* Two containers carry that inset, not one: the catalog rows share a wrapper,
+     while Continue Watching is its own row and insets itself. Zeroing only the
+     wrapper left the two shelves starting at different places -- which is worse
+     than the padding was. The negative margins exist to offset the padding, so
+     they go with it. */
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-row-head,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-row-head {
+    padding-left: max(var(--browser-page-gutter), var(--browser-safe-area-left));
+    padding-right: max(var(--browser-page-gutter), var(--browser-safe-area-right));
+  }
+
+  /* The first card lines up with the heading above it; the last one is allowed
+     to run past the edge. */
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+    padding-left: max(var(--browser-page-gutter), var(--browser-safe-area-left));
+    padding-right: calc(var(--browser-safe-area-right) + 20px);
+    scroll-padding-left: max(var(--browser-page-gutter), var(--browser-safe-area-left));
+  }
+}
+
+/* The sync toast is written for a television: 28px type in a 36px-padded slab.
+   On a phone it covered the header and collided with the floating navigation.
+   Browser scale, centred text, and clear of the navigation it was sitting on
+   top of. */
+.desktop-browser .library-toast {
+  top: calc(
+    var(--browser-floating-nav-top, calc(12px + var(--browser-safe-area-top))) +
+      var(--browser-floating-nav-height, 56px) + 10px
+  );
+  max-width: min(360px, calc(100vw - 2 * var(--browser-page-gutter, 16px)));
+  padding: 10px 16px;
+  border-width: 1px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* The detail placeholder was written for the television and never given a
+   browser scale: a left-aligned column starting 260px down, on a page whose
+   real layout is a full-bleed backdrop with everything centred under it. It
+   only shows for a fraction of a second, which is exactly why it was missed --
+   and exactly why it reads as a flash of a different app. Same blocks, put
+   where the real ones land. */
+.desktop-browser #detail .detail-loading-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 20px max(24px, env(safe-area-inset-bottom));
+  background: var(--detail-bg, #05090f);
+}
+
+.desktop-browser #detail .detail-loading-top {
+  width: 100%;
+  margin: 0;
+}
+
+/* The backdrop, which on this layout is the top of the page rather than a
+   card parked inside it. */
+.desktop-browser #detail .detail-loading-poster {
+  width: 100vw;
+  max-width: none;
+  height: min(58vh, 460px);
+  margin-left: -20px;
+  border-radius: 0;
+}
+
+.desktop-browser #detail .detail-loading-meta,
+.desktop-browser #detail .detail-loading-copy,
+.desktop-browser #detail .detail-loading-tags {
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 680px;
+}
+
+.desktop-browser #detail .detail-loading-meta {
+  margin-top: 26px;
+  gap: 12px;
+}
+
+/* The Resume button and the two round buttons beside it. */
+.desktop-browser #detail .detail-loading-pill {
+  width: 190px;
+  height: 48px;
+}
+
+.desktop-browser #detail .detail-loading-pill.short {
+  width: 48px;
+}
+
+.desktop-browser #detail .detail-loading-copy {
+  margin-top: 22px;
+  gap: 10px;
+}
+
+.desktop-browser #detail .detail-loading-line {
+  width: 100%;
+  height: 16px;
+}
+
+.desktop-browser #detail .detail-loading-line.wide {
+  width: 92%;
+}
+
+.desktop-browser #detail .detail-loading-line.mid {
+  width: 74%;
+}
+
+.desktop-browser #detail .detail-loading-tags {
+  margin-top: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.desktop-browser #detail .detail-loading-tag {
+  width: 84px;
+  height: 22px;
+}
+
+.desktop-browser #detail .detail-loading-chip {
+  width: 64px;
+  height: 20px;
+}
+
+/* The up-next card was drawn at television scale: a 470px floor on a phone in
+   portrait is wider than the screen, so it was cut off, and in landscape it
+   covered a third of the picture. Same card, sized for a browser. */
+.desktop-browser .player-next-episode-card {
+  right: max(16px, env(safe-area-inset-right, 0px));
+  left: auto;
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  width: min(340px, calc(100vw - 32px));
+}
+
+.desktop-browser .player-next-episode-card-inner {
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(18, 18, 18, 0.94);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4);
+}
+
+.desktop-browser .player-next-episode-head {
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.desktop-browser .player-next-episode-thumb-wrap {
+  width: 84px;
+  min-width: 84px;
+  height: 48px;
+  border-radius: 8px;
+}
+
+.desktop-browser .player-next-episode-kicker {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.desktop-browser .player-next-episode-title {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.desktop-browser .player-next-episode-status {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.desktop-browser .player-next-episode-pill {
+  padding: 9px 14px;
+  border-radius: 10px;
+}
+
+.desktop-browser .player-next-episode-pill.is-playable {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #101010;
+}
+
+.desktop-browser .player-next-episode-pill-icon,
+.desktop-browser .player-next-episode-pill-text {
+  font-size: 13px;
+}
+
+.desktop-browser .player-next-episode-pill-text {
+  font-weight: 600;
+}
+
+/* Portrait has no room beside the picture, so the card takes the width and
+   sits above the controls instead of beside them. */
+@media (orientation: portrait) {
+  .desktop-browser .player-next-episode-card {
+    right: max(14px, env(safe-area-inset-right, 0px));
+    left: max(14px, env(safe-area-inset-left, 0px));
+    width: auto;
+  }
+}
+
+/* More Actions reads as a row of controls, not a list of sentences. The icons
+   carry it; the labels only made the sheet taller than the video it covers. */
+.desktop-browser .player-mobile-more-action {
+  min-width: 46px;
+  justify-content: center;
+}
+
+.desktop-browser .player-mobile-more-action.player-mobile-more-icon-action {
+  padding-inline: 12px;
+  gap: 0;
+}
+
+.desktop-browser .player-mobile-more-action.player-mobile-more-icon-action > span:not(.player-control-icon) {
+  display: none;
+}
+
+/* The masked icon takes its size from a rule scoped to the controls row, so on
+   its own in this panel it collapsed to nothing. With the label gone there was
+   nothing left to give the button height either. */
+.desktop-browser .player-mobile-more-action .player-control-icon {
+  width: 20px;
+  height: 20px;
 }

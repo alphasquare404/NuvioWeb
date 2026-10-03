@@ -31,6 +31,7 @@ import { StartupSyncService } from "../../../core/profile/startupSyncService.js"
 import { AvatarRepository } from "../../../data/remote/supabase/avatarRepository.js";
 import { resolveBrowserProfileAvatar } from "../../../core/profile/browserProfileAvatarCache.js";
 import { Platform } from "../../../platform/index.js";
+import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
 import { isFastHorizontalNavigationEnabled } from "../../../platform/sharedKeys.js";
 import { LocalStore } from "../../../core/storage/localStore.js";
 import { YOUTUBE_PROXY_URL } from "../../../config.js";
@@ -131,6 +132,7 @@ import {
 } from "./homeConstants.js";
 import { resolveNextUpCandidates } from "./nextUpCandidateResolver.js";
 import { shouldRefreshContinueWatchingForChange } from "./continueWatchingRefreshPolicy.js";
+import { onContinueWatchingStale } from "./continueWatchingStaleSignal.js";
 import {
   selectWatchedItemsForContinueWatching,
   shouldSeedNextUpFromLocalWatchedItems
@@ -198,10 +200,6 @@ function logHomePerf(stage, data = {}) {
 
 function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
-}
-
-function isBrowserOfflineNow() {
-  return Platform.isBrowser() && typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
 function getDirectionFromKeyCode(keyCode) {
@@ -2176,7 +2174,7 @@ function renderHeroMarkup(layoutMode, heroItem, heroCandidates) {
           <div class="home-hero-meta-primary${display.metaPrimary.length ? "" : " is-empty"}">${renderMetaTokens(display.metaPrimary)}</div>
           <div class="home-hero-chip-row${display.chips.length ? "" : " is-empty"}">${display.chips.map((chip) => `<span class="home-hero-chip">${escapeHtml(chip)}</span>`).join("")}</div>
           <div class="home-hero-meta-secondary${display.metaSecondary.length ? "" : " is-empty"}">${renderMetaTokens(display.metaSecondary)}</div>
-          <p class="home-hero-description">${escapeHtml(display.description)}</p>
+          <p class="home-hero-description"><span class="home-hero-description-text">${escapeHtml(display.description)}</span></p>
         </div>
         <div class="home-hero-indicators">${buildHeroIndicators(heroCandidates, heroItem)}</div>
       </article>
@@ -2907,6 +2905,34 @@ export const HomeScreen = {
       focusKind,
       trackStates
     };
+  },
+
+  // A retained focus state carries the rail positions from whenever it was
+  // captured, and the restore writes every one of them back. When nothing is
+  // focused -- a mouse drag or a finger swipe never focuses anything -- the
+  // live capture returns null and a much older saved state stands in, so its
+  // stale positions are written over rails the viewer has since moved. That is
+  // the rail sliding back on its own a beat after a card is marked watched.
+  //
+  // Rails that are on screen right now carry their own truth, so read it.
+  // Remembered positions are kept only for rails that are not there to ask,
+  // which is the case the memory exists for: coming back from another screen.
+  withLiveTrackStates(focusState) {
+    if (!focusState || this.isRestoringFocusFromBack) {
+      return focusState;
+    }
+    const tracks = Array.from(this.container?.querySelectorAll("[data-track-row-key]") || []);
+    if (!tracks.length) {
+      return focusState;
+    }
+    const trackStates = { ...(focusState.trackStates || {}) };
+    tracks.forEach((track) => {
+      const rowKey = String(track.dataset?.trackRowKey || "");
+      if (rowKey) {
+        trackStates[rowKey] = Math.round(Number(track.scrollLeft) || 0);
+      }
+    });
+    return { ...focusState, trackStates };
   },
 
   captureCurrentContentFocusState() {
@@ -4108,8 +4134,13 @@ export const HomeScreen = {
 
     const descriptionNode = heroNode.querySelector(".home-hero-description");
     if (descriptionNode) {
-      descriptionNode.textContent = display.description || " ";
+      const descriptionText =
+        descriptionNode.querySelector(".home-hero-description-text") || descriptionNode;
+      descriptionText.textContent = display.description || " ";
+      delete descriptionText.dataset.fullText;
+      delete descriptionText.dataset.sourceText;
       descriptionNode.classList.toggle("is-empty", !display.description);
+      this.bindHomeHeroDescriptionToggle(heroNode);
     }
     this.scheduleHomeTruncationUpdate({ scope: heroNode });
     this.syncCollectionHeroMedia(hero);
@@ -5500,7 +5531,7 @@ export const HomeScreen = {
           title: item.name || item.id || "Untitled"
         });
       }
-      this.watchedItems = await watchedItemsRepository.getAll(2000).catch(() => this.watchedItems);
+      this.watchedItems = await watchedItemsRepository.getAll().catch(() => this.watchedItems);
       this.watchedTitleIds = buildWatchedTitleIdSet(this.watchedItems);
       if (this.posterHoldMenu) {
         this.posterHoldMenu = { ...this.posterHoldMenu, isWatched: !watched };
@@ -6591,6 +6622,17 @@ export const HomeScreen = {
     });
   },
 
+  // A phone held upright has the least room of any shape the hero takes, and
+  // two lines is the most it can give a synopsis before the synopsis becomes
+  // the hero. There the synopsis is clamped by CSS and carries a "more", the
+  // same way the detail page's does; everywhere else Home keeps trimming the
+  // text itself to fit the box.
+  usesTwoLineHeroSynopsis() {
+    return Boolean(
+      globalThis.matchMedia?.("(any-pointer: coarse) and (orientation: portrait)")?.matches
+    );
+  },
+
   applyHomeTruncationState() {
     if (!this.container) {
       return;
@@ -6607,12 +6649,33 @@ export const HomeScreen = {
       if (!(node instanceof HTMLElement)) {
         return;
       }
-      const currentText = node.textContent ?? "";
-      const storedText = node.dataset.fullText || "";
+      // The synopsis keeps its text in a span of its own, so trimming it does
+      // not take the "more" button that lives in the same paragraph along with
+      // it. The fit is judged on the paragraph, which means the button is part
+      // of what has to fit and the text stops short enough to leave room for
+      // it -- and that is what puts the two next to each other, with no gap to
+      // explain and nothing painted behind anything.
+      const textHost = node.querySelector(".home-hero-description-text") || node;
+      // The label has to be on screen while the text is being fitted, or the
+      // fit leaves no room for it and it lands on a line the height cuts off.
+      // Whether it belongs there at all is settled afterwards, once it is known
+      // how much had to be cut.
+      const toggleNode = node.querySelector(".home-hero-description-toggle");
+      if (toggleNode) {
+        toggleNode.hidden = false;
+      }
+      const currentText = textHost.textContent ?? "";
+      const storedText = textHost.dataset.fullText || "";
       const shouldRefresh =
         !storedText ||
         (currentText && currentText !== storedText && !currentText.trim().endsWith("..."));
       const sourceText = shouldRefresh ? currentText : storedText;
+      // What arrived before anything was cut. `fullText` below is already the
+      // synopsis capped at forty words, so restoring that on "more" handed back
+      // a cut synopsis -- a shorter cut, but still not what was written.
+      if (shouldRefresh && currentText) {
+        textHost.dataset.sourceText = currentText;
+      }
       const isModernHeroDescription =
         node.classList.contains("home-hero-description") &&
         Boolean(node.closest(".home-modern-hero-copy"));
@@ -6622,8 +6685,8 @@ export const HomeScreen = {
       if (!fullText) {
         return;
       }
-      node.dataset.fullText = fullText;
-      node.textContent = wordTrimmed ? `${fullText}...` : fullText;
+      textHost.dataset.fullText = fullText;
+      textHost.textContent = wordTrimmed ? `${fullText}...` : fullText;
       const fits =
         node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1;
       if (fits) {
@@ -6636,7 +6699,7 @@ export const HomeScreen = {
       let high = fullText.length;
       while (low < high) {
         const mid = Math.ceil((low + high) / 2);
-        node.textContent = `${fullText.slice(0, mid).trimEnd()}${ellipsis}`;
+        textHost.textContent = `${fullText.slice(0, mid).trimEnd()}${ellipsis}`;
         const overflows =
           node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1;
         if (overflows) {
@@ -6646,16 +6709,22 @@ export const HomeScreen = {
         }
       }
       const finalText = `${fullText.slice(0, Math.max(0, low)).trimEnd()}${ellipsis}`;
-      node.textContent = finalText;
+      textHost.textContent = finalText;
       node.classList.add("is-truncated");
     });
+    // Whether there is anything left to reveal is only known once the text has
+    // been fitted, so the label is settled here rather than guessed at earlier.
+    this.syncHeroDescriptionToggle?.();
   },
 
   applyModernHeroDescriptionBounds(root = null) {
     if (!this.container || this.layoutMode !== "modern") {
       return;
     }
-    const modernHeroDescriptionMaxLines = 4;
+    // A phone held upright has the least room of any shape the hero takes, and
+    // two lines is the most it can give a synopsis before the synopsis becomes
+    // the hero.
+    const modernHeroDescriptionMaxLines = this.usesTwoLineHeroSynopsis() ? 2 : 4;
     const scope = root instanceof HTMLElement ? root : this.container;
     const heroNodes = scope.classList?.contains("home-hero-card")
       ? [scope]
@@ -6672,7 +6741,6 @@ export const HomeScreen = {
       if (description.classList.contains("is-empty")) {
         return;
       }
-
       const descriptionStyle = getComputedStyle(description);
       const lineHeight = parseFloat(descriptionStyle.lineHeight || "0") || 0;
       const fontSize = parseFloat(descriptionStyle.fontSize || "0") || 0;
@@ -6682,6 +6750,92 @@ export const HomeScreen = {
       );
       description.style.maxHeight = `${lineBoxHeight * modernHeroDescriptionMaxLines}px`;
     });
+  },
+
+  // The hero's synopsis is trimmed to two lines on a phone held upright, with
+  // the rest behind a "more" that follows the sentence -- the same control the
+  // detail page's synopsis carries.
+  //
+  // The button is built here rather than in the hero's markup because swiping
+  // to the next hero rewrites the synopsis, and one code path creating it means
+  // the first hero and every one after it get the same thing.
+  bindHomeHeroDescriptionToggle(root = null) {
+    if (!this.container) {
+      return;
+    }
+    const scope = root instanceof HTMLElement ? root : this.container;
+    const description = scope.querySelector(".home-hero-description");
+    if (!(description instanceof HTMLElement)) {
+      return;
+    }
+    // Anywhere else the hero already trims its synopsis to fit and there is no
+    // control to offer, so one is not left behind unstyled.
+    if (!this.usesTwoLineHeroSynopsis()) {
+      description.querySelector(".home-hero-description-toggle")?.remove();
+      description.classList.remove("is-expanded");
+      return;
+    }
+    let toggle = description.querySelector(".home-hero-description-toggle");
+    if (!toggle) {
+      toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "home-hero-description-toggle";
+      toggle.setAttribute("aria-expanded", "false");
+      description.append(toggle);
+    }
+    const setLabel = (expanded) => {
+      toggle.textContent = expanded
+        ? t("detail_description_less", {}, "less")
+        : t("detail_description_more", {}, "more");
+    };
+    const syncToggle = () => {
+      if (description.classList.contains("is-expanded")) {
+        return;
+      }
+      // The trimming fits the text and this button into two lines together, so
+      // what decides whether there is anything to reveal is whether it had to
+      // cut anything. Measured against the synopsis as written, not against the
+      // forty-word cut of it, or a synopsis longer than that would offer a
+      // "more" that reveals nothing -- or none at all.
+      const host = description.querySelector(".home-hero-description-text");
+      const shown = String(host?.textContent || "");
+      const whole = String(host?.dataset?.sourceText || "");
+      toggle.hidden = !whole || shown.trimEnd() === whole.trimEnd();
+    };
+    toggle.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const host = description.querySelector(".home-hero-description-text");
+      const expanded = description.classList.toggle("is-expanded");
+      toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      setLabel(expanded);
+      if (expanded) {
+        // The synopsis as written, and no height to keep it out of. Not
+        // `fullText`, which is already the forty-word cut.
+        if (host?.dataset?.sourceText) {
+          host.textContent = host.dataset.sourceText;
+        }
+        description.style.maxHeight = "none";
+      } else {
+        description.style.maxHeight = "";
+        this.scheduleHomeTruncationUpdate();
+      }
+    };
+    description.classList.remove("is-expanded");
+    // The height belongs to applyModernHeroDescriptionBounds. Clearing it here
+    // too raced it: whichever ran last won, and when that was this one the
+    // synopsis kept its full height and no label appeared.
+    toggle.setAttribute("aria-expanded", "false");
+    setLabel(false);
+    syncToggle();
+    if (this.heroDescriptionResizeHandler) {
+      globalThis.removeEventListener?.("resize", this.heroDescriptionResizeHandler);
+    }
+    // Turning the phone changes how many lines fit, and so whether there is
+    // anything left to reveal.
+    this.syncHeroDescriptionToggle = syncToggle;
+    this.heroDescriptionResizeHandler = () => syncToggle();
+    globalThis.addEventListener?.("resize", this.heroDescriptionResizeHandler);
   },
 
   ensureHomeTruncationObservers() {
@@ -8547,6 +8701,7 @@ export const HomeScreen = {
     this.forceInitialContinueWatchingFocus = false;
     this.continueWatchingLoading = false;
     this.continueWatchingStoreRefreshPending = false;
+    this.paginatedRowCounts = new Map();
     if (returnFocusState?.layoutMode) {
       this.pendingBackFocusState = returnFocusState;
     } else if (!shouldRestoreHomeReturnState) {
@@ -8784,7 +8939,9 @@ export const HomeScreen = {
           ProfileManager.getActiveProfileId()
         )
       ) {
-        this.scheduleContinueWatchingStoreRefresh();
+        this.scheduleContinueWatchingStoreRefresh(
+          `store:${reason || "?"}${authoritative ? "+auth" : ""}`
+        );
       }
     };
     const handleWatchProgressChange = (change) => {
@@ -8837,6 +8994,14 @@ export const HomeScreen = {
       this.unsubscribeWatchedItemsStoreChanges =
         WatchedItemsStore.subscribe(handleWatchedItemsChange);
     }
+    // Raised by a returning external-player report, which is applied during
+    // bootstrap -- before this binding exists on a cold start. A signal raised
+    // then is delivered here instead of being lost.
+    if (!this.unsubscribeContinueWatchingStaleSignal) {
+      this.unsubscribeContinueWatchingStaleSignal = onContinueWatchingStale(() => {
+        this.scheduleContinueWatchingStoreRefresh("external-return");
+      });
+    }
   },
 
   bindLayoutPreferencesSubscription() {
@@ -8862,7 +9027,7 @@ export const HomeScreen = {
           return;
         }
         this.observedShowUnairedNextUp = showUnairedNextUp;
-        this.scheduleContinueWatchingStoreRefresh();
+        this.scheduleContinueWatchingStoreRefresh("layout-prefs");
       }
     );
   },
@@ -8885,10 +9050,37 @@ export const HomeScreen = {
       void this.loadData({ background: true, preserveReturnState: true });
       return;
     }
-    this.scheduleContinueWatchingStoreRefresh();
+    this.scheduleContinueWatchingStoreRefresh("route-revealed");
   },
 
-  scheduleContinueWatchingStoreRefresh() {
+  // One line per settled Continue Watching state, naming what asked for it and
+  // what the row became. This is the feature a wrong answer is noticed in
+  // first, and it is reached through paths that run seconds apart, so a report
+  // from a device has to be able to carry the sequence rather than a
+  // description of it. console.warn because that is what the Debug Console
+  // keeps.
+  traceContinueWatching(reason, items = []) {
+    const list = Array.isArray(items) ? items : [];
+    const shown = list
+      .slice(0, 4)
+      .map(
+        (item) =>
+          `${item?.contentId || "?"}` +
+          `${item?.season ? " S" + item.season + "E" + (item.episode || "?") : ""}` +
+          `${item?.isNextUp ? " next" : ""}` +
+          `${Number(item?.positionMs || 0) > 0 ? " " + Math.round(Number(item.positionMs) / 1000) + "s" : ""}`
+      )
+      .join(", ");
+    console.warn(
+      `[CW] ${reason || "unknown"} -> ` +
+        (list.length ? shown + (list.length > 4 ? `, +${list.length - 4}` : "") : "empty")
+    );
+  },
+
+  scheduleContinueWatchingStoreRefresh(reason = "") {
+    if (reason) {
+      this.continueWatchingRefreshReason = String(reason);
+    }
     // A store-triggered refresh is now owed for this profile. A concurrent
     // initial-load CW read that captured an empty/stale local store (e.g. the
     // background watch-progress cloud pull hadn't landed yet) must not treat
@@ -8929,7 +9121,7 @@ export const HomeScreen = {
       const [allProgress, continueWatching, watchedItems] = await Promise.all([
         watchProgressRepository.getAllForContinueWatching(),
         watchProgressRepository.getRecent(CW_MAX_VISIBLE_ITEMS),
-        watchedItemsRepository.getAll(2000)
+        watchedItemsRepository.getAll()
       ]);
       if (!isCurrent()) {
         return;
@@ -8956,6 +9148,11 @@ export const HomeScreen = {
         this.continueWatching.length + this.nextUpProgressCandidates.length
       );
       if (!shouldShow) {
+        this.traceContinueWatching(
+          `refresh(${this.continueWatchingRefreshReason || "unknown"})`,
+          []
+        );
+        this.continueWatchingRefreshReason = "";
         this.continueWatchingLoading = false;
         this.continueWatchingDisplay = [];
         if (previousDisplaySignature) {
@@ -9000,6 +9197,11 @@ export const HomeScreen = {
           : loose.length >= fallback.length
             ? loose
             : fallback;
+      this.traceContinueWatching(
+        `refresh(${this.continueWatchingRefreshReason || "unknown"})`,
+        nextDisplay
+      );
+      this.continueWatchingRefreshReason = "";
       this.continueWatchingLoading = false;
       this.continueWatchingDisplay = nextDisplay;
       this.persistContinueWatchingSnapshot();
@@ -9054,7 +9256,7 @@ export const HomeScreen = {
     // The 60-day Next Up cutoff stays a Trakt-only rule. Reusing the seed flag
     // for it would silently start hiding older SIMKL shows too.
     const applyTraktNextUpDaysCap = continueWatchingSource === "trakt";
-    const watchedItemsPromise = watchedItemsRepository.getAll(2000).catch(() => []);
+    const watchedItemsPromise = watchedItemsRepository.getAll().catch(() => []);
     watchedItemsPromise.then((watchedItems) => {
       if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
         return;
@@ -9567,6 +9769,7 @@ export const HomeScreen = {
           }
           this.continueWatchingDisplay = nextDisplay;
           this.continueWatchingLoading = false;
+          this.traceContinueWatching(background ? "load:background" : "load", nextDisplay);
           this.persistContinueWatchingSnapshot();
           if (this.layoutMode === "modern" && this.continueWatchingDisplay.length) {
             if (!preserveHomeReturnState && !this.suppressInitialContinueWatchingFocus) {
@@ -9916,7 +10119,7 @@ export const HomeScreen = {
         ? null
         : savedFocusState) ||
       null;
-    const retainedFocusState = rawRetainedFocusState;
+    const retainedFocusState = this.withLiveTrackStates(rawRetainedFocusState);
     this.cancelFocusedPosterFlow();
     this.expandedPosterNode = null;
     const backFocusHero = backFocusState ? this.getHeroSourceFromFocusState(backFocusState) : null;
@@ -10063,6 +10266,7 @@ export const HomeScreen = {
         blurContinueWatchingNextUp: resolveContinueWatchingBlurNextUp(this.layoutPrefs),
         continueWatchingCardStyle: this.layoutPrefs?.continueWatchingCardStyle || "card",
         rowItemLimit,
+        paginatedRowCounts: this.paginatedRowCounts,
         showHeroSection,
         showPosterLabels,
         showCatalogTypeSuffix,
@@ -10244,6 +10448,7 @@ export const HomeScreen = {
 
     this.buildNavigationModel();
     this.bindHomeViewportEvents();
+    this.bindHomeHeroDescriptionToggle();
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -11560,6 +11765,39 @@ export const HomeScreen = {
     document.addEventListener("visibilitychange", this.desktopHeroVisibilityHandler);
   },
 
+  // The controls stay in the hero's corner, but their line is the details
+  // button's. That button's middle depends on the copy's padding and its own
+  // height, both of which change across seven breakpoints -- so it is measured
+  // once and handed to CSS rather than restated in each of them.
+  alignDesktopHeroControls(heroCard) {
+    const button = heroCard?.querySelector(".desktop-hero-details-button");
+    if (!button) {
+      return;
+    }
+    const cardRect = heroCard.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    if (!cardRect.height || !buttonRect.height) {
+      return;
+    }
+    const middleFromBottom = cardRect.bottom - (buttonRect.top + buttonRect.height / 2);
+    heroCard.style.setProperty("--hero-controls-middle", `${Math.round(middleFromBottom)}px`);
+  },
+
+  watchDesktopHeroControlsAlignment(heroCard) {
+    this.alignDesktopHeroControls(heroCard);
+    if (this.desktopHeroAlignmentObserver?.target === heroCard) {
+      return;
+    }
+    this.desktopHeroAlignmentObserver?.observer?.disconnect?.();
+    if (typeof ResizeObserver !== "function") {
+      this.desktopHeroAlignmentObserver = null;
+      return;
+    }
+    const observer = new ResizeObserver(() => this.alignDesktopHeroControls(heroCard));
+    observer.observe(heroCard);
+    this.desktopHeroAlignmentObserver = { target: heroCard, observer };
+  },
+
   bindDesktopHeroCarouselControls() {
     if (!Platform.isBrowser()) {
       return;
@@ -11607,7 +11845,61 @@ export const HomeScreen = {
       };
       heroCard.append(carousel);
     }
+    this.bindDesktopHeroSwipe(heroCard);
+    this.watchDesktopHeroControlsAlignment(heroCard);
     this.updateDesktopHeroCarouselControls();
+  },
+
+  // A finger reaches the hero long before it reaches a 30px arrow in the
+  // corner, so the artwork itself takes the gesture. Mouse drags are left
+  // alone: they select text and are not how a pointer changes the hero.
+  bindDesktopHeroSwipe(heroCard) {
+    if (!heroCard || heroCard.dataset.heroSwipeBound === "true") {
+      return;
+    }
+    heroCard.dataset.heroSwipeBound = "true";
+    const MIN_DISTANCE_PX = 40;
+    let gesture = null;
+    heroCard.addEventListener(
+      "pointerdown",
+      (event) => {
+        gesture =
+          event.pointerType === "mouse" || event.target?.closest?.("button, a")
+            ? null
+            : { x: event.clientX, y: event.clientY, spent: false };
+      },
+      { passive: true }
+    );
+    // The turn happens the moment the drag is unmistakably sideways, not on
+    // release: if the page starts scrolling it takes the pointer with it and
+    // no pointerup ever arrives, which is the swipe that "does nothing".
+    heroCard.addEventListener(
+      "pointermove",
+      (event) => {
+        if (!gesture || gesture.spent) {
+          return;
+        }
+        const dx = event.clientX - gesture.x;
+        const dy = event.clientY - gesture.y;
+        if (Math.abs(dy) > Math.abs(dx)) {
+          // Vertical wins: this is the page scrolling, and it stays that way.
+          gesture = null;
+          return;
+        }
+        if (Math.abs(dx) < MIN_DISTANCE_PX) {
+          return;
+        }
+        gesture.spent = true;
+        this.rotateHero(dx < 0 ? 1 : -1);
+        this.startHeroRotation();
+      },
+      { passive: true }
+    );
+    const clearGesture = () => {
+      gesture = null;
+    };
+    heroCard.addEventListener("pointerup", clearGesture, { passive: true });
+    heroCard.addEventListener("pointercancel", clearGesture, { passive: true });
   },
 
   updateDesktopHeroCarouselControls() {
@@ -12128,6 +12420,16 @@ export const HomeScreen = {
             this.invalidateNavigationModel();
             this.buildNavigationModel();
           }
+          // Remember how far this rail has grown, so the next render rebuilds
+          // it at this length instead of back at the first page.
+          this.paginatedRowCounts = this.paginatedRowCounts || new Map();
+          this.paginatedRowCounts.set(
+            rowKey,
+            Math.max(
+              Number(this.paginatedRowCounts.get(rowKey) || 0),
+              startIndex + appendedCards.length
+            )
+          );
           this.scheduleHomeLazyImageHydration(null, { refreshIndex: true });
           return true;
         };
@@ -12395,6 +12697,10 @@ export const HomeScreen = {
     if (this.unsubscribeWatchedItemsStoreChanges) {
       this.unsubscribeWatchedItemsStoreChanges();
       this.unsubscribeWatchedItemsStoreChanges = null;
+    }
+    if (this.unsubscribeContinueWatchingStaleSignal) {
+      this.unsubscribeContinueWatchingStaleSignal();
+      this.unsubscribeContinueWatchingStaleSignal = null;
     }
     if (this.unsubscribeLayoutPreferencesChanges) {
       this.unsubscribeLayoutPreferencesChanges();

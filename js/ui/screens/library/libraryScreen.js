@@ -7,6 +7,7 @@ import {
 } from "../../navigation/browserScrollPosition.js";
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
+import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import {
@@ -83,6 +84,17 @@ import {
 
 const POSTER_HOLD_DELAY_MS = 650;
 const PICKER_MENU_EXIT_MS = 160;
+
+// Whether a finger is what reaches this screen; a pointer gets the search
+// field beside the tabs instead of behind a button.
+function libraryUsesTouchLayout() {
+  if (!Platform.isBrowser()) return true;
+  try {
+    return Boolean(globalThis.matchMedia?.("(any-pointer: coarse)")?.matches);
+  } catch (_) {
+    return true;
+  }
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -198,9 +210,11 @@ function libraryCardYear(item = {}) {
   if (Number.isInteger(normalizedYear) && normalizedYear >= 1800 && normalizedYear <= 3000) {
     return String(normalizedYear);
   }
-  return String(item.releaseInfo || item.releaseDate || item.released || "").match(
-    /\b(19|20)\d{2}\b/
-  )?.[0] || "";
+  return (
+    String(item.releaseInfo || item.releaseDate || item.released || "").match(
+      /\b(19|20)\d{2}\b/
+    )?.[0] || ""
+  );
 }
 
 function libraryCardMetadata(item = {}) {
@@ -235,7 +249,9 @@ function offlineMovieCard(download = {}) {
     id: itemId,
     type: "movie",
     name: String(download.title || itemId || "Downloaded movie").trim(),
-    poster: String(download.localPosterUrl || (canUseRemoteArtwork() ? download.poster : "") || "").trim(),
+    poster: String(
+      download.localPosterUrl || (canUseRemoteArtwork() ? download.poster : "") || ""
+    ).trim(),
     background: String(download.backdrop || "").trim(),
     year: download.year,
     offlineItem: true
@@ -249,7 +265,9 @@ function offlineSeriesCard(group = {}) {
     id: itemId,
     type: "series",
     name: String(group.title || representative.seriesTitle || itemId || "Downloaded series").trim(),
-    poster: String(group.localPosterUrl || (canUseRemoteArtwork() ? group.poster : "") || "").trim(),
+    poster: String(
+      group.localPosterUrl || (canUseRemoteArtwork() ? group.poster : "") || ""
+    ).trim(),
     background: String(group.backdrop || "").trim(),
     year: representative.year,
     offlineItem: true,
@@ -275,11 +293,23 @@ function managerEpisodeLabel(download = {}) {
 }
 
 function managerSourceLabel(download = {}) {
-  return [download.quality || download.resolution || "", download.sourceName || download.addonName || ""]
+  return [
+    download.quality || download.resolution || "",
+    download.sourceName || download.addonName || ""
+  ]
     .filter(Boolean)
     .join(" · ");
 }
 
+// The sliders the filter button shows. Drawn here rather than pulled from a
+// set, because it is the only icon this screen adds.
+const LIBRARY_FILTER_ICON =
+  '<path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle>' +
+  '<path d="M4 17h6"></path><path d="M14 17h6"></path><circle cx="12" cy="17" r="2"></circle>';
+
+function iconSvg(path, className) {
+  return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${path}</svg>`;
+}
 export const LibraryScreen = {
   getRouteStateKey() {
     return "library";
@@ -404,6 +434,9 @@ export const LibraryScreen = {
     this.lastActionsRowAction = "openManageLists";
     this.pendingActionRestore = null;
     this.pendingCloudSearchFocus = false;
+    this.librarySecondaryFiltersExpanded = false;
+    this.librarySearchOpen = false;
+    this.librarySearchQuery = "";
     this.pendingPickerRestore = null;
     this.closingPicker = null;
     this.closingPickerTimer = null;
@@ -418,12 +451,15 @@ export const LibraryScreen = {
     this.partialContentRefresh = null;
     this.pendingHydrationState = null;
     this.pendingPresentationModeScroll = false;
-    this.downloadedView = Platform.isBrowser() && String(params?.initialTab || "").toLowerCase() === "downloaded";
+    this.downloadedView =
+      Platform.isBrowser() && String(params?.initialTab || "").toLowerCase() === "downloaded";
     this.downloadedType = "all";
     this.downloadedPickerOpen = false;
     this.downloadedPickerFocusIndex = 0;
     this.downloadedLibrary = { supported: false, loading: false, movies: [], series: [] };
-    this.offlineArtworkResolver = Platform.isBrowser() ? createBrowserOfflineArtworkResolver() : null;
+    this.offlineArtworkResolver = Platform.isBrowser()
+      ? createBrowserOfflineArtworkResolver()
+      : null;
     this.downloadManagerView = Boolean(params?.downloadManager);
     this.downloadManagerJobs = [];
     this.offlineDownloadsUnsubscribe = null;
@@ -444,10 +480,15 @@ export const LibraryScreen = {
   },
 
   bindEvents() {
-    if (!this.container || this.container.__libraryEventsBound) {
+    if (!this.container) {
       return;
     }
-    this.container.__libraryEventsBound = true;
+    // These three are torn down in cleanup(), so they have to be put back on
+    // every mount. They sat behind the once-only guard below, which meant that
+    // after the first cleanup they were removed and never rebound: right-click
+    // and long-press opened the poster menu until the first time Library was
+    // left, and silently did nothing afterwards. Each binder runs its own
+    // previous cleanup first, so binding again is safe.
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -472,6 +513,13 @@ export const LibraryScreen = {
         }
       ]);
     }
+
+    // The listeners below are anonymous and never removed, so they are added
+    // exactly once for this container and the guard stays with them.
+    if (this.container.__libraryEventsBound) {
+      return;
+    }
+    this.container.__libraryEventsBound = true;
 
     this.container.addEventListener("click", async (event) => {
       const target = event.target?.closest?.(
@@ -504,9 +552,15 @@ export const LibraryScreen = {
         });
       } else if (target.matches(".library-cloud-search-input[data-cloud-search]")) {
         this.controller.setCloudSearchQuery(target.value);
+      } else if (target.matches(".library-search-input[data-library-search]")) {
+        this.librarySearchQuery = target.value;
+        if (this.controller?.getState?.()?.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
+          this.controller.setCloudSearchQuery(target.value);
+        } else {
+          this.refreshLibraryContentAndCount();
+        }
       }
     });
-
   },
 
   isDownloadedView() {
@@ -526,10 +580,6 @@ export const LibraryScreen = {
     const jobs = await listOfflineDownloads().catch(() => []);
     if (!this.container || Router.getCurrent() !== "library") return;
     this.downloadManagerJobs = listManageableBrowserOfflineDownloads(jobs);
-    if (this.downloadManagerView && !this.hasManageableDownloads()) {
-      this.downloadManagerView = false;
-      this.downloadedView = true;
-    }
     void this.refreshDownloadedLibrary();
   },
 
@@ -575,14 +625,18 @@ export const LibraryScreen = {
       return url;
     };
     const [nextMovies, nextSeries] = await Promise.all([
-      Promise.all((movies || []).map(async (download) => ({
-        ...download,
-        localPosterUrl: await resolve(download.downloadId, "poster")
-      }))),
-      Promise.all((series || []).map(async (group) => ({
-        ...group,
-        localPosterUrl: await resolve(group.seriesPosterDownloadId, "seriesPoster")
-      })))
+      Promise.all(
+        (movies || []).map(async (download) => ({
+          ...download,
+          localPosterUrl: await resolve(download.downloadId, "poster")
+        }))
+      ),
+      Promise.all(
+        (series || []).map(async (group) => ({
+          ...group,
+          localPosterUrl: await resolve(group.seriesPosterDownloadId, "seriesPoster")
+        }))
+      )
     ]);
     return { movies: nextMovies, series: nextSeries, artworkKeys };
   },
@@ -691,14 +745,14 @@ export const LibraryScreen = {
         : picker === "cloud_type"
           ? state.selectedCloudType || "__all__"
           : picker === "list"
-        ? state.selectedListKey || "__all__"
-        : picker === "type"
-          ? state.selectedTypeKey
-          : picker === "genre"
-            ? state.selectedGenre || "__all__"
-            : picker === "year"
-              ? state.selectedYear || "__all__"
-              : state.selectedSortKey;
+            ? state.selectedListKey || "__all__"
+            : picker === "type"
+              ? state.selectedTypeKey
+              : picker === "genre"
+                ? state.selectedGenre || "__all__"
+                : picker === "year"
+                  ? state.selectedYear || "__all__"
+                  : state.selectedSortKey;
     const selectedIndex = Math.max(
       0,
       options.findIndex((option) => option.value === currentValue)
@@ -720,44 +774,63 @@ export const LibraryScreen = {
   },
 
   renderPickerGroups(state) {
-    if (this.isDownloadManagerView()) return "";
+    if (this.isDownloadManagerView()) {
+      // The filter has nothing to act on here, but the button has to stay:
+      // it is the way back out.
+      return `
+        <section class="library-picker-groups library-downloaded-picker-groups" id="libraryPickerGroupsMount">
+          <div class="library-picker-row library-downloaded-filter-row is-manager-only">
+            ${this.renderDownloadManagerButton()}
+          </div>
+        </section>
+      `;
+    }
     if (this.isDownloadedView()) {
       return `
         <section class="library-picker-groups library-downloaded-picker-groups" id="libraryPickerGroupsMount">
-          <div class="library-picker-row">${this.renderDownloadedTypePicker()}</div>
+          <div class="library-picker-row library-downloaded-filter-row">
+            ${this.renderDownloadedTypePicker()}
+            ${this.renderDownloadManagerButton()}
+          </div>
         </section>
       `;
     }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       const providerLabel =
-        state.availableCloudProviders.find(
-          (option) => option.key === state.selectedCloudProviderId
-        )?.label || t("cloud_library_provider_all", {}, "All");
+        state.availableCloudProviders.find((option) => option.key === state.selectedCloudProviderId)
+          ?.label || t("cloud_library_provider_all", {}, "All");
       const typeLabel =
         state.availableCloudTypes.find((option) => option.key === state.selectedCloudType)?.label ||
         t("cloud_library_type_all", {}, "All");
       return `
         <section class="library-picker-groups" id="libraryPickerGroupsMount">
-          <div class="library-picker-row">
+          <div class="library-picker-row library-cloud-filter-row">
             ${this.renderPicker(
               "cloud_provider",
-              t("cloud_library_select_provider", {}, "Select provider"),
+              t("cloud_library_provider_label", {}, "Provider"),
               providerLabel,
               this.controller.getPickerOptions("cloud_provider"),
               "library-picker-flex"
             )}
             ${this.renderPicker(
               "cloud_type",
-              t("cloud_library_select_type", {}, "Select type"),
+              t("cloud_library_type_label", {}, "Type"),
               typeLabel,
               this.controller.getPickerOptions("cloud_type"),
               "library-picker-flex"
             )}
+            <button class="library-cloud-refresh-button focusable"
+                    type="button"
+                    data-action="refreshCloudLibrary"
+                    ${state.cloudLibrary.isRefreshing ? "disabled" : ""}
+                    aria-label="${escapeHtml(t("cloud_library_refresh", {}, "Refresh cloud library"))}">
+              <span class="material-icons" aria-hidden="true">refresh</span>
+            </button>
           </div>
         </section>
       `;
     }
-    const primaryPickerMarkup = [
+    const listPickerMarkup =
       state.sourceMode === "trakt" || (Platform.isBrowser() && state.sourceMode === "simkl")
         ? this.renderPicker(
             "list",
@@ -768,24 +841,25 @@ export const LibraryScreen = {
             this.controller.getPickerOptions("list"),
             "library-picker-flex"
           )
-        : "",
-      this.renderPicker(
-        "type",
-        t("library_filter_type", {}, "Type"),
-        this.controller.getSelectedTypeLabel(),
-        this.controller.getPickerOptions("type"),
-        "library-picker-flex"
-      ),
-      this.renderPicker(
-        "sort",
-        t("library_filter_sort", {}, "Sort"),
-        this.controller.getSelectedSortLabel(),
-        this.controller.getPickerOptions("sort"),
-        "library-picker-flex"
-      )
-    ]
+        : "";
+    const typePickerMarkup = this.renderPicker(
+      "type",
+      t("library_filter_type", {}, "Type"),
+      this.controller.getSelectedTypeLabel(),
+      this.controller.getPickerOptions("type"),
+      "library-picker-flex"
+    );
+    const sortPickerMarkup = this.renderPicker(
+      "sort",
+      t("library_filter_sort", {}, "Sort"),
+      this.controller.getSelectedSortLabel(),
+      this.controller.getPickerOptions("sort"),
+      "library-picker-flex"
+    );
+    const primaryPickerMarkup = [listPickerMarkup, typePickerMarkup, sortPickerMarkup]
       .filter(Boolean)
       .join("");
+    const listAndSortMarkup = [listPickerMarkup, sortPickerMarkup].filter(Boolean).join("");
 
     const secondaryPickerMarkup = [
       state.availableGenres.length
@@ -812,22 +886,47 @@ export const LibraryScreen = {
 
     if (Platform.isBrowser()) {
       const hasActiveFilters =
-        state.selectedTypeKey !== "__all__" || Boolean(state.selectedGenre) || Boolean(state.selectedYear);
+        state.selectedTypeKey !== "__all__" ||
+        Boolean(state.selectedGenre) ||
+        Boolean(state.selectedYear);
+      // Four stacked pickers took a third of a phone screen before a single
+      // item appeared, and all four read "All" -- a third of the screen spent
+      // saying nothing is filtered. Type stays out, because it is the one most
+      // often changed; the rest fold behind a button. When they are folded and
+      // something is filtered, the button says so, so a narrowed library still
+      // explains itself.
+      const expanded = Boolean(this.librarySecondaryFiltersExpanded);
       return `
         <section class="library-picker-groups library-saved-picker-groups" id="libraryPickerGroupsMount">
           ${this.renderPresentationToggle(state)}
-          <div class="library-picker-row library-saved-picker-row">
-            ${primaryPickerMarkup}
-            ${secondaryPickerMarkup}
-            ${
-              hasActiveFilters
-                ? `<button class="library-clear-filters focusable"
-                           data-action="clearLibraryFilters">
-                     ${escapeHtml(t("library_clear_filters", {}, "Clear filters"))}
-                   </button>`
-                : ""
-            }
+          <div class="library-picker-row library-saved-picker-row library-primary-filter-row">
+            ${typePickerMarkup}
+            <button class="library-filter-toggle focusable${expanded ? " is-expanded" : ""}${
+              hasActiveFilters ? " has-active-filters" : ""
+            }"
+                    type="button"
+                    data-action="toggleLibraryFilters"
+                    aria-expanded="${expanded}"
+                    aria-label="${escapeHtml(t("library_filter_toggle", {}, "Filters"))}">
+              ${iconSvg(LIBRARY_FILTER_ICON, "library-filter-toggle-icon")}
+            </button>
           </div>
+          ${
+            expanded
+              ? `<div class="library-picker-row library-secondary-filter-row">
+                   ${secondaryPickerMarkup}
+                   ${listAndSortMarkup}
+                   ${
+                     hasActiveFilters
+                       ? `<button class="library-clear-filters focusable"
+                                  data-action="clearLibraryFilters">
+                            ${escapeHtml(t("library_clear_filters", {}, "Clear filters"))}
+                          </button>`
+                       : ""
+                   }
+                 </div>`
+              : ""
+          }
         </section>
       `;
     }
@@ -871,6 +970,14 @@ export const LibraryScreen = {
     if (this.isDownloadedView()) {
       return `<div id="libraryContentAreaMount">${this.renderDownloadedLibraryContent()}</div>`;
     }
+    // Saved and Cloud are both lists of things that live elsewhere. Offline,
+    // their artwork cannot load and none of them can be opened, so the shelf
+    // filled with grey rectangles is worse than an empty one: it offers
+    // seventeen titles and delivers none. Downloaded is untouched -- that shelf
+    // is exactly what still works.
+    if (isBrowserOfflineNow()) {
+      return `<div id="libraryContentAreaMount">${this.renderOfflineEmptyState()}</div>`;
+    }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       return `
         <div id="libraryContentAreaMount">
@@ -884,12 +991,12 @@ export const LibraryScreen = {
       <div id="libraryContentAreaMount">
         ${this.renderActions(state)}
         ${
-          state.visibleItems.length
+          this.getVisibleSavedItems(state).length
             ? Platform.isBrowser() &&
               state.sourceMode === "simkl" &&
               state.presentationMode === LIBRARY_PRESENTATION_MODE.GROUPED
               ? this.renderGroupedLibraryContent()
-              : this.renderGrid(state.visibleItems)
+              : this.renderGrid(this.getVisibleSavedItems(state))
             : this.renderEmptyState()
         }
         ${state.transientMessage ? `<div class="library-toast">${escapeHtml(state.transientMessage)}</div>` : ""}
@@ -897,30 +1004,145 @@ export const LibraryScreen = {
     `;
   },
 
+  // The header says which shelf you are on and how much is on it.
+  getLibraryHeaderLabel(state) {
+    if (this.isDownloadManagerView()) {
+      return t(
+        "library_count_queued",
+        { count: this.downloadManagerJobs.length },
+        "Download manager"
+      );
+    }
+    if (this.isDownloadedView()) {
+      return `Downloaded · ${this.formatCount(this.countDownloadedItems(), "title")}`;
+    }
+    const label = this.controller.getSourceLabel();
+    if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
+      return `${label} · ${this.formatCount(state.visibleCloudItems.length, "file")}`;
+    }
+    return `${label} · ${this.formatCount(this.getVisibleSavedItems(state).length, "title")}`;
+  },
+
+  // One title, not one titles.
+  formatCount(count, unit) {
+    const n = Number(count) || 0;
+    if (unit === "file") {
+      return n === 1
+        ? t("library_count_file_one", { count: n }, "1 file")
+        : t("library_count_files", { count: n }, "files");
+    }
+    return n === 1
+      ? t("library_count_title_one", { count: n }, "1 title")
+      : t("library_count_titles", { count: n }, "titles");
+  },
+
+  countDownloadedItems() {
+    const downloads = this.downloadedLibrary || {};
+    if (!downloads.supported || downloads.loading) {
+      return 0;
+    }
+    return filterDownloadedLibraryItems(
+      normalizeDownloadedLibraryType(this.downloadedType),
+      (downloads.movies || []).map(offlineMovieCard),
+      (downloads.series || []).map(offlineSeriesCard)
+    ).length;
+  },
+
+  // Searching the saved shelf is a filter over what is already on screen, not
+  // a second trip to the provider.
+  // One field, but it only ever searches the shelf that is open.
+  applyLibrarySearch(items = []) {
+    const query = String(this.librarySearchQuery || "")
+      .trim()
+      .toLowerCase();
+    if (!query) {
+      return items;
+    }
+    return items.filter((item) =>
+      String(item?.name || item?.title || "")
+        .toLowerCase()
+        .includes(query)
+    );
+  },
+
+  getVisibleSavedItems(state) {
+    return this.applyLibrarySearch(state.visibleItems);
+  },
+
+  // Typing must not cost the caret, so only the grid and the count are
+  // rewritten -- never the field itself.
+  refreshLibraryContentAndCount() {
+    const state = this.controller?.getState?.();
+    if (!state || !this.container) {
+      return;
+    }
+    const mount = this.container.querySelector("#libraryContentAreaMount");
+    if (mount instanceof HTMLElement) {
+      mount.outerHTML = this.renderLibraryContentArea(state);
+    }
+    const source = this.container.querySelector("#libraryPageSource");
+    if (source instanceof HTMLElement) {
+      source.textContent = this.getLibraryHeaderLabel(state);
+    }
+    this.buildGridRows();
+    ScreenUtils.indexFocusables(this.container);
+  },
+
+  getLibrarySearchPlaceholder(state) {
+    if (this.isDownloadedView() || this.isDownloadManagerView()) {
+      return t("library_search_downloads", {}, "Search downloads");
+    }
+    if (state?.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
+      return t("cloud_library_search_placeholder", {}, "Search cloud files");
+    }
+    return t("library_search_placeholder", {}, "Search your library");
+  },
+
+  renderLibrarySearchButton() {
+    return `
+      <button class="library-search-button focusable${this.librarySearchOpen ? " is-open" : ""}"
+              type="button"
+              data-action="toggleLibrarySearch"
+              aria-expanded="${this.librarySearchOpen ? "true" : "false"}"
+              aria-label="${escapeHtml(t("library_search_action", {}, "Search library"))}">
+        <span class="material-icons" aria-hidden="true">${this.librarySearchOpen ? "close" : "search"}</span>
+      </button>
+    `;
+  },
+
+  renderLibrarySearchField(state) {
+    // A pointer has room for the field beside the tabs, so it is simply there.
+    // A finger does not, so the button asks for it.
+    if (!this.librarySearchOpen && libraryUsesTouchLayout()) {
+      return "";
+    }
+    return `
+      <div class="library-search-row">
+        <span class="material-icons library-search-row-icon" aria-hidden="true">search</span>
+        <input class="library-search-input focusable" type="search" data-library-search
+               value="${escapeHtml(this.librarySearchQuery || "")}"
+               placeholder="${escapeHtml(this.getLibrarySearchPlaceholder(state))}"
+               aria-label="${escapeHtml(t("library_search_action", {}, "Search library"))}" />
+      </div>
+    `;
+  },
+
   renderViewModeTabs(state) {
     return `
       <div class="library-view-mode-row">
-        <button class="library-view-mode-button focusable${!this.isDownloadedView() && state.viewMode === LIBRARY_VIEW_MODE.SAVED ? " selected" : ""}"
+        <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.SAVED ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="saved">
           ${escapeHtml(t("library_source_saved", {}, "Saved"))}
         </button>
-        <button class="library-view-mode-button focusable${!this.isDownloadedView() && state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
+        <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="cloud">
           ${escapeHtml(t("library_source_cloud", {}, "Cloud"))}
         </button>
         ${
           Platform.isBrowser()
-            ? `<button class="library-view-mode-button focusable${this.isDownloadedView() ? " selected" : ""}"
+            ? `<button class="library-view-mode-button focusable${this.isDownloadedView() || this.isDownloadManagerView() ? " selected" : ""}"
                        data-action="selectDownloadedLibraryView" data-view-mode="downloaded">
                  Downloaded
-               </button>`
-            : ""
-        }
-        ${
-          Platform.isBrowser() && this.hasManageableDownloads()
-            ? `<button class="library-view-mode-button focusable${this.isDownloadManagerView() ? " selected" : ""}"
-                       data-action="selectDownloadManagerLibraryView" data-view-mode="download-manager">
-                 Download Manager${this.downloadManagerJobs.length ? ` <span class="library-download-manager-count">${this.downloadManagerJobs.length}</span>` : ""}
                </button>`
             : ""
         }
@@ -928,8 +1150,32 @@ export const LibraryScreen = {
     `;
   },
 
+  renderDownloadManagerButton() {
+    if (!Platform.isBrowser()) {
+      return "";
+    }
+    const count = this.downloadManagerJobs.length;
+    return `
+      <button class="library-download-manager-button focusable${this.isDownloadManagerView() ? " is-active" : ""}"
+              type="button"
+              data-action="selectDownloadManagerLibraryView"
+              data-view-mode="download-manager"
+              aria-pressed="${this.isDownloadManagerView() ? "true" : "false"}"
+              aria-label="${escapeHtml(
+                this.isDownloadManagerView()
+                  ? t("library_download_manager_back", {}, "Back to downloaded")
+                  : t("library_download_manager", {}, "Download manager")
+              )}">
+        <span class="material-icons" aria-hidden="true">${
+          this.isDownloadManagerView() ? "arrow_back" : "downloading"
+        }</span>
+        ${count ? `<span class="library-download-manager-count">${count}</span>` : ""}
+      </button>
+    `;
+  },
+
   renderDownloadManagerContent() {
-    const jobs = this.downloadManagerJobs || [];
+    const jobs = this.applyLibrarySearch(this.downloadManagerJobs || []);
     if (!jobs.length) {
       return `<section class="library-empty-state"><h3 class="library-empty-title">No active downloads</h3><p class="library-empty-subtitle">Completed downloads are available in Downloaded.</p></section>`;
     }
@@ -937,30 +1183,55 @@ export const LibraryScreen = {
     const groups = [
       ["Downloading", jobs.filter((job) => job.status === "downloading")],
       ["Queued", queued],
-      ["Paused / Interrupted", jobs.filter((job) => ["paused", "interrupted"].includes(job.status))],
+      [
+        "Paused / Interrupted",
+        jobs.filter((job) => ["paused", "interrupted"].includes(job.status))
+      ],
       ["Failed", jobs.filter((job) => job.status === "failed")]
     ];
     return `<section class="library-download-manager" aria-label="Download Manager">${groups
       .filter(([, entries]) => entries.length)
-      .map(([title, entries]) => `<section class="library-download-manager-section"><h2>${title}</h2>${entries
-        .map((job, index) => this.renderDownloadManagerCard(job, title === "Queued" ? index + 1 : null))
-        .join("")}</section>`)
+      .map(
+        ([title, entries]) =>
+          `<section class="library-download-manager-section"><h2>${title}</h2>${entries
+            .map((job, index) =>
+              this.renderDownloadManagerCard(job, title === "Queued" ? index + 1 : null)
+            )
+            .join("")}</section>`
+      )
       .join("")}</section>`;
   },
 
   renderDownloadManagerCard(download = {}, queuePosition = null) {
     const total = Number(download.totalBytes || 0);
     const current = Number(download.downloadedBytes || 0);
-    const progress = total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
+    const progress =
+      total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
     const title = download.seriesTitle || download.title || "Offline download";
     const episode = managerEpisodeLabel(download);
     const source = managerSourceLabel(download);
-    const action = (name, icon, label) => `<button class="library-download-manager-action focusable" data-action="${name}" data-download-id="${escapeHtml(download.downloadId)}" aria-label="${label}" title="${label}"><span class="material-icons" aria-hidden="true">${icon}</span></button>`;
+    const action = (name, icon, label) =>
+      `<button class="library-download-manager-action focusable" data-action="${name}" data-download-id="${escapeHtml(download.downloadId)}" aria-label="${label}" title="${label}"><span class="material-icons" aria-hidden="true">${icon}</span></button>`;
     const status = String(download.status || "");
     let actions = "";
-    if (status === "downloading") actions = action("pauseOfflineDownload", "pause", "Pause") + action("cancelOfflineDownload", "close", "Cancel");
-    if (status === "queued") actions = action("moveOfflineDownloadTop", "vertical_align_top", "Move to top") + action("moveOfflineDownloadUp", "keyboard_arrow_up", "Move up") + action("moveOfflineDownloadDown", "keyboard_arrow_down", "Move down") + action("moveOfflineDownloadBottom", "vertical_align_bottom", "Move to bottom") + action("cancelOfflineDownload", "close", "Cancel");
-    if (["paused", "interrupted", "failed"].includes(status)) actions = action("resumeOfflineDownload", status === "failed" ? "refresh" : "play_arrow", status === "failed" ? "Retry" : "Resume") + action("cancelOfflineDownload", "delete", "Delete partial download");
+    if (status === "downloading")
+      actions =
+        action("pauseOfflineDownload", "pause", "Pause") +
+        action("cancelOfflineDownload", "close", "Cancel");
+    if (status === "queued")
+      actions =
+        action("moveOfflineDownloadTop", "vertical_align_top", "Move to top") +
+        action("moveOfflineDownloadUp", "keyboard_arrow_up", "Move up") +
+        action("moveOfflineDownloadDown", "keyboard_arrow_down", "Move down") +
+        action("moveOfflineDownloadBottom", "vertical_align_bottom", "Move to bottom") +
+        action("cancelOfflineDownload", "close", "Cancel");
+    if (["paused", "interrupted", "failed"].includes(status))
+      actions =
+        action(
+          "resumeOfflineDownload",
+          status === "failed" ? "refresh" : "play_arrow",
+          status === "failed" ? "Retry" : "Resume"
+        ) + action("cancelOfflineDownload", "delete", "Delete partial download");
     return `<article class="library-download-manager-card">
       ${download.poster ? `<img class="library-download-manager-poster" src="${escapeHtml(download.poster)}" alt="" />` : `<div class="library-download-manager-poster library-download-manager-poster-placeholder" aria-hidden="true"><span class="material-icons">download</span></div>`}
       <div class="library-download-manager-copy"><strong>${escapeHtml(title)}</strong>${episode ? `<span>${escapeHtml(episode)}</span>` : ""}${source ? `<span>${escapeHtml(source)}</span>` : ""}${status === "queued" ? `<span>Queued #${queuePosition}</span>` : `<span>${escapeHtml(status)}${total ? ` · ${formatOfflineBytes(current)} / ${formatOfflineBytes(total)} (${progress}%)` : ""}</span>`}${status === "downloading" ? `<div class="library-download-manager-progress" aria-label="${progress}% downloaded"><i style="width:${progress}%"></i></div>` : ""}${download.error ? `<small>${escapeHtml(download.error)}</small>` : ""}</div>
@@ -977,44 +1248,24 @@ export const LibraryScreen = {
       return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">Downloads unavailable</h3><p class="library-empty-subtitle">This browser does not support local offline downloads.</p></section>`;
     }
     this.downloadedType = normalizeDownloadedLibraryType(this.downloadedType);
-    const items = filterDownloadedLibraryItems(
-      this.downloadedType,
-      (downloads.movies || []).map(offlineMovieCard),
-      (downloads.series || []).map(offlineSeriesCard)
+    const items = this.applyLibrarySearch(
+      filterDownloadedLibraryItems(
+        this.downloadedType,
+        (downloads.movies || []).map(offlineMovieCard),
+        (downloads.series || []).map(offlineSeriesCard)
+      )
     );
     if (!items.length) {
-      const title = this.downloadedType === "all" ? "No downloads yet" : `No downloaded ${this.downloadedType}`;
+      const title =
+        this.downloadedType === "all" ? "No downloads yet" : `No downloaded ${this.downloadedType}`;
       return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">${title}</h3><p class="library-empty-subtitle">Completed downloads will appear here and remain available offline.</p></section>`;
     }
     return this.renderGrid(items, "library-downloaded-grid");
   },
 
-  renderCloudActions(state) {
-    return `
-      <section class="library-cloud-toolbar">
-        <label class="library-cloud-search-shell">
-          <span>${escapeHtml(t("cloud_library_search_label", {}, "Search cloud library"))}</span>
-          <input class="library-cloud-search-input focusable"
-                 data-cloud-search="true"
-                 type="text"
-                 value="${escapeHtml(state.cloudSearchQuery || "")}"
-                 placeholder="${escapeHtml(t("cloud_library_search_placeholder", {}, "Search files"))}" />
-        </label>
-        ${
-          state.cloudSearchQuery
-            ? `<button class="library-action-button focusable"
-                       data-action="clearCloudSearch">
-                 ${escapeHtml(t("cloud_library_search_clear", {}, "Clear search"))}
-               </button>`
-            : ""
-        }
-        <button class="library-action-button focusable library-primary"
-                data-action="refreshCloudLibrary"
-                ${state.cloudLibrary.isRefreshing ? "disabled" : ""}>
-          ${escapeHtml(t("cloud_library_refresh", {}, "Refresh cloud library"))}
-        </button>
-      </section>
-    `;
+  renderCloudActions() {
+    // The refresh control lives in the filter row now, beside the two pickers.
+    return "";
   },
 
   formatCloudSize(sizeBytes) {
@@ -1186,7 +1437,7 @@ export const LibraryScreen = {
 
     const sourceNode = this.container.querySelector("#libraryPageSource");
     if (sourceNode instanceof HTMLElement) {
-      sourceNode.textContent = this.isDownloadedView() ? "Downloaded" : this.controller.getSourceLabel();
+      sourceNode.textContent = this.getLibraryHeaderLabel(state);
     }
 
     const pickerMount = this.container.querySelector("#libraryPickerGroupsMount");
@@ -1305,7 +1556,39 @@ export const LibraryScreen = {
     this.desktopMediaHoverPreview.bind(this.container);
   },
 
+  renderOfflineEmptyState() {
+    return `
+      <section class="library-empty-state">
+        <span class="material-icons library-empty-icon" aria-hidden="true">cloud_off</span>
+        <h3 class="library-empty-title">${escapeHtml(
+          t("library_offline_title", {}, "You're offline")
+        )}</h3>
+        <p class="library-empty-subtitle">${escapeHtml(
+          t(
+            "library_offline_subtitle",
+            {},
+            "Saved and Cloud need a connection. Downloaded titles are still here."
+          )
+        )}</p>
+      </section>
+    `;
+  },
+
   renderEmptyState() {
+    // The shelf is not empty when a search simply matched nothing, and the
+    // filter's wording ("No all yet") reads as nonsense there.
+    const query = String(this.librarySearchQuery || "").trim();
+    if (query) {
+      return `
+        <section class="library-empty-state">
+          ${bookmarkOutlineSvg()}
+          <h3 class="library-empty-title">${escapeHtml(t("library_search_empty_title", {}, "No matches"))}</h3>
+          <p class="library-empty-subtitle">${escapeHtml(
+            t("library_search_empty_subtitle", { query }, "Nothing in your library matches that.")
+          )}</p>
+        </section>
+      `;
+    }
     return `
       <section class="library-empty-state">
         ${bookmarkOutlineSvg()}
@@ -1560,11 +1843,17 @@ export const LibraryScreen = {
         <main class="home-main library-main">
           <section class="library-page">
             <header class="library-page-header">
-              <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
-              <div class="library-page-source" id="libraryPageSource">${escapeHtml(this.isDownloadedView() ? "Downloaded" : this.controller.getSourceLabel())}</div>
+              <div class="library-page-heading">
+                <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
+                <div class="library-page-source" id="libraryPageSource">${escapeHtml(this.getLibraryHeaderLabel(state))}</div>
+              </div>
+              ${this.renderLibrarySearchButton()}
             </header>
 
-            ${this.renderViewModeTabs(state)}
+            <div class="library-tabs-row">
+              ${this.renderViewModeTabs(state)}
+              ${this.renderLibrarySearchField(state)}
+            </div>
             ${this.renderPickerGroups(state)}
 
             ${this.renderLibraryContentArea(state)}
@@ -2569,6 +2858,30 @@ export const LibraryScreen = {
       this.requestRender();
       return;
     }
+    if (action === "toggleLibrarySearch") {
+      this.librarySearchOpen = !this.librarySearchOpen;
+      if (!this.librarySearchOpen) {
+        this.librarySearchQuery = "";
+      }
+      // Rendered in this same task rather than on the next frame: a phone
+      // raises its keyboard only for a focus that is still part of the tap that
+      // asked for it, and a frame later is no longer part of it.
+      this.render();
+      if (this.librarySearchOpen) {
+        const input = this.container?.querySelector(".library-search-input");
+        if (input instanceof HTMLInputElement) {
+          input.focus({ preventScroll: true });
+          // The caret belongs after whatever is already typed, not before it.
+          const end = input.value.length;
+          try {
+            input.setSelectionRange(end, end);
+          } catch (_) {
+            /* Not every input type allows a selection range. */
+          }
+        }
+      }
+      return;
+    }
     if (action === "selectLibraryViewMode") {
       this.downloadedView = false;
       this.downloadManagerView = false;
@@ -2585,19 +2898,22 @@ export const LibraryScreen = {
       return;
     }
     if (action === "selectDownloadManagerLibraryView") {
-      if (!this.hasManageableDownloads()) {
-        this.downloadedView = true;
-        this.downloadManagerView = false;
-      } else {
-        this.downloadedView = false;
-        this.downloadManagerView = true;
-      }
+      // The queue being empty is itself worth seeing, so the manager opens
+      // whether or not anything is downloading. Pressing the same button again
+      // is the way back: the Downloaded tab stays lit while the manager is
+      // open, so pressing it reads as a no-op.
+      const toManager = !this.isDownloadManagerView();
+      this.downloadManagerView = toManager;
+      this.downloadedView = !toManager;
       this.downloadedPickerOpen = false;
       this.controller.closePicker();
       this.requestRender();
       return;
     }
-    if (action.startsWith("moveOfflineDownload") || ["pauseOfflineDownload", "resumeOfflineDownload", "cancelOfflineDownload"].includes(action)) {
+    if (
+      action.startsWith("moveOfflineDownload") ||
+      ["pauseOfflineDownload", "resumeOfflineDownload", "cancelOfflineDownload"].includes(action)
+    ) {
       const downloadId = String(node.dataset.downloadId || "");
       if (!downloadId) return;
       const operations = {
@@ -2620,6 +2936,11 @@ export const LibraryScreen = {
     }
     if (action === "refreshCloudLibrary") {
       await this.controller.refreshCloudLibrary();
+      return;
+    }
+    if (action === "toggleLibraryFilters") {
+      this.librarySecondaryFiltersExpanded = !this.librarySecondaryFiltersExpanded;
+      this.render();
       return;
     }
     if (action === "clearLibraryFilters") {
@@ -2926,6 +3247,22 @@ export const LibraryScreen = {
     if (this.completePendingPosterHold(current, event)) {
       event?.preventDefault?.();
     }
+  },
+
+  // A layer revealed by Back never re-runs mount(), so this screen kept whatever
+  // it had drawn. Remove a title from its Detail page, press Back, and the title
+  // was still listed with the old count until a pull to refresh -- the list was
+  // showing the library as it had been before the change.
+  //
+  // Home and Detail already had this hook; this screen was the one left without
+  // it. A plain reload rather than the pull-to-refresh path: that one belongs to
+  // a deliberate gesture, with its spinner and its "Library synced" message, and
+  // neither belongs to simply walking back into a screen.
+  onRouteRevealed() {
+    if (!this.container || !this.controller) return;
+    void Promise.resolve(this.controller.reload({ preserveOverlay: true })).catch((error) => {
+      console.warn("Library refresh on reveal failed", error);
+    });
   },
 
   cleanup() {

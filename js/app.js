@@ -22,6 +22,9 @@ import { I18n } from "./i18n/index.js";
 import { resolveExperienceRoute } from "./core/profile/experienceModeRouting.js";
 import { initializeBrowserOfflineDownloadQueue } from "./core/offline/browserOfflineDownloadQueue.js";
 import { installExternalPlaybackReturnCoordinator } from "./ui/components/browserExternalPlaybackHandoff.js";
+import { markContinueWatchingStale } from "./ui/screens/home/continueWatchingStaleSignal.js";
+import { watchBrowserInstallAvailability } from "./ui/components/browserInstallPrompt.js";
+import { installBrowserFocusModality } from "./ui/navigation/browserFocusModality.js";
 import { installWatchProgressReconnectSync } from "./core/profile/watchProgressReconnect.js";
 import { dispatchOutplayerExplicitFinish } from "./ui/components/browserOutplayerFinishDispatch.js";
 import { PlayerScreen } from "./ui/screens/player/playerScreen.js";
@@ -51,6 +54,13 @@ if (
   !["localhost", "127.0.0.1", "::1"].includes(globalThis.location?.hostname || "")
 ) {
   globalThis.navigator.serviceWorker.register("./sw.js").catch(() => {});
+}
+
+// beforeinstallprompt fires once, early. Catching it here rather than in the
+// sign-in screen is the difference between having an install button and not.
+if (Platform.isBrowser()) {
+  watchBrowserInstallAvailability();
+  installBrowserFocusModality();
 }
 
 function markBootStage(stage) {
@@ -377,6 +387,16 @@ async function bootstrapApp() {
     getProfileId: () => ProfileManager.getActiveProfileId(),
     onAutomaticReport: async (report) => {
       const applied = await applyExternalPlaybackReportForProvider(report);
+      if (applied) {
+        // Tell Home the local write happened, and nothing else. Re-reading the
+        // source here was worse than leaving it alone: a scrobble has not
+        // reached Trakt or SIMKL yet, and a cloud pull races this device's own
+        // push. What came back was the state from before the episode finished,
+        // and it was written over a completion that was already right on
+        // screen -- the card advanced, then went back to what had just been
+        // watched. Whoever asks next gets the settled answer.
+        markContinueWatchingStale();
+      }
       if (!applied) {
         // A discarded callback is invisible otherwise: the user only sees the
         // manual prompt, and only for the one player that offers it. Recorded

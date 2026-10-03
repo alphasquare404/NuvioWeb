@@ -52,6 +52,19 @@ test("the native menu is only ever suppressed after a target is found", async ()
   assert.doesNotMatch(source, /document\.addEventListener\(\s*"contextmenu"/);
 });
 
+test("a finger's long press loses the browser menu without gaining the desktop one", async () => {
+  // The same hold that opens the action sheet also emits contextmenu, and the
+  // callout the browser answered with landed on top of the sheet. Taking the
+  // event away is not the same as claiming it: the pointer check still stands
+  // between a touch and the desktop menu.
+  const source = await readFile(new URL("./mediaContextActions.js", import.meta.url), "utf8");
+  const preventIndex = source.indexOf("event.preventDefault()");
+  const enabledIndex = source.indexOf("if (!isEnabled()) return;");
+  const invokeIndex = source.indexOf("onInvoke(node,");
+  assert.ok(enabledIndex > preventIndex, "the native menu goes for touch as well as mouse");
+  assert.ok(invokeIndex > enabledIndex, "only a fine pointer opens the desktop menu");
+});
+
 // --- viewport clamping -------------------------------------------------------------
 
 test("a menu with room stays exactly at the pointer", () => {

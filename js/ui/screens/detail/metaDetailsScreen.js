@@ -1,5 +1,6 @@
 ﻿import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
@@ -8,6 +9,7 @@ import { watchProgressRepository } from "../../../data/repository/watchProgressR
 import { savedLibraryRepository } from "../../../data/repository/savedLibraryRepository.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
+import { selectWatchedItemsForSource } from "../../../data/repository/watchedItemsScope.js";
 import {
   LibrarySourceMode,
   libraryRepository
@@ -1503,6 +1505,37 @@ function captureHorizontalScrollMap(container) {
   return state;
 }
 
+// Whether a finger can reach this screen. Paired with the browser check so a
+// remote keeps the layout its directional keys are built around, and asking
+// `any-pointer` rather than `pointer` so a tablet with a trackpad still counts.
+function detailUsesTouchLayout() {
+  if (!Platform.isBrowser()) return false;
+  try {
+    return Boolean(globalThis.matchMedia?.("(any-pointer: coarse)")?.matches);
+  } catch (_) {
+    return false;
+  }
+}
+
+// One answer to "is this in the library", for the icon and for the press alike.
+//
+// Simkl keeps a single status per title -- watching, completed, plan to watch --
+// and the Library list shows all of them. This asked only about plan to watch,
+// the one status Nuvio itself writes, so every title the person had marked
+// themselves read as "not saved": on a real library that was 103 of 105. The
+// button then offered to add what was already there, and pressing it overwrote
+// a real status with plan to watch.
+//
+// Trakt and the local library keep a named list instead, so there the question
+// is about that one list.
+function librarySnapshotHasMembership(listMembership = {}, sourceMode) {
+  if (sourceMode === LibrarySourceMode.SIMKL) {
+    return Object.values(listMembership).some(Boolean);
+  }
+  const key = sourceMode === LibrarySourceMode.TRAKT ? "watchlist" : "local";
+  return listMembership[key] === true;
+}
+
 export const MetaDetailsScreen = {
   getRouteStateKey(params = {}) {
     const itemId = String(params?.itemId || "").trim();
@@ -1558,7 +1591,9 @@ export const MetaDetailsScreen = {
     this.meta = { ...snapshot.meta };
     this.isSavedInLibrary = Boolean(snapshot.isSavedInLibrary);
     this.isMarkedWatched = Boolean(snapshot.isMarkedWatched);
-    this.episodes = Array.isArray(snapshot.episodes) ? [...snapshot.episodes] : [];
+    this.episodes = this.applyOfflineEpisodeVisibility(
+      Array.isArray(snapshot.episodes) ? [...snapshot.episodes] : []
+    );
     this.castItems = Array.isArray(snapshot.castItems) ? [...snapshot.castItems] : [];
     this.moreLikeThisItems = Array.isArray(snapshot.moreLikeThisItems)
       ? [...snapshot.moreLikeThisItems]
@@ -1887,10 +1922,8 @@ export const MetaDetailsScreen = {
       : null;
     const browserCanRestoreOfflineSnapshot =
       Platform.isBrowser() && globalThis.navigator?.onLine === false;
-    if (
-      this.hydrateFromRouteState(restoredRouteState, params) &&
-      (!Platform.isBrowser() || browserCanRestoreOfflineSnapshot)
-    ) {
+    const restoredFromRouteState = this.hydrateFromRouteState(restoredRouteState, params);
+    if (restoredFromRouteState && (!Platform.isBrowser() || browserCanRestoreOfflineSnapshot)) {
       this.isLoadingDetail = false;
       if (Platform.isBrowser()) {
         this.isSavedInLibrary = false;
@@ -1916,6 +1949,20 @@ export const MetaDetailsScreen = {
         void this.loadMdbListRatings(this.meta, refreshToken);
       }
       this.markAutoOpenContinueWatchingStreamReady();
+      return;
+    }
+
+    // A Back always has something to show, so it must never show the
+    // placeholder. The snapshot was already restored above; the browser simply
+    // refuses to *stop* there, because online it wants fresh metadata. Both
+    // things can be true: paint what we have, then reload behind it. Wiping it
+    // to a placeholder first is how a swipe back out of Detail flashed a
+    // loading screen on its way to Home.
+    if (restoredFromRouteState && Platform.isBrowser()) {
+      this.isLoadingDetail = false;
+      setBrowserMediaTitle({ title: this.meta?.name, year: this.meta?.releaseInfo });
+      this.render(this.meta, this.pendingFocusRestore);
+      await this.loadDetail();
       return;
     }
 
@@ -2091,10 +2138,15 @@ export const MetaDetailsScreen = {
     if (token !== this.detailLoadToken) {
       return;
     }
-    if (this.remoteMetaUnavailable && this.localOfflineDownloads.length) {
+    // A warm cache answers the metadata request even with no connection, so
+    // "the request failed" is not the same question as "can this device fetch a
+    // picture". Offline, the locally stored artwork is used either way; without
+    // this, a series opened after the app had been online kept remote artwork
+    // URLs and drew broken images where its logo and stills belong.
+    const browserOffline = isBrowserOfflineNow();
+    if ((this.remoteMetaUnavailable || browserOffline) && this.localOfflineDownloads.length) {
       const local = this.localOfflineDownloads[0];
       const artwork = await this.getOfflineDetailArtwork(local);
-      const browserOffline = Platform.isBrowser() && globalThis.navigator?.onLine === false;
       meta = applyOfflineDisplaySnapshot(
         {
           ...meta,
@@ -2117,7 +2169,8 @@ export const MetaDetailsScreen = {
             (browserOffline ? null : meta?.background || meta?.poster) ||
             null
         },
-        local.displaySnapshot || local
+        local.displaySnapshot || local,
+        { allowRemoteArtwork: !browserOffline }
       );
     }
     this.resumeContentIds = buildResumeContentIds(meta, this.params);
@@ -2145,10 +2198,7 @@ export const MetaDetailsScreen = {
     // Fast first paint with base metadata.
     this.meta = meta;
     setBrowserMediaTitle({ title: meta?.name, year: meta?.releaseInfo });
-    this.episodes = mergeDetailEpisodesWithOfflineDownloads(
-      normalizeEpisodes(meta?.videos || []),
-      this.localOfflineEpisodes
-    );
+    this.setEpisodesForConnectivity(meta);
     if (!this.remoteMetaUnavailable) {
       void this.backfillOfflineDisplayMetadata(meta);
     }
@@ -2215,10 +2265,7 @@ export const MetaDetailsScreen = {
 
       this.meta = enrichedMeta || meta;
       setBrowserMediaTitle({ title: this.meta?.name, year: this.meta?.releaseInfo });
-      this.episodes = mergeDetailEpisodesWithOfflineDownloads(
-        normalizeEpisodes(this.meta?.videos || []),
-        this.localOfflineEpisodes
-      );
+      this.setEpisodesForConnectivity(this.meta);
       if (!this.remoteMetaUnavailable) {
         void this.backfillOfflineDisplayMetadata(this.meta);
       }
@@ -2911,7 +2958,25 @@ export const MetaDetailsScreen = {
       }
     });
 
-    (Array.isArray(watchedItems) ? watchedItems : []).forEach((entry) => {
+    // Scoped to the selected source, the same rule Continue Watching uses.
+    //
+    // Both screens answer the same question after all: has the source that owns
+    // this list been told. A tick is Nuvio saying "Simkl has this one", and a
+    // record Simkl knows nothing about must not stand in for that.
+    //
+    // This was withdrawn once, because thousands of records predate the source
+    // tag and under a provider every one of their ticks vanished. The answer
+    // that followed -- handing those records to the provider so it could answer
+    // for them -- was worse: every source keeps its own history, in both
+    // directions, and a title finished under Nuvio Sync is not Simkl's to know.
+    //
+    // So the gap is not a gap. Under a provider you see what that provider has
+    // been told, which is what choosing a provider means. A season with nothing
+    // ticked there is a true answer, not a missing one.
+    selectWatchedItemsForSource(
+      watchedItems,
+      watchProgressRepository.getContinueWatchingSource()
+    ).forEach((entry) => {
       const season = Number(entry?.season || 0);
       const episode = Number(entry?.episode || 0);
       if (
@@ -3510,6 +3575,27 @@ export const MetaDetailsScreen = {
     );
   },
 
+  // Every path that fills the episode list goes through here, because there is
+  // more than one and they do not all run. The first paint builds the list from
+  // whatever metadata arrived; an enrichment pass rebuilds it a moment later
+  // from a fuller copy; returning to the screen restores it from a snapshot.
+  // Filtering at only one of them meant the offline list was correct for an
+  // instant and then quietly replaced by the whole series.
+  setEpisodesForConnectivity(meta) {
+    this.episodes = mergeDetailEpisodesWithOfflineDownloads(
+      normalizeEpisodes(meta?.videos || []),
+      this.localOfflineEpisodes,
+      { offlineOnly: isBrowserOfflineNow() }
+    );
+  },
+
+  // A snapshot taken while online carries the whole series; restoring it while
+  // offline would put back exactly what the filter removed.
+  applyOfflineEpisodeVisibility(episodes = []) {
+    if (!isBrowserOfflineNow()) return episodes;
+    return episodes.filter((episode) => Boolean(episode?.offlineDownloadId));
+  },
+
   async getOfflineDetailArtwork(download) {
     const resolver = this.offlineArtworkResolver;
     const [poster, backdrop, logo] = await Promise.all([
@@ -4008,6 +4094,27 @@ export const MetaDetailsScreen = {
       Platform.isBrowser() && isMovie && this.offlineMovieDownloaded
         ? `<span class="detail-offline-indicator" role="status"><span class="material-icons" aria-hidden="true">download</span>${escapeHtml(t("offline.downloaded", {}, "Downloaded"))}</span>`
         : "";
+    // Under a finger the artwork is portrait and the copy is the full width, so
+    // everything but the title and the buttons would sit on top of the picture.
+    // It moves below the artwork instead. A mouse keeps the cinema framing, and
+    // TV keeps the single collapsible body its trailer transition animates.
+    const heroMetaBelowArtwork = detailUsesTouchLayout();
+    const heroMeta = `
+      ${this.renderResumeIndicator()}
+      ${creditLine ? `<p class="series-detail-support">${escapeHtml(creditPrefix)}: ${escapeHtml(creditLine)}</p>` : ""}
+      ${externalRatings}
+      ${
+        heroMetaBelowArtwork
+          ? `<p class="series-detail-description">${escapeHtml(
+              meta.description || t("detail.noDescription", {}, "No description.")
+            )}<button class="detail-description-toggle focusable" type="button"
+                       data-action="toggleHeroDescription" aria-expanded="false" hidden>${escapeHtml(
+                         t("detail_description_more", {}, "more")
+                       )}</button></p>`
+          : `<p class="series-detail-description">${escapeHtml(meta.description || t("detail.noDescription", {}, "No description."))}</p>`
+      }
+      ${this.renderHeroMetaRows(meta)}
+    `;
     return `
       <section class="detail-hero-section">
         <div class="detail-hero-brand">
@@ -4029,13 +4136,10 @@ export const MetaDetailsScreen = {
             ${this.renderHeroOfflineSubtitleButton()}
             ${downloadedIndicator}
           </div>
-          ${this.renderResumeIndicator()}
-          ${creditLine ? `<p class="series-detail-support">${escapeHtml(creditPrefix)}: ${escapeHtml(creditLine)}</p>` : ""}
-          ${externalRatings}
-          <p class="series-detail-description">${escapeHtml(meta.description || t("detail.noDescription", {}, "No description."))}</p>
-          ${this.renderHeroMetaRows(meta)}
+          ${heroMetaBelowArtwork ? "" : heroMeta}
         </div>
       </section>
+      ${heroMetaBelowArtwork ? `<section class="detail-hero-meta-section">${heroMeta}</section>` : ""}
     `;
   },
 
@@ -4636,10 +4740,119 @@ export const MetaDetailsScreen = {
   },
 
   renderSeasonControls() {
+    if (!Platform.isBrowser() || !this.episodes?.length) {
+      return `
+        <div class="series-season-row" data-scroll-key="season-tabs">${this.renderSeasonButtons()}</div>
+        ${this.renderSeasonDownloadAction()}
+      `;
+    }
     return `
-      <div class="series-season-row" data-scroll-key="season-tabs">${this.renderSeasonButtons()}</div>
-      ${this.renderSeasonDownloadAction()}
+      <div class="series-season-controls">
+        ${this.renderSeasonPicker()}
+        ${this.renderSeasonDownloadAction()}
+      </div>
     `;
+  },
+
+  getSeasonLabel(season) {
+    return season === 0
+      ? t("episodes_specials", {}, "Specials")
+      : t("detail.seasonLabel", { season }, "Season {{season}}");
+  },
+
+  getSeasonOptions() {
+    return this.getAvailableSeasons().map((season) => ({
+      value: String(season),
+      label: this.getSeasonLabel(season)
+    }));
+  },
+
+  // The pill stays exactly as it was; only what opens beneath it changes. A
+  // native select carried the options before, and the panel it opened was drawn
+  // by the operating system -- white, square, and unlike anything else in the
+  // app. The menu below is the one Library and Discover already use, so it is
+  // borrowed rather than rebuilt: same classes, same styling, same behaviour.
+  renderSeasonPicker() {
+    const options = this.getSeasonOptions();
+    const open = Boolean(this.seasonPickerOpen);
+    const menu = open
+      ? `<div class="library-picker-menu library-picker-menu-open" role="listbox"
+                aria-label="${escapeAttribute(t("detail_season_picker_title", {}, "Season"))}">
+          ${options
+            .map(
+              (option, index) => `
+            <div class="library-picker-option focusable${option.value === String(this.selectedSeason) ? " selected" : ""}"
+                 data-action="selectSeasonOption"
+                 data-picker="season"
+                 data-option-index="${index}"
+                 role="option"
+                 aria-selected="${option.value === String(this.selectedSeason) ? "true" : "false"}"
+                 tabindex="-1">${escapeHtml(option.label)}</div>
+          `
+            )
+            .join("")}
+        </div>`
+      : "";
+    return `
+      <div class="library-picker series-season-picker${open ? " open" : ""}">
+        <div class="series-season-select-shell focusable"
+             data-action="toggleSeasonPicker"
+             data-picker="season"
+             role="button"
+             aria-haspopup="listbox"
+             aria-expanded="${open ? "true" : "false"}"
+             tabindex="-1">
+          <span class="series-season-select-value">${escapeHtml(this.getSeasonLabel(this.selectedSeason))}</span>
+          <span class="material-icons series-season-select-chevron" aria-hidden="true">expand_more</span>
+        </div>
+        ${menu}
+      </div>
+    `;
+  },
+  // Choosing a season changes the episodes and the download action beside the
+  // dropdown, and nothing else on the page. Rendering the whole screen for it
+  // put the scroll back at the top and rebuilt the dropdown under the finger
+  // that had just used it -- which is the flash of it reappearing. Only what
+  // depends on the season is redrawn, so the page stays where it was, exactly
+  // as the rail behaved.
+  refreshSeasonSelection() {
+    const picker = this.container?.querySelector(".series-season-picker");
+    const anchor = picker?.querySelector(".series-season-select-shell");
+    const controls = picker?.parentElement;
+    if (!picker || !controls) {
+      return false;
+    }
+    const value = picker.querySelector(".series-season-select-value");
+    if (value) {
+      value.textContent = this.getSeasonLabel(this.selectedSeason);
+    }
+    // Choosing closes the menu, so it is taken down here rather than by a
+    // render of the whole screen.
+    picker.classList.remove("open", "closing");
+    picker.querySelector(".library-picker-menu")?.remove();
+    anchor?.setAttribute("aria-expanded", "false");
+    this.seasonPickerOpen = false;
+    // The action is absent for a season with nothing to download, so it is
+    // removed and re-added rather than rewritten: a season that has episodes
+    // again needs somewhere to put it back.
+    controls.querySelector(".series-season-download-row")?.remove();
+    const downloadMarkup = this.renderSeasonDownloadAction();
+    if (downloadMarkup) {
+      controls.insertAdjacentHTML("beforeend", downloadMarkup);
+    }
+    return this.refreshEpisodeTrack();
+  },
+  // Opening or closing the menu redraws the control it belongs to and nothing
+  // else, for the same reason choosing a season does: a render of the screen
+  // would take the scroll back to the top.
+  renderSeasonControlsInPlace() {
+    const picker = this.container?.querySelector(".series-season-picker");
+    if (!picker) {
+      return false;
+    }
+    picker.outerHTML = this.renderSeasonPicker();
+    ScreenUtils.indexFocusables(this.container);
+    return true;
   },
 
   renderSeasonDownloadAction() {
@@ -5481,13 +5694,20 @@ export const MetaDetailsScreen = {
           ${Platform.isBrowser() && isDownloaded ? `<span class="series-episode-offline-status" role="img" aria-label="${escapeAttribute(t("offline.downloaded", {}, "Downloaded"))}"><span class="material-icons" aria-hidden="true">download</span></span>` : ""}
           ${canOfferOfflineSubtitleHandoff(this.getOfflineSubtitlesForEpisode(episode)) ? `<button type="button" class="series-episode-subtitle-action" data-episode-subtitle="${escapeAttribute(episode.id)}" aria-label="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}" title="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}"><span class="material-icons" aria-hidden="true">closed_caption</span></button>` : ""}
           ${isUnavailable ? `<div class="series-episode-unavailable">${escapeHtml(t("episodes_unavailable", {}, "Unavailable").toUpperCase())}</div>` : ""}
+          <!-- On the artwork, only what identifies the episode: which one it
+               is and how long it runs. Both are the same kind of fact. -->
           <div class="series-episode-copy">
             <div class="series-episode-badge">${escapeHtml(t("episodes_episode", {}, "Episode").toUpperCase())} ${Number(episode.episode || 0)}</div>
-            <div class="series-episode-title">${escapeHtml(normalizeEpisodeTitle(episode.title, episode.episode))}</div>
-            <div class="series-episode-overview">${escapeHtml(episode.overview || t("episodes_episode", {}, "Episode"))}</div>
             ${metaParts ? `<div class="series-episode-meta">${metaParts}</div>` : ""}
           </div>
           ${progressRatio > 0.02 && progressRatio < 0.98 ? `<div class="series-episode-progress"><span style="width:${Math.round(progressRatio * 100)}%"></span></div>` : ""}
+        </div>
+        <!-- The title and the synopsis are not part of the artwork. They sit
+             under the card, where nothing has to be dimmed for them to be
+             readable and the picture keeps its whole frame. -->
+        <div class="series-episode-caption">
+          <div class="series-episode-title">${escapeHtml(normalizeEpisodeTitle(episode.title, episode.episode))}</div>
+          <div class="series-episode-overview">${escapeHtml(episode.overview || t("episodes_episode", {}, "Episode"))}</div>
         </div>
       </article>
     `;
@@ -5507,6 +5727,42 @@ export const MetaDetailsScreen = {
       el.style.backgroundImage = "url('" + String(url).replace(/'/g, "%27") + "')";
       el.removeAttribute("data-thumb");
     } catch (_) {}
+  },
+
+  bindHeroDescriptionToggle() {
+    const description = this.container?.querySelector(".series-detail-description");
+    const toggle = this.container?.querySelector("[data-action='toggleHeroDescription']");
+    if (this.heroDescriptionResizeHandler) {
+      globalThis.removeEventListener?.("resize", this.heroDescriptionResizeHandler);
+      this.heroDescriptionResizeHandler = null;
+    }
+    if (!(description instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+      return;
+    }
+    const syncToggle = () => {
+      if (description.classList.contains("is-expanded")) {
+        return;
+      }
+      // A clamped paragraph is taller than it is allowed to be. Anything that
+      // fits has nothing to reveal, so the control stays away.
+      toggle.hidden = description.scrollHeight <= description.clientHeight + 1;
+    };
+    toggle.onclick = () => {
+      const expanded = description.classList.toggle("is-expanded");
+      toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      toggle.textContent = expanded
+        ? t("detail_description_less", {}, "less")
+        : t("detail_description_more", {}, "more");
+      if (!expanded) {
+        syncToggle();
+      }
+    };
+    syncToggle();
+    // Turning the phone changes how many lines fit, and so whether there is
+    // anything left to reveal. A ResizeObserver on the paragraph did not fire
+    // for this; the window's own resize does.
+    this.heroDescriptionResizeHandler = () => syncToggle();
+    globalThis.addEventListener?.("resize", this.heroDescriptionResizeHandler);
   },
 
   observeEpisodeThumbnails() {
@@ -6651,13 +6907,10 @@ export const MetaDetailsScreen = {
     ) {
       return false;
     }
-    const key =
-      sourceMode === LibrarySourceMode.SIMKL
-        ? "simkl:status:plantowatch"
-        : sourceMode === LibrarySourceMode.TRAKT
-          ? "watchlist"
-          : "local";
-    this.isSavedInLibrary = Boolean(snapshot?.listMembership?.[key]);
+    this.isSavedInLibrary = librarySnapshotHasMembership(
+      snapshot?.listMembership || {},
+      sourceMode
+    );
     this.syncDetailActionButtons();
     return this.isSavedInLibrary;
   },
@@ -6670,28 +6923,48 @@ export const MetaDetailsScreen = {
       const item = this.getCurrentLibraryItem();
       const defaultKey =
         sourceMode === LibrarySourceMode.SIMKL ? "simkl:status:plantowatch" : "watchlist";
+      // What is on screen is what the person is answering, so the icon turns
+      // now. It used to wait for the provider: a write, then an activities
+      // check, then a full list pull -- measured at 987ms on a healthy
+      // connection -- and nothing moved until all three came back.
+      const wasSaved = this.isSavedInLibrary === true;
+      this.isSavedInLibrary = !wasSaved;
+      this.syncDetailActionButtons();
       try {
         const tabs = await libraryRepository.getListTabs();
         const destination = tabs.find(
           (tab) => tab.key === defaultKey && tab.isMembershipDestination !== false
         );
         if (!destination) {
+          this.isSavedInLibrary = wasSaved;
+          this.syncDetailActionButtons();
           return;
         }
-        const snapshot = await libraryRepository.getMembershipSnapshot(item);
-        const membership = snapshot?.listMembership || {};
         const desiredMembership =
           sourceMode === LibrarySourceMode.SIMKL
             ? Object.fromEntries(
                 tabs
                   .filter((tab) => tab.isMembershipDestination !== false)
-                  .map((tab) => [tab.key, membership[defaultKey] ? false : tab.key === defaultKey])
+                  .map((tab) => [tab.key, wasSaved ? false : tab.key === defaultKey])
               )
-            : { [defaultKey]: !membership[defaultKey] };
+            : { [defaultKey]: !wasSaved };
         await libraryRepository.applyMembershipChanges(item, { desiredMembership });
-        await this.refreshCurrentLibraryMembership();
+        // The provider has the final word, but only to correct a refusal.
+        void this.refreshCurrentLibraryMembership();
         return;
       } catch (error) {
+        this.isSavedInLibrary = wasSaved;
+        this.syncDetailActionButtons();
+        // Simkl refuses to drop a status that carries watched history or a
+        // rating, because dropping it would take those with it. That refusal is
+        // right, and it needs a person to agree to it -- so hand them the list,
+        // which is where the confirmation lives. Until the button believed a
+        // completed title was in the library at all, this was unreachable, and
+        // the press simply did nothing.
+        if (/watched history|rating/i.test(String(error?.message || ""))) {
+          void this.openLibraryListMenu();
+          return;
+        }
         console.warn("Failed to update library from Detail", error);
         return;
       }
@@ -7297,6 +7570,30 @@ export const MetaDetailsScreen = {
     return true;
   },
 
+  // A layer revealed by Back never re-runs mount(), so nothing here re-read
+  // what changed while this screen was covered. Nuvio's own player hid it:
+  // finishing there navigates to Detail, which mounts and reloads. An external
+  // player's report is applied while the Stream screen is still on top, and
+  // Back from Stream only uncovers this one -- so the episode cards kept the
+  // progress from before playback, and only leaving for Home and coming back
+  // rebuilt them. Home was already right, because Home has this hook.
+  onRouteRevealed() {
+    // A load in flight is about to produce this anyway, and two passes writing
+    // the same fields would race each other.
+    if (!this.container || !this.meta || this.isLoadingDetail) return;
+    const token = this.detailLoadToken;
+    void this.refreshEpisodePlaybackState()
+      .then(() => {
+        if (token !== this.detailLoadToken || !this.container) return;
+        // No focus argument: the person is looking at this screen, and moving
+        // their focus because something synced would be its own bug.
+        this.updateRenderedDetailSections(this.meta, null);
+      })
+      .catch((error) => {
+        console.warn("Detail playback state refresh failed", error);
+      });
+  },
+
   async refreshEpisodePlaybackState() {
     detailWatchedEnrichmentService.invalidateCache(this.params?.itemId);
     const [progress, allProgressItems, allWatchedItems, watchedItem] = await Promise.all([
@@ -7304,7 +7601,10 @@ export const MetaDetailsScreen = {
         this.resumeContentIds?.length ? this.resumeContentIds : [this.params?.itemId]
       ),
       watchProgressRepository.getAll(),
-      watchedItemsRepository.getAll(),
+      // The provider's snapshot as it stands. This runs straight after the
+      // person pressed something, so waiting on a provider round trip here is
+      // the pause they were reporting.
+      watchedItemsRepository.getAll(Infinity, { allowStale: true }),
       watchedItemsRepository.isWatched(this.params?.itemId)
     ]);
     this.resumeProgress = progress && isWatchProgressInProgress(progress) ? progress : null;
@@ -7317,8 +7617,53 @@ export const MetaDetailsScreen = {
     const progressItemsForDetail = this.resumeProgress
       ? [this.resumeProgress, ...allProgressItems]
       : allProgressItems;
-    this.buildEpisodeState(progressItemsForDetail, allWatchedItems, this.enrichedWatchedState);
+    // The enrichment map is the card's first authority -- a tick asks it before
+    // it asks anything else -- and the line above this function invalidates it.
+    // Handing the old one back in invalidated it in name only: un-marking a
+    // season removed the rows, cleared the cache, and then rebuilt the state
+    // from the very map that still said watched, so nothing on screen moved.
+    // Dropped here, rebuilt below, and between the two the local state answers,
+    // which is the one that has just been changed on purpose.
+    this.enrichedWatchedState = null;
+    this.buildEpisodeState(progressItemsForDetail, allWatchedItems, null);
     this.nextEpisodeToWatch = this.computeNextEpisodeToWatch(this.resumeProgress || progress);
+    this.refreshWatchedEnrichmentInBackground();
+  },
+
+  // Rebuilding the map costs a provider lookup, so it runs behind the render
+  // rather than in front of it. Only a series has one, and only once the local
+  // pass has already painted.
+  refreshWatchedEnrichmentInBackground() {
+    const traktId = this.meta?.ids?.trakt;
+    if (!traktId || !isSeriesDetailMeta(this.meta, this.episodes)) return;
+    const token = this.detailLoadToken;
+    void withTimeout(
+      detailWatchedEnrichmentService.enrichSeriesWatchedState(
+        this.episodes,
+        this.params?.itemId,
+        traktId
+      ),
+      4500,
+      null
+    )
+      .then(async (enriched) => {
+        if (token !== this.detailLoadToken || !this.container || !(enriched instanceof Map)) {
+          return;
+        }
+        const [allProgressItems, allWatchedItems] = await Promise.all([
+          watchProgressRepository.getAll(),
+          watchedItemsRepository.getAll(Infinity, { allowStale: true })
+        ]);
+        if (token !== this.detailLoadToken || !this.container) return;
+        const progressItemsForDetail = this.resumeProgress
+          ? [this.resumeProgress, ...allProgressItems]
+          : allProgressItems;
+        this.buildEpisodeState(progressItemsForDetail, allWatchedItems, enriched);
+        this.updateRenderedDetailSections(this.meta, null);
+      })
+      .catch((error) => {
+        console.warn("Detail watched enrichment refresh failed", error);
+      });
   },
 
   async setEpisodeWatchedState(episode, watched) {
@@ -8037,6 +8382,47 @@ export const MetaDetailsScreen = {
       event.preventDefault();
     };
     this.container.addEventListener("click", this.boundDesktopDetailActionHandler);
+    // The season picker is the app's own menu, so opening, choosing and
+    // dismissing it belong to this screen. Capture, so the screen's own click
+    // handling never sees these first.
+    this.boundSeasonPickerHandler = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || !this.container?.contains(target)) {
+        return;
+      }
+      const option = target.closest("[data-action='selectSeasonOption']");
+      if (option) {
+        event.preventDefault();
+        event.stopPropagation();
+        const index = Number(option.dataset.optionIndex || 0);
+        const season = Number(this.getSeasonOptions()[index]?.value);
+        this.seasonPickerOpen = false;
+        if (!Number.isFinite(season) || season === this.selectedSeason) {
+          this.refreshSeasonSelection();
+          return;
+        }
+        this.hasManualSeasonSelection = true;
+        this.selectedSeason = season;
+        if (!this.refreshSeasonSelection()) {
+          this.render(this.meta, { selector: ".series-season-select-shell" });
+        }
+        return;
+      }
+      const anchor = target.closest("[data-action='toggleSeasonPicker']");
+      if (anchor) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.seasonPickerOpen = !this.seasonPickerOpen;
+        this.renderSeasonControlsInPlace();
+        return;
+      }
+      // Anywhere else closes it, the way every menu in the app behaves.
+      if (this.seasonPickerOpen) {
+        this.seasonPickerOpen = false;
+        this.renderSeasonControlsInPlace();
+      }
+    };
+    this.container.addEventListener("click", this.boundSeasonPickerHandler, true);
     this.boundDesktopLibraryPointerDownHandler = (event) => {
       if (event.pointerType !== "mouse" || Number(event.button) !== 0) {
         return;
@@ -8184,6 +8570,7 @@ export const MetaDetailsScreen = {
 
   bindDetailChrome() {
     this.observeEpisodeThumbnails();
+    this.bindHeroDescriptionToggle();
     const content = this.container?.querySelector(".series-detail-content");
     if (!content) {
       return;
@@ -11951,6 +12338,13 @@ export const MetaDetailsScreen = {
     if (this.boundDesktopDetailActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopDetailActionHandler);
       this.boundDesktopDetailActionHandler = null;
+      this.container.removeEventListener("click", this.boundSeasonPickerHandler, true);
+      this.boundSeasonPickerHandler = null;
+      this.seasonPickerOpen = false;
+    }
+    if (this.heroDescriptionResizeHandler) {
+      globalThis.removeEventListener?.("resize", this.heroDescriptionResizeHandler);
+      this.heroDescriptionResizeHandler = null;
     }
     if (this.boundEpisodeSubtitleActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundEpisodeSubtitleActionHandler, true);

@@ -56,7 +56,11 @@ export function mergeOfflineDisplaySnapshot(local = {}, remote = {}) {
   };
 }
 
-export function applyOfflineDisplaySnapshot(meta = {}, snapshot = {}) {
+// `allowRemoteArtwork: false` stops the snapshot handing back a URL for a
+// picture that cannot be fetched. Offline, falling back to the remembered
+// remote logo drew a broken-image box above the title -- worse than the plain
+// text it was trying to improve on.
+export function applyOfflineDisplaySnapshot(meta = {}, snapshot = {}, { allowRemoteArtwork = true } = {}) {
   return {
     ...meta,
     name: first(meta.name, snapshot.title),
@@ -71,6 +75,6 @@ export function applyOfflineDisplaySnapshot(meta = {}, snapshot = {}) {
     runtimeMinutes: Number(meta.runtimeMinutes || snapshot.runtimeMinutes || 0) || 0,
     country: first(meta.country, snapshot.country),
     language: first(meta.language, snapshot.language),
-    logo: first(meta.logo, snapshot.logo)
+    logo: allowRemoteArtwork ? first(meta.logo, snapshot.logo) : meta.logo || null
   };
 }

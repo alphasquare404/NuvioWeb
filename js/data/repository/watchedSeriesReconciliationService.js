@@ -198,7 +198,7 @@ export const watchedSeriesReconciliationService = {
 
     const contentIds = buildContentIds(normalizedContentId, meta);
     const [watchedItems, progressItems, hasSeriesMarker] = await Promise.all([
-      watchedItemsRepository.getAll(5000).catch(() => []),
+      watchedItemsRepository.getAll().catch(() => []),
       watchProgressRepository.getAll().catch(() => []),
       watchedItemsRepository.isWatched(normalizedContentId).catch(() => false)
     ]);

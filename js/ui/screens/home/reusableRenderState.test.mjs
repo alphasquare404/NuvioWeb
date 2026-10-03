@@ -197,16 +197,60 @@ test("a poster still on screen is never moved, even when another card shares its
   assert.equal(container.images[1], second);
 });
 
-// Why homeScreen restores rails only after the cached poster metrics are
-// applied: against a track the layout has not sized yet, the clamp is 0 and the
-// carried position is silently thrown away.
-test("an unsized track clamps to 0, which is why the restore runs after sizing", () => {
+// A track the layout has not sized yet can only be clamped to 0. homeScreen
+// restores rails after the cached poster metrics are applied for this reason,
+// and the retry below is what covers the times that still is not enough.
+test("an unsized track clamps to 0 on the first attempt", () => {
   const state = captureReusableRenderState(
     new FakeContainer({ tracks: [new FakeTrack("trending", { scrollLeft: 420 })] })
   );
   const unsized = new FakeTrack("trending", { scrollWidth: 400, clientWidth: 400 });
   restoreTrackScroll(new FakeContainer({ tracks: [unsized] }), state);
   assert.equal(unsized.scrollLeft, 0);
+});
+
+test("a rail clamped short is put back once the row has its real width", async () => {
+  // The reported bug: scroll a catalog rail along, mark a card watched, and the
+  // rail slides back to the start on its own. The row is replaced and restored
+  // while its cards are still widening, so the carried position is clamped away.
+  const frames = [];
+  const originalRaf = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = (fn) => frames.push(fn);
+  try {
+    const state = captureReusableRenderState(
+      new FakeContainer({ tracks: [new FakeTrack("trending", { scrollLeft: 420 })] })
+    );
+    const track = new FakeTrack("trending", { scrollWidth: 400, clientWidth: 400 });
+    restoreTrackScroll(new FakeContainer({ tracks: [track] }), state);
+    assert.equal(track.scrollLeft, 0);
+
+    // The cards finish laying out; the next frame finds the room it needed.
+    track.scrollWidth = 5000;
+    frames.shift()?.();
+    assert.equal(track.scrollLeft, 420);
+  } finally {
+    globalThis.requestAnimationFrame = originalRaf;
+  }
+});
+
+test("a rail the viewer moved on is left where they put it", async () => {
+  const frames = [];
+  const originalRaf = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = (fn) => frames.push(fn);
+  try {
+    const state = captureReusableRenderState(
+      new FakeContainer({ tracks: [new FakeTrack("trending", { scrollLeft: 420 })] })
+    );
+    const track = new FakeTrack("trending", { scrollWidth: 400, clientWidth: 400 });
+    restoreTrackScroll(new FakeContainer({ tracks: [track] }), state);
+
+    track.scrollWidth = 5000;
+    track.scrollLeft = 900;
+    frames.shift()?.();
+    assert.equal(track.scrollLeft, 900);
+  } finally {
+    globalThis.requestAnimationFrame = originalRaf;
+  }
 });
 
 test("no container and no state are both no-ops rather than throws", () => {

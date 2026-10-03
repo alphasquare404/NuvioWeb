@@ -2537,7 +2537,8 @@ export const PlayerScreen = {
       mediaSourceType,
       streamIdentity: streamCandidate
         ? buildStreamResumeIdentity(streamCandidate) || streamMergeKey(streamCandidate) || null
-        : null
+        : null,
+      offlinePlayback: Boolean(this.offlineDownloadId)
     };
   },
 
@@ -4528,7 +4529,10 @@ export const PlayerScreen = {
     const { volume, muted } = this.getDesktopVolumeState();
     const volumePercent = Math.round(volume * 100);
     const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
-    const externalPlayerAvailable = this.canOpenInExternalPlayer();
+    // On a compact toolbar this button lives in More Actions, and rendering it
+    // here as well put two of them on screen at once.
+    const externalPlayerAvailable =
+      this.canOpenInExternalPlayer() && !this.isCompactBrowserPlayerToolbar();
     return `
       <div class="player-desktop-playback-tools" aria-label="Playback controls">
         <button class="player-desktop-tool-button" type="button" tabindex="-1" data-player-desktop-action="mute"
@@ -8421,7 +8425,10 @@ export const PlayerScreen = {
         return;
       }
       // Fire-and-forget scrobble start (debounced internally)
-      if (TrackingScrobbleService.isEnabled()) {
+      if (
+        TrackingScrobbleService.isEnabled() &&
+        !PlayerController.shouldSuppressOfflineProgress()
+      ) {
         TrackingScrobbleService.start(this.buildScrobbleContext());
       }
       this.lastPlaybackErrorAt = 0;
@@ -8466,7 +8473,10 @@ export const PlayerScreen = {
         return;
       }
       // Immediate scrobble pause
-      if (TrackingScrobbleService.isEnabled()) {
+      if (
+        TrackingScrobbleService.isEnabled() &&
+        !PlayerController.shouldSuppressOfflineProgress()
+      ) {
         TrackingScrobbleService.pause(this.buildScrobbleContext());
       }
       this.clearPlaybackStallGuard();
@@ -8872,10 +8882,9 @@ export const PlayerScreen = {
     panel.innerHTML = `
       <div class="player-mobile-more-title">${escapeHtml(t("player_more_actions_title", {}, "More Actions"))}</div>
       <div class="player-mobile-more-actions" role="group" aria-label="${escapeHtml(t("player_more_actions_title", {}, "More Actions"))}">
-        <button class="player-mobile-more-action" type="button" tabindex="-1" data-player-desktop-action="mute"
+        <button class="player-mobile-more-action player-mobile-more-icon-action" type="button" tabindex="-1" data-player-desktop-action="mute"
                 title="${escapeHtml(muted ? "Unmute" : "Mute")}" aria-label="${escapeHtml(muted ? "Unmute" : "Mute")}">
           <img class="player-desktop-tool-icon" data-player-desktop-mute-icon src="assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}" alt="" aria-hidden="true" />
-          <span>${escapeHtml(muted ? "Unmute" : "Mute")}</span>
         </button>
         ${
           pictureInPictureAvailable
@@ -8887,10 +8896,9 @@ export const PlayerScreen = {
         }
         ${
           this.canOpenInExternalPlayer()
-            ? `<button class="player-mobile-more-action" type="button" tabindex="-1" data-player-desktop-action="external-player"
+            ? `<button class="player-mobile-more-action player-mobile-more-icon-action" type="button" tabindex="-1" data-player-desktop-action="external-player"
                   title="Play with external player" aria-label="Play with external player">
                 <img class="player-desktop-tool-icon" src="assets/icons/ic_player_external.svg" alt="" aria-hidden="true" />
-                <span>External player</span>
               </button>`
             : ""
         }
@@ -8901,9 +8909,8 @@ export const PlayerScreen = {
               </button>`
             : ""
         }
-        <button class="player-mobile-more-action player-control-btn" type="button" tabindex="-1" data-action="aspect" title="${escapeHtml(t("player_more_aspect_ratio", {}, "Aspect Ratio"))}">
+        <button class="player-mobile-more-action player-mobile-more-icon-action player-control-btn" type="button" tabindex="-1" data-action="aspect" title="${escapeHtml(t("player_more_aspect_ratio", {}, "Aspect Ratio"))}" aria-label="${escapeHtml(t("player_more_aspect_ratio", {}, "Aspect Ratio"))}">
           <span class="player-control-icon player-control-icon-mask" style="-webkit-mask-image:url('assets/icons/ic_player_aspect_ratio.svg');mask-image:url('assets/icons/ic_player_aspect_ratio.svg');" aria-hidden="true"></span>
-          <span>${escapeHtml(t("player_more_aspect_ratio", {}, "Aspect Ratio"))}</span>
         </button>
       </div>
     `;
@@ -9912,11 +9919,15 @@ export const PlayerScreen = {
       return;
     }
 
-    const titleLine = [nextEpisode.episodeLabel, nextEpisode.episodeTitle]
+    // The episode number belongs in the kicker beside "Up next", which leaves
+    // the title its own two lines instead of being squeezed onto one with a
+    // bullet. On a phone that one line was the whole problem.
+    const kickerText = [t("next_episode_up_next", {}, "Up next"), nextEpisode.episodeLabel]
       .filter(Boolean)
-      .join(" • ");
+      .join(" · ");
+    const titleLine = nextEpisode.episodeTitle || nextEpisode.episodeLabel || "";
     const statusText = nextEpisode.hasAired
-      ? t("next_episode_play", {}, "Play")
+      ? t("next_episode_play_next", {}, "Play next")
       : t("next_episode_unaired", {}, "Unaired");
     const airDateText = nextEpisode.hasAired ? "" : formatNextEpisodeAirDate(nextEpisode.released);
     const progressText = this.nextEpisodeCardSearching
@@ -9932,16 +9943,26 @@ export const PlayerScreen = {
       this.episodes.find((entry) => String(entry?.id || "") === String(nextEpisode.videoId || ""))
         ?.thumbnail || "";
 
+    // The dismiss control is for pointers only. A remote already closes the
+    // card with Back, and a second focus stop inside it would sit in the way of
+    // the one thing the card is for.
+    const dismissMarkup = Environment.isBrowser()
+      ? `<button class="player-next-episode-dismiss" type="button" tabindex="-1" data-player-pointer-action="dismissNextEpisode" title="${escapeHtml(t("next_episode_dismiss", {}, "Dismiss"))}" aria-label="${escapeHtml(t("next_episode_dismiss", {}, "Dismiss"))}">&#10005;</button>`
+      : "";
+
     card.innerHTML = `
       <div class="player-next-episode-card-inner${nextEpisode.hasAired ? " focusable is-playable" : ""}${!this.controlsVisible ? " is-selected" : ""}"${nextEpisode.hasAired ? ' data-player-pointer-action="nextEpisode"' : ""}>
-        <div class="player-next-episode-thumb-wrap">
-          ${thumb ? `<img class="player-next-episode-thumb" src="${escapeHtml(thumb)}" alt="" aria-hidden="true" />` : `<div class="player-next-episode-thumb player-next-episode-thumb-fallback"></div>`}
-          <div class="player-next-episode-thumb-shade"></div>
-        </div>
-        <div class="player-next-episode-copy">
-          <div class="player-next-episode-kicker">${escapeHtml(t("next_episode_label", {}, "Next episode"))}</div>
-          <div class="player-next-episode-title">${escapeHtml(titleLine || t("next_episode_label", {}, "Next episode"))}</div>
-          ${progressText ? `<div class="player-next-episode-status">${escapeHtml(progressText)}</div>` : ""}
+        <div class="player-next-episode-head">
+          <div class="player-next-episode-thumb-wrap">
+            ${thumb ? `<img class="player-next-episode-thumb" src="${escapeHtml(thumb)}" alt="" aria-hidden="true" />` : `<div class="player-next-episode-thumb player-next-episode-thumb-fallback"></div>`}
+            <div class="player-next-episode-thumb-shade"></div>
+          </div>
+          <div class="player-next-episode-copy">
+            <div class="player-next-episode-kicker">${escapeHtml(kickerText)}</div>
+            <div class="player-next-episode-title">${escapeHtml(titleLine || t("next_episode_up_next", {}, "Up next"))}</div>
+            ${progressText ? `<div class="player-next-episode-status">${escapeHtml(progressText)}</div>` : ""}
+          </div>
+          ${dismissMarkup}
         </div>
         <div class="player-next-episode-pill${nextEpisode.hasAired ? " is-playable" : ""}">
           <span class="player-next-episode-pill-icon">&#9654;</span>
@@ -16331,6 +16352,13 @@ export const PlayerScreen = {
       return this.skipActiveInterval();
     }
 
+    // Checked first: the dismiss control sits inside the card, and the card
+    // itself carries the play action.
+    if (target.closest?.("[data-player-pointer-action='dismissNextEpisode']")) {
+      this.dismissNextEpisodeCard();
+      return true;
+    }
+
     if (target.closest?.("[data-player-pointer-action='nextEpisode']")) {
       await this.playNextEpisode({ userInitiated: true });
       return true;
@@ -17318,7 +17346,7 @@ export const PlayerScreen = {
 
   async handlePlaybackEnded() {
     // Immediate scrobble stop (may trigger mark-as-watched)
-    if (TrackingScrobbleService.isEnabled()) {
+    if (TrackingScrobbleService.isEnabled() && !PlayerController.shouldSuppressOfflineProgress()) {
       TrackingScrobbleService.stop(this.buildScrobbleContext());
     }
     this.clearPlaybackStallGuard();
@@ -17346,7 +17374,12 @@ export const PlayerScreen = {
       }
     }
 
-    if (normalizeItemType(this.params?.itemType || "movie") === "series") {
+    // A finished film leaves the player for the same place a finished episode
+    // does. This asked for the item's type instead, so a film sat in a stopped
+    // player on its own last frame while an episode went back to Detail. The
+    // destination was never about the type: Back already answers it, and a
+    // Player entry carrying an itemId is the one with a Detail page behind it.
+    if (this.params?.itemId) {
       void Router.navigate("detail", this.buildDetailRouteParamsFromPlayer(), {
         skipStackPush: true,
         replaceHistory: true
@@ -17354,6 +17387,7 @@ export const PlayerScreen = {
       return;
     }
 
+    // Nothing to go back to -- a direct or manual stream. Settle in place.
     this.loadingVisible = false;
     this.paused = true;
     this.dismissPauseOverlay();

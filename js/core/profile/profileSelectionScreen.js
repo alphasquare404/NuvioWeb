@@ -1,4 +1,5 @@
 import { Router } from "../../ui/navigation/router.js";
+import { AuthManager } from "../auth/authManager.js";
 import { MAX_PROFILES, ProfileManager } from "../../core/profile/profileManager.js";
 import { ProfileSyncService } from "../../core/profile/profileSyncService.js";
 import { StartupSyncService } from "../../core/profile/startupSyncService.js";
@@ -521,7 +522,11 @@ export const ProfileSelectionScreen = {
     const visibleProfiles = this.getVisibleProfiles();
     const isDesktopBrowser = true;
     const canAddProfile = visibleProfiles.length < MAX_PROFILES;
-    const totalItems = visibleProfiles.length + (canAddProfile ? 1 : 0);
+    // Selecting a profile and adding one are different intents; the add tile
+    // sat among the faces as though it were a third person. It stays in the
+    // grid while managing, where every tile is an edit target.
+    const showAddCardInGrid = canAddProfile && this.isManagementMode;
+    const totalItems = visibleProfiles.length + (showAddCardInGrid ? 1 : 0);
     const gridClass = totalItems >= 5 ? "profile-grid profile-grid-compact" : "profile-grid";
     const title = this.isManagementMode
       ? t("profile_manage_title", {}, "Manage Profiles")
@@ -553,19 +558,22 @@ export const ProfileSelectionScreen = {
             : ""
         }
         <div class="profile-main-layer"${isPinActive ? ' aria-hidden="true"' : ""}>
+          ${
+            this.isManagementMode
+              ? ""
+              : '<img class="profile-brand-logo" src="assets/brand/app_logo_wordmark.png" alt="Nuvio" />'
+          }
           <h1 class="profile-title">${escapeHtml(title)}</h1>
           <p class="profile-subtitle">${escapeHtml(subtitle)}</p>
 
           <div class="${gridClass}" id="profileGrid" data-profile-item-count="${totalItems}">
             ${visibleProfiles.map((profile) => this.renderProfileCard(profile)).join("")}
-            ${canAddProfile ? this.renderAddProfileCard() : ""}
+            ${showAddCardInGrid ? this.renderAddProfileCard() : ""}
           </div>
 
           ${
             isDesktopBrowser && !this.isManagementMode
-              ? `<button class="profile-manage-button" type="button" data-action="open-management">${escapeHtml(
-                  t("profile_manage_button", {}, "Manage Profiles")
-                )}</button>`
+              ? this.renderSelectionActions(canAddProfile)
               : ""
           }
 
@@ -585,6 +593,12 @@ export const ProfileSelectionScreen = {
           returnRoute: "profileSelection"
         });
       });
+      this.container.querySelector("[data-action='add-profile']")?.addEventListener("click", () => {
+        this.openCreateEditor();
+      });
+      this.container.querySelector("[data-action='sign-out']")?.addEventListener("click", () => {
+        void this.signOutFromProfiles();
+      });
       this.container.querySelector("[data-action='close-management']")?.addEventListener("click", () => {
         void Router.back();
       });
@@ -594,9 +608,22 @@ export const ProfileSelectionScreen = {
       if (pinProfile?.avatarColorHex) {
         this.updateBackground(pinProfile.avatarColorHex);
       }
+    } else {
+      // The tint follows whichever profile has focus, and on a remote one
+      // always does. A pointer starts with none, which left the screen flat
+      // until something was touched.
+      const activeProfile = this.getProfileById(this.activeProfileId) || this.getVisibleProfiles()[0];
+      if (activeProfile) {
+        this.updateBackground(activeProfile.avatarColorHex || getDefaultProfileColor());
+      }
     }
     this.restoreFocus();
     this.focusNativePinInput();
+  },
+
+  async signOutFromProfiles() {
+    await AuthManager.signOut();
+    await Router.navigate("authSignIn", {}, { replaceHistory: true });
   },
 
   focusNativePinInput() {
@@ -631,6 +658,31 @@ export const ProfileSelectionScreen = {
         <div class="profile-name">${escapeHtml(profile.name)}</div>
         ${profile.isPrimary ? `<div class="profile-badge">${escapeHtml(t("profile_selection_primary_badge", {}, "PRIMARY"))}</div>` : `<div class="profile-badge-slot" aria-hidden="true"></div>`}
       </div>
+    `;
+  },
+
+  renderSelectionActions(canAddProfile) {
+    const addAction = canAddProfile
+      ? `<button class="profile-action-pill focusable" type="button" data-action="add-profile">
+           <span class="material-icons" aria-hidden="true">add</span>
+           <span>${escapeHtml(t("profile_add_new", {}, "Add Profile"))}</span>
+         </button>`
+      : "";
+    const signOutAction = AuthManager.isAuthenticated
+      ? `<button class="profile-signout-button focusable" type="button" data-action="sign-out">
+           <span class="material-icons" aria-hidden="true">logout</span>
+           <span>${escapeHtml(t("account_sign_out", {}, "Sign Out"))}</span>
+         </button>`
+      : "";
+    return `
+      <div class="profile-selection-actions">
+        ${addAction}
+        <button class="profile-action-pill focusable" type="button" data-action="open-management">
+          <span class="material-icons" aria-hidden="true">edit</span>
+          <span>${escapeHtml(t("profile_manage_short", {}, "Manage"))}</span>
+        </button>
+      </div>
+      ${signOutAction}
     `;
   },
 

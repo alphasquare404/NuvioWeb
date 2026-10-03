@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildWatchedAtByKey,
-  furthestProgress,
+  latestProgress,
   itemsByProgressKey,
   mergeProgressItems,
   normalizeProgressItems,
@@ -60,15 +60,16 @@ test("an item only the cloud changed is taken", () => {
 
 // The scenario issue #47 describes: 30% known, this device watches to 60%
 // offline, another device reaches 80% meanwhile. Both sides moved, so one has to
-// give -- and it is the further position that survives, whichever device's clock
-// says it wrote last.
-test("when both sides moved, the further position wins either way round", () => {
+// give -- and it is the one written last, not the one that got further. The
+// further-wins rule this replaced made a position nobody was watching from
+// permanent, because every pull restored it.
+test("when both sides moved, the side written last wins either way round", () => {
   const localWroteLast = mergeProgressItems(
     [movie(60_000, 500)],
     [movie(80_000, 400)],
     [movie(30_000, 100)]
   );
-  assert.deepEqual(positionsOf(localWroteLast), [80_000]);
+  assert.deepEqual(positionsOf(localWroteLast), [60_000]);
 
   const remoteWroteLast = mergeProgressItems(
     [movie(60_000, 400)],
@@ -78,27 +79,27 @@ test("when both sides moved, the further position wins either way round", () => 
   assert.deepEqual(positionsOf(remoteWroteLast), [80_000]);
 });
 
-// Two devices minutes apart on the clock used to decide this arbitrarily, and
-// the losing side's viewing was erased. Position is measured the same way on
-// both, so the outcome no longer depends on whose clock is right.
-test("the outcome does not depend on the writing device's clock", () => {
-  const withSkew = (localAt, remoteAt) =>
-    positionsOf(
-      mergeProgressItems([movie(60_000, localAt)], [movie(80_000, remoteAt)], [movie(30_000, 100)])
-    );
-  assert.deepEqual(withSkew(999_999, 200), withSkew(200, 999_999));
+// The side written last wins, which is the whole rule.
+test("the newest write wins regardless of which side it is", () => {
+  assert.equal(latestProgress(movie(80_000, 100), movie(60_000, 900)).positionMs, 60_000);
+  assert.equal(latestProgress(movie(10_000, 900), movie(60_000, 100)).positionMs, 10_000);
 });
 
-test("the further side wins regardless of which side it is", () => {
-  assert.equal(furthestProgress(movie(80_000, 100), movie(60_000, 900)).positionMs, 80_000);
-  assert.equal(furthestProgress(movie(10_000, 900), movie(60_000, 100)).positionMs, 60_000);
+// The case the old further-wins rule got wrong: starting a title again from an
+// earlier point is something people do on purpose, and it has to stick.
+test("a later write that moves backwards still wins", () => {
+  assert.equal(latestProgress(movie(5_000, 900), movie(80_000, 100)).positionMs, 5_000);
+  assert.deepEqual(
+    positionsOf(mergeProgressItems([movie(5_000, 900)], [movie(80_000, 100)], [movie(30_000, 50)])),
+    [5_000]
+  );
 });
 
-// Equal positions are not a conflict, so the fresher record is kept for its
-// metadata rather than arbitrated on a number that matches.
-test("equal positions keep the newer record", () => {
-  assert.equal(furthestProgress(movie(60_000, 900), movie(60_000, 100)).updatedAt, 900);
-  assert.equal(furthestProgress(movie(60_000, 100), movie(60_000, 900)).updatedAt, 900);
+// One stamp on both sides is not something a clock can settle, so it falls back
+// to position rather than to whichever happened to be iterated first.
+test("an identical timestamp falls back to the further position", () => {
+  assert.equal(latestProgress(movie(60_000, 900), movie(80_000, 900)).positionMs, 80_000);
+  assert.equal(latestProgress(movie(80_000, 900), movie(60_000, 900)).positionMs, 80_000);
 });
 
 // Finishing a title removes its progress row rather than setting it to 100%, so
@@ -187,8 +188,8 @@ test("finishing one episode does not retire another", () => {
 // watched record has no say over it.
 test("a title still present in the cloud is untouched by its watched record", () => {
   const merged = mergeProgressItems(
-    [movie(60_000, 500)],
-    [movie(80_000, 400)],
+    [movie(60_000, 400)],
+    [movie(80_000, 500)],
     [movie(30_000, 100)],
     {
       watchedAtByKey: watchedNow("tt1375666::::")

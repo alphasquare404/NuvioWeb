@@ -580,6 +580,16 @@ export const WatchProgressSyncService = {
       // Reconciled: this device's state now accounts for what the cloud holds,
       // so publishing it can no longer erase another device's viewing.
       reconnectPullOwed = false;
+      // Completions are not progress rows and have their own push. This only
+      // pulled them, so a title finished with no network advanced the row here
+      // and reached no other device: its 250ms push had failed while offline and
+      // nothing tried again. Before the progress push, because a completion in
+      // the cloud is what stops another device restoring the partial this one
+      // just deleted.
+      await WatchedItemsSyncService.push().catch((error) => {
+        console.warn("[ProgressSync] reconnect watched items push failed", error);
+        return false;
+      });
       const pushed = await this.push();
       if (pushed) return true;
     }

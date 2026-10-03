@@ -71,7 +71,12 @@ const DEFAULTS = {
   externalPlayerProgress: "automatic",
   // A downloaded file can be played in Nuvio or handed to another app, and the
   // handoff costs a second copy of the file, so the choice is never assumed.
-  offlinePlaybackTarget: OFFLINE_PLAYBACK_TARGETS.ASK
+  offlinePlaybackTarget: OFFLINE_PLAYBACK_TARGETS.ASK,
+  // Carrying viewing recorded with no network up to the cloud and the tracking
+  // providers once the network returns. Off until asked for: a reconnect is the
+  // one moment when two devices can both hold viewing neither has seen, and
+  // this is the least dependable part of sync, so nobody gets it by surprise.
+  syncOfflineProgress: false
 };
 
 const STREAM_AUTO_PLAY_MODES = ["MANUAL", "FIRST_STREAM", "REGEX_MATCH"];
@@ -323,6 +328,7 @@ export function normalizePlayerSettings(settings = {}) {
     offlinePlaybackTarget: normalizeOfflinePlaybackTarget(
       persistentSettings.offlinePlaybackTarget ?? DEFAULTS.offlinePlaybackTarget
     ),
+    syncOfflineProgress: persistentSettings.syncOfflineProgress === true,
     nextEpisodeThresholdMode: normalizeNextEpisodeThresholdMode(
       persistentSettings.nextEpisodeThresholdMode ?? DEFAULTS.nextEpisodeThresholdMode
     ),

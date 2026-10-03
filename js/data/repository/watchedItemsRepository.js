@@ -1,5 +1,6 @@
 import { WatchedItemsStore } from "../local/watchedItemsStore.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
+import { LocalStore } from "../../core/storage/localStore.js";
 import { WatchProgressSource } from "../local/traktSettingsStore.js";
 import { SimklAuthStore } from "../local/simklAuthStore.js";
 import { SimklSyncService } from "./simklSyncService.js";
@@ -89,6 +90,94 @@ function watchedKey(item = {}) {
   return `${String(item.contentId || "").toLowerCase()}:${item.season ?? ""}:${item.episode ?? ""}`;
 }
 
+// Un-marking something a provider owns.
+//
+// Under a provider, a tick means "the provider has this one", so it comes from
+// the provider's own list rather than from the local row. Deleting the local row
+// therefore cannot clear it: the tick stands until the provider has been told
+// and its list has been read again, which is a round trip the person is watching
+// the screen through.
+//
+// So the intent is recorded here the moment they press it, and the provider's
+// row is held back until the provider agrees. It clears itself: once the
+// provider's list no longer carries the row, the record has done its job. The
+// expiry is the other way out -- a provider that refused the write should not
+// leave a tick hidden forever, because the provider really does still have it.
+const UNMARK_TOMBSTONE_KEY = "watchedUnmarkTombstones";
+const UNMARK_TOMBSTONE_TTL_MS = 15 * 60 * 1000;
+
+function readTombstones(profileId) {
+  const stored = LocalStore.get(UNMARK_TOMBSTONE_KEY, {});
+  const forProfile = stored && typeof stored === "object" ? stored[String(profileId)] : null;
+  return forProfile && typeof forProfile === "object" ? forProfile : {};
+}
+
+function writeTombstones(profileId, entries) {
+  const stored = LocalStore.get(UNMARK_TOMBSTONE_KEY, {});
+  const next = stored && typeof stored === "object" ? stored : {};
+  if (Object.keys(entries).length) {
+    next[String(profileId)] = entries;
+  } else {
+    delete next[String(profileId)];
+  }
+  LocalStore.set(UNMARK_TOMBSTONE_KEY, next);
+}
+
+function addTombstones(profileId, items) {
+  const keys = (Array.isArray(items) ? items : [])
+    .filter((item) => item?.contentId)
+    .map(watchedKey);
+  if (!keys.length) return;
+  const entries = readTombstones(profileId);
+  const now = Date.now();
+  keys.forEach((key) => {
+    entries[key] = now;
+  });
+  writeTombstones(profileId, entries);
+}
+
+function clearTombstones(profileId, items) {
+  const keys = (Array.isArray(items) ? items : [])
+    .filter((item) => item?.contentId)
+    .map(watchedKey);
+  if (!keys.length) return;
+  const entries = readTombstones(profileId);
+  let changed = false;
+  keys.forEach((key) => {
+    if (key in entries) {
+      delete entries[key];
+      changed = true;
+    }
+  });
+  if (changed) writeTombstones(profileId, entries);
+}
+
+/**
+ * Drop the provider rows this device has just un-marked, and forget the records
+ * the provider has caught up with.
+ */
+function applyUnmarkTombstones(remoteItems, profileId) {
+  const entries = readTombstones(profileId);
+  const keys = Object.keys(entries);
+  if (!keys.length) return remoteItems;
+
+  const now = Date.now();
+  const remoteKeys = new Set(remoteItems.map(watchedKey));
+  const held = new Set();
+  const surviving = {};
+  keys.forEach((key) => {
+    const recordedAt = Number(entries[key] || 0);
+    if (now - recordedAt > UNMARK_TOMBSTONE_TTL_MS) return;
+    // The provider agreed, so there is nothing left to hold back.
+    if (!remoteKeys.has(key)) return;
+    surviving[key] = recordedAt;
+    held.add(key);
+  });
+  if (Object.keys(surviving).length !== keys.length) writeTombstones(profileId, surviving);
+  if (!held.size) return remoteItems;
+  return remoteItems.filter((item) => !held.has(watchedKey(item)));
+}
+
 let watchedItemsSyncTimer = null;
 let watchedItemsSyncInFlight = null;
 
@@ -160,14 +249,30 @@ class WatchedItemsRepository {
    * own, and pulling against it writes those records into the local store, so
    * they survive switching the source and reach the PWA and the official app.
    */
-  async listLocal(limit = 2000) {
+  // No cap by default.
+  //
+  // It used to stop at 2000, and a library of 2206 records simply lost the tail:
+  // six episodes of a series showed as unwatched on the Detail page although the
+  // records were right there, because they sat past the cut. Nothing paged
+  // through this -- every caller wants the whole set -- and the store has the
+  // whole list in memory anyway, so the limit only ever hid rows.
+  async listLocal(limit = Infinity) {
     return WatchedItemsStore.listForProfile(activeProfileId()).slice(0, limit);
   }
 
-  async getAll(limit = 2000) {
-    const local = WatchedItemsStore.listForProfile(activeProfileId());
+  /**
+   * Everything this profile has watched, local rows and the selected provider's.
+   *
+   * `allowStale` is for a screen that has just changed something and has to
+   * redraw now: the provider's snapshot answers as it stands and its refresh runs
+   * behind the call. Anything deciding what to send a provider asks without it.
+   */
+  async getAll(limit = Infinity, { allowStale = false } = {}) {
+    const profileId = activeProfileId();
+    const local = WatchedItemsStore.listForProfile(profileId);
     if (!shouldUseSimkl()) return local.slice(0, limit);
-    const remote = await SimklSyncService.getWatchedItems().catch(() => []);
+    const fetched = await SimklSyncService.getWatchedItems({ allowStale }).catch(() => []);
+    const remote = applyUnmarkTombstones(fetched, profileId);
     const remoteKeys = new Set(remote.map(watchedKey));
     return [...remote, ...local.filter((item) => !remoteKeys.has(watchedKey(item)))].slice(
       0,
@@ -193,6 +298,7 @@ class WatchedItemsRepository {
     // Local watched state is the completion boundary for Player and Continue
     // Watching. A tracking provider can be offline or reject a history write;
     // it must not prevent the local completion from being recorded.
+    clearTombstones(activeProfileId(), [item]);
     WatchedItemsStore.upsert(
       {
         ...item,
@@ -220,41 +326,84 @@ class WatchedItemsRepository {
     }
   }
 
+  // The local removal happens first and nothing waits on a network for it.
+  //
+  // This used to send every provider call, then every cloud delete, and only
+  // then remove the row. Un-watching one episode meant one round trip before
+  // the tick went; un-watching a season meant twenty-three, in sequence, and the
+  // page sat there looking like the menu had not registered the press. `mark`
+  // has always announced its provider write and moved on, which is why marking a
+  // season watched felt immediate and un-marking it did not.
+  //
+  // Nothing is dropped: the provider and the cloud still get the same calls with
+  // the same targets, computed from the rows as they were before the removal.
+  // They are just no longer in front of the person.
   async unmark(contentId, options = null) {
     const pid = activeProfileId();
     const removedItems = WatchedItemsStore.listForProfile(pid).filter((item) =>
       matchesWatchedTarget(item, contentId, options)
     );
-    if (shouldUseSimkl() && options?.skipTrackingWrite !== true) {
-      const remoteMatches = removedItems.length
-        ? []
-        : (await SimklSyncService.getWatchedItems().catch(() => [])).filter((item) =>
-            matchesWatchedTarget(item, contentId, options)
-          );
-      const targets = removedItems.length
+    WatchedItemsStore.remove(contentId, pid, options);
+    // What the provider is about to be told, recorded now so the screen can act
+    // on it before the provider answers.
+    addTombstones(
+      pid,
+      removedItems.length
         ? removedItems
-        : remoteMatches.length
-          ? remoteMatches
-          : [
-              {
-                contentId,
-                contentType: options?.contentType || "movie",
-                season: options?.season ?? null,
-                episode: options?.episode ?? null,
-                videoId: options?.videoId || null
-              }
-            ];
-      for (const item of targets) {
-        await SimklSyncService.unmarkWatched(item);
-      }
+        : [{ contentId, season: options?.season ?? null, episode: options?.episode ?? null }]
+    );
+    queueWatchedItemsCloudSync();
+    void deleteWatchedItemsFromCloud(removedItems).catch((error) => {
+      console.warn("Watched items cloud delete failed", error);
+    });
+
+    if (options?.skipTrackingWrite === true) return;
+
+    if (shouldUseSimkl()) {
+      void (async () => {
+        // With no local row to name, the provider's own list is the only place
+        // the identity can come from -- and that lookup is exactly why this
+        // cannot be in front of the removal.
+        const remoteMatches = removedItems.length
+          ? []
+          : (await SimklSyncService.getWatchedItems().catch(() => [])).filter((item) =>
+              matchesWatchedTarget(item, contentId, options)
+            );
+        const targets = removedItems.length
+          ? removedItems
+          : remoteMatches.length
+            ? remoteMatches
+            : [
+                {
+                  contentId,
+                  // Callers that reach here with a season and episode are
+                  // un-watching an episode, whatever the absent contentType
+                  // would otherwise default to.
+                  contentType:
+                    options?.contentType ||
+                    (options?.season != null || options?.episode != null ? "series" : "movie"),
+                  season: options?.season ?? null,
+                  episode: options?.episode ?? null,
+                  videoId: options?.videoId || null
+                }
+              ];
+        for (const item of targets) {
+          await SimklSyncService.unmarkWatched(item);
+        }
+      })().catch((error) => {
+        console.warn("SIMKL watched history removal failed", error);
+      });
     }
-    if (shouldUseTrakt() && options?.skipTrackingWrite !== true) {
+
+    if (shouldUseTrakt()) {
       const targets = removedItems.length
         ? removedItems
         : [
             {
               contentId,
-              contentType: options?.contentType || "movie",
+              contentType:
+                options?.contentType ||
+                (options?.season != null || options?.episode != null ? "series" : "movie"),
               title: options?.title,
               year: options?.year,
               season: options?.season ?? null,
@@ -265,17 +414,20 @@ class WatchedItemsRepository {
               traktId: options?.traktId
             }
           ];
-      for (const item of targets) {
-        await writeTraktHistory(item, true);
-      }
+      void (async () => {
+        for (const item of targets) {
+          await writeTraktHistory(item, true);
+        }
+      })().catch((error) => {
+        console.warn("Trakt watched history removal failed", error);
+      });
     }
-    WatchedItemsStore.remove(contentId, pid, options);
-    await deleteWatchedItemsFromCloud(removedItems);
-    queueWatchedItemsCloudSync();
   }
 
   async replaceAll(items, profileId = activeProfileId()) {
+    const before = WatchedItemsStore.listForProfile(profileId).length;
     WatchedItemsStore.replaceForProfile(profileId, items || []);
+    console.warn(`[CW] watched replaceAll ${before} -> ${(items || []).length}`);
   }
 }
 

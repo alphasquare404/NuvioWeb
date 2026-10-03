@@ -13,8 +13,8 @@ import { SettingsScreen } from "../screens/settings/settingsScreen.js";
 import { ConsoleDebugScreen } from "../screens/debug/consoleDebugScreen.js";
 import { TraktScreen } from "../screens/trakt/traktScreen.js";
 import { SupportersContributorsScreen } from "../screens/supporters/supportersContributorsScreen.js";
-import { ExperienceModeSelectionScreen } from "../screens/onboarding/experienceModeSelectionScreen.js";
 import { EssentialAddonSetupScreen } from "../screens/onboarding/essentialAddonSetupScreen.js";
+import { QuickSetupScreen } from "../screens/onboarding/quickSetupScreen.js";
 import { LicensesAttributionsScreen } from "../screens/settings/licensesAttributionsScreen.js";
 import { PluginScreen } from "../screens/plugin/pluginScreen.js";
 import { PluginsScreen } from "../screens/plugin/pluginsScreen.js";
@@ -85,8 +85,8 @@ const NON_BACKSTACK_ROUTES = new Set([
   "authQrSignIn",
   "authSignIn",
   "syncCode",
-  "experienceModeSelection",
-  "essentialAddonSetup"
+  "essentialAddonSetup",
+  "quickSetup"
 ]);
 
 const NUVIO_HISTORY_STATE_KEY = "__nuvioHistory";
@@ -145,6 +145,17 @@ function getNuvioHistoryIndex(state) {
   return Number.isInteger(value) && value >= 0 ? value : null;
 }
 
+// Same screen, same arguments. forceReload is a one-time directive rather
+// than part of what a screen is showing, so it never counts as a difference.
+function describesSameScreen(left = {}, right = {}) {
+  const strip = ({ forceReload: _forceReload, ...rest } = {}) =>
+    Object.keys(rest)
+      .sort()
+      .map((key) => key + "=" + String(rest[key] == null ? "" : rest[key]))
+      .join("&");
+  return strip(left) === strip(right);
+}
+
 function getNuvioHistoryProvenance(state) {
   const marker = state?.[NUVIO_HISTORY_STATE_KEY];
   const index = getNuvioHistoryIndex(state);
@@ -191,8 +202,8 @@ export const Router = {
     authSignIn: AuthSignInScreen,
     syncCode: SyncCodeScreen,
     profileSelection: ProfileSelectionScreen,
-    experienceModeSelection: ExperienceModeSelectionScreen,
     essentialAddonSetup: EssentialAddonSetupScreen,
+    quickSetup: QuickSetupScreen,
     detail: MetaDetailsScreen,
     library: LibraryScreen,
     search: SearchScreen,
@@ -784,6 +795,22 @@ export const Router = {
     const outgoingHistoryIndex = Number.isInteger(options?.captureHistoryIndex)
       ? options.captureHistoryIndex
       : this.browserHistoryIndex;
+
+    // A Back that lands on the screen already showing is not a navigation,
+    // and mounting it again is destructive: the screen is torn down and
+    // rebuilt, so Detail flashes its loading placeholder on the way out and
+    // Home's rails are rebuilt and re-restored behind it. iOS's edge-swipe can
+    // deliver such a popstate ahead of the one that actually moves, which is
+    // why this is only ever seen on a device and never in a desktop browser.
+    if (
+      (fromHistory || options?.isBackNavigation) &&
+      routeName === this.current &&
+      !targetParams?.forceReload &&
+      describesSameScreen(this.currentParams, targetParams)
+    ) {
+      this.settlePreviousRouteBack({ route: this.current, index: this.browserHistoryIndex });
+      return;
+    }
 
     const resumableDepth = this.findResumableSuspendedLayer(routeName, options);
     if (resumableDepth >= 0) {

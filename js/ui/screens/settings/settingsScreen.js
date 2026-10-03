@@ -46,6 +46,7 @@ import {
   isDeviceAuthorizationExpired
 } from "../../../core/debrid/debridDeviceAuthService.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
+import { resolveBrowserProfileAvatar } from "../../../core/profile/browserProfileAvatarCache.js";
 import { AuthManager } from "../../../core/auth/authManager.js";
 import { SupabaseApi } from "../../../data/remote/supabase/supabaseApi.js";
 import { Platform } from "../../../platform/index.js";
@@ -798,6 +799,37 @@ const SECTION_META = [
     subtitleKey: "settings.sections.about.subtitle"
   }
 ];
+
+// The index reads as one long list otherwise: eleven rows with nothing to say
+// which of them belong together. Account is not in a group -- it is the card
+// above them all.
+const SECTION_GROUPS = [
+  { key: "personalize", labelKey: "settings_group_personalize", fallback: "Personalize", ids: ["profiles", "appearance", "layout"] },
+  {
+    key: "content",
+    labelKey: "settings_group_content",
+    fallback: "Content",
+    ids: ["contentDiscovery", "integration", "streams", "trakt"]
+  },
+  { key: "watching", labelKey: "settings_group_watching", fallback: "Watching", ids: ["playback", "downloads"] },
+  { key: "system", labelKey: "settings_group_system", fallback: "System", ids: ["advanced", "about"] }
+];
+
+// A tint per row, so the eye can find a section by its colour before it has
+// read the label.
+const SECTION_ACCENTS = {
+  profiles: "139 92 246",
+  appearance: "236 72 153",
+  layout: "59 130 246",
+  contentDiscovery: "16 185 129",
+  integration: "56 189 248",
+  streams: "245 158 11",
+  trakt: "239 68 68",
+  playback: "167 139 250",
+  downloads: "34 197 94",
+  advanced: "148 163 184",
+  about: "148 163 184"
+};
 
 const SECTION_ICONS = {
   account: "person",
@@ -2537,22 +2569,102 @@ export const SettingsScreen = {
     // rail beside the content is not, and each section's own header titles
     // it there.
     const showsIndex = settingsUsesTouchNav() && this.activeSection === null;
-    const indexHeader = showsIndex
-      ? `
+    const order = new Map(this.visibleSections.map((item, index) => [item.id, index]));
+    if (!showsIndex) {
+      // The rail reads as one long list of twelve otherwise. It gets the same
+      // grouping as the index page, Account included as a group of its own.
+      return `
+        <header class="settings-nav-rail-header">
+          <h2 class="settings-nav-rail-title">${escapeHtml(t("nav.settings", {}, "Settings"))}</h2>
+        </header>
+        ${this.renderNavGroup(
+          { labelKey: "settings.sections.account.label", fallback: "Account", ids: ["account"] },
+          order
+        )}
+        ${SECTION_GROUPS.map((group) => this.renderNavGroup(group, order)).join("")}
+        ${this.renderUngroupedNavItems(order)}
+      `;
+    }
+
+    const grouped = SECTION_GROUPS.map((group) => this.renderNavGroup(group, order)).join("");
+    const ungroupedMarkup = this.renderUngroupedNavItems(order);
+
+    return `
       <header class="settings-nav-index-header">
         <h1 class="settings-title">${escapeHtml(t("nav.settings", {}, "Settings"))}</h1>
       </header>
-    `
-      : "";
-    return (
-      indexHeader +
-      this.visibleSections.map(
-        (item, index) => `
+      ${this.renderAccountNavCard(order)}
+      ${grouped}
+      ${ungroupedMarkup}
+      <img class="settings-nav-footer-logo" src="assets/brand/app_logo_wordmark.png" alt="Nuvio" />
+    `;
+  },
+
+  // The picture itself lives in the avatar cache the profile picker fills.
+  // Only the cache is consulted: a settings page is no place to start a
+  // network fetch for decoration, and the initial stands in perfectly well.
+  async hydrateAccountCardAvatar() {
+    const slot = this.container?.querySelector(".settings-account-card-avatar.is-initial");
+    if (!slot) {
+      return;
+    }
+    const profiles = Array.isArray(this.model?.profiles) ? this.model.profiles : [];
+    const active = profiles.find(
+      (profile) => String(profile?.id) === String(this.model?.activeProfileId)
+    );
+    if (!active) {
+      return;
+    }
+    const url = await resolveBrowserProfileAvatar(active, String(active.avatarUrl || ""), {
+      allowNetwork: false
+    }).catch(() => "");
+    if (!url || !slot.isConnected) {
+      return;
+    }
+    const image = document.createElement("img");
+    image.className = "settings-account-card-avatar";
+    image.src = url;
+    image.alt = "";
+    slot.replaceWith(image);
+  },
+
+  renderNavGroup(group, order) {
+    const items = group.ids
+      .filter((id) => order.has(id))
+      .map((id) => this.visibleSections[order.get(id)]);
+    if (!items.length) {
+      return "";
+    }
+    return `
+      <h2 class="settings-nav-group-title">${escapeHtml(t(group.labelKey, {}, group.fallback))}</h2>
+      <div class="settings-nav-group">
+        ${items.map((item) => this.renderNavItem(item, order.get(item.id))).join("")}
+      </div>
+    `;
+  },
+
+  // Anything the grouping does not account for still has to appear; a section
+  // added later must not fall off the page silently.
+  renderUngroupedNavItems(order) {
+    const groupedIds = new Set(SECTION_GROUPS.flatMap((group) => group.ids).concat("account"));
+    const ungrouped = this.visibleSections.filter((item) => !groupedIds.has(item.id));
+    if (!ungrouped.length) {
+      return "";
+    }
+    return `<div class="settings-nav-group">${ungrouped
+      .map((item) => this.renderNavItem(item, order.get(item.id)))
+      .join("")}</div>`;
+  },
+
+  renderNavItem(item, index) {
+    const accent = SECTION_ACCENTS[item.id];
+    return `
       <button class="settings-nav-item focusable${this.activeSection === item.id ? " selected" : ""}"
               data-zone="nav"
               data-nav-index="${index}"
               data-focus-key="nav:${item.id}"
-              data-section="${item.id}">
+              data-section="${item.id}"
+              ${accent ? `style="--settings-nav-accent: ${accent}"` : ""}>
         <span class="settings-nav-leading">
           ${renderSectionNavIcon(item.id)}
           <span class="settings-nav-label-wrap">
@@ -2563,9 +2675,54 @@ export const SettingsScreen = {
         </span>
         ${iconSvg(ROW_ICONS.chevron, "settings-nav-chevron")}
       </button>
-    `
-      ).join("")
-    );
+    `;
+  },
+
+  // Account leads the index as the person using the app, not as a row of
+  // settings like the rest.
+  renderAccountNavCard(order) {
+    const item = order.has("account") ? this.visibleSections[order.get("account")] : null;
+    if (!item) {
+      return "";
+    }
+    const profiles = Array.isArray(this.model?.profiles) ? this.model.profiles : [];
+    const active =
+      profiles.find((profile) => String(profile?.id) === String(this.model?.activeProfileId)) || null;
+    const name = String(active?.name || "").trim();
+    const avatarUrl = String(active?.avatarUrl || "").trim();
+    const colour = String(active?.avatarColorHex || "#1E88E5");
+    const avatar = avatarUrl
+      ? `<img class="settings-account-card-avatar" src="${escapeHtml(avatarUrl)}" alt="" />`
+      : `<span class="settings-account-card-avatar is-initial" style="background:${escapeHtml(colour)}" aria-hidden="true">${escapeHtml(
+          (name || "?").slice(0, 1).toUpperCase()
+        )}</span>`;
+    // Reachability, which the app can actually observe, rather than a sync
+    // state it cannot vouch for.
+    const online = globalThis.navigator?.onLine !== false;
+    const status = `<span class="settings-account-card-status${online ? "" : " is-offline"}">${escapeHtml(
+      online
+        ? t("network_connection_online", {}, "Online")
+        : t("network_connection_offline", {}, "Offline")
+    )}</span>`;
+    return `
+      <button class="settings-nav-item settings-account-card focusable${
+        this.activeSection === "account" ? " selected" : ""
+      }"
+              data-zone="nav"
+              data-nav-index="${order.get("account")}"
+              data-focus-key="nav:account"
+              data-section="account">
+        <span class="settings-nav-leading">
+          ${avatar}
+          <span class="settings-nav-label-wrap">
+            <span class="settings-nav-label">${escapeHtml(name || translateSectionCopy(item).label)}</span>
+            <span class="settings-nav-subtitle">${escapeHtml(translateSectionCopy(item).subtitle)}</span>
+            ${status}
+          </span>
+        </span>
+        ${iconSvg(ROW_ICONS.chevron, "settings-nav-chevron")}
+      </button>
+    `;
   },
 
   renderSectionHeader(section) {
@@ -8439,6 +8596,11 @@ export const SettingsScreen = {
     const count = (status) => Number(downloads.statusCounts?.[status] || 0);
     const persistent = downloads.persistent === true ? "Enabled" : downloads.persistent === false ? "Not enabled" : "Unsupported";
     const queueTotal = count("downloading") + count("queued") + count("paused") + count("interrupted") + count("failed");
+    this.actionMap.set("downloads:syncOfflineProgress", () => {
+      PlayerSettingsStore.set({
+        syncOfflineProgress: !PlayerSettingsStore.get().syncOfflineProgress
+      });
+    });
     this.actionMap.set("downloads:requestPersistent", async () => {
       await requestBrowserOfflinePersistentStorage();
     });
@@ -8480,6 +8642,13 @@ export const SettingsScreen = {
       <div class="settings-group-heading"><div class="settings-group-title">Playback</div></div>
       <div class="settings-group-card"><div class="settings-stack">
         ${this.renderActionRow({ focusKey: "downloads:playbackTarget", title: "Play downloaded media with", subtitle: "Handing a file to another app copies it; that app then keeps its own copy.", value: ({ ask: "Ask every time", internal: "Nuvio player", external: "Another app" })[normalizeOfflinePlaybackTarget(model.player?.offlinePlaybackTarget)], leadingIcon: "play_circle" })}
+        ${this.renderToggleRow({
+          focusKey: "downloads:syncOfflineProgress",
+          title: "Sync offline progress (experimental)",
+          subtitle:
+            "Experimental, and still has plenty of bugs. Off: watching a download records nothing at all — not your position, not that you finished it, and nothing reaches your account or tracking service. On: a download is treated like any other playback, and two devices can disagree about which position is newer. A tracking service is sent the position but not when you watched it, so an offline session arrives at Trakt or Simkl stamped with the time it got there; a finished title does carry its real time.",
+          checked: Boolean(model.player?.syncOfflineProgress)
+        })}
       </div></div>
       <div class="settings-group-heading"><div class="settings-group-title">Storage</div></div>
       <div class="settings-group-card"><div class="settings-stack settings-download-summary">
@@ -8724,6 +8893,7 @@ export const SettingsScreen = {
       .querySelectorAll(".focusable.focused")
       .forEach((node) => node.classList.remove("focused"));
     updateSettingsMarqueeTargets(this.container);
+    void this.hydrateAccountCardAvatar();
     const selectedNode = this.container.querySelector(".settings-nav-item.selected");
     if (selectedNode && this.focusZone !== "nav") {
       scrollSettingsRailItem(selectedNode);
@@ -8819,6 +8989,7 @@ export const SettingsScreen = {
         scrollSettingsRailItem(navNode);
       }
       updateSettingsMarqueeTargets(this.container);
+    void this.hydrateAccountCardAvatar();
     }
   },
 
@@ -9440,6 +9611,17 @@ export const SettingsScreen = {
     if (this.optionDialog) {
       this.closeOptionDialog();
       void this.render({ refreshModel: false });
+      return true;
+    }
+    // On touch, Settings is two pages: the index, and the section opened from
+    // it. Back has to walk that step before it leaves Settings at all. The
+    // remote's own handler does; this one -- which is where the browser's Back
+    // arrives -- never got it, so a Back inside a section fell through to the
+    // sidebar branch below, which means nothing in a touch layout, and returned
+    // true regardless. Every Back was swallowed and nothing moved.
+    if (settingsUsesTouchNav()) {
+      if (this.activeSection === null) return false;
+      void this.closeSectionToIndex();
       return true;
     }
     if (this.focusZone === "sidebar") {

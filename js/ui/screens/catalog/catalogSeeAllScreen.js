@@ -190,7 +190,7 @@ export const CatalogSeeAllScreen = {
   },
 
   async refreshWatchedTitleIds() {
-    const watchedItems = await watchedItemsRepository.getAll(5000).catch(() => []);
+    const watchedItems = await watchedItemsRepository.getAll().catch(() => []);
     this.watchedTitleIds = buildWatchedTitleIdSet(watchedItems);
   },
 
