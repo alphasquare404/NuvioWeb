@@ -839,7 +839,14 @@ class WatchProgressRepository {
   }
 
   async replaceAll(items, profileId = activeProfileId()) {
+    // Continue Watching is the feature people notice first when it is wrong,
+    // and the two wholesale overwrites are the only things that can undo a
+    // completion. Traced through console.warn because that is what the Debug
+    // Console keeps, so a report from a device can name the write instead of
+    // describing what it looked like.
+    const before = WatchProgressStore.listForProfile(profileId).length;
     WatchProgressStore.replaceForProfile(profileId, items || []);
+    console.warn(`[CW] progress replaceAll ${before} -> ${(items || []).length}`);
     invalidateContinueWatchingDisplaySnapshot();
   }
 }

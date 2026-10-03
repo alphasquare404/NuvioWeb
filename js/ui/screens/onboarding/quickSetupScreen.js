@@ -82,8 +82,10 @@ export const QuickSetupScreen = {
     // would leave the step looking like nothing is chosen.
     this.player = offered.includes(stored) ? stored : offered[0] || "disabled";
     this.progressMode = settings.externalPlayerProgress === "manual" ? "manual" : "automatic";
+    this.offlineSync = settings.syncOfflineProgress === true;
     this.initialPlayer = this.player;
     this.initialProgressMode = this.progressMode;
+    this.initialOfflineSync = this.offlineSync;
 
     // Asking about a notification the browser cannot deliver is a step that
     // wastes the one thing this flow is spending: attention.
@@ -107,6 +109,7 @@ export const QuickSetupScreen = {
     if (["not-enabled", "enabled", "blocked"].includes(this.pushState?.state)) {
       steps.push("notifications");
     }
+    steps.push("offlineSync");
     return steps;
   },
 
@@ -138,7 +141,7 @@ export const QuickSetupScreen = {
           t(
             "quick_setup_change_later",
             {},
-            "Nothing here is final — every one of these is in Settings › Playback."
+            "Nothing here is final — all of these are in Settings, under Playback or Downloads."
           )
         )}</p>
         <footer class="quick-setup-actions">
@@ -165,6 +168,7 @@ export const QuickSetupScreen = {
   },
 
   renderStep(step) {
+    if (step === "offlineSync") return this.renderOfflineSyncStep();
     if (step === "progress") return this.renderProgressStep();
     if (step === "notifications") return this.renderNotificationsStep();
     return this.renderPlayerStep();
@@ -178,7 +182,7 @@ export const QuickSetupScreen = {
             t(
               "quick_setup_player_ios_note",
               {},
-              "On iPhone and iPad an external player is recommended: it handles more formats than the browser can, and Lenna handles them best."
+              "On iPhone and iPad an external player is recommended: it plays what the browser cannot. Lenna is the pick because it has a built-in subtitle search."
             )
           )}</p>`
         : "";
@@ -299,6 +303,83 @@ export const QuickSetupScreen = {
       <div class="quick-setup-options">${cards}</div>`;
   },
 
+  renderOfflineSyncStep() {
+    const modes = [
+      {
+        id: "off",
+        label: t("quick_setup_offline_sync_off", {}, "Watch and forget"),
+        body: t(
+          "quick_setup_offline_sync_off_body",
+          {},
+          "Nothing is recorded while you watch a download: not your position, not that you finished it, and nothing reaches your account or tracking service."
+        ),
+        badge: t("quick_setup_offline_sync_default", {}, "Default")
+      },
+      {
+        id: "on",
+        label: t("quick_setup_offline_sync_on", {}, "Keep track of it"),
+        body: t(
+          "quick_setup_offline_sync_on_body",
+          {},
+          "A download is treated like any other playback. Your position is saved and carried up to your account and tracking service."
+        ),
+        badge: t("quick_setup_offline_sync_experimental", {}, "Experimental"),
+        caution: t(
+          "quick_setup_offline_sync_caution",
+          {},
+          "Experimental. It still has plenty of bugs: positions can disagree between devices, and viewing can go missing. A tracking service is told the position but not when you watched it, so an offline session reaches Trakt or Simkl stamped with the time it arrived."
+        )
+      }
+    ];
+
+    const selected = this.offlineSync ? "on" : "off";
+    const cards = modes
+      .map(
+        (mode) => `
+        <div class="quick-setup-option${mode.id === selected ? " is-selected" : ""}${
+          mode.caution ? " is-caution" : ""
+        }">
+          <button class="quick-setup-option-choose focusable" type="button"
+                  data-action="chooseOfflineSync" data-mode="${escapeHtml(mode.id)}"
+                  aria-pressed="${mode.id === selected ? "true" : "false"}">
+            <span class="quick-setup-option-label">${escapeHtml(mode.label)}</span>
+            ${
+              mode.badge
+                ? `<span class="quick-setup-badge ${
+                    mode.caution ? "is-caution" : "is-neutral"
+                  }">${escapeHtml(mode.badge)}</span>`
+                : ""
+            }
+            <span class="quick-setup-option-body">${escapeHtml(mode.body)}</span>
+            ${
+              mode.caution
+                ? `<span class="quick-setup-option-caution">${escapeHtml(mode.caution)}</span>`
+                : ""
+            }
+          </button>
+        </div>`
+      )
+      .join("");
+
+    return `
+      <h1>${escapeHtml(t("quick_setup_offline_sync_title", {}, "Downloads and progress"))}</h1>
+      <p>${escapeHtml(
+        t(
+          "quick_setup_offline_sync_body",
+          {},
+          "A download plays with no network. Nuvio can either keep track of where you are in it, or leave it alone completely."
+        )
+      )}</p>
+      <p class="quick-setup-note">${escapeHtml(
+        t(
+          "quick_setup_offline_sync_warning",
+          {},
+          "Keeping track is experimental and still has plenty of bugs. When another device watched the same title while this one was offline, the two can disagree about which position is newer, and the wrong one can win. That is why it starts off."
+        )
+      )}</p>
+      <div class="quick-setup-options">${cards}</div>`;
+  },
+
   renderNotificationsStep() {
     const state = this.pushState?.state;
     let action = "";
@@ -358,6 +439,11 @@ export const QuickSetupScreen = {
       this.render();
       return;
     }
+    if (action === "chooseOfflineSync") {
+      this.offlineSync = node.dataset.mode === "on";
+      this.render();
+      return;
+    }
     if (action === "enableNotifications") {
       node.disabled = true;
       this.pushState = await enableBrowserPushReturn().catch(() => this.pushState);
@@ -396,6 +482,10 @@ export const QuickSetupScreen = {
     if (step === "progress" && this.progressMode !== this.initialProgressMode) {
       PlayerSettingsStore.set({ externalPlayerProgress: this.progressMode });
       this.initialProgressMode = this.progressMode;
+    }
+    if (step === "offlineSync" && this.offlineSync !== this.initialOfflineSync) {
+      PlayerSettingsStore.set({ syncOfflineProgress: this.offlineSync });
+      this.initialOfflineSync = this.offlineSync;
     }
   },
 

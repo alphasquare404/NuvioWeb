@@ -8596,6 +8596,11 @@ export const SettingsScreen = {
     const count = (status) => Number(downloads.statusCounts?.[status] || 0);
     const persistent = downloads.persistent === true ? "Enabled" : downloads.persistent === false ? "Not enabled" : "Unsupported";
     const queueTotal = count("downloading") + count("queued") + count("paused") + count("interrupted") + count("failed");
+    this.actionMap.set("downloads:syncOfflineProgress", () => {
+      PlayerSettingsStore.set({
+        syncOfflineProgress: !PlayerSettingsStore.get().syncOfflineProgress
+      });
+    });
     this.actionMap.set("downloads:requestPersistent", async () => {
       await requestBrowserOfflinePersistentStorage();
     });
@@ -8637,6 +8642,13 @@ export const SettingsScreen = {
       <div class="settings-group-heading"><div class="settings-group-title">Playback</div></div>
       <div class="settings-group-card"><div class="settings-stack">
         ${this.renderActionRow({ focusKey: "downloads:playbackTarget", title: "Play downloaded media with", subtitle: "Handing a file to another app copies it; that app then keeps its own copy.", value: ({ ask: "Ask every time", internal: "Nuvio player", external: "Another app" })[normalizeOfflinePlaybackTarget(model.player?.offlinePlaybackTarget)], leadingIcon: "play_circle" })}
+        ${this.renderToggleRow({
+          focusKey: "downloads:syncOfflineProgress",
+          title: "Sync offline progress (experimental)",
+          subtitle:
+            "Experimental, and still has plenty of bugs. Off: watching a download records nothing at all — not your position, not that you finished it, and nothing reaches your account or tracking service. On: a download is treated like any other playback, and two devices can disagree about which position is newer. A tracking service is sent the position but not when you watched it, so an offline session arrives at Trakt or Simkl stamped with the time it got there; a finished title does carry its real time.",
+          checked: Boolean(model.player?.syncOfflineProgress)
+        })}
       </div></div>
       <div class="settings-group-heading"><div class="settings-group-title">Storage</div></div>
       <div class="settings-group-card"><div class="settings-stack settings-download-summary">

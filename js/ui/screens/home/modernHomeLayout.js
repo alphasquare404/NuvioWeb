@@ -33,6 +33,7 @@ export function renderModernHomeLayout({
   blurContinueWatchingNextUp = false,
   continueWatchingCardStyle = "card",
   rowItemLimit = 15,
+  paginatedRowCounts = null,
   showHeroSection = false,
   showPosterLabels = true,
   showCatalogTypeSuffix = true,
@@ -82,9 +83,14 @@ export function renderModernHomeLayout({
       focusedRowKey === rowKey && Number.isFinite(focusedItemIndex)
         ? Math.max(0, Number(focusedItemIndex)) + 1
         : 0;
+    // A rail the viewer scrolled to the end of grew past the render limit by
+    // appending straight to the DOM. The next render knew nothing about that,
+    // so every card they had scrolled to fetch vanished -- and the shorter
+    // track clamped the carried position, which is the rail jumping too.
+    const paginatedCount = Number(paginatedRowCounts?.get?.(rowKey) || 0);
     const visibleItems = isCollectionRow
       ? rowItems
-      : rowItems.slice(0, Math.max(maxItems, focusedItemLimit));
+      : rowItems.slice(0, Math.max(maxItems, focusedItemLimit, paginatedCount));
     const rowTitle = isCollectionRow
       ? String(rowData.collectionTitle || rowData.collection?.title || "Collection")
       : formatCatalogRowTitle(rowData.catalogName, rowData.type, showCatalogTypeSuffix);

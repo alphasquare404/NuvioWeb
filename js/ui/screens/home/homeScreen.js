@@ -5531,7 +5531,7 @@ export const HomeScreen = {
           title: item.name || item.id || "Untitled"
         });
       }
-      this.watchedItems = await watchedItemsRepository.getAll(2000).catch(() => this.watchedItems);
+      this.watchedItems = await watchedItemsRepository.getAll().catch(() => this.watchedItems);
       this.watchedTitleIds = buildWatchedTitleIdSet(this.watchedItems);
       if (this.posterHoldMenu) {
         this.posterHoldMenu = { ...this.posterHoldMenu, isWatched: !watched };
@@ -8701,6 +8701,7 @@ export const HomeScreen = {
     this.forceInitialContinueWatchingFocus = false;
     this.continueWatchingLoading = false;
     this.continueWatchingStoreRefreshPending = false;
+    this.paginatedRowCounts = new Map();
     if (returnFocusState?.layoutMode) {
       this.pendingBackFocusState = returnFocusState;
     } else if (!shouldRestoreHomeReturnState) {
@@ -8938,7 +8939,9 @@ export const HomeScreen = {
           ProfileManager.getActiveProfileId()
         )
       ) {
-        this.scheduleContinueWatchingStoreRefresh();
+        this.scheduleContinueWatchingStoreRefresh(
+          `store:${reason || "?"}${authoritative ? "+auth" : ""}`
+        );
       }
     };
     const handleWatchProgressChange = (change) => {
@@ -8996,7 +8999,7 @@ export const HomeScreen = {
     // then is delivered here instead of being lost.
     if (!this.unsubscribeContinueWatchingStaleSignal) {
       this.unsubscribeContinueWatchingStaleSignal = onContinueWatchingStale(() => {
-        this.scheduleContinueWatchingStoreRefresh();
+        this.scheduleContinueWatchingStoreRefresh("external-return");
       });
     }
   },
@@ -9024,7 +9027,7 @@ export const HomeScreen = {
           return;
         }
         this.observedShowUnairedNextUp = showUnairedNextUp;
-        this.scheduleContinueWatchingStoreRefresh();
+        this.scheduleContinueWatchingStoreRefresh("layout-prefs");
       }
     );
   },
@@ -9047,10 +9050,37 @@ export const HomeScreen = {
       void this.loadData({ background: true, preserveReturnState: true });
       return;
     }
-    this.scheduleContinueWatchingStoreRefresh();
+    this.scheduleContinueWatchingStoreRefresh("route-revealed");
   },
 
-  scheduleContinueWatchingStoreRefresh() {
+  // One line per settled Continue Watching state, naming what asked for it and
+  // what the row became. This is the feature a wrong answer is noticed in
+  // first, and it is reached through paths that run seconds apart, so a report
+  // from a device has to be able to carry the sequence rather than a
+  // description of it. console.warn because that is what the Debug Console
+  // keeps.
+  traceContinueWatching(reason, items = []) {
+    const list = Array.isArray(items) ? items : [];
+    const shown = list
+      .slice(0, 4)
+      .map(
+        (item) =>
+          `${item?.contentId || "?"}` +
+          `${item?.season ? " S" + item.season + "E" + (item.episode || "?") : ""}` +
+          `${item?.isNextUp ? " next" : ""}` +
+          `${Number(item?.positionMs || 0) > 0 ? " " + Math.round(Number(item.positionMs) / 1000) + "s" : ""}`
+      )
+      .join(", ");
+    console.warn(
+      `[CW] ${reason || "unknown"} -> ` +
+        (list.length ? shown + (list.length > 4 ? `, +${list.length - 4}` : "") : "empty")
+    );
+  },
+
+  scheduleContinueWatchingStoreRefresh(reason = "") {
+    if (reason) {
+      this.continueWatchingRefreshReason = String(reason);
+    }
     // A store-triggered refresh is now owed for this profile. A concurrent
     // initial-load CW read that captured an empty/stale local store (e.g. the
     // background watch-progress cloud pull hadn't landed yet) must not treat
@@ -9091,7 +9121,7 @@ export const HomeScreen = {
       const [allProgress, continueWatching, watchedItems] = await Promise.all([
         watchProgressRepository.getAllForContinueWatching(),
         watchProgressRepository.getRecent(CW_MAX_VISIBLE_ITEMS),
-        watchedItemsRepository.getAll(2000)
+        watchedItemsRepository.getAll()
       ]);
       if (!isCurrent()) {
         return;
@@ -9118,6 +9148,11 @@ export const HomeScreen = {
         this.continueWatching.length + this.nextUpProgressCandidates.length
       );
       if (!shouldShow) {
+        this.traceContinueWatching(
+          `refresh(${this.continueWatchingRefreshReason || "unknown"})`,
+          []
+        );
+        this.continueWatchingRefreshReason = "";
         this.continueWatchingLoading = false;
         this.continueWatchingDisplay = [];
         if (previousDisplaySignature) {
@@ -9162,6 +9197,11 @@ export const HomeScreen = {
           : loose.length >= fallback.length
             ? loose
             : fallback;
+      this.traceContinueWatching(
+        `refresh(${this.continueWatchingRefreshReason || "unknown"})`,
+        nextDisplay
+      );
+      this.continueWatchingRefreshReason = "";
       this.continueWatchingLoading = false;
       this.continueWatchingDisplay = nextDisplay;
       this.persistContinueWatchingSnapshot();
@@ -9216,7 +9256,7 @@ export const HomeScreen = {
     // The 60-day Next Up cutoff stays a Trakt-only rule. Reusing the seed flag
     // for it would silently start hiding older SIMKL shows too.
     const applyTraktNextUpDaysCap = continueWatchingSource === "trakt";
-    const watchedItemsPromise = watchedItemsRepository.getAll(2000).catch(() => []);
+    const watchedItemsPromise = watchedItemsRepository.getAll().catch(() => []);
     watchedItemsPromise.then((watchedItems) => {
       if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
         return;
@@ -9729,6 +9769,7 @@ export const HomeScreen = {
           }
           this.continueWatchingDisplay = nextDisplay;
           this.continueWatchingLoading = false;
+          this.traceContinueWatching(background ? "load:background" : "load", nextDisplay);
           this.persistContinueWatchingSnapshot();
           if (this.layoutMode === "modern" && this.continueWatchingDisplay.length) {
             if (!preserveHomeReturnState && !this.suppressInitialContinueWatchingFocus) {
@@ -10225,6 +10266,7 @@ export const HomeScreen = {
         blurContinueWatchingNextUp: resolveContinueWatchingBlurNextUp(this.layoutPrefs),
         continueWatchingCardStyle: this.layoutPrefs?.continueWatchingCardStyle || "card",
         rowItemLimit,
+        paginatedRowCounts: this.paginatedRowCounts,
         showHeroSection,
         showPosterLabels,
         showCatalogTypeSuffix,
@@ -12378,6 +12420,16 @@ export const HomeScreen = {
             this.invalidateNavigationModel();
             this.buildNavigationModel();
           }
+          // Remember how far this rail has grown, so the next render rebuilds
+          // it at this length instead of back at the first page.
+          this.paginatedRowCounts = this.paginatedRowCounts || new Map();
+          this.paginatedRowCounts.set(
+            rowKey,
+            Math.max(
+              Number(this.paginatedRowCounts.get(rowKey) || 0),
+              startIndex + appendedCards.length
+            )
+          );
           this.scheduleHomeLazyImageHydration(null, { refreshIndex: true });
           return true;
         };

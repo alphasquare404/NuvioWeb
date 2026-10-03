@@ -809,7 +809,19 @@ export const SimklSyncService = {
     };
   },
 
-  async getWatchedItems() {
+  // `allowStale` answers from the snapshot already in hand and starts the
+  // refresh behind the caller instead of in front of it.
+  //
+  // Every history write sets `lastCheckedAt` to 0 to force the next read to go
+  // out, which is right for correctness and wrong for a screen: un-marking a
+  // season set it to 0 twenty-three times and then the page waited on a full
+  // incremental sync before a single tick could change. A screen wants the best
+  // answer available now; whoever needs the authoritative one asks without this.
+  async getWatchedItems({ allowStale = false } = {}) {
+    if (allowStale) {
+      void this.refresh().catch(() => false);
+      return watchedProjection(getSnapshot()).items;
+    }
     await this.refresh().catch(() => false);
     return watchedProjection(getSnapshot()).items;
   },

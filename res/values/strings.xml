@@ -422,7 +422,7 @@
     <string name="quick_setup_finish">Done</string>
     <string name="quick_setup_player_title">Choose a player</string>
     <string name="quick_setup_player_body">Nuvio can play here, or hand the stream to another app on your device.</string>
-    <string name="quick_setup_player_ios_note">On iPhone and iPad an external player is recommended: it handles more formats than the browser can, and Lenna handles them best.</string>
+    <string name="quick_setup_player_ios_note">On iPhone and iPad an external player is recommended: it plays what the browser cannot. Lenna is the pick because it has a built-in subtitle search.</string>
     <string name="quick_setup_player_recommended">Recommended</string>
     <string name="quick_setup_player_get">Get</string>
     <string name="quick_setup_player_builtin">Nuvio’s own player</string>
@@ -439,7 +439,17 @@
     <string name="quick_setup_notifications_enable">Enable notifications</string>
     <string name="quick_setup_notifications_enabled">Notifications are on.</string>
     <string name="quick_setup_notifications_blocked">Notifications are blocked for Nuvio. You can turn them back on in your browser’s site settings.</string>
-    <string name="quick_setup_change_later">Nothing here is final — every one of these is in Settings › Playback.</string>
+    <string name="quick_setup_offline_sync_title">Downloads and progress</string>
+    <string name="quick_setup_offline_sync_body">A download plays with no network. Nuvio can either keep track of where you are in it, or leave it alone completely.</string>
+    <string name="quick_setup_offline_sync_warning">Keeping track is experimental and still has plenty of bugs. When another device watched the same title while this one was offline, the two can disagree about which position is newer, and the wrong one can win. That is why it starts off.</string>
+    <string name="quick_setup_offline_sync_default">Default</string>
+    <string name="quick_setup_offline_sync_caution">Experimental. It still has plenty of bugs: positions can disagree between devices, and viewing can go missing. A tracking service is told the position but not when you watched it, so an offline session reaches Trakt or Simkl stamped with the time it arrived.</string>
+    <string name="quick_setup_offline_sync_experimental">Experimental</string>
+    <string name="quick_setup_offline_sync_off">Watch and forget</string>
+    <string name="quick_setup_offline_sync_off_body">Nothing is recorded while you watch a download: not your position, not that you finished it, and nothing reaches your account or tracking service.</string>
+    <string name="quick_setup_offline_sync_on">Keep track of it</string>
+    <string name="quick_setup_offline_sync_on_body">A download is treated like any other playback. Your position is saved and carried up to your account and tracking service.</string>
+    <string name="quick_setup_change_later">Nothing here is final — all of these are in Settings, under Playback or Downloads.</string>
     <string name="poster_view_larger">View poster</string>
     <string name="stream_filter_source">Source</string>
     <string name="stream_refresh_sources">Refresh sources</string>
@@ -1588,6 +1598,9 @@
     <string name="player_next_episode_prompt_yes">Yes</string>
     <string name="player_next_episode_prompt_no">No, return to details</string>
     <string name="next_episode_unaired">Unaired</string>
+    <string name="next_episode_up_next">Up next</string>
+    <string name="next_episode_play_next">Play next</string>
+    <string name="next_episode_dismiss">Dismiss</string>
     <string name="next_episode_not_aired_yet">Next episode hasn\'t aired yet</string>
     <string name="still_watching_title">Are you still watching?</string>
     <string name="still_watching_continue">Play</string>

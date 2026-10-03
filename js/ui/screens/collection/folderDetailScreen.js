@@ -1016,7 +1016,7 @@ export const FolderDetailScreen = {
 
     const [addons, watchedItems] = await Promise.all([
       addonRepository.getInstalledAddons().catch(() => []),
-      watchedItemsRepository.getAll(5000).catch(() => [])
+      watchedItemsRepository.getAll().catch(() => [])
     ]);
     this.watchedTitleIds = buildWatchedTitleIdSet(watchedItems);
     const folderSources =

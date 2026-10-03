@@ -9,6 +9,7 @@ import { watchProgressRepository } from "../../../data/repository/watchProgressR
 import { savedLibraryRepository } from "../../../data/repository/savedLibraryRepository.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
+import { selectWatchedItemsForSource } from "../../../data/repository/watchedItemsScope.js";
 import {
   LibrarySourceMode,
   libraryRepository
@@ -1516,6 +1517,25 @@ function detailUsesTouchLayout() {
   }
 }
 
+// One answer to "is this in the library", for the icon and for the press alike.
+//
+// Simkl keeps a single status per title -- watching, completed, plan to watch --
+// and the Library list shows all of them. This asked only about plan to watch,
+// the one status Nuvio itself writes, so every title the person had marked
+// themselves read as "not saved": on a real library that was 103 of 105. The
+// button then offered to add what was already there, and pressing it overwrote
+// a real status with plan to watch.
+//
+// Trakt and the local library keep a named list instead, so there the question
+// is about that one list.
+function librarySnapshotHasMembership(listMembership = {}, sourceMode) {
+  if (sourceMode === LibrarySourceMode.SIMKL) {
+    return Object.values(listMembership).some(Boolean);
+  }
+  const key = sourceMode === LibrarySourceMode.TRAKT ? "watchlist" : "local";
+  return listMembership[key] === true;
+}
+
 export const MetaDetailsScreen = {
   getRouteStateKey(params = {}) {
     const itemId = String(params?.itemId || "").trim();
@@ -1902,10 +1922,8 @@ export const MetaDetailsScreen = {
       : null;
     const browserCanRestoreOfflineSnapshot =
       Platform.isBrowser() && globalThis.navigator?.onLine === false;
-    if (
-      this.hydrateFromRouteState(restoredRouteState, params) &&
-      (!Platform.isBrowser() || browserCanRestoreOfflineSnapshot)
-    ) {
+    const restoredFromRouteState = this.hydrateFromRouteState(restoredRouteState, params);
+    if (restoredFromRouteState && (!Platform.isBrowser() || browserCanRestoreOfflineSnapshot)) {
       this.isLoadingDetail = false;
       if (Platform.isBrowser()) {
         this.isSavedInLibrary = false;
@@ -1931,6 +1949,20 @@ export const MetaDetailsScreen = {
         void this.loadMdbListRatings(this.meta, refreshToken);
       }
       this.markAutoOpenContinueWatchingStreamReady();
+      return;
+    }
+
+    // A Back always has something to show, so it must never show the
+    // placeholder. The snapshot was already restored above; the browser simply
+    // refuses to *stop* there, because online it wants fresh metadata. Both
+    // things can be true: paint what we have, then reload behind it. Wiping it
+    // to a placeholder first is how a swipe back out of Detail flashed a
+    // loading screen on its way to Home.
+    if (restoredFromRouteState && Platform.isBrowser()) {
+      this.isLoadingDetail = false;
+      setBrowserMediaTitle({ title: this.meta?.name, year: this.meta?.releaseInfo });
+      this.render(this.meta, this.pendingFocusRestore);
+      await this.loadDetail();
       return;
     }
 
@@ -2926,7 +2958,25 @@ export const MetaDetailsScreen = {
       }
     });
 
-    (Array.isArray(watchedItems) ? watchedItems : []).forEach((entry) => {
+    // Scoped to the selected source, the same rule Continue Watching uses.
+    //
+    // Both screens answer the same question after all: has the source that owns
+    // this list been told. A tick is Nuvio saying "Simkl has this one", and a
+    // record Simkl knows nothing about must not stand in for that.
+    //
+    // This was withdrawn once, because thousands of records predate the source
+    // tag and under a provider every one of their ticks vanished. The answer
+    // that followed -- handing those records to the provider so it could answer
+    // for them -- was worse: every source keeps its own history, in both
+    // directions, and a title finished under Nuvio Sync is not Simkl's to know.
+    //
+    // So the gap is not a gap. Under a provider you see what that provider has
+    // been told, which is what choosing a provider means. A season with nothing
+    // ticked there is a true answer, not a missing one.
+    selectWatchedItemsForSource(
+      watchedItems,
+      watchProgressRepository.getContinueWatchingSource()
+    ).forEach((entry) => {
       const season = Number(entry?.season || 0);
       const episode = Number(entry?.episode || 0);
       if (
@@ -6857,13 +6907,10 @@ export const MetaDetailsScreen = {
     ) {
       return false;
     }
-    const key =
-      sourceMode === LibrarySourceMode.SIMKL
-        ? "simkl:status:plantowatch"
-        : sourceMode === LibrarySourceMode.TRAKT
-          ? "watchlist"
-          : "local";
-    this.isSavedInLibrary = Boolean(snapshot?.listMembership?.[key]);
+    this.isSavedInLibrary = librarySnapshotHasMembership(
+      snapshot?.listMembership || {},
+      sourceMode
+    );
     this.syncDetailActionButtons();
     return this.isSavedInLibrary;
   },
@@ -6876,28 +6923,48 @@ export const MetaDetailsScreen = {
       const item = this.getCurrentLibraryItem();
       const defaultKey =
         sourceMode === LibrarySourceMode.SIMKL ? "simkl:status:plantowatch" : "watchlist";
+      // What is on screen is what the person is answering, so the icon turns
+      // now. It used to wait for the provider: a write, then an activities
+      // check, then a full list pull -- measured at 987ms on a healthy
+      // connection -- and nothing moved until all three came back.
+      const wasSaved = this.isSavedInLibrary === true;
+      this.isSavedInLibrary = !wasSaved;
+      this.syncDetailActionButtons();
       try {
         const tabs = await libraryRepository.getListTabs();
         const destination = tabs.find(
           (tab) => tab.key === defaultKey && tab.isMembershipDestination !== false
         );
         if (!destination) {
+          this.isSavedInLibrary = wasSaved;
+          this.syncDetailActionButtons();
           return;
         }
-        const snapshot = await libraryRepository.getMembershipSnapshot(item);
-        const membership = snapshot?.listMembership || {};
         const desiredMembership =
           sourceMode === LibrarySourceMode.SIMKL
             ? Object.fromEntries(
                 tabs
                   .filter((tab) => tab.isMembershipDestination !== false)
-                  .map((tab) => [tab.key, membership[defaultKey] ? false : tab.key === defaultKey])
+                  .map((tab) => [tab.key, wasSaved ? false : tab.key === defaultKey])
               )
-            : { [defaultKey]: !membership[defaultKey] };
+            : { [defaultKey]: !wasSaved };
         await libraryRepository.applyMembershipChanges(item, { desiredMembership });
-        await this.refreshCurrentLibraryMembership();
+        // The provider has the final word, but only to correct a refusal.
+        void this.refreshCurrentLibraryMembership();
         return;
       } catch (error) {
+        this.isSavedInLibrary = wasSaved;
+        this.syncDetailActionButtons();
+        // Simkl refuses to drop a status that carries watched history or a
+        // rating, because dropping it would take those with it. That refusal is
+        // right, and it needs a person to agree to it -- so hand them the list,
+        // which is where the confirmation lives. Until the button believed a
+        // completed title was in the library at all, this was unreachable, and
+        // the press simply did nothing.
+        if (/watched history|rating/i.test(String(error?.message || ""))) {
+          void this.openLibraryListMenu();
+          return;
+        }
         console.warn("Failed to update library from Detail", error);
         return;
       }
@@ -7503,6 +7570,30 @@ export const MetaDetailsScreen = {
     return true;
   },
 
+  // A layer revealed by Back never re-runs mount(), so nothing here re-read
+  // what changed while this screen was covered. Nuvio's own player hid it:
+  // finishing there navigates to Detail, which mounts and reloads. An external
+  // player's report is applied while the Stream screen is still on top, and
+  // Back from Stream only uncovers this one -- so the episode cards kept the
+  // progress from before playback, and only leaving for Home and coming back
+  // rebuilt them. Home was already right, because Home has this hook.
+  onRouteRevealed() {
+    // A load in flight is about to produce this anyway, and two passes writing
+    // the same fields would race each other.
+    if (!this.container || !this.meta || this.isLoadingDetail) return;
+    const token = this.detailLoadToken;
+    void this.refreshEpisodePlaybackState()
+      .then(() => {
+        if (token !== this.detailLoadToken || !this.container) return;
+        // No focus argument: the person is looking at this screen, and moving
+        // their focus because something synced would be its own bug.
+        this.updateRenderedDetailSections(this.meta, null);
+      })
+      .catch((error) => {
+        console.warn("Detail playback state refresh failed", error);
+      });
+  },
+
   async refreshEpisodePlaybackState() {
     detailWatchedEnrichmentService.invalidateCache(this.params?.itemId);
     const [progress, allProgressItems, allWatchedItems, watchedItem] = await Promise.all([
@@ -7510,7 +7601,10 @@ export const MetaDetailsScreen = {
         this.resumeContentIds?.length ? this.resumeContentIds : [this.params?.itemId]
       ),
       watchProgressRepository.getAll(),
-      watchedItemsRepository.getAll(),
+      // The provider's snapshot as it stands. This runs straight after the
+      // person pressed something, so waiting on a provider round trip here is
+      // the pause they were reporting.
+      watchedItemsRepository.getAll(Infinity, { allowStale: true }),
       watchedItemsRepository.isWatched(this.params?.itemId)
     ]);
     this.resumeProgress = progress && isWatchProgressInProgress(progress) ? progress : null;
@@ -7523,8 +7617,53 @@ export const MetaDetailsScreen = {
     const progressItemsForDetail = this.resumeProgress
       ? [this.resumeProgress, ...allProgressItems]
       : allProgressItems;
-    this.buildEpisodeState(progressItemsForDetail, allWatchedItems, this.enrichedWatchedState);
+    // The enrichment map is the card's first authority -- a tick asks it before
+    // it asks anything else -- and the line above this function invalidates it.
+    // Handing the old one back in invalidated it in name only: un-marking a
+    // season removed the rows, cleared the cache, and then rebuilt the state
+    // from the very map that still said watched, so nothing on screen moved.
+    // Dropped here, rebuilt below, and between the two the local state answers,
+    // which is the one that has just been changed on purpose.
+    this.enrichedWatchedState = null;
+    this.buildEpisodeState(progressItemsForDetail, allWatchedItems, null);
     this.nextEpisodeToWatch = this.computeNextEpisodeToWatch(this.resumeProgress || progress);
+    this.refreshWatchedEnrichmentInBackground();
+  },
+
+  // Rebuilding the map costs a provider lookup, so it runs behind the render
+  // rather than in front of it. Only a series has one, and only once the local
+  // pass has already painted.
+  refreshWatchedEnrichmentInBackground() {
+    const traktId = this.meta?.ids?.trakt;
+    if (!traktId || !isSeriesDetailMeta(this.meta, this.episodes)) return;
+    const token = this.detailLoadToken;
+    void withTimeout(
+      detailWatchedEnrichmentService.enrichSeriesWatchedState(
+        this.episodes,
+        this.params?.itemId,
+        traktId
+      ),
+      4500,
+      null
+    )
+      .then(async (enriched) => {
+        if (token !== this.detailLoadToken || !this.container || !(enriched instanceof Map)) {
+          return;
+        }
+        const [allProgressItems, allWatchedItems] = await Promise.all([
+          watchProgressRepository.getAll(),
+          watchedItemsRepository.getAll(Infinity, { allowStale: true })
+        ]);
+        if (token !== this.detailLoadToken || !this.container) return;
+        const progressItemsForDetail = this.resumeProgress
+          ? [this.resumeProgress, ...allProgressItems]
+          : allProgressItems;
+        this.buildEpisodeState(progressItemsForDetail, allWatchedItems, enriched);
+        this.updateRenderedDetailSections(this.meta, null);
+      })
+      .catch((error) => {
+        console.warn("Detail watched enrichment refresh failed", error);
+      });
   },
 
   async setEpisodeWatchedState(episode, watched) {

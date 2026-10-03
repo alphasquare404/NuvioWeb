@@ -65,7 +65,9 @@ function writeWatchedStateForProfile(profileId = resolveProfileId(), patch = {})
   LocalStore.set(SYNC_STATE_KEY, next);
 }
 
-function mergeWatchedItems(localItems = [], remoteItems = [], lastSuccessfulPushAt = 0) {
+// Exported for the tests that pin the pull-race rule; the service is the only
+// caller.
+export function mergeWatchedItems(localItems = [], remoteItems = [], reconciledAt = 0) {
   if (!remoteItems.length) {
     return [...localItems];
   }
@@ -91,14 +93,29 @@ function mergeWatchedItems(localItems = [], remoteItems = [], lastSuccessfulPush
   };
 
   remoteItems.forEach((item) => upsert(item, true));
-  if (lastSuccessfulPushAt > 0) {
-    localItems.forEach((item) => {
-      const key = watchedItemKey(item);
-      if (!byKey.has(key) && Number(item.watchedAt || 0) > lastSuccessfulPushAt) {
-        byKey.set(key, item);
-      }
-    });
-  }
+  // A local record the cloud does not have is either something un-watched on
+  // another device -- which must disappear here too -- or something this device
+  // recorded and the cloud has not been told about. What tells them apart is
+  // the last time this device and the cloud agreed: older than that, the cloud
+  // knew about it and no longer does; newer, the cloud has never seen it.
+  //
+  // That moment is a pull as much as a push. Asking only about pushes read a row
+  // this device had *received* from the cloud as one of its own: its watchedAt
+  // is whenever the episode was originally watched, which on the receiving
+  // device is newer than its own last push. So an episode un-marked on the first
+  // device survived the second device's pull and was pushed straight back up,
+  // and the two never settled.
+  //
+  // With nothing on record there has been no agreement, so nothing local can be
+  // read as a deletion made elsewhere. Skipping the whole pass there dropped
+  // every local record instead, which on a device that had just finished an
+  // episode is the completion itself.
+  localItems.forEach((item) => {
+    const key = watchedItemKey(item);
+    if (!byKey.has(key) && Number(item.watchedAt || 0) > reconciledAt) {
+      byKey.set(key, item);
+    }
+  });
   return Array.from(byKey.values()).sort(
     (left, right) => Number(right.watchedAt || 0) - Number(left.watchedAt || 0)
   );
@@ -163,24 +180,56 @@ export const WatchedItemsSyncService = {
       const profileId = resolveProfileId();
       // The local store only: merging in the selected provider's history here
       // would persist it as Nuvio Sync's own on the next replaceAll.
-      const localItems = await watchedItemsRepository.listLocal(5000);
+      const localItems = await watchedItemsRepository.listLocal();
+      // Read before the network, because it describes the rows that are about
+      // to be fetched. Read afterwards it can already have moved: a push that
+      // succeeds during the round trip advances it past a completion written
+      // just before, and the merge below then reads that completion as
+      // something the cloud was told about and has since dropped -- so it
+      // deletes it, while the very snapshot it is comparing against was taken
+      // before that push and could not have contained it.
+      const stateBeforeFetch = watchedStateForProfile(profileId);
+      const reconciledBeforeFetchAt = Math.max(
+        Number(stateBeforeFetch.lastSuccessfulPushAt || 0),
+        Number(stateBeforeFetch.lastSuccessfulPullAt || 0)
+      );
       const rows = await pullRemoteWatchedItems(profileId);
       if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
       const remoteItems = (rows || [])
         .map((row) => mapRemoteItem(row))
         .filter((item) => Boolean(item.contentId));
-      if (!remoteItems.length && localItems.length) {
+      // Read local again, after the network. The list captured before the pull
+      // is a snapshot of a store that kept being written while the round trip
+      // was in flight -- a couple of seconds, which is exactly long enough for
+      // an external player's report to land. A completion written in that
+      // window is in neither list: not in the cloud, which has not been told
+      // yet, and not in the stale local copy either. replaceAll then wrote the
+      // watched set from before the episode finished back over it, and
+      // Continue Watching moved on to the next episode and then returned to
+      // the one that had just been watched.
+      //
+      // The progress service already reads twice for this reason. This one is
+      // the half that decides what counts as watched, which is what Next Up is
+      // built from, so getting it wrong undoes the completion outright.
+      const currentLocalItems = await watchedItemsRepository.listLocal();
+      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
         return localItems;
       }
+      if (!remoteItems.length && currentLocalItems.length) {
+        return currentLocalItems;
+      }
       const mergedItems = mergeWatchedItems(
-        localItems,
+        currentLocalItems,
         remoteItems,
-        Number(watchedStateForProfile(profileId).lastSuccessfulPushAt || 0)
+        reconciledBeforeFetchAt
       );
       if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
         return localItems;
       }
       await watchedItemsRepository.replaceAll(mergedItems, profileId);
+      // The two have just agreed. Recorded so the next pull can tell a row that
+      // arrived from the cloud from one this device wrote afterwards.
+      writeWatchedStateForProfile(profileId, { lastSuccessfulPullAt: Date.now() });
       return mergedItems;
     } catch (error) {
       console.warn("Watched items sync pull failed", error);
@@ -194,7 +243,7 @@ export const WatchedItemsSyncService = {
         return false;
       }
       const sessionGeneration = AuthManager.getSessionGeneration();
-      const items = (await watchedItemsRepository.listLocal(5000)).filter((item) =>
+      const items = (await watchedItemsRepository.listLocal()).filter((item) =>
         isNuvioSyncOwnedProgress(item)
       );
       await SupabaseApi.rpc(
@@ -211,6 +260,28 @@ export const WatchedItemsSyncService = {
     } catch (error) {
       console.warn("Watched items sync push failed", error);
       return false;
+    }
+  },
+
+  // Whether this device is holding completions the cloud has not accepted.
+  //
+  // Asked of the data rather than of a failure flag, for the same reason the
+  // progress side is: a push that was never attempted leaves no flag behind, and
+  // an offline session is exactly when one might not be. Unanswerable means yes,
+  // because asking needlessly costs a round trip while skipping wrongly loses a
+  // completion -- which is what happened: a title finished with no network
+  // advanced Continue Watching here and reached no other device, because nothing
+  // after the failed 250ms push ever tried again.
+  async hasUnsyncedItems() {
+    try {
+      if (!AuthManager.isAuthenticated) return true;
+      const since = Number(watchedStateForProfile().lastSuccessfulPushAt || 0);
+      const items = await watchedItemsRepository.listLocal();
+      return items.some(
+        (item) => isNuvioSyncOwnedProgress(item) && Number(item.watchedAt || 0) > since
+      );
+    } catch (_) {
+      return true;
     }
   },
 

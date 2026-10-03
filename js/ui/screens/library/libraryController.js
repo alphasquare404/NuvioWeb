@@ -718,7 +718,7 @@ export class LibraryController {
     let [listTabs, allItems, watchedItems] = await Promise.all([
       libraryRepository.getListTabs({ sourceMode }),
       libraryRepository.getItems({ hydrate: false, sourceMode }),
-      watchedItemsRepository.getAll(5000).catch(() => [])
+      watchedItemsRepository.getAll().catch(() => [])
     ]);
     if (this.disposed || reloadToken !== this.reloadToken) {
       return;

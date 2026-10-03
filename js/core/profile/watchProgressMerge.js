@@ -130,21 +130,29 @@ export function preserveLocalProgressMetadata(progress, localItem) {
 }
 
 // Both sides moved since the cloud last looked like the baseline, so one has to
-// give. This used to be settled by `updatedAt`, which is the writing device's
-// own wall clock: two devices a few minutes apart decided it arbitrarily, and
-// the loser's viewing was simply erased. Position is the one thing both sides
-// measure the same way.
+// give. Position decided this for a while: it is the one quantity both devices
+// measure the same way, so the outcome did not depend on whose clock was right.
 //
-// The cost is a deliberate restart losing to the further side. That is a seek
-// away, where the other direction silently discards minutes already watched.
-export function furthestProgress(localItem, remoteItem) {
-  const localPosition = Number(localItem?.positionMs || 0);
-  const remotePosition = Number(remoteItem?.positionMs || 0);
-  if (localPosition !== remotePosition)
-    return localPosition > remotePosition ? localItem : remoteItem;
-  // Identical positions are not a conflict worth arbitrating; keep the newer
-  // record so its metadata is the fresher of the two.
-  return Number(localItem?.updatedAt || 0) >= Number(remoteItem?.updatedAt || 0)
+// That rule was wrong about what a conflict is. Where playback reached is not a
+// score to be maximised -- it is a record of what someone did, and the useful
+// answer is what they did last. Under the further-wins rule, picking a title up
+// again on another device from an earlier point lost to a position nobody was
+// watching from any more, and no amount of rewatching could move it, because
+// every pull restored the high-water mark. Going backwards is a thing people do
+// on purpose.
+//
+// So the newest write wins, forward or back. The clock skew the old rule was
+// guarding against is real, and the guard against it is elsewhere: a push
+// stamps `updatedAt` when the row is written, and the pull is judged against
+// the baseline the cloud last showed, so a device only ever argues about rows
+// that genuinely changed on both sides.
+export function latestProgress(localItem, remoteItem) {
+  const localAt = Number(localItem?.updatedAt || 0);
+  const remoteAt = Number(remoteItem?.updatedAt || 0);
+  if (localAt !== remoteAt) return localAt > remoteAt ? localItem : remoteItem;
+  // One stamp, two rows: not a conflict a clock can settle, so fall back to the
+  // further position rather than letting map order decide it.
+  return Number(localItem?.positionMs || 0) >= Number(remoteItem?.positionMs || 0)
     ? localItem
     : remoteItem;
 }
@@ -200,9 +208,7 @@ export function mergeProgressItems(
         merged.push(preserveLocalProgressMetadata(remoteItem, localItem));
         return;
       }
-      merged.push(
-        preserveLocalProgressMetadata(furthestProgress(localItem, remoteItem), localItem)
-      );
+      merged.push(preserveLocalProgressMetadata(latestProgress(localItem, remoteItem), localItem));
       return;
     }
 

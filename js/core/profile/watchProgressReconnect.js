@@ -2,6 +2,7 @@ import {
   WatchProgressSyncService,
   noteWatchProgressReconnectPullOwed
 } from "./watchProgressSyncService.js";
+import { WatchedItemsSyncService } from "./watchedItemsSyncService.js";
 
 // Nothing carried progress up when the network came back. Pushes ride on
 // playback events, so anything watched offline could sit unsent until the next
@@ -21,7 +22,12 @@ export function installWatchProgressReconnectSync({
   runtime = globalThis,
   sync = (trigger) => WatchProgressSyncService.syncAfterReconnect(trigger),
   notePullOwed = () => noteWatchProgressReconnectPullOwed(),
-  hasPendingWork = () => WatchProgressSyncService.hasUnsyncedProgress(),
+  // Either kind of debt is a reason to run. Asking only about progress meant a
+  // device whose only owed work was a completion answered "nothing to do" and
+  // the completion stayed put.
+  hasPendingWork = async () =>
+    (await WatchProgressSyncService.hasUnsyncedProgress()) ||
+    (await WatchedItemsSyncService.hasUnsyncedItems()),
   onError = (error) => console.warn("Watch progress reconnect sync failed", error)
 } = {}) {
   // Binding twice would run two merges against one another on every reconnect.

@@ -210,9 +210,11 @@ function libraryCardYear(item = {}) {
   if (Number.isInteger(normalizedYear) && normalizedYear >= 1800 && normalizedYear <= 3000) {
     return String(normalizedYear);
   }
-  return String(item.releaseInfo || item.releaseDate || item.released || "").match(
-    /\b(19|20)\d{2}\b/
-  )?.[0] || "";
+  return (
+    String(item.releaseInfo || item.releaseDate || item.released || "").match(
+      /\b(19|20)\d{2}\b/
+    )?.[0] || ""
+  );
 }
 
 function libraryCardMetadata(item = {}) {
@@ -247,7 +249,9 @@ function offlineMovieCard(download = {}) {
     id: itemId,
     type: "movie",
     name: String(download.title || itemId || "Downloaded movie").trim(),
-    poster: String(download.localPosterUrl || (canUseRemoteArtwork() ? download.poster : "") || "").trim(),
+    poster: String(
+      download.localPosterUrl || (canUseRemoteArtwork() ? download.poster : "") || ""
+    ).trim(),
     background: String(download.backdrop || "").trim(),
     year: download.year,
     offlineItem: true
@@ -261,7 +265,9 @@ function offlineSeriesCard(group = {}) {
     id: itemId,
     type: "series",
     name: String(group.title || representative.seriesTitle || itemId || "Downloaded series").trim(),
-    poster: String(group.localPosterUrl || (canUseRemoteArtwork() ? group.poster : "") || "").trim(),
+    poster: String(
+      group.localPosterUrl || (canUseRemoteArtwork() ? group.poster : "") || ""
+    ).trim(),
     background: String(group.backdrop || "").trim(),
     year: representative.year,
     offlineItem: true,
@@ -287,7 +293,10 @@ function managerEpisodeLabel(download = {}) {
 }
 
 function managerSourceLabel(download = {}) {
-  return [download.quality || download.resolution || "", download.sourceName || download.addonName || ""]
+  return [
+    download.quality || download.resolution || "",
+    download.sourceName || download.addonName || ""
+  ]
     .filter(Boolean)
     .join(" · ");
 }
@@ -442,12 +451,15 @@ export const LibraryScreen = {
     this.partialContentRefresh = null;
     this.pendingHydrationState = null;
     this.pendingPresentationModeScroll = false;
-    this.downloadedView = Platform.isBrowser() && String(params?.initialTab || "").toLowerCase() === "downloaded";
+    this.downloadedView =
+      Platform.isBrowser() && String(params?.initialTab || "").toLowerCase() === "downloaded";
     this.downloadedType = "all";
     this.downloadedPickerOpen = false;
     this.downloadedPickerFocusIndex = 0;
     this.downloadedLibrary = { supported: false, loading: false, movies: [], series: [] };
-    this.offlineArtworkResolver = Platform.isBrowser() ? createBrowserOfflineArtworkResolver() : null;
+    this.offlineArtworkResolver = Platform.isBrowser()
+      ? createBrowserOfflineArtworkResolver()
+      : null;
     this.downloadManagerView = Boolean(params?.downloadManager);
     this.downloadManagerJobs = [];
     this.offlineDownloadsUnsubscribe = null;
@@ -549,7 +561,6 @@ export const LibraryScreen = {
         }
       }
     });
-
   },
 
   isDownloadedView() {
@@ -614,14 +625,18 @@ export const LibraryScreen = {
       return url;
     };
     const [nextMovies, nextSeries] = await Promise.all([
-      Promise.all((movies || []).map(async (download) => ({
-        ...download,
-        localPosterUrl: await resolve(download.downloadId, "poster")
-      }))),
-      Promise.all((series || []).map(async (group) => ({
-        ...group,
-        localPosterUrl: await resolve(group.seriesPosterDownloadId, "seriesPoster")
-      })))
+      Promise.all(
+        (movies || []).map(async (download) => ({
+          ...download,
+          localPosterUrl: await resolve(download.downloadId, "poster")
+        }))
+      ),
+      Promise.all(
+        (series || []).map(async (group) => ({
+          ...group,
+          localPosterUrl: await resolve(group.seriesPosterDownloadId, "seriesPoster")
+        }))
+      )
     ]);
     return { movies: nextMovies, series: nextSeries, artworkKeys };
   },
@@ -730,14 +745,14 @@ export const LibraryScreen = {
         : picker === "cloud_type"
           ? state.selectedCloudType || "__all__"
           : picker === "list"
-        ? state.selectedListKey || "__all__"
-        : picker === "type"
-          ? state.selectedTypeKey
-          : picker === "genre"
-            ? state.selectedGenre || "__all__"
-            : picker === "year"
-              ? state.selectedYear || "__all__"
-              : state.selectedSortKey;
+            ? state.selectedListKey || "__all__"
+            : picker === "type"
+              ? state.selectedTypeKey
+              : picker === "genre"
+                ? state.selectedGenre || "__all__"
+                : picker === "year"
+                  ? state.selectedYear || "__all__"
+                  : state.selectedSortKey;
     const selectedIndex = Math.max(
       0,
       options.findIndex((option) => option.value === currentValue)
@@ -782,9 +797,8 @@ export const LibraryScreen = {
     }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       const providerLabel =
-        state.availableCloudProviders.find(
-          (option) => option.key === state.selectedCloudProviderId
-        )?.label || t("cloud_library_provider_all", {}, "All");
+        state.availableCloudProviders.find((option) => option.key === state.selectedCloudProviderId)
+          ?.label || t("cloud_library_provider_all", {}, "All");
       const typeLabel =
         state.availableCloudTypes.find((option) => option.key === state.selectedCloudType)?.label ||
         t("cloud_library_type_all", {}, "All");
@@ -872,7 +886,9 @@ export const LibraryScreen = {
 
     if (Platform.isBrowser()) {
       const hasActiveFilters =
-        state.selectedTypeKey !== "__all__" || Boolean(state.selectedGenre) || Boolean(state.selectedYear);
+        state.selectedTypeKey !== "__all__" ||
+        Boolean(state.selectedGenre) ||
+        Boolean(state.selectedYear);
       // Four stacked pickers took a third of a phone screen before a single
       // item appeared, and all four read "All" -- a third of the screen spent
       // saying nothing is filtered. Type stays out, because it is the one most
@@ -991,7 +1007,11 @@ export const LibraryScreen = {
   // The header says which shelf you are on and how much is on it.
   getLibraryHeaderLabel(state) {
     if (this.isDownloadManagerView()) {
-      return t("library_count_queued", { count: this.downloadManagerJobs.length }, "Download manager");
+      return t(
+        "library_count_queued",
+        { count: this.downloadManagerJobs.length },
+        "Download manager"
+      );
     }
     if (this.isDownloadedView()) {
       return `Downloaded · ${this.formatCount(this.countDownloadedItems(), "title")}`;
@@ -1032,12 +1052,16 @@ export const LibraryScreen = {
   // a second trip to the provider.
   // One field, but it only ever searches the shelf that is open.
   applyLibrarySearch(items = []) {
-    const query = String(this.librarySearchQuery || "").trim().toLowerCase();
+    const query = String(this.librarySearchQuery || "")
+      .trim()
+      .toLowerCase();
     if (!query) {
       return items;
     }
     return items.filter((item) =>
-      String(item?.name || item?.title || "").toLowerCase().includes(query)
+      String(item?.name || item?.title || "")
+        .toLowerCase()
+        .includes(query)
     );
   },
 
@@ -1159,30 +1183,55 @@ export const LibraryScreen = {
     const groups = [
       ["Downloading", jobs.filter((job) => job.status === "downloading")],
       ["Queued", queued],
-      ["Paused / Interrupted", jobs.filter((job) => ["paused", "interrupted"].includes(job.status))],
+      [
+        "Paused / Interrupted",
+        jobs.filter((job) => ["paused", "interrupted"].includes(job.status))
+      ],
       ["Failed", jobs.filter((job) => job.status === "failed")]
     ];
     return `<section class="library-download-manager" aria-label="Download Manager">${groups
       .filter(([, entries]) => entries.length)
-      .map(([title, entries]) => `<section class="library-download-manager-section"><h2>${title}</h2>${entries
-        .map((job, index) => this.renderDownloadManagerCard(job, title === "Queued" ? index + 1 : null))
-        .join("")}</section>`)
+      .map(
+        ([title, entries]) =>
+          `<section class="library-download-manager-section"><h2>${title}</h2>${entries
+            .map((job, index) =>
+              this.renderDownloadManagerCard(job, title === "Queued" ? index + 1 : null)
+            )
+            .join("")}</section>`
+      )
       .join("")}</section>`;
   },
 
   renderDownloadManagerCard(download = {}, queuePosition = null) {
     const total = Number(download.totalBytes || 0);
     const current = Number(download.downloadedBytes || 0);
-    const progress = total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
+    const progress =
+      total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
     const title = download.seriesTitle || download.title || "Offline download";
     const episode = managerEpisodeLabel(download);
     const source = managerSourceLabel(download);
-    const action = (name, icon, label) => `<button class="library-download-manager-action focusable" data-action="${name}" data-download-id="${escapeHtml(download.downloadId)}" aria-label="${label}" title="${label}"><span class="material-icons" aria-hidden="true">${icon}</span></button>`;
+    const action = (name, icon, label) =>
+      `<button class="library-download-manager-action focusable" data-action="${name}" data-download-id="${escapeHtml(download.downloadId)}" aria-label="${label}" title="${label}"><span class="material-icons" aria-hidden="true">${icon}</span></button>`;
     const status = String(download.status || "");
     let actions = "";
-    if (status === "downloading") actions = action("pauseOfflineDownload", "pause", "Pause") + action("cancelOfflineDownload", "close", "Cancel");
-    if (status === "queued") actions = action("moveOfflineDownloadTop", "vertical_align_top", "Move to top") + action("moveOfflineDownloadUp", "keyboard_arrow_up", "Move up") + action("moveOfflineDownloadDown", "keyboard_arrow_down", "Move down") + action("moveOfflineDownloadBottom", "vertical_align_bottom", "Move to bottom") + action("cancelOfflineDownload", "close", "Cancel");
-    if (["paused", "interrupted", "failed"].includes(status)) actions = action("resumeOfflineDownload", status === "failed" ? "refresh" : "play_arrow", status === "failed" ? "Retry" : "Resume") + action("cancelOfflineDownload", "delete", "Delete partial download");
+    if (status === "downloading")
+      actions =
+        action("pauseOfflineDownload", "pause", "Pause") +
+        action("cancelOfflineDownload", "close", "Cancel");
+    if (status === "queued")
+      actions =
+        action("moveOfflineDownloadTop", "vertical_align_top", "Move to top") +
+        action("moveOfflineDownloadUp", "keyboard_arrow_up", "Move up") +
+        action("moveOfflineDownloadDown", "keyboard_arrow_down", "Move down") +
+        action("moveOfflineDownloadBottom", "vertical_align_bottom", "Move to bottom") +
+        action("cancelOfflineDownload", "close", "Cancel");
+    if (["paused", "interrupted", "failed"].includes(status))
+      actions =
+        action(
+          "resumeOfflineDownload",
+          status === "failed" ? "refresh" : "play_arrow",
+          status === "failed" ? "Retry" : "Resume"
+        ) + action("cancelOfflineDownload", "delete", "Delete partial download");
     return `<article class="library-download-manager-card">
       ${download.poster ? `<img class="library-download-manager-poster" src="${escapeHtml(download.poster)}" alt="" />` : `<div class="library-download-manager-poster library-download-manager-poster-placeholder" aria-hidden="true"><span class="material-icons">download</span></div>`}
       <div class="library-download-manager-copy"><strong>${escapeHtml(title)}</strong>${episode ? `<span>${escapeHtml(episode)}</span>` : ""}${source ? `<span>${escapeHtml(source)}</span>` : ""}${status === "queued" ? `<span>Queued #${queuePosition}</span>` : `<span>${escapeHtml(status)}${total ? ` · ${formatOfflineBytes(current)} / ${formatOfflineBytes(total)} (${progress}%)` : ""}</span>`}${status === "downloading" ? `<div class="library-download-manager-progress" aria-label="${progress}% downloaded"><i style="width:${progress}%"></i></div>` : ""}${download.error ? `<small>${escapeHtml(download.error)}</small>` : ""}</div>
@@ -1207,7 +1256,8 @@ export const LibraryScreen = {
       )
     );
     if (!items.length) {
-      const title = this.downloadedType === "all" ? "No downloads yet" : `No downloaded ${this.downloadedType}`;
+      const title =
+        this.downloadedType === "all" ? "No downloads yet" : `No downloaded ${this.downloadedType}`;
       return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">${title}</h3><p class="library-empty-subtitle">Completed downloads will appear here and remain available offline.</p></section>`;
     }
     return this.renderGrid(items, "library-downloaded-grid");
@@ -2860,7 +2910,10 @@ export const LibraryScreen = {
       this.requestRender();
       return;
     }
-    if (action.startsWith("moveOfflineDownload") || ["pauseOfflineDownload", "resumeOfflineDownload", "cancelOfflineDownload"].includes(action)) {
+    if (
+      action.startsWith("moveOfflineDownload") ||
+      ["pauseOfflineDownload", "resumeOfflineDownload", "cancelOfflineDownload"].includes(action)
+    ) {
       const downloadId = String(node.dataset.downloadId || "");
       if (!downloadId) return;
       const operations = {
@@ -3194,6 +3247,22 @@ export const LibraryScreen = {
     if (this.completePendingPosterHold(current, event)) {
       event?.preventDefault?.();
     }
+  },
+
+  // A layer revealed by Back never re-runs mount(), so this screen kept whatever
+  // it had drawn. Remove a title from its Detail page, press Back, and the title
+  // was still listed with the old count until a pull to refresh -- the list was
+  // showing the library as it had been before the change.
+  //
+  // Home and Detail already had this hook; this screen was the one left without
+  // it. A plain reload rather than the pull-to-refresh path: that one belongs to
+  // a deliberate gesture, with its spinner and its "Library synced" message, and
+  // neither belongs to simply walking back into a screen.
+  onRouteRevealed() {
+    if (!this.container || !this.controller) return;
+    void Promise.resolve(this.controller.reload({ preserveOverlay: true })).catch((error) => {
+      console.warn("Library refresh on reveal failed", error);
+    });
   },
 
   cleanup() {

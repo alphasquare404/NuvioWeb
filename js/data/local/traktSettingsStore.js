@@ -28,17 +28,6 @@ export const TRAKT_DEFAULT_CONTINUE_WATCHING_DAYS_CAP = 60;
 
 const STORE_KEY = "traktSettings";
 const librarySourceListeners = new Set();
-
-function notifyLibrarySourceChange() {
-  librarySourceListeners.forEach((listener) => {
-    try {
-      listener();
-    } catch (error) {
-      console.warn("Library source listener failed", error);
-    }
-  });
-}
-
 function normalizeWatchProgressSource(value) {
   const normalized = String(value || WatchProgressSource.TRAKT).toLowerCase();
   if (normalized === WatchProgressSource.NUVIO_SYNC) return WatchProgressSource.NUVIO_SYNC;

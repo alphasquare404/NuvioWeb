@@ -2415,6 +2415,12 @@ html.desktop-browser {
     width: 100%;
     text-align: center;
   }
+
+  /* The resume line is a flex row, and text-align does not move flex items --
+     it was the one thing on this page still sitting against the left edge. */
+  .desktop-browser #detail .detail-resume-indicator {
+    justify-content: center;
+  }
 }
 
 /* Portrait has room for two lines before the synopsis becomes the page.
@@ -14953,6 +14959,47 @@ body.desktop-browser {
   text-transform: uppercase;
 }
 
+.desktop-browser #quickSetup .quick-setup-badge.is-caution {
+  background: rgba(255, 107, 97, 0.2);
+  color: #ff6b61;
+}
+
+.desktop-browser #quickSetup .quick-setup-badge.is-neutral {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+}
+
+/* The one option that carries a warning rather than a recommendation. Red on
+   the copy and on the card's own edge, so it reads before the words do. */
+.desktop-browser #quickSetup .quick-setup-option-caution {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  color: #ff6b61;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-caution::before {
+  content: "warning";
+  font-family: "Material Icons";
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.desktop-browser #quickSetup .quick-setup-option.is-caution {
+  border-color: rgba(255, 107, 97, 0.45);
+}
+
+.desktop-browser #quickSetup .quick-setup-option.is-caution.is-selected {
+  border-color: #ff6b61;
+  background: rgba(255, 107, 97, 0.1);
+}
+
 .desktop-browser #quickSetup .quick-setup-option-get {
   display: inline-flex;
   align-items: center;
@@ -15133,4 +15180,193 @@ body.desktop-browser {
   font-size: 14px;
   line-height: 1.35;
   text-align: center;
+}
+
+/* The detail placeholder was written for the television and never given a
+   browser scale: a left-aligned column starting 260px down, on a page whose
+   real layout is a full-bleed backdrop with everything centred under it. It
+   only shows for a fraction of a second, which is exactly why it was missed --
+   and exactly why it reads as a flash of a different app. Same blocks, put
+   where the real ones land. */
+.desktop-browser #detail .detail-loading-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 20px max(24px, env(safe-area-inset-bottom));
+  background: var(--detail-bg, #05090f);
+}
+
+.desktop-browser #detail .detail-loading-top {
+  width: 100%;
+  margin: 0;
+}
+
+/* The backdrop, which on this layout is the top of the page rather than a
+   card parked inside it. */
+.desktop-browser #detail .detail-loading-poster {
+  width: 100vw;
+  max-width: none;
+  height: min(58vh, 460px);
+  margin-left: -20px;
+  border-radius: 0;
+}
+
+.desktop-browser #detail .detail-loading-meta,
+.desktop-browser #detail .detail-loading-copy,
+.desktop-browser #detail .detail-loading-tags {
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 680px;
+}
+
+.desktop-browser #detail .detail-loading-meta {
+  margin-top: 26px;
+  gap: 12px;
+}
+
+/* The Resume button and the two round buttons beside it. */
+.desktop-browser #detail .detail-loading-pill {
+  width: 190px;
+  height: 48px;
+}
+
+.desktop-browser #detail .detail-loading-pill.short {
+  width: 48px;
+}
+
+.desktop-browser #detail .detail-loading-copy {
+  margin-top: 22px;
+  gap: 10px;
+}
+
+.desktop-browser #detail .detail-loading-line {
+  width: 100%;
+  height: 16px;
+}
+
+.desktop-browser #detail .detail-loading-line.wide {
+  width: 92%;
+}
+
+.desktop-browser #detail .detail-loading-line.mid {
+  width: 74%;
+}
+
+.desktop-browser #detail .detail-loading-tags {
+  margin-top: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.desktop-browser #detail .detail-loading-tag {
+  width: 84px;
+  height: 22px;
+}
+
+.desktop-browser #detail .detail-loading-chip {
+  width: 64px;
+  height: 20px;
+}
+
+/* The up-next card was drawn at television scale: a 470px floor on a phone in
+   portrait is wider than the screen, so it was cut off, and in landscape it
+   covered a third of the picture. Same card, sized for a browser. */
+.desktop-browser .player-next-episode-card {
+  right: max(16px, env(safe-area-inset-right, 0px));
+  left: auto;
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  width: min(340px, calc(100vw - 32px));
+}
+
+.desktop-browser .player-next-episode-card-inner {
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(18, 18, 18, 0.94);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4);
+}
+
+.desktop-browser .player-next-episode-head {
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.desktop-browser .player-next-episode-thumb-wrap {
+  width: 84px;
+  min-width: 84px;
+  height: 48px;
+  border-radius: 8px;
+}
+
+.desktop-browser .player-next-episode-kicker {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.desktop-browser .player-next-episode-title {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.desktop-browser .player-next-episode-status {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.desktop-browser .player-next-episode-pill {
+  padding: 9px 14px;
+  border-radius: 10px;
+}
+
+.desktop-browser .player-next-episode-pill.is-playable {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #101010;
+}
+
+.desktop-browser .player-next-episode-pill-icon,
+.desktop-browser .player-next-episode-pill-text {
+  font-size: 13px;
+}
+
+.desktop-browser .player-next-episode-pill-text {
+  font-weight: 600;
+}
+
+/* Portrait has no room beside the picture, so the card takes the width and
+   sits above the controls instead of beside them. */
+@media (orientation: portrait) {
+  .desktop-browser .player-next-episode-card {
+    right: max(14px, env(safe-area-inset-right, 0px));
+    left: max(14px, env(safe-area-inset-left, 0px));
+    width: auto;
+  }
+}
+
+/* More Actions reads as a row of controls, not a list of sentences. The icons
+   carry it; the labels only made the sheet taller than the video it covers. */
+.desktop-browser .player-mobile-more-action {
+  min-width: 46px;
+  justify-content: center;
+}
+
+.desktop-browser .player-mobile-more-action.player-mobile-more-icon-action {
+  padding-inline: 12px;
+  gap: 0;
+}
+
+.desktop-browser .player-mobile-more-action.player-mobile-more-icon-action > span:not(.player-control-icon) {
+  display: none;
+}
+
+/* The masked icon takes its size from a rule scoped to the controls row, so on
+   its own in this panel it collapsed to nothing. With the label gone there was
+   nothing left to give the button height either. */
+.desktop-browser .player-mobile-more-action .player-control-icon {
+  width: 20px;
+  height: 20px;
 }

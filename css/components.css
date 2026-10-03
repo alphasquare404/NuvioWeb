@@ -12932,8 +12932,8 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 
 .player-next-episode-card-inner {
   display: flex;
-  align-items: center;
-  gap: clamp(14px, 1vw, 20px);
+  flex-direction: column;
+  gap: clamp(10px, 0.8vw, 16px);
   padding: clamp(12px, 1vw, 18px);
   border-radius: clamp(18px, 1.2vw, 24px);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -12949,6 +12949,35 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .player-next-episode-card-inner.is-selected {
   border-width: 2px;
   border-color: var(--secondary-color);
+}
+
+.player-next-episode-head {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 1vw, 20px);
+}
+
+/* Pointer only: a remote closes the card with Back, and a second focus stop
+   inside it would sit in the way of the one thing the card is for. */
+.player-next-episode-dismiss {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 26px;
+  height: 26px;
+  margin: -2px -2px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.player-next-episode-dismiss:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
 }
 
 .player-next-episode-thumb-wrap {
@@ -12980,7 +13009,9 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 }
 
 .player-next-episode-kicker {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.62);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   font-size: clamp(14px, 0.85vw, 17px);
   font-weight: 500;
 }
@@ -12990,9 +13021,11 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   color: #ffffff;
   font-size: clamp(18px, 1.2vw, 24px);
   font-weight: 600;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .player-next-episode-status {
@@ -13005,10 +13038,11 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 }
 
 .player-next-episode-pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.72);

@@ -1,3 +1,4 @@
+import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
 import { markPlaybackWatched } from "./markPlaybackWatched.js";
 import { buildExternalScrobbleContext } from "./externalScrobbleContext.js";
@@ -1677,7 +1678,8 @@ export const PlayerController = {
       requestHeaders = {},
       mediaSourceType = null,
       forceEngine = null,
-      streamIdentity = null
+      streamIdentity = null,
+      offlinePlayback = false
     } = {}
   ) {
     if (!this.video) return;
@@ -1713,6 +1715,7 @@ export const PlayerController = {
     this.currentItemBackground = background || null;
     this.currentEpisodeTitle = episodeTitle || null;
     this.currentStreamIdentity = streamIdentity || null;
+    this.currentPlaybackIsOffline = Boolean(offlinePlayback);
     this.currentPlaybackUrl = requestedUrl;
     this.currentPlaybackHeaders = { ...(requestHeaders || {}) };
     this.currentPlaybackMediaSourceType = this.resolveRuntimeSourceType(mediaSourceType);
@@ -1924,6 +1927,17 @@ export const PlayerController = {
     this.stopProgressSaveTimer();
 
     return flushPromise;
+  },
+
+  // Watching a downloaded file with Sync offline progress off records nothing
+  // at all -- not a position, not a completion, and nothing to the tracking
+  // providers. Watch and forget. Asked here rather than at reconnect, because a
+  // row that was never written has nothing to carry up, and a gate at reconnect
+  // would also have held back progress recorded with a network that simply
+  // failed to push.
+  shouldSuppressOfflineProgress() {
+    if (this.currentPlaybackIsOffline !== true) return false;
+    return PlayerSettingsStore.get().syncOfflineProgress !== true;
   },
 
   createProgressContext() {
@@ -2144,6 +2158,7 @@ export const PlayerController = {
   ) {
     const active = context || this.createProgressContext();
     if (!active?.itemId) return false;
+    if (this.shouldSuppressOfflineProgress?.()) return true;
     if (!externalAuthoritative && this.shouldSuppressStaleInternalProgress(active, 0)) return true;
     const scrobbled = Boolean(externalAuthoritative && this.scrobbleExternalCompletion?.(active));
     await this.markPlaybackWatched(active, {
@@ -2213,6 +2228,7 @@ export const PlayerController = {
     if (!active?.itemId) {
       return;
     }
+    if (this.shouldSuppressOfflineProgress?.()) return true;
 
     const safePosition = Number(positionMs || 0);
     const safeDuration = Number(durationMs || 0);
