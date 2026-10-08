@@ -8610,6 +8610,17 @@ export const PlayerScreen = {
         detailErrorCode || Number(video?.error?.code || 0) || controllerErrorCode;
       const eventDetail = event?.detail && typeof event.detail === "object" ? event.detail : {};
       const playbackErrorDetail = this.getPlaybackEventErrorDetail(eventDetail);
+      // The source this failure belongs to. Every message below reports it, and
+      // it was referenced here without ever being declared -- so each branch
+      // threw at its first mention instead of showing anything. This handler is
+      // async, which is why that was silent: the ReferenceError became an
+      // unhandled rejection, so a failed stream produced no startup error, no
+      // sources error and no offer to choose another source. It just hung.
+      //
+      // Resolved the way playStreamByUrl resolves it, so the message names the
+      // same source the player was actually playing.
+      const currentSourceCandidate =
+        this.getStreamCandidateByUrl(this.activePlaybackUrl) || this.getCurrentStreamCandidate();
       const terminalHlsHttpFailure = isTerminalHlsHttpStatus(eventDetail.hlsResponseCode);
       if (
         !this.hasPresentedPlaybackFrame &&
