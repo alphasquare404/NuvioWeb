@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   beginExternalPlaybackHandoff,
   collectExternalPlaybackReport,
+  createExternalPlaybackCallbacks,
   createOutplayerReturnCallbacks,
   createOutplayerReturnToken,
   installExternalPlaybackReturnCoordinator,
@@ -608,4 +609,47 @@ test("a handoff outlives the film it was launched for", () => {
   } finally {
     Date.now = realNow;
   }
+});
+
+test("the report URL carries an Automation return only when that is the chosen way back", () => {
+  const token = "a".repeat(32);
+  const returnOrigin = "https://nuvio.example";
+
+  const automation = createExternalPlaybackCallbacks({
+    token,
+    returnOrigin,
+    provider: "lenna",
+    returnMethod: "automation",
+    outcomes: { success: "stopped" }
+  });
+  assert.equal(new URL(automation.success).searchParams.get("return"), "automation");
+
+  // Everything else leaves the URL byte-identical to what the relay has always
+  // been sent, so a relay that predates this cannot read anything new into it.
+  for (const returnMethod of ["", "notification", undefined, "AUTOMATION", null]) {
+    const callbacks = createExternalPlaybackCallbacks({
+      token,
+      returnOrigin,
+      provider: "lenna",
+      returnMethod,
+      outcomes: { success: "stopped" }
+    });
+    assert.equal(
+      new URL(callbacks.success).searchParams.has("return"),
+      false,
+      `return must be absent for ${String(returnMethod)}`
+    );
+  }
+
+  // Outplayer builds on the same helper and must not lose the flag, nor its
+  // own explicit finish semantic.
+  const outplayer = createOutplayerReturnCallbacks({
+    token,
+    returnOrigin,
+    returnMethod: "automation"
+  });
+  const success = new URL(outplayer.success);
+  assert.equal(success.searchParams.get("return"), "automation");
+  assert.equal(success.searchParams.get("sourceOutcome"), "finished");
+  assert.equal(new URL(outplayer.cancel).searchParams.get("return"), "automation");
 });

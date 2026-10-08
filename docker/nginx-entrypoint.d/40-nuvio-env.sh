@@ -53,7 +53,8 @@ EOF
   write_value TRAKT_CLIENT_ID "${TRAKT_CLIENT_ID:-}"; printf ',\n'
   write_value SIMKL_CLIENT_ID "${SIMKL_CLIENT_ID:-}"; printf ',\n'
   write_value SIMKL_APP_NAME "${SIMKL_APP_NAME:-nuvio}"; printf ',\n'
-  write_value PREMIUMIZE_CLIENT_ID "${PREMIUMIZE_CLIENT_ID:-}"
+  write_value PREMIUMIZE_CLIENT_ID "${PREMIUMIZE_CLIENT_ID:-}"; printf ',\n'
+  write_value AUTOMATION_SHORTCUT_URL "${AUTOMATION_SHORTCUT_URL:-}"
   cat <<'EOF'
   };
   for (var key in values) {

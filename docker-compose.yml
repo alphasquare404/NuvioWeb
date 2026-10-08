@@ -19,6 +19,7 @@ services:
       SIMKL_CLIENT_ID: ${SIMKL_CLIENT_ID:-}
       SIMKL_APP_NAME: ${SIMKL_APP_NAME:-nuvio}
       PREMIUMIZE_CLIENT_ID: ${PREMIUMIZE_CLIENT_ID:-}
+      AUTOMATION_SHORTCUT_URL: ${AUTOMATION_SHORTCUT_URL:-}
     ports:
       - "${NUVIO_PORT:-4173}:80"
     restart: unless-stopped

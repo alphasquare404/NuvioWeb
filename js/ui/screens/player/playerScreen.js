@@ -4655,12 +4655,14 @@ export const PlayerScreen = {
   async launchExternalPlayer(player) {
     const context = this.getExternalPlayerContext();
     if (!context) return false;
-    const progressMode =
-      PlayerSettingsStore.get().externalPlayerProgress === "manual" ? "manual" : "automatic";
+    const settings = PlayerSettingsStore.get();
+    const progressMode = settings.externalPlayerProgress === "manual" ? "manual" : "automatic";
+    const returnMethod = settings.externalReturnMethod;
     const prepared = prepareBrowserExternalPlaybackLaunch({
       player,
       platform: getBrowserExternalPlayerPlatform(),
       progressMode,
+      returnMethod,
       resumePositionSeconds: this.getExternalPlayerResumeSeconds(),
       knownDurationMs: this.getExternalPlayerKnownDurationMs(),
       progressContext: PlayerController.createProgressContext?.(),
@@ -4674,7 +4676,14 @@ export const PlayerScreen = {
     }
     // Return notifications are optional: the binding helper resolves false on
     // unsupported, unavailable, or failed Push paths and must not alter launch.
-    await bindBrowserPushReturn({ token: prepared.handoff?.token });
+    // An Automation already brings the person back, so asking the relay for a
+    // notification too would arrive for an app they are already looking at.
+    // The subscription itself is left alone: it carries every other
+    // notification the app sends, so cancelling it here would cost more than
+    // this one message is worth.
+    if (returnMethod !== "automation") {
+      await bindBrowserPushReturn({ token: prepared.handoff?.token });
+    }
     launchBrowserExternalPlayer({ href: prepared.launch.href });
     return true;
   },

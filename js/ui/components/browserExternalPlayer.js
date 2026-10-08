@@ -83,13 +83,13 @@ export function isTransferableExternalMediaUrl(value) {
   }
 }
 
-export function buildInfuseLaunchUrl({ mediaUrl, title = "", subtitleUrl = "", resumePositionSeconds = 0, externalReturnToken, externalReturnOrigin } = {}) {
+export function buildInfuseLaunchUrl({ mediaUrl, title = "", subtitleUrl = "", resumePositionSeconds = 0, externalReturnToken, externalReturnOrigin, externalReturnMethod = "" } = {}) {
   if (!isTransferableExternalMediaUrl(mediaUrl)) return "";
   const query = new URLSearchParams({ url: String(mediaUrl), position: String(Math.max(0, Math.floor(Number(resumePositionSeconds) || 0))) });
   if (String(title).trim()) query.set("filename", String(title).trim());
   if (isTransferableExternalMediaUrl(subtitleUrl)) query.set("sub", String(subtitleUrl));
   const callbacks = createExternalPlaybackCallbacks({
-    token: externalReturnToken, returnOrigin: externalReturnOrigin, provider: "infuse", outcomes: { success: "stopped", error: "stopped" }
+    token: externalReturnToken, returnOrigin: externalReturnOrigin, returnMethod: externalReturnMethod, provider: "infuse", outcomes: { success: "stopped", error: "stopped" }
   });
   if (callbacks?.success) {
     const success = new URL(callbacks.success);
@@ -104,7 +104,7 @@ export function buildInfuseLaunchUrl({ mediaUrl, title = "", subtitleUrl = "", r
   return `infuse://x-callback-url/play?${query.toString()}`;
 }
 
-export function buildLennaLaunchUrl({ mediaUrl, subtitleUrl = "", resumePositionSeconds = 0, externalReturnToken, externalReturnOrigin } = {}) {
+export function buildLennaLaunchUrl({ mediaUrl, subtitleUrl = "", resumePositionSeconds = 0, externalReturnToken, externalReturnOrigin, externalReturnMethod = "" } = {}) {
   if (!isTransferableExternalMediaUrl(mediaUrl)) return "";
   const query = new URLSearchParams({ url: String(mediaUrl) });
   if (isTransferableExternalMediaUrl(subtitleUrl)) query.set("sub", String(subtitleUrl));
@@ -112,7 +112,7 @@ export function buildLennaLaunchUrl({ mediaUrl, subtitleUrl = "", resumePosition
   // order explicit and use its documented integer-second resume input.
   query.set("position", String(Math.max(0, Math.floor(Number(resumePositionSeconds) || 0))));
   const callbacks = createExternalPlaybackCallbacks({
-    token: externalReturnToken, returnOrigin: externalReturnOrigin, provider: "lenna", outcomes: { success: "stopped", error: "stopped" }
+    token: externalReturnToken, returnOrigin: externalReturnOrigin, returnMethod: externalReturnMethod, provider: "lenna", outcomes: { success: "stopped", error: "stopped" }
   });
   if (callbacks?.success) {
     const success = new URL(callbacks.success);
@@ -134,11 +134,11 @@ export function buildIosVlcLaunchUrl({ mediaUrl, subtitleUrl = "" } = {}) {
   return `vlc-x-callback://x-callback-url/stream?${query.toString()}`;
 }
 
-function buildIosVlcReturnLaunchUrl({ mediaUrl, subtitleUrl = "", externalReturnToken, externalReturnOrigin } = {}) {
+function buildIosVlcReturnLaunchUrl({ mediaUrl, subtitleUrl = "", externalReturnToken, externalReturnOrigin, externalReturnMethod = "" } = {}) {
   const href = buildIosVlcLaunchUrl({ mediaUrl, subtitleUrl });
   if (!href) return "";
   const callbacks = createExternalPlaybackCallbacks({
-    token: externalReturnToken, returnOrigin: externalReturnOrigin, provider: "vlc", outcomes: { success: "stopped" }
+    token: externalReturnToken, returnOrigin: externalReturnOrigin, returnMethod: externalReturnMethod, provider: "vlc", outcomes: { success: "stopped" }
   });
   if (!callbacks?.success) return href;
   const query = new URL(href).searchParams;
@@ -157,9 +157,9 @@ export function buildAndroidVlcLaunchUrl({ mediaUrl } = {}) {
   return `intent://${path}#Intent;scheme=${parsed.protocol.slice(0, -1)};package=org.videolan.vlc;action=android.intent.action.VIEW;S.browser_fallback_url=${encodeURIComponent(ANDROID_VLC_STORE_URL)};end`;
 }
 
-export function buildOutplayerLaunchUrl({ mediaUrl, externalReturnToken, externalReturnOrigin, resumePositionSeconds = 0, knownDurationMs = 0 } = {}) {
+export function buildOutplayerLaunchUrl({ mediaUrl, externalReturnToken, externalReturnOrigin, externalReturnMethod = "", resumePositionSeconds = 0, knownDurationMs = 0 } = {}) {
   if (!isTransferableExternalMediaUrl(mediaUrl)) return "";
-  const callbacks = createOutplayerReturnCallbacks({ token: externalReturnToken, returnOrigin: externalReturnOrigin });
+  const callbacks = createOutplayerReturnCallbacks({ token: externalReturnToken, returnOrigin: externalReturnOrigin, returnMethod: externalReturnMethod });
   const query = new URLSearchParams({ url: String(mediaUrl) });
   if (callbacks?.success && callbacks?.cancel) {
     query.set("x-success", callbacks.success);
@@ -172,22 +172,22 @@ export function buildOutplayerLaunchUrl({ mediaUrl, externalReturnToken, externa
   return `outplayer://x-callback-url/play?${query.toString()}`;
 }
 
-export function buildBrowserExternalPlayerLaunch({ player, platform, mediaUrl, title, subtitleUrl, externalReturnToken, externalReturnOrigin, resumePositionSeconds = 0, knownDurationMs = 0 } = {}) {
+export function buildBrowserExternalPlayerLaunch({ player, platform, mediaUrl, title, subtitleUrl, externalReturnToken, externalReturnOrigin, externalReturnMethod = "", resumePositionSeconds = 0, knownDurationMs = 0 } = {}) {
   const selectedPlayer = normalizeBrowserExternalPlayer(player);
   if (!isTransferableExternalMediaUrl(mediaUrl) || selectedPlayer === EXTERNAL_PLAYER_IDS.DISABLED) {
     return null;
   }
   if (platform === "ios" && selectedPlayer === EXTERNAL_PLAYER_IDS.LENNA) {
-    return { href: buildLennaLaunchUrl({ mediaUrl, subtitleUrl, resumePositionSeconds, externalReturnToken, externalReturnOrigin }), storeUrl: IOS_APP_STORE_URLS.lenna };
+    return { href: buildLennaLaunchUrl({ mediaUrl, subtitleUrl, resumePositionSeconds, externalReturnToken, externalReturnOrigin, externalReturnMethod }), storeUrl: IOS_APP_STORE_URLS.lenna };
   }
   if (platform === "ios" && selectedPlayer === EXTERNAL_PLAYER_IDS.INFUSE) {
-    return { href: buildInfuseLaunchUrl({ mediaUrl, title, subtitleUrl, resumePositionSeconds, externalReturnToken, externalReturnOrigin }), storeUrl: IOS_APP_STORE_URLS.infuse };
+    return { href: buildInfuseLaunchUrl({ mediaUrl, title, subtitleUrl, resumePositionSeconds, externalReturnToken, externalReturnOrigin, externalReturnMethod }), storeUrl: IOS_APP_STORE_URLS.infuse };
   }
   if (platform === "ios" && selectedPlayer === EXTERNAL_PLAYER_IDS.VLC) {
-    return { href: buildIosVlcReturnLaunchUrl({ mediaUrl, subtitleUrl, externalReturnToken, externalReturnOrigin }), storeUrl: IOS_APP_STORE_URLS.vlc };
+    return { href: buildIosVlcReturnLaunchUrl({ mediaUrl, subtitleUrl, externalReturnToken, externalReturnOrigin, externalReturnMethod }), storeUrl: IOS_APP_STORE_URLS.vlc };
   }
   if (platform === "ios" && selectedPlayer === EXTERNAL_PLAYER_IDS.OUTPLAYER) {
-    const href = buildOutplayerLaunchUrl({ mediaUrl, externalReturnToken, externalReturnOrigin, resumePositionSeconds, knownDurationMs });
+    const href = buildOutplayerLaunchUrl({ mediaUrl, externalReturnToken, externalReturnOrigin, externalReturnMethod, resumePositionSeconds, knownDurationMs });
     return href ? { href, storeUrl: IOS_APP_STORE_URLS.outplayer } : null;
   }
   if (platform === "android" && selectedPlayer === EXTERNAL_PLAYER_IDS.VLC) {
@@ -215,6 +215,7 @@ export function prepareBrowserExternalPlaybackLaunch({
   knownDurationMs = 0,
   progressContext = null,
   progressMode = "automatic",
+  returnMethod = "",
   profileId = null,
   runtime = globalThis
 } = {}) {
@@ -242,6 +243,7 @@ export function prepareBrowserExternalPlaybackLaunch({
     subtitleUrl,
     externalReturnToken: handoff?.automatic ? handoff.token : null,
     externalReturnOrigin: handoff?.automatic ? handoff.returnOrigin : null,
+    externalReturnMethod: handoff?.automatic ? returnMethod : "",
     resumePositionSeconds,
     knownDurationMs: handoff?.automatic ? handoff.knownDurationMs : 0
   });

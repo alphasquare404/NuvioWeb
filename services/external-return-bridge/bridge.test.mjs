@@ -158,3 +158,67 @@ test("the callback page offers notifications only where they could have worked",
     assert.doesNotMatch(page, /class="offer"/);
   });
 });
+
+test("an Automation return sends no notification, makes no offer, and closes its own page", async () => {
+  const env = {
+    NUVIO_WEB_PUSH_PUBLIC_KEY: "public",
+    NUVIO_WEB_PUSH_PRIVATE_KEY: "private",
+    NUVIO_WEB_PUSH_SUBJECT: "https://nuvio.example"
+  };
+  const subscription = { endpoint: "https://push.example/e", keys: { p256dh: "p", auth: "a" } };
+
+  // A binding left over from before the person switched must not win: the flag
+  // on the report decides, or switching to an Automation would keep sending a
+  // notification for the rest of the binding's six hours.
+  let sent = 0;
+  await withBridge(
+    {
+      env,
+      sender: {
+        setVapidDetails() {},
+        async sendNotification() {
+          sent += 1;
+        }
+      }
+    },
+    async (baseUrl) => {
+      await fetch(`${baseUrl}/api/external-return/push/bind`, {
+        method: "POST",
+        body: JSON.stringify({ token: TOKEN, subscription })
+      });
+      const page = await (
+        await fetch(
+          `${baseUrl}/api/external-return/report/${TOKEN}?outcome=stopped&position=120&duration=300&return=automation`
+        )
+      ).text();
+      assert.equal(sent, 0, "no notification is sent for an Automation return");
+      assert.doesNotMatch(page, /class="offer"/, "no advert for a second way back");
+      assert.match(page, /window.close/, "the page left behind in Safari closes itself");
+      assert.match(page, /Shortcut is opening NuvioWeb/);
+    }
+  );
+
+  // The report itself is stored exactly as it would be otherwise: the flag
+  // changes what the relay says and sends, never what it keeps.
+  await withBridge({ env }, async (baseUrl) => {
+    await fetch(
+      `${baseUrl}/api/external-return/report/${TOKEN}?outcome=stopped&position=120&duration=300&return=automation`
+    );
+    const report = await (await fetch(`${baseUrl}/api/external-return/collect/${TOKEN}`)).json();
+    assert.equal(report.found, true);
+    assert.equal(report.position, 120);
+    assert.equal(report.outcome, "stopped");
+  });
+
+  // Any other value is not a flag. An unrecognised return mode must fall back
+  // to the ordinary page rather than silently suppressing the notification.
+  await withBridge({ env }, async (baseUrl) => {
+    const page = await (
+      await fetch(
+        `${baseUrl}/api/external-return/report/${TOKEN}?outcome=stopped&position=120&duration=300&return=something-else`
+      )
+    ).text();
+    assert.match(page, /class="offer"/);
+    assert.doesNotMatch(page, /window.close/);
+  });
+});

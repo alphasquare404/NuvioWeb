@@ -76,7 +76,14 @@ const DEFAULTS = {
   // providers once the network returns. Off until asked for: a reconnect is the
   // one moment when two devices can both hold viewing neither has seen, and
   // this is the least dependable part of sync, so nobody gets it by surprise.
-  syncOfflineProgress: false
+  syncOfflineProgress: false,
+  // Which assisted way back from an external player the person set up. Empty
+  // until they choose: an existing profile may already have a Push
+  // subscription, and that subscription is the only record the notification
+  // path has ever kept, so guessing a method here would overwrite an answer
+  // nobody gave. The subscription is never cancelled by this choice -- it is
+  // shared with every other notification the app may send.
+  externalReturnMethod: ""
 };
 
 const STREAM_AUTO_PLAY_MODES = ["MANUAL", "FIRST_STREAM", "REGEX_MATCH"];
@@ -164,6 +171,13 @@ function normalizeBrowserExternalPlayer(value) {
 
 function normalizeExternalPlayerProgress(value) {
   return String(value || "").trim().toLowerCase() === "manual" ? "manual" : "automatic";
+}
+
+const EXTERNAL_RETURN_METHODS = ["notification", "automation"];
+
+function normalizeExternalReturnMethod(value) {
+  const next = String(value || "").trim().toLowerCase();
+  return EXTERNAL_RETURN_METHODS.includes(next) ? next : "";
 }
 
 function normalizeHalfStep(value, min, max, fallback) {
@@ -329,6 +343,9 @@ export function normalizePlayerSettings(settings = {}) {
       persistentSettings.offlinePlaybackTarget ?? DEFAULTS.offlinePlaybackTarget
     ),
     syncOfflineProgress: persistentSettings.syncOfflineProgress === true,
+    externalReturnMethod: normalizeExternalReturnMethod(
+      persistentSettings.externalReturnMethod ?? DEFAULTS.externalReturnMethod
+    ),
     nextEpisodeThresholdMode: normalizeNextEpisodeThresholdMode(
       persistentSettings.nextEpisodeThresholdMode ?? DEFAULTS.nextEpisodeThresholdMode
     ),

@@ -7845,7 +7845,9 @@ html.desktop-browser {
 .desktop-browser .settings-shell .settings-dialog-option.focused,
 .desktop-browser .settings-shell .settings-dialog-option:focus-visible {
   transform: none;
-  border-color: var(--focus-color) !important;
+  border-color: rgb(var(--secondary-color-rgb) / 0.75) !important;
+  background: rgb(var(--secondary-color-rgb) / 0.26);
+  color: var(--text-color, #fff);
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.2);
   outline: none;
 }
@@ -15056,6 +15058,161 @@ body.desktop-browser {
   color: var(--text-secondary, rgba(255, 255, 255, 0.72));
   font-size: 14px;
   line-height: 1.45;
+}
+
+/* The chosen card opens into its own setup body: the notification button, or
+   the Shortcut automation guide. Scoped to #quickSetup because only the step
+   has cards -- the guide itself is styled below for both hosts. */
+.desktop-browser #quickSetup .quick-setup-option.has-detail {
+  flex-wrap: wrap;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-caption {
+  margin: 0 0 12px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-detail .quick-setup-figure + .quick-setup-figure {
+  margin-top: 12px;
+}
+
+.desktop-browser #quickSetup .quick-setup-option-detail {
+  flex: 1 0 100%;
+  min-width: 0;
+  padding: 0 16px 16px;
+}
+
+/* The Shortcut automation guide renders in two places: a Quick Setup card and
+   a Settings option dialog. These rules are deliberately not scoped to
+   either one. */
+.desktop-browser .automation-return-steps {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.desktop-browser .automation-return-steps li + li {
+  margin-top: 6px;
+}
+
+/* Step one is "add the Shortcut", so the button lives inside that step. */
+.desktop-browser .automation-return-get {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  margin: 10px 0 4px;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--secondary-color);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* The address a self-hosted deployment has to paste into its own Shortcut.
+   It wraps rather than overflowing: a long host must not push the card wide. */
+.desktop-browser .automation-return-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 4px;
+}
+
+.desktop-browser .automation-return-target-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-color, #fff);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.desktop-browser .automation-return-copy {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--secondary-color);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.desktop-browser .automation-return-tutorial-caption {
+  margin: 16px 0 10px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* The tutorial is a vertical Short, so the frame is given that shape rather
+   than letting a 16:9 box letterbox it into a stripe. */
+.desktop-browser .automation-return-video {
+  position: relative;
+  width: min(100%, 240px);
+  margin: 0 auto;
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #000;
+}
+
+.desktop-browser .automation-return-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.desktop-browser .automation-return-link {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--secondary-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.desktop-browser .automation-return-note {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid rgb(var(--secondary-color-rgb) / 0.3);
+  border-radius: 12px;
+  background: rgb(var(--secondary-color-rgb) / 0.1);
+  color: var(--text-color, #fff);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* The guide is taller than an option list, so the dialog scrolls instead of
+   growing past the viewport. */
+.desktop-browser .settings-automation-return-dialog .automation-return-guide {
+  max-height: min(58vh, 460px);
+  overflow-y: auto;
 }
 
 .desktop-browser #quickSetup .quick-setup-status.is-done {

@@ -95,6 +95,32 @@ subscription is unavailable, or delivery fails, normal NuvioWeb usage and
 external playback still work. The callback/manual Home Screen return path stays
 available; only the notification-based return convenience is unavailable.
 
+### Return to NuvioWeb by Shortcuts Automation (optional, iPhone)
+
+On iPhone and iPad an alternative to the notification above is a Shortcuts
+Automation: it runs when the external player closes and opens NuvioWeb, so
+progress is collected without anything to tap. It needs no relay, no keys and
+no subscription.
+
+The Shortcut itself is two actions — Open URL, pointing at
+`webapp://<your host>/`, the scheme that opens a web app already added to the
+Home Screen on iOS 16.4 and later. **A Shortcut therefore carries the address
+it opens**, so a Shortcut published for one deployment opens that deployment
+on anyone's phone.
+
+| Variable | Required | Visibility | Default | Purpose and empty behavior |
+| --- | --- | --- | --- | --- |
+| `AUTOMATION_SHORTCUT_URL` | Optional | Browser-public | Empty | An iCloud link to a Shortcut you published **for your own domain**. When set, iPhone users get a one-tap Add the Shortcut button. Empty shows them the address for this deployment and how to paste it into a new Shortcut, which always works. |
+
+Leave it empty unless you published your own. Never copy another deployment's
+link: your users would install a Shortcut that opens someone else's instance.
+
+To publish one: build a Shortcut with a single Open URL action set to
+`webapp://<your host>/`, then Share it and choose Copy iCloud Link.
+
+The option is offered only on iOS, and only once NuvioWeb is installed to the
+Home Screen — the Shortcut has nothing to open until then.
+
 ### Optional integrations
 
 | Variable               | Required | Visibility      | Default                     | Purpose and empty behavior                                                                                                                                                                    |
