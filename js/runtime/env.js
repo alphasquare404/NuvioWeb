@@ -54,6 +54,10 @@
       typeof existing.SIMKL_APP_NAME === "undefined" || !String(existing.SIMKL_APP_NAME).trim()
         ? "nuvio"
         : existing.SIMKL_APP_NAME,
+    AUTOMATION_SHORTCUT_URL:
+      typeof existing.AUTOMATION_SHORTCUT_URL === "undefined"
+        ? ""
+        : existing.AUTOMATION_SHORTCUT_URL,
     PREMIUMIZE_CLIENT_ID:
       typeof existing.PREMIUMIZE_CLIENT_ID === "undefined" ? "" : existing.PREMIUMIZE_CLIENT_ID
   };

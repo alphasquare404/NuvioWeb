@@ -60,7 +60,15 @@ import {
   OFFLINE_PLAYBACK_TARGETS,
   normalizeOfflinePlaybackTarget
 } from "../../../core/offline/offlineHandoffPolicy.js";
-import { enableBrowserPushReturn, disableBrowserPushReturn, getBrowserPushReturnState } from "../../components/browserPushReturn.js";
+import { enableBrowserPushReturn, getBrowserPushReturnState } from "../../components/browserPushReturn.js";
+import {
+  copyAutomationShortcutTarget,
+  getAutomationReturnAvailability,
+  openAutomationShortcut,
+  openAutomationTutorial,
+  renderAutomationReturnGuide
+} from "../../components/browserAutomationReturn.js";
+import { selectReturnMethodsOffered } from "../onboarding/quickSetupSteps.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import {
   copyDeviceAuthorizationCode,
@@ -2901,6 +2909,16 @@ export const SettingsScreen = {
         </div>
       </article>
     `;
+  },
+
+  showReturnNotificationsBlocked() {
+    this.openOptionDialog({
+      title: "Notifications are blocked",
+      message:
+        "Your device is blocking notifications for Nuvio, and a browser only asks once, so this cannot be undone from here.\n\nOpen your device settings, find Nuvio under Notifications, allow them, then choose this again.",
+      options: [{ id: "close", label: t("common_close", {}, "Close") }],
+      returnFocusKey: "playback:returnMethod"
+    });
   },
 
   openOptionDialog({
@@ -6556,21 +6574,104 @@ export const SettingsScreen = {
           ],
           selectedId: PlayerSettingsStore.get().externalPlayerProgress || "automatic",
           returnFocusKey: "playback:externalPlayerProgress",
-          onSelect: (option) => PlayerSettingsStore.set({ externalPlayerProgress: option.id })
+          onSelect: (option) => {
+            PlayerSettingsStore.set({ externalPlayerProgress: option.id });
+            // Manual reporting sends no callback, so a recorded notification
+            // could never fire again. Leaving it on the row would be a setting
+            // that reads as working.
+            if (
+              option.id === "manual" &&
+              PlayerSettingsStore.get().externalReturnMethod === "notification"
+            ) {
+              PlayerSettingsStore.set({ externalReturnMethod: "" });
+              this.showToast?.("Return notifications need automatic reporting, so that choice was cleared.");
+            }
+          }
         });
       });
-      this.actionMap.set("playback:pushReturn", async () => {
-        try {
-          const result = await enableBrowserPushReturn();
-          this.pushReturnState = (await getBrowserPushReturnState()).state;
-          if (result.state === "enabled") this.showToast?.("Return notifications enabled.");
-          if (result.diagnostic) this.showToast?.("Could not enable return notifications.");
-        } catch (error) {
-          this.showToast?.("Could not enable return notifications.");
-        }
-        this.render();
+      this.actionMap.set("playback:returnMethod", () => {
+        const offered = selectReturnMethodsOffered({
+          pushState: this.pushReturnState,
+          automationAvailability: getAutomationReturnAvailability(),
+          progressMode: PlayerSettingsStore.get().externalPlayerProgress
+        });
+        const options = [
+          ...(offered.includes("automation")
+            ? [{ id: "automation", label: "A Shortcut automation" }]
+            : []),
+          ...(offered.includes("notification") ? [{ id: "notification", label: "A notification" }] : []),
+          { id: "", label: "Neither" }
+        ];
+        this.openOptionDialog({
+          title: "Return to NuvioWeb",
+          message:
+            "An Automation needs no notification, so Nuvio stops asking for one. Your notifications stay switched on either way.\n\nEither way, closing the player opens a page in your default browser confirming your progress arrived. It closes itself a moment later, and only stays open if something went wrong.",
+          options,
+          selectedId: PlayerSettingsStore.get().externalReturnMethod,
+          returnFocusKey: "playback:returnMethod",
+          // Returning false keeps this dialog's own close from running, which
+          // would take the guidance dialog down with it the moment it opened.
+          onSelect: async (option) => {
+            PlayerSettingsStore.set({ externalReturnMethod: option.id });
+            if (option.id !== "notification") return undefined;
+            // Picking the notification is also asking for it: leaving the
+            // person to find a second row to turn it on would record a way
+            // back that does not work yet.
+            if (this.pushReturnState === "blocked") {
+              this.showReturnNotificationsBlocked();
+              return false;
+            }
+            if (this.pushReturnState === "not-enabled") {
+              try {
+                const result = await enableBrowserPushReturn();
+                this.pushReturnState = (await getBrowserPushReturnState()).state;
+                // A refusal lands here as "blocked", and the browser will not
+                // ask again for this origin, so the only thing left to say is
+                // where to undo it.
+                if (this.pushReturnState === "blocked") {
+                  this.showReturnNotificationsBlocked();
+                  return false;
+                }
+                if (result.diagnostic) {
+                  this.showToast?.("Could not enable return notifications.");
+                }
+              } catch {
+                this.showToast?.("Could not enable return notifications.");
+              }
+            }
+            return undefined;
+          }
+        });
       });
-      this.actionMap.set("playback:pushReturnDisable", async () => { await disableBrowserPushReturn(); this.pushReturnState = (await getBrowserPushReturnState()).state; this.render(); });
+      this.actionMap.set("playback:returnNotificationsBlocked", () => {
+        this.showReturnNotificationsBlocked();
+      });
+      this.actionMap.set("playback:automationSetup", () => {
+        this.openOptionDialog({
+          title: "Shortcut automation",
+          messageHtml: renderAutomationReturnGuide(),
+          options: [{ id: "close", label: t("common_close", {}, "Close") }],
+          returnFocusKey: "playback:automationSetup",
+          dialogClassName: "settings-automation-return-dialog",
+          onRender: (dialogSlot) => {
+            // The guide is markup only, so the dialog wires its own buttons.
+            dialogSlot.querySelectorAll?.("[data-action]")?.forEach?.((node) => {
+              node.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const action = node.dataset.action;
+                if (action === "addReturnShortcut") openAutomationShortcut();
+                if (action === "openReturnTutorial") openAutomationTutorial();
+                if (action === "copyReturnShortcutTarget") {
+                  void copyAutomationShortcutTarget().then((copied) => {
+                    node.textContent = copied ? "Copied" : "Copy";
+                  });
+                }
+              });
+            });
+          }
+        });
+      });
     }
     this.actionMap.set("playback:nextEpisodeThresholdMode", () => {
       this.openOptionDialog({
@@ -7074,7 +7175,6 @@ export const SettingsScreen = {
               })()
             : ""
         }
-        ${isDesktopBrowser ? this.renderActionRow({ focusKey: this.pushReturnState === "enabled" ? "playback:pushReturnDisable" : "playback:pushReturn", title: "Return to NuvioWeb", subtitle: "Get a notification after external playback so you can quickly return to the NuvioWeb app.", value: ({ enabled: "Enabled", "not-enabled": "Not enabled", blocked: "Blocked", unavailable: "Unavailable", "server-not-configured": "Server not configured", checking: "Checking…" })[this.pushReturnState] || "Unavailable", classes: "settings-playback-external-player-row" }) : ""}
         ${
           isDesktopBrowser
             ? this.renderActionRow({
@@ -7082,6 +7182,34 @@ export const SettingsScreen = {
                 title: "External Player Progress",
                 subtitle: "Choose automatic callbacks where supported or always report playback manually.",
                 value: model.player.externalPlayerProgress === "manual" ? "Always ask manually" : "Automatic when supported",
+                classes: "settings-playback-external-player-row"
+              })
+            : ""
+        }
+        ${
+          isDesktopBrowser
+            ? this.renderActionRow({
+                focusKey: "playback:returnMethod",
+                title: "Return to NuvioWeb",
+                subtitle:
+                  "Choose whether a notification or an iOS Shortcut automation brings you back after external playback.",
+                value: ({
+                  notification: "A notification",
+                  automation: "A Shortcut automation"
+                })[model.player.externalReturnMethod] || "Not chosen",
+                classes: "settings-playback-external-player-row"
+              })
+            : ""
+        }
+        ${
+          isDesktopBrowser &&
+          model.player.externalReturnMethod === "automation" &&
+          getAutomationReturnAvailability() !== "unsupported"
+            ? this.renderActionRow({
+                focusKey: "playback:automationSetup",
+                title: "Shortcut automation",
+                subtitle:
+                  "Add the Shortcut, set the automation to run when your player closes, and watch the walkthrough.",
                 classes: "settings-playback-external-player-row"
               })
             : ""

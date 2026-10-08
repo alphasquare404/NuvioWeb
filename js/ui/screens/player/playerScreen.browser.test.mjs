@@ -118,17 +118,24 @@ test("manual external playback uses a valid non-wrapping time row and responsive
   );
 });
 
-test("Player external launches bind the optional Push return subscription before handoff", async () => {
+test("Player external launches bind the optional Push return subscription unless an Automation already returns the person", async () => {
   const source = await readFile(playerScreenUrl, "utf8");
 
   assert.match(
     source,
     /import \{ bindBrowserPushReturn \} from "\.\.\/\.\.\/components\/browserPushReturn\.js";/
   );
+  // The binding is skipped for an Automation, which already brings the person
+  // back, so a notification would arrive for an app they are looking at. The
+  // launch stays outside the branch: nothing about the chosen way back may
+  // decide whether playback starts.
   assert.match(
     source,
-    /await bindBrowserPushReturn\(\{ token: prepared\.handoff\?\.token \}\);\s*launchBrowserExternalPlayer\(\{ href: prepared\.launch\.href \}\);/
+    /if \(returnMethod !== "automation"\) \{\s*await bindBrowserPushReturn\(\{ token: prepared\.handoff\?\.token \}\);\s*\}\s*launchBrowserExternalPlayer\(\{ href: prepared\.launch\.href \}\);/
   );
+  // Choosing an Automation must never cancel the subscription: it carries
+  // every other notification the app sends.
+  assert.doesNotMatch(source, /disableBrowserPushReturn/);
 });
 
 

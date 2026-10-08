@@ -49,6 +49,11 @@ export const TMDB_API_KEY = String(runtimeEnv.TMDB_API_KEY || "").trim();
 export const TRAKT_CLIENT_ID = String(runtimeEnv.TRAKT_CLIENT_ID || "").trim();
 export const TRAKT_API_URL = "https://api.trakt.tv/";
 export const SIMKL_CLIENT_ID = String(runtimeEnv.SIMKL_CLIENT_ID || "").trim();
+// A ready-made iCloud Shortcut for this deployment. Empty on purpose: a
+// Shortcut carries the domain it opens, so one deployment's link would send
+// another deployment's users to the wrong instance. Empty means the app shows
+// how to build the Shortcut instead.
+export const AUTOMATION_SHORTCUT_URL = String(runtimeEnv.AUTOMATION_SHORTCUT_URL || "").trim();
 export const SIMKL_API_URL = "https://api.simkl.com";
 export const SIMKL_APP_NAME = String(runtimeEnv.SIMKL_APP_NAME || "nuvio").trim() || "nuvio";
 export const PREMIUMIZE_CLIENT_ID = String(runtimeEnv.PREMIUMIZE_CLIENT_ID || "").trim();

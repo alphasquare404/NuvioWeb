@@ -61,10 +61,11 @@ export function createOutplayerReturnToken(runtime = globalThis) {
   return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-export function createOutplayerReturnCallbacks({ token, returnOrigin } = {}) {
+export function createOutplayerReturnCallbacks({ token, returnOrigin, returnMethod = "" } = {}) {
   const callbacks = createExternalPlaybackCallbacks({
     token,
     returnOrigin,
+    returnMethod,
     provider: "outplayer",
     // Outplayer has proven this callback envelope on physical devices. The
     // source outcome carries the explicit-finish semantic; no position or
@@ -77,10 +78,15 @@ export function createOutplayerReturnCallbacks({ token, returnOrigin } = {}) {
   return { ...callbacks, success: success.href };
 }
 
+// returnMethod rides along to the relay rather than staying a client secret:
+// the relay decides whether to send a notification and whether its own page
+// closes itself, and it has nothing else to go on. A relay that predates this
+// ignores the parameter and behaves as it does today for anyone unsubscribed.
 export function createExternalPlaybackCallbacks({
   token,
   returnOrigin,
   provider,
+  returnMethod = "",
   outcomes = {}
 } = {}) {
   if (!isValidExternalPlaybackToken(token) || !String(returnOrigin || "").startsWith("https://"))
@@ -90,6 +96,7 @@ export function createExternalPlaybackCallbacks({
     const url = new URL(reportUrl);
     url.searchParams.set("outcome", outcome);
     if (provider) url.searchParams.set("provider", provider);
+    if (returnMethod === "automation") url.searchParams.set("return", "automation");
     return url.href;
   };
   return Object.fromEntries(

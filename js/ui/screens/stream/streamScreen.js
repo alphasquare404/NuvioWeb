@@ -2651,6 +2651,7 @@ export const StreamScreen = {
         Number(context.resumeDurationMs || 0) ||
         Math.max(0, Number(this.params?.runtime || this.params?.runtimeMinutes || 0)) * 60_000,
       progressMode: PlayerSettingsStore.get().externalPlayerProgress,
+      returnMethod: PlayerSettingsStore.get().externalReturnMethod,
       progressContext: {
         itemId: this.params?.itemId || null,
         itemType: itemType || "movie",
@@ -2667,7 +2668,14 @@ export const StreamScreen = {
     if (!prepared?.launch?.href) return false;
     // Optional return convenience only: never allow binding failure to alter
     // the already-verified external-player launch path.
-    await bindBrowserPushReturn({ token: prepared.handoff?.token });
+    // An Automation already brings the person back, so asking the relay for a
+    // notification too would arrive for an app they are already looking at.
+    // The subscription itself is left alone: it carries every other
+    // notification the app sends, so cancelling it here would cost more than
+    // this one message is worth.
+    if (PlayerSettingsStore.get().externalReturnMethod !== "automation") {
+      await bindBrowserPushReturn({ token: prepared.handoff?.token });
+    }
     launchBrowserExternalPlayer({ href: prepared.launch.href });
     return true;
   },

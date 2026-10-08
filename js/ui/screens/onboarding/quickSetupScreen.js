@@ -28,6 +28,14 @@ import {
   enableBrowserPushReturn,
   getBrowserPushReturnState
 } from "../../components/browserPushReturn.js";
+import {
+  copyAutomationShortcutTarget,
+  getAutomationReturnAvailability,
+  openAutomationShortcut,
+  openAutomationTutorial,
+  renderAutomationReturnGuide
+} from "../../components/browserAutomationReturn.js";
+import { selectQuickSetupSteps, selectReturnMethodsOffered } from "./quickSetupSteps.js";
 
 function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
@@ -83,9 +91,12 @@ export const QuickSetupScreen = {
     this.player = offered.includes(stored) ? stored : offered[0] || "disabled";
     this.progressMode = settings.externalPlayerProgress === "manual" ? "manual" : "automatic";
     this.offlineSync = settings.syncOfflineProgress === true;
+    this.returnMethod = settings.externalReturnMethod;
     this.initialPlayer = this.player;
     this.initialProgressMode = this.progressMode;
     this.initialOfflineSync = this.offlineSync;
+    this.initialReturnMethod = this.returnMethod;
+    this.automationAvailability = getAutomationReturnAvailability();
 
     // Asking about a notification the browser cannot deliver is a step that
     // wastes the one thing this flow is spending: attention.
@@ -102,15 +113,22 @@ export const QuickSetupScreen = {
   // sense once a player that can report progress has been chosen, and the
   // notification question only where notifications are possible at all.
   steps() {
-    const steps = ["player"];
-    if (getBrowserExternalPlayerCapabilities(this.player).automaticProgress) {
-      steps.push("progress");
-    }
-    if (["not-enabled", "enabled", "blocked"].includes(this.pushState?.state)) {
-      steps.push("notifications");
-    }
-    steps.push("offlineSync");
-    return steps;
+    const capabilities = getBrowserExternalPlayerCapabilities(this.player);
+    return selectQuickSetupSteps({
+      callbackMode: capabilities.callbackMode,
+      automaticProgress: capabilities.automaticProgress,
+      pushState: this.pushState?.state,
+      automationAvailability: this.automationAvailability,
+      progressMode: this.progressMode
+    });
+  },
+
+  returnMethodsOffered() {
+    return selectReturnMethodsOffered({
+      pushState: this.pushState?.state,
+      automationAvailability: this.automationAvailability,
+      progressMode: this.progressMode
+    });
   },
 
   currentStep() {
@@ -170,7 +188,7 @@ export const QuickSetupScreen = {
   renderStep(step) {
     if (step === "offlineSync") return this.renderOfflineSyncStep();
     if (step === "progress") return this.renderProgressStep();
-    if (step === "notifications") return this.renderNotificationsStep();
+    if (step === "return") return this.renderReturnStep();
     return this.renderPlayerStep();
   },
 
@@ -231,6 +249,17 @@ export const QuickSetupScreen = {
       <div class="quick-setup-options">${cards}</div>`;
   },
 
+  // A figure belongs to the answer it illustrates, so each one lives inside its
+  // own card rather than above both, where it looked like it described the
+  // question.
+  renderFigure({ src, alt, caption = "" }) {
+    return `
+      <figure class="quick-setup-figure">
+        <img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" />
+        ${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}
+      </figure>`;
+  },
+
   renderProgressStep() {
     const modes = [
       {
@@ -239,9 +268,22 @@ export const QuickSetupScreen = {
         body: t(
           "quick_setup_progress_automatic_body",
           {},
-          "The player reports where you stopped, and Nuvio picks it up when you come back."
+          "The external player reports where you stopped, and Nuvio picks it up when you come back."
         ),
-        recommended: true
+        recommended: true,
+        detail: this.renderFigure({
+          src: "assets/images/quick-setup-external-player-close.jpg",
+          alt: t(
+            "quick_setup_progress_image_alt",
+            {},
+            "The Close button in the external player's control bar"
+          ),
+          caption: t(
+            "quick_setup_progress_close_warning",
+            {},
+            "Close the external player with this button when you finish watching. Swiping it away from the app switcher sends nothing back, and you will have to enter your progress by hand."
+          )
+        })
       },
       {
         id: "manual",
@@ -251,17 +293,42 @@ export const QuickSetupScreen = {
           {},
           "Nuvio asks you where you stopped each time."
         ),
-        recommended: false
+        recommended: false,
+        detail: `
+          <p class="quick-setup-option-caption">${escapeHtml(
+            t(
+              "quick_setup_progress_manual_caption",
+              {},
+              "Coming back from the external player, Nuvio asks how it went. Setting a position opens a second prompt where you type it in."
+            )
+          )}</p>
+          ${this.renderFigure({
+            src: "assets/images/quick-setup-manual-outcome.jpg",
+            alt: t(
+              "quick_setup_progress_manual_outcome_alt",
+              {},
+              "The prompt asking how your playback went, with Keep current progress, Set playback position and Mark as finished"
+            )
+          })}
+          ${this.renderFigure({
+            src: "assets/images/quick-setup-manual-position.jpg",
+            alt: t(
+              "quick_setup_progress_manual_position_alt",
+              {},
+              "The prompt for typing a playback position in hours, minutes and seconds"
+            )
+          })}`
       }
     ];
 
     const cards = modes
-      .map(
-        (mode) => `
-        <div class="quick-setup-option${mode.id === this.progressMode ? " is-selected" : ""}">
+      .map((mode) => {
+        const selected = mode.id === this.progressMode;
+        return `
+        <div class="quick-setup-option${selected ? " is-selected has-detail" : ""}">
           <button class="quick-setup-option-choose focusable" type="button"
                   data-action="chooseProgress" data-mode="${escapeHtml(mode.id)}"
-                  aria-pressed="${mode.id === this.progressMode ? "true" : "false"}">
+                  aria-pressed="${selected ? "true" : "false"}">
             <span class="quick-setup-option-label">${escapeHtml(mode.label)}</span>
             ${
               mode.recommended
@@ -270,8 +337,9 @@ export const QuickSetupScreen = {
             }
             <span class="quick-setup-option-body">${escapeHtml(mode.body)}</span>
           </button>
-        </div>`
-      )
+          ${selected ? `<div class="quick-setup-option-detail">${mode.detail}</div>` : ""}
+        </div>`;
+      })
       .join("");
 
     return `
@@ -280,26 +348,9 @@ export const QuickSetupScreen = {
         t(
           "quick_setup_progress_body",
           {},
-          "Automatic only works if you leave the player by its own Close button."
+          "Automatic only works if you leave the external player by its own Close button."
         )
       )}</p>
-      <figure class="quick-setup-figure">
-        <img src="assets/images/quick-setup-external-player-close.jpg"
-             alt="${escapeHtml(
-               t(
-                 "quick_setup_progress_image_alt",
-                 {},
-                 "The Close button in the external player's control bar"
-               )
-             )}" />
-        <figcaption>${escapeHtml(
-          t(
-            "quick_setup_progress_close_warning",
-            {},
-            "Close the player with this button when you finish watching. Swiping it away from the app switcher sends nothing back, and you will have to enter your progress by hand."
-          )
-        )}</figcaption>
-      </figure>
       <div class="quick-setup-options">${cards}</div>`;
   },
 
@@ -380,39 +431,119 @@ export const QuickSetupScreen = {
       <div class="quick-setup-options">${cards}</div>`;
   },
 
-  renderNotificationsStep() {
+  // The notification body, kept exactly as it was: the browser offers its
+  // permission once per origin, and a refusal stands until the person undoes it
+  // in site settings, so asking again would be a button that does nothing.
+  renderNotificationBody() {
     const state = this.pushState?.state;
-    let action = "";
     if (state === "enabled") {
-      action = `<p class="quick-setup-status is-done">${escapeHtml(
+      return `<p class="quick-setup-status is-done">${escapeHtml(
         t("quick_setup_notifications_enabled", {}, "Notifications are on.")
       )}</p>`;
-    } else if (state === "blocked") {
-      // Asking again does nothing: the browser only offers once per origin, and
-      // a refusal stands until the person changes it in site settings.
-      action = `<p class="quick-setup-status">${escapeHtml(
+    }
+    if (state === "blocked") {
+      return `<p class="quick-setup-status">${escapeHtml(
         t(
           "quick_setup_notifications_blocked",
           {},
           "Notifications are blocked for Nuvio. You can turn them back on in your browser's site settings."
         )
       )}</p>`;
-    } else {
-      action = `<button class="quick-setup-enable focusable" type="button" data-action="enableNotifications">${escapeHtml(
-        t("quick_setup_notifications_enable", {}, "Enable notifications")
-      )}</button>`;
+    }
+    return `<button class="quick-setup-enable focusable" type="button" data-action="enableNotifications">${escapeHtml(
+      t("quick_setup_notifications_enable", {}, "Enable notifications")
+    )}</button>`;
+  },
+
+  renderReturnStep() {
+    const offered = this.returnMethodsOffered();
+    const modes = [];
+    // The Automation goes first where it exists: it is the recommendation, and
+    // on iOS it is also the one that works without a relay or a permission.
+    if (offered.includes("automation")) {
+      const needsInstall = this.automationAvailability === "needs-install";
+      modes.push({
+        id: "automation",
+        label: t("quick_setup_return_automation", {}, "A Shortcut automation"),
+        body: t(
+          "quick_setup_return_automation_body",
+          {},
+          "iOS opens Nuvio by itself the moment you close the player. Nothing to tap, and no notification."
+        ),
+        badge: needsInstall
+          ? t("quick_setup_return_needs_install_badge", {}, "Needs installing")
+          : t("quick_setup_return_recommended", {}, "Recommended on iPhone"),
+        // A recommendation wears the accent the person chose in Appearance, the
+        // way the player step's does. Only the unmet precondition stays grey.
+        badgeNeutral: needsInstall,
+        detail: renderAutomationReturnGuide({ availability: this.automationAvailability })
+      });
+    }
+    if (offered.includes("notification")) {
+      modes.push({
+        id: "notification",
+        label: t("quick_setup_return_notification", {}, "A notification"),
+        body: t(
+          "quick_setup_return_notification_body",
+          {},
+          "Nuvio sends one notification when the player reports back. Tapping it brings you straight here."
+        ),
+        detail: `${this.renderFigure({
+          src: "assets/images/quick-setup-return-notification.jpg",
+          alt: t(
+            "quick_setup_return_notification_image_alt",
+            {},
+            "A NuvioWeb notification saying playback was updated, with a prompt to tap it to return"
+          )
+        })}${this.renderNotificationBody()}`
+      });
     }
 
+    const cards = modes
+      .map((mode) => {
+        const selected = mode.id === this.returnMethod;
+        return `
+        <div class="quick-setup-option${selected ? " is-selected has-detail" : ""}">
+          <button class="quick-setup-option-choose focusable" type="button"
+                  data-action="chooseReturnMethod" data-mode="${escapeHtml(mode.id)}"
+                  aria-pressed="${selected ? "true" : "false"}">
+            <span class="quick-setup-option-label">${escapeHtml(mode.label)}</span>
+            ${
+              mode.badge
+                ? `<span class="quick-setup-badge${mode.badgeNeutral ? " is-neutral" : ""}">${escapeHtml(mode.badge)}</span>`
+                : ""
+            }
+            <span class="quick-setup-option-body">${escapeHtml(mode.body)}</span>
+          </button>
+          ${selected ? `<div class="quick-setup-option-detail">${mode.detail}</div>` : ""}
+        </div>`;
+      })
+      .join("");
+
+    const body =
+      modes.length > 1
+        ? t(
+            "quick_setup_return_body",
+            {},
+            "An external player leaves you in the player. Nuvio can bring you back one of two ways — pick the one you will actually set up."
+          )
+        : t(
+            "quick_setup_return_body_single",
+            {},
+            "An external player leaves you in the player. This is the way back this device can offer."
+          );
+
     return `
-      <h1>${escapeHtml(t("quick_setup_notifications_title", {}, "One tap back"))}</h1>
-      <p>${escapeHtml(
+      <h1>${escapeHtml(t("quick_setup_return_title", {}, "Getting back here"))}</h1>
+      <p>${escapeHtml(body)}</p>
+      <p class="quick-setup-note">${escapeHtml(
         t(
-          "quick_setup_notifications_body",
+          "quick_setup_return_callback_note",
           {},
-          "When you finish in the external player, Nuvio sends one notification. Tapping it brings you straight back, instead of hunting for the app yourself."
+          "Either way, closing the player opens a page in your default browser confirming your progress arrived. It closes itself a moment later and needs nothing from you. It only stays open if something went wrong, and then it says what."
         )
       )}</p>
-      ${action}`;
+      <div class="quick-setup-options">${cards}</div>`;
   },
 
   async onClick(event) {
@@ -436,12 +567,37 @@ export const QuickSetupScreen = {
     }
     if (action === "chooseProgress") {
       this.progressMode = node.dataset.mode === "manual" ? "manual" : "automatic";
+      if (this.progressMode === "manual" && this.returnMethod === "notification") {
+        this.returnMethod = "";
+      }
       this.render();
       return;
     }
     if (action === "chooseOfflineSync") {
       this.offlineSync = node.dataset.mode === "on";
       this.render();
+      return;
+    }
+    if (action === "chooseReturnMethod") {
+      this.returnMethod = node.dataset.mode === "automation" ? "automation" : "notification";
+      this.render();
+      return;
+    }
+    if (action === "addReturnShortcut") {
+      openAutomationShortcut();
+      return;
+    }
+    if (action === "copyReturnShortcutTarget") {
+      // The address stays on screen, so a clipboard the browser will not give
+      // us costs a tap rather than the step.
+      const copied = await copyAutomationShortcutTarget();
+      node.textContent = copied
+        ? t("automation_return_copied", {}, "Copied")
+        : t("automation_return_copy_address", {}, "Copy");
+      return;
+    }
+    if (action === "openReturnTutorial") {
+      openAutomationTutorial();
       return;
     }
     if (action === "enableNotifications") {
@@ -486,6 +642,10 @@ export const QuickSetupScreen = {
     if (step === "offlineSync" && this.offlineSync !== this.initialOfflineSync) {
       PlayerSettingsStore.set({ syncOfflineProgress: this.offlineSync });
       this.initialOfflineSync = this.offlineSync;
+    }
+    if (step === "return" && this.returnMethod !== this.initialReturnMethod) {
+      PlayerSettingsStore.set({ externalReturnMethod: this.returnMethod });
+      this.initialReturnMethod = this.returnMethod;
     }
   },
 
