@@ -9,14 +9,20 @@ import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js"
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
 import {
   selectAutoPlayStream,
-  isAutoPlayEffectivelyEnabled
+  isAutoPlayEffectivelyEnabled,
+  collectInstalledAddonNames,
+  resolvePreferredBingeGroup
 } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   orderSourceNames,
   orderStreamsByAddonOrder
 } from "../../../core/streams/streamOrdering.js";
 import { buildStreamResumeIdentity } from "../../../core/streams/streamResumeIdentity.js";
-import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
+import {
+  flattenStreams,
+  mergeStreamItems,
+  streamMergeKey
+} from "../../../core/streams/streamList.js";
 import {
   DirectDebridStreamPreparer,
   directDebridPreparationKey
@@ -50,6 +56,8 @@ import {
   renderBrowserSourceCardContent
 } from "../../components/browserStreamSourceCard.js";
 import { resolveBrowserStreamCardClickAction } from "../../components/browserStreamCardClick.js";
+import { renderRouteHandoffShell } from "../../components/routeHandoffShell.js";
+import { resolveHandoffReturnRoute } from "../../../core/streams/streamAutoResolve.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import {
@@ -98,6 +106,13 @@ import {
 } from "../../../core/offline/browserOfflineDownloadQueue.js";
 
 const STREAM_BADGE_LIMIT = 9;
+
+// How long to keep the waiting screen up while an external player is asked to
+// open, before concluding that nothing is coming. Generous on purpose: iOS can
+// put a "Open in...?" confirmation in front of the launch, and the page is
+// still visible the whole time that sits there. Treating that as a failure
+// would restore the picker underneath the dialog.
+const EXTERNAL_HANDOFF_GRACE_MS = 4000;
 // Number of rows on each side of the focused source to keep badge-hydrated.
 // Windowing by row index (instead of measuring every card) keeps a single
 // focus move O(1) in layout reads on TV browsers, where measuring every card
@@ -180,89 +195,6 @@ function detectQuality(text = "") {
   return "Auto";
 }
 
-function isMagnetUrl(value = "") {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .startsWith("magnet:");
-}
-
-function streamDebridIdentity(item = {}) {
-  const resolve = item.clientResolve || item.raw?.clientResolve || {};
-  const behaviorHints = item.behaviorHints || item.raw?.behaviorHints || {};
-  const infoHash = item.infoHash || item.raw?.infoHash || resolve.infoHash || "";
-  const magnetUri =
-    resolve.magnetUri ||
-    (isMagnetUrl(item.url) ? item.url : "") ||
-    (isMagnetUrl(item.externalUrl) ? item.externalUrl : "");
-  const hasDebridMarker = Boolean(
-    item.clientResolve ||
-    item.raw?.clientResolve ||
-    item.debridCacheStatus ||
-    item.raw?.debridCacheStatus ||
-    infoHash ||
-    magnetUri
-  );
-  if (!hasDebridMarker) {
-    return "";
-  }
-  const locator = infoHash || magnetUri || item.url || item.externalUrl || item.ytId || "";
-  if (!locator) {
-    return "";
-  }
-  return [
-    String(item.addonName || "Addon"),
-    String(
-      resolve.service ||
-        item.debridCacheStatus?.providerId ||
-        item.raw?.debridCacheStatus?.providerId ||
-        ""
-    ),
-    String(locator),
-    String(resolve.fileIdx ?? item.fileIdx ?? item.raw?.fileIdx ?? ""),
-    String(behaviorHints.filename || resolve.filename || ""),
-    String(resolve.torrentName || "")
-  ].join("::");
-}
-
-function streamMergeKey(item = {}) {
-  const debridIdentity = streamDebridIdentity(item);
-  if (debridIdentity) {
-    return `debrid::${debridIdentity}`;
-  }
-  const locator = item.url || item.externalUrl || item.ytId || "";
-  if (!locator) {
-    return "";
-  }
-  return [
-    String(item.addonName || "Addon"),
-    String(locator),
-    String(item.sourceType || ""),
-    String(item.fileIdx ?? ""),
-    String(item.behaviorHints?.filename || "")
-  ].join("::");
-}
-
-function mergeStreamItem(previous = {}, next = {}) {
-  const behaviorHints = {
-    ...(previous.behaviorHints || {}),
-    ...(next.behaviorHints || {})
-  };
-  return {
-    ...previous,
-    ...next,
-    id: previous.id || next.id,
-    url: next.url || previous.url || null,
-    externalUrl: next.externalUrl || previous.externalUrl || null,
-    ytId: next.ytId || previous.ytId || null,
-    behaviorHints: Object.keys(behaviorHints).length ? behaviorHints : null,
-    subtitles:
-      Array.isArray(next.subtitles) && next.subtitles.length ? next.subtitles : previous.subtitles,
-    sources: Array.isArray(next.sources) && next.sources.length ? next.sources : previous.sources,
-    streamPresentation: next.streamPresentation || previous.streamPresentation || null
-  };
-}
-
 function formatBytes(value) {
   const size = Number(value || 0);
   if (!Number.isFinite(size) || size <= 0) {
@@ -286,113 +218,6 @@ function normalizeEpisodeCode(season, episode) {
     return "";
   }
   return `S${seasonNumber} E${episodeNumber}`;
-}
-
-function flattenStreams(streamResult) {
-  if (!streamResult || streamResult.status !== "success") {
-    return [];
-  }
-  const flattened = [];
-  (streamResult.data || []).forEach((group) => {
-    const groupName = group.addonName || "Addon";
-    (group.streams || []).forEach((stream, index) => {
-      const streamOrigin = {
-        ...(group.streamOrigin || {}),
-        ...(stream.streamOrigin || {}),
-        addonId:
-          stream.addonId ||
-          group.addonId ||
-          group.streamOrigin?.addonId ||
-          stream.streamOrigin?.addonId ||
-          null,
-        addonBaseUrl:
-          stream.addonBaseUrl ||
-          group.addonBaseUrl ||
-          group.streamOrigin?.addonBaseUrl ||
-          stream.streamOrigin?.addonBaseUrl ||
-          null,
-        addonName:
-          stream.addonName ||
-          group.addonName ||
-          group.streamOrigin?.addonName ||
-          stream.streamOrigin?.addonName ||
-          groupName,
-        sourceProviderId:
-          stream.sourceProviderId ||
-          group.sourceProviderId ||
-          stream.streamOrigin?.sourceProviderId ||
-          group.streamOrigin?.sourceProviderId ||
-          null
-      };
-      const entry = {
-        id:
-          stream.id ||
-          `${groupName}-${index}-${stream.url || stream.externalUrl || stream.ytId || ""}`,
-        name: stream.name || null,
-        title: stream.title || null,
-        description: stream.description || null,
-        url: stream.url || null,
-        ytId: stream.ytId || null,
-        infoHash: stream.infoHash || null,
-        fileIdx: stream.fileIdx ?? null,
-        externalUrl: stream.externalUrl || null,
-        behaviorHints: stream.behaviorHints || null,
-        sources: Array.isArray(stream.sources) ? stream.sources : [],
-        quality: stream.quality || null,
-        qualityValue: Number.isFinite(Number(stream.qualityValue))
-          ? Number(stream.qualityValue)
-          : -1,
-        clientResolve: stream.clientResolve || null,
-        debridCacheStatus: stream.debridCacheStatus || null,
-        streamPresentation: stream.streamPresentation || null,
-        subtitles: Array.isArray(stream.subtitles) ? stream.subtitles : [],
-        addonId: stream.addonId || group.addonId || null,
-        addonBaseUrl: stream.addonBaseUrl || group.addonBaseUrl || null,
-        addonName: stream.addonName || groupName,
-        addonLogo: stream.addonLogo || group.addonLogo || null,
-        sourceProviderId:
-          stream.sourceProviderId ||
-          group.sourceProviderId ||
-          stream.streamOrigin?.sourceProviderId ||
-          group.streamOrigin?.sourceProviderId ||
-          null,
-        streamOrigin,
-        addonOrderIndex: Number.isFinite(Number(stream.addonOrderIndex))
-          ? Number(stream.addonOrderIndex)
-          : Number(group.addonOrderIndex ?? Number.MAX_SAFE_INTEGER),
-        mimeType: stream.mimeType || stream.raw?.mimeType || stream.type || stream.source || null,
-        sourceType: stream.sourceType || stream.mimeType || stream.type || stream.source || "",
-        raw: stream
-      };
-      if (DirectDebridResolver.shouldListStream(entry)) {
-        flattened.push(entry);
-      }
-    });
-  });
-  return flattened;
-}
-
-function mergeStreamItems(existing = [], incoming = []) {
-  const order = [];
-  const byKey = new Map();
-  const push = (item) => {
-    if (!item) {
-      return;
-    }
-    const key = streamMergeKey(item);
-    if (!key) {
-      return;
-    }
-    if (!byKey.has(key)) {
-      order.push(key);
-      byKey.set(key, item);
-      return;
-    }
-    byKey.set(key, mergeStreamItem(byKey.get(key), item));
-  };
-  (existing || []).forEach(push);
-  (incoming || []).forEach(push);
-  return order.map((key) => byKey.get(key));
 }
 
 function getAddonBadgeLabel(name = "") {
@@ -842,6 +667,10 @@ export const StreamScreen = {
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("stream");
     ScreenUtils.show(this.container);
+    if (this.hasAutoResolvedChoice(params)) {
+      this.autoResolvedPlaybackPending = true;
+      this.renderAutoResolvedHandoff(params?.backdrop || "");
+    }
     this.params = params || {};
     this.loadToken = (this.loadToken || 0) + 1;
     const token = this.loadToken;
@@ -962,13 +791,208 @@ export const StreamScreen = {
       this.loading = false;
     }
 
+    this.autoResolvedPlaybackPending = !restoringFromBack && this.hasAutoResolvedChoice();
+    if (!this.autoResolvedPlaybackPending) {
+      // Not handing off after all: drop any handoff markup painted above so the
+      // ordinary render is not mistaken for an unchanged one.
+      this.renderedMarkup = null;
+    }
+
     this.render();
 
     if (restoringFromBack) {
       return;
     }
 
+    if (this.adoptAutoResolvedStreams()) {
+      return;
+    }
     void this.loadStreams();
+  },
+
+  // The detail screen resolved this route in the background, so the picker has
+  // nothing left to fetch. With a stream chosen it never paints at all: the
+  // list is held back and the screen shows its own loading state until playback
+  // takes over, which is the whole point of the setting. With nothing chosen it
+  // paints what was found and stays, exactly as it would have after its own
+  // fetch.
+  //
+  // Whether this route was entered with the answer already in hand. Read
+  // before the first paint, so the screen knows not to draw itself at all.
+  hasAutoResolvedChoice(params = this.params) {
+    const prefetched = params?.autoResolvedStreams;
+    const chosenId = String(params?.autoResolvedStreamId || "").trim();
+    return Boolean(
+      chosenId &&
+      Array.isArray(prefetched) &&
+      prefetched.some((stream) => String(stream?.id || "") === chosenId)
+    );
+  },
+
+  adoptAutoResolvedStreams() {
+    const prefetched = Array.isArray(this.params?.autoResolvedStreams)
+      ? this.params.autoResolvedStreams
+      : [];
+    if (!prefetched.length) {
+      return false;
+    }
+    this.streams = mergeStreamItems([], this.applyAddonLogos(prefetched));
+    this.loading = false;
+    this.autoPlaySelectionReady = true;
+    this.sourceChips = this.buildSourceChipsFromStreams(this.streams);
+    void this.refreshOfflineDownloadMetadata();
+    this.scheduleDebridPreparation();
+
+    const chosenId = String(this.params?.autoResolvedStreamId || "").trim();
+    const chosen = chosenId
+      ? this.streams.find((stream) => String(stream?.id || "") === chosenId)
+      : null;
+    if (!chosen) {
+      this.requestRender({ delayMs: 0 });
+      return true;
+    }
+
+    this.autoPlayAttempted = true;
+    this.autoResolvedPlaybackPending = true;
+    void Promise.resolve(this.playStream(chosen.id)).finally(() => {
+      this.restoreListAfterHandoff();
+    });
+    return true;
+  },
+
+  // Leave for the origin route the moment the other app actually takes over.
+  //
+  // Leaving when the launch is merely issued means the destination mounts in
+  // front of the viewer during the seconds before the app switch -- Detail's
+  // loading skeleton most visibly. Waiting for the page to be hidden puts that
+  // mounting behind the other app, so it is never seen and the destination is
+  // settled by the time the screen comes back.
+  //
+  // A fixed delay cannot do this: too short still shows the skeleton, too long
+  // wastes the background time. Hidden is the event itself rather than a guess
+  // at when it happens.
+  //
+  // Still visible when the grace period ends means nothing took the launch --
+  // the player app is missing, or the scheme was refused -- and then the picker
+  // is what the person needs.
+  leaveForOriginWhenHidden() {
+    this.clearExternalHandoffWatch();
+    const leave = () => {
+      this.clearExternalHandoffWatch();
+      this.autoResolvedPlaybackPending = false;
+      this.navigateBackFromStream();
+    };
+    if (document.visibilityState === "hidden") {
+      leave();
+      return;
+    }
+    this.externalHandoffVisibilityHandler = () => {
+      if (document.visibilityState === "hidden") {
+        leave();
+      }
+    };
+    document.addEventListener("visibilitychange", this.externalHandoffVisibilityHandler, false);
+    this.externalHandoffTimer = setTimeout(() => {
+      this.clearExternalHandoffWatch();
+      this.restoreListAfterHandoff();
+    }, EXTERNAL_HANDOFF_GRACE_MS);
+  },
+
+  clearExternalHandoffWatch() {
+    if (this.externalHandoffVisibilityHandler) {
+      document.removeEventListener(
+        "visibilitychange",
+        this.externalHandoffVisibilityHandler,
+        false
+      );
+      this.externalHandoffVisibilityHandler = null;
+    }
+    if (this.externalHandoffTimer) {
+      clearTimeout(this.externalHandoffTimer);
+      this.externalHandoffTimer = null;
+    }
+  },
+
+  // When the list may be shown again after a handoff.
+  //
+  // The internal player navigates away, so this screen is already gone. An
+  // external player does not: it backgrounds the whole app and leaves this
+  // route current, so clearing the handoff the moment playStream resolved
+  // painted the picker in the instant before the other app came forward --
+  // which is the flash this feature exists to remove. The list comes back when
+  // this screen is being looked at again, not before.
+  restoreListAfterHandoff() {
+    // An external launch is being watched for, and that watch owns what happens
+    // next. Without this the 900ms branch below would put the picker back while
+    // the other app is still coming forward.
+    if (this.externalHandoffVisibilityHandler || this.externalHandoffTimer) {
+      return;
+    }
+    const showList = () => {
+      this.autoResolvedPlaybackPending = false;
+      if (Router.getCurrent() === "stream") {
+        this.requestRender({ delayMs: 0 });
+        return;
+      }
+      // Off screen, so there is nothing to repaint -- but the handoff markup is
+      // still sitting in this container, and whatever reveals this route next
+      // would show "Opening player…" over a route that is opening nothing. It
+      // outlived its moment, so it goes.
+      this.renderedMarkup = null;
+      if (this.container) {
+        this.container.innerHTML = "";
+      }
+    };
+    if (Router.getCurrent() !== "stream") {
+      showList();
+      return;
+    }
+    const whenVisibleAgain = () => {
+      document.addEventListener(
+        "visibilitychange",
+        function once() {
+          if (document.visibilityState !== "visible") return;
+          document.removeEventListener("visibilitychange", once);
+          showList();
+        },
+        false
+      );
+    };
+    if (document.visibilityState === "hidden") {
+      whenVisibleAgain();
+      return;
+    }
+    // Still here and still on screen a moment later means nothing took over:
+    // the launch failed, and the person needs the picker to choose by hand.
+    setTimeout(() => {
+      if (document.visibilityState === "visible") {
+        showList();
+      } else {
+        whenVisibleAgain();
+      }
+    }, 900);
+  },
+
+  // Source chips normally accumulate as each addon answers. A prefetched list
+  // has already been answered, so they are read back off the streams instead.
+  buildSourceChipsFromStreams(streams = []) {
+    const chips = new Map();
+    streams.forEach((stream) => {
+      const name = String(stream?.addonName || "").trim();
+      if (!name || chips.has(name)) {
+        return;
+      }
+      const orderIndex = Number(stream?.addonOrderIndex);
+      chips.set(name, {
+        name,
+        logo: resolveAddonLogo(name, this.addonLogoLookup),
+        status: "success",
+        orderIndex: Number.isFinite(orderIndex) ? orderIndex : Number.MAX_SAFE_INTEGER
+      });
+    });
+    return [...chips.values()].sort(
+      (left, right) => Number(left.orderIndex) - Number(right.orderIndex)
+    );
   },
 
   async loadStreams() {
@@ -1315,19 +1339,14 @@ export const StreamScreen = {
     if (autoPlayMode === "MANUAL" || !isAutoPlayEffectivelyEnabled(settings)) {
       return;
     }
-    const savedPreference =
-      settings.streamAutoPlayPreferBingeGroupForNextEpisode &&
-      settings.streamAutoPlayReuseBingeGroup
-        ? StreamPreferencesStore.getEntry(
-            this.params?.itemId,
-            this.params?.videoId || this.params?.itemId
-          )
-        : null;
-    const preferredBingeGroup = String(savedPreference?.bingeGroup || "").trim();
-    const installedAddonNames = new Set(
-      (addonRepository.getCachedInstalledAddons() || [])
-        .map((addon) => String(addon?.displayName || addon?.name || "").trim())
-        .filter(Boolean)
+    const preferredBingeGroup = resolvePreferredBingeGroup(settings, () =>
+      StreamPreferencesStore.getEntry(
+        this.params?.itemId,
+        this.params?.videoId || this.params?.itemId
+      )
+    );
+    const installedAddonNames = collectInstalledAddonNames(
+      addonRepository.getCachedInstalledAddons()
     );
     const selected = selectAutoPlayStream(this.getFilteredStreams(), {
       mode: settings.streamAutoPlayMode,
@@ -2114,8 +2133,31 @@ export const StreamScreen = {
     `.repeat(count);
   },
 
+  // A stream was chosen before this screen was ever entered, so the screen has
+  // nothing to ask and nothing to show. Painting its header, filters and list
+  // for the second or two the link takes to resolve would be showing the picker
+  // the setting exists to skip -- so the route paints its backdrop and says
+  // what it is doing, and nothing else.
+  renderAutoResolvedHandoff(backdropUrl = null) {
+    const backdrop = backdropUrl === null ? this.getBackdropUrl() : backdropUrl;
+    const nextMarkup = renderRouteHandoffShell({
+      backdrop,
+      label: t("stream_opening_player", {}, "Opening player…")
+    });
+    if (this.renderedMarkup !== nextMarkup) {
+      this.container.innerHTML = nextMarkup;
+      this.renderedMarkup = nextMarkup;
+      this.streamFocusDomCache = null;
+      this.focusedElement = null;
+    }
+  },
+
   render() {
     this.cancelScheduledRender();
+    if (this.autoResolvedPlaybackPending) {
+      this.renderAutoResolvedHandoff();
+      return;
+    }
     // Rebuilt markup means the memoised filtered-stream list may be stale.
     this._filteredStreamsCache = null;
     const { isSeries, title, subtitle, episodeLabel, detailLine } = this.getHeaderMeta();
@@ -2752,6 +2794,14 @@ export const StreamScreen = {
         resumeDurationMs = Number(resumeProgress?.durationMs || 0) || resumeDurationMs;
       }
     }
+    // Where Back belongs after this. Read before the launch, because the
+    // external branch below never opens the player route and the handoff flag
+    // is cleared once it has.
+    const returnRoute = resolveHandoffReturnRoute({
+      handedOff: Boolean(this.autoResolvedPlaybackPending),
+      continueWatchingBackHome: Boolean(this.params?.continueWatchingBackHome)
+    });
+
     if (
       !skipExternalRoute &&
       (await this.routeSelectedStream(selected, {
@@ -2763,6 +2813,9 @@ export const StreamScreen = {
         resumeDurationMs
       }))
     ) {
+      if (returnRoute !== "stream") {
+        this.leaveForOriginWhenHidden();
+      }
       return;
     }
 
@@ -2811,7 +2864,10 @@ export const StreamScreen = {
         sourceIds: Array.isArray(selected.sources) ? selected.sources : [],
         selectedStreamId: selected.id || ""
       },
-      returnToStreamOnBack: true,
+      // Only when its list was actually shown. A doorway is not a place to
+      // come back to, and landing there cost a second Back to get out of.
+      returnToStreamOnBack: returnRoute === "stream",
+      handoffReturnRoute: returnRoute,
       streamRouteParams: this.params ? { ...this.params } : null,
       fromDetailRoute: Boolean(this.params?.fromDetailRoute),
       nextEpisodeVideoId: this.params?.nextEpisodeVideoId || null,
@@ -3023,6 +3079,7 @@ export const StreamScreen = {
   },
 
   cleanup() {
+    this.clearExternalHandoffWatch();
     this.closeOfflineDownloadOptions?.();
     this.cancelAutoPlayCountdown();
     this.cancelAutoPlaySelectionWait();

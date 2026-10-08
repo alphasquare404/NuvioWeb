@@ -468,7 +468,7 @@ export const QuickSetupScreen = {
         body: t(
           "quick_setup_return_automation_body",
           {},
-          "iOS opens Nuvio by itself the moment you close the player. Nothing to tap, and no notification."
+          "Closing the external player is the only tap. iOS opens Nuvio from there by itself, with no notification to find."
         ),
         badge: needsInstall
           ? t("quick_setup_return_needs_install_badge", {}, "Needs installing")

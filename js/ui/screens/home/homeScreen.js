@@ -5268,6 +5268,11 @@ export const HomeScreen = {
       traktId: normalized.traktId || null,
       fallbackTitle: normalized.title || normalized.contentId || "Untitled",
       autoOpenContinueWatching: true,
+      // Detail paints a waiting screen rather than its page on this route, and
+      // it cannot wait for the metadata to know what to paint. The card the
+      // person just tapped already resolved an image, so it travels with the
+      // route and the wait starts on the picture they were looking at.
+      backdrop: normalized.backdrop || null,
       returnHomeOnBack: true,
       resumeProgressMs: Number(params.resumePositionMs || 0) || 0,
       resumeProgressPercent: params.resumeProgressPercent ?? null,

@@ -7200,7 +7200,17 @@ export const PlayerScreen = {
     this.playerBackNavigationInProgress = true;
     Router.suppressNextPopstate?.(1500);
     Router.ignoreSinglePopstate?.();
-    const targetRoute = shouldReturnToStream ? "stream" : this.params?.itemId ? "detail" : "home";
+    // The stream route tells this player where Back belongs when its list was
+    // never shown. Continue Watching says Home, because the Detail it passed
+    // through was replaced on the way in and no longer exists to return to.
+    const handoffReturn = String(this.params?.handoffReturnRoute || "").trim();
+    const targetRoute = shouldReturnToStream
+      ? "stream"
+      : handoffReturn === "home" || handoffReturn === "detail"
+        ? handoffReturn
+        : this.params?.itemId
+          ? "detail"
+          : "home";
     const targetParams =
       targetRoute === "stream"
         ? streamParams

@@ -55,6 +55,39 @@ export function isAutoPlayEffectivelyEnabled(settings = {}) {
   return false;
 }
 
+// The two inputs `selectAutoPlayStream` needs that neither caller can compute
+// on its own, and that both were computing identically.
+//
+// The stream screen built them for its own fetch; the background resolver then
+// copied both, byte for byte, into the detail screen. Two copies of a rule is
+// how they drift -- and this one is invisible when it does, because a wrong
+// preferred binge group does not fail, it just quietly picks a worse stream.
+
+// A remembered binge group guides the choice only when both of its settings are
+// on. The saved entry is fetched through `lookup` rather than passed in, so the
+// store is not consulted at all when the settings say it would be ignored --
+// which is what the stream screen's own ternary was for.
+export function resolvePreferredBingeGroup(settings = {}, lookup = () => null) {
+  if (
+    !settings?.streamAutoPlayPreferBingeGroupForNextEpisode ||
+    !settings?.streamAutoPlayReuseBingeGroup
+  ) {
+    return "";
+  }
+  return String(lookup()?.bingeGroup || "").trim();
+}
+
+// Addon display names, as `selectAutoPlayStream` matches them for the
+// "selected addons" source. A name is whatever the addon shows a person, since
+// that is what the setting stored.
+export function collectInstalledAddonNames(installedAddons = []) {
+  return new Set(
+    (Array.isArray(installedAddons) ? installedAddons : [])
+      .map((addon) => String(addon?.displayName || addon?.name || "").trim())
+      .filter(Boolean)
+  );
+}
+
 // A stream is auto-playable when it can actually start playback. External-url
 // only entries (e.g. an addon's "open this website" cast link) are skipped so
 // auto-play never lands on a non-video page.

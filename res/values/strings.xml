@@ -413,6 +413,7 @@
     <string name="account_signin_qr_action">Sign in with QR</string>
     <string name="account_signin_guest_action">Continue without account</string>
     <string name="detail_season_picker_title">Season</string>
+    <string name="detail_finding_stream">Finding a stream…</string>
     <string name="library_offline_title">You’re offline</string>
     <string name="library_offline_subtitle">Saved and Cloud need a connection. Downloaded titles are still here.</string>
     <string name="quick_setup_step_of">Step {{current}} of {{total}}</string>
@@ -461,7 +462,7 @@
     <string name="quick_setup_return_notification_body">Nuvio sends one notification when the external player reports back. Tapping it brings you straight here.</string>
     <string name="quick_setup_return_notification_image_alt">A NuvioWeb notification saying playback was updated, with a prompt to tap it to return</string>
     <string name="quick_setup_return_automation">A Shortcut automation</string>
-    <string name="quick_setup_return_automation_body">iOS opens Nuvio by itself the moment you close the player. Nothing to tap, and no notification.</string>
+    <string name="quick_setup_return_automation_body">Closing the external player is the only tap. iOS opens Nuvio from there by itself, with no notification to find.</string>
     <string name="quick_setup_return_recommended">Recommended on iPhone</string>
     <string name="quick_setup_return_needs_install_badge">Needs installing</string>
     <string name="automation_return_needs_install">This needs Nuvio on your Home Screen first. In Safari, open the Share menu and choose Add to Home Screen, then come back here — the Shortcut opens the installed app, so it has nothing to open until then.</string>
@@ -479,6 +480,7 @@
     <string name="automation_return_tutorial_open">Trouble playing it? Open on YouTube</string>
     <string name="automation_return_caution">The Automation runs when the player closes, so close the player by its own Close button. Swiping it away from the app switcher still sends nothing back.</string>
     <string name="poster_view_larger">View poster</string>
+    <string name="stream_opening_player">Opening player…</string>
     <string name="stream_filter_source">Source</string>
     <string name="stream_refresh_sources">Refresh sources</string>
     <string name="pwa_install_title">Install Nuvio</string>

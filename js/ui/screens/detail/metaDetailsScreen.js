@@ -73,6 +73,17 @@ import {
 } from "../../components/posterOptionsMenu.js";
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
 import {
+  collectInstalledAddonNames,
+  isAutoPlayEffectivelyEnabled,
+  resolvePreferredBingeGroup
+} from "../../../core/streams/streamAutoPlaySelector.js";
+import {
+  resolveAutoPlayStream,
+  shouldAbandonAutoResolve,
+  shouldPaintRouteHandoff
+} from "../../../core/streams/streamAutoResolve.js";
+import { renderRouteHandoffShell } from "../../components/routeHandoffShell.js";
+import {
   createOfflineMediaId,
   canQueueBrowserOfflineDownload,
   createOfflineSubtitleFingerprint,
@@ -1771,6 +1782,20 @@ export const MetaDetailsScreen = {
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("detail");
     ScreenUtils.show(this.container);
+    // Before the first await, because the container is visible from the line
+    // above. Everything this method yields on -- the profile read below, then
+    // the metadata fetch -- is time spent looking at whatever the container
+    // last held, so on the Continue Watching route the waiting screen has to
+    // be the first frame rather than the second.
+    this.routeHandoffPending = shouldPaintRouteHandoff({
+      autoOpenContinueWatching: params?.autoOpenContinueWatching,
+      isBackNavigation: Boolean(navigationContext?.isBackNavigation),
+      isBrowser: Platform.isBrowser()
+    });
+    if (this.routeHandoffPending) {
+      this.params = params;
+      this.renderRouteHandoff();
+    }
     this.sidebarProfile = Platform.isBrowser()
       ? await getSidebarProfileState().catch(() => null)
       : null;
@@ -1910,6 +1935,7 @@ export const MetaDetailsScreen = {
     this.watchedEpisodeKeys = new Set();
     this.autoOpenContinueWatchingStreamReady = false;
     this.autoOpenedContinueWatchingStream = false;
+
     this.restoredContentScrollTop = 0;
     this.restoredTrackScrollLeftByKey = {};
     this.bindTrailerProxyMessaging();
@@ -1966,7 +1992,16 @@ export const MetaDetailsScreen = {
       return;
     }
 
-    this.container.innerHTML = `
+    // Continue Watching already has a waiting screen up, carrying the title's
+    // own image. Replacing it with a skeleton of a page that is never going to
+    // be shown is exactly the flash this route exists to remove -- the same
+    // reason the restored-route branch above skips this placeholder as well.
+    //
+    // This writes straight to innerHTML rather than going through render(),
+    // which is why gating render() alone was not enough: the skeleton painted
+    // over the waiting screen and then outlived it.
+    if (!this.routeHandoffPending) {
+      this.container.innerHTML = `
       <div class="detail-loading-shell" aria-label="Loading detail">
         <div class="detail-loading-top">
           <div class="detail-loading-block detail-loading-poster"></div>
@@ -1992,6 +2027,7 @@ export const MetaDetailsScreen = {
         </div>
       </div>
     `;
+    }
 
     await this.loadDetail();
   },
@@ -3096,6 +3132,9 @@ export const MetaDetailsScreen = {
       this.isBackNavigation ||
       navigationContext?.isBackNavigation
     ) {
+      // Nothing is going to take this route over, so the page it was holding
+      // back turns out to be the destination.
+      this.releaseRouteHandoff();
       return;
     }
 
@@ -3137,6 +3176,109 @@ export const MetaDetailsScreen = {
       }
     }
     this.navigateToStreamScreenForMovie(extraParams);
+  },
+
+  // The waiting screen Continue Watching gets in place of this page.
+  //
+  // The image comes from the route until the metadata arrives with its own,
+  // so the wait begins on the picture that was tapped rather than on black,
+  // and ends on the same picture the stream route then shows. One image, three
+  // routes, no blink.
+  renderRouteHandoff() {
+    if (!this.container) {
+      return;
+    }
+    const markup = renderRouteHandoffShell({
+      // The route's image first, not the metadata's. This paints before the
+      // fetch, and until it lands `this.meta` still describes whatever title
+      // this screen showed last -- which would open the wait on the wrong
+      // poster entirely.
+      backdrop:
+        this.params?.backdrop ||
+        this.meta?.background ||
+        this.meta?.landscapePoster ||
+        this.meta?.poster ||
+        "",
+      label: t("detail_finding_stream", {}, "Finding a stream…")
+    });
+    if (this.renderedRouteHandoffMarkup !== markup) {
+      this.container.innerHTML = markup;
+      this.renderedRouteHandoffMarkup = markup;
+    }
+  },
+
+  // Give up holding the page back and show it. Every path that fails to hand
+  // off has to reach this, because a waiting screen with nothing coming is a
+  // dead end: there is nothing on it to press.
+  releaseRouteHandoff() {
+    if (!this.routeHandoffPending) {
+      return;
+    }
+    this.routeHandoffPending = false;
+    this.renderedRouteHandoffMarkup = null;
+    if (this.meta) {
+      this.render(this.meta);
+    }
+  },
+
+  // Auto stream selection exists to skip the picker, so with it on the picker
+  // should not be seen at all. The fetch and the choice happen here, on the
+  // page the person is already looking at, and the stream route is entered with
+  // the answer already in hand -- or, when nothing matched, with the streams it
+  // found, so the screen it falls back to does not fetch them a second time.
+  async openStreamRoute(params, options) {
+    const settings = PlayerSettingsStore.get();
+    // "Choose stream" is an explicit request for the picker, and so is a route
+    // that asked for manual selection.
+    if (!isAutoPlayEffectivelyEnabled(settings) || params?.manualSelection) {
+      return Router.navigate("stream", params, options);
+    }
+
+    const token = (this.autoStreamResolveToken || 0) + 1;
+    this.autoStreamResolveToken = token;
+    const cancelled = () =>
+      shouldAbandonAutoResolve({
+        startedToken: token,
+        currentToken: this.autoStreamResolveToken,
+        currentRoute: Router.getCurrent()
+      });
+
+    // One wait, one way of showing it, wherever it was started from. Continue
+    // Watching has had this up since mount; starting from this page turns it on
+    // now, so the page is not left looking untouched while the search runs.
+    //
+    // Browser only, for the same reason the Continue Watching route is: the
+    // styles live behind `.desktop-browser`, which a television does not carry.
+    if (Platform.isBrowser()) {
+      this.routeHandoffPending = true;
+      this.renderRouteHandoff();
+    }
+
+    const resolution = await resolveAutoPlayStream({
+      itemType: params?.itemType,
+      videoId: params?.videoId || params?.itemId,
+      settings,
+      installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
+      preferredBingeGroup: resolvePreferredBingeGroup(settings, () =>
+        StreamPreferencesStore.getEntry(params?.itemId, params?.videoId || params?.itemId)
+      ),
+      shouldCancel: cancelled
+    });
+    // Nothing took this route over, so the page it was holding back is where
+    // the person stays.
+    if (cancelled()) {
+      this.releaseRouteHandoff();
+      return false;
+    }
+    return Router.navigate(
+      "stream",
+      {
+        ...params,
+        autoResolvedStreams: resolution.streams,
+        autoResolvedStreamId: resolution.selected?.id || null
+      },
+      options
+    );
   },
 
   getStreamNavigationOptions() {
@@ -3892,6 +4034,10 @@ export const MetaDetailsScreen = {
   },
 
   render(meta, focusRestore = undefined) {
+    if (this.routeHandoffPending) {
+      this.renderRouteHandoff();
+      return;
+    }
     if (this._sectionsUpdateRaf) {
       const cancelRaf =
         typeof cancelAnimationFrame === "function" ? cancelAnimationFrame : clearTimeout;
@@ -4433,6 +4579,9 @@ export const MetaDetailsScreen = {
   },
 
   updateRenderedDetailSections(meta, focusRestoreOverride = null) {
+    if (this.routeHandoffPending) {
+      return;
+    }
     if (!this.container || !meta || !this.container.querySelector(".series-detail-shell")) {
       this.render(meta, focusRestoreOverride || null);
       return;
@@ -10327,8 +10476,7 @@ export const MetaDetailsScreen = {
           Number(this.params?.resumeEpisode || 0) === Number(episode.episode || 0))
     );
     this.stopTrailerPlaybackForNavigation();
-    Router.navigate(
-      "stream",
+    void this.openStreamRoute(
       {
         itemId: this.params?.itemId || null,
         itemType: "series",
@@ -10382,8 +10530,7 @@ export const MetaDetailsScreen = {
     const traktId = resolveMetaTraktId(this.meta, this.params);
     const contentLanguage = resolveMetaOriginalLanguage(this.meta, this.params);
     this.stopTrailerPlaybackForNavigation();
-    Router.navigate(
-      "stream",
+    void this.openStreamRoute(
       {
         itemId,
         itemType,
@@ -10477,6 +10624,9 @@ export const MetaDetailsScreen = {
   },
 
   renderError(message) {
+    // A failed load has nothing to hand off to, so the waiting screen stops
+    // waiting and this message replaces it.
+    this.routeHandoffPending = false;
     this.isLoadingDetail = false;
     this.container.innerHTML = `
       <div class="row">
@@ -12247,6 +12397,8 @@ export const MetaDetailsScreen = {
 
   cleanup() {
     this.autoOpenContinueWatchingStreamReady = false;
+    this.routeHandoffPending = false;
+    this.renderedRouteHandoffMarkup = null;
     this.offlineArtworkResolver?.releaseAll?.();
     this.offlineArtworkResolver = null;
     this.browserCardTouchIntentCleanup?.();
