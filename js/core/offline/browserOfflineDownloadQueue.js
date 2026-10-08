@@ -21,7 +21,6 @@ import {
 } from "./browserOfflineDownloads.js";
 import { subtitleRepository } from "../../data/repository/subtitleRepository.js";
 import {
-  MAX_CONCURRENT_DOWNLOADS,
   orderQueuedBrowserOfflineDownloads,
   reorderQueuedBrowserOfflineDownloads
 } from "./browserOfflineDownloadQueueState.js";

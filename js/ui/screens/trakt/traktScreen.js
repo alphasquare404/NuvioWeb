@@ -19,10 +19,6 @@ import {
   scrollSettingsContentItem
 } from "../settings/settingsScreen.js";
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")

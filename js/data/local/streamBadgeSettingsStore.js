@@ -51,10 +51,6 @@ const store = createProfileScopedStore({
   normalize: normalizeStreamBadgeSettings
 });
 
-function clone(value) {
-  return value == null ? value : JSON.parse(JSON.stringify(value));
-}
-
 async function fetchText(url) {
   const response = await fetch(url, {
     method: "GET",

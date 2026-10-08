@@ -44,7 +44,7 @@ export function createDesktopPluginManager({ requestRender } = {}) {
     state.sources = PluginManager.listPluginSources();
   };
 
-  const syncSources = async (before = []) => {
+  const syncSources = async (_before = []) => {
     if (!AuthManager.isAuthenticated) {
       setStatus("Saved locally", "warning");
       await rerender();

@@ -157,7 +157,10 @@ export function buildAndroidVlcLaunchUrl({ mediaUrl } = {}) {
   return `intent://${path}#Intent;scheme=${parsed.protocol.slice(0, -1)};package=org.videolan.vlc;action=android.intent.action.VIEW;S.browser_fallback_url=${encodeURIComponent(ANDROID_VLC_STORE_URL)};end`;
 }
 
-export function buildOutplayerLaunchUrl({ mediaUrl, externalReturnToken, externalReturnOrigin, externalReturnMethod = "", resumePositionSeconds = 0, knownDurationMs = 0 } = {}) {
+// Outplayer's scheme carries no duration, so the shared launch options bring one
+// this builder has no field for. The handoff record keeps it instead -- players
+// that report a position without a duration are measured against that.
+export function buildOutplayerLaunchUrl({ mediaUrl, externalReturnToken, externalReturnOrigin, externalReturnMethod = "", resumePositionSeconds = 0 } = {}) {
   if (!isTransferableExternalMediaUrl(mediaUrl)) return "";
   const callbacks = createOutplayerReturnCallbacks({ token: externalReturnToken, returnOrigin: externalReturnOrigin, returnMethod: externalReturnMethod });
   const query = new URLSearchParams({ url: String(mediaUrl) });

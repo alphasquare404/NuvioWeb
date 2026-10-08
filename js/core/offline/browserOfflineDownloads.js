@@ -12,8 +12,6 @@ import {
   createOfflineSubtitleId,
   decodeOfflineSubtitleBytes,
   detectOfflineSubtitleFormat,
-  getOfflineSubtitleIdentityParts,
-  isOfflineSubtitleFormatSupported,
   isOfflineSubtitleTextLoadable,
   offlineSubtitleExtension
 } from "./offlineSubtitleIdentity.js";

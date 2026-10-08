@@ -89,12 +89,6 @@ async function resolveAddonProfileId() {
   return usesPrimaryAddons ? 1 : profileId;
 }
 
-function extractAddonUrls(rows = []) {
-  return extractAddonEntries(rows)
-    .map((entry) => entry.url)
-    .filter(Boolean);
-}
-
 function extractAddonEntries(rows = []) {
   return (rows || [])
     .map((row) => ({
