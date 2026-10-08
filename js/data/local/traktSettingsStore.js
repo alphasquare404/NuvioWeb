@@ -28,6 +28,25 @@ export const TRAKT_DEFAULT_CONTINUE_WATCHING_DAYS_CAP = 60;
 
 const STORE_KEY = "traktSettings";
 const librarySourceListeners = new Set();
+
+// Library Source is read by five screens -- Library, Detail, the desktop hover
+// preview, Search and Catalog -- and each one re-reads only when told to. The
+// call existed without the function behind it, so changing the source persisted
+// the value and then threw, which skipped the rest of every caller: no
+// confirmation message, and five screens still showing the old source.
+//
+// Each listener is called inside its own guard. One screen failing must not
+// swallow the change for the other four.
+function notifyLibrarySourceChange() {
+  librarySourceListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (error) {
+      console.warn("Library source change listener failed", error);
+    }
+  });
+}
+
 function normalizeWatchProgressSource(value) {
   const normalized = String(value || WatchProgressSource.TRAKT).toLowerCase();
   if (normalized === WatchProgressSource.NUVIO_SYNC) return WatchProgressSource.NUVIO_SYNC;

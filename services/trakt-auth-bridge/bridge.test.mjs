@@ -101,6 +101,107 @@ test("bridge performs device exchange and refresh without persisting or exposing
   assert.equal(requests[1].body.grant_type, "refresh_token");
 });
 
+test("every request to Trakt names its caller, or Cloudflare refuses it", async () => {
+  // Node fetch sends no User-Agent by default, and the Cloudflare in front of
+  // the Trakt API answers that with an HTML block page carrying 403 -- which
+  // reads as rejected credentials rather than as a request Trakt never saw.
+  const seen = [];
+  await withBridge(
+    {
+      environment: { TRAKT_CLIENT_ID: "public-client" },
+      fetchImpl: async (url, options) => {
+        seen.push(options.headers);
+        return upstreamResponse({ access_token: "a", refresh_token: "r", expires_in: 3600 });
+      }
+    },
+    async (baseUrl) => {
+      await fetch(`${baseUrl}/api/trakt/device/code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      await fetch(`${baseUrl}/api/trakt/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: "refresh-old" })
+      });
+    }
+  );
+  assert.equal(seen.length, 2);
+  for (const headers of seen) {
+    assert.ok(String(headers["User-Agent"] || "").trim(), "a request went out unnamed");
+  }
+});
+
+test("an app with no client secret signs users in rather than meeting a 503", async () => {
+  // Trakt no longer issues a secret to apps that sign users in, and says the
+  // secret is deprecated for that purpose. Requiring one here made every request
+  // 503 for exactly the apps Trakt now tells people to create.
+  const requests = [];
+  await withBridge(
+    {
+      environment: { TRAKT_CLIENT_ID: "public-client" },
+      fetchImpl: async (url, options) => {
+        requests.push({ url, body: JSON.parse(options.body) });
+        return upstreamResponse({
+          access_token: "access-next",
+          refresh_token: "refresh-rotated",
+          expires_in: 3600,
+          token_type: "bearer"
+        });
+      }
+    },
+    async (baseUrl) => {
+      const health = await fetch(`${baseUrl}/api/trakt/health`);
+      assert.deepEqual(await health.json(), { configured: true });
+
+      const device = await fetch(`${baseUrl}/api/trakt/device/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: "device-code" })
+      });
+      assert.equal(device.status, 200);
+
+      const refresh = await fetch(`${baseUrl}/api/trakt/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: "refresh-old" })
+      });
+      assert.equal(refresh.status, 200);
+    }
+  );
+
+  // Absent, not empty. Trakt reads an empty client_secret as a wrong one.
+  for (const request of requests) {
+    assert.equal("client_secret" in request.body, false, `${request.url} sent a secret`);
+  }
+  assert.equal(requests[0].body.client_id, "public-client");
+  assert.equal(requests[1].body.grant_type, "refresh_token");
+});
+
+test("an app that still has a secret keeps sending it", async () => {
+  // Deployments created before Trakt stopped issuing secrets are running on one,
+  // and making it optional must not quietly stop using theirs.
+  const requests = [];
+  await withBridge(
+    {
+      environment: { TRAKT_CLIENT_ID: "public-client", TRAKT_CLIENT_SECRET: "server-secret" },
+      fetchImpl: async (url, options) => {
+        requests.push({ url, body: JSON.parse(options.body) });
+        return upstreamResponse({ access_token: "a", refresh_token: "r", expires_in: 3600 });
+      }
+    },
+    async (baseUrl) => {
+      await fetch(`${baseUrl}/api/trakt/device/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: "device-code" })
+      });
+    }
+  );
+  assert.equal(requests[0].body.client_secret, "server-secret");
+});
+
 test("bridge reports unconfigured state and rejects unsupported methods", async () => {
   await withBridge(
     { environment: {}, fetchImpl: async () => assert.fail("must not call Trakt") },
