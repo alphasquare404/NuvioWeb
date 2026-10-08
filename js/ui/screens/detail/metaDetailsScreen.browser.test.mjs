@@ -81,7 +81,7 @@ test("the refresh does not rebuild from the map it just invalidated", async () =
   // watched stayed watched, however fast the local write was.
   const source = await metaDetailsScreenSource();
 
-  const refresh = source.match(/async refreshEpisodePlaybackState\(\) \{[\s\S]*?\n  \},/)?.[0];
+  const refresh = source.match(/async refreshEpisodePlaybackState\(\) \{[\s\S]*?\n {2}\},/)?.[0];
   assert.ok(refresh, "refreshEpisodePlaybackState should be findable");
   assert.match(refresh, /detailWatchedEnrichmentService\.invalidateCache/);
   assert.match(refresh, /this\.enrichedWatchedState = null;/);
@@ -113,7 +113,9 @@ test("the library button asks whether the title is in the library, not which lis
     /librarySnapshotHasMembership[\s\S]{0,400}?LibrarySourceMode\.SIMKL[\s\S]{0,120}?Object\.values\([^)]*\)\.some\(Boolean\)/
   );
   // The icon and the press have to agree, or the button lies in a new way.
-  const refresh = source.match(/async refreshCurrentLibraryMembership\(\) \{[\s\S]*?\n  \},/)?.[0];
+  const refresh = source.match(
+    /async refreshCurrentLibraryMembership\(\) \{[\s\S]*?\n {2}\},/
+  )?.[0];
   assert.match(refresh, /librarySnapshotHasMembership\(/);
   assert.doesNotMatch(refresh, /simkl:status:plantowatch/);
 });
@@ -122,7 +124,7 @@ test("the library button turns before the provider answers", async () => {
   // Measured at 987ms on a healthy connection: a write, an activities check and
   // a full list pull all had to come back before the icon moved.
   const source = await metaDetailsScreenSource();
-  const toggle = source.match(/async toggleLibraryFromHero\(\) \{[\s\S]*?\n  \},/)?.[0];
+  const toggle = source.match(/async toggleLibraryFromHero\(\) \{[\s\S]*?\n {2}\},/)?.[0];
   assert.ok(toggle, "toggleLibraryFromHero should be findable");
 
   // The flip happens from what is on screen, before any network call.

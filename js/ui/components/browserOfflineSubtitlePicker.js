@@ -28,7 +28,6 @@ export function createBrowserOfflineSubtitleSnapshot(subtitles = [], createDescr
 export function createBrowserOfflineSubtitlePicker({
   snapshot = [],
   selection = {},
-  preferredLabel = "",
   loading = false,
   onSelect = () => {}
 } = {}) {

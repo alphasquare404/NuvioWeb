@@ -19,7 +19,6 @@ import {
   normalizeAddonLogoUrl,
   requestAddonLogo
 } from "../../../core/media/addonLogoCache.js";
-import { localMediaSubtitleRepository } from "../../../data/repository/localMediaSubtitleRepository.js";
 import { subtitleRepository } from "../../../data/repository/subtitleRepository.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -94,7 +93,6 @@ import {
   shouldBlurBrowserPlayerToolbarAfterPointer
 } from "./playerBrowserShortcutRouting.js";
 import {
-  buildHtmlSubtitleCue,
   getSubtitleAssAlignment,
   getSubtitleAssAlignmentSettings,
   parseVttCueLayout
@@ -550,7 +548,7 @@ function getTrackMetadataStrings(track = {}) {
   return values;
 }
 
-function getAudioTrackSupportState(track = {}) {
+function getAudioTrackSupportState(_track = {}) {
   return {
     supported: true,
     unsupportedReason: null
@@ -1386,20 +1384,6 @@ function formatBytes(value) {
   }
   const precision = amount >= 10 || unitIndex === 0 ? 0 : 1;
   return `${amount.toFixed(precision)} ${units[unitIndex]}`;
-}
-
-function formatBytesPerSecond(value) {
-  const bytesPerSecond = Number(value || 0);
-  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
-    return "";
-  }
-  if (bytesPerSecond >= 1_048_576) {
-    return `${(bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
-  }
-  if (bytesPerSecond >= 1_024) {
-    return `${Math.round(bytesPerSecond / 1_024)} KB/s`;
-  }
-  return `${Math.round(bytesPerSecond)} B/s`;
 }
 
 function normalizeStreamBadgeChipColor(value = "") {
@@ -2407,7 +2391,7 @@ export const PlayerScreen = {
       this.enableStartupAudioGate({
         allowPlayback: allowPlaybackDuringStartupAudioGate
       });
-      const playbackStartPromise = this.startPlayerControllerPlayback(
+      void this.startPlayerControllerPlayback(
         this.activePlaybackUrl,
         this.buildPlaybackContext(sourceCandidate),
         { mountToken, sourceCandidate }
@@ -10497,7 +10481,6 @@ export const PlayerScreen = {
       resetSilentAudioState = true,
       preservePlaybackState = false,
       preservePendingRestore = false,
-      preserveStartupRecoveryState = false,
       forceEngine = null,
       sourceCandidate: explicitSourceCandidate = null,
       mountToken = null

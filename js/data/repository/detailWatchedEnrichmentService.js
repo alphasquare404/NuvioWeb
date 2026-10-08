@@ -32,13 +32,6 @@ function buildEpisodeKey(season, episode) {
   return `${season}:${episode}`;
 }
 
-function parseWatchedAt(watchedAtValue) {
-  if (!watchedAtValue) return null;
-  if (typeof watchedAtValue === "number") return watchedAtValue;
-  const parsed = Date.parse(watchedAtValue);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
 async function fetchLocalWatchedMap(contentId) {
   const allWatched = await watchedItemsRepository.getAll();
   const watchedMap = new Map();

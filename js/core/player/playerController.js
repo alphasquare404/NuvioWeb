@@ -1536,8 +1536,10 @@ export const PlayerController = {
     return "native-file";
   },
 
-  async ensureAdaptiveLibrariesForSource(sourceType, playbackEngine = null) {
-    const normalizedEngine = String(playbackEngine || "").trim();
+  // The engine argument is accepted and not read: which adaptive library is
+  // needed follows from the source type alone. Callers still pass it, so the
+  // parameter stays rather than shifting their arguments.
+  async ensureAdaptiveLibrariesForSource(sourceType, _playbackEngine = null) {
     const normalizedSourceType = String(sourceType || "").trim();
     if (!normalizedSourceType) {
       return;

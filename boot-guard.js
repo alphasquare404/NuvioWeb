@@ -54,7 +54,7 @@
     card.appendChild(retry);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
-    try { retry.focus(); } catch (ignored) {}
+    try { retry.focus(); } catch {}
   }
 
   function formatRuntimeError(message, source, line, column, error) {

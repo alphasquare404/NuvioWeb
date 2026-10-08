@@ -1019,8 +1019,6 @@ export const StreamScreen = {
     const pendingChunkTasks = new Set();
     const badgeSettings = StreamBadgeSettingsStore.snapshot();
     const showAddonLogo = badgeSettings.showAddonLogo === true;
-    if (showAddonLogo) {
-    }
 
     const upsertSourceChip = (addon, status = "loading") => {
       const name = String(addon?.displayName || addon?.name || "").trim();

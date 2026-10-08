@@ -22,7 +22,9 @@ const DEFAULT_CONTAINER = { extension: "mp4", mimeType: "video/mp4" };
 const MAX_BASE_LENGTH = 150;
 
 // Illegal or reserved on the filesystems this file travels to, plus the control
-// characters that turn a name into something unopenable.
+// characters that turn a name into something unopenable -- which is exactly
+// what the rule below warns about, so it is answered rather than silenced.
+// eslint-disable-next-line no-control-regex
 const UNSAFE_CHARACTERS = /[/\\:*?"<>|\x00-\x1f\x7f]+/g;
 
 function text(value) {

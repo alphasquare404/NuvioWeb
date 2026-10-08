@@ -238,7 +238,7 @@ export const PluginSyncService = {
       if (rows.length) {
         try {
           await SupabaseApi.upsert(TABLE, rows, "user_id,profile_id,url", true);
-        } catch (upsertError) {
+        } catch {
           await SupabaseApi.upsert(TABLE, rows, null, true);
         }
       }

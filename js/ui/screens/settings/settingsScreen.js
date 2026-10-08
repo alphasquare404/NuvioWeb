@@ -1,4 +1,3 @@
-/* global __NUVIO_APP_VERSION__ */
 import { Router } from "../../navigation/router.js";
 import { APP_IDENTITY } from "../../../core/app/appIdentity.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";

@@ -1361,7 +1361,7 @@ export const SearchScreen = {
     };
   },
 
-  resolvePreferredResultsNode(rowNodes = [], fallbackCol = 0) {
+  resolvePreferredResultsNode(rowNodes = [], _fallbackCol = 0) {
     if (!Array.isArray(rowNodes) || !rowNodes.length) {
       return null;
     }

@@ -264,7 +264,6 @@ export const TraktAuthService = {
   },
 
   async disconnect() {
-    const state = TraktAuthStore.get();
     await TraktCredentialSyncService.deleteRemote();
     detailWatchedEnrichmentService.invalidateAllCache();
     TraktAuthStore.clearAuth();
