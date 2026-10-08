@@ -45,8 +45,20 @@ const APP_SHELL = [
 const GOOGLE_FONT_ORIGINS = new Set(["https://fonts.googleapis.com", "https://fonts.gstatic.com"]);
 const MATERIAL_ICONS_STYLESHEET = "https://fonts.googleapis.com/icon?family=Material+Icons";
 
+// The cache name follows the build, so each build installs into an empty cache
+// -- but filling it is where the new build was being lost. `addAll` fetches
+// through the HTTP cache, and build assets are served with a seven-day lifetime
+// (nginx/default.conf), so a brand-new cache was filled with the app.bundle.js
+// the browser already had. The shell looked freshly cached and was a week old.
+//
+// `cache: "reload"` is the whole fix: every entry comes from the network, so
+// nothing a previous build left behind can answer for it.
 function cacheAppShell() {
-  return caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL));
+  return caches
+    .open(CACHE_NAME)
+    .then((cache) =>
+      cache.addAll(APP_SHELL.map((entry) => new Request(entry, { cache: "reload" })))
+    );
 }
 
 async function cacheGoogleFont(request) {
