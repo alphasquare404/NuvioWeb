@@ -11186,6 +11186,58 @@ body.desktop-browser {
   transition: opacity 150ms ease, transform 180ms ease, background-color 150ms ease;
 }
 
+/* A route that is only a doorway: the title's image, and one line saying why
+   the screen is here at all. Detail and the stream route both paint this, from
+   the same image, so Continue Watching's path to the player reads as one wait
+   rather than three screens. See js/ui/components/routeHandoffShell.js for why
+   these are not the `stream-route-*` classes.
+
+   Absolute rather than fixed: router gives every screen container
+   `position: fixed` in a z-index band starting at 1000 (applyLayerChrome), so
+   filling the container keeps this inside its own screen's layer instead of
+   competing with the band. */
+.desktop-browser .route-handoff {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg-color);
+}
+
+.desktop-browser .route-handoff-backdrop {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.desktop-browser .route-handoff-dim {
+  position: absolute;
+  inset: 0;
+  background: rgb(var(--bg-color-rgb) / 0.52);
+}
+
+.desktop-browser .route-handoff-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.desktop-browser .route-handoff-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--secondary-color);
+  border-radius: 50%;
+  animation: browser-pull-to-refresh-spin 750ms linear infinite;
+}
+
 .browser-pull-to-refresh.is-visible {
   opacity: 1;
 }
