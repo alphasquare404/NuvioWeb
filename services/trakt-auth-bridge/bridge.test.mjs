@@ -202,6 +202,59 @@ test("an app that still has a secret keeps sending it", async () => {
   assert.equal(requests[0].body.client_secret, "server-secret");
 });
 
+test("a rate limit arrives with the wait Trakt asked for, not a guess", async () => {
+  // The browser reads Retry-After to decide what to tell the viewer and whether
+  // to retry quickly. Dropping it here left it defaulting to five minutes, so a
+  // twenty-two second wait was reported as five -- and the short retry that
+  // depends on the header never ran once.
+  await withBridge(
+    {
+      environment: { TRAKT_CLIENT_ID: "public-client" },
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ error: "rate limited" }), {
+          status: 429,
+          headers: { "Content-Type": "application/json", "Retry-After": "22" }
+        })
+    },
+    async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/trakt/device/code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      assert.equal(res.status, 429);
+      assert.equal(res.headers.get("Retry-After"), "22");
+    }
+  );
+});
+
+test("a Retry-After that is not a count of seconds is not passed on", async () => {
+  // Trakt may answer with an HTTP date instead. Forwarding it unread would have
+  // the browser parse a date as seconds; offering nothing is the honest answer.
+  await withBridge(
+    {
+      environment: { TRAKT_CLIENT_ID: "public-client" },
+      fetchImpl: async () =>
+        new Response("{}", {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"
+          }
+        })
+    },
+    async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/trakt/device/code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      assert.equal(res.status, 429);
+      assert.equal(res.headers.get("Retry-After"), null);
+    }
+  );
+});
+
 test("bridge reports unconfigured state and rejects unsupported methods", async () => {
   await withBridge(
     { environment: {}, fetchImpl: async () => assert.fail("must not call Trakt") },

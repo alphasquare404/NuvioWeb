@@ -26,11 +26,12 @@ const DEVICE_RESPONSE_FIELDS = new Set([
   "interval"
 ]);
 
-function json(response, status, payload) {
+function json(response, status, payload, extraHeaders = {}) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff"
+    "X-Content-Type-Options": "nosniff",
+    ...extraHeaders
   });
   response.end(JSON.stringify(payload));
 }
@@ -118,15 +119,31 @@ async function requestTraktToken(fetchImpl, path, body) {
     } catch {
       payload = {};
     }
-    return { status: response.status, payload };
+    // Trakt answers a rate limit with the seconds to wait. Dropping it left the
+    // browser guessing, and its guess was a flat five minutes -- so a twenty
+    // second wait was reported as five minutes, and the short automatic retry
+    // that reads this header could never fire at all.
+    return {
+      status: response.status,
+      payload,
+      retryAfter: response.headers?.get?.("Retry-After") || ""
+    };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function upstreamError(status, payload) {
+function upstreamError(status, payload, retryAfter = "") {
   const safeMessage = String(payload?.error_description || payload?.error || "Trakt authorization failed");
-  return { status: Math.max(400, Math.min(599, Number(status) || 502)), body: { error: safeMessage } };
+  const seconds = String(retryAfter || "").trim();
+  return {
+    status: Math.max(400, Math.min(599, Number(status) || 502)),
+    body: { error: safeMessage },
+    // Only a plain count of seconds is passed on. Anything else is a header
+    // this bridge does not understand, and inventing a delay is worse than
+    // offering none.
+    headers: /^[0-9]+$/.test(seconds) ? { "Retry-After": seconds } : {}
+  };
 }
 
 export function createTraktAuthBridgeHandler({ environment = process.env, fetchImpl = fetch } = {}) {
@@ -164,8 +181,8 @@ export function createTraktAuthBridgeHandler({ environment = process.env, fetchI
           client_id: config.clientId
         });
         if (result.status < 200 || result.status >= 300) {
-          const failure = upstreamError(result.status, result.payload);
-          json(response, failure.status, failure.body);
+          const failure = upstreamError(result.status, result.payload, result.retryAfter);
+          json(response, failure.status, failure.body, failure.headers);
           return;
         }
         json(response, 200, pickFields(result.payload, DEVICE_RESPONSE_FIELDS));
@@ -185,8 +202,8 @@ export function createTraktAuthBridgeHandler({ environment = process.env, fetchI
           })
         );
         if (result.status < 200 || result.status >= 300) {
-          const failure = upstreamError(result.status, result.payload);
-          json(response, failure.status, failure.body);
+          const failure = upstreamError(result.status, result.payload, result.retryAfter);
+          json(response, failure.status, failure.body, failure.headers);
           return;
         }
         json(response, 200, pickFields(result.payload, TOKEN_RESPONSE_FIELDS));
@@ -208,8 +225,8 @@ export function createTraktAuthBridgeHandler({ environment = process.env, fetchI
           })
         );
         if (result.status < 200 || result.status >= 300) {
-          const failure = upstreamError(result.status, result.payload);
-          json(response, failure.status, failure.body);
+          const failure = upstreamError(result.status, result.payload, result.retryAfter);
+          json(response, failure.status, failure.body, failure.headers);
           return;
         }
         json(response, 200, pickFields(result.payload, TOKEN_RESPONSE_FIELDS));
