@@ -450,3 +450,46 @@ test("the suppression scope key names the profile and that profile's own source"
   });
   assert.equal(device.repo.getContinueWatchingSourceKey(), "2:trakt");
 });
+
+// The reported fault: with Trakt as the watch progress source, Continue Watching
+// showed three cards on an account that had eighteen paused titles. The cause was
+// a 300-record cap applied before deduplication. Trakt returns one history row
+// per watch, every one of them finished viewing and therefore ineligible for a
+// card -- so a few hundred recent rows filled the budget and evicted the
+// playback rows underneath them, which are the only records that mean "still
+// watching". Measured on the account: 318 records in, 300 kept, and the 18
+// evicted were exactly the 18 paused ones.
+test("recent history must not evict paused playback before deduplication", async () => {
+  const device = await freshDevice();
+  signIntoTrakt(device);
+  selectSource(device, device.Source.TRAKT);
+
+  // History is newer than the paused titles, which is the ordinary case: you
+  // finish things after you abandon things.
+  const history = Array.from({ length: 300 }, (_, index) => ({
+    type: "movie",
+    title: `Finished ${index}`,
+    tmdbId: 900_000 + index,
+    watchedAt: new Date(Date.now() - 60_000).toISOString()
+  }));
+  const playback = Array.from({ length: 18 }, (_, index) =>
+    traktPlaybackEntry({
+      contentId: `tmdb:${500_000 + index}`,
+      videoId: `tmdb:${500_000 + index}`,
+      title: `Paused ${index}`,
+      tmdbId: 500_000 + index,
+      imdbId: null,
+      traktPlaybackId: 7000 + index,
+      pausedAt: new Date(Date.now() - 600_000).toISOString()
+    })
+  );
+
+  await stubTrakt(device, { history, playback });
+  const cards = await device.repo.getRecent(20, { enrichMetadata: false });
+  assert.equal(cards.length, 18, "every paused title keeps its card");
+  assert.deepEqual(
+    idsOf(cards).sort(),
+    playback.map((entry) => entry.contentId).sort(),
+    "and the cards are the paused titles, not the finished ones"
+  );
+});
