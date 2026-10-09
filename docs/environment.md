@@ -52,6 +52,8 @@ backend.
 | `NUVIO_SUPABASE_FALLBACK_URL` | Optional | Browser-public            | `https://api-two.nuvioapp.space`                    | Fallback hosted backend URL. For full self-hosting, leave empty unless you run a fallback.                                                                                                                           |
 | `NUVIO_PORT`                  | Optional | Host-only Compose setting | `4173`                                              | Host port mapped to Nginx. Change it when `4173` is unavailable.                                                                                                                                                     |
 | `YOUTUBE_PROXY_URL`           | Optional | Browser-public            | `youtube-proxy.html`                                | Browser proxy helper path for YouTube-related playback. Empty disables that override.                                                                                                                                |
+| `TV_LOGIN_WEB_BASE_URL`       | Optional | Browser-public            | Empty                                               | Address the television sign-in QR code points at. Empty uses the address the app is served from, which is correct unless the television build is served from somewhere the phone scanning the code cannot reach.      |
+| `TMDB_API_KEY`                | Optional | Browser-public            | Empty                                               | Built-in TMDB key used as a fallback. A key entered in Settings by the person using the app always takes precedence, so this only covers anyone who has not set one. Empty means every user supplies their own.       |
 
 ### Return-to-NuvioWeb notifications (optional)
 
