@@ -61,11 +61,13 @@ import { resolveHandoffReturnRoute } from "../../../core/streams/streamAutoResol
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import {
+  getBrowserExternalPlayerOptions,
   getBrowserExternalPlayerPlatform,
   launchBrowserExternalPlayer,
   normalizeBrowserExternalPlayer,
   prepareBrowserExternalPlaybackLaunch
 } from "../../components/browserExternalPlayer.js";
+import { resolveExternalHandoffMediaUrl } from "../../components/externalHandoffMediaUrl.js";
 import { resolveExternalResumeSeconds } from "../../components/externalPlayerResume.js";
 import { bindBrowserPushReturn } from "../../components/browserPushReturn.js";
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
@@ -2674,12 +2676,21 @@ export const StreamScreen = {
   async routeSelectedStream(selected, context = {}) {
     if (!Environment.isBrowser() || context.offlineObjectUrl) return false;
     const player = normalizeBrowserExternalPlayer(PlayerSettingsStore.get().browserExternalPlayer);
-    if (player === "disabled") return false;
+    // A player this platform cannot launch is not a reason to ask a debrid
+    // provider for a link. Desktop offers no external player at all, and a
+    // stored choice from a phone outlives the device it was made on.
+    if (player === "disabled" || !getBrowserExternalPlayerOptions().includes(player)) return false;
+    const mediaUrl = await resolveExternalHandoffMediaUrl(selected, {
+      season: this.params?.season == null ? null : Number(this.params.season),
+      episode: this.params?.episode == null ? null : Number(this.params.episode),
+      onNetworkResolve: () => this.showStreamToast("Preparing stream...")
+    });
+    if (!mediaUrl) return false;
     const itemType = normalizeType(this.params?.itemType);
     const prepared = prepareBrowserExternalPlaybackLaunch({
       player,
       platform: getBrowserExternalPlayerPlatform(),
-      mediaUrl: selected?.url || selected?.externalUrl || "",
+      mediaUrl,
       title: this.params?.episodeTitle || this.params?.itemTitle || this.params?.playerTitle || "",
       subtitleUrl: "",
       resumePositionSeconds: resolveExternalResumeSeconds({
