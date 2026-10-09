@@ -90,6 +90,7 @@ import {
   listOfflineSubtitles,
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
+import { summariseOfflineDownloads } from "../../../core/offline/offlineDownloadSummary.js";
 import {
   createBrowserOfflinePlayback,
   releaseBrowserOfflinePlayback
@@ -1969,6 +1970,27 @@ export const StreamScreen = {
     this.requestRender();
   },
 
+  // The panel header says what is going on inside it without anybody having to
+  // scroll the list to find out. It counts the same metadata the cards read, so
+  // the header cannot disagree with the rows underneath it, and it says nothing
+  // at all when there is nothing to report rather than printing three zeroes.
+  renderStreamPanelSummary() {
+    if (!Environment.isBrowser() || !this.offlineDownloadsSupported) return "";
+    const summary = summariseOfflineDownloads(
+      this.offlineDownloadMetadata ? [...this.offlineDownloadMetadata.values()] : []
+    );
+    if (!summary) return "";
+    return `<span class="stream-route-panel-summary">${escapeHtml(summary)}</span>`;
+  },
+
+  // What a download is doing reads as a sentence on its own line, the way the
+  // card's other facts do, and the controls for it sit on the card's last row
+  // beside the source. Before this the state was a bare "19%" wedged in among
+  // the buttons, which said what was happening only if you already knew.
+  renderOfflineDownloadStatus(tone, icon, text) {
+    return `<div class="stream-route-card-status ${escapeHtml(tone)}"><span class="stream-route-card-status-icon" aria-hidden="true">${escapeHtml(icon)}</span><span class="stream-route-card-status-text">${escapeHtml(text)}</span></div>`;
+  },
+
   renderOfflineDownloadActions(stream = {}) {
     if (!Environment.isBrowser() || !this.offlineDownloadsSupported) return "";
     const context = this.getOfflineDownloadContext(stream);
@@ -1978,27 +2000,41 @@ export const StreamScreen = {
     const status = String(download?.status || "idle");
     const button = (action, icon, label, className = "") =>
       this.renderOfflineButton(action, icon, label, stream.id, className);
+    const statusLine = (tone, icon, text) => this.renderOfflineDownloadStatus(tone, icon, text);
     if (status === "downloading") {
       const total = Number(download?.totalBytes || 0);
       const current = Number(download?.downloadedBytes || 0);
-      const progressLabel =
+      const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : null;
+      const detail =
         total > 0
-          ? `${Math.min(100, Math.round((current / total) * 100))}%`
-          : formatBytes(current) || "Downloading";
-      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(progressLabel)}</span>${button("pause", "Ⅱ", "Pause", "secondary")}${button("cancel", "×", "Cancel", "secondary")}</div>`;
+          ? `${formatBytes(current)} of ${formatBytes(total)}`
+          : formatBytes(current) || "starting";
+      // The ring carries the percentage so the line underneath can spend its
+      // room on the figures a person actually checks: how much has landed.
+      const ring =
+        percent === null
+          ? ""
+          : `<span class="stream-route-offline-ring" style="--offline-progress:${percent}" role="img" aria-label="${percent}% downloaded" aria-live="polite">${percent}%</span>`;
+      return `${statusLine("downloading", "↓", `Downloading · ${detail}`)}<div class="stream-route-offline-actions">${ring}${button("pause", "Ⅱ", "Pause", "secondary")}${button("cancel", "×", "Cancel", "secondary")}</div>`;
     }
     if (status === "queued") {
       const position = this.offlineQueuePositions?.get(downloadId);
-      const label = position ? `⌛ Queued · #${position}` : "⌛ Queued";
-      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(label)}</span>${button("cancel", "×", "Cancel", "secondary")}</div>`;
+      const label = position
+        ? `Queued #${position} · starts after the current download`
+        : "Queued · starts after the current download";
+      return `${statusLine("queued", "⌛", label)}<div class="stream-route-offline-actions">${button("cancel", "×", "Cancel", "secondary")}</div>`;
     }
     if (status === "completed") {
-      return `<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${this.renderOfflineSubtitleButton(downloadId, stream.id)}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
+      return `${statusLine("offline", "⬇", "Downloaded · available offline")}<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${this.renderOfflineSubtitleButton(downloadId, stream.id)}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
     }
     if (["paused", "interrupted", "failed"].includes(status)) {
       const label =
-        status === "paused" ? "Paused" : status === "interrupted" ? "Interrupted" : "Retry";
-      return `<div class="stream-route-offline-actions"><span class="stream-route-offline-progress" aria-live="polite">${escapeHtml(label)}</span>${button("resume", "▶", status === "failed" ? "Retry" : "Resume", "download")}${button("cancel", "×", "Delete", "secondary")}</div>`;
+        status === "paused"
+          ? "Paused"
+          : status === "interrupted"
+            ? "Interrupted · resume to continue"
+            : "Download failed · retry to start again";
+      return `${statusLine("paused", status === "failed" ? "!" : "⏸", label)}<div class="stream-route-offline-actions">${button("resume", "▶", status === "failed" ? "Retry" : "Resume", "download")}${button("cancel", "×", "Delete", "secondary")}</div>`;
     }
     if (!canQueueBrowserOfflineDownload(context)) return "";
     return `<div class="stream-route-offline-actions">${button("download", status === "failed" ? "↻" : "↓", status === "failed" ? "Retry Download" : "Download", "download")}</div>`;
@@ -2226,19 +2262,30 @@ export const StreamScreen = {
           <section class="stream-route-right">
             ${
               Platform.isBrowser()
-                ? `<div class="stream-route-filter-row">
-                     ${this.renderAddonFilterPicker()}
-                     ${this.renderStreamRefreshAction()}
+                ? `<div class="stream-route-panel-shell">
+                     <header class="stream-route-panel-header">
+                       <div class="stream-route-panel-heading">
+                         <span class="stream-route-panel-title">${escapeHtml(t("stream_panel_title", {}, "Streams"))}</span>
+                         ${this.renderStreamPanelSummary()}
+                       </div>
+                       <div class="stream-route-filter-row">
+                         ${this.renderAddonFilterPicker()}
+                         ${this.renderStreamRefreshAction()}
+                       </div>
+                     </header>
+                     <div class="stream-route-panel">
+                       <div class="stream-route-list">${body}</div>
+                     </div>
                    </div>`
                 : `<div class="stream-route-chip-wrap">
                      <div class="stream-route-chip-track">${chips}</div>
+                   </div>
+                   <div class="stream-route-panel-shell">
+                     <div class="stream-route-panel">
+                       <div class="stream-route-list">${body}</div>
+                     </div>
                    </div>`
             }
-            <div class="stream-route-panel-shell">
-              <div class="stream-route-panel">
-                <div class="stream-route-list">${body}</div>
-              </div>
-            </div>
           </section>
         </div>`;
 

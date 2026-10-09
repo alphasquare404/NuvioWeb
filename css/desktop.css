@@ -3077,6 +3077,292 @@ html.desktop-browser {
   text-align: left;
 }
 
+/* ---------------------------------------------------------------------------
+   Stream route, browser build: the list is a panel with a header, and a card
+   reads top to bottom -- what the source is, then what it is doing, then where
+   it came from and what can be done about it.
+
+   Nothing here adds or removes a control. Every button the card had is still
+   the same button; this decides where it sits. The television values in
+   components.css are untouched, as always.
+   --------------------------------------------------------------------------- */
+
+/* The filter row moved inside the panel header, so it no longer owns a row of
+   its own above the list and must not keep the margin it had for that. */
+.desktop-browser #stream .stream-route-panel-shell {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.desktop-browser #stream .stream-route-panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.desktop-browser #stream .stream-route-panel-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.desktop-browser #stream .stream-route-panel-title {
+  flex: 0 0 auto;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* The counts are a subordinate clause, not a second heading: same line, dimmer,
+   and the first thing to be cut when the header runs out of room. */
+.desktop-browser #stream .stream-route-panel-summary {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #stream .stream-route-panel-summary::before {
+  content: "· ";
+}
+
+.desktop-browser #stream .stream-route-panel-header .stream-route-filter-row {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  height: auto;
+  margin: 0;
+}
+
+.desktop-browser #stream .stream-route-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.desktop-browser #stream .stream-route-list {
+  padding: 12px 14px 14px;
+}
+
+/* A card is a row of facts with one thing to press, so it says so: the play
+   affordance is drawn rather than described, and everything else lines up in
+   the column beside it. It is a pseudo-element because the whole card is
+   already the button -- a second focusable target would be one more stop for
+   keyboard and remote navigation to pass through for no gain. */
+.desktop-browser #stream .stream-route-card-action {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 9px;
+  /* The left padding is the play affordance.s gutter. Keeping it out of the
+     flex flow is what lets every row below start at the same left edge
+     without a break element between them. */
+  padding: 16px 18px 16px 70px;
+}
+
+.desktop-browser #stream .stream-route-card-action::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  /* Fixed white and black rather than theme colours: this is the one mark on
+     the card that says press me, and it reads the same whichever appearance
+     was chosen. The glyph is a symmetric path -- the usual 24px play icon is
+     not centred inside its own box, which is what made it look pushed to one
+     side and smaller than it is. */
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23000000'%3E%3Cpath d='M7 5L17 12L7 19Z'/%3E%3C/svg%3E");
+  /* Nudged right by the distance between the triangle.s centre of area and
+     the centre of its box. Centring the box leaves a right-pointing triangle
+     looking pushed to the left, because two thirds of it sits on that side. */
+  background-position: calc(50% + 1.5px) center;
+  background-repeat: no-repeat;
+  background-size: 23px 23px;
+}
+
+
+/* The source identity is rendered before the download controls, but it reads
+   last: what this is, then what it is doing, then where it came from and what
+   can be done about it. Ordering here rather than moving the markup keeps the
+   same card builder serving the detail screen.s season downloads, which have
+   no download row and no play affordance. */
+.desktop-browser #stream .stream-route-card-action > .stream-route-card-copy {
+  order: 1;
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+/* Everything below the first line hangs off the same left edge as the copy, so
+   the play affordance keeps a column to itself and the card reads as one block
+   of text rather than three indents. Padding rather than margin: these are
+   full-width flex items and a margin would push them past the card. */
+.desktop-browser #stream .stream-route-card-action > .stream-route-card-status {
+  order: 2;
+  flex: 0 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  box-sizing: border-box;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.desktop-browser #stream .stream-route-card-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-browser #stream .stream-route-card-status.downloading {
+  color: var(--secondary-color);
+}
+
+.desktop-browser #stream .stream-route-card-status.queued,
+.desktop-browser #stream .stream-route-card-status.paused {
+  color: rgba(255, 196, 92, 0.95);
+}
+
+.desktop-browser #stream .stream-route-card-status.offline {
+  color: rgba(126, 211, 148, 0.95);
+}
+
+/* The source and its controls share the card's last line: where this came from
+   on the left, what can be done with it on the right. */
+.desktop-browser #stream .stream-route-card-action > .stream-route-card-side {
+  /* The television lays the source out as a 108px column with the name under
+     its badge. On one line it is a badge and a name side by side, and the name
+     is allowed the room to actually be read. */
+  order: 4;
+  flex: 0 1 auto;
+  box-sizing: border-box;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  flex-basis: auto;
+  min-width: 0;
+  margin: 0;
+}
+
+/* The source badge and the download control are the two round things on the
+   last line, so they are the same round thing: one size, one centre line. */
+.desktop-browser #stream .stream-route-card-action .stream-route-addon-badge {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+
+.desktop-browser #stream .stream-route-card-action .stream-route-offline-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  line-height: 1;
+}
+
+.desktop-browser #stream .stream-route-card-action > .stream-route-card-side,
+.desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
+  align-items: center;
+  min-height: 32px;
+}
+
+/* A rule between what the stream is and what can be done with it. Drawn by the
+   card rather than by either row, because the two sit side by side on that
+   line and a border on each would come out as two segments with a gap. Only
+   when there is a last line to divide: a card with no source badge and no
+   download control would otherwise end on a hairline under nothing. */
+.desktop-browser
+  #stream
+  .stream-route-card-action:has(> .stream-route-card-side, > .stream-route-offline-actions)::after {
+  content: "";
+  order: 3;
+  flex: 0 0 100%;
+  height: 1px;
+  margin: 1px 0 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.desktop-browser #stream .stream-route-card-action .stream-route-addon-badge span {
+  font-size: 11px;
+}
+
+.desktop-browser #stream .stream-route-card-action .stream-route-addon-name {
+  max-width: min(260px, 40vw);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
+  order: 5;
+  flex: 0 0 auto;
+  margin: 0 0 0 auto;
+}
+
+/* The figure belongs on the dial rather than beside it, which leaves the line
+   above free to say how much has actually landed. */
+.desktop-browser #stream .stream-route-offline-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background:
+    radial-gradient(closest-side, rgba(26, 26, 31, 0.95) 76%, transparent 77% 100%),
+    conic-gradient(
+      var(--secondary-color) calc(var(--offline-progress, 0) * 1%),
+      rgba(255, 255, 255, 0.14) 0
+    );
+  color: var(--text-color);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+
+/* An episode reads as one line -- the code in a chip, the title beside it --
+   rather than as two stacked lines of the same weight. Keyed off the code's
+   presence so a film, which has no code, keeps its own layout untouched. */
+.desktop-browser #stream .stream-route-episode-code {
+  display: inline-block;
+  padding: 3px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(18, 18, 22, 0.72);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  vertical-align: middle;
+}
+
+.desktop-browser #stream .stream-route-episode-code + .stream-route-subtitle {
+  display: inline-block;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser #stream .stream-route-chip:hover:not(.selected) {
     border-color: rgba(255, 255, 255, 0.28);
@@ -15608,4 +15894,114 @@ body.desktop-browser {
 .desktop-browser .player-mobile-more-action .player-control-icon {
   width: 20px;
   height: 20px;
+}
+
+/* ---------------------------------------------------------------------------
+   Stream route on a phone. The card keeps its shape -- play affordance in a
+   gutter, facts in a column, source and controls on the last line -- at the
+   sizes a phone can afford. Last in the file on purpose: the phone rules for
+   this card are spread across several earlier breakpoints, and these have to
+   win over all of them.
+   --------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .desktop-browser #stream .stream-route-panel-header {
+    gap: 10px;
+    padding: 11px 12px;
+  }
+
+  .desktop-browser #stream .stream-route-panel-title {
+    font-size: 15px;
+  }
+
+  .desktop-browser #stream .stream-route-list {
+    padding: 10px 10px 12px;
+  }
+
+  .desktop-browser #stream .stream-route-card-action {
+    padding: 14px 14px 14px 56px;
+    column-gap: 10px;
+    row-gap: 8px;
+  }
+
+  .desktop-browser #stream .stream-route-card-action::before {
+    top: 14px;
+    left: 14px;
+    width: 32px;
+    height: 32px;
+    background-position: calc(50% + 1.3px) center;
+    background-size: 19px 19px;
+  }
+
+  /* The earlier phone rules make the source a full-width row of its own, which
+     would push the controls onto a fourth line. It shares the last line here,
+     the same as everywhere else. */
+  .desktop-browser #stream .stream-route-card-action > .stream-route-card-side {
+    width: auto;
+    flex: 0 1 auto;
+    flex-basis: auto;
+    justify-content: flex-start;
+  }
+
+  .desktop-browser #stream .stream-route-card-action .stream-route-addon-name {
+    max-width: min(150px, 42vw);
+  }
+
+  .desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
+    flex: 0 0 auto;
+    margin: 0 0 0 auto;
+  }
+
+  .desktop-browser #stream .stream-route-card-status {
+    font-size: 12px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Stream route on a phone, part two.
+   --------------------------------------------------------------------------- */
+@media (max-width: 960px) {
+  /* The page could be dragged sideways. The backdrop is drawn at scale(1.02) to
+     keep its edges off the viewport, which on desktop the shell clips -- but
+     below this width the shell has to scroll, so it is `overflow: visible` and
+     the extra 2% escaped. Four pixels past each edge is all iOS needs to treat
+     the page as horizontally scrollable and start rubber-banding it.
+
+     The scale earns nothing here, so it goes; the clip and the touch-action are
+     the belt, because any future element that overshoots would do the same
+     thing again. `clip` rather than `hidden`: hidden on one axis forces the
+     other to scroll, which would take the page scrolling away from the page. */
+  .desktop-browser #stream,
+  .desktop-browser #stream .stream-route-shell {
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+  }
+
+  .desktop-browser #stream .stream-route-shell {
+    touch-action: pan-y;
+  }
+
+  .desktop-browser #stream .stream-route-backdrop {
+    transform: none;
+  }
+
+  /* The backdrop belongs to the title at the top of the page. Once the cards
+     start it is only noise behind text, so the list paints over it from the
+     divider down. Painting over it rather than measuring where to cut it keeps
+     the edge exactly on that line without anything needing to know how tall
+     the title block happens to be on a given title. */
+  .desktop-browser #stream .stream-route-panel {
+    min-height: 60vh;
+    background: var(--bg-color);
+  }
+
+  /* The bottom padding moves inside the panel, so the panel reaches the end of
+     the page instead of stopping short and letting the backdrop show under the
+     last card. */
+  .desktop-browser #stream .stream-route-content {
+    padding-bottom: 0;
+  }
+
+  .desktop-browser #stream .stream-route-list {
+    padding-bottom: calc(28px + var(--browser-safe-area-bottom, 0px));
+  }
 }
