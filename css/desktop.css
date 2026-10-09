@@ -11238,6 +11238,36 @@ body.desktop-browser {
   animation: browser-pull-to-refresh-spin 750ms linear infinite;
 }
 
+/* The stream route toast is television-scale in components.css -- 22px type in
+   a 14px/24px box. A fixed element placed at left: 50% can only grow into the
+   half of the screen to its right, so on a phone "Preparing stream..." wrapped
+   onto two lines inside a capsule half the window wide. Match the
+   pull-to-refresh indicator instead: it is this build's own capsule for
+   something happening at the top of the screen, and it is already sized for a
+   phone. */
+.desktop-browser .stream-route-toast {
+  top: max(10px, env(safe-area-inset-top));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Sized to its text rather than to the space beside it, which is what keeps a
+     short message on one line. The cap is for the long ones -- a failure naming
+     its cause still wraps rather than being cut off or running off the edge. */
+  width: max-content;
+  max-width: min(92vw, 420px);
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(25, 25, 29, 0.94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-align: center;
+}
+
 .browser-pull-to-refresh.is-visible {
   opacity: 1;
 }
