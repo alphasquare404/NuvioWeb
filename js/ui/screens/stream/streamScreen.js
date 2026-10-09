@@ -114,6 +114,10 @@ import {
 
 const STREAM_BADGE_LIMIT = 9;
 
+// Stands in for the source list while comparing one render of the page against
+// the last. A comment cannot appear in generated markup, so it cannot collide.
+const STREAM_LIST_BODY_TOKEN = "<!--nuvio-stream-list-body-->";
+
 // How long to keep the waiting screen up while an external player is asked to
 // open, before concluding that nothing is coming. Generous on purpose: iOS can
 // put a "Open in...?" confirmation in front of the launch, and the page is
@@ -1986,6 +1990,9 @@ export const StreamScreen = {
         byDownload.set(key, [...(byDownload.get(key) || []), subtitle]);
         return byDownload;
       }, new Map());
+    if (this.applyOfflineDownloadProgressPatch()) {
+      return;
+    }
     this.requestRender();
   },
 
@@ -2010,6 +2017,142 @@ export const StreamScreen = {
     return `<div class="stream-route-card-status ${escapeHtml(tone)}"><span class="stream-route-card-status-icon" aria-hidden="true">${escapeHtml(icon)}</span><span class="stream-route-card-status-text">${escapeHtml(text)}</span></div>`;
   },
 
+  // What a download's own line says, in one place, because both the renderer
+  // and the in-place patch below have to agree on it to the character.
+  describeOfflineDownload(download = null, downloadId = "") {
+    const status = String(download?.status || "idle");
+    if (status === "downloading") {
+      const total = Number(download?.totalBytes || 0);
+      const current = Number(download?.downloadedBytes || 0);
+      const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : null;
+      const detail =
+        total > 0
+          ? `${formatBytes(current)} of ${formatBytes(total)}`
+          : formatBytes(current) || "starting";
+      return { status, tone: "downloading", icon: "↓", text: `Downloading · ${detail}`, percent };
+    }
+    if (status === "queued") {
+      const position = this.offlineQueuePositions?.get(downloadId);
+      return {
+        status,
+        tone: "queued",
+        icon: "⌛",
+        text: position
+          ? `Queued #${position} · starts after the current download`
+          : "Queued · starts after the current download",
+        percent: null
+      };
+    }
+    if (status === "completed") {
+      return {
+        status,
+        tone: "offline",
+        icon: "⬇",
+        text: "Downloaded · available offline",
+        percent: null
+      };
+    }
+    if (["paused", "interrupted", "failed"].includes(status)) {
+      return {
+        status,
+        tone: "paused",
+        icon: status === "failed" ? "!" : "⏸",
+        text:
+          status === "paused"
+            ? "Paused"
+            : status === "interrupted"
+              ? "Interrupted · resume to continue"
+              : "Download failed · retry to start again",
+        percent: null
+      };
+    }
+    return { status, tone: "", icon: "", text: "", percent: null };
+  },
+
+  // A download reports progress several times a second, and the only thing that
+  // moves with it is a line of text and a dial. Rebuilding the screen for that
+  // threw the list away and built it again, which showed as a flicker and took
+  // the reader's scroll position with it -- the node their finger was on no
+  // longer existed.
+  //
+  // So progress patches what moved. A full render is still the answer whenever
+  // the shape of the page changes, and a status changing is exactly that: a
+  // different status means different buttons. The statuses the last render drew
+  // are kept for that comparison, since the DOM alone cannot say which of them
+  // a card was built from.
+  applyOfflineDownloadProgressPatch() {
+    if (!this.container || !this.offlineDownloadsSupported) return false;
+    if (!(this.renderedDownloadStatuses instanceof Map)) return false;
+    const list = this.container.querySelector(".stream-route-list");
+    if (!list) return false;
+
+    const next = this.collectOfflineDownloadStatuses();
+    if (next.size !== this.renderedDownloadStatuses.size) return false;
+    for (const [downloadId, status] of next) {
+      if (this.renderedDownloadStatuses.get(downloadId) !== status) return false;
+    }
+    // An offline copy appearing or going is a row of its own, not a text change.
+    if ((this.offlineLocalCopies || []).length !== Number(this.renderedOfflineCopyCount || 0)) {
+      return false;
+    }
+
+    (Array.isArray(this.streams) ? this.streams : []).forEach((stream) => {
+      const downloadId = this.getOfflineDownloadId(stream);
+      if (!downloadId) return;
+      const download = this.offlineDownloadMetadata?.get(downloadId) || null;
+      const described = this.describeOfflineDownload(download, downloadId);
+      if (!described.text) return;
+      const card = this.findStreamCardNode(stream.id);
+      if (!card) return;
+      const text = card.querySelector(".stream-route-card-status-text");
+      if (text && text.textContent !== described.text) {
+        text.textContent = described.text;
+      }
+      const ring = card.querySelector(".stream-route-offline-ring");
+      if (ring && described.percent !== null) {
+        const percent = String(described.percent);
+        if (ring.textContent !== `${percent}%`) {
+          ring.textContent = `${percent}%`;
+          ring.style.setProperty("--offline-progress", percent);
+          ring.setAttribute("aria-label", `${percent}% downloaded`);
+        }
+      }
+    });
+
+    const summary = this.container.querySelector(".stream-route-panel-summary");
+    const summaryText = summariseOfflineDownloads(
+      this.offlineDownloadMetadata ? [...this.offlineDownloadMetadata.values()] : []
+    );
+    // The header gaining or losing its line changes the header's own shape, so
+    // that one goes back through a render rather than being patched in.
+    if (Boolean(summary) !== Boolean(summaryText)) return false;
+    if (summary && summary.textContent !== summaryText) summary.textContent = summaryText;
+    return true;
+  },
+
+  collectOfflineDownloadStatuses() {
+    const statuses = new Map();
+    (Array.isArray(this.streams) ? this.streams : []).forEach((stream) => {
+      const downloadId = this.getOfflineDownloadId(stream);
+      if (!downloadId) return;
+      statuses.set(
+        downloadId,
+        String(this.offlineDownloadMetadata?.get(downloadId)?.status || "idle")
+      );
+    });
+    return statuses;
+  },
+
+  findStreamCardNode(streamId = "") {
+    const id = String(streamId || "");
+    if (!id || !this.container) return null;
+    // Stream ids carry addon URLs, so they are not safe to drop into a selector.
+    return (
+      Array.from(this.container.querySelectorAll("[data-card-action='play'][data-stream-id]")).find(
+        (node) => node.dataset.streamId === id
+      ) || null
+    );
+  },
   renderOfflineDownloadActions(stream = {}) {
     if (!Environment.isBrowser() || !this.offlineDownloadsSupported) return "";
     const context = this.getOfflineDownloadContext(stream);
@@ -2020,40 +2163,25 @@ export const StreamScreen = {
     const button = (action, icon, label, className = "") =>
       this.renderOfflineButton(action, icon, label, stream.id, className);
     const statusLine = (tone, icon, text) => this.renderOfflineDownloadStatus(tone, icon, text);
+    const described = this.describeOfflineDownload(download, downloadId);
+    const line = described.text ? statusLine(described.tone, described.icon, described.text) : "";
     if (status === "downloading") {
-      const total = Number(download?.totalBytes || 0);
-      const current = Number(download?.downloadedBytes || 0);
-      const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : null;
-      const detail =
-        total > 0
-          ? `${formatBytes(current)} of ${formatBytes(total)}`
-          : formatBytes(current) || "starting";
-      // The ring carries the percentage so the line underneath can spend its
+      // The ring carries the percentage so the line beside it can spend its
       // room on the figures a person actually checks: how much has landed.
       const ring =
-        percent === null
+        described.percent === null
           ? ""
-          : `<span class="stream-route-offline-ring" style="--offline-progress:${percent}" role="img" aria-label="${percent}% downloaded" aria-live="polite">${percent}%</span>`;
-      return `${statusLine("downloading", "↓", `Downloading · ${detail}`)}<div class="stream-route-offline-actions">${ring}${button("pause", "Ⅱ", "Pause", "secondary")}${button("cancel", "×", "Cancel", "secondary")}</div>`;
+          : `<span class="stream-route-offline-ring" style="--offline-progress:${described.percent}" role="img" aria-label="${described.percent}% downloaded" aria-live="polite">${described.percent}%</span>`;
+      return `${line}<div class="stream-route-offline-actions">${ring}${button("pause", "Ⅱ", "Pause", "secondary")}${button("cancel", "×", "Cancel", "secondary")}</div>`;
     }
     if (status === "queued") {
-      const position = this.offlineQueuePositions?.get(downloadId);
-      const label = position
-        ? `Queued #${position} · starts after the current download`
-        : "Queued · starts after the current download";
-      return `${statusLine("queued", "⌛", label)}<div class="stream-route-offline-actions">${button("cancel", "×", "Cancel", "secondary")}</div>`;
+      return `${line}<div class="stream-route-offline-actions">${button("cancel", "×", "Cancel", "secondary")}</div>`;
     }
     if (status === "completed") {
-      return `${statusLine("offline", "⬇", "Downloaded · available offline")}<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${this.renderOfflineSubtitleButton(downloadId, stream.id)}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
+      return `${line}<div class="stream-route-offline-actions">${button("playOffline", "▶", "Play Offline")}${this.renderOfflineSubtitleButton(downloadId, stream.id)}${button("deleteOffline", "⌫", "Delete Offline", "secondary")}</div>`;
     }
     if (["paused", "interrupted", "failed"].includes(status)) {
-      const label =
-        status === "paused"
-          ? "Paused"
-          : status === "interrupted"
-            ? "Interrupted · resume to continue"
-            : "Download failed · retry to start again";
-      return `${statusLine("paused", status === "failed" ? "!" : "⏸", label)}<div class="stream-route-offline-actions">${button("resume", "▶", status === "failed" ? "Retry" : "Resume", "download")}${button("cancel", "×", "Delete", "secondary")}</div>`;
+      return `${line}<div class="stream-route-offline-actions">${button("resume", "▶", status === "failed" ? "Retry" : "Resume", "download")}${button("cancel", "×", "Delete", "secondary")}</div>`;
     }
     if (!canQueueBrowserOfflineDownload(context)) return "";
     return `<div class="stream-route-offline-actions">${button("download", status === "failed" ? "↻" : "↓", status === "failed" ? "Retry Download" : "Download", "download")}</div>`;
@@ -2266,9 +2394,10 @@ export const StreamScreen = {
       body = `${offlineCopies}${body}`;
     }
 
-    const routeContent = this.autoResumeUiActive
-      ? ""
-      : `
+    const buildRouteContent = (listBody) =>
+      this.autoResumeUiActive
+        ? ""
+        : `
         <div class="stream-route-content">
           <section class="stream-route-left">
             <div class="stream-route-left-inner">
@@ -2293,7 +2422,7 @@ export const StreamScreen = {
                        </div>
                      </header>
                      <div class="stream-route-panel">
-                       <div class="stream-route-list">${body}</div>
+                       <div class="stream-route-list">${listBody}</div>
                      </div>
                    </div>`
                 : `<div class="stream-route-chip-wrap">
@@ -2301,26 +2430,31 @@ export const StreamScreen = {
                    </div>
                    <div class="stream-route-panel-shell">
                      <div class="stream-route-panel">
-                       <div class="stream-route-list">${body}</div>
+                       <div class="stream-route-list">${listBody}</div>
                      </div>
                    </div>`
             }
           </section>
         </div>`;
 
-    const nextMarkup = `
+    const buildShellMarkup = (content) => `
       <div class="stream-route-shell${shellStableClass}">
         <div class="stream-route-backdrop"${backdrop ? ` style="background-image:url('${String(backdrop).replace(/'/g, "%27")}')"` : ""}></div>
         <div class="stream-route-backdrop-dim"></div>
         <div class="stream-route-left-gradient"></div>
         <div class="stream-route-right-gradient"></div>
         ${this.renderDesktopBackButton()}
-        ${routeContent}
+        ${content}
         ${this.renderOfflineDownloadNotice()}
         ${this.renderContinueWatchingResumeOverlay()}
         ${this.renderAutoPlayOverlay()}
       </div>
     `;
+    const routeContent = buildRouteContent(body);
+    const nextMarkup = buildShellMarkup(routeContent);
+    // The same page with the sources taken out of it. When two renders agree on
+    // this and differ only in the list, the list is all that has to be written.
+    const nextShellMarkup = buildShellMarkup(buildRouteContent(STREAM_LIST_BODY_TOKEN));
 
     // Addon logos can schedule a render once they resolve, so a settled list is
     // rebuilt several times over. Measured on
@@ -2331,10 +2465,27 @@ export const StreamScreen = {
     // otherwise cause a genuinely changed list to retain stale DOM.
     const shellMounted = Boolean(this.container.querySelector(".stream-route-shell"));
     const markupUnchanged = shellMounted && this.renderedMarkup === nextMarkup;
+    const listNode = shellMounted ? this.container.querySelector(".stream-route-list") : null;
+    const listOnlyChange =
+      !markupUnchanged && Boolean(listNode) && this.renderedShellMarkup === nextShellMarkup;
 
-    if (!markupUnchanged) {
+    if (listOnlyChange) {
+      // Sources arrive in batches and addon logos resolve one by one, so a list
+      // settles over several renders. Writing the whole page for each of those
+      // threw away the backdrop, the title and the list element itself and made
+      // them again -- which is the flicker while the list fills, and why a
+      // scroll in progress lost its place: the node under the finger was gone.
+      // Only the sources changed, so only the sources are written. The list
+      // element survives, and with it the scroll position and the backdrop
+      // already painted above it.
+      listNode.innerHTML = body;
+      this.renderedMarkup = nextMarkup;
+      this.streamFocusDomCache = null;
+      this.focusedElement = null;
+    } else if (!markupUnchanged) {
       this.container.innerHTML = nextMarkup;
       this.renderedMarkup = nextMarkup;
+      this.renderedShellMarkup = nextShellMarkup;
       this.streamFocusDomCache = null;
       this.focusedElement = null;
     }
@@ -2352,6 +2503,8 @@ export const StreamScreen = {
     }
     this.bindDesktopPointerActions();
     this.bindListScrollState();
+    this.renderedDownloadStatuses = this.collectOfflineDownloadStatuses();
+    this.renderedOfflineCopyCount = (this.offlineLocalCopies || []).length;
     this.hasRenderedStreamRouteShell = true;
   },
 
