@@ -1,3 +1,4 @@
+import { deferWhileReordering } from "../../components/listReorderDrag.js";
 import { Router } from "../../navigation/router.js";
 import { APP_IDENTITY } from "../../../core/app/appIdentity.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
@@ -8842,6 +8843,12 @@ export const SettingsScreen = {
   },
 
   async render({ refreshModel = true } = {}) {
+    // Settings writes its markup again from the top, so a redraw lands on the
+    // row somebody is dragging and destroys it mid-gesture. The usual cause is
+    // a sync from the previous reorder reporting back a second or two later.
+    // The page already shows what the drag has done; the redraw waits for the
+    // finger to lift.
+    if (deferWhileReordering(() => void this.render({ refreshModel }))) return;
     if (refreshModel || !this.model) {
       this.model = await this.collectModel();
     }

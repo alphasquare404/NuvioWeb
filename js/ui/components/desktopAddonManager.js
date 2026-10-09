@@ -1,5 +1,6 @@
 import { AuthManager } from "../../core/auth/authManager.js";
 import { StartupSyncService } from "../../core/profile/startupSyncService.js";
+import { bindListReorderDrag, deferWhileReordering } from "./listReorderDrag.js";
 import { addonRepository } from "../../data/repository/addonRepository.js";
 
 function escapeHtml(value) {
@@ -38,6 +39,8 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
   };
 
   const rerender = async () => {
+    // A redraw during a drag would destroy the card under the finger.
+    if (deferWhileReordering(() => void rerender())) return;
     await requestRender?.();
   };
 
@@ -185,8 +188,8 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
   const persistOrder = async () => {
     const urls = state.addons.map((addon) => addon.baseUrl).filter(Boolean);
     await addonRepository.setAddonOrder(urls);
-    setStatus("Addon order saved locally.");
-    await rerender();
+    // No render for a message nobody sees: the sync below replaces it in the
+    // same tick, and the cards are already in their new order on screen.
     await requestAutosync();
   };
 
@@ -243,70 +246,25 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
   };
 
   const bindDrag = (container) => {
-    let drag = null;
-    const clearDrag = () => {
-      container.querySelectorAll(".desktop-addon-card.is-dragging, .desktop-addon-card.is-drag-over").forEach((node) => {
-        node.classList.remove("is-dragging", "is-drag-over");
-      });
-      document.body.classList.remove("desktop-addon-dragging");
-      drag = null;
-    };
     const moveItem = (fromIndex, toIndex) => {
-      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= state.addons.length || toIndex >= state.addons.length) return;
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+      if (fromIndex >= state.addons.length || toIndex >= state.addons.length) return;
       const next = [...state.addons];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
       state.addons = next;
     };
-    container.querySelectorAll("[data-addon-drag-handle]").forEach((handle) => {
-      handle.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) return;
-        const fromIndex = Number(handle.dataset.addonDragHandle || -1);
-        if (fromIndex < 0) return;
-        drag = { pointerId: event.pointerId, fromIndex, currentIndex: fromIndex, started: false, startY: event.clientY };
-      });
-      handle.addEventListener("pointermove", (event) => {
-        if (!drag || drag.pointerId !== event.pointerId) return;
-        if (!drag.started && Math.abs(event.clientY - drag.startY) < 6) return;
-        if (!drag.started) {
-          drag.started = true;
-          handle.setPointerCapture?.(event.pointerId);
-          handle.closest("[data-addon-card]")?.classList.add("is-dragging");
-          document.body.classList.add("desktop-addon-dragging");
-        }
-        event.preventDefault();
-        const cards = Array.from(container.querySelectorAll("[data-addon-card]"));
-        const target = cards.find((card) => {
-          const rect = card.getBoundingClientRect();
-          return event.clientY >= rect.top && event.clientY <= rect.bottom;
-        });
-        if (!target) return;
-        const targetIndex = cards.indexOf(target);
-        const draggedCard = handle.closest("[data-addon-card]");
-        if (targetIndex < 0 || !draggedCard || target === draggedCard) return;
-        const currentIndex = cards.indexOf(draggedCard);
-        if (currentIndex < 0 || currentIndex === targetIndex) return;
-        if (targetIndex > currentIndex) {
-          target.after(draggedCard);
-        } else {
-          target.before(draggedCard);
-        }
-        moveItem(drag.currentIndex, targetIndex);
-        drag.currentIndex = targetIndex;
-        cards.forEach((card) => card.classList.toggle("is-drag-over", card === target));
-      });
-      const finish = async (event) => {
-        if (!drag || drag.pointerId !== event.pointerId) return;
-        const didDrag = drag.started;
-        handle.releasePointerCapture?.(event.pointerId);
-        clearDrag();
-        if (didDrag) {
-          await rerender();
-          await persistOrder();
-        }
-      };
-      handle.addEventListener("pointerup", (event) => void finish(event));
-      handle.addEventListener("pointercancel", (event) => void finish(event));
+    bindListReorderDrag({
+      container,
+      handleSelector: "[data-addon-drag-handle]",
+      itemSelector: "[data-addon-card]",
+      dragOverClass: "is-drag-over",
+      bodyClass: "desktop-addon-dragging",
+      onMove: moveItem,
+      // The cards already sit in their new order on screen, so a render here
+      // would rebuild them to look the same. Writing the order and saying what
+      // became of it is all that is left to do.
+      onDrop: () => persistOrder()
     });
   };
 

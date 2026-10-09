@@ -1,3 +1,4 @@
+import { bindListReorderDrag, deferWhileReordering } from "./listReorderDrag.js";
 import { Router } from "../navigation/router.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
 import { CollectionsStore } from "../../data/local/collectionsStore.js";
@@ -28,7 +29,11 @@ export function createDesktopCollectionManager({ requestRender } = {}) {
   const load = () => {
     state.collections = CollectionsStore.getForProfile(activeProfileId());
   };
-  const rerender = async () => requestRender?.();
+  const rerender = async () => {
+    // A redraw during a drag would destroy the row under the finger.
+    if (deferWhileReordering(() => void rerender())) return;
+    await requestRender?.();
+  };
   const replace = (collections) => CollectionsStore.replaceForProfile(activeProfileId(), collections);
 
   const addCollection = async () => {
@@ -61,46 +66,16 @@ export function createDesktopCollectionManager({ requestRender } = {}) {
   };
 
   const bindDrag = (container) => {
-    let drag = null;
-    const clear = () => {
-      container.querySelectorAll("[data-desktop-collection-row]").forEach((row) => row.classList.remove("is-dragging", "is-drag-over"));
-      drag = null;
-    };
-    container.querySelectorAll("[data-desktop-collection-drag]").forEach((handle) => {
-      handle.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) return;
-        drag = { pointerId: event.pointerId, index: Number(handle.dataset.desktopCollectionDrag), startY: event.clientY, started: false };
-      });
-      handle.addEventListener("pointermove", (event) => {
-        if (!drag || drag.pointerId !== event.pointerId) return;
-        if (!drag.started && Math.abs(event.clientY - drag.startY) < 6) return;
-        if (!drag.started) {
-          drag.started = true;
-          handle.setPointerCapture?.(event.pointerId);
-          handle.closest("[data-desktop-collection-row]")?.classList.add("is-dragging");
-        }
-        event.preventDefault();
-        const rows = Array.from(container.querySelectorAll("[data-desktop-collection-row]"));
-        const target = rows.find((row) => { const rect = row.getBoundingClientRect(); return event.clientY >= rect.top && event.clientY <= rect.bottom; });
-        const dragged = handle.closest("[data-desktop-collection-row]");
-        if (!target || !dragged || target === dragged) return;
-        const from = rows.indexOf(dragged);
-        const to = rows.indexOf(target);
-        if (from < 0 || to < 0) return;
-        if (to > from) target.after(dragged); else target.before(dragged);
-        const [moved] = state.collections.splice(drag.index, 1);
-        state.collections.splice(to, 0, moved);
-        drag.index = to;
-      });
-      const finish = async (event) => {
-        if (!drag || drag.pointerId !== event.pointerId) return;
-        const didDrag = drag.started;
-        handle.releasePointerCapture?.(event.pointerId);
-        clear();
-        if (didDrag) replace(state.collections);
-      };
-      handle.addEventListener("pointerup", (event) => void finish(event));
-      handle.addEventListener("pointercancel", (event) => void finish(event));
+    bindListReorderDrag({
+      container,
+      handleSelector: "[data-desktop-collection-drag]",
+      itemSelector: "[data-desktop-collection-row]",
+      dragOverClass: "is-drag-over",
+      onMove: (fromIndex, toIndex) => {
+        const [moved] = state.collections.splice(fromIndex, 1);
+        state.collections.splice(toIndex, 0, moved);
+      },
+      onDrop: () => replace(state.collections)
     });
   };
 

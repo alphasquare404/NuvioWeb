@@ -1611,7 +1611,10 @@ html.desktop-browser {
   gap: 14px;
   padding: 10px 2px 16px;
   cursor: grab;
-  touch-action: pan-y;
+  /* A reorder handle.s whole gesture is the vertical drag. pan-y gave exactly
+     that to the page scroller, which then cancelled the pointer and ended the
+     drag before it began. */
+  touch-action: none;
 }
 
 .desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track .seeall-card {
@@ -9926,7 +9929,7 @@ html.desktop-browser {
 .desktop-browser .desktop-collection-manager-actions, .desktop-browser .desktop-collection-editor-actions { display: flex; flex: 0 0 auto; gap: 7px; }
 .desktop-browser .desktop-collection-manager-actions button, .desktop-browser .desktop-collection-editor-actions button { min-height: 34px; padding: 0 10px; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; background: rgba(255,255,255,.07); color: var(--text-color); cursor: pointer; font: 600 12px/1 inherit; }
 .desktop-browser .desktop-collection-manager-actions .is-danger, .desktop-browser .desktop-collection-editor-actions .is-danger { color: #ffb1b9; }
-.desktop-browser .desktop-collection-drag-handle { display: inline-grid; flex: 0 0 auto; width: 32px; height: 36px; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.15); border-radius: 9px; background: rgba(255,255,255,.04); color: var(--text-tertiary); cursor: grab; touch-action: pan-y; }
+.desktop-browser .desktop-collection-drag-handle { display: inline-grid; flex: 0 0 auto; width: 32px; height: 36px; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.15); border-radius: 9px; background: rgba(255,255,255,.04); color: var(--text-tertiary); cursor: grab; touch-action: none; }
 .desktop-browser .desktop-collection-drag-handle:active { cursor: grabbing; }
 .desktop-browser .desktop-collection-editor-shell { min-height: 100vh; padding: clamp(92px, 10vw, 132px) clamp(32px, 4vw, 64px) 72px; background: #111; color: var(--text-color); box-sizing: border-box; }
 .desktop-browser .desktop-collection-editor-shell > * { width: min(100%, 980px); margin-right: auto; margin-left: auto; }
@@ -10054,7 +10057,10 @@ html.desktop-browser {
   background: rgba(255, 255, 255, 0.045);
   color: var(--text-tertiary);
   cursor: grab;
-  touch-action: pan-y;
+  /* A reorder handle.s whole gesture is the vertical drag. pan-y gave exactly
+     that to the page scroller, which then cancelled the pointer and ended the
+     drag before it began. */
+  touch-action: none;
 }
 
 .desktop-browser .settings-shell .desktop-home-catalog-drag-handle:active {
@@ -10750,7 +10756,10 @@ html.desktop-browser {
   background: rgba(255, 255, 255, 0.045);
   color: var(--text-tertiary);
   cursor: grab;
-  touch-action: pan-y;
+  /* A reorder handle.s whole gesture is the vertical drag. pan-y gave exactly
+     that to the page scroller, which then cancelled the pointer and ended the
+     drag before it began. */
+  touch-action: none;
 }
 
 .desktop-browser .settings-shell .desktop-addon-drag-handle:active {

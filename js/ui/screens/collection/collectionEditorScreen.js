@@ -1,3 +1,4 @@
+import { bindListReorderDrag, deferWhileReordering } from "../../components/listReorderDrag.js";
 import { Platform } from "../../../platform/index.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
 import { CollectionsStore, getCollectionFolderSources } from "../../../data/local/collectionsStore.js";
@@ -51,6 +52,8 @@ export const CollectionEditorScreen = {
   },
   cleanup() { ScreenUtils.hide(this.container); },
   async render() {
+    // A redraw during a drag would destroy the row under the finger.
+    if (deferWhileReordering(() => void this.render())) return;
     const collection = getCollection(this.params?.collectionId);
     if (!collection) { backToSettings(); return; }
     const folders = collection.folders || [];
@@ -106,17 +109,18 @@ export const CollectionEditorScreen = {
     this.bindFolderDrag(collection);
   },
   bindFolderDrag(collection) {
-    let drag = null;
-    this.container.querySelectorAll("[data-folder-drag]").forEach((handle) => {
-      handle.addEventListener("pointerdown", (event) => { if (event.button === 0) drag = { id: event.pointerId, index: Number(handle.dataset.folderDrag), y: event.clientY, started: false }; });
-      handle.addEventListener("pointermove", (event) => {
-        if (!drag || drag.id !== event.pointerId || (!drag.started && Math.abs(event.clientY - drag.y) < 6)) return;
-        drag.started = true; handle.setPointerCapture?.(event.pointerId); event.preventDefault();
-        const rows = Array.from(this.container.querySelectorAll(".desktop-collection-editor-row")); const current = handle.closest(".desktop-collection-editor-row"); const target = rows.find((row) => { const rect = row.getBoundingClientRect(); return event.clientY >= rect.top && event.clientY <= rect.bottom; });
-        if (!current || !target || current === target) return; const from = rows.indexOf(current); const to = rows.indexOf(target); if (to > from) target.after(current); else target.before(current); const latest = getCollection(collection.id) || collection; const next = [...latest.folders]; const [moved] = next.splice(drag.index, 1); next.splice(to, 0, moved); drag.index = to; saveCollection({ ...latest, folders: next });
-      });
-      const end = (event) => { if (!drag || drag.id !== event.pointerId) return; handle.releasePointerCapture?.(event.pointerId); const rerender = drag.started; drag = null; if (rerender) void this.render(); };
-      handle.addEventListener("pointerup", end); handle.addEventListener("pointercancel", end);
+    bindListReorderDrag({
+      container: this.container,
+      handleSelector: "[data-folder-drag]",
+      itemSelector: ".desktop-collection-editor-row",
+      onMove: (fromIndex, toIndex) => {
+        const latest = getCollection(collection.id) || collection;
+        const next = [...latest.folders];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        saveCollection({ ...latest, folders: next });
+      },
+      onDrop: () => this.render()
     });
   }
 };
@@ -127,6 +131,8 @@ export const CollectionFolderEditorScreen = {
   async mount(params = {}) { this.params = params; this.container = document.getElementById("collectionFolderEdit"); if (!Platform.isBrowser()) { backToSettings(); return; } ScreenUtils.show(this.container); await this.render(); },
   cleanup() { ScreenUtils.hide(this.container); },
   async render() {
+    // A redraw during a drag would destroy the row under the finger.
+    if (deferWhileReordering(() => void this.render())) return;
     const collection = getCollection(this.params?.collectionId); const folder = collection?.folders?.find((item) => String(item.id) === String(this.params?.folderId));
     if (!collection || !folder) { void Router.navigate("collectionEdit", { collectionId: this.params?.collectionId }); return; }
     const sources = getCollectionFolderSources(folder); const addons = await addonRepository.getInstalledAddons();
@@ -167,7 +173,25 @@ export const CollectionFolderEditorScreen = {
     this.bindSourceDrag(collection, folder);
   },
   bindSourceDrag(collection, folder) {
-    let drag = null;
-    this.container.querySelectorAll("[data-source-drag]").forEach((handle) => { handle.addEventListener("pointerdown", (event) => { if (event.button === 0) drag = { id: event.pointerId, index: Number(handle.dataset.sourceDrag), y: event.clientY, started: false }; }); handle.addEventListener("pointermove", (event) => { if (!drag || drag.id !== event.pointerId || (!drag.started && Math.abs(event.clientY - drag.y) < 6)) return; drag.started = true; handle.setPointerCapture?.(event.pointerId); event.preventDefault(); const rows = Array.from(this.container.querySelectorAll(".desktop-collection-editor-row")); const current = handle.closest(".desktop-collection-editor-row"); const target = rows.find((row) => { const r = row.getBoundingClientRect(); return event.clientY >= r.top && event.clientY <= r.bottom; }); if (!current || !target || current === target) return; const from = rows.indexOf(current), to = rows.indexOf(target); const latestCollection = getCollection(collection.id) || collection; const latestFolder = latestCollection.folders.find((item) => item.id === folder.id) || folder; const next = getCollectionFolderSources(latestFolder); if (to > from) target.after(current); else target.before(current); const [moved] = next.splice(drag.index, 1); next.splice(to, 0, moved); drag.index = to; saveCollection({ ...latestCollection, folders: latestCollection.folders.map((item) => item.id === folder.id ? { ...latestFolder, sources: next } : item) }); }); const end = (event) => { if (!drag || drag.id !== event.pointerId) return; handle.releasePointerCapture?.(event.pointerId); const refresh = drag.started; drag = null; if (refresh) void this.render(); }; handle.addEventListener("pointerup", end); handle.addEventListener("pointercancel", end); });
+    bindListReorderDrag({
+      container: this.container,
+      handleSelector: "[data-source-drag]",
+      itemSelector: ".desktop-collection-editor-row",
+      onMove: (fromIndex, toIndex) => {
+        const latestCollection = getCollection(collection.id) || collection;
+        const latestFolder =
+          latestCollection.folders.find((item) => item.id === folder.id) || folder;
+        const next = getCollectionFolderSources(latestFolder);
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        saveCollection({
+          ...latestCollection,
+          folders: latestCollection.folders.map((item) =>
+            item.id === folder.id ? { ...latestFolder, sources: next } : item
+          )
+        });
+      },
+      onDrop: () => this.render()
+    });
   }
 };

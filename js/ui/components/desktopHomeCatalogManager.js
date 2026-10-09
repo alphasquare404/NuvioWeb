@@ -1,3 +1,4 @@
+import { bindListReorderDrag, deferWhileReordering } from "./listReorderDrag.js";
 import { AuthManager } from "../../core/auth/authManager.js";
 import { buildOrderedHomeCatalogItems } from "../../core/addons/homeCatalogs.js";
 import { HomeCatalogStore } from "../../data/local/homeCatalogStore.js";
@@ -30,6 +31,8 @@ export function createDesktopHomeCatalogManager({ requestRender } = {}) {
   };
 
   const rerender = async () => {
+    // A redraw during a drag would destroy the row under the finger.
+    if (deferWhileReordering(() => void rerender())) return;
     await requestRender?.();
   };
 
@@ -83,8 +86,8 @@ export function createDesktopHomeCatalogManager({ requestRender } = {}) {
       return;
     }
 
-    setStatus("Saving…", "success");
-    await rerender();
+    // "Saving" and "Syncing" were set one after the other without yielding,
+    // so the first was painted over before a frame could show it.
     setStatus("Syncing…", "success");
     await rerender();
     const didSync = await syncResult;
@@ -154,71 +157,22 @@ export function createDesktopHomeCatalogManager({ requestRender } = {}) {
   };
 
   const bindDrag = (container) => {
-    let drag = null;
     const moveItem = (fromIndex, toIndex) => {
       if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+      if (fromIndex >= state.items.length || toIndex >= state.items.length) return;
       const next = [...state.items];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
       state.items = next;
     };
-    const clearDrag = () => {
-      container
-        .querySelectorAll(".desktop-home-catalog-row.is-dragging, .desktop-home-catalog-row.is-drag-over")
-        .forEach((node) => node.classList.remove("is-dragging", "is-drag-over"));
-      document.body.classList.remove("desktop-home-catalog-dragging");
-      drag = null;
-    };
-
-    container.querySelectorAll("[data-home-catalog-drag-handle]").forEach((handle) => {
-      handle.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) return;
-        const fromIndex = Number(handle.dataset.homeCatalogDragHandle || -1);
-        if (fromIndex < 0) return;
-        drag = {
-          pointerId: event.pointerId,
-          currentIndex: fromIndex,
-          startY: event.clientY,
-          started: false
-        };
-      });
-      handle.addEventListener("pointermove", (event) => {
-        if (!drag || drag.pointerId !== event.pointerId) return;
-        if (!drag.started && Math.abs(event.clientY - drag.startY) < 6) return;
-        if (!drag.started) {
-          drag.started = true;
-          handle.setPointerCapture?.(event.pointerId);
-          handle.closest("[data-home-catalog-row]")?.classList.add("is-dragging");
-          document.body.classList.add("desktop-home-catalog-dragging");
-        }
-        event.preventDefault();
-        const rows = Array.from(container.querySelectorAll("[data-home-catalog-row]"));
-        const target = rows.find((row) => {
-          const rect = row.getBoundingClientRect();
-          return event.clientY >= rect.top && event.clientY <= rect.bottom;
-        });
-        const draggedRow = handle.closest("[data-home-catalog-row]");
-        if (!target || !draggedRow || target === draggedRow) return;
-        const currentIndex = rows.indexOf(draggedRow);
-        const targetIndex = rows.indexOf(target);
-        if (currentIndex < 0 || targetIndex < 0 || currentIndex === targetIndex) return;
-        if (targetIndex > currentIndex) target.after(draggedRow);
-        else target.before(draggedRow);
-        moveItem(drag.currentIndex, targetIndex);
-        drag.currentIndex = targetIndex;
-        rows.forEach((row) => row.classList.toggle("is-drag-over", row === target));
-      });
-      const finish = async (event) => {
-        if (!drag || drag.pointerId !== event.pointerId) return;
-        const didDrag = drag.started;
-        handle.releasePointerCapture?.(event.pointerId);
-        clearDrag();
-        if (didDrag) {
-          await saveOrder();
-        }
-      };
-      handle.addEventListener("pointerup", (event) => void finish(event));
-      handle.addEventListener("pointercancel", (event) => void finish(event));
+    bindListReorderDrag({
+      container,
+      handleSelector: "[data-home-catalog-drag-handle]",
+      itemSelector: "[data-home-catalog-row]",
+      dragOverClass: "is-drag-over",
+      bodyClass: "desktop-home-catalog-dragging",
+      onMove: moveItem,
+      onDrop: () => saveOrder()
     });
   };
 
