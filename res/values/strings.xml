@@ -481,6 +481,7 @@
     <string name="automation_return_caution">The Automation runs when the player closes, so close the player by its own Close button. Swiping it away from the app switcher still sends nothing back.</string>
     <string name="poster_view_larger">View poster</string>
     <string name="stream_opening_player">Opening player…</string>
+    <string name="stream_panel_title">Streams</string>
     <string name="stream_filter_source">Source</string>
     <string name="stream_refresh_sources">Refresh sources</string>
     <string name="pwa_install_title">Install Nuvio</string>
