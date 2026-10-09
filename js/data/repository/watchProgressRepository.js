@@ -698,10 +698,20 @@ class WatchProgressRepository {
       ...watchedShowSeedItems
     ];
 
-    const recentItems = filterForSelectedContinueWatchingSource(allItems)
+    const sourceItems = filterForSelectedContinueWatchingSource(allItems);
+    // No cap before deduplication. A tracker returns one record per watch, so a
+    // few hundred recent history rows -- every one of them a finished episode,
+    // and therefore ineligible for a card -- used to fill a 300 record budget
+    // and evict the playback rows underneath them, which are the only records
+    // that mean "still watching". Measured on a real account: 318 records in,
+    // 300 kept, and the 18 evicted were exactly the 18 paused ones.
+    //
+    // Deduplication collapses to one card per title and drops what is already
+    // finished, and `limit` bounds the result after that. Cutting the list
+    // before either of those decided anything was cutting the wrong end.
+    const recentItems = sourceItems
       .filter((item) => cutoffMs === 0 || Number(item?.updatedAt || 0) >= cutoffMs)
-      .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
-      .slice(0, 300);
+      .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0));
 
     const inProgressOnly = deduplicateContinueWatchingItems(recentItems);
 
