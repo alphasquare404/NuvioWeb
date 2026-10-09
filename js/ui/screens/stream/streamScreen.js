@@ -58,6 +58,10 @@ import {
 import { resolveBrowserStreamCardClickAction } from "../../components/browserStreamCardClick.js";
 import { renderRouteHandoffShell } from "../../components/routeHandoffShell.js";
 import { resolveHandoffReturnRoute } from "../../../core/streams/streamAutoResolve.js";
+import {
+  shouldRevealFocusedStreamItem,
+  streamFocusRevealKey
+} from "../../../core/streams/streamFocusReveal.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import {
@@ -679,6 +683,7 @@ export const StreamScreen = {
     const token = this.loadToken;
     this.focusState = { zone: "filter", index: 0 };
     this.listScrollTop = 0;
+    this.appliedFocusKey = null;
     this.error = "";
     this.loading = true;
     this.streams = [];
@@ -1013,6 +1018,7 @@ export const StreamScreen = {
     this.addonPickerOpen = false;
     this.focusState = { zone: "filter", index: 0 };
     this.listScrollTop = 0;
+    this.appliedFocusKey = null;
     this.addonLogoLookup = {};
 
     this.sourceChips = [];
@@ -1530,6 +1536,7 @@ export const StreamScreen = {
       };
     }
     this.listScrollTop = 0;
+    this.appliedFocusKey = null;
     this.render();
   },
 
@@ -1563,7 +1570,10 @@ export const StreamScreen = {
     );
   },
 
-  focusElement(target) {
+  // `revealInList` is what separates a person moving the focus from a render
+  // re-asserting the focus that was already there. Only the first is a reason
+  // to move the list.
+  focusElement(target, { revealInList = true } = {}) {
     if (!target) {
       return false;
     }
@@ -1601,7 +1611,7 @@ export const StreamScreen = {
     }
 
     const listNode = target.closest(".stream-route-list");
-    if (listNode) {
+    if (listNode && revealInList) {
       this.ensureListItemVisible(listNode, target);
       this.listScrollTop = this.getListScrollTop(listNode);
       this.scheduleFocusedListItemVisibilityCheck(listNode, target);
@@ -1727,10 +1737,19 @@ export const StreamScreen = {
       const target = this.resolveCardActionForRow(rows[rowIndex], preferredAction);
       const resolvedAction = target?.dataset?.cardAction || "play";
       this.focusState = { zone: "card", row: rowIndex, action: resolvedAction };
-      this.focusElement(target);
+      // Every render ends here, including the ones a download.s progress sets
+      // off a few times a second. Scrolling the focused card back into view on
+      // each of those drags the list out from under whoever is reading it, and
+      // scrolling back only buys them until the next byte arrives. The reveal
+      // belongs to the focus moving, so it happens when the focus moves.
+      const focusKey = streamFocusRevealKey(this.focusState);
+      const revealInList = shouldRevealFocusedStreamItem(this.appliedFocusKey, focusKey);
+      this.appliedFocusKey = focusKey;
+      this.focusElement(target, { revealInList });
       return;
     }
     this.focusState = { zone: "filter", index: clamp(index, 0, Math.max(0, chips.length - 1)) };
+    this.appliedFocusKey = streamFocusRevealKey(this.focusState);
     this.focusList(chips, this.focusState.index);
   },
 
