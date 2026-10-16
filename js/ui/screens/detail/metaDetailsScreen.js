@@ -1823,7 +1823,9 @@ export const MetaDetailsScreen = {
   },
 
   async mount(params = {}, navigationContext = {}) {
-    this.container = document.getElementById("detail");
+    // The router hands a layered instance a container of its own; only the
+    // first instance falls back to the one the app shell ships with.
+    this.container = this.container || document.getElementById("detail");
     ScreenUtils.show(this.container);
     // Before the first await, because the container is visible from the line
     // above. Everything this method yields on -- the profile read below, then
@@ -7887,6 +7889,12 @@ export const MetaDetailsScreen = {
   // progress from before playback, and only leaving for Home and coming back
   // rebuilt them. Home was already right, because Home has this hook.
   onRouteRevealed() {
+    // Revealed, not mounted: the router has just put the route's generic title
+    // back in the tab, because that is all it knows. This screen knows the
+    // title it is showing.
+    if (this.meta?.name) {
+      setBrowserMediaTitle({ title: this.meta.name, year: this.meta.releaseInfo });
+    }
     // A load in flight is about to produce this anyway, and two passes writing
     // the same fields would race each other.
     if (!this.container || !this.meta || this.isLoadingDetail) return;
