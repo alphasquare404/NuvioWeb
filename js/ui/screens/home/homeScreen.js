@@ -12,13 +12,19 @@ import {
 } from "../../../data/repository/libraryRepository.js";
 import { mapWithConcurrency } from "../../../core/network/mapWithConcurrency.js";
 import { filterReleasedItems } from "../../../core/util/releaseInfoUtils.js";
-import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
+import {
+  LayoutPreferences,
+  normalizeCatalogCardOrientation,
+  shouldDrawCardLandscape
+} from "../../../data/local/layoutPreferences.js";
 import { ContinueWatchingPreferences } from "../../../data/local/continueWatchingPreferences.js";
 import { HomeCatalogStore } from "../../../data/local/homeCatalogStore.js";
 import { CollectionsStore, buildCollectionHomeKey } from "../../../data/local/collectionsStore.js";
 import { WatchProgressStore } from "../../../data/local/watchProgressStore.js";
 import { WatchedItemsStore } from "../../../data/local/watchedItemsStore.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
+import { capTmdbImageSize } from "../../../core/media/tmdbImageSize.js";
+import { readHeroArtwork, rememberHeroArtwork } from "../../../data/local/heroArtworkCache.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
 import {
   getEffectiveTmdbApiKey,
@@ -44,6 +50,7 @@ import {
 import {
   buildModernRowKey,
   MODERN_HOME_CONSTANTS,
+  renderModernHeroMetaLine,
   renderModernHomeLayout
 } from "./modernHomeLayout.js";
 import { applySectionScopedUpdate } from "./homeSectionUpdate.js";
@@ -150,6 +157,7 @@ import {
 } from "./continueWatchingRenderWindow.js";
 import {
   buildHeroBackdropSources,
+  buildHeroPortraitSources,
   buildImageFallbackErrorHandler,
   encodeHeroBackdropFallbacks
 } from "./homeImageHelpers.js";
@@ -246,6 +254,45 @@ async function getLocalSidebarProfileState() {
   };
 }
 
+// An upright phone and a wide screen want different pictures. This is not a
+// <picture> with a media <source>, although that is what it looks like: the
+// hero rotates by writing `src` on this very image, and a matching <source>
+// outranks `src`, so the artwork would freeze on the first title while the
+// copy under it kept changing. The choice is made here instead, and remade
+// on rotation and on rotating the phone.
+// Phones only. A tablet held upright still has its copy beside the artwork
+// rather than under it, and a poster in that layout looks like a mistake --
+// the wide picture is the one composed for a frame with text next to it.
+const HERO_PORTRAIT_MEDIA = "(orientation: portrait) and (max-width: 600px)";
+// Long enough for a TMDB answer on a decent connection, short enough that a
+// bad one is not something the person waits through.
+const HOME_HERO_ARTWORK_WAIT_MS = 700;
+
+function prefersPortraitHeroArtwork() {
+  return Boolean(globalThis.matchMedia?.(HERO_PORTRAIT_MEDIA)?.matches);
+}
+
+function resolveHeroArtworkSrc(display) {
+  if (prefersPortraitHeroArtwork() && display?.portraitBackdrop) {
+    return display.portraitBackdrop;
+  }
+  return display?.backdrop || "";
+}
+
+function heroArtworkKey(hero) {
+  const id = String(hero?.id || "").trim();
+  return id ? `${String(hero?.type || hero?.apiType || "movie")}:${id}` : "";
+}
+
+function usesPortraitHeroArtwork(display, src) {
+  // Only when it is actually a different picture. With no plate to show, the
+  // upright list falls through to the same wide artwork as the landscape one,
+  // and that must still be cropped to fill rather than shown whole.
+  return Boolean(
+    src && display?.portraitBackdrop && src === display.portraitBackdrop && src !== display.backdrop
+  );
+}
+
 function renderHeroBackdropImage(display) {
   if (!display?.backdrop) {
     return '<div class="home-hero-backdrop placeholder"></div>';
@@ -254,7 +301,9 @@ function renderHeroBackdropImage(display) {
   const fallbackAttribute = fallbackQueue
     ? ` data-fallback-srcs="${escapeAttribute(fallbackQueue)}"`
     : "";
-  return `<img class="home-hero-backdrop" src="${escapeAttribute(display.backdrop)}"${fallbackAttribute} alt="${escapeAttribute(display.title)}" decoding="async" fetchpriority="high" onerror="${buildImageFallbackErrorHandler()}" />`;
+  const src = resolveHeroArtworkSrc(display);
+  const portraitClass = usesPortraitHeroArtwork(display, src) ? " is-portrait-artwork" : "";
+  return `<img class="home-hero-backdrop${portraitClass}" src="${escapeAttribute(src)}"${fallbackAttribute} alt="${escapeAttribute(display.title)}" decoding="async" fetchpriority="high" onerror="${buildImageFallbackErrorHandler()}" />`;
 }
 
 export function buildModernHomeSizingStyle(layoutPrefs = {}) {
@@ -416,33 +465,6 @@ function extractYear(item) {
   return "";
 }
 
-/**
- * For movies: returns "Month DD, YYYY" (e.g. "April 24, 2026") from any ISO date field.
- * For non-movies: falls back to extractYear().
- * Matches ATV ModernHomeModels.kt extractYearText(type=Movie, released=ISO) behaviour.
- */
-function extractReleaseDateText(item) {
-  const type = String(item?.type || item?.apiType || "").toLowerCase();
-  if (type === "movie") {
-    const candidates = [item?.released, item?.releaseDate, item?.release_date, item?.releaseInfo];
-    for (const candidate of candidates) {
-      const str = String(candidate || "");
-      const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (isoMatch) {
-        const date = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
-        if (!Number.isNaN(date.getTime())) {
-          return date.toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric"
-          });
-        }
-      }
-    }
-  }
-  return extractYear(item);
-}
-
 function formatRuntimeText(item) {
   const value = parseRuntimeMinutes(
     item?.runtimeMinutes ?? item?.runtime ?? item?.durationMinutes ?? item?.duration_minutes ?? 0
@@ -520,7 +542,7 @@ function preloadModernHeroAssets(hero) {
   return Promise.all([preloadImageSource(display?.backdrop), preloadImageSource(display?.logo)]);
 }
 
-function animateModernHeroBackdropSwap(backdrop, nextSrc, nextAlt = "") {
+function animateModernHeroBackdropSwap(backdrop, nextSrc, nextAlt = "", portraitShape = null) {
   if (!(backdrop instanceof HTMLImageElement)) {
     return;
   }
@@ -545,8 +567,18 @@ function animateModernHeroBackdropSwap(backdrop, nextSrc, nextAlt = "") {
     clearGhosts();
   };
 
+  // The shape of the picture about to be shown, applied at the moment the
+  // picture itself is.
+  const applyShape = () => {
+    if (portraitShape === null) {
+      return;
+    }
+    backdrop.classList.toggle("is-portrait-artwork", Boolean(portraitShape));
+  };
+
   if (!normalizedSrc) {
     finalize();
+    applyShape();
     backdrop.removeAttribute("src");
     backdrop.setAttribute("alt", normalizedAlt);
     backdrop.classList.add("placeholder");
@@ -554,6 +586,7 @@ function animateModernHeroBackdropSwap(backdrop, nextSrc, nextAlt = "") {
   }
 
   if (currentSrc === normalizedSrc) {
+    applyShape();
     backdrop.setAttribute("alt", normalizedAlt);
     backdrop.classList.remove("placeholder");
     return;
@@ -566,6 +599,7 @@ function animateModernHeroBackdropSwap(backdrop, nextSrc, nextAlt = "") {
 
     if (!loaded) {
       finalize();
+      applyShape();
       backdrop.setAttribute("src", normalizedSrc);
       backdrop.setAttribute("alt", normalizedAlt);
       backdrop.classList.remove("placeholder");
@@ -583,6 +617,7 @@ function animateModernHeroBackdropSwap(backdrop, nextSrc, nextAlt = "") {
 
     backdrop.classList.add("home-hero-backdrop-transition-enter");
     backdrop.classList.remove("placeholder");
+    applyShape();
     backdrop.setAttribute("src", normalizedSrc);
     backdrop.setAttribute("alt", normalizedAlt);
 
@@ -795,7 +830,7 @@ export function normalizeCollectionFolderItem(item, collectionMeta = null) {
     background: heroBackdrop,
     backdrop: heroBackdrop,
     landscapePoster: heroBackdrop,
-    logo: firstNonEmpty(item.titleLogoUrl),
+    logo: capTmdbImageSize(firstNonEmpty(item.titleLogoUrl), "logo"),
     description: "",
     genres: [],
     collectionId,
@@ -1487,7 +1522,7 @@ function normalizeCatalogItem(item, fallbackType = "movie") {
       item.poster,
       item.thumbnail
     ),
-    logo: firstNonEmpty(item.logo),
+    logo: capTmdbImageSize(firstNonEmpty(item.logo), "logo"),
     description: firstNonEmpty(item.description, item.overview, item.plot),
     releaseInfo: firstNonEmpty(item.releaseInfo, item.released),
     genres: Array.isArray(item.genres) ? item.genres.filter(Boolean) : [],
@@ -1576,7 +1611,7 @@ function normalizeContinueWatchingItem(item) {
           item.thumbnail,
           item.episodeThumbnail
         ),
-    logo: firstNonEmpty(item.logo),
+    logo: capTmdbImageSize(firstNonEmpty(item.logo), "logo"),
     description: firstNonEmpty(item.description),
     episodeDescription: firstNonEmpty(item.episodeDescription, item.episode_description),
     releaseInfo: firstNonEmpty(item.releaseInfo),
@@ -1918,7 +1953,7 @@ function buildHeroDisplayModel(hero, layoutMode) {
     return {
       title: normalized?.heroTitle || normalized?.name || normalized?.collectionTitle || "Untitled",
       description: " ",
-      logo: firstNonEmpty(normalized?.titleLogoUrl, normalized?.logo),
+      logo: capTmdbImageSize(firstNonEmpty(normalized?.titleLogoUrl, normalized?.logo), "logo"),
       backdrop: firstNonEmpty(
         normalized?.heroBackdropUrl,
         normalized?.background,
@@ -1926,6 +1961,7 @@ function buildHeroDisplayModel(hero, layoutMode) {
         normalized?.poster
       ),
       backdropFallbacks: buildHeroBackdropSources(normalized).slice(1),
+      portraitBackdrop: buildHeroPortraitSources(normalized)[0] || "",
       metaPrimary: [],
       metaSecondary: [],
       chips: []
@@ -1968,9 +2004,10 @@ function buildHeroDisplayModel(hero, layoutMode) {
   return {
     title: hero?.name || "Untitled",
     description: firstNonEmpty(hero?.description) || " ",
-    logo: firstNonEmpty(hero?.logo),
+    logo: capTmdbImageSize(firstNonEmpty(hero?.logo), "logo"),
     backdrop: buildHeroBackdropSources(hero)[0] || "",
     backdropFallbacks: buildHeroBackdropSources(hero).slice(1),
+    portraitBackdrop: buildHeroPortraitSources(hero)[0] || "",
     metaPrimary: metaPrimary.filter(Boolean),
     metaSecondary: metaSecondary.filter(Boolean),
     chips
@@ -1989,7 +2026,10 @@ export function buildModernHeroPresentation(hero) {
         normalizedCollection.name ||
         normalizedCollection.rawTitle ||
         "",
-      logo: firstNonEmpty(normalizedCollection.titleLogoUrl, normalizedCollection.logo),
+      logo: capTmdbImageSize(
+        firstNonEmpty(normalizedCollection.titleLogoUrl, normalizedCollection.logo),
+        "logo"
+      ),
       description: "",
       backdrop: buildHeroBackdropSources(normalizedCollection)[0] || "",
       backdropFallbacks: buildHeroBackdropSources(normalizedCollection).slice(1),
@@ -1998,8 +2038,7 @@ export function buildModernHeroPresentation(hero) {
       secondaryHighlightText: "",
       badges: [],
       languageText: "",
-      showImdbPrimary: false,
-      showImdbSecondary: false,
+      showImdb: false,
       imdbText: ""
     };
   }
@@ -2011,14 +2050,13 @@ export function buildModernHeroPresentation(hero) {
     return null;
   }
 
-  const isSeries = String(normalized.type || normalized.apiType || "").toLowerCase() === "series";
   const genres = Array.isArray(normalized.genres) ? normalized.genres.filter(Boolean) : [];
   const contentTypeText = formatContentTypeLabel(
     normalized.type || normalized.apiType || "movie",
     "movie"
   );
   const runtimeText = formatRuntimeText(normalized);
-  const yearText = extractReleaseDateText(normalized);
+  const yearText = extractYear(normalized);
   const imdbText = resolveImdbRating(normalized);
   const statusBadge = firstNonEmpty(normalized.status).toUpperCase();
   const ageRatingBadge = firstNonEmpty(normalized.ageRating);
@@ -2036,13 +2074,11 @@ export function buildModernHeroPresentation(hero) {
     ? [yearText].filter(Boolean)
     : [runtimeText, yearText].filter(Boolean);
   const badges = isContinueWatchingHero ? [] : [ageRatingBadge, statusBadge].filter(Boolean);
-  const showImdbPrimary =
-    Boolean(imdbText) && !isSeries && !badges.length && !secondaryHighlightText;
-  const showImdbSecondary = Boolean(imdbText) && !showImdbPrimary;
+  const showImdb = Boolean(imdbText);
 
   return {
     title: normalized.name || "Untitled",
-    logo: firstNonEmpty(normalized.logo),
+    logo: capTmdbImageSize(firstNonEmpty(normalized.logo), "heroLogo"),
     description:
       firstNonEmpty(
         isContinueWatchingHero ? normalized.episodeDescription : null,
@@ -2050,69 +2086,15 @@ export function buildModernHeroPresentation(hero) {
       ) || "",
     backdrop: buildHeroBackdropSources(normalized)[0] || "",
     backdropFallbacks: buildHeroBackdropSources(normalized).slice(1),
+    portraitBackdrop: buildHeroPortraitSources(normalized)[0] || "",
     leadingMeta,
     trailingMeta,
     secondaryHighlightText,
     badges,
     languageText,
-    showImdbPrimary,
-    showImdbSecondary,
+    showImdb,
     imdbText
   };
-}
-
-function renderModernHeroMetaGroup(tokens = []) {
-  return tokens
-    .filter(Boolean)
-    .map((token) => `<span>${escapeHtml(token)}</span>`)
-    .join('<span class="home-hero-dot">•</span>');
-}
-
-function renderModernHeroPrimary(display) {
-  const left = renderModernHeroMetaGroup(display.leadingMeta);
-  const rightTokens = display.trailingMeta
-    .filter(Boolean)
-    .map((token) => `<span>${escapeHtml(token)}</span>`);
-  if (display.showImdbPrimary) {
-    rightTokens.push(`
-      <span class="home-hero-imdb">
-        <img src="assets/icons/imdb_logo_2016.svg" alt="IMDb" />
-        <span>${escapeHtml(display.imdbText)}</span>
-      </span>
-    `);
-  }
-  const hasRight = rightTokens.length > 0;
-  return `
-    <div class="home-modern-hero-meta-group home-modern-hero-meta-group-leading">${left}</div>
-    ${left && hasRight ? '<span class="home-hero-dot">•</span>' : ""}
-    <div class="home-modern-hero-meta-group home-modern-hero-meta-group-trailing">${rightTokens.join('<span class="home-hero-dot">•</span>')}</div>
-  `;
-}
-
-function renderModernHeroSecondary(display) {
-  const parts = [];
-  if (display.secondaryHighlightText) {
-    parts.push(
-      `<span class="home-modern-hero-highlight">${escapeHtml(display.secondaryHighlightText)}</span>`
-    );
-  }
-  display.badges.forEach((badge) => {
-    parts.push(`<span class="home-modern-hero-badge">${escapeHtml(badge)}</span>`);
-  });
-  if (display.showImdbSecondary) {
-    parts.push(`
-      <span class="home-hero-imdb">
-        <img src="assets/icons/imdb_logo_2016.svg" alt="IMDb" />
-        <span>${escapeHtml(display.imdbText)}</span>
-      </span>
-    `);
-  }
-  if (display.languageText) {
-    parts.push(
-      `<span class="home-modern-hero-secondary-detail">${escapeHtml(display.languageText)}</span>`
-    );
-  }
-  return parts.join('<span class="home-hero-dot">•</span>');
 }
 
 function renderMetaTokens(tokens = []) {
@@ -2408,7 +2390,7 @@ function continueWatchingStreamParams(item, options = {}) {
       normalized.poster
     ),
     poster: firstNonEmpty(normalized.poster, normalized.backdrop, normalized.background),
-    logo: firstNonEmpty(normalized.logo),
+    logo: capTmdbImageSize(firstNonEmpty(normalized.logo), "logo"),
     resumePositionMs: options.startOver ? 0 : Number(normalized.positionMs || 0) || 0,
     resumeProgressPercent: options.startOver ? null : (normalized.progressPercent ?? null),
     resumeDurationMs: options.startOver ? 0 : Number(normalized.durationMs || 0) || 0,
@@ -2578,8 +2560,13 @@ function shouldDeferHomeRowImages(rowIndex = 0, rowKey = "", focusedRowKey = "")
   return safeRowIndex >= eagerRows;
 }
 
-function buildLazyImageAttributes(src = "", { defer = false, highPriority = false } = {}) {
-  const safeSrc = escapeAttribute(src);
+function buildLazyImageAttributes(
+  src = "",
+  { defer = false, highPriority = false, role = "poster" } = {}
+) {
+  // One funnel for every card image, so the cap cannot be forgotten at a call
+  // site. A card is a few hundred pixels wide; what arrives may be thousands.
+  const safeSrc = escapeAttribute(capTmdbImageSize(src, role));
   const priority = highPriority ? ' fetchpriority="high"' : "";
   const loadingMode = "lazy";
   if (defer) {
@@ -2597,7 +2584,7 @@ export function createPosterCardMarkup(
   showLabels = true,
   layoutMode = "classic",
   isExpanded = false,
-  preferLandscapePoster = false,
+  cardOrientation = "portrait",
   deferImages = false,
   watchedTitleIds = null
 ) {
@@ -2634,7 +2621,7 @@ export function createPosterCardMarkup(
           : " is-landscape is-collection-landscape";
     const focusGifOverlay =
       collectionItem.focusGifEnabled && collectionItem.focusGifUrl
-        ? `<img class="home-poster-focus-gif" data-src="${escapeAttribute(collectionItem.focusGifUrl)}" alt="" aria-hidden="true" />`
+        ? `<img class="home-poster-focus-gif" data-src="${escapeAttribute(capTmdbImageSize(collectionItem.focusGifUrl, "backdrop"))}" alt="" aria-hidden="true" />`
         : "";
     const contentMarkup = visualSrc
       ? `<img class="content-poster" ${buildLazyImageAttributes(visualSrc, { defer: deferImages })} alt="${escapeAttribute(collectionItem.name || collectionItem.heroTitle || collectionItem.collectionTitle || "collection")}" />`
@@ -2685,7 +2672,11 @@ export function createPosterCardMarkup(
   const normalized = normalizeCatalogItem(item, itemType);
   const subtitle = buildPosterSubtitle(normalized, layoutMode);
   const preferredLandscapePosterSrc = firstNonEmpty(normalized.landscapePoster);
-  const useLandscapePoster = layoutMode === "modern" && preferLandscapePoster;
+  // The addon declares the shape of its own artwork on each entry. Following
+  // it is the default, because a catalog that ships wide images has already
+  // said which way round it wants to be read.
+  const useLandscapePoster =
+    layoutMode === "modern" && shouldDrawCardLandscape(cardOrientation, normalized.posterShape);
   const landscapeVisualSrc = firstNonEmpty(
     preferredLandscapePosterSrc,
     normalized.background,
@@ -2761,7 +2752,7 @@ export function createPosterCardMarkup(
         }
         ${
           !isLoading && expandedVisualSrc
-            ? `<img class="home-poster-expanded-backdrop" data-src="${escapeAttribute(expandedVisualSrc)}" decoding="async" loading="lazy" alt="" aria-hidden="true" />`
+            ? `<img class="home-poster-expanded-backdrop" data-src="${escapeAttribute(capTmdbImageSize(expandedVisualSrc, "backdrop"))}" decoding="async" loading="lazy" alt="" aria-hidden="true" />`
             : '<div class="home-poster-expanded-backdrop placeholder" aria-hidden="true"></div>'
         }
         <div class="home-poster-trailer-layer"></div>
@@ -2770,7 +2761,7 @@ export function createPosterCardMarkup(
         <div class="home-poster-expanded-brand">
           ${
             !isLoading && normalized.logo
-              ? `<img class="home-poster-expanded-logo" data-src="${escapeAttribute(normalized.logo)}" decoding="async" loading="lazy" alt="${escapeAttribute(normalized.name || "content")}" />`
+              ? `<img class="home-poster-expanded-logo" data-src="${escapeAttribute(capTmdbImageSize(normalized.logo, "logo"))}" decoding="async" loading="lazy" alt="${escapeAttribute(normalized.name || "content")}" />`
               : `<div class="home-poster-expanded-title">${escapeHtml(normalized.name || "Untitled")}</div>`
           }
         </div>
@@ -2780,7 +2771,10 @@ export function createPosterCardMarkup(
           <div class="home-poster-landscape-copy" aria-hidden="true">
             ${
               normalized.logo
-                ? `<img class="home-poster-landscape-logo" ${buildLazyImageAttributes(normalized.logo, { defer: deferImages })} alt="" />`
+                ? // Catalog logo URLs are guessed from the id rather than
+                  // listed, so a good share of them 404. A card is better
+                  // with no logo than with a hole where one failed.
+                  `<img class="home-poster-landscape-logo" ${buildLazyImageAttributes(normalized.logo, { defer: deferImages })} alt="" onerror="this.remove();" />`
                 : `<div class="home-poster-landscape-title">${escapeHtml(normalized.name || "Untitled")}</div>`
             }
             ${subtitle ? `<div class="home-poster-landscape-subtitle">${escapeHtml(subtitle)}</div>` : ""}
@@ -4014,6 +4008,222 @@ export const HomeScreen = {
     this.heroIndex = (Number(this.heroIndex || 0) + step + total) % total;
     this.heroItem = this.heroCandidates[this.heroIndex];
     this.applyHeroToDom();
+    this.warmNextHeroArtwork();
+    void this.hydrateHeroCandidateMeta(this.heroItem);
+    this.warmUpcomingHeroMeta();
+  },
+
+  // Looking one ahead is what stops the swap being visible: a hero whose
+  // plate was fetched during the previous one's turn is drawn with it from
+  // the first frame.
+  warmNextHeroArtwork() {
+    const candidates = this.heroCandidates;
+    if (!Array.isArray(candidates) || candidates.length <= 1) {
+      return;
+    }
+    const next = (Number(this.heroIndex || 0) + 1) % candidates.length;
+    void this.ensureHeroTextlessArtwork(candidates[next]);
+  },
+
+  // The hero as it should be drawn: with the plates already known for it,
+  // whether from this session or a previous one. Asking also starts the
+  // lookup for a title nobody has asked about yet, and the reading of the
+  // cache happens before that -- synchronously -- so a remembered answer is
+  // in hand by the time this returns.
+  withRememberedHeroPlate(hero) {
+    const key = heroArtworkKey(hero);
+    if (!key) {
+      return hero;
+    }
+    void this.ensureHeroTextlessArtwork(hero);
+    const plate = this.heroTextlessArtwork?.get(key);
+    return plate?.textlessPoster || plate?.textlessBackdrop ? { ...hero, ...plate } : hero;
+  },
+
+  // A short hold before Home's first paint, so an upright phone opens with
+  // the right picture instead of swapping one in a moment later. It only
+  // ever waits for a title whose answer is not already remembered, and only
+  // as long as the cap -- the alternative, waiting every launch, would make
+  // the app feel slower in exchange for a detail most screens never show.
+  async waitForHeroArtworkDecision() {
+    if (!Platform.isBrowser() || !prefersPortraitHeroArtwork()) {
+      return;
+    }
+    const hero = this.heroItem || this.heroCandidates?.[Number(this.heroIndex || 0)] || null;
+    const key = heroArtworkKey(hero);
+    if (!key || this.heroTextlessArtwork?.has(key) || readHeroArtwork(key)) {
+      return;
+    }
+    await withTimeout(this.ensureHeroTextlessArtwork(hero), HOME_HERO_ARTWORK_WAIT_MS, null).catch(
+      () => null
+    );
+  },
+
+  // The meta for a hero that has not had its turn yet.
+  //
+  // A catalog row carries little: a title, a year, sometimes a genre. The
+  // rest -- runtime, rating, the full release date, the synopsis -- comes
+  // from the add-on's meta, and that was only ever fetched for the hero on
+  // screen, once, at render. So the first hero filled in and the ones after
+  // it rotated past half-described, until something else happened to write
+  // their meta into the catalog -- which is what opening one and coming back
+  // did, and why it looked like the detail page was fixing them.
+  //
+  // Fetched ahead instead, so a hero arrives complete.
+  async hydrateHeroCandidateMeta(candidate) {
+    // Not behind the TMDB switch. What this fetches is the add-on's own meta
+    // and an IMDb rating -- neither comes from TMDB -- but it sat behind
+    // `shouldEnrichModernHero`, which asks whether TMDB is allowed to dress up
+    // the modern home. With that off, which is the default, the hero kept
+    // whatever thin meta the catalog row carried: a type, a genre, a year, and
+    // no rating. Continue Watching and collection heroes are excluded because
+    // their copy comes from somewhere else entirely.
+    if (
+      !Platform.isBrowser() ||
+      !candidate ||
+      candidate.heroSource === "continueWatching" ||
+      candidate.heroSource === "collection" ||
+      candidate.heroMetaEnriched
+    ) {
+      return;
+    }
+    const itemId = String(candidate?.id || "");
+    if (!itemId) {
+      return;
+    }
+    const itemType = String(candidate.type || candidate.apiType || "movie");
+    if (!this.heroCandidateMetaAsked) {
+      this.heroCandidateMetaAsked = new Set();
+    }
+    const key = `${itemType}:${itemId}`;
+    // Asked once per title per visit to Home; the answer lands in the catalog
+    // state, which is what every later render reads from.
+    if (this.heroCandidateMetaAsked.has(key)) {
+      return;
+    }
+    this.heroCandidateMetaAsked.add(key);
+    try {
+      const [result, mdbImdbRating] = await Promise.all([
+        withTimeout(metaRepository.getMetaFromAllAddons(itemType, itemId), 4000, null).catch(
+          () => null
+        ),
+        withTimeout(mdbListRepository.getImdbRatingForItem(itemId, itemType), 3500, null).catch(
+          () => null
+        )
+      ]);
+      const meta = result?.status === "success" && result.data ? result.data : null;
+      const enrichedImdb = meta ? resolveImdbRating(meta) : null;
+      const enrichedRuntime = meta ? parseRuntimeMinutes(meta.runtimeMinutes ?? meta.runtime) : 0;
+      const merged = {
+        ...candidate,
+        heroMetaEnriched: true,
+        heroMetaEnriching: false,
+        ...(mdbImdbRating != null
+          ? { imdbRating: Number(mdbImdbRating) }
+          : enrichedImdb != null
+            ? { imdbRating: enrichedImdb }
+            : {}),
+        ...(enrichedRuntime > 0 ? { runtimeMinutes: enrichedRuntime } : {}),
+        ...(meta?.released ? { released: meta.released } : {}),
+        ...(meta?.releaseInfo ? { releaseInfo: meta.releaseInfo } : {}),
+        ...(Array.isArray(meta?.genres) && meta.genres.length ? { genres: meta.genres } : {}),
+        ...(meta?.description ? { description: meta.description } : {}),
+        ...(meta?.logo ? { logo: meta.logo } : {}),
+        ...(meta?.background ? { background: meta.background } : {})
+      };
+      this.mergeHeroIntoCatalogState(itemId, merged);
+      // On screen right now? Then it is filled in now rather than at its next
+      // turn.
+      if (String(this.heroItem?.id || "") === itemId) {
+        this.heroItem = { ...this.heroItem, ...merged };
+        this.applyHeroToDom();
+      }
+    } catch (error) {
+      console.warn("Hero candidate meta hydration failed", error);
+    }
+  },
+
+  // The next few heroes, fetched while the current one is still showing.
+  warmUpcomingHeroMeta(count = 2) {
+    const candidates = this.heroCandidates;
+    if (!Array.isArray(candidates) || candidates.length <= 1) {
+      return;
+    }
+    const start = Number(this.heroIndex || 0);
+    for (let step = 1; step <= count; step += 1) {
+      const next = candidates[(start + step) % candidates.length];
+      void this.hydrateHeroCandidateMeta(next);
+    }
+  },
+
+  // The plates for one hero, fetched when it comes round and kept on the
+  // candidate itself, so the second time it appears costs nothing. A title
+  // with no plate is remembered as having none, or every pass would ask
+  // again for an answer that will not change.
+  async ensureHeroTextlessArtwork(hero) {
+    const key = heroArtworkKey(hero);
+    if (!key) {
+      return;
+    }
+    if (!this.heroTextlessArtwork) {
+      this.heroTextlessArtwork = new Map();
+    }
+    // Asked once per title, answer or no answer.
+    if (this.heroTextlessArtwork.has(key)) {
+      return;
+    }
+    // What a previous run already learned. This is the whole point of the
+    // cache: a title seen before is drawn correctly on the first frame,
+    // with no request and nothing to swap.
+    const remembered = readHeroArtwork(key);
+    if (remembered) {
+      this.heroTextlessArtwork.set(key, {
+        textlessPoster: remembered.poster || null,
+        textlessBackdrop: remembered.backdrop || null
+      });
+      return;
+    }
+    const settings = TmdbSettingsStore.get();
+    if (!settings.enabled || !settings.useArtwork || !getEffectiveTmdbApiKey()) {
+      return;
+    }
+    this.heroTextlessArtwork.set(key, {});
+    const itemType = String(hero.type || hero.apiType || "movie");
+    try {
+      const tmdbId = await withTimeout(TmdbService.ensureTmdbId(hero.id, itemType), 2200, null);
+      if (!tmdbId) {
+        return;
+      }
+      const enriched = await withTimeout(
+        TmdbMetadataService.fetchEnrichment({
+          tmdbId,
+          contentType: itemType,
+          language: settings.language
+        }),
+        2400,
+        null
+      );
+      // Remembered either way: a title with no plate is an answer worth
+      // keeping, or every run asks again for the same nothing.
+      rememberHeroArtwork(key, {
+        poster: enriched?.textlessPoster || "",
+        backdrop: enriched?.textlessBackdrop || ""
+      });
+      if (!enriched?.textlessPoster && !enriched?.textlessBackdrop) {
+        return;
+      }
+      this.heroTextlessArtwork.set(key, {
+        textlessPoster: enriched.textlessPoster || null,
+        textlessBackdrop: enriched.textlessBackdrop || null
+      });
+      // Still the one on screen? Then it gets the better picture now;
+      // otherwise it is already stored for its next turn.
+      if (heroArtworkKey(this.heroItem) === key) {
+        this.applyHeroToDom();
+      }
+    } catch (error) {
+      console.warn("Hero textless artwork lookup failed", error);
+    }
   },
 
   applyHeroToDom() {
@@ -4025,11 +4235,14 @@ export const HomeScreen = {
     if (!hero) {
       return;
     }
+    // Looked up by id rather than read off the hero, so a hero rebuilt by
+    // some other enrichment still gets the plates already fetched for it.
+    const heroWithPlate = this.withRememberedHeroPlate(hero);
 
     const display =
       this.layoutMode === "modern"
-        ? buildModernHeroPresentation(hero)
-        : buildHeroDisplayModel(hero, this.layoutMode);
+        ? buildModernHeroPresentation(heroWithPlate)
+        : buildHeroDisplayModel(heroWithPlate, this.layoutMode);
     if (!display) {
       return;
     }
@@ -4041,18 +4254,21 @@ export const HomeScreen = {
 
     const backdrop = heroNode.querySelector(".home-hero-backdrop");
     if (backdrop) {
-      const src = display.backdrop || "";
+      const src = resolveHeroArtworkSrc(display);
+      const portraitShape = usesPortraitHeroArtwork(display, src);
       if (this.layoutMode === "modern" && backdrop instanceof HTMLImageElement) {
         const shouldFreezeBackdrop =
           Boolean(hero?.heroMetaEnriching) && String(backdrop.getAttribute("src") || "").trim();
         if (!shouldFreezeBackdrop) {
-          animateModernHeroBackdropSwap(backdrop, src, display.title || "featured");
+          animateModernHeroBackdropSwap(backdrop, src, display.title || "featured", portraitShape);
         } else {
           backdrop.setAttribute("alt", display.title || "featured");
+          backdrop.classList.toggle("is-portrait-artwork", portraitShape);
         }
       } else if (src) {
         backdrop.setAttribute("src", src);
         backdrop.setAttribute("alt", display.title || "featured");
+        backdrop.classList.toggle("is-portrait-artwork", portraitShape);
         backdrop.classList.remove("placeholder");
       } else {
         backdrop.removeAttribute("src");
@@ -4092,23 +4308,9 @@ export const HomeScreen = {
     if (this.layoutMode === "modern") {
       const primaryNode = heroNode.querySelector(".home-modern-hero-meta-line");
       if (primaryNode) {
-        primaryNode.innerHTML = renderModernHeroPrimary(display);
-        primaryNode.classList.toggle(
-          "is-empty",
-          !display.leadingMeta.length && !display.trailingMeta.length && !display.showImdbPrimary
-        );
-      }
-
-      const secondaryNode = heroNode.querySelector(".home-modern-hero-secondary");
-      if (secondaryNode) {
-        secondaryNode.innerHTML = renderModernHeroSecondary(display);
-        secondaryNode.classList.toggle(
-          "is-empty",
-          !display.secondaryHighlightText &&
-            !display.badges.length &&
-            !display.showImdbSecondary &&
-            !display.languageText
-        );
+        const metaLine = renderModernHeroMetaLine(display, escapeHtml);
+        primaryNode.innerHTML = metaLine;
+        primaryNode.classList.toggle("is-empty", !metaLine);
       }
     } else {
       const primaryNode = heroNode.querySelector(".home-hero-meta-primary");
@@ -4138,9 +4340,14 @@ export const HomeScreen = {
         descriptionNode.querySelector(".home-hero-description-text") || descriptionNode;
       descriptionText.textContent = display.description || " ";
       delete descriptionText.dataset.fullText;
-      delete descriptionText.dataset.sourceText;
+      // Written down here, where the whole synopsis is in hand. Read back
+      // off the paragraph it was a copy of whatever the paragraph held --
+      // and when it was taken after a trim, the copy was the trimmed text,
+      // so nothing looked cut and the label went away.
+      descriptionText.dataset.sourceText = display.description || "";
       descriptionNode.classList.toggle("is-empty", !display.description);
       this.bindHomeHeroDescriptionToggle(heroNode);
+      this.bindHomeHeroTitleToggle(heroNode);
     }
     this.scheduleHomeTruncationUpdate({ scope: heroNode });
     this.syncCollectionHeroMedia(hero);
@@ -6207,7 +6414,13 @@ export const HomeScreen = {
   },
 
   getFocusedPosterFlowConfig(prefs = this.layoutPrefs || {}) {
-    const useLandscapePosters = Boolean(prefs.modernLandscapePostersEnabled);
+    // The landscape composition, which is a different Home: wider cards, and
+    // no focused-card expansion. Only an outright request for it turns it on.
+    // Following the addon must not, or every default install would quietly
+    // lose the expansion it has today.
+    const useLandscapePosters =
+      Boolean(prefs.modernLandscapePostersEnabled) ||
+      normalizeCatalogCardOrientation(prefs.catalogCardOrientation) === "landscape";
     const expandSettingEnabled = Boolean(prefs.focusedPosterBackdropExpandEnabled);
     const requestedTrailerTarget =
       String(prefs.focusedPosterBackdropTrailerPlaybackTarget || "hero_media").toLowerCase() ===
@@ -6654,6 +6867,11 @@ export const HomeScreen = {
       if (!(node instanceof HTMLElement)) {
         return;
       }
+      // Same reason: this is the pass that cuts the text itself, and it has
+      // no business cutting a synopsis somebody asked to see in full.
+      if (node.classList.contains("is-expanded")) {
+        return;
+      }
       // The synopsis keeps its text in a span of its own, so trimming it does
       // not take the "more" button that lives in the same paragraph along with
       // it. The fit is judged on the paragraph, which means the button is part
@@ -6671,10 +6889,15 @@ export const HomeScreen = {
       }
       const currentText = textHost.textContent ?? "";
       const storedText = textHost.dataset.fullText || "";
-      const shouldRefresh =
-        !storedText ||
-        (currentText && currentText !== storedText && !currentText.trim().endsWith("..."));
-      const sourceText = shouldRefresh ? currentText : storedText;
+      const alreadyCut = currentText.trim().endsWith("...");
+      const shouldRefresh = !alreadyCut && (!storedText || currentText !== storedText);
+      // Whatever this pass decides, the synopsis as written is the one the
+      // hero was drawn from. Falling back to the stored copy alone meant
+      // that a paragraph already holding cut text, with nothing stored,
+      // produced an empty source -- and the pass returned without fitting
+      // anything or settling the label, leaving it as it was.
+      const sourceText =
+        (shouldRefresh ? currentText : storedText) || textHost.dataset.sourceText || currentText;
       // What arrived before anything was cut. `fullText` below is already the
       // synopsis capped at forty words, so restoring that on "more" handed back
       // a cut synopsis -- a shorter cut, but still not what was written.
@@ -6726,10 +6949,10 @@ export const HomeScreen = {
     if (!this.container || this.layoutMode !== "modern") {
       return;
     }
-    // A phone held upright has the least room of any shape the hero takes, and
-    // two lines is the most it can give a synopsis before the synopsis becomes
-    // the hero.
-    const modernHeroDescriptionMaxLines = this.usesTwoLineHeroSynopsis() ? 2 : 4;
+    // Two lines, whatever the screen. A wide hero has more room, but it is the
+    // artwork's room: four lines of synopsis across a picture reads as a
+    // caption that outgrew its picture. The rest is behind "more".
+    const modernHeroDescriptionMaxLines = 2;
     const scope = root instanceof HTMLElement ? root : this.container;
     const heroNodes = scope.classList?.contains("home-hero-card")
       ? [scope]
@@ -6740,6 +6963,13 @@ export const HomeScreen = {
         return;
       }
 
+      // An opened synopsis is the one thing on this page that is meant to be
+      // taller than two lines. Measuring it again puts the height back and
+      // closes it, which is what happened on every resize, rotation and
+      // background render after someone pressed "more".
+      if (description.classList.contains("is-expanded")) {
+        return;
+      }
       description.style.maxHeight = "";
       description.style.webkitLineClamp = "";
       description.style.lineClamp = "";
@@ -6764,6 +6994,61 @@ export const HomeScreen = {
   // The button is built here rather than in the hero's markup because swiping
   // to the next hero rewrites the synopsis, and one code path creating it means
   // the first hero and every one after it get the same thing.
+  // A title with no logo is drawn as text, and some of them are a sentence
+  // long -- long enough to cover the artwork it is written over. Two lines
+  // is the most it takes before it stops being a title; pressing it shows
+  // the rest, since a title is its own control and there is nowhere to put
+  // another one.
+  bindHomeHeroTitleToggle(root = null) {
+    if (!this.container) {
+      return;
+    }
+    const scope = root instanceof HTMLElement ? root : this.container;
+    const title = scope.querySelector(".home-hero-title-text");
+    if (!(title instanceof HTMLElement)) {
+      return;
+    }
+    title.classList.remove("is-expanded");
+    // On a pointer the whole title is readable without pressing anything.
+    title.setAttribute("title", title.textContent || "");
+    title.onclick = (event) => {
+      // The hero itself opens the title; reading the name of it should not.
+      event.preventDefault();
+      event.stopPropagation();
+      title.classList.toggle("is-expanded");
+    };
+  },
+
+  // The label has to be inside the two lines, not under them.
+  //
+  // The trimming pass measures the text and the label together, but a
+  // measurement taken before a font lands -- or a clamp a browser applies
+  // its own way -- can leave the label a few pixels past the cut, where the
+  // paragraph hides it and draws an ellipsis in its place. The synopsis then
+  // stops mid-sentence with nothing to finish it, which is the one thing the
+  // label was for. So the text gives back a word at a time until the label
+  // is inside the box again.
+  keepHeroDescriptionToggleInView(description, host, toggle) {
+    if (!(host instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+      return;
+    }
+    const fits = () =>
+      toggle.getBoundingClientRect().bottom <= description.getBoundingClientRect().bottom + 1;
+    // A word or two is all a late font ever costs. The count is here so a
+    // paragraph that cannot be made to fit stops rather than empties itself.
+    for (let attempt = 0; attempt < 12 && !fits(); attempt += 1) {
+      const words = String(host.textContent || "")
+        .replace(/\.\.\.$/, "")
+        .trimEnd()
+        .split(/\s+/);
+      if (words.length <= 1) {
+        return;
+      }
+      words.pop();
+      host.textContent = `${words.join(" ")}...`;
+    }
+  },
+
   bindHomeHeroDescriptionToggle(root = null) {
     if (!this.container) {
       return;
@@ -6773,9 +7058,12 @@ export const HomeScreen = {
     if (!(description instanceof HTMLElement)) {
       return;
     }
-    // Anywhere else the hero already trims its synopsis to fit and there is no
-    // control to offer, so one is not left behind unstyled.
-    if (!this.usesTwoLineHeroSynopsis()) {
+    // Every shape of screen cuts this synopsis somewhere -- two lines on a
+    // phone held upright, three or four on a wide one -- and a synopsis that
+    // stops mid-sentence is worth finishing whatever the screen. The control
+    // hides itself when there is nothing left to show, so building it here
+    // costs an empty screen nothing.
+    if (description.classList.contains("is-empty")) {
       description.querySelector(".home-hero-description-toggle")?.remove();
       description.classList.remove("is-expanded");
       return;
@@ -6804,8 +7092,24 @@ export const HomeScreen = {
       // "more" that reveals nothing -- or none at all.
       const host = description.querySelector(".home-hero-description-text");
       const shown = String(host?.textContent || "");
-      const whole = String(host?.dataset?.sourceText || "");
-      toggle.hidden = !whole || shown.trimEnd() === whole.trimEnd();
+      // The synopsis as written. The dataset copy is deleted and rewritten
+      // every time a hero is redrawn, so when the question is asked between
+      // those two moments it is not there; the hero on screen always has it.
+      const whole = String(host?.dataset?.sourceText || (this.heroItem?.description ?? ""));
+      // Three ways a synopsis can be cut short, and each deserves the control.
+      // The text may have been trimmed, the paragraph may be clamped around
+      // whole text, or the trimming pass may have done the cutting itself --
+      // and that last one is the only signal that cannot be measured wrong.
+      // Geometry is read after a cut has already made the paragraph fit, and
+      // a comparison needs a copy of the text that may not be there yet; the
+      // class is set by the pass that did the cutting, on the node it cut.
+      const clipped = description.scrollHeight > description.clientHeight + 1;
+      const trimmed = Boolean(whole) && shown.trimEnd() !== whole.trimEnd();
+      const cut = description.classList.contains("is-truncated");
+      toggle.hidden = !clipped && !trimmed && !cut;
+      if (!toggle.hidden) {
+        this.keepHeroDescriptionToggleInView(description, host, toggle);
+      }
     };
     toggle.onclick = (event) => {
       event.preventDefault();
@@ -6823,16 +7127,49 @@ export const HomeScreen = {
         description.style.maxHeight = "none";
       } else {
         description.style.maxHeight = "";
+        // Put the height back now rather than waiting for the scheduled pass:
+        // pressing "less" and watching the synopsis shrink a second later
+        // reads as a stutter. The scheduled pass still follows, to re-cut the
+        // text to whatever fits.
+        this.applyModernHeroDescriptionBounds(description.closest(".home-hero-card"));
         this.scheduleHomeTruncationUpdate();
       }
     };
-    description.classList.remove("is-expanded");
+    // Binding runs again whenever the hero is redrawn, and a redraw happens
+    // for reasons that have nothing to do with this synopsis -- a row landing,
+    // a background refresh. Closing it on every one of those swallowed the
+    // press that had just opened it, so it only opened on the second try.
+    // The synopsis is closed when it belongs to a different title, and left
+    // as it is when it is the same one.
+    const heroNode =
+      description.closest(".home-hero-card") ||
+      this.container?.querySelector(".home-hero-card") ||
+      null;
+    const heroId = String(heroNode?.dataset?.itemId || "");
+    if (description.dataset.toggleHeroId !== heroId) {
+      description.dataset.toggleHeroId = heroId;
+      description.classList.remove("is-expanded");
+      description.style.maxHeight = "";
+    }
+    const expandedNow = description.classList.contains("is-expanded");
     // The height belongs to applyModernHeroDescriptionBounds. Clearing it here
     // too raced it: whichever ran last won, and when that was this one the
     // synopsis kept its full height and no label appeared.
-    toggle.setAttribute("aria-expanded", "false");
-    setLabel(false);
-    syncToggle();
+    toggle.setAttribute("aria-expanded", expandedNow ? "true" : "false");
+    setLabel(expandedNow);
+    if (!expandedNow) {
+      // Put the two lines back before asking whether anything is cut off.
+      //
+      // Changing hero rewrites the synopsis in full and drops the height
+      // that holds it to two lines; the trimming that restores both runs a
+      // frame later. Asked in between, the paragraph is four lines tall and
+      // nothing overflows it, so the label is taken away -- and it only comes
+      // back when that later pass lands. On this machine that gap measured
+      // 9ms and read as a flicker. On a phone it is long enough to be the
+      // whole answer: no label at all.
+      this.applyModernHeroDescriptionBounds(heroNode || undefined);
+      syncToggle();
+    }
     if (this.heroDescriptionResizeHandler) {
       globalThis.removeEventListener?.("resize", this.heroDescriptionResizeHandler);
     }
@@ -9449,6 +9786,7 @@ export const HomeScreen = {
     this.loadedWatchProgressSourceKey = watchProgressRepository.getContinueWatchingSourceKey();
     this.isInitialHomeLoading = false;
     this.hasLoadedOnce = true;
+    await this.waitForHeroArtworkDecision();
     this.render();
     logHomePerf("loadData", {
       phase: "first-render",
@@ -10155,9 +10493,20 @@ export const HomeScreen = {
       heroItem = { ...heroItem, heroMetaEnriching: true };
       this.heroItem = heroItem;
     }
+    // Drawn with the artwork already known for this title. Without this the
+    // first frame was always the addon's wide picture, and the plate arrived
+    // as a swap a moment later -- cached or not, every single launch.
+    heroItem = this.withRememberedHeroPlate(heroItem);
     const showHeroSection = Boolean(this.layoutPrefs?.heroSectionEnabled) && Boolean(heroItem);
+    const catalogCardOrientation = normalizeCatalogCardOrientation(
+      this.layoutPrefs?.catalogCardOrientation
+    );
+    // The row styling for the landscape composition. Under "source" the shape
+    // is a per-card answer, so the whole of Home must not take it.
     const modernLandscapePostersEnabled =
-      this.layoutMode === "modern" && Boolean(this.layoutPrefs?.modernLandscapePostersEnabled);
+      this.layoutMode === "modern" &&
+      (Boolean(this.layoutPrefs?.modernLandscapePostersEnabled) ||
+        catalogCardOrientation === "landscape");
     const modernLandscapeLayoutClass = modernLandscapePostersEnabled
       ? " home-modern-landscape-posters"
       : "";
@@ -10275,7 +10624,7 @@ export const HomeScreen = {
         showHeroSection,
         showPosterLabels,
         showCatalogTypeSuffix,
-        preferLandscapePosters: modernLandscapePostersEnabled,
+        cardOrientation: catalogCardOrientation,
         focusedRowKey: focusState?.rowKey || "",
         focusedItemIndex: Number.isFinite(focusState?.itemIndex) ? focusState.itemIndex : -1,
         expandFocusedPoster,
@@ -10440,6 +10789,8 @@ export const HomeScreen = {
       this.bindDesktopHeroDetailsButton();
       this.bindDesktopHeroCarouselControls();
       this.bindDesktopHeroRotationVisibility();
+      this.bindHeroOrientationWatch();
+      this.warmNextHeroArtwork();
       this.bindDesktopCatalogDragScrolling();
       this.bindDesktopMediaHoverPreview();
     } else {
@@ -10454,6 +10805,7 @@ export const HomeScreen = {
     this.buildNavigationModel();
     this.bindHomeViewportEvents();
     this.bindHomeHeroDescriptionToggle();
+    this.bindHomeHeroTitleToggle();
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -10610,6 +10962,9 @@ export const HomeScreen = {
     this.startHeroRotation();
     if (this.layoutMode === "modern" && heroItem) {
       void this.enrichCurrentHeroAsync(heroItem);
+      // And the ones queued behind it, so the rotation does not show a
+      // half-described hero on its way past.
+      this.warmUpcomingHeroMeta(3);
     }
     this.homeRouteEnterPending = false;
     this.renderedLayoutMode = this.layoutMode;
@@ -11218,7 +11573,7 @@ export const HomeScreen = {
             meta.poster,
             meta.background
           ),
-          logo: firstNonEmpty(meta.logo),
+          logo: capTmdbImageSize(firstNonEmpty(meta.logo), "logo"),
           description: firstNonEmpty(nextEpisode.overview, meta.description),
           released: firstNonEmpty(nextEpisode.released),
           releaseInfo: firstNonEmpty(nextEpisode.released, meta.releaseInfo),
@@ -11697,6 +12052,11 @@ export const HomeScreen = {
             : hero.description,
           background: settings.useArtwork ? enriched.backdrop || hero.background : hero.background,
           poster: settings.useArtwork ? enriched.poster || hero.poster : hero.poster,
+          // Carried, not substituted: the hero picks between these by its own
+          // shape, and a phone held upright wants the poster plate where a
+          // wide screen wants the backdrop one.
+          textlessBackdrop: settings.useArtwork ? enriched.textlessBackdrop || null : null,
+          textlessPoster: settings.useArtwork ? enriched.textlessPoster || null : null,
           logo: settings.useArtwork ? enriched.logo : hero.logo,
           genres: settings.useBasicInfo ? enriched.genres || hero.genres : hero.genres,
           releaseInfo: settings.useReleaseDates
@@ -11758,6 +12118,18 @@ export const HomeScreen = {
       event.stopPropagation();
       this.openDetailFromNode(heroCard);
     };
+  },
+
+  bindHeroOrientationWatch() {
+    if (!Platform.isBrowser() || this.heroOrientationWatcher) return;
+    const query = globalThis.matchMedia?.(HERO_PORTRAIT_MEDIA);
+    if (!query?.addEventListener) return;
+    this.heroOrientationWatcher = () => {
+      // Only the artwork depends on the shape of the screen, and this is the
+      // one path that redraws it without touching anything else.
+      this.applyHeroToDom();
+    };
+    query.addEventListener("change", this.heroOrientationWatcher);
   },
 
   bindDesktopHeroRotationVisibility() {
@@ -12377,7 +12749,7 @@ export const HomeScreen = {
         const layoutPrefs = this.layoutPrefs || {};
         const showPosterLabels =
           Platform.isBrowser() || Boolean(layoutPrefs.showPosterLabels !== false);
-        const preferLandscape = Boolean(layoutPrefs.modernLandscapePostersEnabled);
+        const cardOrientation = normalizeCatalogCardOrientation(layoutPrefs.catalogCardOrientation);
         const chunkSize = Math.max(
           1,
           Number(this.getRowItemLimit?.() || HOME_MAX_ITEMS_PER_ROW_DEFAULT)
@@ -12397,7 +12769,7 @@ export const HomeScreen = {
                 showPosterLabels,
                 "modern",
                 false,
-                preferLandscape,
+                cardOrientation,
                 true,
                 this.watchedTitleIds
               )

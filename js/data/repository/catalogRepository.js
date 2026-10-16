@@ -2,6 +2,23 @@ import { safeApiCall } from "../../core/network/safeApiCall.js";
 import { CatalogApi } from "../remote/api/catalogApi.js";
 import { addonRepository } from "./addonRepository.js";
 
+const ADDON_POSTER_SHAPES = ["poster", "landscape", "square"];
+
+/**
+ * The shape an addon declares for a catalog entry, or "" when it declares
+ * nothing.
+ *
+ * Empty is the useful answer for silence: most addons say nothing at all, and
+ * a default invented here would be indistinguishable from an addon actually
+ * asking for portrait. Whoever reads this needs to tell those apart.
+ */
+export function normalizeAddonPosterShape(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  return ADDON_POSTER_SHAPES.includes(normalized) ? normalized : "";
+}
+
 class CatalogRepository {
   constructor() {
     this.catalogCache = new Map();
@@ -130,7 +147,12 @@ class CatalogRepository {
       logo: meta.logo || null,
       description: meta.description || "",
       releaseInfo: meta.releaseInfo || "",
-      genres: Array.isArray(meta.genres) ? meta.genres : []
+      genres: Array.isArray(meta.genres) ? meta.genres : [],
+      // The shape an addon says its artwork is. It is part of the meta object
+      // every catalog returns, and this mapper used to drop it along with
+      // everything else it did not name -- so an addon could ask for landscape
+      // artwork all it liked and nothing downstream could ever have known.
+      posterShape: normalizeAddonPosterShape(meta.posterShape)
     };
   }
 }

@@ -17,7 +17,7 @@ async function loadSearchScreen() {
           const mocks = new Map([
             ["router", `export const Router = { navigate: async () => {}, back: () => {} };`],
             ["screen", `export const ScreenUtils = { show: (node) => { node.style.display = "block"; } }; export const ensureSpatialFocusVisible = () => {};`],
-            ["layout", `export const LayoutPreferences = { get: () => ({ modernSidebar: true }) };`],
+            ["layout", `export const LayoutPreferences = { get: () => ({ modernSidebar: true }) }; export const shouldDrawCardLandscape = () => false;`],
             ["sidebar", `export const getSidebarProfileState = async () => null; export const bindRootSidebarEvents = () => {}; export const renderRootSidebar = () => ""; export const activateLegacySidebarAction = () => {}; export const focusWithoutAutoScroll = () => {}; export const getRootSidebarNodes = () => []; export const getRootSidebarSelectedNode = () => null; export const isSelectedSidebarAction = () => false; export const isRootSidebarNode = () => false; export const setModernSidebarExpanded = () => {}; export const setModernSidebarPillIconOnly = () => {}; export const setLegacySidebarExpanded = () => {};`]
           ]);
           for (const [filter, path] of [

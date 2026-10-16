@@ -8,7 +8,11 @@ import {
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
 import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
-import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
+import {
+  LayoutPreferences,
+  normalizeCatalogCardOrientation,
+  shouldDrawCardLandscape
+} from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import {
   LibraryController,
@@ -215,6 +219,19 @@ function libraryCardYear(item = {}) {
       /\b(19|20)\d{2}\b/
     )?.[0] || ""
   );
+}
+
+// The grid draws one column width for everything in it, so the whole grid
+// takes one orientation. A forced choice settles it outright; following the
+// addon has to settle it by vote, because saved items can come from catalogs
+// that disagree about which way round their artwork is.
+function gridDrawsLandscape(items = [], orientation = "source") {
+  const mode = normalizeCatalogCardOrientation(orientation);
+  if (mode !== "source") {
+    return shouldDrawCardLandscape(mode, "");
+  }
+  const wide = items.filter((item) => shouldDrawCardLandscape("source", item?.posterShape)).length;
+  return wide * 2 > items.length;
 }
 
 function libraryCardMetadata(item = {}) {
@@ -780,6 +797,7 @@ export const LibraryScreen = {
       return `
         <section class="library-picker-groups library-downloaded-picker-groups" id="libraryPickerGroupsMount">
           <div class="library-picker-row library-downloaded-filter-row is-manager-only">
+            ${this.renderLibrarySearchButton()}
             ${this.renderDownloadManagerButton()}
           </div>
         </section>
@@ -790,6 +808,7 @@ export const LibraryScreen = {
         <section class="library-picker-groups library-downloaded-picker-groups" id="libraryPickerGroupsMount">
           <div class="library-picker-row library-downloaded-filter-row">
             ${this.renderDownloadedTypePicker()}
+            ${this.renderLibrarySearchButton()}
             ${this.renderDownloadManagerButton()}
           </div>
         </section>
@@ -819,6 +838,7 @@ export const LibraryScreen = {
               this.controller.getPickerOptions("cloud_type"),
               "library-picker-flex"
             )}
+            ${this.renderLibrarySearchButton()}
             <button class="library-cloud-refresh-button focusable"
                     type="button"
                     data-action="refreshCloudLibrary"
@@ -901,6 +921,7 @@ export const LibraryScreen = {
           ${this.renderPresentationToggle(state)}
           <div class="library-picker-row library-saved-picker-row library-primary-filter-row">
             ${typePickerMarkup}
+            ${this.renderLibrarySearchButton()}
             <button class="library-filter-toggle focusable${expanded ? " is-expanded" : ""}${
               hasActiveFilters ? " has-active-filters" : ""
             }"
@@ -1487,16 +1508,23 @@ export const LibraryScreen = {
 
   renderGrid(items, gridClass = "") {
     const state = this.controller.getState();
+    const landscape =
+      Platform.isBrowser() && gridDrawsLandscape(items, this.layoutPrefs?.catalogCardOrientation);
     return `
       <section class="library-grid-wrap">
-        <div class="library-grid${gridClass ? ` ${gridClass}` : ""}">
+        <div class="library-grid${gridClass ? ` ${gridClass}` : ""}${landscape ? " is-landscape-cards" : ""}">
           ${items
             .map((item) => {
               const focusKey = `${item.type}:${item.id}`;
               const isWatched = isTitleItemWatched(item, state.watchedTitleIds);
               const metadata = Platform.isBrowser() ? libraryCardMetadata(item) : "";
+              // Wide art for a wide card: a portrait poster cropped to 16:9
+              // loses the faces it was composed around.
+              const art = landscape
+                ? item.background || item.backdrop || item.poster || ""
+                : item.poster || "";
               return `
-              <article class="library-grid-card focusable"
+              <article class="library-grid-card focusable${landscape ? " is-landscape" : ""}"
                        data-action="openDetail"
                        data-item-id="${escapeHtml(item.id)}"
                        data-item-type="${escapeHtml(item.type || "movie")}"
@@ -1506,7 +1534,7 @@ export const LibraryScreen = {
                        data-addon-base-url="${escapeHtml(item.addonBaseUrl || "")}"
                        data-offline-item="${item.offlineItem ? "true" : "false"}"
                        data-focus-key="${escapeHtml(focusKey)}">
-                <div class="library-grid-poster${item.poster ? "" : " placeholder"}"${item.poster ? ` style="background-image:url('${escapeHtml(item.poster)}')"` : ""}>
+                <div class="library-grid-poster${art ? "" : " placeholder"}"${art ? ` style="background-image:url('${escapeHtml(art)}')"` : ""}>
                   ${isWatched ? renderTitleWatchedBadge({ className: "library-watched-badge", iconClassName: "library-watched-badge-svg" }) : ""}
                 </div>
                 <div class="library-grid-title">${escapeHtml(item.name || item.id || "Untitled")}</div>
@@ -1847,14 +1875,13 @@ export const LibraryScreen = {
                 <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
                 <div class="library-page-source" id="libraryPageSource">${escapeHtml(this.getLibraryHeaderLabel(state))}</div>
               </div>
-              ${this.renderLibrarySearchButton()}
             </header>
 
             <div class="library-tabs-row">
               ${this.renderViewModeTabs(state)}
-              ${this.renderLibrarySearchField(state)}
             </div>
             ${this.renderPickerGroups(state)}
+            ${this.renderLibrarySearchField(state)}
 
             ${this.renderLibraryContentArea(state)}
           </section>

@@ -7,6 +7,9 @@ import {
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_SIZES = {
   poster: "w342",
+  // A portrait hero fills a phone screen with this one image, so it needs more
+  // than the width a poster card is given.
+  posterHero: "w780",
   // Match Android TV: hero backdrops need enough source pixels for a 1080p TV.
   backdrop: "w1280",
   logo: "w300",
@@ -57,6 +60,34 @@ function normalizeTmdbArtworkLanguage(language = "") {
 function buildTmdbImageLanguageFilter(language = "") {
   const { locale, languageCode } = normalizeTmdbArtworkLanguage(language);
   return [...new Set([languageCode, locale, "en", "null"])].join(",");
+}
+
+/**
+ * The best image in a list that carries no language at all.
+ *
+ * TMDB marks artwork with the language of the text printed on it; an entry with
+ * no language is the clean plate, with no title across it. The request already
+ * asks for those (`include_image_language` ends in `null`), so this is a choice
+ * among images that have already arrived rather than another round trip.
+ */
+export function selectTextlessImagePath(images = []) {
+  const textless = (Array.isArray(images) ? images : []).filter(
+    (image) => image?.file_path && !String(image?.iso_639_1 || "").trim()
+  );
+  if (!textless.length) {
+    return null;
+  }
+  // Votes first, size as the tie-break: a well-rated plate is a better picture
+  // than a large one nobody chose.
+  const ranked = textless
+    .map((image, index) => ({
+      image,
+      index,
+      votes: Number(image?.vote_average || 0),
+      width: Number(image?.width || 0)
+    }))
+    .sort((a, b) => b.votes - a.votes || b.width - a.width || a.index - b.index);
+  return ranked[0].image.file_path;
 }
 
 function selectBestLocalizedLogoPath(logos = [], language = "") {
@@ -274,6 +305,12 @@ export const TmdbMetadataService = {
       description: data.overview || null,
       backdrop: toImageUrl(data.backdrop_path, "backdrop"),
       poster: toImageUrl(data.poster_path, "poster"),
+      // The plates, kept beside the ordinary artwork rather than replacing it:
+      // a hero that fills the screen wants no title printed across it, while a
+      // card in a row still wants the poster the addon chose. Either can be
+      // absent -- plenty of titles have no textless image at all.
+      textlessBackdrop: toImageUrl(selectTextlessImagePath(data?.images?.backdrops), "backdrop"),
+      textlessPoster: toImageUrl(selectTextlessImagePath(data?.images?.posters), "posterHero"),
       logo: toImageUrl(logoPath, "logo"),
       genres: Array.isArray(data.genres)
         ? data.genres.map((genre) => genre.name).filter(Boolean)

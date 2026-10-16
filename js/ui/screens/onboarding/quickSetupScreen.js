@@ -337,7 +337,7 @@ export const QuickSetupScreen = {
             }
             <span class="quick-setup-option-body">${escapeHtml(mode.body)}</span>
           </button>
-          ${selected ? `<div class="quick-setup-option-detail">${mode.detail}</div>` : ""}
+          ${selected ? this.renderOptionDetail(mode) : ""}
         </div>`;
       })
       .join("");
@@ -455,6 +455,24 @@ export const QuickSetupScreen = {
     )}</button>`;
   },
 
+  // A chosen card shows what it is. A card whose detail is a tutorial -- a
+  // page of numbered steps with pictures -- shows a button instead, and the
+  // tutorial only when it is asked for, so choosing the option does not bury
+  // the button that continues past it.
+  renderOptionDetail(mode) {
+    if (!mode?.detailCollapsed) {
+      return `<div class="quick-setup-option-detail">${mode?.detail || ""}</div>`;
+    }
+    return `<div class="quick-setup-option-detail">
+      <details class="quick-setup-steps">
+        <summary class="quick-setup-steps-toggle focusable">${escapeHtml(
+          t("quick_setup_show_steps", {}, "Show the steps")
+        )}</summary>
+        <div class="quick-setup-steps-body">${mode.detail}</div>
+      </details>
+    </div>`;
+  },
+
   renderReturnStep() {
     const offered = this.returnMethodsOffered();
     const modes = [];
@@ -476,6 +494,10 @@ export const QuickSetupScreen = {
         // A recommendation wears the accent the person chose in Appearance, the
         // way the player step's does. Only the unmet precondition stays grey.
         badgeNeutral: needsInstall,
+        // The guide is a page of steps with pictures. Choosing this option
+        // should say what it is, not bury the next button under a tutorial
+        // nobody has asked for yet.
+        detailCollapsed: true,
         detail: renderAutomationReturnGuide({ availability: this.automationAvailability })
       });
     }
@@ -515,7 +537,7 @@ export const QuickSetupScreen = {
             }
             <span class="quick-setup-option-body">${escapeHtml(mode.body)}</span>
           </button>
-          ${selected ? `<div class="quick-setup-option-detail">${mode.detail}</div>` : ""}
+          ${selected ? this.renderOptionDetail(mode) : ""}
         </div>`;
       })
       .join("");

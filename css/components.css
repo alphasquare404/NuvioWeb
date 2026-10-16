@@ -6466,6 +6466,14 @@ button:focus-visible {
   display: none;
 }
 
+/* A token and the dot that introduces it, kept together across a wrap. The
+   inherited gap is the group's own, so this adds no spacing of its own. */
+.home-screen-shell.home-layout-modern .home-modern-hero-meta-part {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
+}
+
 .home-screen-shell.home-layout-modern .home-modern-hero-meta-group-leading {
   flex: 0 1 auto;
   max-width: 100%;
@@ -14786,6 +14794,11 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   max-width: 500px;
   max-height: 110px;
   object-fit: contain;
+  /* A logo wider or taller than its own box is drawn inside it, and the
+     default is to centre it there -- which reads as an indent that comes
+     and goes with the shape of each title's logo. It starts at the left,
+     like everything else in this column. */
+  object-position: left center;
   display: block;
   margin-bottom: 10px;
 }
@@ -15648,6 +15661,23 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   transition-duration: 300ms;
 }
 
+/* The hero picture, chosen by the shape of the screen rather than by a
+   re-render: the two candidates arrive as custom properties on the element
+   and a media query says which one is painted, so rotating a phone swaps
+   the artwork on its own. Upright screens fall back to the wide picture
+   when a title has no portrait plate. */
+.series-detail-backdrop {
+  background-image: var(--detail-backdrop, none);
+}
+
+/* Phones only: a tablet held upright keeps its copy beside the artwork, and
+   the wide picture is the one composed for that. */
+@media (orientation: portrait) and (max-width: 600px) {
+  .series-detail-backdrop {
+    background-image: var(--detail-backdrop-portrait, var(--detail-backdrop, none));
+  }
+}
+
 .detail-trailer-layer {
   position: absolute;
   top: 0;
@@ -15966,6 +15996,56 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
     max-height 600ms cubic-bezier(0.4, 0, 0.2, 1),
     opacity 400ms cubic-bezier(0.4, 0, 0.2, 1),
     visibility 0s linear 0s;
+}
+
+/* Waiting for TMDB and mdbList.
+
+   These three stand in for the artwork, the title logo and the ratings
+   while the answers are on their way, so the page settles once instead of
+   painting the add-on's and replacing it. The shimmer is the one Home
+   already uses for a row that has not arrived. */
+.series-detail-backdrop.is-awaiting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03),
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.03)
+  );
+  animation: homeContinueLoadingShimmer 2.2s ease-in-out infinite;
+}
+
+.series-detail-logo-skeleton {
+  /* The same box the logo will take, so nothing moves when it lands. Each
+     layout overrides this with its own logo's size, the way the logo does. */
+  width: min(100%, 500px);
+  height: 110px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.18),
+    rgba(255, 255, 255, 0.08)
+  );
+  animation: homeContinueLoadingShimmer 2.2s ease-in-out infinite;
+}
+
+.detail-ratings-skeleton > span,
+.detail-rating-skeleton-chip {
+  display: inline-block;
+  width: 64px;
+  height: 20px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.18),
+    rgba(255, 255, 255, 0.08)
+  );
+  animation: homeContinueLoadingShimmer 2.2s ease-in-out infinite;
 }
 
 .series-detail-logo {

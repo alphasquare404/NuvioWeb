@@ -37,7 +37,7 @@ export function renderModernHomeLayout({
   showHeroSection = false,
   showPosterLabels = true,
   showCatalogTypeSuffix = true,
-  preferLandscapePosters = false,
+  cardOrientation = "portrait",
   focusedRowKey = "",
   focusedItemIndex = -1,
   expandFocusedPoster = false,
@@ -109,7 +109,7 @@ export function renderModernHomeLayout({
           showPosterLabels,
           "modern",
           expandFocusedPoster && focusedRowKey === rowKey && focusedItemIndex === itemIndex,
-          preferLandscapePosters,
+          cardOrientation,
           deferRowImages,
           watchedTitleIds
         )
@@ -225,6 +225,56 @@ function buildHeroIndicators(items = [], activeItem = null) {
     .join("");
 }
 
+// Every piece of the hero's meta on one line.
+//
+// It used to be two: type, genre, runtime and year on the first, then the
+// rating, the badges and the language on a second underneath. A rating on a
+// row of its own reads as something separate from the line it belongs to --
+// plainest on a series, which has no runtime to fill the first row out.
+export function renderModernHeroMetaLine(display, escapeHtml) {
+  const parts = [...(display?.leadingMeta || []), ...(display?.trailingMeta || [])]
+    .filter(Boolean)
+    .map((token) => `<span>${escapeHtml(token)}</span>`);
+  if (display?.secondaryHighlightText) {
+    parts.push(
+      `<span class="home-modern-hero-highlight">${escapeHtml(display.secondaryHighlightText)}</span>`
+    );
+  }
+  (display?.badges || []).forEach((badge) => {
+    parts.push(`<span class="home-modern-hero-badge">${escapeHtml(badge)}</span>`);
+  });
+  if (display?.showImdb) {
+    parts.push(`
+      <span class="home-hero-imdb">
+        <img src="assets/icons/imdb_logo_2016.svg" alt="IMDb" />
+        <span>${escapeHtml(display.imdbText)}</span>
+      </span>
+    `);
+  }
+  if (display?.languageText) {
+    parts.push(
+      `<span class="home-modern-hero-secondary-detail">${escapeHtml(display.languageText)}</span>`
+    );
+  }
+  if (!parts.length) {
+    return "";
+  }
+  // Each dot travels with the token it introduces rather than standing
+  // between two of them. On a narrow screen the line wraps, and a loose dot
+  // wraps with it -- left hanging at the end of a row, or opening the next
+  // one. Inside the group, where the spacing between tokens is already
+  // defined; the parts inherit it, so a dot sits the same distance from its
+  // word at any scale.
+  const joined = parts
+    .slice(1)
+    .map(
+      (part) =>
+        `<span class="home-modern-hero-meta-part"><span class="home-hero-dot">•</span>${part}</span>`
+    )
+    .join("");
+  return `<div class="home-modern-hero-meta-group home-modern-hero-meta-group-leading">${parts[0]}${joined}</div>`;
+}
+
 function renderModernHeroMarkup({
   heroItem,
   heroCandidates,
@@ -237,43 +287,7 @@ function renderModernHeroMarkup({
   if (!display) {
     return "";
   }
-  const primaryLeft = display.leadingMeta
-    .map((token) => `<span>${escapeHtml(token)}</span>`)
-    .join('<span class="home-hero-dot">•</span>');
-  const primaryRightParts = display.trailingMeta.map(
-    (token) => `<span>${escapeHtml(token)}</span>`
-  );
-  if (display.showImdbPrimary) {
-    primaryRightParts.push(`
-      <span class="home-hero-imdb">
-        <img src="assets/icons/imdb_logo_2016.svg" alt="IMDb" />
-        <span>${escapeHtml(display.imdbText)}</span>
-      </span>
-    `);
-  }
-  const hasPrimaryRight = primaryRightParts.length > 0;
-  const secondaryParts = [];
-  if (display.secondaryHighlightText) {
-    secondaryParts.push(
-      `<span class="home-modern-hero-highlight">${escapeHtml(display.secondaryHighlightText)}</span>`
-    );
-  }
-  display.badges.forEach((badge) => {
-    secondaryParts.push(`<span class="home-modern-hero-badge">${escapeHtml(badge)}</span>`);
-  });
-  if (display.showImdbSecondary) {
-    secondaryParts.push(`
-      <span class="home-hero-imdb">
-        <img src="assets/icons/imdb_logo_2016.svg" alt="IMDb" />
-        <span>${escapeHtml(display.imdbText)}</span>
-      </span>
-    `);
-  }
-  if (display.languageText) {
-    secondaryParts.push(
-      `<span class="home-modern-hero-secondary-detail">${escapeHtml(display.languageText)}</span>`
-    );
-  }
+  const metaLine = renderModernHeroMetaLine(display, escapeHtml);
   return `
     <section class="home-hero home-hero-modern">
       <article class="home-hero-card home-modern-hero-card${heroItem?.heroMetaEnriching ? " is-hero-meta-enriching" : ""}"
@@ -297,19 +311,8 @@ function renderModernHeroMarkup({
             ${display.logo ? `<img class="home-hero-logo" src="${escapeAttribute(display.logo)}" alt="${escapeAttribute(display.title)}" decoding="async" fetchpriority="high" />` : ""}
             <h1 class="home-hero-title-text${display.logo ? " is-hidden" : ""}">${escapeHtml(display.title)}</h1>
           </div>
-          <div class="home-modern-hero-meta-line${display.leadingMeta.length || display.trailingMeta.length || display.showImdbPrimary ? "" : " is-empty"}">
-            <div class="home-modern-hero-meta-group home-modern-hero-meta-group-leading">
-              ${primaryLeft}
-            </div>
-            ${primaryLeft && hasPrimaryRight ? '<span class="home-hero-dot">•</span>' : ""}
-            <div class="home-modern-hero-meta-group home-modern-hero-meta-group-trailing">
-              ${primaryRightParts.join('<span class="home-hero-dot">•</span>')}
-            </div>
-          </div>
-          <div class="home-modern-hero-secondary${display.secondaryHighlightText || display.badges.length || display.showImdbSecondary || display.languageText ? "" : " is-empty"}">
-            ${secondaryParts.join('<span class="home-hero-dot">•</span>')}
-          </div>
-          <p class="home-hero-description${display.description ? "" : " is-empty"}"><span class="home-hero-description-text">${escapeHtml(display.description)}</span></p>
+          <div class="home-modern-hero-meta-line${metaLine ? "" : " is-empty"}">${metaLine}</div>
+          <p class="home-hero-description${display.description ? "" : " is-empty"}"><span class="home-hero-description-text" data-source-text="${escapeAttribute(display.description)}">${escapeHtml(display.description)}</span></p>
         </div>
         <div class="home-hero-indicators">${buildHeroIndicators(heroCandidates, heroItem)}</div>
       </article>
