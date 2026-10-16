@@ -117,3 +117,34 @@ test("a second instance inherits methods, never the running screen's state", () 
   // And the method really is shared rather than copied per instance.
   assert.equal(Object.getPrototypeOf(second).render, registered.render);
 });
+
+// The hazard that decides when the prototype may be taken. These screens keep
+// their event handlers as functions on `this` and bind them behind
+// `if (this.boundX) return;`, so a prototype taken after the screen has run
+// hands the next instance handlers it never attached.
+test("a prototype taken after the screen has run carries its bound handlers", () => {
+  const screen = {
+    bindActions() {
+      if (this.boundActionHandler) {
+        return "skipped";
+      }
+      this.boundActionHandler = () => "first page";
+      return "bound";
+    }
+  };
+
+  const pristine = createScreenPrototype(screen);
+  screen.bindActions();
+  const tainted = createScreenPrototype(screen);
+
+  // Taken before the screen ran: the next instance binds its own handler.
+  const clean = createRouteInstance(pristine, null);
+  assert.equal(clean.boundActionHandler, undefined);
+  assert.equal(clean.bindActions(), "bound");
+
+  // Taken afterwards: it inherits the first page's handler and binds nothing,
+  // which is the second Detail where only the markup responded.
+  const shared = createRouteInstance(tainted, null);
+  assert.equal(typeof shared.boundActionHandler, "function");
+  assert.equal(shared.bindActions(), "skipped");
+});

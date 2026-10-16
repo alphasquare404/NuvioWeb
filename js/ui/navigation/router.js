@@ -37,7 +37,8 @@ import {
   createRouteContainer,
   createRouteInstance,
   createScreenPrototype,
-  destroyRouteInstance
+  destroyRouteInstance,
+  STACKABLE_ROUTES
 } from "./routeLayerInstances.js";
 import { bindBrowserPullToRefresh } from "../components/browserPullToRefresh.js";
 
@@ -301,20 +302,33 @@ export const Router = {
   },
 
   // The methods a second instance of a stackable route is built from, taken
-  // once, the first time one is needed. Until then the registered screen is
-  // the screen in use, exactly as before -- a route that is never reached
-  // from itself behaves as though none of this existed.
-  routePrototypeFor(routeName) {
+  // here because here the registered screen has not run yet. Taken later it
+  // would carry that screen's bound event handlers, and an instance built on
+  // it would skip binding its own.
+  //
+  // The registered screen itself is left exactly where it is: a route that is
+  // never reached from itself behaves as though none of this existed.
+  captureRoutePrototypes() {
     if (!this.routePrototypes) {
       this.routePrototypes = {};
     }
-    if (!this.routePrototypes[routeName]) {
+    STACKABLE_ROUTES.forEach((routeName) => {
+      if (this.routePrototypes[routeName] || !this.routes[routeName]) {
+        return;
+      }
       this.routePrototypes[routeName] = createScreenPrototype(this.routes[routeName]);
-    }
-    return this.routePrototypes[routeName];
+    });
+  },
+
+  // No prototype means no second instance: a route whose methods were never
+  // captured clean is remounted the way it always was, rather than layered
+  // on top of a screen it would silently share handlers with.
+  routePrototypeFor(routeName) {
+    return this.routePrototypes?.[routeName] || null;
   },
 
   init() {
+    this.captureRoutePrototypes();
     if (this.popstateBound) {
       return;
     }
@@ -891,7 +905,10 @@ export const Router = {
       sameScreen: describesSameScreen(this.currentParams, targetParams),
       nonBackstack: NON_BACKSTACK_ROUTES.has(this.current)
     });
-    const stackedContainer = stackUnderItself ? createRouteContainer(document, routeName) : null;
+    const stackedContainer =
+      stackUnderItself && this.routePrototypeFor(routeName)
+        ? createRouteContainer(document, routeName)
+        : null;
 
     // Mounting rebuilds this route's container from scratch, so any layer still
     // holding that same container has to go first. A stacked navigation mounts
@@ -902,14 +919,15 @@ export const Router = {
     const shouldSkipPush = skipStackPush || NON_BACKSTACK_ROUTES.has(previousRoute);
     this.browserPullToRefreshCleanup?.();
     this.browserPullToRefreshCleanup = null;
-    if (this.current && (this.current !== routeName || stackUnderItself)) {
+    const stackingNow = Boolean(stackedContainer);
+    if (this.current && (this.current !== routeName || stackingNow)) {
       this.captureCurrentRouteState(routeName, options?.captureHistoryIndex);
       const suspendParent = this.suspendCurrentRouteUnder(routeName, outgoingHistoryIndex, {
         ...options,
-        stackUnderItself,
+        stackUnderItself: stackingNow,
         childContainer: stackedContainer
       });
-      if (stackUnderItself) {
+      if (stackingNow) {
         if (suspendParent) {
           // The outgoing instance keeps the container it is still drawn in.
           this.routes[routeName] = createRouteInstance(

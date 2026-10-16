@@ -80,13 +80,18 @@ export function isAllocatedRouteContainer(container) {
 }
 
 /**
- * The methods of a screen, without anything it is currently holding.
+ * The methods a second instance of a screen is built from.
  *
- * The screen registered for a route is also the screen that runs, so by the
- * time a second layer is wanted it carries a page's worth of state. Handing
- * that object to `Object.create` would let the new instance read the old
- * page's meta, episodes and scroll position through the prototype chain
- * until it happened to write its own. Only the functions are carried over.
+ * Taken before the screen has run, and only then. A screen that has run
+ * carries a page's worth of state, and not all of that state is data: these
+ * screens keep their event handlers as functions on `this` and bind them
+ * behind `if (this.boundX) return;`. A prototype taken afterwards hands the
+ * next instance those handlers, which then believes it is already bound and
+ * binds nothing -- a second Detail where only the markup responds, because
+ * the one handler still attached belongs to the page underneath it.
+ *
+ * Data properties are left out for the same reason in the other direction:
+ * a new page must not read the old one's meta, episodes or scroll position.
  */
 export function createScreenPrototype(screen) {
   if (!screen) {
