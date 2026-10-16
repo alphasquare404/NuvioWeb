@@ -1839,7 +1839,7 @@ export const FolderDetailScreen = {
       showHeroSection: Boolean(heroItem),
       showPosterLabels: false,
       showCatalogTypeSuffix: this.layoutPrefs?.catalogTypeSuffixEnabled !== false,
-      preferLandscapePosters: modernLandscapePostersEnabled,
+      cardOrientation: modernLandscapePostersEnabled ? "landscape" : "portrait",
       focusedRowKey: "",
       focusedItemIndex: -1,
       expandFocusedPoster: false,
@@ -1987,7 +1987,7 @@ export const FolderDetailScreen = {
               false,
               "modern",
               false,
-              modernLandscapePostersEnabled,
+              modernLandscapePostersEnabled ? "landscape" : "portrait",
               false,
               this.watchedTitleIds
             )

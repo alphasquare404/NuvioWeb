@@ -27,7 +27,7 @@ async function loadLibraryScreen() {
             ["platform", `export const Platform = { isBrowser: () => true };`],
             [
               "layout",
-              `export const LayoutPreferences = { get: () => ({ modernSidebar: true }) };`
+              `export const LayoutPreferences = { get: () => ({ modernSidebar: true }) }; export const normalizeCatalogCardOrientation = () => "source"; export const shouldDrawCardLandscape = () => false;`
             ],
             [
               "sidebar",

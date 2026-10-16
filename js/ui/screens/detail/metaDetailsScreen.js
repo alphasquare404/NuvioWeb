@@ -18,6 +18,8 @@ import { detailWatchedEnrichmentService } from "../../../data/repository/detailW
 import { watchedSeriesReconciliationService } from "../../../data/repository/watchedSeriesReconciliationService.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
+import { capTmdbImageSize } from "../../../core/media/tmdbImageSize.js";
+import { readHeroArtwork, rememberHeroArtwork } from "../../../data/local/heroArtworkCache.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { imdbEpisodeRatingsRepository } from "../../../data/repository/imdbEpisodeRatingsRepository.js";
 import { normalizeEpisodeImdbRating, parseEpisodeRuntimeMinutes } from "./episodeCardMetadata.js";
@@ -26,6 +28,12 @@ import {
   getEffectiveTmdbApiKey,
   TmdbSettingsStore
 } from "../../../data/local/tmdbSettingsStore.js";
+import { MdbListSettingsStore } from "../../../data/local/mdbListSettingsStore.js";
+import {
+  DETAIL_ENRICHMENT_HOLD_MS,
+  hasMdbListRatings,
+  resolveDetailEnrichmentHold
+} from "./detailEnrichmentHold.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
 import { subtitleRepository } from "../../../data/repository/subtitleRepository.js";
 import {
@@ -858,12 +866,6 @@ function formatMdbListRating(provider, rating) {
   return formatRatingValue(rating, { digits: 1, stripTrailingZero: true });
 }
 
-function hasMdbListRatings(ratings = {}) {
-  return ["trakt", "imdb", "tmdb", "letterboxd", "tomatoes", "audience", "metacritic"].some(
-    (key) => ratings?.[key] != null && String(ratings[key]).trim() !== ""
-  );
-}
-
 function normalizeGenreList(meta = {}) {
   const raw = Array.isArray(meta?.genres)
     ? meta.genres
@@ -1547,6 +1549,47 @@ function librarySnapshotHasMembership(listMembership = {}, sourceMode) {
   return listMembership[key] === true;
 }
 
+/**
+ * The picture an upright phone gets instead of the backdrop.
+ *
+ * A backdrop is framed for a wide screen, so filling a tall one with it
+ * throws most of the picture away. The poster is already that shape.
+ *
+ * The plate or nothing: an ordinary poster carries its own printed title, and
+ * showing one first and swapping it for the plate a moment later is worse
+ * than never showing it. Without a plate the hero keeps the wide artwork.
+ */
+function detailArtworkKey(meta) {
+  const id = String(meta?.id || "").trim();
+  return id ? `${String(meta?.type || "movie")}:${id}` : "";
+}
+
+function resolveDetailPortraitBackdrop(meta) {
+  // Home and this page ask the same question about the same titles, so they
+  // share the answer: opening a title from Home usually needs no request at
+  // all, and the hero is right on its first frame.
+  const remembered = meta?.textlessPoster ? null : readHeroArtwork(detailArtworkKey(meta));
+  const plate = meta?.textlessPoster || remembered?.poster || "";
+  return capTmdbImageSize(String(plate), "heroPoster");
+}
+
+function toDetailBackdropImageValue(url) {
+  return `url('${String(url).replace(/'/g, "%27")}')`;
+}
+
+// Both shapes travel as custom properties; which one is painted is a media
+// query in the stylesheet, so a rotation needs no re-render.
+function buildDetailBackdropStyleAttribute(backdrop, portraitBackdrop) {
+  if (!backdrop) {
+    return "";
+  }
+  const parts = [`--detail-backdrop:${toDetailBackdropImageValue(backdrop)}`];
+  if (portraitBackdrop && portraitBackdrop !== backdrop) {
+    parts.push(`--detail-backdrop-portrait:${toDetailBackdropImageValue(portraitBackdrop)}`);
+  }
+  return ` style="${parts.join(";")}"`;
+}
+
 export const MetaDetailsScreen = {
   getRouteStateKey(params = {}) {
     const itemId = String(params?.itemId || "").trim();
@@ -1848,6 +1891,8 @@ export const MetaDetailsScreen = {
     this.streamChooserLoadToken = 0;
     this.isLoadingDetail = true;
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+    this.holdDetailArtwork = false;
+    this.holdDetailRatings = false;
     if (this.pendingEpisodeNavigation) {
       this.pendingEpisodeNavigation.detailToken = this.detailLoadToken;
     }
@@ -2006,6 +2051,7 @@ export const MetaDetailsScreen = {
         <div class="detail-loading-top">
           <div class="detail-loading-block detail-loading-poster"></div>
         </div>
+        <div class="detail-loading-block detail-loading-logo"></div>
         <div class="detail-loading-meta">
           <div class="detail-loading-block detail-loading-pill"></div>
           <div class="detail-loading-block detail-loading-pill short"></div>
@@ -2267,7 +2313,12 @@ export const MetaDetailsScreen = {
     } else {
       this.seriesRatingsBySeason = {};
     }
+    this.beginDetailEnrichmentHold(meta);
     this.render(meta);
+    // The shell may be the one the last detail left behind, so the waiting
+    // state goes on the node that is actually there rather than on markup
+    // that may not have been drawn again.
+    this.applyDetailBackdrop(meta);
     if (Platform.isBrowser()) {
       void this.refreshCurrentLibraryMembership();
       void this.refreshOfflineDownloadStatus();
@@ -2300,6 +2351,7 @@ export const MetaDetailsScreen = {
       }
 
       this.meta = enrichedMeta || meta;
+      this.releaseDetailEnrichmentHold("artwork");
       setBrowserMediaTitle({ title: this.meta?.name, year: this.meta?.releaseInfo });
       this.setEpisodesForConnectivity(this.meta);
       if (!this.remoteMetaUnavailable) {
@@ -2426,6 +2478,8 @@ export const MetaDetailsScreen = {
       return;
     }
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+    this.holdDetailArtwork = false;
+    this.holdDetailRatings = false;
     const refreshToken = this.detailLoadToken;
     await addonRepository.reloadConfiguredAddons?.({ force: true }).catch(() => null);
     if (refreshToken !== this.detailLoadToken || Router.getCurrent() !== "detail") return;
@@ -3372,6 +3426,16 @@ export const MetaDetailsScreen = {
             })
           : meta.videos;
 
+      if (settings.useArtwork) {
+        // Written whatever the answer was, absence included: Home asks the
+        // same question about the same titles, and an answer it already has
+        // is a request it never makes.
+        rememberHeroArtwork(detailArtworkKey(meta), {
+          poster: enrichment.textlessPoster || "",
+          backdrop: enrichment.textlessBackdrop || ""
+        });
+      }
+
       return {
         ...meta,
         name: settings.useBasicInfo ? enrichment.localizedTitle || meta.name : meta.name,
@@ -3380,6 +3444,11 @@ export const MetaDetailsScreen = {
           : meta.description,
         background: settings.useArtwork ? enrichment.backdrop || meta.background : meta.background,
         poster: settings.useArtwork ? enrichment.poster || meta.poster : meta.poster,
+        // The plates for the hero, which chooses between them by screen shape.
+        // Also written to the shared cache, so Home opens this title correctly
+        // the next time it comes round in the rotation.
+        textlessBackdrop: settings.useArtwork ? enrichment.textlessBackdrop || null : null,
+        textlessPoster: settings.useArtwork ? enrichment.textlessPoster || null : null,
         // TMDB enrichment deliberately returns no logo when only unrelated
         // languages are available; show the localized text title in that case.
         logo: settings.useArtwork ? enrichment.logo : meta.logo,
@@ -4152,7 +4221,10 @@ export const MetaDetailsScreen = {
   },
 
   renderSeriesLayout(meta) {
-    const backdrop = meta.background || meta.poster || "";
+    const backdrop = this.holdDetailArtwork
+      ? ""
+      : capTmdbImageSize(meta.background || meta.poster || "", "heroBackdrop");
+    const portraitBackdrop = resolveDetailPortraitBackdrop(meta);
     const heroMarkup = this.renderSeriesHeroMarkup(meta);
     if (!this.selectedRatingSeason || !this.seriesRatingsBySeason?.[this.selectedRatingSeason]) {
       this.selectedRatingSeason = this.selectedSeason || this.episodes?.[0]?.season || 1;
@@ -4161,7 +4233,7 @@ export const MetaDetailsScreen = {
     this.container.innerHTML = `
       ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile }) : ""}
       <div class="series-detail-shell${this.getTrailerShellStateClasses()}">
-        <div class="series-detail-backdrop" data-backdrop-url="${escapeAttribute(backdrop || "")}"${backdrop ? ` style="background-image:url('${backdrop.replace(/'/g, "%27")}')"` : ""}></div>
+        <div class="series-detail-backdrop${this.holdDetailArtwork ? " is-awaiting" : ""}" data-backdrop-url="${escapeAttribute(backdrop || "")}"${buildDetailBackdropStyleAttribute(backdrop, portraitBackdrop)}></div>
         <div class="detail-trailer-layer"></div>
         <div class="detail-trailer-loading-spinner" aria-hidden="true">${renderLoadingIndicator({ className: "player-loading-spinner-ring" })}</div>
         <div class="series-detail-vignette"></div>
@@ -4208,6 +4280,7 @@ export const MetaDetailsScreen = {
       mdbListRatings: ratingsResult?.ratings || null,
       showMdbListImdb: ratingsResult?.hasImdbRating === true
     };
+    this.releaseDetailEnrichmentHold("ratings");
     this.updateRenderedDetailSections(this.meta);
   },
   renderHeroSection({
@@ -4217,10 +4290,15 @@ export const MetaDetailsScreen = {
     creditPrefix = "",
     showWatchedButton = false
   }) {
-    const logoOrTitle = meta.logo
-      ? `<img src="${meta.logo}" class="series-detail-logo" alt="${escapeHtml(meta.name || "logo")}" decoding="async" fetchpriority="high" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><h1 class="series-detail-title" hidden>${escapeHtml(meta.name || "Untitled")}</h1>`
-      : `<h1 class="series-detail-title">${escapeHtml(meta.name || "Untitled")}</h1>`;
-    const externalRatings = this.renderExternalRatingsRow(meta);
+    // The logo swapped too: the add-on's, then TMDB's a moment later.
+    const logoOrTitle = this.holdDetailArtwork
+      ? '<div class="series-detail-logo-skeleton" aria-hidden="true"></div>'
+      : meta.logo
+        ? `<img src="${capTmdbImageSize(meta.logo, "heroLogo")}" class="series-detail-logo" alt="${escapeHtml(meta.name || "logo")}" decoding="async" fetchpriority="high" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><h1 class="series-detail-title" title="${escapeHtml(meta.name || "Untitled")}" onclick="this.classList.toggle('is-expanded')" hidden>${escapeHtml(meta.name || "Untitled")}</h1>`
+        : `<h1 class="series-detail-title">${escapeHtml(meta.name || "Untitled")}</h1>`;
+    const externalRatings = this.holdDetailRatings
+      ? '<div class="detail-ratings-row detail-ratings-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>'
+      : this.renderExternalRatingsRow(meta);
     const trailerSource = this.trailerSource || resolveTrailerSource(meta);
     const hasTrailerCandidate = Boolean(trailerSource);
     if (!this.trailerSource && trailerSource) {
@@ -4352,7 +4430,12 @@ export const MetaDetailsScreen = {
     const primaryParts = [
       genresText ? `<span>${escapeHtml(genresText)}</span>` : "",
       yearText ? `<span>${escapeHtml(yearText)}</span>` : "",
-      imdbText && !hasExternalRatings ? renderImdbBadge(imdbText) : ""
+      // Held: the add-on's own rating is the one that gets replaced.
+      this.holdDetailRatings
+        ? '<span class="detail-rating-skeleton-chip" aria-hidden="true"></span>'
+        : imdbText && !hasExternalRatings
+          ? renderImdbBadge(imdbText)
+          : ""
     ].filter(Boolean);
     const secondaryParts = [];
     if (ageRating && status) {
@@ -4507,13 +4590,16 @@ export const MetaDetailsScreen = {
   },
 
   renderMovieLayout(meta) {
-    const backdrop = meta.background || meta.poster || "";
+    const backdrop = this.holdDetailArtwork
+      ? ""
+      : capTmdbImageSize(meta.background || meta.poster || "", "heroBackdrop");
+    const portraitBackdrop = resolveDetailPortraitBackdrop(meta);
     const heroMarkup = this.renderMovieHeroMarkup(meta);
 
     this.container.innerHTML = `
       ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile }) : ""}
       <div class="series-detail-shell movie-detail-shell${this.getTrailerShellStateClasses()}">
-        <div class="series-detail-backdrop" data-backdrop-url="${escapeAttribute(backdrop || "")}"${backdrop ? ` style="background-image:url('${backdrop.replace(/'/g, "%27")}')"` : ""}></div>
+        <div class="series-detail-backdrop" data-backdrop-url="${escapeAttribute(backdrop || "")}"${buildDetailBackdropStyleAttribute(backdrop, portraitBackdrop)}></div>
         <div class="detail-trailer-layer"></div>
         <div class="detail-trailer-loading-spinner" aria-hidden="true">${renderLoadingIndicator({ className: "player-loading-spinner-ring" })}</div>
         <div class="series-detail-vignette"></div>
@@ -4544,18 +4630,84 @@ export const MetaDetailsScreen = {
     this.restoredTrackScrollLeftByKey = captureHorizontalScrollMap(this.container);
   },
 
+  beginDetailEnrichmentHold(meta) {
+    if (this.detailEnrichmentHoldTimer) {
+      clearTimeout(this.detailEnrichmentHoldTimer);
+      this.detailEnrichmentHoldTimer = null;
+    }
+    const hold = resolveDetailEnrichmentHold({
+      tmdbSettings: TmdbSettingsStore.get(),
+      tmdbApiKey: getEffectiveTmdbApiKey(),
+      mdbListSettings: MdbListSettingsStore.get(),
+      meta
+    });
+    this.holdDetailArtwork = hold.artwork;
+    this.holdDetailRatings = hold.ratings;
+    if (!hold.artwork && !hold.ratings) {
+      return;
+    }
+    // Nothing waits forever: a key that has been revoked, a service that is
+    // down, a title TMDB has never heard of. The add-on's own artwork is
+    // still better than an empty frame.
+    const token = this.detailLoadToken;
+    this.detailEnrichmentHoldTimer = setTimeout(() => {
+      this.detailEnrichmentHoldTimer = null;
+      if (token !== this.detailLoadToken) {
+        return;
+      }
+      this.releaseDetailEnrichmentHold();
+    }, DETAIL_ENRICHMENT_HOLD_MS);
+  },
+
+  releaseDetailEnrichmentHold(part = "all") {
+    const wasHolding = Boolean(this.holdDetailArtwork || this.holdDetailRatings);
+    if (part === "all" || part === "artwork") {
+      this.holdDetailArtwork = false;
+    }
+    if (part === "all" || part === "ratings") {
+      this.holdDetailRatings = false;
+    }
+    if (!this.holdDetailArtwork && !this.holdDetailRatings && this.detailEnrichmentHoldTimer) {
+      clearTimeout(this.detailEnrichmentHoldTimer);
+      this.detailEnrichmentHoldTimer = null;
+    }
+    if (wasHolding && this.meta && this.container) {
+      this.updateRenderedDetailSections(this.meta);
+    }
+  },
+
   applyDetailBackdrop(meta) {
     const node = this.container?.querySelector(".series-detail-backdrop");
     if (!(node instanceof HTMLElement)) {
       return;
     }
-    const desired = String(meta?.background || meta?.poster || "");
-    if (node.dataset.backdropUrl === desired) {
+    node.classList.toggle("is-awaiting", Boolean(this.holdDetailArtwork));
+    // Held: the frame stays empty rather than showing artwork that is about
+    // to be replaced.
+    if (this.holdDetailArtwork) {
+      node.removeAttribute("data-backdrop-key");
+      node.style.removeProperty("--detail-backdrop");
+      node.style.removeProperty("--detail-backdrop-portrait");
       return;
     }
+    const desired = capTmdbImageSize(
+      String(meta?.background || meta?.poster || ""),
+      "heroBackdrop"
+    );
+    const portrait = resolveDetailPortraitBackdrop(meta);
+    // Both pictures decide whether there is anything to do. Comparing only the
+    // wide one meant the plate was never written: enrichment arrives with the
+    // same backdrop it already had and the poster it did not, and this returned
+    // before writing either -- so an upright phone kept the wide artwork.
+    const key = `${desired}|${portrait}`;
+    if (node.dataset.backdropKey === key) {
+      return;
+    }
+    node.dataset.backdropKey = key;
     node.dataset.backdropUrl = desired;
     if (!desired) {
-      node.style.backgroundImage = "";
+      node.style.removeProperty("--detail-backdrop");
+      node.style.removeProperty("--detail-backdrop-portrait");
       return;
     }
     const token = this.detailLoadToken;
@@ -4565,7 +4717,15 @@ export const MetaDetailsScreen = {
       }
       const current = this.container?.querySelector(".series-detail-backdrop");
       if (current instanceof HTMLElement && current.dataset.backdropUrl === desired) {
-        current.style.backgroundImage = `url('${desired.replace(/'/g, "%27")}')`;
+        current.style.setProperty("--detail-backdrop", toDetailBackdropImageValue(desired));
+        if (portrait) {
+          current.style.setProperty(
+            "--detail-backdrop-portrait",
+            toDetailBackdropImageValue(portrait)
+          );
+        } else {
+          current.style.removeProperty("--detail-backdrop-portrait");
+        }
       }
     };
     if (typeof Image === "function") {
@@ -10231,7 +10391,7 @@ export const MetaDetailsScreen = {
         <div class="series-stream-overlay-backdrop"></div>
         <div class="series-stream-panel">
           <div class="series-stream-left">
-            ${this.meta?.logo ? `<img src="${this.meta.logo}" class="series-stream-logo" alt="logo" />` : `<div class="series-stream-heading">${this.meta?.name || "Series"}</div>`}
+            ${this.meta?.logo ? `<img src="${capTmdbImageSize(this.meta.logo, "logo")}" class="series-stream-logo" alt="logo" />` : `<div class="series-stream-heading">${this.meta?.name || "Series"}</div>`}
             <div class="series-stream-episode">${pending.episode ? `S${pending.episode.season} E${pending.episode.episode}` : ""}</div>
             <div class="series-stream-episode-title">${pending.episode?.title || ""}</div>
           </div>
@@ -10314,7 +10474,7 @@ export const MetaDetailsScreen = {
         <div class="series-stream-overlay-backdrop"></div>
         <div class="series-stream-panel">
           <div class="series-stream-left">
-            ${this.meta?.logo ? `<img src="${this.meta.logo}" class="series-stream-logo" alt="logo" />` : `<div class="series-stream-heading">${this.meta?.name || "Movie"}</div>`}
+            ${this.meta?.logo ? `<img src="${capTmdbImageSize(this.meta.logo, "logo")}" class="series-stream-logo" alt="logo" />` : `<div class="series-stream-heading">${this.meta?.name || "Movie"}</div>`}
             <div class="series-stream-episode">${this.meta?.name || ""}</div>
             <div class="series-stream-episode-title">${Array.isArray(this.meta?.genres) ? this.meta.genres.slice(0, 3).join(" • ") : ""}</div>
           </div>
@@ -12408,6 +12568,8 @@ export const MetaDetailsScreen = {
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
+    this.holdDetailArtwork = false;
+    this.holdDetailRatings = false;
     if (this.pendingEpisodeNavigationRaf) {
       cancelAnimationFrame(this.pendingEpisodeNavigationRaf);
       this.pendingEpisodeNavigationRaf = null;

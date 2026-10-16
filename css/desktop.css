@@ -2291,6 +2291,13 @@ html.desktop-browser {
    the scrim only darkened one edge for no reason. Everything moves to the
    bottom centre and the downward fade alone carries the text. Desktop keeps
    its cinema framing. */
+/* The hero, centred on a touch screen.
+   ------------------------------------------------------------------
+   The left-to-right scrim and left-aligned copy are a widescreen idea: on a
+   phone the artwork is portrait and the copy is the whole width anyway, so
+   the scrim only darkened one edge for no reason. Everything moves to the
+   bottom centre and the downward fade alone carries the text. Desktop keeps
+   its cinema framing. */
 @media (any-pointer: coarse) {
   .desktop-browser #detail .series-detail-vignette {
     background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 30%, var(--detail-bg) 100%);
@@ -2345,10 +2352,24 @@ html.desktop-browser {
     padding-bottom: 6px;
   }
 
+  /* The column is anchored to the bottom of this box, so the box has to be
+     the window -- otherwise in a short landscape window it ends partway up
+     and the copy appears to float in the middle of the artwork. */
+  @media (orientation: landscape) {
+    .desktop-browser #detail .detail-hero-section,
+    .desktop-browser #detail .series-detail-content .detail-hero-section {
+      min-height: 100dvh;
+    }
+  }
+
   .desktop-browser #detail .detail-hero-meta-section > * {
     width: min(100%, 660px);
   }
 
+  /* Reading, not framing -- but it belongs with the framing it was written
+     for. Split across two queries, a landscape window took the desktop hero
+     and these together, and the result was neither layout: a left-aligned
+     title above centred credits. */
   /* Portrait has room for two lines before the synopsis becomes the page.
      Landscape is wider and shallower, so it keeps the longer clamp. */
   .desktop-browser #detail .series-detail-description.is-expanded {
@@ -2508,6 +2529,12 @@ html.desktop-browser {
 .desktop-browser #detail .series-detail-logo {
   max-width: min(100%, 480px);
   max-height: 112px;
+  margin-bottom: 18px;
+}
+
+.desktop-browser #detail .series-detail-logo-skeleton {
+  width: min(100%, 480px);
+  height: 112px;
   margin-bottom: 18px;
 }
 
@@ -12370,6 +12397,12 @@ body.desktop-browser {
     margin-bottom: 12px;
   }
 
+  .desktop-browser #detail .series-detail-logo-skeleton {
+    width: min(76vw, 320px);
+    height: min(19vw, 86px);
+    margin-bottom: 12px;
+  }
+
   .desktop-browser #detail .series-detail-title {
     max-width: 100%;
     margin-bottom: 10px;
@@ -12631,6 +12664,11 @@ body.desktop-browser {
   .desktop-browser #detail .series-detail-logo {
     max-width: min(58vw, 420px);
     max-height: 104px;
+  }
+
+  .desktop-browser #detail .series-detail-logo-skeleton {
+    width: min(58vw, 420px);
+    height: 104px;
   }
 
   .desktop-browser #detail .series-detail-title {
@@ -15004,26 +15042,27 @@ body.desktop-browser {
 
    The two-line height itself is an inline style set there, since nothing in a
    stylesheet can outrank one. */
-@media (any-pointer: coarse) and (orientation: portrait) {
-  .desktop-browser .home-hero-description-toggle {
-    display: inline;
-    margin: 0 0 0 4px;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: #fff;
-    /* The synopsis over artwork already needs this to stay readable; the label
-       is the same text on the same picture. */
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
-    cursor: pointer;
-    font: inherit;
-    font-weight: 700;
-    white-space: nowrap;
-  }
+/* Not in a query any more: the synopsis is cut on every screen, so the label
+   that finishes it belongs on every screen too -- and a button's border and
+   background over artwork is a box floating in the middle of a picture. */
+.desktop-browser .home-hero-description-toggle {
+  display: inline;
+  margin: 0 0 0 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  /* The synopsis over artwork already needs this to stay readable; the label
+     is the same text on the same picture. */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+}
 
-  .desktop-browser .home-hero-description-toggle[hidden] {
-    display: none;
-  }
+.desktop-browser .home-hero-description-toggle[hidden] {
+  display: none;
 }
 
 /* The settings rail drew the same glyphs the phone does, but in a box the size
@@ -15674,11 +15713,17 @@ body.desktop-browser {
   /* Two containers carry that inset, not one: the catalog rows share a wrapper,
      while Continue Watching is its own row and insets itself. Zeroing only the
      wrapper left the two shelves starting at different places -- which is worse
-     than the padding was. The negative margins exist to offset the padding, so
-     they go with it. */
+     than the padding was.
+
+     Only the padding goes. The negative margin is not there to offset it: it is
+     what pulls these two out of the centred 1440px column so a shelf can run to
+     the edge of the screen, and `width: 100vw` above is written for it. Taking
+     it away left them 100vw wide but still starting at the column, so every
+     shelf sat pushed towards the middle and ran off the right-hand side --
+     visible on any touch-capable machine with a window wider than the column,
+     which is why a mouse-only desktop never showed it. */
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs,
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
-    margin-inline: 0;
     padding-inline: 0;
   }
 
@@ -15803,6 +15848,71 @@ body.desktop-browser {
 .desktop-browser #detail .detail-loading-chip {
   width: 64px;
   height: 20px;
+}
+
+/* ---------------------------------------------------------------------------
+   The same placeholder, for the shape this page actually takes once it is
+   wide.
+
+   The rules above centre everything under a full-bleed block, which is the
+   phone's page. A wide one puts the copy over the lower left of the backdrop
+   in a 660px column at the page gutter, with the title logo above it -- so
+   the placeholder was a flash of the phone app on the way to the desktop one.
+   --------------------------------------------------------------------------- */
+@media (min-width: 601px) {
+  .desktop-browser #detail .detail-loading-shell {
+    position: relative;
+    align-items: flex-start;
+    /* The copy sits at the bottom of the backdrop, not under it. */
+    justify-content: flex-end;
+    height: min(72vh, 648px);
+    padding: 0 var(--detail-tablet-gutter, 3.4vw) 48px;
+  }
+
+  .desktop-browser #detail .detail-loading-top {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+  }
+
+  .desktop-browser #detail .detail-loading-poster {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .desktop-browser #detail .detail-loading-logo {
+    position: relative;
+    width: min(100%, 480px);
+    height: 112px;
+    margin-bottom: 18px;
+    border-radius: 14px;
+  }
+
+  .desktop-browser #detail .detail-loading-meta,
+  .desktop-browser #detail .detail-loading-copy,
+  .desktop-browser #detail .detail-loading-tags {
+    position: relative;
+    align-items: flex-start;
+    justify-content: flex-start;
+    width: min(100%, 660px);
+    max-width: min(100%, 660px);
+  }
+}
+
+/* A phone's placeholder is the one above; it has no logo block to show. */
+@media (max-width: 600px) {
+  .desktop-browser #detail .detail-loading-logo {
+    display: none;
+  }
+}
+
+@media (min-width: 601px) and (max-width: 1023px) {
+  .desktop-browser #detail .detail-loading-logo {
+    width: min(58vw, 420px);
+    height: 104px;
+  }
 }
 
 /* The up-next card was drawn at television scale: a 470px floor on a phone in
@@ -16012,5 +16122,1090 @@ body.desktop-browser {
 
   .desktop-browser #stream .stream-route-list {
     padding-bottom: calc(28px + var(--browser-safe-area-bottom, 0px));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Where the primary navigation sits.
+
+   The bar is `position: fixed` and every screen only pads itself clear of it,
+   so moving it is a matter of where it is pinned and which edge the screens
+   keep free. One attribute on <html> drives all of it -- written by
+   LayoutPreferences, so it follows the preference through a profile switch
+   without any screen having to apply it.
+
+   `top` is the placement this has always had and needs no rules at all.
+   --------------------------------------------------------------------------- */
+
+/* Only the rail placement has something to press, so it is the only one that
+   shows it. */
+.desktop-browser .desktop-navigation-reveal {
+  display: none;
+}
+
+/* --- Bottom: a tab bar, the way a phone expects one ----------------------- */
+
+/* A move, not a redesign: the same pill, pinned to the other edge. Everything
+   about how it looks -- including the way it differs between a desktop and a
+   phone -- is left to the rules that already draw it. */
+html[data-nav-placement="bottom"].desktop-browser .desktop-navigation {
+  top: auto;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+}
+
+/* The clearance moves with the bar: the top of the page is free again, and the
+   bottom is what has to stay clear. */
+html[data-nav-placement="bottom"].desktop-browser,
+html[data-nav-placement="sidebar"].desktop-browser {
+  --browser-mobile-nav-clearance: calc(var(--browser-safe-area-top) + 8px);
+  --browser-home-no-hero-top: calc(var(--browser-safe-area-top) + 16px);
+}
+
+html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-enabled {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 78px);
+}
+
+/* --- Sidebar: a rail that stays out of the way until it is asked for ------ */
+
+/* The button lines up with Back rather than sitting against the edge: the same
+   inset, and the same height off the top. The corner it hangs from is the
+   person's choice, so each edge it can be pinned to is a value here and a
+   corner rule only says which two it uses. */
+html[data-nav-placement="sidebar"].desktop-browser {
+  --browser-nav-rail-inset: clamp(20px, 3.4vw, 64px);
+  --browser-nav-rail-top: calc(
+    var(--browser-floating-nav-top) +
+      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
+  );
+  --browser-nav-rail-bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  --browser-nav-rail-gap: 56px;
+}
+
+/* Top right by default, because top left is where Back lives. */
+html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-reveal {
+  position: fixed;
+  top: var(--browser-nav-rail-top);
+  right: var(--browser-nav-rail-inset);
+  bottom: auto;
+  left: auto;
+  z-index: 31;
+  display: inline-flex;
+  width: 46px;
+  height: 46px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: rgba(18, 18, 20, 0.78);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1), color 160ms ease;
+}
+
+html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-reveal svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+/* One mark at a time: lines while it opens, a cross while it closes. */
+.desktop-browser .desktop-navigation-reveal .desktop-navigation-reveal-close,
+.desktop-browser.nav-rail-open .desktop-navigation-reveal .desktop-navigation-reveal-open {
+  display: none;
+}
+
+.desktop-browser.nav-rail-open .desktop-navigation-reveal .desktop-navigation-reveal-close {
+  display: block;
+}
+
+html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-reveal:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 2px;
+}
+
+/* Off to the left until asked for. Translated rather than hidden so it can
+   slide, and `pointer-events: none` so an invisible rail cannot be clicked. */
+/* Opens under its own button, from the right edge it is pinned to. */
+html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation {
+  top: calc(var(--browser-nav-rail-top) + var(--browser-nav-rail-gap));
+  right: var(--browser-nav-rail-inset);
+  bottom: auto;
+  left: auto;
+  max-width: min(260px, calc(100vw - 28px));
+  border-radius: 22px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(100% + 20px));
+  transform-origin: top right;
+  transition: transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1), opacity 180ms ease;
+}
+
+html[data-nav-placement="sidebar"].nav-rail-open.desktop-browser .desktop-navigation {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+html[data-nav-placement="sidebar"].nav-rail-open.desktop-browser .desktop-navigation-reveal {
+  color: var(--text-color);
+}
+
+html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-scroll {
+  flex-direction: column;
+  padding: 8px;
+  gap: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: min(70vh, 560px);
+}
+
+html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-item {
+  width: 100%;
+  min-width: 0;
+  justify-content: flex-start;
+  padding: 0 14px;
+  border-radius: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation,
+  html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-reveal {
+    transition: none;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-reveal:hover {
+    color: var(--text-color);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The navigation placement illustrations in Settings.
+
+   Each one is the same page with the bar in a different place, because the
+   difference between the three is only ever where the bar is -- and a drawing
+   of that settles the question faster than a sentence about it.
+   --------------------------------------------------------------------------- */
+
+.desktop-browser .settings-nav-placement-grid {
+  margin-top: 4px;
+}
+
+.desktop-browser .settings-nav-placement-card .settings-nav-preview {
+  position: relative;
+  display: block;
+  height: 132px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.desktop-browser .settings-nav-preview-stage {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.desktop-browser .settings-nav-preview-page {
+  position: absolute;
+  inset: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.desktop-browser .settings-nav-preview-hero {
+  display: block;
+  height: 46%;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.desktop-browser .settings-nav-preview-row {
+  display: block;
+  height: 11px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.desktop-browser .settings-nav-preview-row.is-short {
+  width: 62%;
+}
+
+/* The bar itself, at whichever edge this card is showing. */
+.desktop-browser .settings-nav-preview-bar {
+  position: absolute;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(10, 10, 12, 0.92);
+  transform: translateX(-50%);
+}
+
+.desktop-browser .settings-nav-preview-bar.is-top {
+  top: 8px;
+}
+
+.desktop-browser .settings-nav-preview-bar.is-bottom {
+  bottom: 8px;
+}
+
+.desktop-browser .settings-nav-preview-rail {
+  position: absolute;
+  top: 30px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 13px;
+  background: rgba(10, 10, 12, 0.92);
+}
+
+/* Drawn beside the rail it opens, which is the whole idea of that placement. */
+.desktop-browser .settings-nav-preview-fab {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: block;
+  width: 15px;
+  height: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  background: rgba(10, 10, 12, 0.92);
+}
+
+.desktop-browser .settings-nav-preview-item {
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.desktop-browser .settings-nav-preview-item.is-active {
+  background: var(--secondary-color);
+}
+
+.desktop-browser .settings-nav-placement-card.is-selected .settings-nav-preview {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* The pill drops its labels on a phone and becomes a row of 44px icons, which
+   the bottom placement inherits unchanged -- it is the same pill. A vertical
+   rail of bare icons says far less, so that one keeps its words. */
+@media (max-width: 600px) {
+  html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-label {
+    display: block;
+  }
+
+  html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-avatar {
+    width: 21px;
+    height: 21px;
+  }
+
+  html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-item {
+    width: 100%;
+    height: 42px;
+    padding: 0 14px;
+    gap: 10px;
+  }
+}
+
+/* The poster orientation illustrations: the same row of cards, drawn the way
+   each choice would draw them. "Follow the addon" shows both shapes, because
+   that is exactly what it produces -- a row is only ever as uniform as the
+   catalogue behind it. */
+.desktop-browser .settings-orientation-preview .settings-orientation-stage {
+  position: absolute;
+  inset: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.desktop-browser .settings-orientation-card {
+  display: block;
+  height: 72%;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.desktop-browser .settings-orientation-card.is-tall {
+  width: 32px;
+}
+
+.desktop-browser .settings-orientation-card.is-wide {
+  width: 68px;
+  height: 52%;
+}
+
+/* A heading for a group that lives inside another section rather than opening
+   one of its own. */
+.desktop-browser .settings-inline-group-heading {
+  margin: 2px 2px 6px;
+}
+
+/* ---------------------------------------------------------------------------
+   Wide catalog cards.
+
+   The card renderer has been able to draw a catalog card landscape for a long
+   time -- it swaps the poster for the backdrop and adds `is-landscape` -- but
+   in the browser nothing ever sized one. The only rule consuming the landscape
+   width token was for collection cards, so a catalog card marked landscape
+   kept its portrait box and simply showed a backdrop squeezed into it.
+
+   These reuse the token the collection cards already use, so a wide catalog
+   card and a wide collection card are the same width at every breakpoint.
+   --------------------------------------------------------------------------- */
+
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card).is-landscape {
+  flex-basis: var(--browser-card-landscape-width, clamp(300px, 42vw, 380px));
+  min-width: var(--browser-card-landscape-width, clamp(300px, 42vw, 380px));
+  max-width: var(--browser-card-landscape-width, clamp(300px, 42vw, 380px));
+}
+
+/* The artwork box follows the card: a backdrop is 16:9, and leaving the frame
+   at a poster's 2:3 is what made the first attempt look like a portrait card
+   with a squashed picture in it. */
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card).is-landscape
+  .home-poster-frame {
+  aspect-ratio: 16 / 9;
+  height: auto;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-card:not(.home-collection-card).is-landscape {
+    flex-basis: var(--browser-card-landscape-width, min(76vw, 292px));
+    min-width: var(--browser-card-landscape-width, min(76vw, 292px));
+    max-width: var(--browser-card-landscape-width, min(76vw, 292px));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Which choice is the chosen one.
+
+   The selected card borrowed `--focus-color` for its border, and the browser
+   build sets that variable to `transparent` on a focused element to suppress
+   focus rings. So the moment a card was both selected and focused -- which is
+   every card you just clicked -- its border was painted with nothing, and
+   there was no way to tell which option was in force.
+
+   Selection is not focus, so it gets a colour of its own.
+   --------------------------------------------------------------------------- */
+html.desktop-browser .settings-shell .settings-layout-card.is-selected,
+html.desktop-browser .settings-shell .settings-layout-card.is-selected.focused {
+  border-width: 2px !important;
+  border-style: solid !important;
+  border-color: var(--secondary-color) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Which corner the rail hangs from.
+
+   Three of the four corners are offered. Top left is not: Back sits there on
+   every screen, and a rail button on top of it would cover the one control
+   nobody can do without.
+   --------------------------------------------------------------------------- */
+html[data-nav-rail-corner="bottom-right"][data-nav-placement="sidebar"].desktop-browser
+  .desktop-navigation-reveal,
+html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].desktop-browser
+  .desktop-navigation-reveal {
+  top: auto;
+  bottom: var(--browser-nav-rail-bottom);
+}
+
+/* Anchored by its bottom edge so a long rail grows upwards, away from the
+   button, instead of off the bottom of the screen. */
+html[data-nav-rail-corner="bottom-right"][data-nav-placement="sidebar"].desktop-browser
+  .desktop-navigation,
+html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].desktop-browser
+  .desktop-navigation {
+  top: auto;
+  bottom: calc(var(--browser-nav-rail-bottom) + var(--browser-nav-rail-gap));
+}
+
+html[data-nav-rail-corner="bottom-right"][data-nav-placement="sidebar"].desktop-browser
+  .desktop-navigation {
+  transform-origin: bottom right;
+}
+
+/* On the left it has to slide out the other way, or it would travel across the
+   page to get to its own edge. */
+html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].desktop-browser
+  .desktop-navigation-reveal,
+html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].desktop-browser
+  .desktop-navigation {
+  right: auto;
+  left: var(--browser-nav-rail-inset);
+}
+
+html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].desktop-browser
+  .desktop-navigation {
+  transform: translateX(calc(-100% - 20px));
+  transform-origin: bottom left;
+}
+
+html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-open.desktop-browser
+  .desktop-navigation {
+  transform: translateX(0);
+}
+
+/* The illustrations, which are the same drawing with the pair moved. */
+.desktop-browser .settings-nav-preview-stage.is-corner-bottom-right .settings-nav-preview-fab,
+.desktop-browser .settings-nav-preview-stage.is-corner-bottom-left .settings-nav-preview-fab {
+  top: auto;
+  bottom: 8px;
+}
+
+.desktop-browser .settings-nav-preview-stage.is-corner-bottom-right .settings-nav-preview-rail,
+.desktop-browser .settings-nav-preview-stage.is-corner-bottom-left .settings-nav-preview-rail {
+  top: auto;
+  bottom: 30px;
+}
+
+.desktop-browser .settings-nav-preview-stage.is-corner-bottom-left .settings-nav-preview-fab,
+.desktop-browser .settings-nav-preview-stage.is-corner-bottom-left .settings-nav-preview-rail {
+  right: auto;
+  left: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+   Landscape cards outside Home.
+
+   The orientation choice is about catalog cards, and Library and Search draw
+   catalog cards too. Both reuse the landscape width Home already uses, so a
+   wide card is the same size wherever it appears.
+   --------------------------------------------------------------------------- */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-grid.is-landscape-cards {
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(var(--browser-card-landscape-width, clamp(220px, 26vw, 320px)), 1fr)
+  );
+}
+
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-grid.is-landscape-cards
+  .library-grid-poster {
+  aspect-ratio: 16 / 9;
+  border-radius: var(--browser-card-landscape-radius, 14px);
+}
+
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-result-card.is-landscape {
+  flex: 0 0 var(--browser-card-landscape-width, calc(var(--search-desktop-card-width) * 1.9));
+  width: var(--browser-card-landscape-width, calc(var(--search-desktop-card-width) * 1.9));
+}
+
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-result-card.is-landscape
+  .search-result-poster-wrap {
+  aspect-ratio: 16 / 9;
+  border-radius: var(--browser-card-landscape-radius, 14px);
+}
+
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-result-card.search-seeall-card.is-landscape
+  .search-seeall-inner {
+  aspect-ratio: 16 / 9;
+}
+
+/* ---------------------------------------------------------------------------
+   The Home hero on a phone held upright.
+
+   A wide hero reads left to right: artwork on the right, copy down the left.
+   There is no left and right on a phone -- the artwork is behind the copy,
+   not beside it -- so the column centres instead, and sits lower, where a
+   thumb is rather than where the picture is.
+   --------------------------------------------------------------------------- */
+@media (max-width: 600px) and (orientation: portrait) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+    align-items: center;
+    /* Lower than the wide layout leaves it: the picture above is the subject
+       on a phone, and the copy is a caption under it. The padding is what
+       leaves the dots their line underneath. */
+    padding-bottom: 36px;
+    text-align: center;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-brand {
+    align-items: center;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-chip-row {
+    justify-content: center;
+  }
+
+  /* The meta is centred as a block, but what wraps out of it was not --
+     a second row starting hard against the left edge while the first sat in
+     the middle. And the spacing: at 8px between every token and dot the
+     line needs more width than a phone has, so it wrapped where 4px fits.
+     Long genres still wrap, and now they wrap centred. */
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-group {
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description {
+    text-align: center;
+  }
+
+  /* The button is centred with everything else, and the dots sit under it
+     rather than beside it -- one column, read straight down. */
+  .desktop-browser .desktop-hero-details-button {
+    align-self: center;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
+    right: auto;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  /* Taller, so the copy ends lower down the screen and the artwork above it
+     gets the room an upright poster was made for. */
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+    min-height: min(80dvh, 660px);
+    height: min(80dvh, 660px);
+  }
+
+
+}
+
+/* ---------------------------------------------------------------------------
+   Where the hero ends.
+
+   The artwork stopped at a line: the gradient over it reached 92% black and
+   the page below is black, so the last 8% showed as a seam straight across
+   the screen. The detail page has no such line because its artwork dissolves,
+   so this one dissolves too -- the picture is faded out by a mask rather than
+   covered by one more layer.
+   --------------------------------------------------------------------------- */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-backdrop-wrap {
+  --home-hero-fade-end: var(--desktop-home-hero-fade-tail, 0px);
+  --home-hero-fade-start: calc(var(--home-hero-fade-end) + 200px);
+  -webkit-mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) var(--home-hero-fade-end),
+    rgba(0, 0, 0, 1) var(--home-hero-fade-start)
+  );
+  mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) var(--home-hero-fade-end),
+    rgba(0, 0, 0, 1) var(--home-hero-fade-start)
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+/* ---------------------------------------------------------------------------
+   The title on a landscape card.
+
+   The browser build hides every overlay on a catalog card, because a portrait
+   card carries its title underneath. A landscape card does not -- its copy
+   belongs in the bottom-left corner of the artwork, the way the hero's does.
+
+   The logo is capped on both axes. A title logo is artwork of whatever shape
+   its designer chose: a wide wordmark and a tall crest arrive at the same
+   `max-height`, and without a width cap the wide one runs the length of the
+   card. Catalog entries rarely carry a logo at all, so the title text is not
+   a fallback for unusual cases -- it is what most cards will show.
+   --------------------------------------------------------------------------- */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-copy {
+  display: block !important;
+  left: 10px;
+  right: 10px;
+  bottom: 9px;
+  max-width: calc(100% - 20px);
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-logo {
+  max-width: 58%;
+  max-height: 34px;
+}
+
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-title {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+/* Only the logo goes inside. The name and year sit under the card in this
+   build, and printing them twice makes the card look like it is shouting. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-subtitle,
+.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-title {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-copy {
+    left: 8px;
+    right: 8px;
+    bottom: 7px;
+  }
+
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-logo {
+    max-width: 62%;
+    max-height: 26px;
+  }
+
+}
+
+/* ---------------------------------------------------------------------------
+   Glass, not paint.
+
+   The floating controls were dark panels with a little blur behind them, so
+   they read as cut out of the page. Less paint and more blur makes them read
+   as glass laid over it: the artwork stays visible through the bar, which is
+   what the bar is floating over it for.
+
+   The paint does not go to nothing. A bar over a white poster still has to
+   carry white labels, and saturation keeps the colour underneath from going
+   grey as the blur widens.
+   --------------------------------------------------------------------------- */
+.desktop-browser .desktop-navigation {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(2px) saturate(150%);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+}
+
+html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-reveal,
+.desktop-browser #detail .detail-desktop-back-button,
+.desktop-browser #castDetail .detail-desktop-back-button,
+.desktop-browser #stream .stream-desktop-back-button,
+.desktop-browser #player .player-desktop-back-button,
+.desktop-browser #folderDetail .folder-detail-desktop-back,
+.desktop-browser .discover-shell .discover-desktop-back-button,
+.desktop-browser .settings-shell .settings-section-back,
+.desktop-browser .profile-desktop-back-button,
+.desktop-browser .profile-pin-desktop-back,
+.desktop-browser #account .desktop-qr-back-button,
+.desktop-browser #debugConsole .debug-console-back {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(18, 18, 20, 0.46);
+  backdrop-filter: blur(2px) saturate(150%);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+}
+
+/* A pressed or hovered control is the one case for more paint, so the touch
+   has something to land on. */
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #detail .detail-desktop-back-button:hover,
+  .desktop-browser #castDetail .detail-desktop-back-button:hover,
+  .desktop-browser #stream .stream-desktop-back-button:hover {
+    background: rgba(18, 18, 20, 0.62);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The bottom bar's two sizes.
+
+   Collapsed is the shape the bar has everywhere else -- round icons, no
+   labels. Expanded adds the label under each icon, which is the shape a phone
+   expects of a tab bar and the one worth showing while nobody is reading past
+   it. The class is written by the navigation component from the page's own
+   scrolling.
+   --------------------------------------------------------------------------- */
+html[data-nav-placement="bottom"].desktop-browser .desktop-navigation,
+html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
+  transition:
+    width 180ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    min-width 180ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    height 180ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    padding 180ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    border-radius 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* Only a phone has two sizes of bar. On a desktop the bottom bar is already
+   its full size and a different shape, so there is nothing for it to grow
+   into and the scrolling leaves it alone. */
+@media (max-width: 600px) {
+  html[data-nav-placement="bottom"].desktop-browser:not(.nav-bottom-collapsed)
+    .desktop-navigation-item {
+    flex-direction: column;
+    width: auto;
+    min-width: 58px;
+    height: auto;
+    padding: 7px 10px 6px;
+    gap: 3px;
+    /* The collapsed item is a circle. Keeping the corners fully round here
+       means the two states are the same shape at two sizes. */
+    border-radius: 999px;
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser:not(.nav-bottom-collapsed)
+    .desktop-navigation-label {
+    display: block;
+    font-size: 10px;
+    line-height: 12px;
+    letter-spacing: 0.01em;
+  }
+
+  /* The page keeps clear of the taller shape, so the last row is never left
+     under the bar. */
+  html[data-nav-placement="bottom"].desktop-browser:not(.nav-bottom-collapsed)
+    .desktop-navigation-enabled {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation,
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Library search sits with the shelf's own button.
+
+   It used to float in the page header, far from the filter, refresh and
+   download-manager buttons it belongs with. Now it stands to the left of
+   whichever of those the current shelf shows, so it takes the same shape as
+   its neighbour instead of the round chip it was.
+   --------------------------------------------------------------------------- */
+.desktop-browser .library-picker-row .library-search-button {
+  width: 52px;
+  height: auto;
+  min-height: 100%;
+  border-radius: 14px;
+}
+
+/* The manager shelf has no picker to stretch against, so the pair sizes
+   itself. */
+.desktop-browser .library-downloaded-filter-row.is-manager-only .library-search-button {
+  min-height: 44px;
+}
+
+/* ---------------------------------------------------------------------------
+   Page titles on a phone.
+
+   A wide window reads from the left, so a left-aligned title starts where
+   the eye already is. A phone has no such edge to anchor to -- the title is
+   the whole line -- so it centres, with a hairline under it to separate the
+   name of the page from the page itself.
+
+   Desktop is untouched: this is the shape of a narrow screen, not a change
+   of mind about the layout.
+   --------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy,
+  .desktop-browser .settings-shell .settings-nav-index-header,
+  .desktop-browser .settings-shell .settings-content-header {
+    text-align: center;
+  }
+
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header,
+  .desktop-browser .settings-shell .settings-nav-index-header,
+  .desktop-browser .settings-shell .settings-content-header {
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* These headers are flex rows, so centring the text is not enough: the
+     heading itself has to span the row before its text has a middle to sit
+     in. */
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+  .desktop-browser .settings-shell .settings-nav-index-header,
+  .desktop-browser .settings-shell .settings-content-header {
+    justify-content: center;
+  }
+
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-page-heading {
+    width: 100%;
+  }
+
+  /* The corners belong to the back button on the left and the rail button on
+     the right. The title is centred on the page, so it has to keep clear of
+     both of them rather than run under one. */
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header,
+  .desktop-browser .settings-shell .settings-nav-index-header,
+  .desktop-browser .settings-shell .settings-content-header {
+    padding-inline: 56px;
+  }
+
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Landscape cards in the Library on a phone.
+
+   The column width was borrowed from Home, where a landscape card sits in a
+   row that scrolls sideways and may be as wide as it likes. In a grid that
+   same width leaves one card per row, the size of a billboard. Two to a row
+   is the shape the portrait grid already uses.
+   --------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid.is-landscape-cards {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 158px), 1fr));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Fixes from the third pass.
+   --------------------------------------------------------------------------- */
+
+/* A transform makes a containing block for `position: fixed`, so the back
+   button rode the section fade down and then jumped to its corner when the
+   animation ended. The fade stays; the travel goes. */
+@keyframes settingsSectionFadeStill {
+  from {
+    opacity: 0.78;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.desktop-browser .settings-content.is-section-transitioning {
+  animation-name: settingsSectionFadeStill;
+}
+
+/* And it starts from the same edge as every other back button. */
+@media (max-width: 600px) {
+  .desktop-browser .settings-shell .settings-section-back {
+    left: calc(8px + var(--browser-safe-area-left));
+    width: var(--browser-mobile-control-size);
+    height: var(--browser-mobile-control-size);
+  }
+}
+
+/* The field had the grid pressed up against it. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-search-row {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 600px) and (orientation: portrait) {
+  /* The logo box was centred all along; the artwork inside it was pinned to
+     the top-left corner by `object-position: 0% 0%`. */
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-logo {
+    object-position: center bottom;
+  }
+
+  /* A poster is shown whole rather than cropped to fill: it keeps its own
+     proportions from the top of the hero down, and the fade at the bottom
+     covers where it ends. Only the upright plate is treated this way -- wide
+     artwork still fills the frame, or it would leave half the hero empty. */
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled
+    .home-hero-backdrop.is-portrait-artwork {
+    bottom: auto;
+    height: auto;
+    object-fit: contain;
+    object-position: top center;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Room for the bottom bar on the pages that are not a shell.
+
+   The clearance for the bottom placement is attached to `.desktop-navigation-
+   enabled`, which Home, Library, Search and Settings carry. Detail, Cast and
+   Stream do not -- so the bar floated over their last lines, which is exactly
+   what it looked like: credits and ratings reading out from under it.
+   --------------------------------------------------------------------------- */
+html[data-nav-placement="bottom"].desktop-browser #detail .series-detail-content,
+html[data-nav-placement="bottom"].desktop-browser #castDetail .browser-person-detail,
+html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-detail-shell {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+}
+
+/* ---------------------------------------------------------------------------
+   The hero synopsis, opened.
+
+   "more" put the whole synopsis back into the paragraph and lifted the
+   height off it -- but the paragraph is also line-clamped, and a clamp is
+   not a height. The text was there, in full, with three lines of it
+   showing. The detail page's synopsis has carried this rule for a while;
+   the hero's never did.
+   --------------------------------------------------------------------------- */
+/* Written with the same weight as the rules that clamp it, and after them:
+   the base hero rule carries three classes of its own, so a shorter selector
+   lost and the clamp stayed. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description.is-expanded,
+.desktop-browser .home-hero-description.is-expanded {
+  display: block;
+  max-height: none;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+}
+
+/* ---------------------------------------------------------------------------
+   A title with no logo.
+
+   Most titles are a few words. Some are a whole sentence -- the kind of name
+   that comes with a long subtitle -- and written across the hero at title
+   size it covered the picture it was laid over. Two lines, then, with the
+   rest a press away; the title is its own control, so there is no second one
+   to explain. On a pointer, hovering shows it in full.
+   --------------------------------------------------------------------------- */
+.desktop-browser .home-hero-title-text,
+.desktop-browser #detail .series-detail-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.desktop-browser .home-hero-title-text.is-expanded,
+.desktop-browser #detail .series-detail-title.is-expanded {
+  display: block;
+  max-height: none;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+/* The hidden one is hidden, clamp or no clamp. */
+.desktop-browser .home-hero-title-text.is-hidden,
+.desktop-browser #detail .series-detail-title[hidden] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   The Shortcut tutorial, folded away.
+
+   Choosing the automation used to unroll the whole guide -- several steps
+   with pictures -- between the choice and the button that continues past it.
+   `<details>` is the browser's own answer to that: no script, keyboard and
+   screen reader support included, closed until it is asked for.
+   --------------------------------------------------------------------------- */
+.desktop-browser .quick-setup-steps {
+  margin-top: 4px;
+}
+
+.desktop-browser .quick-setup-steps-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  list-style: none;
+}
+
+/* Safari draws its own triangle through ::-webkit-details-marker. */
+.desktop-browser .quick-setup-steps-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.desktop-browser .quick-setup-steps[open] .quick-setup-steps-toggle {
+  margin-bottom: 12px;
+}
+
+.desktop-browser .quick-setup-steps-toggle:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+}
+
+/* Two lines of synopsis wherever the hero is drawn -- but counted by
+   homeScreen.js, not by the browser.
+
+   A browser that clamps lines itself ends the last visible one with an
+   ellipsis and does not paint what follows on that line. What follows on
+   that line is the "more" that finishes the sentence, so on Safari the
+   label was laid out, reported visible, and simply never drawn -- and the
+   page showed two ellipses, the trimmer's and the browser's. Chrome does
+   not clamp a block this way yet, which is why it only ever went missing
+   on the phone.
+
+   The height that holds it to two lines is an inline style set in
+   homeScreen.js, which fits the text and the label into them together. */
+.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-hero-description {
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  text-overflow: clip;
+}
+
+/* ---------------------------------------------------------------------------
+   The hero's meta line on a wide screen.
+
+   Type, genres, year and ratings were set at 23px against a 16px synopsis
+   directly under them -- the supporting line reading larger than the line it
+   supports. They take the synopsis's size, and the ratings row with them.
+
+   Above the phone breakpoint only: the phone sizes these itself, smaller
+   still, and this would undo that.
+   --------------------------------------------------------------------------- */
+@media (min-width: 601px) {
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary,
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-imdb {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  /* And it stays one line. The meta was sized to the synopsis column, which
+     a movie with a genre, a runtime, a full date and a rating runs past by a
+     few pixels -- wrapping the rating back onto a row of its own, which is
+     what taking it off its own row was for. It is short text over artwork,
+     so it is allowed the width it needs. */
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    width: max-content;
+    max-width: none;
   }
 }

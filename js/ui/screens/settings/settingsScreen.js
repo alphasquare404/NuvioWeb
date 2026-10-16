@@ -19,7 +19,16 @@ import {
   normalizeSubtitleVerticalOffset
 } from "../../../core/player/subtitleVerticalOffset.js";
 import { TorrentSettingsStore } from "../../../data/local/torrentSettingsStore.js";
-import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
+import {
+  clearHeroArtworkCache,
+  describeHeroArtworkCache
+} from "../../../data/local/heroArtworkCache.js";
+import {
+  normalizeBrowserNavigationPlacement,
+  normalizeBrowserNavigationRailCorner,
+  normalizeCatalogCardOrientation,
+  LayoutPreferences
+} from "../../../data/local/layoutPreferences.js";
 import { ExperienceModeStore } from "../../../data/local/experienceModeStore.js";
 import { MdbListSettingsStore } from "../../../data/local/mdbListSettingsStore.js";
 import { AnimeSkipSettingsStore } from "../../../data/local/animeSkipSettingsStore.js";
@@ -693,6 +702,122 @@ const DEBRID_CODEC_OPTIONS = [
   { id: "HEVC", labelKey: "settings.integration.debrid.codec.hevc", label: "HEVC / H.265" },
   { id: "AV1", labelKey: "settings.integration.debrid.codec.av1", label: "AV1" }
 ];
+
+// Where the navigation goes, drawn rather than described. A sentence about a
+// bar moving to the bottom of the screen is a worse answer than a picture of a
+// bar at the bottom of the screen.
+const CARD_ORIENTATION_OPTIONS = [
+  {
+    id: "source",
+    labelKey: "settings_card_orientation_source",
+    label: "Follow the addon"
+  },
+  {
+    id: "portrait",
+    labelKey: "settings_card_orientation_portrait",
+    label: "Portrait"
+  },
+  {
+    id: "landscape",
+    labelKey: "settings_card_orientation_landscape",
+    label: "Landscape"
+  }
+];
+
+function renderCardOrientationPreviewMarkup(orientationId) {
+  const normalized = String(orientationId || "source").toLowerCase();
+  const tall = (count) =>
+    Array.from({ length: count }, () => `<span class="settings-orientation-card is-tall"></span>`).join("");
+  const wide = (count) =>
+    Array.from({ length: count }, () => `<span class="settings-orientation-card is-wide"></span>`).join("");
+  if (normalized === "portrait") {
+    return `<span class="settings-orientation-stage">${tall(4)}</span>`;
+  }
+  if (normalized === "landscape") {
+    return `<span class="settings-orientation-stage">${wide(2)}</span>`;
+  }
+  // Following the addon means both shapes can appear, so both are drawn.
+  return `<span class="settings-orientation-stage">${wide(1)}${tall(2)}</span>`;
+}
+
+const BROWSER_NAV_PLACEMENT_OPTIONS = [
+  {
+    id: "top",
+    labelKey: "settings_nav_placement_top",
+    label: "Floating top"
+  },
+  {
+    id: "bottom",
+    labelKey: "settings_nav_placement_bottom",
+    label: "Bottom bar"
+  },
+  {
+    id: "sidebar",
+    labelKey: "settings_nav_placement_sidebar",
+    label: "Side rail"
+  }
+];
+
+// Three corners, not four: top left is Back on every screen.
+const BROWSER_NAV_RAIL_CORNER_OPTIONS = [
+  {
+    id: "top-right",
+    labelKey: "settings_nav_rail_corner_top_right",
+    label: "Top right"
+  },
+  {
+    id: "bottom-right",
+    labelKey: "settings_nav_rail_corner_bottom_right",
+    label: "Bottom right"
+  },
+  {
+    id: "bottom-left",
+    labelKey: "settings_nav_rail_corner_bottom_left",
+    label: "Bottom left"
+  }
+];
+
+function renderNavPlacementPreviewMarkup(placementId, railCorner = "top-right") {
+  const normalized = String(placementId || "top").toLowerCase();
+  const items = (count) =>
+    Array.from(
+      { length: count },
+      (_, index) => `<span class="settings-nav-preview-item${index === 0 ? " is-active" : ""}"></span>`
+    ).join("");
+  const page = `
+    <span class="settings-nav-preview-page">
+      <span class="settings-nav-preview-hero"></span>
+      <span class="settings-nav-preview-row"></span>
+      <span class="settings-nav-preview-row is-short"></span>
+    </span>
+  `;
+  if (normalized === "bottom") {
+    return `
+      <span class="settings-nav-preview-stage">
+        ${page}
+        <span class="settings-nav-preview-bar is-bottom">${items(5)}</span>
+      </span>
+    `;
+  }
+  if (normalized === "sidebar") {
+    // Button in a corner, rail beside it. The placement card shows whichever
+    // corner is in force, so the two illustrations never disagree.
+    const corner = normalizeBrowserNavigationRailCorner(railCorner);
+    return `
+      <span class="settings-nav-preview-stage is-corner-${corner}">
+        ${page}
+        <span class="settings-nav-preview-fab"></span>
+        <span class="settings-nav-preview-rail">${items(4)}</span>
+      </span>
+    `;
+  }
+  return `
+    <span class="settings-nav-preview-stage">
+      ${page}
+      <span class="settings-nav-preview-bar is-top">${items(5)}</span>
+    </span>
+  `;
+}
 
 const HOME_LAYOUT_OPTIONS = [
   {
@@ -2185,6 +2310,7 @@ function createDefaultExpandedState(sectionId) {
   if (sectionId === "layout") {
     return {
       homeLayout: false,
+      navPlacement: false,
       homeContent: false,
       homeCatalogs: false,
       continueWatching: false,
@@ -2336,6 +2462,7 @@ export const SettingsScreen = {
     this.streamBadgeSourcesExpanded = false;
     this.desktopAboutCommunityState = this.desktopAboutCommunityState || createDesktopAboutCommunityState();
     this.advancedCacheCleared = false;
+    this.advancedHeroArtworkCacheCleared = false;
     this.optionDialog = this.optionDialog || null;
     this.pushReturnState = this.pushReturnState || "checking";
     if (Platform.isBrowser() && !this.pushReturnStateLoading) {
@@ -2837,6 +2964,28 @@ export const SettingsScreen = {
           </span>
         </span>
         <span class="settings-theme-name">${escapeHtml(translateOptionLabel(theme))}</span>
+      </button>
+    `;
+  },
+
+  renderCardOrientationCard(option, selected, focusKey) {
+    return `
+      <button class="settings-layout-card settings-nav-placement-card settings-content-focusable focusable${selected ? " is-selected" : ""}"
+              data-zone="content"
+              ${this.registerAction(focusKey, this.actionMap.get(focusKey))}>
+        <span class="settings-layout-preview settings-nav-preview settings-orientation-preview">${renderCardOrientationPreviewMarkup(option.id)}</span>
+        <span class="settings-layout-name">${escapeHtml(translateOptionLabel(option))}</span>
+      </button>
+    `;
+  },
+
+  renderNavPlacementCard(option, selected, focusKey, previewHtml) {
+    return `
+      <button class="settings-layout-card settings-nav-placement-card settings-content-focusable focusable${selected ? " is-selected" : ""}"
+              data-zone="content"
+              ${this.registerAction(focusKey, this.actionMap.get(focusKey))}>
+        <span class="settings-layout-preview settings-nav-preview">${previewHtml}</span>
+        <span class="settings-layout-name">${escapeHtml(translateOptionLabel(option))}</span>
       </button>
     `;
   },
@@ -3854,6 +4003,10 @@ export const SettingsScreen = {
       LocalStore.remove(CW_DISPLAY_SNAPSHOT_KEY);
       this.advancedCacheCleared = true;
     });
+    this.actionMap.set("advanced:clearHeroArtworkCache", () => {
+      clearHeroArtworkCache();
+      this.advancedHeroArtworkCacheCleared = true;
+    });
 
     if (isEssential) {
       return `
@@ -3930,9 +4083,39 @@ export const SettingsScreen = {
             icon: null,
             disabled: Boolean(this.advancedCacheCleared)
           })}
+          ${this.renderHeroArtworkCacheRow()}
         </div>
       </div>
     `;
+  },
+
+  // The artwork cache holds what TMDB answered about each title's textless
+  // poster, so Home and the detail page open with the right picture instead
+  // of swapping one in. It expires on its own and is capped, but it is still
+  // the person's storage, so they can empty it.
+  renderHeroArtworkCacheRow() {
+    const { entries, bytes } = describeHeroArtworkCache();
+    const kilobytes = Math.max(1, Math.round(bytes / 1024));
+    const subtitle = this.advancedHeroArtworkCacheCleared
+      ? t("advanced_clear_artwork_cache_done", {}, "Cache cleared")
+      : entries
+        ? t(
+            "advanced_clear_artwork_cache_subtitle",
+            { count: entries, size: kilobytes },
+            `Remembered artwork for ${entries} titles · ${kilobytes} KB`
+          )
+        : t(
+            "advanced_clear_artwork_cache_empty",
+            {},
+            "Nothing remembered yet"
+          );
+    return this.renderActionRow({
+      focusKey: "advanced:clearHeroArtworkCache",
+      title: t("advanced_clear_artwork_cache", {}, "Clear Artwork Cache"),
+      subtitle,
+      icon: null,
+      disabled: Boolean(this.advancedHeroArtworkCacheCleared) || !entries
+    });
   },
 
   renderAppearanceSection(model) {
@@ -4088,6 +4271,9 @@ export const SettingsScreen = {
     this.actionMap.set("layout:toggle:homeLayout", () => {
       this.toggleExpandedSection("layout", "homeLayout");
     });
+    this.actionMap.set("layout:toggle:navPlacement", () => {
+      this.toggleExpandedSection("layout", "navPlacement");
+    });
     this.actionMap.set("layout:toggle:homeContent", () => {
       this.toggleExpandedSection("layout", "homeContent");
     });
@@ -4115,6 +4301,25 @@ export const SettingsScreen = {
         LayoutPreferences.set({ homeLayout: option.id });
       });
     });
+
+    BROWSER_NAV_PLACEMENT_OPTIONS.forEach((option) => {
+      this.actionMap.set(`layout:navPlacement:${option.id}`, () => {
+        LayoutPreferences.set({ browserNavigationPlacement: option.id });
+      });
+    });
+
+    BROWSER_NAV_RAIL_CORNER_OPTIONS.forEach((option) => {
+      this.actionMap.set(`layout:navRailCorner:${option.id}`, () => {
+        LayoutPreferences.set({ browserNavigationRailCorner: option.id });
+      });
+    });
+
+    CARD_ORIENTATION_OPTIONS.forEach((option) => {
+      this.actionMap.set(`layout:cardOrientation:${option.id}`, () => {
+        LayoutPreferences.set({ catalogCardOrientation: option.id });
+      });
+    });
+
 
     this.actionMap.set("layout:collapseSidebar", () => {
       LayoutPreferences.set({ collapseSidebar: !LayoutPreferences.get().collapseSidebar });
@@ -4147,8 +4352,16 @@ export const SettingsScreen = {
         });
       });
       const collectionKeys = new Set(CollectionsStore.get().map(buildCollectionHomeKey));
+      // The saved order only ever grows -- ensureOrderKeys adds what Home finds
+      // and never removes what it stops finding -- so a profile keeps the
+      // catalogs of every add-on it has ever had. Offering those here listed
+      // raw keys belonging to add-ons this profile does not have. Only what is
+      // installed now is offered; the stored order is left alone, because it is
+      // what puts the rows back in place if the add-on returns.
+      const knownKeys = catalogDetails.size ? catalogDetails : null;
       const options = (catalogSettings.order || [])
         .filter((key) => !catalogSettings.disabled?.includes(key))
+        .filter((key) => !knownKeys || knownKeys.has(key) || collectionKeys.has(key))
         .filter(
           (key) =>
             !isDesktopBrowser ||
@@ -4429,6 +4642,82 @@ export const SettingsScreen = {
         : continueWatchingSortMode === "streaming_style"
           ? t("settings.layout.continueWatchingSort.streamingStyle", {}, "Streaming Style")
           : t("settings.layout.continueWatchingSort.default", {}, "Default");
+
+    const selectedNavPlacement = normalizeBrowserNavigationPlacement(
+      model.layout.browserNavigationPlacement
+    );
+    // Browser only: the television has its own navigation and none of these
+    // three describe it.
+    const selectedCardOrientation = normalizeCatalogCardOrientation(
+      model.layout.catalogCardOrientation
+    );
+    // Boxed like the other groups inside a section, so it reads as one of
+    // them rather than as loose cards sitting on the section body.
+    const cardOrientationBody = isDesktopBrowser
+      ? `
+        <div class="settings-group-card settings-subsection-card">
+          <div class="settings-stack">
+            <div class="settings-group-heading settings-inline-group-heading">
+              <div class="settings-group-title">${escapeHtml(t("settings_card_orientation_title", {}, "Poster orientation"))}</div>
+              <div class="settings-group-subtitle">${escapeHtml(t("settings_card_orientation_subtitle", {}, "Which way round catalog cards are drawn. Following the addon uses the shape each catalog asks for."))}</div>
+            </div>
+            <div class="settings-layout-grid settings-nav-placement-grid">
+              ${CARD_ORIENTATION_OPTIONS.map((option) =>
+                this.renderCardOrientationCard(
+                  option,
+                  selectedCardOrientation === option.id,
+                  `layout:cardOrientation:${option.id}`
+                )
+              ).join("")}
+            </div>
+          </div>
+        </div>`
+      : "";
+
+    const selectedNavRailCorner = normalizeBrowserNavigationRailCorner(
+      model.layout.browserNavigationRailCorner
+    );
+    // Only the rail has a corner to choose, so the choice only appears once
+    // the rail is the placement in force.
+    const navRailCornerBody =
+      isDesktopBrowser && selectedNavPlacement === "sidebar"
+        ? `
+        <div class="settings-group-card settings-subsection-card">
+          <div class="settings-stack">
+            <div class="settings-group-heading settings-inline-group-heading">
+              <div class="settings-group-title">${escapeHtml(t("settings_nav_rail_corner_title", {}, "Rail corner"))}</div>
+              <div class="settings-group-subtitle">${escapeHtml(t("settings_nav_rail_corner_subtitle", {}, "Where the button that opens the rail sits. Top left is left free for Back."))}</div>
+            </div>
+            <div class="settings-layout-grid settings-nav-placement-grid">
+              ${BROWSER_NAV_RAIL_CORNER_OPTIONS.map((option) =>
+                this.renderNavPlacementCard(
+                  option,
+                  selectedNavRailCorner === option.id,
+                  `layout:navRailCorner:${option.id}`,
+                  renderNavPlacementPreviewMarkup("sidebar", option.id)
+                )
+              ).join("")}
+            </div>
+          </div>
+        </div>`
+        : "";
+
+    const navPlacementBody = isDesktopBrowser
+      ? `
+        <div class="settings-stack">
+          <div class="settings-layout-grid settings-nav-placement-grid">
+            ${BROWSER_NAV_PLACEMENT_OPTIONS.map((option) =>
+              this.renderNavPlacementCard(
+                option,
+                selectedNavPlacement === option.id,
+                `layout:navPlacement:${option.id}`,
+                renderNavPlacementPreviewMarkup(option.id, selectedNavRailCorner)
+              )
+            ).join("")}
+          </div>
+          ${navRailCornerBody}
+        </div>`
+      : "";
 
     const homeLayoutBody = `
       <div class="settings-stack">
@@ -4789,6 +5078,7 @@ export const SettingsScreen = {
 
     const cardAppearanceBody = `
       <div class="settings-stack">
+        ${cardOrientationBody}
         ${
           !isDesktopBrowser
             ? this.renderActionRow({
@@ -4840,6 +5130,17 @@ export const SettingsScreen = {
       <div class="settings-group-card settings-group-card-fill">
         <div class="settings-stack">
           ${this.renderCollapsibleRow({
+            focusKey: "layout:toggle:navPlacement",
+            title: t("settings_nav_placement_title", {}, "Navigation"),
+            subtitle: t(
+              "settings_nav_placement_subtitle",
+              {},
+              "Where the navigation sits. The side rail stays hidden until you press the floating button."
+            ),
+            expanded: Boolean(expanded.navPlacement),
+            bodyHtml: navPlacementBody
+          })}
+          ${this.renderCollapsibleRow({
             focusKey: "layout:toggle:homeContent",
             title: "Home & Discovery",
             subtitle: "Configure the Home hero, Discover entry, and catalog headings.",
@@ -4866,8 +5167,12 @@ export const SettingsScreen = {
           })}
           ${this.renderCollapsibleRow({
             focusKey: "layout:toggle:cardAppearance",
-            title: "Card Effects",
-            subtitle: t("settings_card_depth_description", {}, "Size, corners and depth surfaces"),
+            title: t("settings_card_customization_title", {}, "Card Customization"),
+            subtitle: t(
+              "settings_card_customization_subtitle",
+              {},
+              "Orientation, size, corners and depth surfaces"
+            ),
             expanded: Boolean(expanded.cardAppearance),
             bodyHtml: cardAppearanceBody
           })}

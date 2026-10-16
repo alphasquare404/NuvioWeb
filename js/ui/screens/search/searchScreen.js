@@ -5,7 +5,10 @@ import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPos
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
-import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
+import {
+  LayoutPreferences,
+  shouldDrawCardLandscape
+} from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import { MODERN_HOME_CONSTANTS } from "../home/modernHomeLayout.js";
 import {
@@ -853,15 +856,31 @@ export const SearchScreen = {
       .map((row, rowIndex) => {
         const rowKey = row.stateKey || buildRowStateKey(row, rowIndex);
         const seeAllLabel = t("action_see_all", {}, "See All");
+        const rowIsLandscape = (row.items || []).some((item) =>
+          Platform.isBrowser()
+            ? shouldDrawCardLandscape(this.layoutPrefs?.catalogCardOrientation, item.posterShape)
+            : false
+        );
         return `
       <section class="search-results-row" data-row-key="${escapeHtml(rowKey)}">
         <h3 class="search-results-title">${row.title}</h3>
         ${row.subtitle ? `<div class="search-results-subtitle">${row.subtitle}</div>` : ""}
         <div class="search-results-track">
           ${(row.items || [])
-            .map(
-              (item) => `
-            <article class="search-result-card focusable"
+            .map((item) => {
+              // A row is a flex track, so each card can take the shape its own
+              // catalog asked for without disturbing the ones beside it.
+              const landscape =
+                Platform.isBrowser() &&
+                shouldDrawCardLandscape(
+                  this.layoutPrefs?.catalogCardOrientation,
+                  item.posterShape
+                );
+              const art = landscape
+                ? item.background || item.backdrop || item.landscapePoster || item.poster || ""
+                : item.poster || "";
+              return `
+            <article class="search-result-card focusable${landscape ? " is-landscape" : ""}"
                      data-action="openDetail"
                      data-item-id="${item.id || ""}"
                      data-item-type="${item.type || row.type || "movie"}"
@@ -874,19 +893,19 @@ export const SearchScreen = {
                      data-catalog-type="${escapeHtml(row.type || item.catalogType || "")}"
                      data-row-key="${escapeHtml(rowKey)}">
               <div class="search-result-poster-wrap">
-                ${item.poster ? `<img class="search-result-poster" src="${item.poster}" alt="${item.name || "content"}" loading="lazy" decoding="async" />` : `<div class="search-result-poster placeholder"></div>`}
+                ${art ? `<img class="search-result-poster" src="${art}" alt="${item.name || "content"}" loading="lazy" decoding="async"${landscape && item.poster && art !== item.poster ? ` data-fallback-src="${escapeHtml(item.poster)}" onerror="this.onerror=null;this.src=this.dataset.fallbackSrc;"` : ""} />` : `<div class="search-result-poster placeholder"></div>`}
                 ${isTitleItemWatched(item, this.watchedTitleIds) ? renderTitleWatchedBadge() : ""}
               </div>
               <div class="search-result-name">${item.name || "Untitled"}</div>
               <div class="search-result-date">${formatReleaseYear(item)}</div>
             </article>
-          `
-            )
+          `;
+            })
             .join("")}
           ${
             row.hasMore || (row.items || []).length >= 15
               ? `
-            <article class="search-result-card search-seeall-card focusable"
+            <article class="search-result-card search-seeall-card focusable${rowIsLandscape ? " is-landscape" : ""}"
                      data-action="openCatalogSeeAll"
                      data-addon-base-url="${row.addonBaseUrl || ""}"
                      data-addon-id="${row.addonId || ""}"
