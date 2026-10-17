@@ -19204,3 +19204,15 @@ html:not([data-nav-placement="top"])
   transform: none;
   z-index: 30;
 }
+
+/* Stream's heading is the phone's own black bar, so it has to carry the notch
+   itself: the surface starts at the very top and the 52px of content sits below
+   the safe area. Box-sizing keeps the bar exactly 52px taller than the inset
+   rather than letting the padding grow it outside the screen. */
+.desktop-browser #stream .stream-route-heading {
+  top: 0;
+  box-sizing: border-box;
+  height: calc(52px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: 0;
+}
