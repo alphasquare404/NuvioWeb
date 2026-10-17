@@ -13992,7 +13992,7 @@ html:not([data-nav-placement="top"]) .desktop-browser
   .settings-shell[data-settings-nav-mode]
   .settings-content-header {
   position: sticky;
-  top: env(safe-area-inset-top, 0px);
+  top: 0;
   z-index: 8;
 }
 
@@ -14008,6 +14008,7 @@ html:not([data-nav-placement="top"])
   .desktop-browser
   .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
   .settings-content-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   border-bottom-color: rgba(255, 255, 255, 0.08);
@@ -17815,4 +17816,37 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
   .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-header {
     transition: none;
   }
+}
+
+/* The collection header's surface reaches both edges of the page.
+   The page keeps its own gutter, so the header is pulled out by exactly that
+   gutter and padded back in: the logo stays on the page's grid while the blur
+   and the hairline run edge to edge. */
+.desktop-browser #folderDetail .desktop-folder-detail-shell {
+  --collection-header-gutter: clamp(24px, 3.4vw, 64px);
+  padding-inline: var(--collection-header-gutter);
+}
+
+.desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-header {
+  margin-inline: calc(-1 * var(--collection-header-gutter));
+  padding-inline: var(--collection-header-gutter);
+}
+
+@media (any-pointer: coarse) {
+  .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    --collection-header-gutter: max(16px, var(--browser-page-gutter));
+  }
+}
+
+/* Collapsed, it is the same bar as the other pages: 52px of content under the
+   safe area, with the mark centred in it. */
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-header[data-collapsed="true"] {
+  box-sizing: border-box;
+  justify-content: center;
+  min-height: calc(52px + env(safe-area-inset-top, 0px));
+  padding-top: calc(env(safe-area-inset-top, 0px) + 6px);
+  padding-bottom: 6px;
 }
