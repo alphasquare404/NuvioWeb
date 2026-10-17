@@ -17,7 +17,7 @@ test("the page heading collapses from a scroll listener that belongs to the moun
   assert.match(source, /cleanup\(\)\s*\{[\s\S]{0,120}this\.unbindHeaderCollapse\(\)/);
 });
 
-test("the heading is sticky below the navigation, with a solid body and a short fade", async () => {
+test("the heading is sticky below the navigation, tinted rather than opaque", async () => {
   const desktopCss = await readFile(desktopCssUrl, "utf8");
 
   assert.match(
@@ -28,9 +28,14 @@ test("the heading is sticky below the navigation, with a solid body and a short 
     desktopCss,
     /data-settings-header-collapsed="true"[\s\S]{0,200}?\.settings-title \{\s*font-size: 18px;/
   );
-  // Solid body, so the title is never read through the page moving under it.
-  assert.match(
-    desktopCss,
-    /\.settings-nav-index-header::after,[\s\S]{0,400}?background: linear-gradient\(to bottom, var\(--bg-color\), transparent\);/
+  // A solid fill is a coloured box on a themed page. The bar paints nothing
+  // and blurs what is under it; the line appears only once it holds content.
+  const headerRule = desktopCss.match(
+    /\.settings-shell\[data-settings-nav-mode\] \.settings-nav-index-header,\s*\n[\s\S]{0,900}?\n\}/
   );
+  assert.ok(headerRule, "the sticky heading rule should be there");
+  assert.match(headerRule[0], /background: transparent;/);
+  assert.match(headerRule[0], /backdrop-filter: blur\(18px\) saturate\(140%\);/);
+  assert.match(headerRule[0], /border-bottom: 1px solid transparent;/);
+  assert.doesNotMatch(headerRule[0], /background: var\(--bg-color\);/);
 });
