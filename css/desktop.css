@@ -19173,3 +19173,34 @@ html:not([data-nav-placement="top"])
   }
 }
 
+
+/* ---------------------------------------------------------------------------
+   Detail and Stream have a heading bar too -- Detail's is hidden until the hero
+   mark passes, Stream's is the phone's strip -- so their Back is placed on that
+   bar's line: the bar is 52px plus the safe area, and the chevron's centre is that
+   bar's centre. Plain icon, no disc, the same shape as See All's.
+   --------------------------------------------------------------------------- */
+.desktop-browser #detail .detail-desktop-back-button,
+.desktop-browser #castDetail .detail-desktop-back-button,
+.desktop-browser #stream .stream-desktop-back-button {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: max(12px, env(safe-area-inset-left, 0px));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  transform: none;
+  z-index: 30;
+}
