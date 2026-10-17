@@ -11,6 +11,7 @@ import { readAppMetadata, syncVersionFiles } from "./appMetadata.mjs";
 import { browserCompatibilityPolicy } from "./browserCompatibilityPolicy.mjs";
 import { readEnvProperties, writeRuntimeEnvScriptFile } from "./envProperties.mjs";
 import { buildServiceWorkerCacheId } from "./serviceWorkerCacheId.mjs";
+import { assetBuildId, versionAssetUrls } from "./assetVersions.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -563,7 +564,15 @@ async function runBuild() {
     await buildBundle();
 
     const sourceIndex = await readFile(path.join(rootDir, "index.html"), "utf8");
-    await writeFile(path.join(distDir, "index.html"), sourceIndex);
+    // The bundle carries no build in its name: versioned here, a reload asks for
+    // files only this build has, and a frozen query can no longer hand a browser
+    // the bundle it cached a week ago.
+    const buildId = assetBuildId(await readFile(path.join(distDir, "app.bundle.js")));
+    await writeFile(
+      path.join(distDir, "index.html"),
+      versionAssetUrls(sourceIndex, buildId)
+    );
+    console.log(`asset build id: ${buildId}`);
 
     // After the shell it caches exists: the cache name is a hash of those files.
     await buildBrowserServiceWorker();
