@@ -474,7 +474,7 @@ export const CastDetailScreen = {
     }
     const top = Number(getBrowserVerticalScrollOwner(this.container)?.scrollTop || 0);
     // Two thresholds, so a scroll resting on the edge cannot flicker it.
-    const collapsed = top >= (heading.dataset.collapsed === "true" ? 8 : 28);
+    const collapsed = top >= (heading.dataset.collapsed === "true" ? 2 : 28);
     const next = collapsed ? "true" : "false";
     if (heading.dataset.collapsed !== next) {
       heading.dataset.collapsed = next;

@@ -151,7 +151,10 @@ export function bindCollapsingHeader({
   resolveHeader,
   getScrollTop = () => 0,
   collapseAt = 28,
-  expandAt = 8
+  // Open only at the very top. Above this the bar is still pinned to the edge,
+  // so opening it there would grow it in place while it is stuck -- which reads
+  // as the title glitching as the page comes back to the top.
+  expandAt = 2
 } = {}) {
   if (typeof resolveHeader !== "function") {
     return { refresh: () => {}, cleanup: () => {} };
@@ -166,8 +169,20 @@ export function bindCollapsingHeader({
     }
     const scrollTop = Number(getScrollTop());
     const position = Number.isFinite(scrollTop) ? scrollTop : 0;
-    // Hysteresis: a scroll that comes to rest on the threshold cannot flicker.
-    const collapsed = position >= (header.dataset.collapsed === "true" ? expandAt : collapseAt);
+    const wasCollapsed = header.dataset.collapsed === "true";
+    // Where the heading actually is decides, not a scroll distance: a page with
+    // a tall top margin keeps its heading far from the edge for a while, and a
+    // distance rule shrank it out in the open. The heading is at the edge only
+    // when its top is at zero.
+    const top = Number(header.getBoundingClientRect?.().top);
+    const hasTop = Number.isFinite(top);
+    // Hysteresis around that edge, so a scroll that comes to rest on it cannot
+    // flicker the title between its two sizes.
+    const collapsed = hasTop
+      ? wasCollapsed
+        ? top < 4 && position > 0
+        : top <= 1 && position > 0
+      : position >= (wasCollapsed ? expandAt : collapseAt);
     const next = collapsed ? "true" : "false";
     if (header.dataset.collapsed !== next) {
       header.dataset.collapsed = next;

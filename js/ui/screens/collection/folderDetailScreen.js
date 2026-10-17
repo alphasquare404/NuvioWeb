@@ -1910,7 +1910,7 @@ export const FolderDetailScreen = {
     }
     const top = Number(getBrowserVerticalScrollOwner(this.container)?.scrollTop || 0);
     // Hysteresis, so a scroll that rests on the threshold cannot flicker it.
-    const collapsed = top >= (header.dataset.collapsed === "true" ? 8 : 24);
+    const collapsed = top >= (header.dataset.collapsed === "true" ? 2 : 24);
     const next = collapsed ? "true" : "false";
     if (header.dataset.collapsed !== next) {
       header.dataset.collapsed = next;

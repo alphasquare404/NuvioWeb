@@ -18156,3 +18156,22 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
   .search-page-heading[data-collapsed="true"] {
   font-size: 18px;
 }
+
+/* Now that the heading only opens again at the very top -- where it has already
+   left its pinned position -- its growth can be eased without the pinned bar
+   visibly changing size under the finger. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
+  transition:
+    padding 180ms ease,
+    border-color 180ms ease;
+}
+
+/* Nor is the page allowed to re-anchor itself to the heading when its height
+   changes; that would nudge the scroll position the collapse rule reads. */
+.desktop-browser .library-shell.desktop-navigation-enabled,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled,
+.desktop-browser .discover-shell.desktop-navigation-enabled {
+  overflow-anchor: none;
+}
