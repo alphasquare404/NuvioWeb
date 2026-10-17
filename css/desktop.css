@@ -18768,3 +18768,36 @@ html:not([data-nav-placement="top"])
   padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
   padding-bottom: 10px;
 }
+
+/* Back sits at the left edge of the heading and is vertically centred on the
+   title's own line box (its top is the heading's content top, its height is one
+   line of the title's type). The title stays centred because Back is out of the
+   flow, and the alignment does not depend on the notch: both boxes start at the
+   same content edge. */
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: var(--seeall-gutter);
+  margin: 0;
+  width: 32px;
+  height: 1.1em;
+  min-height: 0;
+  font-size: clamp(30px, 2.5vw, 40px);
+  transform: none;
+}
+
+.desktop-browser
+  #catalogSeeAll
+  .seeall-header[data-collapsed="true"]
+  .catalog-seeall-browser-back {
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  height: 1.1em;
+  font-size: 18px;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    margin: 0;
+  }
+}

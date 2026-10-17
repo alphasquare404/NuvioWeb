@@ -208,6 +208,8 @@ export const CatalogSeeAllScreen = {
     this.nextSkip = this.items.length ? 100 : 0;
     this.loading = false;
     this.hasMore = true;
+    // "No items available" is only true once a load has actually finished.
+    this.firstLoadSettled = Boolean(this.items.length);
     this.lastFocusedKey = this.items[0]?.id ? `item:${this.items[0].id}` : null;
     this.pendingRestoreFocus = false;
     this.preserveViewportOnNextRender = false;
@@ -247,6 +249,7 @@ export const CatalogSeeAllScreen = {
     const descriptor = this.params || {};
     if (!descriptor.addonBaseUrl || !descriptor.catalogId || !descriptor.type) {
       this.hasMore = false;
+      this.firstLoadSettled = true;
       this.render();
       return;
     }
@@ -273,6 +276,7 @@ export const CatalogSeeAllScreen = {
       return;
     }
     if (result.status !== "success") {
+      this.firstLoadSettled = true;
       this.loading = false;
       this.hasMore = false;
       this.preserveViewportOnNextRender = false;
@@ -297,6 +301,7 @@ export const CatalogSeeAllScreen = {
       this.nextSkip = skip + 100;
     }
     this.hasMore = rawIncoming.length > 0;
+    this.firstLoadSettled = true;
     this.loading = false;
     this.pendingRestoreFocus = true;
     this.preserveViewportOnNextRender = Boolean(preserveViewport && addedCount > 0);
@@ -756,7 +761,9 @@ export const CatalogSeeAllScreen = {
         `
           )
           .join("")
-      : `<div class="seeall-empty">${escapeHtml(t("catalog_see_all_empty_title", {}, "No items available"))}</div>`;
+      : this.firstLoadSettled
+        ? `<div class="seeall-empty">${escapeHtml(t("catalog_see_all_empty_title", {}, "No items available"))}</div>`
+        : "";
 
     this.container.innerHTML = `
       <div class="seeall-shell">
