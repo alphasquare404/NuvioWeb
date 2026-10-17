@@ -765,9 +765,13 @@ export const CatalogSeeAllScreen = {
           <div class="seeall-header-copy">
             <h2 class="seeall-title">${escapeHtml(title)}</h2>
             ${
+              // The subtitle line is always rendered. Discover's heading has one,
+              // and without it this heading stood shorter than every other; when
+              // there is nothing to say the line is present but invisible, so the
+              // two heights cannot drift apart.
               this.layoutPrefs?.catalogAddonNameEnabled !== false && descriptor.addonName
                 ? `<div class="seeall-subtitle">${escapeHtml(t("catalog_see_all_from", [descriptor.addonName], "from %1$s"))}</div>`
-                : ""
+                : `<div class="seeall-subtitle seeall-subtitle-placeholder" aria-hidden="true">&nbsp;</div>`
             }
           </div>
         </header>

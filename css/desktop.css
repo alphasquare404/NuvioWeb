@@ -18550,3 +18550,86 @@ html:not([data-nav-placement="top"])
   line-height: 1.1;
   letter-spacing: -0.03em;
 }
+
+/* Back on See All is an icon, not a disc: the heading keeps the page's own
+   surface, and the control sits on the title's line, centred against it.
+   The circle is gone entirely -- no fill, no border, no blur, no shadow. */
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  flex-basis: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  top: calc(50% + 4px);
+}
+
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back:hover,
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back:focus-visible {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The invisible subtitle reserves its line, so the resting heading is exactly as
+   tall as Discover's, whether or not this catalog has an addon name to show. */
+.desktop-browser #catalogSeeAll .seeall-subtitle-placeholder {
+  visibility: hidden;
+}
+
+/* Back sits on the title's line, not on the heading's centre line: the copy
+   block also holds the subtitle, so the two centres differ. Its box is exactly
+   the title's line box (1.1em of the same type size) and the icon is centred in
+   that box. Collapsed there is no subtitle, so the centre line is the title's. */
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: var(--seeall-gutter);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 1.1em;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  font-size: inherit;
+  transform: none;
+}
+
+.desktop-browser
+  #catalogSeeAll
+  .seeall-header[data-collapsed="true"]
+  .catalog-seeall-browser-back {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* The See All subtitle carried the TV shell's 20px type, which made its line
+   25px tall against Discover's 19px -- the last 6px of difference between the
+   two headings. It now uses the same measure as Discover's. */
+.desktop-browser #catalogSeeAll .seeall-subtitle {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+/* The icon's box is the title's line box, so its centre is the title's centre. */
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+  height: 1.1em;
+  font-size: clamp(30px, 2.5vw, 40px);
+}
