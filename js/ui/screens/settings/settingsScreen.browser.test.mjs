@@ -174,3 +174,15 @@ test("each Settings container binds its own listeners, so both pages stay clicka
   assert.doesNotMatch(source, /this\.handleClickBound/);
   assert.doesNotMatch(source, /this\.handleWheelBound/);
 });
+
+test("the gap before Advanced belongs to its group, not to the row inside the card", async () => {
+  // Written on the row, the gap sat inside the group's card and left a band
+  // above the highlighted row instead of space between two groups.
+  const desktopCss = await readFile(desktopCssUrl, "utf8");
+
+  assert.match(
+    desktopCss,
+    /\.settings-nav-group:has\(\.settings-nav-item\[data-section="advanced"\]\) \{\s*margin-top: 14px;/
+  );
+  assert.doesNotMatch(desktopCss, /\.settings-nav-item\[data-section="advanced"\] \{\s*margin-top/);
+});

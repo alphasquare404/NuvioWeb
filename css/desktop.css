@@ -14330,10 +14330,13 @@ body.desktop-browser {
   fill: currentColor;
 }
 
-/* Advanced and About are the end of the list, not more of it. */
+/* Advanced and About are the end of the list, not more of it.
+   The gap belongs to the group, not to the first row inside it: given to the
+   row, it landed inside the card and left a band above the highlighted row
+   instead of space between the two groups. */
 .desktop-browser
   .settings-shell[data-settings-nav-mode="index"]
-  .settings-nav-item[data-section="advanced"] {
+  .settings-nav-group:has(.settings-nav-item[data-section="advanced"]) {
   margin-top: 14px;
 }
 
