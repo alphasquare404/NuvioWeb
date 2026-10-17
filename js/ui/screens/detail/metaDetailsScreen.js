@@ -4243,7 +4243,11 @@ export const MetaDetailsScreen = {
     if (!bar || !mark) {
       return;
     }
-    this.detailCompactHeaderCleanup = bindCompactHeader({ bar, mark });
+    this.detailCompactHeaderCleanup = bindCompactHeader({
+      bar,
+      mark,
+      getScrollTop: () => Number(this.getDetailVerticalScrollOwner()?.scrollTop || 0)
+    });
   },
 
   handleDetailBack() {

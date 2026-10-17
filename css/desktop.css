@@ -17469,14 +17469,18 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
   text-overflow: ellipsis;
 }
 
-@media (max-width: 960px) {
+/* Whether the mark is centred is the layout's decision, not the window's: the
+   app centres the Detail mark for coarse pointers, which is why a tablet in
+   landscape is a "centred" layout even though it is wide. The bar follows that
+   same rule rather than a width of its own. */
+@media (any-pointer: coarse) {
   .desktop-browser .compact-header {
     justify-content: center;
     padding-inline: max(16px, var(--browser-page-gutter));
   }
 
-  /* Nothing floats over the page in this case, but the mark is centred and so
-     is the pill: the bar waits until the pill is out of the way instead. */
+  /* A centred mark and a centred pill would sit on top of each other, so with
+     the navigation at the top this layout has no bar: the mark scrolls away. */
   html[data-nav-placement="top"] .desktop-browser .compact-header {
     display: none;
   }
