@@ -17442,25 +17442,68 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto;
     align-content: start;
-    gap: clamp(18px, 2vw, 28px);
+    gap: 8px;
     padding: 0 0 calc(40px + var(--browser-safe-area-bottom));
   }
 
-  /* No surface behind the mark: it is the top of the page, not a panel. */
-  .desktop-browser #stream .stream-route-left {
+  /* The heading is the bar other pages have: the same size, and empty until
+     the mark below it has been scrolled past. The mark itself is page content,
+     under the bar rather than inside it, so nothing is spent on a box to hold
+     it. */
+  .desktop-browser #stream .stream-route-heading {
     position: sticky;
     top: 0;
     z-index: 8;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: calc(var(--browser-safe-area-top) + 58px) max(16px, var(--browser-page-gutter)) 6px;
+    height: 52px;
+    padding: 0 max(16px, var(--browser-page-gutter));
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom: 1px solid transparent;
+  }
+
+  .desktop-browser #stream .stream-route-heading-logo,
+  .desktop-browser #stream .stream-route-heading-title {
+    display: none;
+  }
+
+  .desktop-browser #stream .stream-route-heading-logo {
+    width: auto;
+    max-width: min(60%, 260px);
+    max-height: 22px;
+    object-fit: contain;
+  }
+
+  .desktop-browser #stream .stream-route-heading-title {
+    max-width: min(70%, 320px);
+    overflow: hidden;
+    color: var(--text-color);
+    font-size: 16px;
+    font-weight: 650;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* The mark, as page content just under the bar. */
+  .desktop-browser #stream .stream-route-left {
+    position: static;
+    top: auto;
+    z-index: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px max(16px, var(--browser-page-gutter)) 10px;
     border-radius: 0;
     background: transparent;
     box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    transition: padding 180ms ease;
+    transition: none;
   }
 
   .desktop-browser #stream .stream-route-left-inner {
@@ -17474,9 +17517,6 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     max-width: min(76%, 360px);
     max-height: 64px;
     margin-bottom: 6px;
-    transition:
-      max-height 180ms ease,
-      margin 180ms ease;
   }
 
   /* The badge, and the episode title under it rather than beside it: the old
@@ -17494,9 +17534,6 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     border: 0;
     border-radius: 999px;
     background: rgb(var(--bg-elevated-rgb) / 0.55);
-    transition:
-      padding 180ms ease,
-      font-size 180ms ease;
   }
 
   .desktop-browser #stream .stream-route-episode-code + .stream-route-subtitle {
@@ -17506,70 +17543,44 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
   }
 
   .desktop-browser #stream .stream-route-subtitle {
-    margin-top: 8px;
+    margin-top: 6px;
     font-size: 15px;
-    max-height: 48px;
-    overflow: hidden;
-    opacity: 1;
-    transition:
-      max-height 180ms ease,
-      margin 180ms ease,
-      opacity 150ms ease;
   }
 
   .desktop-browser #stream .stream-route-detail-line {
     margin-top: 2px;
     font-size: 13px;
   }
-
-  /* Collapsed: a bar's mark, with the page passing under it. The blur appears
-     only here, for the same reason as on the other two pages: it has something
-     to hold back. */
+  /* Once the mark has been scrolled past, it moves into the bar and the bar
+     becomes a surface: the only place on this page with a blur. */
   .desktop-browser
     #stream
     .stream-route-shell[data-stream-header-collapsed="true"]
-    .stream-route-left {
-    padding: calc(var(--browser-safe-area-top) + 5px) max(16px, var(--browser-page-gutter)) 5px;
+    .stream-route-heading {
+    background: transparent;
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
   }
 
   .desktop-browser
     #stream
     .stream-route-shell[data-stream-header-collapsed="true"]
-    .stream-route-logo {
-    max-height: 22px;
-    margin-bottom: 0;
-  }
-
+    .stream-route-heading-logo,
   .desktop-browser
     #stream
     .stream-route-shell[data-stream-header-collapsed="true"]
-    .stream-route-episode-code {
-    font-size: 11px;
-    padding: 2px 9px;
-    margin-top: 6px;
+    .stream-route-heading-title {
+    display: block;
   }
 
-  .desktop-browser
-    #stream
-    .stream-route-shell[data-stream-header-collapsed="true"]
-    .stream-route-subtitle,
-  .desktop-browser
-    #stream
-    .stream-route-shell[data-stream-header-collapsed="true"]
-    .stream-route-detail-line {
-    max-height: 0;
-    margin: 0;
-    opacity: 0;
-  }
-
-  /* The sources take the width the header does not use, and the page -- not the
+  /* The sources take
+ the width the header does not use, and the page -- not the
      list -- is what scrolls. */
   .desktop-browser #stream .stream-route-right {
     width: 100%;
     max-width: min(1240px, calc(100% - 2 * max(20px, var(--browser-page-gutter))));
+    margin-top: 10px;
     justify-self: center;
   }
 

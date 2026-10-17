@@ -1,7 +1,7 @@
 import { Router } from "../../navigation/router.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { ScreenUtils } from "../../navigation/screen.js";
-import { shouldCollapseStreamHeader } from "./streamHeaderCollapse.js";
+import { shouldCollapseStreamHeader, STREAM_HEADER_COLLAPSE_AT } from "./streamHeaderCollapse.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
@@ -2404,6 +2404,13 @@ export const StreamScreen = {
         ? ""
         : `
         <div class="stream-route-content">
+          <div class="stream-route-heading" data-stream-heading>
+            ${
+              logo
+                ? `<img src="${logo}" class="stream-route-heading-logo" alt="" aria-hidden="true" />`
+                : `<span class="stream-route-heading-title" aria-hidden="true">${escapeHtml(title)}</span>`
+            }
+          </div>
           <section class="stream-route-left">
             <div class="stream-route-left-inner">
               ${logo ? `<img src="${logo}" class="stream-route-logo" alt="${escapeHtml(title)}" />` : `<h1 class="stream-route-title">${escapeHtml(title)}</h1>`}
@@ -3348,9 +3355,15 @@ export const StreamScreen = {
     if (!shell) {
       return;
     }
+    // The mark's own block decides the point: the header takes it over only
+    // once that block has been scrolled past, so both are never on screen at
+    // the same time.
+    const markBlock = this.container?.querySelector?.(".stream-route-left");
+    const markHeight = Number(markBlock?.getBoundingClientRect?.().height || 0);
     const collapsed = shouldCollapseStreamHeader(
       Number(this.container?.scrollTop || 0),
-      shell.dataset.streamHeaderCollapsed === "true"
+      shell.dataset.streamHeaderCollapsed === "true",
+      { collapseAt: Math.max(STREAM_HEADER_COLLAPSE_AT, Math.round(markHeight)) }
     );
     const next = collapsed ? "true" : "false";
     if (shell.dataset.streamHeaderCollapsed !== next) {

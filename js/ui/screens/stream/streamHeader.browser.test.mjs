@@ -10,53 +10,63 @@ import {
 const desktopCssUrl = new URL("../../../../css/desktop.css", import.meta.url);
 const streamScreenUrl = new URL("./streamScreen.js", import.meta.url);
 
-test("the stream header stays open at the top of the page", () => {
-  assert.equal(shouldCollapseStreamHeader(0), false);
-  assert.equal(shouldCollapseStreamHeader(12), false);
-  assert.equal(shouldCollapseStreamHeader(STREAM_HEADER_COLLAPSE_AT - 1), false);
-});
-
-test("the stream header collapses once the page passes its threshold", () => {
-  assert.equal(shouldCollapseStreamHeader(STREAM_HEADER_COLLAPSE_AT), true);
-  assert.equal(shouldCollapseStreamHeader(400), true);
-});
-
-test("a collapsed stream header stays collapsed until the page is near the top", () => {
-  assert.equal(shouldCollapseStreamHeader(STREAM_HEADER_COLLAPSE_AT - 4, true), true);
+test("the header keeps the mark only once the mark's own block is out of view", () => {
+  // The caller passes the block's height, so the small mark never appears while
+  // the large one is still on screen.
+  assert.equal(shouldCollapseStreamHeader(40, false, { collapseAt: 120 }), false);
+  assert.equal(shouldCollapseStreamHeader(120, false, { collapseAt: 120 }), true);
+  // Coming back up, it is handed back near the top, not at the threshold.
+  assert.equal(shouldCollapseStreamHeader(60, true, { collapseAt: 120 }), true);
   assert.equal(shouldCollapseStreamHeader(STREAM_HEADER_EXPAND_AT, true), true);
   assert.equal(shouldCollapseStreamHeader(STREAM_HEADER_EXPAND_AT - 1, true), false);
-  assert.ok(STREAM_HEADER_EXPAND_AT < STREAM_HEADER_COLLAPSE_AT);
 });
 
-test("the stream mark is the page header: no box, centred, and it keeps its place", async () => {
+test("a missing or impossible scroll position reads as the top of the page", () => {
+  assert.equal(shouldCollapseStreamHeader(undefined), false);
+  assert.equal(shouldCollapseStreamHeader(Number.NaN), false);
+  assert.equal(shouldCollapseStreamHeader(-4), false);
+  assert.equal(shouldCollapseStreamHeader(STREAM_HEADER_COLLAPSE_AT), true);
+});
+
+test("the heading is an empty bar at rest, with the mark as page content under it", async () => {
   const desktopCss = await readFile(desktopCssUrl, "utf8");
 
-  // No surface behind the mark at rest, and it keeps its place while the page
-  // scrolls. Matched in one rule so an older, non-sticky rule cannot satisfy it.
   assert.match(
     desktopCss,
-    /\.desktop-browser #stream \.stream-route-left \{[^}]*position: sticky;[^}]*justify-content: center;[^}]*background: transparent;[^}]*box-shadow: none;[^}]*backdrop-filter: none;/
+    /\.desktop-browser #stream \.stream-route-heading \{[^}]*position: sticky;[^}]*height: 52px;[^}]*background: transparent;[^}]*backdrop-filter: none;/
   );
-
-  // The page scrolls, not the list, so the header has something to collapse on.
+  // Empty until the mark has been scrolled past.
   assert.match(
     desktopCss,
-    /\.desktop-browser #stream \.stream-route-list \{[^}]*height: auto;[^}]*overflow: visible;/
+    /\.desktop-browser #stream \.stream-route-heading-logo,\s*\n\s*\.desktop-browser #stream \.stream-route-heading-title \{\s*\n\s*display: none;/
   );
-
-  // The badge and the episode title were side by side; stacked, the title's old
-  // left margin pushed it off centre.
+  // The mark itself is content, not a box.
   assert.match(
     desktopCss,
-    /\.desktop-browser #stream \.stream-route-episode-code \+ \.stream-route-subtitle \{[^}]*display: block;[^}]*margin-left: 0;/
+    /\.desktop-browser #stream \.stream-route-left \{[^}]*position: static;[^}]*background: transparent;[^}]*backdrop-filter: none;/
   );
 });
 
-test("the collapse state is driven by the screen's own scroll position", async () => {
+test("the blur appears only on the collapsed heading", async () => {
+  const desktopCss = await readFile(desktopCssUrl, "utf8");
+
+  assert.match(
+    desktopCss,
+    /data-stream-header-collapsed="true"\]\s*\n\s*\.stream-route-heading \{[^}]*backdrop-filter: blur\(14px\);/
+  );
+  assert.match(
+    desktopCss,
+    /data-stream-header-collapsed="true"\]\s*\n\s*\.stream-route-heading-logo,/
+  );
+  // Nothing blurs the page itself.
+  assert.match(desktopCss, /\.stream-route-panel-shell \{\s*\n\s*backdrop-filter: none;/);
+});
+
+test("the header holds the mark by watching the screen's own scroll position", async () => {
   const source = await readFile(streamScreenUrl, "utf8");
 
   assert.match(source, /shell\.dataset\.streamHeaderCollapsed/);
+  assert.match(source, /\.stream-route-left/);
   assert.match(source, /shouldCollapseStreamHeader\(/);
-  // Removed by the mount that added it.
   assert.match(source, /cleanup\(\)\s*\{\s*this\.unbindHeaderCollapse\(\);/);
 });
