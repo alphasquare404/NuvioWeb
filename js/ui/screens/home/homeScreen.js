@@ -26,6 +26,7 @@ import { TmdbService } from "../../../core/tmdb/tmdbService.js";
 import { capTmdbImageSize } from "../../../core/media/tmdbImageSize.js";
 import { readHeroArtwork, rememberHeroArtwork } from "../../../data/local/heroArtworkCache.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
+import { isTmdbArtworkEnabled } from "../../../core/tmdb/tmdbArtworkGate.js";
 import {
   getEffectiveTmdbApiKey,
   TmdbSettingsStore
@@ -4035,6 +4036,12 @@ export const HomeScreen = {
     if (!key) {
       return hero;
     }
+    // A remembered plate is TMDB artwork as much as a fresh one is, so the same
+    // two switches decide whether it is painted: without this, turning Artwork
+    // off left every title seen before still wearing the plate from the cache.
+    if (!isTmdbArtworkEnabled(TmdbSettingsStore.get())) {
+      return hero;
+    }
     void this.ensureHeroTextlessArtwork(hero);
     const plate = this.heroTextlessArtwork?.get(key);
     return plate?.textlessPoster || plate?.textlessBackdrop ? { ...hero, ...plate } : hero;
@@ -4047,6 +4054,10 @@ export const HomeScreen = {
   // the app feel slower in exchange for a detail most screens never show.
   async waitForHeroArtworkDecision() {
     if (!Platform.isBrowser() || !prefersPortraitHeroArtwork()) {
+      return;
+    }
+    // Nothing to wait for when the plate would not be painted anyway.
+    if (!isTmdbArtworkEnabled(TmdbSettingsStore.get())) {
       return;
     }
     const hero = this.heroItem || this.heroCandidates?.[Number(this.heroIndex || 0)] || null;
@@ -4165,6 +4176,12 @@ export const HomeScreen = {
     if (!key) {
       return;
     }
+    // The cache holds TMDB artwork too: with the switches off, a plate learned
+    // in an earlier session must not reach the hero now.
+    const settings = TmdbSettingsStore.get();
+    if (!isTmdbArtworkEnabled(settings)) {
+      return;
+    }
     if (!this.heroTextlessArtwork) {
       this.heroTextlessArtwork = new Map();
     }
@@ -4183,8 +4200,7 @@ export const HomeScreen = {
       });
       return;
     }
-    const settings = TmdbSettingsStore.get();
-    if (!settings.enabled || !settings.useArtwork || !getEffectiveTmdbApiKey()) {
+    if (!getEffectiveTmdbApiKey()) {
       return;
     }
     this.heroTextlessArtwork.set(key, {});

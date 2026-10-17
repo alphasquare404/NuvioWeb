@@ -1,4 +1,4 @@
-﻿import { Router } from "../../navigation/router.js";
+import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
@@ -19,7 +19,8 @@ import { watchedSeriesReconciliationService } from "../../../data/repository/wat
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
 import { capTmdbImageSize } from "../../../core/media/tmdbImageSize.js";
-import { readHeroArtwork, rememberHeroArtwork } from "../../../data/local/heroArtworkCache.js";
+import { rememberHeroArtwork } from "../../../data/local/heroArtworkCache.js";
+import { detailArtworkKey, resolveDetailPortraitBackdrop } from "./detailPortraitPlate.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { imdbEpisodeRatingsRepository } from "../../../data/repository/imdbEpisodeRatingsRepository.js";
 import { normalizeEpisodeImdbRating, parseEpisodeRuntimeMinutes } from "./episodeCardMetadata.js";
@@ -1558,20 +1559,9 @@ function librarySnapshotHasMembership(listMembership = {}, sourceMode) {
  * The plate or nothing: an ordinary poster carries its own printed title, and
  * showing one first and swapping it for the plate a moment later is worse
  * than never showing it. Without a plate the hero keeps the wide artwork.
+ * Which plate, and whether one is allowed at all, lives in
+ * `detailPortraitPlate.js` -- the same rule Home applies to its hero.
  */
-function detailArtworkKey(meta) {
-  const id = String(meta?.id || "").trim();
-  return id ? `${String(meta?.type || "movie")}:${id}` : "";
-}
-
-function resolveDetailPortraitBackdrop(meta) {
-  // Home and this page ask the same question about the same titles, so they
-  // share the answer: opening a title from Home usually needs no request at
-  // all, and the hero is right on its first frame.
-  const remembered = meta?.textlessPoster ? null : readHeroArtwork(detailArtworkKey(meta));
-  const plate = meta?.textlessPoster || remembered?.poster || "";
-  return capTmdbImageSize(String(plate), "heroPoster");
-}
 
 function toDetailBackdropImageValue(url) {
   return `url('${String(url).replace(/'/g, "%27")}')`;
