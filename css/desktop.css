@@ -17850,3 +17850,95 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
   padding-top: calc(env(safe-area-inset-top, 0px) + 6px);
   padding-bottom: 6px;
 }
+
+/* ---------------------------------------------------------------------------
+   The person page.
+
+   The biography is folded to ten lines, with the same "show more" idea the
+   hero uses; the rails line up with the section titles above them -- including
+   at the end of the scroll, where WebKit does not paint a scrolling element's
+   right padding, so a spacer travels with the cards instead.
+   --------------------------------------------------------------------------- */
+.desktop-browser #castDetail .cast-biography-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 10;
+}
+
+.desktop-browser #castDetail .cast-biography-text.is-expanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+.desktop-browser #castDetail .cast-biography-toggle {
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.desktop-browser #castDetail .cast-biography-toggle:hover {
+  color: var(--text-color);
+}
+
+/* The credits start level with the name, not 10px below it. */
+.desktop-browser #castDetail .browser-person-detail-credits {
+  padding-top: 0;
+}
+
+.desktop-browser #castDetail .cast-credit-track::after {
+  content: "";
+  flex: 0 0 2px;
+}
+
+@media (max-width: 700px) {
+  .desktop-browser #castDetail .cast-credit-track::after {
+    flex-basis: var(--browser-page-gutter);
+  }
+}
+
+/* The person page's rhythm: the rails share the section title's left edge,
+   sections breathe evenly, and on a phone the facts do not crowd the name. */
+.desktop-browser #castDetail .browser-person-detail-credits .cast-credit-track {
+  padding-inline: 0;
+}
+
+.desktop-browser
+  #castDetail
+  .browser-person-detail-credits
+  .cast-credit-section
+  + .cast-credit-section {
+  margin-top: 32px;
+}
+
+@media (max-width: 700px) {
+  .desktop-browser #castDetail .browser-person-detail-credits .cast-credit-track {
+    padding-inline: var(--browser-page-gutter);
+  }
+
+  .desktop-browser #castDetail .browser-person-detail-profile {
+    grid-template-columns: 96px minmax(0, 1fr);
+    column-gap: 16px;
+    row-gap: 12px;
+  }
+
+  .desktop-browser #castDetail .browser-person-detail-avatar {
+    width: 96px;
+  }
+
+  .desktop-browser #castDetail .browser-person-detail-profile h1 {
+    margin-bottom: 8px;
+    font-size: 26px;
+  }
+
+  .desktop-browser #castDetail .browser-person-detail-facts {
+    gap: 6px;
+  }
+}

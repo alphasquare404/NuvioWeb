@@ -363,6 +363,10 @@ export const CastDetailScreen = {
 
   renderBrowserPersonDetail() {
     const person = this.person || {};
+    const biographyText = String(person.biography || "").trim() || "No biography available.";
+    // Ten lines at the profile's width is roughly this many characters; below it
+    // there is nothing to fold away, so no button is offered.
+    const biographyIsLong = String(person.biography || "").trim().length > 360;
     const age = calculatePersonAge(person.birthday, person.deathday);
     const birth = person.birthday
       ? `Born ${escapeHtml(person.birthday)}${age != null ? ` (${age})` : ""}`
@@ -392,7 +396,15 @@ export const CastDetailScreen = {
               ${person.placeOfBirth ? `<div><dt>Place of birth</dt><dd>${escapeHtml(person.placeOfBirth)}</dd></div>` : ""}
               <div><dt>Credits</dt><dd>${Number(this.credits?.length || 0)}</dd></div>
             </dl>
-            <section class="browser-person-detail-biography"><h2>Biography</h2><p>${escapeHtml(person.biography || "No biography available.")}</p></section>
+            <section class="browser-person-detail-biography">
+              <h2>Biography</h2>
+              <p class="cast-biography-text${this.biographyExpanded ? " is-expanded" : ""}">${escapeHtml(biographyText)}</p>
+              ${
+                biographyIsLong
+                  ? `<button class="cast-biography-toggle focusable" type="button" data-action="toggleBiography">${this.biographyExpanded ? "less" : t("detail_description_more", {}, "more")}</button>`
+                  : ""
+              }
+            </section>
           </aside>
           <main class="browser-person-detail-credits">${this.renderCreditSections()}</main>
         </div>
@@ -442,6 +454,28 @@ export const CastDetailScreen = {
     });
   },
 
+  /**
+   * Opens and closes the biography.
+   *
+   * The paragraph is folded by the stylesheet (`-webkit-line-clamp`), so this
+   * only swaps a class and the button's label: no re-render, and the page keeps
+   * its scroll position.
+   */
+  toggleBiography() {
+    this.biographyExpanded = !this.biographyExpanded;
+    const container = this.container;
+    const text = container?.querySelector?.(".cast-biography-text");
+    if (text) {
+      text.classList.toggle("is-expanded", this.biographyExpanded);
+    }
+    const button = container?.querySelector?.('[data-action="toggleBiography"]');
+    if (button) {
+      button.textContent = this.biographyExpanded
+        ? "less"
+        : t("detail_description_more", {}, "more");
+    }
+  },
+
   bindBrowserPersonActions() {
     if (this.boundBrowserPersonActionHandler || !this.container) return;
     this.boundBrowserPersonActionHandler = (event) => {
@@ -451,6 +485,8 @@ export const CastDetailScreen = {
         Router.back();
       } else if (target.dataset.action === "openDetail") {
         this.openDetailFromNode(target);
+      } else if (target.dataset.action === "toggleBiography") {
+        this.toggleBiography();
       } else {
         return;
       }
