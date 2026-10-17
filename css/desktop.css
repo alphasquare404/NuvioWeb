@@ -18175,3 +18175,38 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
 .desktop-browser .discover-shell.desktop-navigation-enabled {
   overflow-anchor: none;
 }
+
+/* ---------------------------------------------------------------------------
+   The list pages had a desktop-sized gap above their heading -- the space that
+   used to hold the floating navigation pill. On a phone the navigation is at the
+   bottom, so the heading is the first thing on the page: the gap goes, and the
+   heading's own safe-area padding takes care of the notch. Where the navigation
+   really is at the top, the clearance stays.
+   --------------------------------------------------------------------------- */
+@media (any-pointer: coarse) {
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    > .library-main,
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .search-screen-shell.desktop-navigation-enabled
+    > .search-content,
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .discover-shell.desktop-navigation-enabled
+    > .discover-main {
+    padding-top: 8px;
+    scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 68px);
+  }
+}
+
+/* In a flex column the negative margins alone only shift the box: the item keeps
+   the parent's content width, so the heading ended up off-centre (Search). An
+   explicit width makes the widenable box real in both layout modes. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
+  box-sizing: border-box;
+  width: calc(100% + 2 * var(--list-heading-gutter));
+}
