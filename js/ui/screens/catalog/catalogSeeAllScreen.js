@@ -1,5 +1,7 @@
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { bindCollapsingHeader } from "../../navigation/compactHeader.js";
+import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
 import { Environment } from "../../../platform/environment.js";
@@ -301,10 +303,24 @@ export const CatalogSeeAllScreen = {
     this.render();
   },
 
+  /**
+   * The element that really scrolls this page.
+   *
+   * In the browser `.seeall-shell` is not a scroller: its height is auto and the
+   * page scrolls inside the screen (or the document). Reading and writing
+   * `shell.scrollTop` was therefore always zero -- the saved position never
+   * stuck, and neither the focus scroll nor loading the next page on scroll did
+   * anything.
+   */
+  resolveScrollOwner() {
+    const owner = getBrowserVerticalScrollOwner?.(this.container);
+    return owner || this.container?.querySelector(".seeall-shell") || null;
+  },
+
   captureViewState() {
-    const shell = this.container?.querySelector(".seeall-shell");
-    if (shell) {
-      this.savedScrollTop = shell.scrollTop;
+    const owner = this.resolveScrollOwner();
+    if (owner) {
+      this.savedScrollTop = owner.scrollTop;
     }
     const focused = this.container?.querySelector(".seeall-card.focused");
     if (focused?.dataset?.focusKey) {
@@ -378,14 +394,14 @@ export const CatalogSeeAllScreen = {
     focusWithoutAutoScroll(target);
     this.lastFocusedKey = target.dataset.focusKey || this.lastFocusedKey;
     this.rememberRowFocus(target);
-    const shell = this.container?.querySelector(".seeall-shell") || null;
+    const owner = this.resolveScrollOwner();
     const isFirstRow = Number(target.dataset.navRow || 0) === 0;
     const shouldLoadMore = this.shouldAutoLoadMore(target.dataset.itemIndex);
     // Instant scroll on per-keypress focus: a smooth scrollTo restarts its easing
     // on every held-down repeat, so the view jittered and only caught up on release.
     const nextScrollTop = isFirstRow
-      ? setContainerScrollTop(shell, 0, "auto")
-      : scrollNodeIntoContainerView(target, shell, {
+      ? setContainerScrollTop(owner, 0, "auto")
+      : scrollNodeIntoContainerView(target, owner, {
           center: false,
           padding: 20,
           behavior: "auto"
@@ -440,8 +456,8 @@ export const CatalogSeeAllScreen = {
       const targetRowNodes = nav.rows[row + delta] || null;
       if (!targetRowNodes?.length) {
         if (direction === "up" && row === 0) {
-          const shell = this.container?.querySelector(".seeall-shell") || null;
-          this.savedScrollTop = setContainerScrollTop(shell, 0, "smooth");
+          const owner = this.resolveScrollOwner();
+          this.savedScrollTop = setContainerScrollTop(owner, 0, "smooth");
         }
         return true;
       }
@@ -452,7 +468,7 @@ export const CatalogSeeAllScreen = {
   },
 
   restoreFocusedCard({ scrollMode = "center" } = {}) {
-    const shell = this.container?.querySelector(".seeall-shell");
+    const owner = this.resolveScrollOwner();
     const target =
       (this.lastFocusedKey
         ? this.container?.querySelector(`.seeall-card[data-focus-key="${this.lastFocusedKey}"]`)
@@ -460,8 +476,8 @@ export const CatalogSeeAllScreen = {
       this.container?.querySelector(".seeall-card.focusable") ||
       null;
 
-    if (shell) {
-      this.savedScrollTop = setContainerScrollTop(shell, this.savedScrollTop, "auto");
+    if (owner) {
+      this.savedScrollTop = setContainerScrollTop(owner, this.savedScrollTop, "auto");
     }
 
     if (!target) {
@@ -475,7 +491,7 @@ export const CatalogSeeAllScreen = {
     focusWithoutAutoScroll(target);
     this.rememberRowFocus(target);
     if (scrollMode !== "none") {
-      scrollNodeIntoContainerView(target, shell, { center: scrollMode === "center", padding: 20 });
+      scrollNodeIntoContainerView(target, owner, { center: scrollMode === "center", padding: 20 });
     }
     this.lastFocusedKey = target.dataset.focusKey || this.lastFocusedKey;
   },
@@ -775,6 +791,7 @@ export const CatalogSeeAllScreen = {
     this.buildNavigationModel();
     this.bindCardEvents();
     this.bindShellEvents();
+    this.bindPageHeadingCollapse();
     this.bindBrowserCardInteractions();
     if (this.pendingRestoreFocus) {
       const scrollMode = this.preserveViewportOnNextRender ? "none" : "center";
@@ -792,7 +809,7 @@ export const CatalogSeeAllScreen = {
       node.__boundFocusHandlers = true;
       node.addEventListener("focus", () => {
         this.lastFocusedKey = node.dataset.focusKey || this.lastFocusedKey;
-        this.savedScrollTop = this.container?.querySelector(".seeall-shell")?.scrollTop || 0;
+        this.savedScrollTop = this.resolveScrollOwner()?.scrollTop || 0;
       });
       node.addEventListener("mouseenter", () => {
         this.lastFocusedKey = node.dataset.focusKey || this.lastFocusedKey;
@@ -801,21 +818,52 @@ export const CatalogSeeAllScreen = {
   },
 
   bindShellEvents() {
-    const shell = this.container?.querySelector(".seeall-shell") || null;
-    if (!shell || shell.__catalogSeeAllShellBound) {
+    if (this.scrollOwnerListener) {
       return;
     }
-    shell.__catalogSeeAllShellBound = true;
-    shell.addEventListener(
-      "scroll",
-      () => {
-        this.savedScrollTop = Number(shell.scrollTop || 0);
-        if (this.shouldAutoLoadMoreFromScroll(shell)) {
-          this.loadNextPage({ preserveViewport: true });
-        }
-      },
-      { passive: true }
-    );
+    // Scroll events do not bubble, but they are delivered in the capture phase,
+    // which is why this sits on the document: whichever element scrolls -- the
+    // screen in the browser, the shell on a TV -- the event is seen.
+    const onScroll = () => {
+      const owner = this.resolveScrollOwner();
+      if (!owner) {
+        return;
+      }
+      this.savedScrollTop = Number(owner.scrollTop || 0);
+      if (this.shouldAutoLoadMoreFromScroll(owner)) {
+        this.loadNextPage({ preserveViewport: true });
+      }
+    };
+    this.scrollOwnerListener = onScroll;
+    globalThis.document?.addEventListener?.("scroll", onScroll, { capture: true, passive: true });
+    globalThis.addEventListener?.("resize", onScroll, { passive: true });
+  },
+
+  unbindShellEvents() {
+    if (this.scrollOwnerListener) {
+      globalThis.document?.removeEventListener?.("scroll", this.scrollOwnerListener, true);
+      globalThis.removeEventListener?.("resize", this.scrollOwnerListener);
+      this.scrollOwnerListener = null;
+    }
+  },
+
+  /**
+   * The See All heading behaves like every other page heading: it stays at the
+   * top and shrinks once it reaches the edge.
+   */
+  bindPageHeadingCollapse() {
+    const container = this.container;
+    if (!container) {
+      return;
+    }
+    if (this.pageHeadingCollapseBinding) {
+      this.pageHeadingCollapseBinding.refresh();
+      return;
+    }
+    this.pageHeadingCollapseBinding = bindCollapsingHeader({
+      resolveHeader: () => container.querySelector(".seeall-header"),
+      getScrollTop: () => Number(this.resolveScrollOwner()?.scrollTop || 0)
+    });
   },
 
   async onKeyDown(event) {
@@ -869,6 +917,9 @@ export const CatalogSeeAllScreen = {
   },
 
   cleanup() {
+    this.unbindShellEvents();
+    this.pageHeadingCollapseBinding?.cleanup();
+    this.pageHeadingCollapseBinding = null;
     this.loadToken = (this.loadToken || 0) + 1;
     this.cancelPendingPosterHold();
     this.posterOptionsController?.destroy?.({ restoreFocus: false });

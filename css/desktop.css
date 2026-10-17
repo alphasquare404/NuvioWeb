@@ -18349,3 +18349,90 @@ html:not([data-nav-placement="top"])
 .desktop-browser #catalogSeeAll .seeall-header {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* ---------------------------------------------------------------------------
+   Catalog See All.
+
+   Its heading joins the contract: it holds the top, shrinks at the edge, and
+   its separator is inset to the cards. The page itself no longer pretends the
+   shell scrolls -- that is the screen's job -- so the heading's own position is
+   what the collapse reads.
+   --------------------------------------------------------------------------- */
+.desktop-browser #catalogSeeAll .seeall-shell {
+  --seeall-gutter: clamp(28px, 4vw, 44px);
+  padding-inline: var(--seeall-gutter);
+}
+
+@media (max-width: 760px) {
+  .desktop-browser #catalogSeeAll .seeall-shell {
+    --seeall-gutter: var(--browser-page-gutter);
+  }
+}
+
+.desktop-browser #catalogSeeAll .seeall-header {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  box-sizing: border-box;
+  align-items: center;
+  margin-inline: calc(-1 * var(--seeall-gutter));
+  margin-bottom: 16px;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--seeall-gutter) 10px;
+  background: transparent;
+  border-bottom: 0;
+  transition: padding 180ms ease;
+}
+
+.desktop-browser #catalogSeeAll .seeall-header::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: var(--seeall-gutter);
+  right: var(--seeall-gutter);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.desktop-browser #catalogSeeAll .seeall-title {
+  transition: font-size 180ms ease;
+}
+
+.desktop-browser #catalogSeeAll .seeall-header[data-collapsed="true"] {
+  min-height: calc(52px + env(safe-area-inset-top, 0px));
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  padding-bottom: 8px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.desktop-browser #catalogSeeAll .seeall-header[data-collapsed="true"] .seeall-title {
+  font-size: 18px;
+}
+
+@media (any-pointer: coarse) {
+  html:not([data-nav-placement="top"]) .desktop-browser #catalogSeeAll .seeall-shell {
+    padding-top: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser #catalogSeeAll .seeall-header,
+  .desktop-browser #catalogSeeAll .seeall-title {
+    transition: none;
+  }
+}
+
+/* The shell is not a scroller in the browser: the legacy rule leaves
+   `overflow-y: auto` on it, and an overflow container that cannot scroll also
+   swallows `position: sticky` -- the heading then travelled off with the page
+   instead of holding the top. The page scrolls in the screen, so the shell lets
+   go of the overflow entirely. */
+.desktop-browser #catalogSeeAll .seeall-shell {
+  overflow: visible;
+}
+
+/* Collapsed, the subtitle goes and the back button sets the bar's height. */
+.desktop-browser #catalogSeeAll .seeall-header[data-collapsed="true"] .seeall-subtitle {
+  display: none;
+}
