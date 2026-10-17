@@ -6,6 +6,7 @@ import {
   SETTINGS_ROUTE,
   SETTINGS_SECTION_ROUTE
 } from "./settingsRoutes.js";
+import { shouldCollapseSettingsHeader } from "./settingsHeaderCollapse.js";
 import { APP_IDENTITY } from "../../../core/app/appIdentity.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -1229,9 +1230,9 @@ function maskValue(value, fallback) {
     return fallback;
   }
   if (trimmed.length <= 4) {
-    return "••••";
+    return "â€¢â€¢â€¢â€¢";
   }
-  return `••••••${trimmed.slice(-4)}`;
+  return `â€¢â€¢â€¢â€¢â€¢â€¢${trimmed.slice(-4)}`;
 }
 
 function labelForFont(fontFamily) {
@@ -2087,6 +2088,15 @@ function settingsUsesRoutePages() {
   return Platform.isBrowser();
 }
 
+// Which of the two Settings routes is on display, if either. Async work that
+// redraws "the Settings screen" has to ask this rather than compare against
+// `settings` alone: the section page is a route of its own now, and a redraw
+// that never happens looks exactly like a control that does nothing.
+function isSettingsPageCurrent() {
+  const route = Router.getCurrent?.();
+  return route === SETTINGS_ROUTE || route === SETTINGS_SECTION_ROUTE;
+}
+
 function updateSettingsMarqueeTargets(root) {
   root?.querySelectorAll?.(".settings-nav-label").forEach((label) => {
     label._settingsMarqueeAnimation?.cancel?.();
@@ -2522,7 +2532,7 @@ export const SettingsScreen = {
     this.model = initialModel;
     if (Platform.isBrowser()) {
       void TraktAuthService.refreshBrowserBridgeAvailability().then(() => {
-        if (this.container && Router.getCurrent() === "settings") {
+        if (this.container && isSettingsPageCurrent()) {
           void this.render();
         }
       });
@@ -2530,12 +2540,89 @@ export const SettingsScreen = {
     if (Platform.isBrowser()) {
       this.offlineDownloadsUnsubscribe?.();
       this.offlineDownloadsUnsubscribe = subscribeToOfflineDownloads(() => {
-        if (this.container && Router.getCurrent() === "settings" && this.activeSection === "downloads") {
+        if (this.container && isSettingsPageCurrent() && this.activeSection === "downloads") {
           void this.render();
         }
       });
     }
     await this.render({ refreshModel: false });
+    // After the heading exists: a page restored by Back is already scrolled, so
+    // its heading has to be in the right state on the first frame.
+    this.bindHeaderCollapse();
+  },
+
+  /**
+   * Collapses the page heading once the page has scrolled past its threshold.
+   *
+   * A passive scroll listener with one `requestAnimationFrame` per burst: the
+   * heading is a class on the shell, and the animation is the stylesheet's. The
+   * listener belongs to this mount, so it is removed by `unbindHeaderCollapse`.
+   */
+  bindHeaderCollapse() {
+    this.unbindHeaderCollapse();
+    if (!settingsUsesRoutePages()) {
+      return;
+    }
+    let frame = 0;
+
+    // The page scrolls inside its own screen element in this layout, not the
+    // document, so the position is read from whichever of the two is actually
+    // scrolling. Scroll events do not bubble, but they are delivered in the
+    // capture phase, which is why the listener sits on the document.
+    const readScrollTop = () => {
+      const container = this.container;
+      if (container && container.scrollHeight > container.clientHeight + 1) {
+        return Number(container.scrollTop || 0);
+      }
+      const document = globalThis.document;
+      return Number(document?.scrollingElement?.scrollTop ?? globalThis.scrollY ?? 0);
+    };
+
+    const apply = () => {
+      frame = 0;
+      const shell = this.container?.querySelector(".settings-shell");
+      if (!shell) {
+        return;
+      }
+      const collapsed = shouldCollapseSettingsHeader(
+        readScrollTop(),
+        shell.dataset.settingsHeaderCollapsed === "true"
+      );
+      const next = collapsed ? "true" : "false";
+      if (shell.dataset.settingsHeaderCollapsed !== next) {
+        shell.dataset.settingsHeaderCollapsed = next;
+      }
+    };
+
+    const onScroll = () => {
+      if (frame) {
+        return;
+      }
+      const request = globalThis.requestAnimationFrame?.(apply);
+      if (request) {
+        frame = request;
+        return;
+      }
+      apply();
+    };
+
+    this.headerCollapseCleanup = () => {
+      globalThis.document?.removeEventListener?.("scroll", onScroll, true);
+      if (frame) {
+        globalThis.cancelAnimationFrame?.(frame);
+        frame = 0;
+      }
+    };
+    globalThis.document?.addEventListener?.("scroll", onScroll, {
+      capture: true,
+      passive: true
+    });
+    apply();
+  },
+
+  unbindHeaderCollapse() {
+    this.headerCollapseCleanup?.();
+    this.headerCollapseCleanup = null;
   },
 
   ensureExpandedState(sectionId) {
@@ -3433,7 +3520,7 @@ export const SettingsScreen = {
     }
     if (state.status === "starting") {
       return `<div class="settings-debrid-auth-loading">${renderLoadingIndicator({ size: "small" })}<span>${escapeHtml(
-        t("debrid_device_auth_starting", {}, `Starting ${state.provider.displayName} sign-in…`)
+        t("debrid_device_auth_starting", {}, `Starting ${state.provider.displayName} sign-inâ€¦`)
       )}</span></div>`;
     }
     if (state.status === "waiting" && state.session) {
@@ -3463,7 +3550,7 @@ export const SettingsScreen = {
             )}</button>
           </div>
           <div class="settings-debrid-auth-status">${renderLoadingIndicator({ size: "small" })}<span>${escapeHtml(
-            t("debrid_device_auth_waiting", {}, "Waiting for authorization…")
+            t("debrid_device_auth_waiting", {}, "Waiting for authorizationâ€¦")
           )}</span></div>
         </div>`;
     }
@@ -4096,7 +4183,7 @@ export const SettingsScreen = {
         ? t(
             "advanced_clear_artwork_cache_subtitle",
             { count: entries, size: kilobytes },
-            `Remembered artwork for ${entries} titles · ${kilobytes} KB`
+            `Remembered artwork for ${entries} titles Â· ${kilobytes} KB`
           )
         : t(
             "advanced_clear_artwork_cache_empty",
@@ -4370,7 +4457,7 @@ export const SettingsScreen = {
           }
           const details = catalogDetails.get(key);
           const label = catalogSettings.customTitles?.[key] || details?.label || key;
-          const secondary = [details?.typeLabel, details?.addonName].filter(Boolean).join(" · ");
+          const secondary = [details?.typeLabel, details?.addonName].filter(Boolean).join(" Â· ");
           return {
             id: key,
             label,
@@ -8025,7 +8112,7 @@ export const SettingsScreen = {
       const state = TraktAuthService.getCurrentAuthState();
       if (
         !state.deviceCode ||
-        Router.getCurrent() !== "settings" ||
+        !isSettingsPageCurrent() ||
         this.activeSection !== "trakt"
       ) {
         this.stopTraktPolling();
@@ -8417,7 +8504,7 @@ export const SettingsScreen = {
     if (this.desktopSimklPollTimer) return;
     const poll = async () => {
       const auth = SimklAuthService.getCurrentAuthState();
-      if (!auth.userCode || Router.getCurrent() !== "settings" || this.activeSection !== "trakt") {
+      if (!auth.userCode || !isSettingsPageCurrent() || this.activeSection !== "trakt") {
         this.stopDesktopSimklPolling();
         return;
       }
@@ -8468,7 +8555,7 @@ export const SettingsScreen = {
     if (this.desktopTraktPollTimer) return;
     const poll = async () => {
       const auth = TraktAuthService.getCurrentAuthState();
-      if (!auth.deviceCode || Router.getCurrent() !== "settings" || this.activeSection !== "trakt") {
+      if (!auth.deviceCode || !isSettingsPageCurrent() || this.activeSection !== "trakt") {
         this.stopDesktopTraktPolling();
         return;
       }
@@ -8818,7 +8905,7 @@ export const SettingsScreen = {
       state.loaded = true;
     } finally {
       state.loading = false;
-      if (Router.getCurrent() === "settings") {
+      if (isSettingsPageCurrent()) {
         await this.render({ refreshModel: false });
       }
     }
@@ -8830,7 +8917,7 @@ export const SettingsScreen = {
       return "";
     }
     if (state.loading) {
-      return `<section class="settings-about-community-group"><h3>${escapeHtml(title)}</h3><p class="settings-about-inline-status">Loading…</p></section>`;
+      return `<section class="settings-about-community-group"><h3>${escapeHtml(title)}</h3><p class="settings-about-inline-status">Loadingâ€¦</p></section>`;
     }
     if (kind === "contributors" && (state.error === "fallback" || !state.items?.length)) {
       const fallbackKey = "about:contributors:github";
@@ -8920,7 +9007,7 @@ export const SettingsScreen = {
       this.actionMap.set("about:licenses", () => Router.navigate("licensesAttributions"));
     }
     this.actionMap.set("about:checkUpdates", async () => {
-      this.aboutUpdateStatus = t("update_checking", {}, "Checking for updates…");
+      this.aboutUpdateStatus = t("update_checking", {}, "Checking for updatesâ€¦");
       await this.render({ refreshModel: false });
       try {
         const update = await getLatestAppUpdate({ currentVersion: CURRENT_APP_VERSION });
@@ -9073,7 +9160,7 @@ export const SettingsScreen = {
           focusKey: "downloads:syncOfflineProgress",
           title: "Sync offline progress (experimental)",
           subtitle:
-            "Experimental, and still has plenty of bugs. Off: watching a download records nothing at all — not your position, not that you finished it, and nothing reaches your account or tracking service. On: a download is treated like any other playback, and two devices can disagree about which position is newer. A tracking service is sent the position but not when you watched it, so an offline session arrives at Trakt or Simkl stamped with the time it got there; a finished title does carry its real time.",
+            "Experimental, and still has plenty of bugs. Off: watching a download records nothing at all â€” not your position, not that you finished it, and nothing reaches your account or tracking service. On: a download is treated like any other playback, and two devices can disagree about which position is newer. A tracking service is sent the position but not when you watched it, so an offline session arrives at Trakt or Simkl stamped with the time it got there; a finished title does carry its real time.",
           checked: Boolean(model.player?.syncOfflineProgress)
         })}
       </div></div>
@@ -9089,12 +9176,12 @@ export const SettingsScreen = {
       </div></div>
       <div class="settings-group-heading"><div class="settings-group-title">Library</div></div>
       <div class="settings-group-card"><div class="settings-stack settings-download-summary">
-        ${this.renderActionRow({ focusKey: "downloads:library", title: "Downloaded library", value: `${downloads.movies} Movies · ${downloads.series} Series · ${downloads.episodes} Episodes`, icon: null, disabled: true })}
+        ${this.renderActionRow({ focusKey: "downloads:library", title: "Downloaded library", value: `${downloads.movies} Movies Â· ${downloads.series} Series Â· ${downloads.episodes} Episodes`, icon: null, disabled: true })}
         ${this.renderActionRow({ focusKey: "downloads:subtitleCount", title: "Local subtitles", value: String(downloads.subtitles), icon: null, disabled: true })}
       </div></div>
       <div class="settings-group-heading"><div class="settings-group-title">Queue</div></div>
       <div class="settings-group-card"><div class="settings-stack settings-download-summary">
-        ${this.renderActionRow({ focusKey: "downloads:queue", title: "Download queue", value: `${count("downloading")} Downloading · ${count("queued")} Queued · ${count("paused") + count("interrupted")} Paused · ${count("failed")} Failed`, icon: null, disabled: true })}
+        ${this.renderActionRow({ focusKey: "downloads:queue", title: "Download queue", value: `${count("downloading")} Downloading Â· ${count("queued")} Queued Â· ${count("paused") + count("interrupted")} Paused Â· ${count("failed")} Failed`, icon: null, disabled: true })}
         ${this.renderActionRow({ focusKey: "downloads:manage", title: "Manage Downloads", subtitle: queueTotal ? "Open the Library Download Manager." : "No active downloads. Open Downloaded.", leadingIcon: "download" })}
       </div></div>
       <div class="settings-group-heading"><div class="settings-group-title">Cleanup</div></div>
@@ -9837,7 +9924,12 @@ export const SettingsScreen = {
       this.focusZone === "content" && (role === "toggle" || isSectionToggle);
     await action();
 
-    if (Router.getCurrent() === "settings") {
+    // The page is redrawn by whichever of the two routes owns this screen. It
+    // used to ask only for `settings`, so on the section page an action ran and
+    // nothing was ever drawn from it: a row that looked dead because the state
+    // it changed was never rendered.
+    const currentRoute = Router.getCurrent?.();
+    if (currentRoute === SETTINGS_ROUTE || currentRoute === SETTINGS_SECTION_ROUTE) {
       await this.render({ refreshModel: !isSectionToggle });
       this.focusZone = "content";
       this.applyFocus();
@@ -10095,6 +10187,7 @@ export const SettingsScreen = {
 
   cleanup() {
     this.persistUiState();
+    this.unbindHeaderCollapse();
     this.offlineDownloadsUnsubscribe?.();
     this.offlineDownloadsUnsubscribe = null;
     this.browserHorizontalTabScrollCleanup?.();
