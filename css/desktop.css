@@ -12108,39 +12108,6 @@ body.desktop-browser {
   min-width: 0;
 }
 
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-  display: inline-flex;
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  margin-top: 0;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.54);
-  color: var(--text-color);
-  font: inherit;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
-}
-
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back .material-icons {
-  font-size: 18px;
-}
-
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back:focus-visible {
-  border-color: rgba(255, 255, 255, 0.42);
-  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
-  outline-offset: 2px;
-}
-
 .desktop-browser #catalogSeeAll .seeall-grid {
   grid-template-columns: repeat(auto-fill, minmax(156px, 165px));
   justify-content: start;
@@ -12214,23 +12181,6 @@ body.desktop-browser {
   transform: none;
   border-color: transparent;
   box-shadow: none;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back:hover {
-    border-color: transparent;
-    background: rgba(255, 255, 255, 0.14);
-  }
-
-  .desktop-browser #catalogSeeAll .seeall-card:hover {
-    z-index: 1;
-  }
-
-  .desktop-browser #catalogSeeAll .seeall-card:hover .seeall-card-poster-wrap {
-    transform: scale(1.04);
-    border-color: rgba(255, 255, 255, 0.62);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
-  }
 }
 
 @media (max-width: 600px) {
@@ -18452,19 +18402,6 @@ html:not([data-nav-placement="top"])
   letter-spacing: -0.03em;
 }
 
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(18, 18, 20, 0.46);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
-  backdrop-filter: blur(2px) saturate(150%);
-  -webkit-backdrop-filter: blur(2px) saturate(150%);
-}
-
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back:hover {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.14);
-}
-
 /* The same gutter as the list pages, so the two headings sit on one grid: the
    title, the back control and the cards all share one left edge at every width. */
 .desktop-browser #catalogSeeAll .seeall-shell {
@@ -18477,43 +18414,6 @@ html:not([data-nav-placement="top"])
   }
 }
 
-/* On a phone the heading follows Discover: centred, with Back taken out of the
-   flow so it cannot push the title off-centre. Back stays inside the heading --
-   it is a child of it, and it travels with it -- and it is positioned against
-   the sticky heading itself, never given a `position` of its own container. */
-@media (max-width: 600px) {
-  .desktop-browser #catalogSeeAll .seeall-header {
-    align-items: center;
-    justify-content: center;
-    padding-inline: calc(var(--seeall-gutter) + 52px);
-  }
-
-  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-    position: absolute;
-    top: 50%;
-    left: var(--seeall-gutter);
-    transform: translateY(-50%);
-  }
-
-  .desktop-browser #catalogSeeAll .seeall-header-copy {
-    width: 100%;
-    text-align: center;
-  }
-
-  .desktop-browser #catalogSeeAll .seeall-title,
-  .desktop-browser #catalogSeeAll .seeall-subtitle {
-    text-align: center;
-  }
-}
-
-/* Same place as Discover's Back on a phone: hard against the safe-area edge,
-   not one gutter in. */
-@media (max-width: 600px) {
-  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-    left: calc(8px + env(safe-area-inset-left, 0px));
-  }
-}
-
 /* The bar's height must not depend on Back.
    Discover's Back floats, so its heading is measured by its title alone; See
    All's Back sat in the flow and made the same bar taller. Back stays a child of
@@ -18522,13 +18422,6 @@ html:not([data-nav-placement="top"])
    carries a 52px floor of its own. */
 .desktop-browser #catalogSeeAll .seeall-header {
   padding-inline: calc(var(--seeall-gutter) + 56px) var(--seeall-gutter);
-}
-
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-  position: absolute;
-  top: 50%;
-  left: var(--seeall-gutter);
-  transform: translateY(-50%);
 }
 
 .desktop-browser #catalogSeeAll .seeall-header[data-collapsed="true"] {
@@ -18551,72 +18444,10 @@ html:not([data-nav-placement="top"])
   letter-spacing: -0.03em;
 }
 
-/* Back on See All is an icon, not a disc: the heading keeps the page's own
-   surface, and the control sits on the title's line, centred against it.
-   The circle is gone entirely -- no fill, no border, no blur, no shadow. */
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-  width: 32px;
-  height: 32px;
-  min-height: 32px;
-  flex-basis: 32px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  color: var(--text-color);
-  top: calc(50% + 4px);
-}
-
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back:hover,
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back:focus-visible {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
 /* The invisible subtitle reserves its line, so the resting heading is exactly as
    tall as Discover's, whether or not this catalog has an addon name to show. */
 .desktop-browser #catalogSeeAll .seeall-subtitle-placeholder {
   visibility: hidden;
-}
-
-/* Back sits on the title's line, not on the heading's centre line: the copy
-   block also holds the subtitle, so the two centres differ. Its box is exactly
-   the title's line box (1.1em of the same type size) and the icon is centred in
-   that box. Collapsed there is no subtitle, so the centre line is the title's. */
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-  position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 10px);
-  left: var(--seeall-gutter);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 1.1em;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  color: var(--text-color);
-  font-size: inherit;
-  transform: none;
-}
-
-.desktop-browser
-  #catalogSeeAll
-  .seeall-header[data-collapsed="true"]
-  .catalog-seeall-browser-back {
-  top: 50%;
-  transform: translateY(-50%);
 }
 
 /* The See All subtitle carried the TV shell's 20px type, which made its line
@@ -18626,61 +18457,6 @@ html:not([data-nav-placement="top"])
   margin-top: 6px;
   font-size: 14px;
   line-height: 1.35;
-}
-
-/* The icon's box is the title's line box, so its centre is the title's centre. */
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-  height: 1.1em;
-  font-size: clamp(30px, 2.5vw, 40px);
-}
-
-/* Back and the title share one flex line, so they are centred against each other
-   by construction -- no offset to keep in step with the safe area. On a phone the
-   Back keeps a negative start margin equal to its own width plus the gap, so the
-   title stays visually centred while the icon sits in the padding at the left. */
-.desktop-browser #catalogSeeAll .seeall-title-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-  position: static;
-  top: auto;
-  left: auto;
-  flex: 0 0 32px;
-  width: 32px;
-  height: 1.1em;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  color: var(--text-color);
-  font-size: clamp(30px, 2.5vw, 40px);
-  transform: none;
-}
-
-.desktop-browser
-  #catalogSeeAll
-  .seeall-header[data-collapsed="true"]
-  .catalog-seeall-browser-back {
-  font-size: 18px;
-}
-
-@media (max-width: 600px) {
-  .desktop-browser #catalogSeeAll .seeall-title-row {
-    justify-content: center;
-  }
-
-  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-    margin-inline-start: -44px;
-  }
 }
 
 /* Every collapsed heading gets four more pixels of height, so the bars read as
@@ -18767,39 +18543,6 @@ html:not([data-nav-placement="top"])
   .settings-content-header {
   padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
   padding-bottom: 10px;
-}
-
-/* Back sits at the left edge of the heading and is vertically centred on the
-   title's own line box (its top is the heading's content top, its height is one
-   line of the title's type). The title stays centred because Back is out of the
-   flow, and the alignment does not depend on the notch: both boxes start at the
-   same content edge. */
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-  position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 10px);
-  left: var(--seeall-gutter);
-  margin: 0;
-  width: 32px;
-  height: 1.1em;
-  min-height: 0;
-  font-size: clamp(30px, 2.5vw, 40px);
-  transform: none;
-}
-
-.desktop-browser
-  #catalogSeeAll
-  .seeall-header[data-collapsed="true"]
-  .catalog-seeall-browser-back {
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
-  height: 1.1em;
-  font-size: 18px;
-}
-
-@media (max-width: 600px) {
-  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-    left: calc(8px + env(safe-area-inset-left, 0px));
-    margin: 0;
-  }
 }
 
 
@@ -18931,136 +18674,6 @@ html:not([data-nav-placement="top"])
   }
 }
 
-/* See All's Back goes back into the title's own row. In flow, the row centres it
-   against the title by construction -- at rest, collapsed, and at any safe-area
-   size -- which is what the absolute version kept getting wrong on a phone. On a
-   narrow screen the negative start margin keeps the centred title centred. */
-.desktop-browser #catalogSeeAll .seeall-title-row {
-  position: static;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  width: 100%;
-  min-width: 0;
-}
-
-.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-  position: static;
-  top: auto;
-  left: auto;
-  flex: 0 0 32px;
-  width: 32px;
-  height: auto;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  color: var(--text-color);
-  font-size: clamp(30px, 2.5vw, 40px);
-  transform: none;
-  z-index: 2;
-}
-
-.desktop-browser
-  #catalogSeeAll
-  .seeall-header[data-collapsed="true"]
-  .catalog-seeall-browser-back {
-  font-size: 18px;
-}
-
-@media (max-width: 600px) {
-  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
-    margin-inline-start: -44px;
-  }
-}
-
-@media (min-width: 601px) {
-  .desktop-browser #catalogSeeAll .seeall-title-row {
-    justify-content: flex-start;
-  }
-}
-
-/* The collapsed rule from the older, absolute version still carries a
-   translateY(-50%), which pulled the icon off the title's line. Same
-   specificity, later in the file, so it wins. */
-.desktop-browser
-  #catalogSeeAll
-  .seeall-header[data-collapsed="true"]
-  .catalog-seeall-browser-back {
-  position: static;
-  top: auto;
-  left: auto;
-  height: auto;
-  transform: none;
-}
-
-/* On a phone the Back is pinned to the row's left edge and the row itself is the
-   positioning box, so the title stays centred while the icon sits at the page's
-   own margin. The row is not the heading: nothing here can unpin it. */
-@media (max-width: 600px) {
-  .desktop-browser #catalogSeeAll .seeall-header {
-    padding-inline: var(--seeall-gutter);
-  }
-
-  .desktop-browser #catalogSeeAll .seeall-title-row {
-    position: relative;
-    width: 100%;
-    justify-content: center;
-  }
-
-  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back,
-  .desktop-browser
-    #catalogSeeAll
-    .seeall-header[data-collapsed="true"]
-    .catalog-seeall-browser-back {
-    position: absolute;
-    top: 50%;
-    left: 0;
-    height: auto;
-    margin: 0;
-    transform: translateY(-50%);
-  }
-}
-
-/* Desktop: the title and the line under it share one left edge, and Back sits to
-   the left of both, centred on the title's own line.
-   The copy is the positioning box; Back is pulled out of it by exactly the space
-   the heading reserves, so the two text lines both start where the copy starts. */
-@media (min-width: 601px) {
-  .desktop-browser #catalogSeeAll .seeall-header {
-    padding-inline: calc(var(--seeall-gutter) + 56px) var(--seeall-gutter);
-  }
-
-  .desktop-browser #catalogSeeAll .seeall-header-copy {
-    position: relative;
-  }
-
-  .desktop-browser #catalogSeeAll .seeall-title-row {
-    position: static;
-    width: auto;
-    justify-content: flex-start;
-  }
-
-  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back,
-  .desktop-browser
-    #catalogSeeAll
-    .seeall-header[data-collapsed="true"]
-    .catalog-seeall-browser-back {
-    position: absolute;
-    top: 0;
-    left: -56px;
-    height: 1.1em;
-    margin: 0;
-    transform: none;
-  }
-}
-
 /* ---------------------------------------------------------------------------
    Back controls follow the See All shape: a plain chevron at the page's left
    edge, vertically on the heading title's own line, with no disc behind it.
@@ -19172,7 +18785,6 @@ html:not([data-nav-placement="top"])
     font-size: 18px;
   }
 }
-
 
 /* ---------------------------------------------------------------------------
    Detail and Stream have a heading bar too -- Detail's is hidden until the hero
@@ -19366,5 +18978,127 @@ html:not([data-nav-placement="top"])
     .settings-title-row
     .settings-section-back {
     margin-inline-start: -32px;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   See All: heading and its Back. Consolidation of the rules that grew over six
+   iterations -- one block now owns the shape of this heading.
+
+   The title row is the layout line for Back and title; the header keeps the
+   surface and the separator. Phone: Back is pinned to the row's left edge and the
+   title stays centred. Desktop: Back is pulled out of the copy by the 56px the
+   heading reserves, so the title and the line under it share one left edge.
+   The heading itself stays sticky; nothing here sets its position.
+   --------------------------------------------------------------------------- */
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 1.1em;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  font-size: clamp(30px, 2.5vw, 40px);
+  line-height: 1;
+  transform: none;
+  z-index: 2;
+}
+
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back .material-icons {
+  font-size: 0.6em;
+}
+
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back:hover,
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back:focus-visible {
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #catalogSeeAll .seeall-header {
+    padding-inline: var(--seeall-gutter);
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-header-copy {
+    width: 100%;
+    text-align: center;
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-title,
+  .desktop-browser #catalogSeeAll .seeall-subtitle {
+    text-align: center;
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-title-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back,
+  .desktop-browser
+    #catalogSeeAll
+    .seeall-header[data-collapsed="true"]
+    .catalog-seeall-browser-back {
+    top: 50%;
+    left: 0;
+    height: 32px;
+    margin: 0;
+    transform: translateY(-50%);
+  }
+}
+
+@media (min-width: 601px) {
+  .desktop-browser #catalogSeeAll .seeall-header {
+    padding-inline: calc(var(--seeall-gutter) + 56px) var(--seeall-gutter);
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-header-copy {
+    position: relative;
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-title-row {
+    position: static;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: auto;
+    justify-content: flex-start;
+  }
+
+  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back,
+  .desktop-browser
+    #catalogSeeAll
+    .seeall-header[data-collapsed="true"]
+    .catalog-seeall-browser-back {
+    top: 0;
+    left: -56px;
+    height: 1.1em;
+    margin: 0;
+    transform: none;
+  }
+
+  .desktop-browser
+    #catalogSeeAll
+    .seeall-header[data-collapsed="true"]
+    .catalog-seeall-browser-back {
+    font-size: 18px;
   }
 }
