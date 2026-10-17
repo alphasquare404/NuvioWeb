@@ -2996,21 +2996,22 @@ export const SettingsScreen = {
 
   renderSectionHeader(section) {
     const copy = translateSectionCopy(section);
-    // The section page is a route, so this control pops that route. Placed and
-    // painted like every other back control in the browser build: floating on
-    // the navigation's own line, not in the header flow.
-    const back = Platform.isBrowser()
-      ? `
-      <button class="settings-section-back focusable" type="button" data-settings-back
-              aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-        ${iconSvg(ROW_ICONS.back, "settings-section-back-icon")}
-      </button>
-    `
-      : "";
+    // The section page is a route, so this control pops that route. It lives in
+    // the heading itself now -- the heading is sticky, so the chevron travels
+    // with it -- and sits on the title's own line like every other Back control.
     return `
-      ${back}
       <header class="settings-content-header">
-        <h1 class="settings-title">${escapeHtml(copy.label)}</h1>
+        <div class="settings-title-row">
+          ${
+            Platform.isBrowser()
+              ? `<button class="settings-section-back focusable" type="button" data-settings-back
+                        aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
+                  ${iconSvg(ROW_ICONS.back, "settings-section-back-icon")}
+                </button>`
+              : ""
+          }
+          <h1 class="settings-title">${escapeHtml(copy.label)}</h1>
+        </div>
         <p class="settings-subtitle">${escapeHtml(copy.subtitle)}</p>
       </header>
     `;

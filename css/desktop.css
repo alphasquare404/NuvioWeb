@@ -19266,3 +19266,105 @@ html:not([data-nav-placement="top"])
   font-size: 16px;
   transform: translateY(-50%);
 }
+
+/* Settings section: the chevron is a child of the sticky heading. It is pinned to
+   the heading's content edge (the header bleeds by --settings-header-bleed and pads
+   it back, so that value is the page's own left edge) and centred on the title's
+   line, with no disc behind it. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header .settings-section-back {
+  position: absolute;
+  top: 0;
+  left: var(--settings-header-bleed);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 1.1em;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  transform: none;
+  z-index: 2;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header .settings-section-back-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Settings section: Back shares the title's row. The row is the positioning box,
+   the title stays centred, and the chevron hangs at the row's left edge, centred
+   on the row -- which is the title's own line, because the row holds the title and
+   nothing else. The subtitle lives outside the row, so it cannot pull the centre. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-title-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-title-row
+  .settings-section-back {
+  position: absolute;
+  top: 50%;
+  left: calc(-1 * var(--settings-header-bleed));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+@media (min-width: 601px) {
+  .desktop-browser .settings-shell[data-settings-nav-mode] .settings-title-row {
+    justify-content: flex-start;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-title-row
+    .settings-section-back {
+    left: 0;
+    margin-inline-start: -44px;
+  }
+}
+
+/* The chevron sits on the row's own left edge, which is the page's content edge. */
+.desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-title-row
+  .settings-section-back {
+  left: 0;
+}
+
+@media (min-width: 601px) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-title-row
+    .settings-section-back {
+    margin-inline-start: -32px;
+  }
+}
