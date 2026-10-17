@@ -1,5 +1,11 @@
 import { deferWhileReordering } from "../../components/listReorderDrag.js";
 import { Router } from "../../navigation/router.js";
+import { createScreenPrototype } from "../../navigation/routeLayerInstances.js";
+import {
+  readSettingsRouteSection,
+  SETTINGS_ROUTE,
+  SETTINGS_SECTION_ROUTE
+} from "./settingsRoutes.js";
 import { APP_IDENTITY } from "../../../core/app/appIdentity.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -2071,24 +2077,14 @@ function getSettingsSectionById(sectionId) {
  * Whether Settings navigates as an index page rather than a rail beside the
  * content.
  *
- * A finger cannot aim at a rail that has been squeezed into a strip of tabs,
- * and a strip that scrolls sideways with its scrollbar hidden gives no sign
- * that the rest of the sections exist at all. On a touch screen the sections
- * become a page of their own, and choosing one replaces it.
- *
- * `any-pointer`, not `pointer`: a tablet with a trackpad attached reports a
- * fine primary pointer and still has the touch screen this exists for. The
- * question is whether a finger can reach the list, not which input is primary.
- * It is paired with the browser check so a remote keeps the rail-and-content
- * model its directional keys are built around.
+ * In the browser the index is a page of its own and choosing a section opens a
+ * page of its own -- two routes, the same shape Search and Discover already
+ * have, so Back is the browser's Back instead of a handler inside one screen.
+ * It stays a browser answer: a television keeps the rail-and-content model its
+ * directional keys are built around.
  */
-function settingsUsesTouchNav() {
-  if (!Platform.isBrowser()) return false;
-  try {
-    return Boolean(globalThis.matchMedia?.("(any-pointer: coarse)")?.matches);
-  } catch (_) {
-    return false;
-  }
+function settingsUsesRoutePages() {
+  return Platform.isBrowser();
 }
 
 function updateSettingsMarqueeTargets(root) {
@@ -2415,15 +2411,23 @@ export const SettingsScreen = {
   },
 
   async mount(_params = {}, navigationContext = {}) {
-    this.container = document.getElementById("settings");
+    // Two routes share this screen, so the page is whichever one is current:
+    // the index in `#settings`, a section in `#settingsSection`.
+    const routeName = Router.getCurrent?.() || SETTINGS_ROUTE;
+    this.container = document.getElementById(routeName) || document.getElementById(SETTINGS_ROUTE);
     ScreenUtils.show(this.container);
-    if (!this.handleWheelBound) {
-      this.handleWheelBound = this.handleWheelEvent.bind(this);
-      this.container.addEventListener("wheel", this.handleWheelBound, { passive: false });
-    }
-    if (!this.handleClickBound) {
-      this.handleClickBound = this.handleClickEvent.bind(this);
-      this.container.addEventListener("click", this.handleClickBound);
+    // Two routes share this screen, so the listeners belong to the container,
+    // not to this object: a page that mounted first had already marked the
+    // click binding done, and the second page -- the section -- had no click
+    // handler at all. Every row and control there was dead, Back included.
+    if (!this.container.__settingsListeners) {
+      const listeners = {
+        wheel: (event) => this.handleWheelEvent(event),
+        click: (event) => this.handleClickEvent(event)
+      };
+      this.container.__settingsListeners = listeners;
+      this.container.addEventListener("wheel", listeners.wheel, { passive: false });
+      this.container.addEventListener("click", listeners.click);
     }
     if (Platform.isBrowser()) {
       this.browserHorizontalTabScrollCleanup?.();
@@ -2436,13 +2440,16 @@ export const SettingsScreen = {
     this.restoreRailScrollTop = persistedUiState.railScrollTop;
     this.railScrollTop = persistedUiState.railScrollTop;
     this.suppressNextRailFocusScroll = Boolean(navigationContext?.isBackNavigation);
-    // Touch navigation opens on the index. Restoring the section the user
-    // was last in lands them inside a page with no sign of what they arrived
-    // from, which is only comfortable when the rail is still on screen.
-    this.activeSection = settingsUsesTouchNav()
-      ? null
+    // The route says which page this is: the index carries no section, and a
+    // section page carries the one it was opened for. A television keeps the
+    // rail beside the content and remembers its section instead.
+    const routeSection = readSettingsRouteSection(routeName, _params);
+    this.activeSection = settingsUsesRoutePages()
+      ? routeSection
       : persistedUiState.activeSection || this.activeSection || null;
-    this.focusZone = "nav";
+    // The index page focuses the list; a section page has no list to focus, so
+    // focus starts in the section it was opened for.
+    this.focusZone = this.activeSection === null ? "nav" : "content";
     this.sidebarFocusIndex = Number.isFinite(this.sidebarFocusIndex) ? this.sidebarFocusIndex : 0;
     this.navIndex = Number.isFinite(persistedUiState.navIndex)
       ? persistedUiState.navIndex
@@ -2572,17 +2579,6 @@ export const SettingsScreen = {
     this.expandedSections[sectionId] = createDefaultExpandedState(sectionId);
   },
 
-  // Leaving a section on touch returns to the index rather than out of
-  // Settings, which is the only reading of Back once the index is a page the
-  // user arrived from.
-  async closeSectionToIndex() {
-    if (!settingsUsesTouchNav() || this.activeSection === null) return false;
-    this.setActiveSection(null);
-    this.focusZone = "nav";
-    await this.render({ refreshModel: false });
-    return true;
-  },
-
   setActiveSection(sectionId) {
     const nextSectionId = sectionId || null;
     if (this.activeSection && this.activeSection !== nextSectionId) {
@@ -2703,7 +2699,7 @@ export const SettingsScreen = {
     // The index page is a page, so it carries the screen's own title. The
     // rail beside the content is not, and each section's own header titles
     // it there.
-    const showsIndex = settingsUsesTouchNav() && this.activeSection === null;
+    const showsIndex = settingsUsesRoutePages() && this.activeSection === null;
     const order = new Map(this.visibleSections.map((item, index) => [item.id, index]));
     if (!showsIndex) {
       // The rail reads as one long list of twelve otherwise. It gets the same
@@ -2862,15 +2858,13 @@ export const SettingsScreen = {
 
   renderSectionHeader(section) {
     const copy = translateSectionCopy(section);
-    // A section opened from the index has replaced it, so it has to offer the
-    // way back. Every other layout keeps the rail on screen and needs none.
-    const back = settingsUsesTouchNav()
+    // The section page is a route, so this control pops that route. Placed and
+    // painted like every other back control in the browser build: floating on
+    // the navigation's own line, not in the header flow.
+    const back = Platform.isBrowser()
       ? `
-      <button class="settings-section-back focusable"
-              data-zone="content"
-              data-focus-key="section:back"
-              data-action="section:back"
-              aria-label="${escapeHtml(t("auth_qr_back", {}, "Back"))}">
+      <button class="settings-section-back focusable" type="button" data-settings-back
+              aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
         ${iconSvg(ROW_ICONS.back, "settings-section-back-icon")}
       </button>
     `
@@ -9166,13 +9160,13 @@ export const SettingsScreen = {
         SECTION_META.find((item) => item.id === "appearance") || SECTION_META[0]
       ];
     }
-    // Touch navigation has a real "nothing chosen yet" state -- that is the
-    // index page. Everywhere else a section is always open, so an unknown one
-    // falls back to the first rather than leaving the content blank.
-    const usesTouchNav = settingsUsesTouchNav();
+    // The index page has a real "nothing chosen yet" state. Everywhere else a
+    // section is always open, so an unknown one falls back to the first rather
+    // than leaving the content blank.
+    const usesRoutePages = settingsUsesRoutePages();
     if (
       !this.visibleSections.some((section) => section.id === this.activeSection) &&
-      !(usesTouchNav && this.activeSection === null)
+      !(usesRoutePages && this.activeSection === null)
     ) {
       this.setActiveSection(this.visibleSections[0]?.id || "appearance");
     }
@@ -9199,8 +9193,8 @@ export const SettingsScreen = {
       ).toLowerCase();
       // "index" shows the sections as a page and hides the content; "section"
       // does the reverse. Absent entirely when the rail and the content sit
-      // side by side, which is every non-touch layout.
-      if (usesTouchNav) {
+      // side by side, which is a television.
+      if (usesRoutePages) {
         shell.dataset.settingsNavMode = this.activeSection === null ? "index" : "section";
       } else {
         delete shell.dataset.settingsNavMode;
@@ -9267,7 +9261,7 @@ export const SettingsScreen = {
     // On the index page nothing is open yet, so there is no section to build.
     // Rendering one anyway would cost a full section's markup on every visit
     // to a page that never shows it.
-    const showsSection = !usesTouchNav || this.activeSection !== null;
+    const showsSection = !usesRoutePages || this.activeSection !== null;
     const renderedId = showsSection ? section.id : null;
     const sectionChanged = this.renderedSectionId !== renderedId;
     const previousScrollState = !sectionChanged ? captureSettingsScrollState(contentSlot) : null;
@@ -9465,12 +9459,31 @@ export const SettingsScreen = {
     this.applyFocus();
   },
 
-  async activateNavSelection() {
-    const section = this.visibleSections[this.navIndex];
+  // Opening a section by name, not by position. The row that was clicked says
+  // which section it is; asking the index instead meant a stale index (after a
+  // Back, the index and the page being restored disagree for a moment) could
+  // swallow the click and leave the page apparently unresponsive.
+  async openSection(sectionId) {
+    const id = String(sectionId || "").trim();
+    if (!id) {
+      return;
+    }
+    const section =
+      this.visibleSections.find((item) => item.id === id) || getSettingsSectionById(id);
     if (!section) {
       return;
     }
-    if (section.id === "trakt") {
+    // The browser opens the section's own page -- the same shape Search has
+    // when it opens Discover -- so Back is a route pop and not a handler here.
+    if (settingsUsesRoutePages()) {
+      this.activeSection = id;
+      this.integrationView = "hub";
+      this.contentFocusKey = id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
+      this.persistUiState();
+      await Router.navigate(SETTINGS_SECTION_ROUTE, { section: id });
+      return;
+    }
+    if (id === "trakt") {
       if (isDesktopSettingsBrowser()) {
         this.setActiveSection("trakt");
         await this.render();
@@ -9479,10 +9492,18 @@ export const SettingsScreen = {
       }
       return;
     }
-    this.setActiveSection(section.id);
+    this.setActiveSection(id);
     this.integrationView = "hub";
-    this.contentFocusKey = section.id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
+    this.contentFocusKey = id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
     await this.render({ refreshModel: false });
+  },
+
+  async activateNavSelection() {
+    const section = this.visibleSections[this.navIndex];
+    if (!section) {
+      return;
+    }
+    await this.openSection(section.id);
   },
 
   syncNavFocusToActive() {
@@ -9614,6 +9635,15 @@ export const SettingsScreen = {
   },
 
   async handleClickEvent(event) {
+    const backControl = event?.target?.closest?.("[data-settings-back]");
+    if (backControl && this.container?.contains?.(backControl)) {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      // The same thing the browser's Back does, because the section is a route.
+      Router.back();
+      return;
+    }
+
     const dialogBackdrop = event?.target?.closest?.(".settings-dialog-backdrop");
     if (
       isDesktopSettingsBrowser() &&
@@ -9632,13 +9662,6 @@ export const SettingsScreen = {
       return;
     }
 
-    const backButton = event?.target?.closest?.(".settings-section-back");
-    if (backButton && this.container?.contains?.(backButton)) {
-      event?.preventDefault?.();
-      await this.closeSectionToIndex();
-      return;
-    }
-
     const target = event?.target?.closest?.(
       ".settings-nav-item, .settings-content-focusable, .settings-dialog-option, [data-text-dialog-role='field']"
     );
@@ -9653,7 +9676,9 @@ export const SettingsScreen = {
         this.navIndex = clamp(navIndex, 0, Math.max(0, this.visibleSections.length - 1));
       }
       this.focusZone = "nav";
-      await this.activateNavSelection();
+      // The row itself says which section it opens. Going through the index by
+      // position could open the wrong one, or nothing, once the two disagree.
+      await this.openSection(String(target.dataset.section || ""));
       return;
     }
 
@@ -9845,7 +9870,9 @@ export const SettingsScreen = {
         await this.render({ refreshModel: false });
         return;
       }
-      if (await this.closeSectionToIndex()) {
+      // In the browser a section is its own route: Back is the browser's, so
+      // this handler leaves it alone once the dialogs above are closed.
+      if (settingsUsesRoutePages()) {
         return;
       }
       if (this.focusZone === "sidebar") {
@@ -10052,16 +10079,11 @@ export const SettingsScreen = {
       void this.render({ refreshModel: false });
       return true;
     }
-    // On touch, Settings is two pages: the index, and the section opened from
-    // it. Back has to walk that step before it leaves Settings at all. The
-    // remote's own handler does; this one -- which is where the browser's Back
-    // arrives -- never got it, so a Back inside a section fell through to the
-    // sidebar branch below, which means nothing in a touch layout, and returned
-    // true regardless. Every Back was swallowed and nothing moved.
-    if (settingsUsesTouchNav()) {
-      if (this.activeSection === null) return false;
-      void this.closeSectionToIndex();
-      return true;
+    // Settings is two routes in the browser: the index, and the section opened
+    // from it. Back there is the browser's own, so the router pops the route
+    // and nothing here may swallow it.
+    if (settingsUsesRoutePages()) {
+      return false;
     }
     if (this.focusZone === "sidebar") {
       void this.closeSidebarToNav();
@@ -10082,11 +10104,11 @@ export const SettingsScreen = {
     this.stopDesktopSimklPolling?.();
     this.stopDebridDeviceAuth();
     this.desktopAddonManager?.dispose?.();
-    if (this.container && this.handleWheelBound) {
-      this.container.removeEventListener("wheel", this.handleWheelBound);
-    }
-    if (this.container && this.handleClickBound) {
-      this.container.removeEventListener("click", this.handleClickBound);
+    const containerListeners = this.container?.__settingsListeners;
+    if (containerListeners) {
+      this.container.removeEventListener("wheel", containerListeners.wheel);
+      this.container.removeEventListener("click", containerListeners.click);
+      delete this.container.__settingsListeners;
     }
     const navSlot = this.container?.querySelector?.("[data-settings-nav]");
     if (navSlot && this.handleRailScrollBound) {
@@ -10096,8 +10118,6 @@ export const SettingsScreen = {
       cancelAnimationFrame(navSlot.settingsScrollAnimationFrame);
       navSlot.settingsScrollAnimationFrame = null;
     }
-    this.handleWheelBound = null;
-    this.handleClickBound = null;
     this.handleRailScrollBound = null;
     this.railScrollNode = null;
     this.activeSection = null;
@@ -10120,3 +10140,18 @@ export const SettingsScreen = {
     ScreenUtils.hide(this.container);
   }
 };
+
+/**
+ * The section page's own screen object.
+ *
+ * Two routes, one screen definition: the index in `settings`, the section in
+ * `settingsSection`. They must not be the same object. The router keeps a page
+ * it has navigated away from mounted underneath the next one -- it suspends
+ * `this.routes[current]` and restores it on Back -- so a second route sharing
+ * that object rewrites the container the suspended page still lives in, and
+ * the page restored on Back is drawn into the wrong element with the wrong
+ * state. Each route gets its own instance, built the way the router builds a
+ * second Detail: methods only, taken before this screen has ever run.
+ */
+export const SettingsSectionScreen =
+  createScreenPrototype(SettingsScreen) || SettingsScreen;
