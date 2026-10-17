@@ -3163,7 +3163,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #stream .stream-route-panel-summary::before {
-  content: "· ";
+  content: "Ãƒâ€šÃ‚Â· ";
 }
 
 .desktop-browser #stream .stream-route-panel-header .stream-route-filter-row {
@@ -3460,6 +3460,18 @@ html.desktop-browser {
 
   .desktop-browser #stream .stream-route-panel-shell,
   .desktop-browser #stream .stream-route-panel,
+  /* Only the collapsed bar is blurred. Nothing behind the page -- the artwork,
+     the sources panel -- gets a blur of its own, so the page keeps its own
+     picture instead of turning into one soft surface. */
+  .desktop-browser #stream .stream-route-backdrop,
+  .desktop-browser #stream .stream-route-backdrop-dim,
+  .desktop-browser #stream .stream-route-content,
+  .desktop-browser #stream .stream-route-left-inner,
+  .desktop-browser #stream .stream-route-panel-shell {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    filter: none;
+  }
   .desktop-browser #stream .stream-route-list {
     height: auto;
     overflow: visible;
@@ -14368,7 +14380,7 @@ html:not([data-nav-placement="top"])
 
 /* Account: the signed-in address.
    Side by side, the label took enough of the row that a 26-character address
-   had nowhere to go but through the middle of a word -- "…@gm / ail.com".
+   had nowhere to go but through the middle of a word -- "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦@gm / ail.com".
    Stacked, the address has the full row and stays in one piece. */
 .desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-status-card {
   display: grid;
@@ -14707,7 +14719,7 @@ html:not([data-nav-placement="top"])
 /* Library filters: one row out, the rest behind a button.
    ------------------------------------------------------------------
    Four stacked pickers took a third of a phone screen before a single item
-   appeared, and all four read "All" — a third of the screen spent saying
+   appeared, and all four read "All" ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â a third of the screen spent saying
    nothing was filtered. Type stays out, because it is the one most often
    changed. Genre, Year and Sort fold behind the button beside it. */
 /* The shell-scoped row rules below 600px set wrap and a full-width basis, and
@@ -17400,6 +17412,211 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     white-space: nowrap;
     width: max-content;
     max-width: none;
+  }
+}
+
+/* The empty bar belongs to the phone header only. Without this it is a third
+   grid item on a wide screen, which pushes the mark and the sources out of
+   their columns. */
+.desktop-browser #stream .stream-route-heading {
+  display: none;
+}
+/* ---------------------------------------------------------------------------
+   Stream on a phone: the title mark becomes the page's header.
+
+   A wide screen keeps the arrangement it has always had -- the mark in a column
+   of its own beside the sources, with the list scrolling inside its panel. On a
+   phone the page itself scrolls, so the same mark is put in the page's header:
+   centred, with no panel behind it, keeping its place and shrinking to a bar's
+   size once the page has moved past the threshold the screen sets on
+   `data-stream-header-collapsed`.
+   --------------------------------------------------------------------------- */
+@media (max-width: 960px) {
+  .desktop-browser #stream .stream-route-shell {
+    width: 100%;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  /* The artwork stays the size of the screen. Left to cover a page that is now
+     as tall as its content, it is stretched until it reads as a blurred
+     background; pinned to the viewport it stays as sharp as it was. */
+  .desktop-browser #stream .stream-route-backdrop,
+  .desktop-browser #stream .stream-route-backdrop-dim,
+  .desktop-browser #stream .stream-route-left-gradient,
+  .desktop-browser #stream .stream-route-right-gradient {
+    position: fixed;
+    inset: 0;
+  }
+
+  .desktop-browser #stream .stream-route-content {
+    position: relative;
+    inset: auto;
+    height: auto;
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: start;
+    gap: 8px;
+    padding: 0 0 calc(40px + var(--browser-safe-area-bottom));
+  }
+
+  /* The heading is the bar other pages have: the same size, and empty until
+     the mark below it has been scrolled past. The mark itself is page content,
+     under the bar rather than inside it, so nothing is spent on a box to hold
+     it. */
+  .desktop-browser #stream .stream-route-heading {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 52px;
+    padding: 0 max(16px, var(--browser-page-gutter));
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom: 1px solid transparent;
+  }
+
+  .desktop-browser #stream .stream-route-heading-logo,
+  .desktop-browser #stream .stream-route-heading-title {
+    display: none;
+  }
+
+  .desktop-browser #stream .stream-route-heading-logo {
+    width: auto;
+    max-width: min(60%, 260px);
+    max-height: 22px;
+    object-fit: contain;
+  }
+
+  .desktop-browser #stream .stream-route-heading-title {
+    max-width: min(70%, 320px);
+    overflow: hidden;
+    color: var(--text-color);
+    font-size: 16px;
+    font-weight: 650;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* The mark, as page content just under the bar. */
+  .desktop-browser #stream .stream-route-left {
+    position: static;
+    top: auto;
+    z-index: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px max(16px, var(--browser-page-gutter)) 10px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: none;
+  }
+
+  .desktop-browser #stream .stream-route-left-inner {
+    width: min(100%, 760px);
+    align-items: center;
+    text-align: center;
+  }
+
+  .desktop-browser #stream .stream-route-logo {
+    width: auto;
+    max-width: min(76%, 360px);
+    max-height: 64px;
+    margin-bottom: 6px;
+  }
+
+  /* The badge, and the episode title under it rather than beside it: the old
+     side-by-side margin pushed the title off centre once stacked. */
+  .desktop-browser #stream .stream-route-episode-code {
+    display: block;
+    width: max-content;
+    margin-inline: auto;
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-color);
+    padding: 3px 11px;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(var(--bg-elevated-rgb) / 0.55);
+  }
+
+  .desktop-browser #stream .stream-route-episode-code + .stream-route-subtitle {
+    display: block;
+    margin-left: 0;
+    vertical-align: baseline;
+  }
+
+  .desktop-browser #stream .stream-route-subtitle {
+    margin-top: 6px;
+    font-size: 15px;
+  }
+
+  .desktop-browser #stream .stream-route-detail-line {
+    margin-top: 2px;
+    font-size: 13px;
+  }
+  /* Once the mark has been scrolled past, it moves into the bar and the bar
+     becomes a surface: the only place on this page with a blur. */
+  .desktop-browser
+    #stream
+    .stream-route-shell[data-stream-header-collapsed="true"]
+    .stream-route-heading {
+    background: transparent;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .desktop-browser
+    #stream
+    .stream-route-shell[data-stream-header-collapsed="true"]
+    .stream-route-heading-logo,
+  .desktop-browser
+    #stream
+    .stream-route-shell[data-stream-header-collapsed="true"]
+    .stream-route-heading-title {
+    display: block;
+  }
+
+  /* The sources take
+ the width the header does not use, and the page -- not the
+     list -- is what scrolls. */
+  .desktop-browser #stream .stream-route-right {
+    width: 100%;
+    max-width: min(1240px, calc(100% - 2 * max(20px, var(--browser-page-gutter))));
+    margin-top: 10px;
+    justify-self: center;
+  }
+
+  .desktop-browser #stream .stream-route-panel-shell {
+    height: auto;
+  }
+
+  .desktop-browser #stream .stream-route-list {
+    height: auto;
+    overflow: visible;
+    padding-bottom: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser #stream .stream-route-left,
+  .desktop-browser #stream .stream-route-logo,
+  .desktop-browser #stream .stream-route-episode-code,
+  .desktop-browser #stream .stream-route-subtitle {
+    transition: none;
   }
 }
 
