@@ -132,8 +132,10 @@ test("the section page carries the same floating back control as every other scr
 test("hovering a Settings row paints the focus state, not a separate one", async () => {
   const desktopCss = await readFile(desktopCssUrl, "utf8");
 
+  // The index rows are borderless inside their group card, so the ring has to
+  // be painted on the row itself, at focus weight.
   assert.match(
     desktopCss,
-    /@media \(hover: hover\) and \(pointer: fine\) \{\s*\/\*[\s\S]*?\*\/\s*\.desktop-browser \.settings-shell \.settings-nav-item:hover \{\s*background: var\(--focus-bg\);\s*color: var\(--text-color\);\s*border-color: var\(--focus-color\) !important;\s*\}/
+    /\.settings-shell\[data-settings-nav-mode="index"\]\s*\.settings-nav-group\s*\.settings-nav-item:hover \{\s*background: var\(--card-bg\);\s*color: #fff;\s*font-weight: 600;\s*border: 2px solid var\(--focus-color\) !important;/
   );
 });

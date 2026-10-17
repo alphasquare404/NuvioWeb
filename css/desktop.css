@@ -6618,13 +6618,9 @@ html.desktop-browser {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  /* A pointer over a row puts it in the same state a remote's focus would:
-     the row paints the focus fill and the focus border, so hovering and
-     focusing are one appearance rather than two. */
   .desktop-browser .settings-shell .settings-nav-item:hover {
     background: var(--focus-bg);
     color: var(--text-color);
-    border-color: var(--focus-color) !important;
   }
 }
 
@@ -14016,6 +14012,23 @@ body.desktop-browser {
 
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item + .settings-nav-item {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Hover on the index page is focus, not a second appearance.
+   These rows are not cards: the group above them owns the box, and the row
+   itself is borderless, so the ring has to be painted here and with the same
+   weight a remote's focus gives it. `!important` for the same reason the
+   focused ring uses it: the row resets its border to nothing above. */
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="index"]
+    .settings-nav-group
+    .settings-nav-item:hover {
+    background: var(--card-bg);
+    color: #fff;
+    font-weight: 600;
+    border: 2px solid var(--focus-color) !important;
+  }
 }
 
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-item[style*="--settings-nav-accent"] .settings-nav-icon {
