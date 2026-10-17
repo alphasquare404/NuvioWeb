@@ -13884,31 +13884,45 @@ body.desktop-browser {
    the page has scrolled past the threshold the screen sets on
    `data-settings-header-collapsed`. The floating navigation keeps its own line,
    so the heading pins below that line when the navigation is at the top and
-   against the safe area when it is not. */
+   against the edge of the screen when it is not.
+   The bar is pulled out to both edges: a band that stopped at the text's margin
+   looked like a panel floating over the page rather than the top of it. */
+.desktop-browser .settings-shell[data-settings-nav-mode] {
+  /* How far the page's own padding holds the heading in from the edge. */
+  --settings-header-bleed: 48px;
+}
+
 .desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
 .desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
   position: sticky;
   top: var(--settings-header-sticky-top, 0px);
   z-index: 8;
-  /* No slab of colour: the bar shows the page's own background exactly as it
-     is, whatever the theme paints there, and blurs whatever scrolls beneath
-     instead of painting over it. A solid fill read as a black box on a themed
-     page, because the page's colour is not always --bg-color. */
+  margin-inline: calc(-1 * var(--settings-header-bleed));
+  /* The negative margin widens the bar; this puts the text back on the page's
+     own grid, so nothing about the heading moves except its background. */
+  padding-inline: var(--settings-header-bleed);
+  /* No slab of colour, and no blur either until the bar has something to hold
+     back: at rest the heading is simply the top of the page. */
   background: transparent;
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   border-bottom: 1px solid transparent;
-  transition: border-color 180ms ease;
 }
 
-/* A hairline once the bar is holding content back, so the edge has a line to
-   stop on; at rest the heading is simply part of the page. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header {
+  padding-inline: calc(var(--settings-header-bleed) + 2px);
+}
+
+/* Once it is holding content back the bar becomes a surface: the page's colour
+   shows through, and what scrolls beneath is blurred rather than painted over.
+   A solid fill read as a black box on a themed page, because the page's colour
+   is not always --bg-color. */
 .desktop-browser
   .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
   .settings-nav-index-header,
 .desktop-browser
   .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
   .settings-content-header {
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -13918,9 +13932,26 @@ html[data-nav-placement="top"].desktop-browser .settings-shell[data-settings-nav
   );
 }
 
+/* With the navigation at the bottom or in a rail, nothing floats at the top, so
+   the bar meets the edge of the screen -- the safe area where there is one. */
 html[data-nav-placement="bottom"].desktop-browser .settings-shell[data-settings-nav-mode],
 html[data-nav-placement="sidebar"].desktop-browser .settings-shell[data-settings-nav-mode] {
-  --settings-header-sticky-top: calc(env(safe-area-inset-top, 0px) + 12px);
+  --settings-header-sticky-top: env(safe-area-inset-top, 0px);
+}
+
+/* A wide page title sits at the start of its row, which is exactly where Back
+   floats once the bar is at the very top. On a narrow page the title is centred
+   and clears the button on its own, so this is only needed from the wider
+   layout up. */
+@media (min-width: 601px) {
+  html[data-nav-placement="bottom"].desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header,
+  html[data-nav-placement="sidebar"].desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header {
+    padding-inline-start: calc(var(--settings-header-bleed) + 56px);
+  }
 }
 
 /* On these two pages the screen element is what scrolls, not the frames the
@@ -17102,10 +17133,23 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
      both of them rather than run under one. */
   .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
   .desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header,
-  .desktop-browser .settings-shell .settings-nav-index-header,
-  .desktop-browser .settings-shell .settings-content-header {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
     padding-inline: 56px;
+  }
+
+  .desktop-browser .settings-shell[data-settings-nav-mode] {
+    --settings-header-bleed: 16px;
+  }
+
+  /* Clear of the back button on the left and the rail button on the right, and
+     wide enough that a long section title -- "Content & Discovery" -- stays on
+     one line instead of folding into two. */
+  .desktop-browser .settings-shell .settings-content-header {
+    padding-inline: calc(var(--settings-header-bleed) + 24px);
+  }
+
+  .desktop-browser .settings-shell .settings-content-header .settings-title {
+    font-size: clamp(20px, 5.4vw, 26px);
   }
 
   .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
