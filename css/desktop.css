@@ -18244,3 +18244,23 @@ html:not([data-nav-placement="top"])
 .desktop-browser #castDetail .person-heading {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* The safe area was being counted twice on a phone: the page already reserved
+   it in its navigation clearance, and the heading then reserved it again. The
+   page keeps only the part that is not the notch, so the heading's own block
+   lands exactly where it did before -- and the bar still carries the notch when
+   it pins to the edge. */
+@media (any-pointer: coarse) {
+  html:not([data-nav-placement="top"]) .desktop-browser .settings-shell .settings-workspace {
+    padding-top: 8px;
+  }
+}
+
+/* The section heading was 2px from the top of its block, not 12px; it keeps its
+   own measure, plus the notch. */
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 2px);
+}
