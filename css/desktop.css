@@ -19027,3 +19027,36 @@ html:not([data-nav-placement="top"])
     transform: translateY(-50%);
   }
 }
+
+/* Desktop: the title and the line under it share one left edge, and Back sits to
+   the left of both, centred on the title's own line.
+   The copy is the positioning box; Back is pulled out of it by exactly the space
+   the heading reserves, so the two text lines both start where the copy starts. */
+@media (min-width: 601px) {
+  .desktop-browser #catalogSeeAll .seeall-header {
+    padding-inline: calc(var(--seeall-gutter) + 56px) var(--seeall-gutter);
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-header-copy {
+    position: relative;
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-title-row {
+    position: static;
+    width: auto;
+    justify-content: flex-start;
+  }
+
+  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back,
+  .desktop-browser
+    #catalogSeeAll
+    .seeall-header[data-collapsed="true"]
+    .catalog-seeall-browser-back {
+    position: absolute;
+    top: 0;
+    left: -56px;
+    height: 1.1em;
+    margin: 0;
+    transform: none;
+  }
+}
