@@ -18012,3 +18012,27 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     transition: none;
   }
 }
+
+/* On a phone the rail no longer needs to be pulled out to the edges: it lives in
+   the column, so the cards and the section title share one left edge by
+   construction instead of by cancelling margins. */
+@media (max-width: 700px) {
+  .desktop-browser #castDetail .browser-person-detail-credits {
+    margin-inline: 0;
+  }
+
+  .desktop-browser
+    #castDetail
+    .browser-person-detail-credits
+    .cast-detail-section-title {
+    padding-inline: 0;
+  }
+
+  .desktop-browser #castDetail .browser-person-detail-credits .cast-credit-track {
+    padding-inline: 0;
+  }
+
+  .desktop-browser #castDetail .cast-credit-track::after {
+    flex-basis: 0;
+  }
+}
