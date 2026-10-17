@@ -13998,10 +13998,27 @@ body.desktop-browser {
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group {
   display: flex;
   flex-direction: column;
+  /* `gap` is inherited from the rail's stacked-cards rule; stated here so the
+     page's own spacing cannot be changed by a rule written for that layout. */
+  gap: 0;
+  /* Rows start at the card's edge. Whatever height the column ends up with,
+     the extra space belongs under the last row, never above the first. */
+  justify-content: flex-start;
+  align-content: flex-start;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 18px;
   background: rgba(30, 30, 36, 0.86);
+}
+
+/* The row that meets the card's curve takes its shape, so a hovered or focused
+   first row fills the corner instead of stopping short of it. */
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item:first-child {
+  border-radius: 17px 17px 0 0;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item:last-child {
+  border-radius: 0 0 17px 17px;
 }
 
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item {
@@ -14205,7 +14222,7 @@ body.desktop-browser {
 
 @media (hover: hover) and (pointer: fine) {
   .settings-section-back:hover {
-    background: rgba(255, 255, 255, 0.16);
+    background: rgba(18, 18, 20, 0.62);
   }
 }
 
@@ -16849,7 +16866,12 @@ html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-reveal,
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser #detail .detail-desktop-back-button:hover,
   .desktop-browser #castDetail .detail-desktop-back-button:hover,
-  .desktop-browser #stream .stream-desktop-back-button:hover {
+  .desktop-browser #stream .stream-desktop-back-button:hover,
+  /* Settings' section page carries the same control, so it takes the same
+     hover: the shared resting rule above already lists it, and a control that
+     lightens on hover while every other back control darkens is a different
+     button to the eye. */
+  .desktop-browser .settings-shell .settings-section-back:hover {
     background: rgba(18, 18, 20, 0.62);
   }
 }
