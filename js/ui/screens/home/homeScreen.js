@@ -11157,24 +11157,36 @@ export const HomeScreen = {
       return;
     }
     const hero = showHeroSection ? this.container?.querySelector(".home-hero") : null;
-    const heroHeight = hero ? hero.offsetHeight : 0;
+    // In the browser the page does not scroll inside `.home-main`: its overflow is
+    // visible and the scrolling happens in the screen (or the document). Reading
+    // `main.scrollTop` there was always zero, so the bar never appeared. Compare by
+    // position on screen instead, against whichever element really scrolls --
+    // offsetTop belongs to the offset parent, which may be neither of the two.
+    const owner = getBrowserVerticalScrollOwner(this.container) || main;
     const update = () => {
-      const threshold = main.scrollTop + 72;
+      const ownerTop = owner?.getBoundingClientRect?.().top ?? 0;
       let activeTitle = "";
       sections.forEach((section) => {
-        if (section.offsetTop <= threshold) {
+        const relative = section.getBoundingClientRect().top - ownerTop;
+        if (relative <= 72) {
           activeTitle = String(section.dataset.sectionTitle || "");
         }
       });
-      const shouldShow =
-        activeTitle && (!showHeroSection || main.scrollTop > Math.max(0, heroHeight - 48));
+      const heroBottom = hero?.getBoundingClientRect?.().bottom;
+      const pastHero = Number.isFinite(heroBottom)
+        ? heroBottom <= ownerTop + 56
+        : Number(owner?.scrollTop || 0) > Math.max(0, (hero?.offsetHeight || 0) - 48);
+      const shouldShow = activeTitle && (!showHeroSection || pastHero);
       sticky.textContent = activeTitle;
       sticky.classList.toggle("is-visible", Boolean(shouldShow));
     };
-    main.addEventListener("scroll", update, { passive: true });
+    const onScroll = () => update();
+    globalThis.document?.addEventListener?.("scroll", onScroll, { capture: true, passive: true });
+    globalThis.addEventListener?.("resize", onScroll, { passive: true });
     update();
     this.gridStickyCleanup = () => {
-      main.removeEventListener("scroll", update);
+      globalThis.document?.removeEventListener?.("scroll", onScroll, true);
+      globalThis.removeEventListener?.("resize", onScroll);
     };
   },
 
