@@ -6,6 +6,7 @@ import {
   SETTINGS_ROUTE,
   SETTINGS_SECTION_ROUTE
 } from "./settingsRoutes.js";
+import { shouldCollapseSettingsHeader } from "./settingsHeaderCollapse.js";
 import { APP_IDENTITY } from "../../../core/app/appIdentity.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -2536,6 +2537,83 @@ export const SettingsScreen = {
       });
     }
     await this.render({ refreshModel: false });
+    // After the heading exists: a page restored by Back is already scrolled, so
+    // its heading has to be in the right state on the first frame.
+    this.bindHeaderCollapse();
+  },
+
+  /**
+   * Collapses the page heading once the page has scrolled past its threshold.
+   *
+   * A passive scroll listener with one `requestAnimationFrame` per burst: the
+   * heading is a class on the shell, and the animation is the stylesheet's. The
+   * listener belongs to this mount, so it is removed by `unbindHeaderCollapse`.
+   */
+  bindHeaderCollapse() {
+    this.unbindHeaderCollapse();
+    if (!settingsUsesRoutePages()) {
+      return;
+    }
+    let frame = 0;
+
+    // The page scrolls inside its own screen element in this layout, not the
+    // document, so the position is read from whichever of the two is actually
+    // scrolling. Scroll events do not bubble, but they are delivered in the
+    // capture phase, which is why the listener sits on the document.
+    const readScrollTop = () => {
+      const container = this.container;
+      if (container && container.scrollHeight > container.clientHeight + 1) {
+        return Number(container.scrollTop || 0);
+      }
+      const document = globalThis.document;
+      return Number(document?.scrollingElement?.scrollTop ?? globalThis.scrollY ?? 0);
+    };
+
+    const apply = () => {
+      frame = 0;
+      const shell = this.container?.querySelector(".settings-shell");
+      if (!shell) {
+        return;
+      }
+      const collapsed = shouldCollapseSettingsHeader(
+        readScrollTop(),
+        shell.dataset.settingsHeaderCollapsed === "true"
+      );
+      const next = collapsed ? "true" : "false";
+      if (shell.dataset.settingsHeaderCollapsed !== next) {
+        shell.dataset.settingsHeaderCollapsed = next;
+      }
+    };
+
+    const onScroll = () => {
+      if (frame) {
+        return;
+      }
+      const request = globalThis.requestAnimationFrame?.(apply);
+      if (request) {
+        frame = request;
+        return;
+      }
+      apply();
+    };
+
+    this.headerCollapseCleanup = () => {
+      globalThis.document?.removeEventListener?.("scroll", onScroll, true);
+      if (frame) {
+        globalThis.cancelAnimationFrame?.(frame);
+        frame = 0;
+      }
+    };
+    globalThis.document?.addEventListener?.("scroll", onScroll, {
+      capture: true,
+      passive: true
+    });
+    apply();
+  },
+
+  unbindHeaderCollapse() {
+    this.headerCollapseCleanup?.();
+    this.headerCollapseCleanup = null;
   },
 
   ensureExpandedState(sectionId) {
@@ -10095,6 +10173,7 @@ export const SettingsScreen = {
 
   cleanup() {
     this.persistUiState();
+    this.unbindHeaderCollapse();
     this.offlineDownloadsUnsubscribe?.();
     this.offlineDownloadsUnsubscribe = null;
     this.browserHorizontalTabScrollCleanup?.();

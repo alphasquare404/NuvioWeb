@@ -13878,6 +13878,98 @@ body.desktop-browser {
   padding: 12px 2px 18px;
 }
 
+/* A heading that keeps its place.
+   ------------------------------------------------------------------
+   The title stays where it is -- centred -- and shrinks to a bar's size once
+   the page has scrolled past the threshold the screen sets on
+   `data-settings-header-collapsed`. The floating navigation keeps its own line,
+   so the heading pins below that line when the navigation is at the top and
+   against the safe area when it is not. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
+  position: sticky;
+  top: var(--settings-header-sticky-top, 0px);
+  z-index: 8;
+  /* Solid, with the fade below it: content sliding under the title must not be
+     legible through the heading itself. The fade is a separate strip so the
+     text never sits inside a half-transparent band. */
+  background: var(--bg-color);
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header::after,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 8px;
+  background: linear-gradient(to bottom, var(--bg-color), transparent);
+  pointer-events: none;
+}
+
+html[data-nav-placement="top"].desktop-browser .settings-shell[data-settings-nav-mode] {
+  --settings-header-sticky-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 10px
+  );
+}
+
+html[data-nav-placement="bottom"].desktop-browser .settings-shell[data-settings-nav-mode],
+html[data-nav-placement="sidebar"].desktop-browser .settings-shell[data-settings-nav-mode] {
+  --settings-header-sticky-top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+
+/* On these two pages the screen element is what scrolls, not the frames the
+   rail layout scrolls inside. Left hidden, the frame becomes the sticky box's
+   scrollport and the heading simply scrolls away with the page. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-sidebar-frame,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-frame {
+  overflow: visible;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-title {
+  transition: font-size 180ms ease;
+}
+
+.desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header
+  .settings-subtitle {
+  overflow: hidden;
+  max-height: 48px;
+  opacity: 1;
+  transition:
+    max-height 180ms ease,
+    margin 180ms ease,
+    opacity 150ms ease;
+}
+
+/* Collapsed: a bar's title, and no subtitle. */
+.desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-title {
+  font-size: 18px;
+}
+
+.desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header
+  .settings-subtitle {
+  max-height: 0;
+  margin: 0;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser .settings-shell[data-settings-nav-mode] .settings-title,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header
+    .settings-subtitle {
+    transition: none;
+  }
+}
+
 /* Grouped index: each group is one card with its rows divided inside it, an
    account card above them, and the mark at the foot. The wash behind it all is
    the theme's own colour, so it follows whatever Appearance is set to rather
