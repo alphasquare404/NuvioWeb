@@ -276,6 +276,7 @@ export const CatalogSeeAllScreen = {
       return;
     }
     if (result.status !== "success") {
+      this.lastLoadStatus = `load failed: ${result?.status || "unknown"}`;
       this.firstLoadSettled = true;
       this.loading = false;
       this.hasMore = false;
@@ -300,6 +301,7 @@ export const CatalogSeeAllScreen = {
       });
       this.nextSkip = skip + 100;
     }
+    this.lastLoadStatus = `load ${skip}: ${rawIncoming.length} raw, ${incoming.length} kept, ${this.items.length} total`;
     this.hasMore = rawIncoming.length > 0;
     this.firstLoadSettled = true;
     this.loading = false;
@@ -762,7 +764,7 @@ export const CatalogSeeAllScreen = {
           )
           .join("")
       : this.firstLoadSettled
-        ? `<div class="seeall-empty">${escapeHtml(t("catalog_see_all_empty_title", {}, "No items available"))}</div>`
+        ? `<div class="seeall-empty">${escapeHtml(t("catalog_see_all_empty_title", {}, "No items available"))}<div class="seeall-empty-detail">${escapeHtml([descriptor.type, descriptor.catalogId, this.lastLoadStatus].filter(Boolean).join(" · "))}</div></div>`
         : "";
 
     this.container.innerHTML = `
