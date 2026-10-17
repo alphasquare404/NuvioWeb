@@ -18436,3 +18436,43 @@ html:not([data-nav-placement="top"])
 .desktop-browser #catalogSeeAll .seeall-header[data-collapsed="true"] .seeall-subtitle {
   display: none;
 }
+
+/* ---------------------------------------------------------------------------
+   See All's heading reads like Discover's.
+
+   Same title measure, and the back control stays in the heading while its
+   circle is made of the same glass as the floating navigation: the same
+   transparency (rgba(18, 18, 20, 0.46)), the same blur and saturation, and the
+   same hairline border.
+   --------------------------------------------------------------------------- */
+.desktop-browser #catalogSeeAll .seeall-title {
+  font-size: clamp(30px, 2.5vw, 40px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(2px) saturate(150%);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+}
+
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* The same gutter as the list pages, so the two headings sit on one grid: the
+   title, the back control and the cards all share one left edge at every width. */
+.desktop-browser #catalogSeeAll .seeall-shell {
+  --seeall-gutter: clamp(24px, 2vw, 40px);
+}
+
+@media (max-width: 760px) {
+  .desktop-browser #catalogSeeAll .seeall-shell {
+    --seeall-gutter: var(--browser-page-gutter);
+  }
+}
