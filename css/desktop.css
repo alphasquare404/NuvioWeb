@@ -3460,6 +3460,18 @@ html.desktop-browser {
 
   .desktop-browser #stream .stream-route-panel-shell,
   .desktop-browser #stream .stream-route-panel,
+  /* Only the collapsed bar is blurred. Nothing behind the page -- the artwork,
+     the sources panel -- gets a blur of its own, so the page keeps its own
+     picture instead of turning into one soft surface. */
+  .desktop-browser #stream .stream-route-backdrop,
+  .desktop-browser #stream .stream-route-backdrop-dim,
+  .desktop-browser #stream .stream-route-content,
+  .desktop-browser #stream .stream-route-left-inner,
+  .desktop-browser #stream .stream-route-panel-shell {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    filter: none;
+  }
   .desktop-browser #stream .stream-route-list {
     height: auto;
     overflow: visible;
@@ -17518,8 +17530,8 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     .stream-route-shell[data-stream-header-collapsed="true"]
     .stream-route-left {
     padding: calc(var(--browser-safe-area-top) + 8px) max(20px, var(--browser-page-gutter)) 8px;
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
   }
 
