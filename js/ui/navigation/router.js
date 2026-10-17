@@ -32,6 +32,14 @@ import { ProfileManager } from "../../core/profile/profileManager.js";
 import { RouteStateStore } from "./routeStateStore.js";
 import { getBrowserVerticalScrollOwner } from "./browserScrollPosition.js";
 import { setBrowserRouteTitle } from "./browserDocumentTitle.js";
+import {
+  canStackRouteUnderItself,
+  createRouteContainer,
+  createRouteInstance,
+  createScreenPrototype,
+  destroyRouteInstance,
+  STACKABLE_ROUTES
+} from "./routeLayerInstances.js";
 import { bindBrowserPullToRefresh } from "../components/browserPullToRefresh.js";
 
 const ROUTER_PERF_DEBUG = Boolean(
@@ -293,7 +301,34 @@ export const Router = {
     };
   },
 
+  // The methods a second instance of a stackable route is built from, taken
+  // here because here the registered screen has not run yet. Taken later it
+  // would carry that screen's bound event handlers, and an instance built on
+  // it would skip binding its own.
+  //
+  // The registered screen itself is left exactly where it is: a route that is
+  // never reached from itself behaves as though none of this existed.
+  captureRoutePrototypes() {
+    if (!this.routePrototypes) {
+      this.routePrototypes = {};
+    }
+    STACKABLE_ROUTES.forEach((routeName) => {
+      if (this.routePrototypes[routeName] || !this.routes[routeName]) {
+        return;
+      }
+      this.routePrototypes[routeName] = createScreenPrototype(this.routes[routeName]);
+    });
+  },
+
+  // No prototype means no second instance: a route whose methods were never
+  // captured clean is remounted the way it always was, rather than layered
+  // on top of a screen it would silently share handlers with.
+  routePrototypeFor(routeName) {
+    return this.routePrototypes?.[routeName] || null;
+  },
+
   init() {
+    this.captureRoutePrototypes();
     if (this.popstateBound) {
       return;
     }
@@ -503,14 +538,14 @@ export const Router = {
 
   // A screen can only be layered under another when the entry it occupies is
   // still reachable by Back, and when it is not about to have its own DOM
-  // reused. Every route shares one container per route name, so a route can
-  // never be layered under itself -- that is what makes Detail A -> Detail B a
-  // genuine remount rather than a preference.
+  // reused. A route reached from itself used to fail the second test for want
+  // of a second container; a stackable route is given one, so Detail A stays
+  // mounted under Detail B and Back reveals it rather than rebuilding it.
   canSuspendOutgoingRoute(routeName, outgoingHistoryIndex, options = {}) {
     return Boolean(
       Platform.isBrowser() &&
       this.current &&
-      this.current !== routeName &&
+      (this.current !== routeName || options?.stackUnderItself) &&
       !NEVER_SUSPEND_ROUTES.has(this.current) &&
       !options?.replaceHistory &&
       !NON_BACKSTACK_ROUTES.has(this.current) &&
@@ -524,7 +559,7 @@ export const Router = {
     }
     const parentScreen = this.routes[this.current];
     const parentContainer = parentScreen?.container || document?.getElementById?.(this.current);
-    const childContainer = document?.getElementById?.(routeName);
+    const childContainer = options?.childContainer || document?.getElementById?.(routeName);
     if (!parentScreen || !parentContainer || !childContainer) {
       return false;
     }
@@ -635,23 +670,34 @@ export const Router = {
       const evicted = this.suspendedRouteStack.shift();
       this.restoreSuspendedLayerChrome(evicted);
       evicted?.screen?.cleanup?.();
+      destroyRouteInstance(evicted?.screen);
     }
     this.normalizeLayerZIndices();
   },
 
-  // Releases any live layer that owns the container `routeName` is about to
-  // mount into. One container per route name means the incoming mount would
-  // wipe that layer's DOM anyway; cleaning it up first keeps the stack honest
-  // about what is actually still alive.
-  releaseSuspendedLayersForRoute(routeName) {
+  // Releases any live layer whose DOM the incoming mount would wipe -- which
+  // is a question about the container, not the route name. A stackable route
+  // mounts into a container of its own, so its earlier layers are left alone;
+  // every other route still mounts into the one container it has, and the
+  // layer holding it is cleaned up first to keep the stack honest about what
+  // is actually still alive.
+  releaseSuspendedLayersForRoute(routeName, incomingContainer = null) {
+    const container =
+      incomingContainer ||
+      this.routes[routeName]?.container ||
+      document?.getElementById?.(routeName);
     for (let index = this.suspendedRouteStack.length - 1; index >= 0; index -= 1) {
       const layer = this.suspendedRouteStack[index];
       if (layer.route !== routeName) {
         continue;
       }
+      if (container && layer.screen?.container && layer.screen.container !== container) {
+        continue;
+      }
       this.suspendedRouteStack.splice(index, 1);
       this.restoreSuspendedLayerChrome(layer);
       layer.screen?.cleanup?.();
+      destroyRouteInstance(layer.screen);
     }
     this.normalizeLayerZIndices();
   },
@@ -684,8 +730,26 @@ export const Router = {
     if (!suspended) return null;
     this.restoreSuspendedLayerChrome(suspended);
     this.normalizeLayerZIndices();
-    if (cleanup) suspended.screen?.cleanup?.();
+    if (cleanup) {
+      suspended.screen?.cleanup?.();
+      this.discardRouteInstance(suspended.screen, suspended.route);
+    }
     return suspended;
+  },
+
+  // An instance that is not coming back goes, and its container with it. The
+  // route is left pointing at a fresh instance so the next mount starts clean
+  // rather than on the state this one leaves behind.
+  discardRouteInstance(screen, routeName) {
+    if (!screen || !this.routePrototypes?.[routeName]) {
+      return;
+    }
+    const removed = destroyRouteInstance(screen);
+    if (removed && this.routes[routeName] === screen) {
+      // The route was pointing at the instance that just left with its
+      // container, so the next mount starts from a clean one.
+      this.routes[routeName] = createRouteInstance(this.routePrototypeFor(routeName), null);
+    }
   },
 
   // Hard reset for state that outlives navigation itself (profile switch),
@@ -724,7 +788,17 @@ export const Router = {
       this.releaseTopSuspendedLayer({ cleanup: true });
     }
     const suspended = this.releaseTopSuspendedLayer();
-    this.routes[previousRoute]?.cleanup?.();
+    const outgoingScreen = this.routes[previousRoute];
+    outgoingScreen?.cleanup?.();
+    // The route points at whichever instance is on screen. Back reveals the
+    // one that was layered underneath, so it takes the route back; the one
+    // that was covering it is discarded with its container.
+    if (suspended?.screen && suspended.route === routeName && this.routePrototypes?.[routeName]) {
+      if (outgoingScreen && outgoingScreen !== suspended.screen) {
+        destroyRouteInstance(outgoingScreen);
+      }
+      this.routes[routeName] = suspended.screen;
+    }
     // The screen being left owned a pull-to-refresh binding, with its own
     // touch listeners and its own indicator element. Rebinding without
     // releasing it first leaves both behind, and every Back adds another set.
@@ -774,9 +848,8 @@ export const Router = {
     const skipStackPush = Boolean(options?.skipStackPush);
     const replaceHistory = Boolean(options?.replaceHistory);
     const targetParams = params || {};
-    const Screen = this.routes[routeName];
 
-    if (!Screen) {
+    if (!this.routes[routeName]) {
       setBrowserRouteTitle("");
       console.error("Route not found:", routeName);
       return;
@@ -818,17 +891,54 @@ export const Router = {
       this.settlePreviousRouteBack({ route: this.current, index: this.browserHistoryIndex });
       return;
     }
+    // Detail reached from Detail -- More Like This, or a cast member's page --
+    // is a forward step like any other, so it gets a container and an instance
+    // of its own and the page it came from stays mounted underneath it.
+    const stackUnderItself = canStackRouteUnderItself({
+      routeName,
+      currentRoute: this.current,
+      isBrowser: Platform.isBrowser(),
+      fromHistory,
+      isBackNavigation: options?.isBackNavigation,
+      replaceHistory,
+      historyIndex: outgoingHistoryIndex,
+      sameScreen: describesSameScreen(this.currentParams, targetParams),
+      nonBackstack: NON_BACKSTACK_ROUTES.has(this.current)
+    });
+    const stackedContainer =
+      stackUnderItself && this.routePrototypeFor(routeName)
+        ? createRouteContainer(document, routeName)
+        : null;
+
     // Mounting rebuilds this route's container from scratch, so any layer still
-    // holding that same container has to go first.
-    this.releaseSuspendedLayersForRoute(routeName);
+    // holding that same container has to go first. A stacked navigation mounts
+    // into a container nothing else owns, so it releases nothing.
+    this.releaseSuspendedLayersForRoute(routeName, stackedContainer);
 
     // Cleanup current
     const shouldSkipPush = skipStackPush || NON_BACKSTACK_ROUTES.has(previousRoute);
     this.browserPullToRefreshCleanup?.();
     this.browserPullToRefreshCleanup = null;
-    if (this.current && this.current !== routeName) {
+    const stackingNow = Boolean(stackedContainer);
+    if (this.current && (this.current !== routeName || stackingNow)) {
       this.captureCurrentRouteState(routeName, options?.captureHistoryIndex);
-      const suspendParent = this.suspendCurrentRouteUnder(routeName, outgoingHistoryIndex, options);
+      const suspendParent = this.suspendCurrentRouteUnder(routeName, outgoingHistoryIndex, {
+        ...options,
+        stackUnderItself: stackingNow,
+        childContainer: stackedContainer
+      });
+      if (stackingNow) {
+        if (suspendParent) {
+          // The outgoing instance keeps the container it is still drawn in.
+          this.routes[routeName] = createRouteInstance(
+            this.routePrototypeFor(routeName),
+            stackedContainer
+          );
+        } else {
+          // Nothing was layered, so the new container has nothing to hold.
+          stackedContainer?.remove?.();
+        }
+      }
       if (!suspendParent) {
         this.routes[this.current].cleanup?.();
         // Not suspending the outgoing screen says nothing about whether the
@@ -851,6 +961,11 @@ export const Router = {
       this.captureCurrentRouteState(routeName, options?.captureHistoryIndex);
       this.routes[this.current].cleanup?.();
     }
+
+    // Resolved here rather than at the top: a stacked navigation has just
+    // replaced the route's screen with the instance that owns the new
+    // container, and that is the one to mount.
+    const Screen = this.routes[routeName];
 
     this.current = routeName;
     window.__NUVIO_CURRENT_ROUTE__ = routeName;
