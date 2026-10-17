@@ -18930,3 +18930,100 @@ html:not([data-nav-placement="top"])
     transform: none;
   }
 }
+
+/* See All's Back goes back into the title's own row. In flow, the row centres it
+   against the title by construction -- at rest, collapsed, and at any safe-area
+   size -- which is what the absolute version kept getting wrong on a phone. On a
+   narrow screen the negative start margin keeps the centred title centred. */
+.desktop-browser #catalogSeeAll .seeall-title-row {
+  position: static;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+  position: static;
+  top: auto;
+  left: auto;
+  flex: 0 0 32px;
+  width: 32px;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  font-size: clamp(30px, 2.5vw, 40px);
+  transform: none;
+  z-index: 2;
+}
+
+.desktop-browser
+  #catalogSeeAll
+  .seeall-header[data-collapsed="true"]
+  .catalog-seeall-browser-back {
+  font-size: 18px;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+    margin-inline-start: -44px;
+  }
+}
+
+@media (min-width: 601px) {
+  .desktop-browser #catalogSeeAll .seeall-title-row {
+    justify-content: flex-start;
+  }
+}
+
+/* The collapsed rule from the older, absolute version still carries a
+   translateY(-50%), which pulled the icon off the title's line. Same
+   specificity, later in the file, so it wins. */
+.desktop-browser
+  #catalogSeeAll
+  .seeall-header[data-collapsed="true"]
+  .catalog-seeall-browser-back {
+  position: static;
+  top: auto;
+  left: auto;
+  height: auto;
+  transform: none;
+}
+
+/* On a phone the Back is pinned to the row's left edge and the row itself is the
+   positioning box, so the title stays centred while the icon sits at the page's
+   own margin. The row is not the heading: nothing here can unpin it. */
+@media (max-width: 600px) {
+  .desktop-browser #catalogSeeAll .seeall-header {
+    padding-inline: var(--seeall-gutter);
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-title-row {
+    position: relative;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back,
+  .desktop-browser
+    #catalogSeeAll
+    .seeall-header[data-collapsed="true"]
+    .catalog-seeall-browser-back {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: auto;
+    margin: 0;
+    transform: translateY(-50%);
+  }
+}
