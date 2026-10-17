@@ -18540,3 +18540,13 @@ html:not([data-nav-placement="top"])
     padding-inline: calc(var(--seeall-gutter) + 52px);
   }
 }
+
+/* The Library title uses the same measure as the other page headings, so its
+   resting height is theirs too -- the subtitle that used to sit under it is
+   gone, and nothing else may make this heading taller. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-title {
+  font-size: clamp(30px, 2.5vw, 40px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}

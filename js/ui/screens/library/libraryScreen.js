@@ -244,7 +244,7 @@ function libraryCardMetadata(item = {}) {
     libraryCardYear(item)
   ]
     .filter(Boolean)
-    .join(" • ");
+    .join(" â€¢ ");
 }
 
 function offlineDetailId(download = {}) {
@@ -307,7 +307,7 @@ function managerEpisodeLabel(download = {}) {
   if (season == null || episode == null) return "";
   const code = `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
   const episodeTitle = download.episodeTitle || download.title;
-  return [code, episodeTitle].filter(Boolean).join(" · ");
+  return [code, episodeTitle].filter(Boolean).join(" Â· ");
 }
 
 function managerSourceLabel(download = {}) {
@@ -316,7 +316,7 @@ function managerSourceLabel(download = {}) {
     download.sourceName || download.addonName || ""
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(" Â· ");
 }
 
 // The sliders the filter button shows. Drawn here rather than pulled from a
@@ -1034,48 +1034,6 @@ export const LibraryScreen = {
   },
 
   // The header says which shelf you are on and how much is on it.
-  getLibraryHeaderLabel(state) {
-    if (this.isDownloadManagerView()) {
-      return t(
-        "library_count_queued",
-        { count: this.downloadManagerJobs.length },
-        "Download manager"
-      );
-    }
-    if (this.isDownloadedView()) {
-      return `Downloaded · ${this.formatCount(this.countDownloadedItems(), "title")}`;
-    }
-    const label = this.controller.getSourceLabel();
-    if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
-      return `${label} · ${this.formatCount(state.visibleCloudItems.length, "file")}`;
-    }
-    return `${label} · ${this.formatCount(this.getVisibleSavedItems(state).length, "title")}`;
-  },
-
-  // One title, not one titles.
-  formatCount(count, unit) {
-    const n = Number(count) || 0;
-    if (unit === "file") {
-      return n === 1
-        ? t("library_count_file_one", { count: n }, "1 file")
-        : t("library_count_files", { count: n }, "files");
-    }
-    return n === 1
-      ? t("library_count_title_one", { count: n }, "1 title")
-      : t("library_count_titles", { count: n }, "titles");
-  },
-
-  countDownloadedItems() {
-    const downloads = this.downloadedLibrary || {};
-    if (!downloads.supported || downloads.loading) {
-      return 0;
-    }
-    return filterDownloadedLibraryItems(
-      normalizeDownloadedLibraryType(this.downloadedType),
-      (downloads.movies || []).map(offlineMovieCard),
-      (downloads.series || []).map(offlineSeriesCard)
-    ).length;
-  },
 
   // Searching the saved shelf is a filter over what is already on screen, not
   // a second trip to the provider.
@@ -1108,10 +1066,6 @@ export const LibraryScreen = {
     const mount = this.container.querySelector("#libraryContentAreaMount");
     if (mount instanceof HTMLElement) {
       mount.outerHTML = this.renderLibraryContentArea(state);
-    }
-    const source = this.container.querySelector("#libraryPageSource");
-    if (source instanceof HTMLElement) {
-      source.textContent = this.getLibraryHeaderLabel(state);
     }
     this.buildGridRows();
     ScreenUtils.indexFocusables(this.container);
@@ -1263,7 +1217,7 @@ export const LibraryScreen = {
         ) + action("cancelOfflineDownload", "delete", "Delete partial download");
     return `<article class="library-download-manager-card">
       ${download.poster ? `<img class="library-download-manager-poster" src="${escapeHtml(download.poster)}" alt="" />` : `<div class="library-download-manager-poster library-download-manager-poster-placeholder" aria-hidden="true"><span class="material-icons">download</span></div>`}
-      <div class="library-download-manager-copy"><strong>${escapeHtml(title)}</strong>${episode ? `<span>${escapeHtml(episode)}</span>` : ""}${source ? `<span>${escapeHtml(source)}</span>` : ""}${status === "queued" ? `<span>Queued #${queuePosition}</span>` : `<span>${escapeHtml(status)}${total ? ` · ${formatOfflineBytes(current)} / ${formatOfflineBytes(total)} (${progress}%)` : ""}</span>`}${status === "downloading" ? `<div class="library-download-manager-progress" aria-label="${progress}% downloaded"><i style="width:${progress}%"></i></div>` : ""}${download.error ? `<small>${escapeHtml(download.error)}</small>` : ""}</div>
+      <div class="library-download-manager-copy"><strong>${escapeHtml(title)}</strong>${episode ? `<span>${escapeHtml(episode)}</span>` : ""}${source ? `<span>${escapeHtml(source)}</span>` : ""}${status === "queued" ? `<span>Queued #${queuePosition}</span>` : `<span>${escapeHtml(status)}${total ? ` Â· ${formatOfflineBytes(current)} / ${formatOfflineBytes(total)} (${progress}%)` : ""}</span>`}${status === "downloading" ? `<div class="library-download-manager-progress" aria-label="${progress}% downloaded"><i style="width:${progress}%"></i></div>` : ""}${download.error ? `<small>${escapeHtml(download.error)}</small>` : ""}</div>
       <div class="library-download-manager-actions">${actions}</div>
     </article>`;
   },
@@ -1369,7 +1323,7 @@ export const LibraryScreen = {
                 this.formatCloudSize(item.sizeBytes)
               ]
                 .filter(Boolean)
-                .join(" • ");
+                .join(" â€¢ ");
               const resolving = String(state.resolvingCloudFileKey || "").startsWith(
                 item.stableKey
               );
@@ -1384,7 +1338,7 @@ export const LibraryScreen = {
                   </div>
                   <div class="library-cloud-card-status${playableFiles.length ? " playable" : ""}">
                     ${escapeHtml(
-                      resolving ? t("cloud_library_opening", {}, "Opening…") : fileLabel
+                      resolving ? t("cloud_library_opening", {}, "Openingâ€¦") : fileLabel
                     )}
                   </div>
                 </article>
@@ -1462,11 +1416,6 @@ export const LibraryScreen = {
     if (!this.container || !this.container.querySelector(".library-shell")) {
       this.requestRender();
       return;
-    }
-
-    const sourceNode = this.container.querySelector("#libraryPageSource");
-    if (sourceNode instanceof HTMLElement) {
-      sourceNode.textContent = this.getLibraryHeaderLabel(state);
     }
 
     const pickerMount = this.container.querySelector("#libraryPickerGroupsMount");
@@ -1776,7 +1725,7 @@ export const LibraryScreen = {
             <button class="library-action-button focusable"
                     data-action="saveListEditor"
                     ${state.pendingOperation ? "disabled" : ""}>
-              ${escapeHtml(state.pendingOperation ? t("action_saving", {}, "Saving…") : t("action_save", {}, "Save"))}
+              ${escapeHtml(state.pendingOperation ? t("action_saving", {}, "Savingâ€¦") : t("action_save", {}, "Save"))}
             </button>
           </div>
         </section>
@@ -1830,7 +1779,7 @@ export const LibraryScreen = {
                     <span>${escapeHtml(file.name)}</span>
                     <small>${escapeHtml(
                       resolving
-                        ? t("cloud_library_opening", {}, "Opening…")
+                        ? t("cloud_library_opening", {}, "Openingâ€¦")
                         : this.formatCloudSize(file.sizeBytes)
                     )}</small>
                   </button>
@@ -1882,7 +1831,6 @@ export const LibraryScreen = {
             <header class="library-page-header">
               <div class="library-page-heading">
                 <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
-                <div class="library-page-source" id="libraryPageSource">${escapeHtml(this.getLibraryHeaderLabel(state))}</div>
               </div>
             </header>
 
