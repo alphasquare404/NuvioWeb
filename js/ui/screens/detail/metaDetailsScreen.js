@@ -4231,27 +4231,30 @@ export const MetaDetailsScreen = {
   /**
    * Watches the hero's mark, so the bar shows only once it has gone.
    *
-   * The hero is re-rendered on enrichment, which replaces both elements, so
-   * this is called again at the end of every layout render.
+   * The nodes are resolved on every tick rather than captured: this page
+   * re-renders while it loads (enrichment, episodes), and each render replaces
+   * both the bar and the mark. Binding once to the first pair left the bar
+   * watching nodes that were no longer in the document -- which is what "the
+   * bar never appears" looked like on a series page.
    */
   bindDetailCompactHeader() {
-    this.detailCompactHeaderCleanup?.();
-    this.detailCompactHeaderCleanup = null;
     const container = this.container;
-    const bar = container?.querySelector?.(".detail-compact-header");
-    // The mark itself, not the block around it: the block also holds the hint
-    // line, and waiting for that to pass kept the bar hidden long after the
-    // logo had gone.
-    const mark =
-      container?.querySelector?.("#detailHeroSection .series-detail-logo") ||
-      container?.querySelector?.("#detailHeroSection .series-detail-title") ||
-      container?.querySelector?.("#detailHeroSection .detail-hero-brand");
-    if (!bar || !mark) {
+    if (!container) {
       return;
     }
-    this.detailCompactHeaderCleanup = bindCompactHeader({
-      bar,
-      mark,
+    if (this.detailCompactHeaderBinding) {
+      this.detailCompactHeaderBinding.refresh();
+      return;
+    }
+    this.detailCompactHeaderBinding = bindCompactHeader({
+      resolveBar: () => container.querySelector(".detail-compact-header"),
+      resolveMark: () =>
+        // The mark itself, not the block around it: the block also holds the
+        // hint line, and waiting for that to pass kept the bar hidden long
+        // after the logo had gone.
+        container.querySelector("#detailHeroSection .series-detail-logo") ||
+        container.querySelector("#detailHeroSection .series-detail-title") ||
+        container.querySelector("#detailHeroSection .detail-hero-brand"),
       getScrollTop: () => Number(this.getDetailVerticalScrollOwner()?.scrollTop || 0)
     });
   },
@@ -12606,8 +12609,8 @@ export const MetaDetailsScreen = {
   },
 
   cleanup() {
-    this.detailCompactHeaderCleanup?.();
-    this.detailCompactHeaderCleanup = null;
+    this.detailCompactHeaderBinding?.cleanup();
+    this.detailCompactHeaderBinding = null;
     this.autoOpenContinueWatchingStreamReady = false;
     this.routeHandoffPending = false;
     this.renderedRouteHandoffMarkup = null;

@@ -2,76 +2,70 @@
 // been scrolled out of view.
 //
 // The bar is an overlay: it is `position: fixed` and the screen keeps its own
-// layout, so showing it never moves the hero or the page under it. That is the
-// difference from a sticky heading, which changes the page's height as it
-// changes state and can therefore oscillate around its own threshold.
+// layout, so showing it never moves the hero or the page under it.
 //
-// The trigger is an IntersectionObserver on the mark, not a scroll position:
-// the browser tells us when the mark has gone. Two extra conditions keep it
-// from appearing early: the mark must be fully behind the bar, and the page
-// must actually have been scrolled.
+// Two things are deliberately re-read on every tick rather than captured once:
+// the bar and the mark. A Detail page re-renders while it loads -- enrichment
+// arrives, episodes are rebuilt -- and each render replaces both elements. A
+// binding that held the first pair would go on watching nodes that are no
+// longer in the document, which looks exactly like "the bar never appears".
+//
+// An IntersectionObserver was tried first and had the same blindness in another
+// form: it only speaks when the intersection changes, so the extra condition
+// (the mark must be behind the bar, not merely leaving the screen) could never
+// be satisfied when the first callback arrived too early.
 
 const DEFAULT_BAR_HEIGHT = 52;
 
 /**
- * Whether the bar should be showing, from an IntersectionObserver entry.
+ * Whether the bar should be showing, from the mark's position.
  *
- * `boundingClientRect.bottom` above the bar's height means the mark is still
- * partly visible below it, so the bar waits. A mark that starts above the bar
- * on a very short window is not a reason to show it, hence the scroll check.
+ * The mark has to be fully behind the bar (`bottom` at or above the bar's
+ * height), it has to have a size (a logo that failed to load has none), and the
+ * page has to have been scrolled at all -- otherwise a very short window, where
+ * the mark starts above the bar, would show it before anyone moved the page.
  *
- * @param {{ isIntersecting?: boolean, boundingClientRect?: { bottom?: number } } | null | undefined} entry
- * @param {{ barHeight?: number, scrollTop?: number }} [context]
+ * @param {{ markBottom?: number, markHeight?: number, barHeight?: number, scrollTop?: number }} state
  */
-export function compactHeaderVisible(entry, context = {}) {
-  if (!entry || typeof entry.isIntersecting !== "boolean") {
+export function compactHeaderVisibleFromGeometry(state = {}) {
+  const bottom = Number(state.markBottom);
+  const scrollTop = Number(state.scrollTop);
+  if (!Number.isFinite(bottom) || !Number.isFinite(scrollTop) || scrollTop <= 0) {
     return false;
   }
-  const barHeight = Number(context.barHeight);
-  const coveredAt = Number.isFinite(barHeight) && barHeight >= 0 ? barHeight : DEFAULT_BAR_HEIGHT;
-  const scrollTop = Number(context.scrollTop);
-  if (!Number.isFinite(scrollTop) || scrollTop <= 0) {
-    return false;
-  }
-  const bottom = Number(entry.boundingClientRect?.bottom);
-  if (Number.isFinite(bottom) && bottom > coveredAt) {
-    return false;
-  }
-  // A hidden element -- a logo that failed to load, say -- reports no rectangle
-  // at all. Reading that as "scrolled past" would put an empty bar on screen.
-  const height = Number(entry.boundingClientRect?.height);
+  const height = Number(state.markHeight);
   if (Number.isFinite(height) && height <= 0) {
     return false;
   }
-  return !entry.isIntersecting;
+  const barHeight = Number(state.barHeight);
+  const coveredAt = Number.isFinite(barHeight) && barHeight >= 0 ? barHeight : DEFAULT_BAR_HEIGHT;
+  return bottom <= coveredAt;
 }
 
 /**
  * Keeps a bar's visibility in step with its mark.
  *
  * @param {{
- *   bar?: Element | null,
- *   mark?: Element | null,
- *   rootMargin?: string,
+ *   resolveBar?: () => Element | null,
+ *   resolveMark?: () => Element | null,
  *   barHeight?: number,
  *   getScrollTop?: () => number
  * }} options
- * @returns {() => void} removes the observer
+ * @returns {{ refresh: () => void, cleanup: () => void }}
  */
 export function bindCompactHeader({
-  bar,
-  mark,
-  rootMargin,
+  resolveBar,
+  resolveMark,
   barHeight = DEFAULT_BAR_HEIGHT,
   getScrollTop = () => 0
 } = {}) {
-  if (!bar || !mark || typeof globalThis.IntersectionObserver !== "function") {
-    return () => {};
+  if (typeof resolveBar !== "function" || typeof resolveMark !== "function") {
+    return { refresh: () => {}, cleanup: () => {} };
   }
 
-  const margin = rootMargin ?? `-${Math.max(0, Math.round(barHeight))}px 0px 0px 0px`;
+  let frame = 0;
 
-  const apply = (visible) => {
+  const setState = (bar, visible) => {
     const next = visible ? "true" : "false";
     if (bar.dataset.visible !== next) {
       bar.dataset.visible = next;
@@ -82,20 +76,52 @@ export function bindCompactHeader({
     }
   };
 
-  apply(false);
-  // The observer only speaks when the intersection changes, so its root has to
-  // be narrowed by exactly the bar's height: then "no longer intersecting" and
-  // "the mark is fully behind the bar" are the same moment. A larger margin
-  // (e.g. 64px) would fire once, while the mark was still peeking below the bar,
-  // and never again.
-  const observer = new globalThis.IntersectionObserver(
-    (entries) => {
-      const entry = entries[entries.length - 1];
-      apply(compactHeaderVisible(entry, { barHeight, scrollTop: getScrollTop() }));
-    },
-    { rootMargin: margin, threshold: 0 }
-  );
-  observer.observe(mark);
+  const apply = () => {
+    const bar = resolveBar();
+    if (!bar) {
+      return;
+    }
+    const mark = resolveMark();
+    const rect = mark?.getBoundingClientRect?.();
+    const visible = compactHeaderVisibleFromGeometry({
+      markBottom: rect?.bottom,
+      markHeight: rect?.height,
+      barHeight,
+      scrollTop: getScrollTop()
+    });
+    setState(bar, visible);
+  };
 
-  return () => observer.disconnect();
+  const run = () => {
+    frame = 0;
+    apply();
+  };
+
+  const request = () => {
+    if (frame) {
+      return;
+    }
+    const id = globalThis.requestAnimationFrame?.(run);
+    if (id) {
+      frame = id;
+      return;
+    }
+    run();
+  };
+
+  apply();
+  globalThis.document?.addEventListener?.("scroll", request, { capture: true, passive: true });
+  globalThis.addEventListener?.("resize", request, { passive: true });
+
+  return {
+    refresh: request,
+    cleanup: () => {
+      globalThis.document?.removeEventListener?.("scroll", request, true);
+      globalThis.removeEventListener?.("resize", request);
+      if (frame) {
+        globalThis.cancelAnimationFrame?.(frame);
+        frame = 0;
+      }
+    }
+  };
 }
