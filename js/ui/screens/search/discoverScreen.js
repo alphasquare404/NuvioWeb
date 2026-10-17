@@ -1603,7 +1603,7 @@ export const DiscoverScreen = {
                   : ""
               }
               <div class="discover-header-copy">
-                <h2 class="seeall-title">Discover</h2>
+                <h2 class="seeall-title">${escapeHtml(t("discover_title", {}, "Discover"))}</h2>
                 <div class="seeall-subtitle" id="discoverContextLabel">${escapeHtml(contextLabel)}</div>
               </div>
             </header>

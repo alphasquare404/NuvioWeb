@@ -68,7 +68,14 @@ export const AuthQrSignInScreen = {
             <div id="qr-status" class="qr-status">${I18n.t("auth.qr.waitingApproval")}</div>
             <div class="qr-actions">
               <button type="button" id="qr-refresh-btn" class="qr-action-btn qr-action-btn-primary focusable" data-action="refresh">${I18n.t("auth.qr.refresh")}</button>
-              <button type="button" id="qr-back-btn" class="qr-action-btn qr-action-btn-secondary focusable" data-action="back">${this.getBackButtonLabel()}</button>
+              ${
+                // One Back in the browser: the floating button. The card's own
+                // button ran a different handler, which could leave the account
+                // rather than return to the sign-in screen.
+                this.isDesktopBrowser
+                  ? ""
+                  : `<button type="button" id="qr-back-btn" class="qr-action-btn qr-action-btn-secondary focusable" data-action="back">${this.getBackButtonLabel()}</button>`
+              }
             </div>
           </div>
         </section>
@@ -392,6 +399,13 @@ export const AuthQrSignInScreen = {
   },
 
   consumeBackRequest() {
+    // The same action as the button that can be seen. On the browser the card
+    // button is gone, and continuing without an account from a Back key would
+    // have left the person on Home rather than back at sign-in.
+    if (this.isDesktopBrowser) {
+      this.handleDesktopBrowserBack();
+      return true;
+    }
     this.handleContinueAction();
     return true;
   },
