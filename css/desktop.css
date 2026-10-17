@@ -18513,3 +18513,30 @@ html:not([data-nav-placement="top"])
     left: calc(8px + env(safe-area-inset-left, 0px));
   }
 }
+
+/* The bar's height must not depend on Back.
+   Discover's Back floats, so its heading is measured by its title alone; See
+   All's Back sat in the flow and made the same bar taller. Back stays a child of
+   the heading, but out of the flow at every width, so the heading's height is
+   the title's -- the same as Discover's -- and the collapsed bar no longer
+   carries a 52px floor of its own. */
+.desktop-browser #catalogSeeAll .seeall-header {
+  padding-inline: calc(var(--seeall-gutter) + 56px) var(--seeall-gutter);
+}
+
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+  position: absolute;
+  top: 50%;
+  left: var(--seeall-gutter);
+  transform: translateY(-50%);
+}
+
+.desktop-browser #catalogSeeAll .seeall-header[data-collapsed="true"] {
+  min-height: 0;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #catalogSeeAll .seeall-header {
+    padding-inline: calc(var(--seeall-gutter) + 52px);
+  }
+}
