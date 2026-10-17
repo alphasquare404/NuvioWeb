@@ -13882,9 +13882,12 @@ body.desktop-browser {
    ------------------------------------------------------------------
    The title stays where it is -- centred -- and shrinks to a bar's size once
    the page has scrolled past the threshold the screen sets on
-   `data-settings-header-collapsed`. The floating navigation keeps its own line,
-   so the heading pins below that line when the navigation is at the top and
-   against the edge of the screen when it is not.
+   `data-settings-header-collapsed`.
+   Only for the placements where nothing floats over the top of the page: there
+   the bar can hold the edge of the screen. With the navigation at the top it is
+   deliberately left alone -- the bar could not reach the top without going
+   under the pill, and the strip left between them showed raw scrolling content,
+   which read worse than no bar at all.
    The bar is pulled out to both edges: a band that stopped at the text's margin
    looked like a panel floating over the page rather than the top of it. */
 .desktop-browser .settings-shell[data-settings-nav-mode] {
@@ -13894,9 +13897,6 @@ body.desktop-browser {
 
 .desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
 .desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
-  position: sticky;
-  top: var(--settings-header-sticky-top, 0px);
-  z-index: 8;
   margin-inline: calc(-1 * var(--settings-header-bleed));
   /* The negative margin widens the bar; this puts the text back on the page's
      own grid, so nothing about the heading moves except its background. */
@@ -13911,32 +13911,34 @@ body.desktop-browser {
   padding-inline: calc(var(--settings-header-bleed) + 2px);
 }
 
+/* Nothing floats above the page in these two placements, so the heading may
+   hold its edge -- the safe-area edge where there is one. */
+html:not([data-nav-placement="top"]) .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html:not([data-nav-placement="top"]) .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 8;
+}
+
 /* Once it is holding content back the bar becomes a surface: the page's colour
    shows through, and what scrolls beneath is blurred rather than painted over.
    A solid fill read as a black box on a themed page, because the page's colour
    is not always --bg-color. */
-.desktop-browser
+html:not([data-nav-placement="top"])
+  .desktop-browser
   .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
   .settings-nav-index-header,
-.desktop-browser
+html:not([data-nav-placement="top"])
+  .desktop-browser
   .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
   .settings-content-header {
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
-html[data-nav-placement="top"].desktop-browser .settings-shell[data-settings-nav-mode] {
-  --settings-header-sticky-top: calc(
-    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 10px
-  );
-}
-
-/* With the navigation at the bottom or in a rail, nothing floats at the top, so
-   the bar meets the edge of the screen -- the safe area where there is one. */
-html[data-nav-placement="bottom"].desktop-browser .settings-shell[data-settings-nav-mode],
-html[data-nav-placement="sidebar"].desktop-browser .settings-shell[data-settings-nav-mode] {
-  --settings-header-sticky-top: env(safe-area-inset-top, 0px);
 }
 
 /* A wide page title sits at the start of its row, which is exactly where Back
@@ -13979,14 +13981,18 @@ html[data-nav-placement="sidebar"].desktop-browser .settings-shell[data-settings
     opacity 150ms ease;
 }
 
-/* Collapsed: a bar's title, and no subtitle. */
-.desktop-browser
+/* Collapsed: a bar's title, and no subtitle. Scoped the same way as the bar
+   itself, so the title of a page whose heading does not stick never shrinks on
+   its way out of view. */
+html:not([data-nav-placement="top"])
+  .desktop-browser
   .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
   .settings-title {
   font-size: 18px;
 }
 
-.desktop-browser
+html:not([data-nav-placement="top"])
+  .desktop-browser
   .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
   .settings-content-header
   .settings-subtitle {
