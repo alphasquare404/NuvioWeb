@@ -2625,10 +2625,10 @@ export const SettingsScreen = {
       }
       const wasCollapsed = shell.dataset.settingsHeaderCollapsed === "true";
       const scrollTop = readScrollTop();
-      // Where the heading is decides, not a scroll distance: the heading only
-      // shrinks once it has actually reached the edge. With a distance rule it
-      // shrank while still travelling up, and on a notched phone it disappeared
-      // under the notch before dropping back down into its bar.
+      // Where the heading is decides, not a scroll distance: it shrinks only
+      // once it has actually reached the edge of the screen. A distance rule
+      // shrank it while it was still travelling, and on a notched phone the
+      // title went under the notch before dropping back into its bar.
       const header = this.container?.querySelector(
         ".settings-nav-index-header, .settings-content-header"
       );
