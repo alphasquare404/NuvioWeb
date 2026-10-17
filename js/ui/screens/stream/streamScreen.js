@@ -1,6 +1,7 @@
 import { Router } from "../../navigation/router.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { shouldCollapseStreamHeader } from "./streamHeaderCollapse.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
@@ -811,6 +812,10 @@ export const StreamScreen = {
     }
 
     this.render();
+
+    // The header shrinks once this page scrolls; the listener belongs to this
+    // mount and is removed in `cleanup`.
+    this.bindHeaderCollapse();
 
     if (restoringFromBack) {
       return;
@@ -2503,6 +2508,7 @@ export const StreamScreen = {
     }
     this.bindDesktopPointerActions();
     this.bindListScrollState();
+    this.applyHeaderCollapse();
     this.renderedDownloadStatuses = this.collectOfflineDownloadStatuses();
     this.renderedOfflineCopyCount = (this.offlineLocalCopies || []).length;
     this.hasRenderedStreamRouteShell = true;
@@ -3306,7 +3312,65 @@ export const StreamScreen = {
     }
   },
 
+  /**
+   * The header shrinks once the page has scrolled past its threshold.
+   *
+   * The page itself scrolls now, so the position is read from the screen
+   * element. Scroll events do not bubble, but they are delivered in the capture
+   * phase, which is why the listener sits on the document.
+   */
+  bindHeaderCollapse() {
+    if (!Platform.isBrowser() || this.headerCollapseListener) {
+      return;
+    }
+    this.headerCollapseFrame = 0;
+    this.headerCollapseListener = () => {
+      if (this.headerCollapseFrame) {
+        return;
+      }
+      const request = globalThis.requestAnimationFrame?.(() => this.applyHeaderCollapse());
+      if (request) {
+        this.headerCollapseFrame = request;
+        return;
+      }
+      this.applyHeaderCollapse();
+    };
+    globalThis.document?.addEventListener?.("scroll", this.headerCollapseListener, {
+      capture: true,
+      passive: true
+    });
+    this.applyHeaderCollapse();
+  },
+
+  applyHeaderCollapse() {
+    this.headerCollapseFrame = 0;
+    const shell = this.container?.querySelector?.(".stream-route-shell");
+    if (!shell) {
+      return;
+    }
+    const collapsed = shouldCollapseStreamHeader(
+      Number(this.container?.scrollTop || 0),
+      shell.dataset.streamHeaderCollapsed === "true"
+    );
+    const next = collapsed ? "true" : "false";
+    if (shell.dataset.streamHeaderCollapsed !== next) {
+      shell.dataset.streamHeaderCollapsed = next;
+    }
+  },
+
+  unbindHeaderCollapse() {
+    if (this.headerCollapseListener) {
+      globalThis.document?.removeEventListener?.("scroll", this.headerCollapseListener, true);
+      this.headerCollapseListener = null;
+    }
+    if (this.headerCollapseFrame) {
+      globalThis.cancelAnimationFrame?.(this.headerCollapseFrame);
+      this.headerCollapseFrame = 0;
+    }
+  },
+
   cleanup() {
+    this.unbindHeaderCollapse();
     this.clearExternalHandoffWatch();
     this.closeOfflineDownloadOptions?.();
     this.cancelAutoPlayCountdown();

@@ -3163,7 +3163,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #stream .stream-route-panel-summary::before {
-  content: "Â· ";
+  content: "Ã‚Â· ";
 }
 
 .desktop-browser #stream .stream-route-panel-header .stream-route-filter-row {
@@ -14368,7 +14368,7 @@ html:not([data-nav-placement="top"])
 
 /* Account: the signed-in address.
    Side by side, the label took enough of the row that a 26-character address
-   had nowhere to go but through the middle of a word -- "â€¦@gm / ail.com".
+   had nowhere to go but through the middle of a word -- "Ã¢â‚¬Â¦@gm / ail.com".
    Stacked, the address has the full row and stays in one piece. */
 .desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-status-card {
   display: grid;
@@ -14707,7 +14707,7 @@ html:not([data-nav-placement="top"])
 /* Library filters: one row out, the rest behind a button.
    ------------------------------------------------------------------
    Four stacked pickers took a third of a phone screen before a single item
-   appeared, and all four read "All" â€” a third of the screen spent saying
+   appeared, and all four read "All" Ã¢â‚¬â€ a third of the screen spent saying
    nothing was filtered. Type stays out, because it is the one most often
    changed. Genre, Year and Sort fold behind the button beside it. */
 /* The shell-scoped row rules below 600px set wrap and a full-width basis, and
@@ -17404,74 +17404,179 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
 }
 
 /* ---------------------------------------------------------------------------
-   Stream: the title mark becomes the page's header.
+   Stream on a phone: the title mark becomes the page's header.
 
-   It used to sit in a column beside the sources, which read as two halves of
-   one page and left the mark off-centre on a wide screen. As a header box it is
-   the page's identity first, the sources come after it, and the mark is centred
-   in a box of its own -- the same rounded, faintly tinted surface the sources
-   panel uses, so the two read as one page rather than two columns.
-
-   Nothing here is sticky: the sources scroll inside their own panel, so the
-   header is already in view whenever a source is.
+   A wide screen keeps the arrangement it has always had -- the mark in a column
+   of its own beside the sources, with the list scrolling inside its panel. On a
+   phone the page itself scrolls, so the same mark is put in the page's header:
+   centred, with no panel behind it, keeping its place and shrinking to a bar's
+   size once the page has moved past the threshold the screen sets on
+   `data-stream-header-collapsed`.
    --------------------------------------------------------------------------- */
-.desktop-browser #stream .stream-route-content {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  align-items: stretch;
-  gap: clamp(16px, 2vw, 26px);
+@media (max-width: 960px) {
+  .desktop-browser #stream .stream-route-shell {
+    width: 100%;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .desktop-browser #stream .stream-route-content {
+    position: relative;
+    inset: auto;
+    height: auto;
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: start;
+    gap: clamp(18px, 2vw, 28px);
+    padding: 0 0 calc(40px + var(--browser-safe-area-bottom));
+  }
+
+  /* No surface behind the mark: it is the top of the page, not a panel. */
+  .desktop-browser #stream .stream-route-left {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(var(--browser-safe-area-top) + 76px) max(20px, var(--browser-page-gutter)) 14px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: padding 180ms ease;
+  }
+
+  .desktop-browser #stream .stream-route-left-inner {
+    width: min(100%, 760px);
+    align-items: center;
+    text-align: center;
+  }
+
+  .desktop-browser #stream .stream-route-logo {
+    width: auto;
+    max-width: min(76%, 360px);
+    max-height: 64px;
+    margin-bottom: 10px;
+    transition:
+      max-height 180ms ease,
+      margin 180ms ease;
+  }
+
+  /* The badge, and the episode title under it rather than beside it: the old
+     side-by-side margin pushed the title off centre once stacked. */
+  .desktop-browser #stream .stream-route-episode-code {
+    display: block;
+    width: max-content;
+    margin-inline: auto;
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-color);
+    padding: 3px 11px;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(var(--bg-elevated-rgb) / 0.55);
+    transition:
+      padding 180ms ease,
+      font-size 180ms ease;
+  }
+
+  .desktop-browser #stream .stream-route-episode-code + .stream-route-subtitle {
+    display: block;
+    margin-left: 0;
+    vertical-align: baseline;
+  }
+
+  .desktop-browser #stream .stream-route-subtitle {
+    margin-top: 8px;
+    font-size: 15px;
+    max-height: 48px;
+    overflow: hidden;
+    opacity: 1;
+    transition:
+      max-height 180ms ease,
+      margin 180ms ease,
+      opacity 150ms ease;
+  }
+
+  .desktop-browser #stream .stream-route-detail-line {
+    margin-top: 2px;
+    font-size: 13px;
+  }
+
+  /* Collapsed: a bar's mark, with the page passing under it. The blur appears
+     only here, for the same reason as on the other two pages: it has something
+     to hold back. */
+  .desktop-browser
+    #stream
+    .stream-route-shell[data-stream-header-collapsed="true"]
+    .stream-route-left {
+    padding: calc(var(--browser-safe-area-top) + 8px) max(20px, var(--browser-page-gutter)) 8px;
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .desktop-browser
+    #stream
+    .stream-route-shell[data-stream-header-collapsed="true"]
+    .stream-route-logo {
+    max-height: 22px;
+    margin-bottom: 0;
+  }
+
+  .desktop-browser
+    #stream
+    .stream-route-shell[data-stream-header-collapsed="true"]
+    .stream-route-episode-code {
+    font-size: 11px;
+    padding: 2px 9px;
+    margin-top: 6px;
+  }
+
+  .desktop-browser
+    #stream
+    .stream-route-shell[data-stream-header-collapsed="true"]
+    .stream-route-subtitle,
+  .desktop-browser
+    #stream
+    .stream-route-shell[data-stream-header-collapsed="true"]
+    .stream-route-detail-line {
+    max-height: 0;
+    margin: 0;
+    opacity: 0;
+  }
+
+  /* The sources take the width the header does not use, and the page -- not the
+     list -- is what scrolls. */
+  .desktop-browser #stream .stream-route-right {
+    width: 100%;
+    max-width: min(1240px, calc(100% - 2 * max(20px, var(--browser-page-gutter))));
+    justify-self: center;
+  }
+
+  .desktop-browser #stream .stream-route-panel-shell {
+    height: auto;
+  }
+
+  .desktop-browser #stream .stream-route-list {
+    height: auto;
+    overflow: visible;
+    padding-bottom: 24px;
+  }
 }
 
-.desktop-browser #stream .stream-route-left {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px 22px;
-  border-radius: 22px;
-  background: rgb(var(--bg-elevated-rgb) / 0.22);
-  box-shadow: inset 0 0 0 1px rgb(var(--focus-color-rgb) / 0.035);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-}
-
-.desktop-browser #stream .stream-route-left-inner {
-  width: min(100%, 760px);
-  align-items: center;
-  text-align: center;
-}
-
-.desktop-browser #stream .stream-route-logo {
-  width: auto;
-  max-width: min(70%, 460px);
-  max-height: 64px;
-  margin-bottom: 10px;
-}
-
-/* The episode code reads as a badge rather than a line of text, which is how it
-   already looked on a narrow screen and beside the sources. */
-.desktop-browser #stream .stream-route-episode-code {
-  font-size: 13px;
-  line-height: 1.2;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--text-color);
-  padding: 4px 12px;
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-}
-
-.desktop-browser #stream .stream-route-subtitle {
-  margin-top: 8px;
-  font-size: 15px;
-}
-
-.desktop-browser #stream .stream-route-detail-line {
-  margin-top: 2px;
-  font-size: 13px;
-}
-
-.desktop-browser #stream .stream-route-right {
-  width: 100%;
-  max-width: 1240px;
-  justify-self: center;
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser #stream .stream-route-left,
+  .desktop-browser #stream .stream-route-logo,
+  .desktop-browser #stream .stream-route-episode-code,
+  .desktop-browser #stream .stream-route-subtitle {
+    transition: none;
+  }
 }
