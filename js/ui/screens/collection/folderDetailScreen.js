@@ -1763,15 +1763,17 @@ export const FolderDetailScreen = {
             ${
               this.isDesktopBrowser
                 ? `
-              <button class="folder-detail-desktop-back focusable" type="button" data-action="back" data-focus-key="back" aria-label="Back">
-                <span class="material-icons" aria-hidden="true">chevron_left</span>
-              </button>
               <div class="folder-detail-desktop-heading" aria-label="${escapeHtml(this.collection?.title || "Collection")}">
-                ${
-                  desktopHeaderLogo
-                    ? `<img class="folder-detail-desktop-logo" src="${escapeHtml(desktopHeaderLogo)}" alt="${escapeHtml(this.collection?.title || "Collection")}" />`
-                    : `<h1>${escapeHtml(this.collection?.title || "Collection")}</h1>`
-                }
+                <div class="folder-detail-title-row">
+                  <button class="folder-detail-desktop-back focusable" type="button" data-action="back" data-focus-key="back" aria-label="Back">
+                    <span class="material-icons" aria-hidden="true">chevron_left</span>
+                  </button>
+                  ${
+                    desktopHeaderLogo
+                      ? `<img class="folder-detail-desktop-logo" src="${escapeHtml(desktopHeaderLogo)}" alt="${escapeHtml(this.collection?.title || "Collection")}" />`
+                      : `<h1>${escapeHtml(this.collection?.title || "Collection")}</h1>`
+                  }
+                </div>
                 ${desktopHeaderMeta.length ? `<p>${escapeHtml(desktopHeaderMeta.join(" • "))}</p>` : ""}
               </div>
             `

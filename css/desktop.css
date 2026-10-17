@@ -18802,3 +18802,131 @@ html:not([data-nav-placement="top"])
   }
 }
 
+
+/* The collection's Back joins the heading's own row instead of floating above
+   it: as a flex item on the same line it is centred against the title by the
+   layout, at rest and collapsed, on every screen. On a phone it takes a negative
+   start margin so the centred title does not shift to the right. */
+.desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-desktop-back {
+  position: static;
+  top: auto;
+  left: auto;
+  align-self: center;
+  flex: 0 0 44px;
+  margin: 0;
+  z-index: auto;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser
+    #folderDetail
+    .desktop-folder-detail-shell
+    .folder-detail-desktop-back {
+    margin-inline-start: calc(-1 * (44px + 18px));
+  }
+}
+
+/* The collection's Back shares the title's line: the two are one flex row, so the
+   centre of the control is the centre of the title at rest and collapsed, on
+   every screen size. On a phone it takes a negative start margin equal to its own
+   width plus the gap, so a centred title does not shift to the right. */
+.desktop-browser #folderDetail .folder-detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-title-row
+  .folder-detail-desktop-back {
+  position: static;
+  top: auto;
+  left: auto;
+  flex: 0 0 44px;
+  margin: 0;
+  z-index: auto;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #folderDetail .folder-detail-title-row {
+    justify-content: center;
+  }
+
+  .desktop-browser
+    #folderDetail
+    .desktop-folder-detail-shell
+    .folder-detail-title-row
+    .folder-detail-desktop-back {
+    margin-inline-start: calc(-1 * (44px + 18px));
+  }
+}
+
+/* Back sits at the row's own left edge and is centred on that row, so it is on
+   the title's line while the title stays where it was. The row is the positioning
+   box, not a page heading, so nothing here can unpin the heading. */
+.desktop-browser #folderDetail .folder-detail-title-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-title-row
+  .folder-detail-desktop-back {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  flex: 0 0 44px;
+  margin: 0;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+@media (min-width: 601px) {
+  .desktop-browser #folderDetail .folder-detail-title-row {
+    justify-content: flex-start;
+  }
+
+  .desktop-browser
+    #folderDetail
+    .desktop-folder-detail-shell
+    .folder-detail-title-row
+    .folder-detail-desktop-back {
+    left: 0;
+  }
+}
+
+/* The heading fills its row, so "left: 0" inside it is the page's own left edge
+   rather than the title's first letter. */
+.desktop-browser #folderDetail .folder-detail-title-row {
+  width: 100%;
+}
+
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-desktop-heading {
+  width: 100%;
+}
+
+/* Above the phone layout the title starts at the page's left edge, so Back goes
+   back into the flow in front of it: still on the title's line (the row centres
+   its items), and no longer overlapping the first letter. */
+@media (min-width: 601px) {
+  .desktop-browser
+    #folderDetail
+    .desktop-folder-detail-shell
+    .folder-detail-title-row
+    .folder-detail-desktop-back {
+    position: static;
+    transform: none;
+  }
+}
