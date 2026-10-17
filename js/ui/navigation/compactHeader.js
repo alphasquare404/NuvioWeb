@@ -129,3 +129,81 @@ export function bindCompactHeader({
     }
   };
 }
+
+/**
+ * The other half of the same idea: a heading that is already on the page and
+ * shrinks in place once the page has moved.
+ *
+ * Settings, Collection and Cast each grew their own copy of this; the list
+ * pages use it too, so the behaviour is one function rather than four. The
+ * heading is marked `data-collapsed`, and the stylesheet decides what that
+ * looks like.
+ *
+ * @param {{
+ *   resolveHeader?: () => Element | null,
+ *   getScrollTop?: () => number,
+ *   collapseAt?: number,
+ *   expandAt?: number
+ * }} options
+ * @returns {{ refresh: () => void, cleanup: () => void }}
+ */
+export function bindCollapsingHeader({
+  resolveHeader,
+  getScrollTop = () => 0,
+  collapseAt = 28,
+  expandAt = 8
+} = {}) {
+  if (typeof resolveHeader !== "function") {
+    return { refresh: () => {}, cleanup: () => {} };
+  }
+
+  let frame = 0;
+
+  const apply = () => {
+    const header = resolveHeader();
+    if (!header) {
+      return;
+    }
+    const scrollTop = Number(getScrollTop());
+    const position = Number.isFinite(scrollTop) ? scrollTop : 0;
+    // Hysteresis: a scroll that comes to rest on the threshold cannot flicker.
+    const collapsed = position >= (header.dataset.collapsed === "true" ? expandAt : collapseAt);
+    const next = collapsed ? "true" : "false";
+    if (header.dataset.collapsed !== next) {
+      header.dataset.collapsed = next;
+    }
+  };
+
+  const run = () => {
+    frame = 0;
+    apply();
+  };
+
+  const request = () => {
+    if (frame) {
+      return;
+    }
+    const id = globalThis.requestAnimationFrame?.(run);
+    if (id) {
+      frame = id;
+      return;
+    }
+    run();
+  };
+
+  apply();
+  globalThis.document?.addEventListener?.("scroll", request, { capture: true, passive: true });
+  globalThis.addEventListener?.("resize", request, { passive: true });
+
+  return {
+    refresh: request,
+    cleanup: () => {
+      globalThis.document?.removeEventListener?.("scroll", request, true);
+      globalThis.removeEventListener?.("resize", request);
+      if (frame) {
+        globalThis.cancelAnimationFrame?.(frame);
+        frame = 0;
+      }
+    }
+  };
+}

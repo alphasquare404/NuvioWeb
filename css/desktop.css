@@ -18036,3 +18036,123 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     flex-basis: 0;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The list pages' headings.
+
+   Same idea as Settings and Collection: the heading is the page's title from the
+   first frame, stays at the top, and shrinks to a bar once the page has moved.
+   The surface reaches both edges of the page, so the blur is a band rather than
+   a box, and it only appears once there is something to hold back.
+   --------------------------------------------------------------------------- */
+.desktop-browser .library-shell.desktop-navigation-enabled,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled,
+.desktop-browser .discover-shell.desktop-navigation-enabled {
+  --list-heading-gutter: clamp(24px, 2vw, 40px);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  margin-inline: calc(-1 * var(--list-heading-gutter));
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--list-heading-gutter) 10px;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition:
+    padding 180ms ease,
+    border-color 180ms ease;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-title,
+.desktop-browser .discover-shell.desktop-navigation-enabled .seeall-title,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy > h2 {
+  transition: font-size 180ms ease;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-source,
+.desktop-browser .discover-shell.desktop-navigation-enabled .seeall-subtitle,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy > .seeall-subtitle {
+  max-height: 28px;
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    max-height 180ms ease,
+    opacity 150ms ease;
+}
+
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-page-header[data-collapsed="true"],
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-page-heading[data-collapsed="true"],
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-header[data-collapsed="true"] {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  padding-bottom: 8px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-page-header[data-collapsed="true"]
+  .library-page-title,
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-page-heading[data-collapsed="true"]
+  h1,
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-header[data-collapsed="true"]
+  .seeall-title,
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-header[data-collapsed="true"]
+  .discover-header-copy
+  > h2 {
+  font-size: 18px;
+}
+
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-page-header[data-collapsed="true"]
+  .library-page-source,
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-header[data-collapsed="true"]
+  .seeall-subtitle {
+  max-height: 0;
+  opacity: 0;
+}
+
+@media (max-width: 760px) {
+  .desktop-browser .library-shell.desktop-navigation-enabled,
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled,
+  .desktop-browser .discover-shell.desktop-navigation-enabled {
+    --list-heading-gutter: max(16px, var(--browser-page-gutter));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header,
+  .desktop-browser .library-shell.desktop-navigation-enabled .library-page-title,
+  .desktop-browser .discover-shell.desktop-navigation-enabled .seeall-title {
+    transition: none;
+  }
+}
+
+/* Search's heading is the <h1> itself, so it shrinks on its own element rather
+   than on a child. */
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-page-heading[data-collapsed="true"] {
+  font-size: 18px;
+}

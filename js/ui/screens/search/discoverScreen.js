@@ -11,6 +11,7 @@ import {
   getBrowserVerticalScrollTop,
   setBrowserVerticalScrollTop
 } from "../../navigation/browserScrollPosition.js";
+import { bindCollapsingHeader } from "../../navigation/compactHeader.js";
 import { renderContentFilterPicker } from "../../components/filterPicker.js";
 import {
   PosterOptionsDialogController,
@@ -1583,14 +1584,14 @@ export const DiscoverScreen = {
           useDesktopNavigation
             ? renderDesktopNavigation({ selectedRoute: "search", profile: this.sidebarProfile })
             : showRootSidebar
-            ? renderRootSidebar({
-                selectedRoute: "discover",
-                profile: this.sidebarProfile,
-                layout: this.layoutPrefs,
-                expanded: Boolean(this.sidebarExpanded),
-                pillIconOnly: Boolean(this.pillIconOnly)
-              })
-            : ""
+              ? renderRootSidebar({
+                  selectedRoute: "discover",
+                  profile: this.sidebarProfile,
+                  layout: this.layoutPrefs,
+                  expanded: Boolean(this.sidebarExpanded),
+                  pillIconOnly: Boolean(this.pillIconOnly)
+                })
+              : ""
         }
         <main class="home-main discover-main${enterClass}">
           <div class="seeall-shell discover-seeall-shell">
@@ -1642,9 +1643,11 @@ export const DiscoverScreen = {
     this.buildNavigationModel();
     if (useDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
-      this.container.querySelector('[data-action="desktopDiscoverBack"]')?.addEventListener("click", () => {
-        void Router.back();
-      });
+      this.container
+        .querySelector('[data-action="desktopDiscoverBack"]')
+        ?.addEventListener("click", () => {
+          void Router.back();
+        });
     } else if (showRootSidebar) {
       bindRootSidebarEvents(this.container, {
         currentRoute: "discover",
@@ -1655,6 +1658,7 @@ export const DiscoverScreen = {
     this.bindCardEvents();
     this.bindShellEvents();
     this.bindPointerEvents();
+    this.bindPageHeadingCollapse();
     if (this.pendingRestoreFocus) {
       const scrollMode = this.preserveViewportOnNextRender ? "none" : "center";
       this.pendingRestoreFocus = false;
@@ -1676,6 +1680,25 @@ export const DiscoverScreen = {
       this.restoreContentFocus({ scrollMode });
     }
     this.syncOpenPickerScroll();
+  },
+
+  /**
+   * The Discover heading stays at the top and shrinks once the page has moved;
+   * same function and stylesheet hook as the other list pages.
+   */
+  bindPageHeadingCollapse() {
+    const container = this.container;
+    if (!container) {
+      return;
+    }
+    if (this.pageHeadingCollapseBinding) {
+      this.pageHeadingCollapseBinding.refresh();
+      return;
+    }
+    this.pageHeadingCollapseBinding = bindCollapsingHeader({
+      resolveHeader: () => container.querySelector(".discover-header"),
+      getScrollTop: () => Number(getBrowserVerticalScrollOwner(container)?.scrollTop || 0)
+    });
   },
 
   bindCardEvents() {
@@ -2013,6 +2036,8 @@ export const DiscoverScreen = {
   },
 
   cleanup() {
+    this.pageHeadingCollapseBinding?.cleanup();
+    this.pageHeadingCollapseBinding = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.mediaContextMenuCleanup?.();

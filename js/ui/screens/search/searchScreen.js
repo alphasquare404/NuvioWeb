@@ -2,6 +2,7 @@ import { Router } from "../../navigation/router.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { Platform } from "../../../platform/index.js";
 import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
+import { bindCollapsingHeader } from "../../navigation/compactHeader.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
@@ -537,6 +538,7 @@ export const SearchScreen = {
               })
         }
         <main class="home-main search-content search-loading-shell">
+          <h1 class="search-page-heading">${escapeHtml(t("sidebar.search", {}, "Search"))}</h1>
           <div class="search-loading">
             ${renderLoadingIndicator()}
             <span>${escapeHtml(t("discover_loading", {}, "Loading..."))}</span>
@@ -548,6 +550,7 @@ export const SearchScreen = {
     if (useDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
     }
+    this.bindPageHeadingCollapse();
   },
 
   async reloadRows() {
@@ -872,10 +875,7 @@ export const SearchScreen = {
               // catalog asked for without disturbing the ones beside it.
               const landscape =
                 Platform.isBrowser() &&
-                shouldDrawCardLandscape(
-                  this.layoutPrefs?.catalogCardOrientation,
-                  item.posterShape
-                );
+                shouldDrawCardLandscape(this.layoutPrefs?.catalogCardOrientation, item.posterShape);
               const art = landscape
                 ? item.background || item.backdrop || item.landscapePoster || item.poster || ""
                 : item.poster || "";
@@ -1004,6 +1004,7 @@ export const SearchScreen = {
     this.bindActionEvents();
     this.bindDesktopSearchShelfInteractions();
     this.bindDesktopMediaHoverPreview();
+    this.bindPageHeadingCollapse();
     const input = this.container.querySelector("#searchInput");
     input?.blur?.();
     this.restoreScrollState();
@@ -1016,6 +1017,25 @@ export const SearchScreen = {
       this.restoreContentFocus(shouldFocusResults);
     }
     this.pendingAutoFocusResults = false;
+  },
+
+  /**
+   * The Search heading stays at the top and shrinks once the page has moved.
+   * It is also drawn while the page is loading, so the title never disappears.
+   */
+  bindPageHeadingCollapse() {
+    const container = this.container;
+    if (!container) {
+      return;
+    }
+    if (this.pageHeadingCollapseBinding) {
+      this.pageHeadingCollapseBinding.refresh();
+      return;
+    }
+    this.pageHeadingCollapseBinding = bindCollapsingHeader({
+      resolveHeader: () => container.querySelector(".search-page-heading"),
+      getScrollTop: () => Number(getBrowserVerticalScrollOwner(container)?.scrollTop || 0)
+    });
   },
 
   bindDesktopSearchShelfInteractions() {
@@ -1050,14 +1070,17 @@ export const SearchScreen = {
         }
         const track = target.closest(".search-results-track");
         const hasHorizontalWheelIntent =
-          Boolean(event.shiftKey) || Math.abs(Number(event.deltaX || 0)) > Math.abs(Number(event.deltaY || 0));
+          Boolean(event.shiftKey) ||
+          Math.abs(Number(event.deltaX || 0)) > Math.abs(Number(event.deltaY || 0));
         if (!track || !this.container?.contains(track) || !hasHorizontalWheelIntent) {
           return;
         }
         track.scrollLeft += Number(event.deltaX || 0) || Number(event.deltaY || 0);
         event.preventDefault?.();
       };
-      this.container.addEventListener("wheel", this.boundDesktopSearchWheelHandler, { passive: false });
+      this.container.addEventListener("wheel", this.boundDesktopSearchWheelHandler, {
+        passive: false
+      });
     }
 
     this.container.querySelectorAll(".search-results-track").forEach((track) => {
@@ -1067,7 +1090,10 @@ export const SearchScreen = {
       track.dataset.desktopDragBound = "true";
 
       track.addEventListener("dragstart", (event) => {
-        if (event.target instanceof HTMLImageElement && event.target.closest(".search-result-card")) {
+        if (
+          event.target instanceof HTMLImageElement &&
+          event.target.closest(".search-result-card")
+        ) {
           event.preventDefault();
         }
       });
@@ -2295,6 +2321,8 @@ export const SearchScreen = {
   },
 
   cleanup() {
+    this.pageHeadingCollapseBinding?.cleanup();
+    this.pageHeadingCollapseBinding = null;
     this.desktopMediaHoverPreview?.destroy();
     this.desktopMediaHoverPreview = null;
     this.browserCardTouchIntentCleanup?.();

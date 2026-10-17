@@ -1,5 +1,6 @@
 import { Router } from "../../navigation/router.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
+import { bindCollapsingHeader } from "../../navigation/compactHeader.js";
 import {
   getBrowserVerticalScrollOwner,
   getBrowserVerticalScrollTop,
@@ -729,6 +730,13 @@ export const LibraryScreen = {
             : this.renderSidebar()
         }
         <main class="home-main library-main">
+          <section class="library-page">
+            <header class="library-page-header">
+              <div class="library-page-heading">
+                <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
+              </div>
+            </header>
+          </section>
           <section class="library-loading-state">
             ${renderLoadingIndicator({ className: "library-loading-spinner" })}
             <div class="library-loading-label">${escapeHtml(t("library_syncing_library", {}, "Loading library"))}</div>
@@ -1488,6 +1496,7 @@ export const LibraryScreen = {
       });
     }
     this.bindDesktopMediaHoverPreview();
+    this.bindPageHeadingCollapse();
     if (this.isModalFocusLocked()) {
       return;
     }
@@ -1906,6 +1915,7 @@ export const LibraryScreen = {
       });
     }
     this.bindDesktopMediaHoverPreview();
+    this.bindPageHeadingCollapse();
     if (this.pendingVerticalScrollTop != null) {
       setBrowserVerticalScrollTop(this.pendingVerticalScrollTop, this.container);
       this.pendingVerticalScrollTop = null;
@@ -1914,6 +1924,28 @@ export const LibraryScreen = {
       return;
     }
     this.restoreFocus();
+  },
+
+  /**
+   * The Library heading stays at the top and shrinks once the page has moved.
+   *
+   * Shared with Search, Discover and the list pages through
+   * `bindCollapsingHeader`; the stylesheet gives `[data-collapsed="true"]` its
+   * bar shape.
+   */
+  bindPageHeadingCollapse() {
+    const container = this.container;
+    if (!container) {
+      return;
+    }
+    if (this.pageHeadingCollapseBinding) {
+      this.pageHeadingCollapseBinding.refresh();
+      return;
+    }
+    this.pageHeadingCollapseBinding = bindCollapsingHeader({
+      resolveHeader: () => container.querySelector(".library-page-header"),
+      getScrollTop: () => Number(getBrowserVerticalScrollOwner(container)?.scrollTop || 0)
+    });
   },
 
   isPosterHoldTarget(node) {
@@ -3293,6 +3325,8 @@ export const LibraryScreen = {
   },
 
   cleanup() {
+    this.pageHeadingCollapseBinding?.cleanup();
+    this.pageHeadingCollapseBinding = null;
     this.desktopMediaHoverPreview?.destroy();
     this.desktopMediaHoverPreview = null;
     this.browserCardTouchIntentCleanup?.();
