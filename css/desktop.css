@@ -6618,9 +6618,13 @@ html.desktop-browser {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  /* A pointer over a row puts it in the same state a remote's focus would:
+     the row paints the focus fill and the focus border, so hovering and
+     focusing are one appearance rather than two. */
   .desktop-browser .settings-shell .settings-nav-item:hover {
     background: var(--focus-bg);
     color: var(--text-color);
+    border-color: var(--focus-color) !important;
   }
 }
 

@@ -2852,9 +2852,19 @@ export const SettingsScreen = {
 
   renderSectionHeader(section) {
     const copy = translateSectionCopy(section);
-    // No in-page back control: the section page is a route, so Back is the
-    // browser's or the remote's own.
+    // The section page is a route, so this control pops that route. Placed and
+    // painted like every other back control in the browser build: floating on
+    // the navigation's own line, not in the header flow.
+    const back = Platform.isBrowser()
+      ? `
+      <button class="settings-section-back focusable" type="button" data-settings-back
+              aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
+        ${iconSvg(ROW_ICONS.back, "settings-section-back-icon")}
+      </button>
+    `
+      : "";
     return `
+      ${back}
       <header class="settings-content-header">
         <h1 class="settings-title">${escapeHtml(copy.label)}</h1>
         <p class="settings-subtitle">${escapeHtml(copy.subtitle)}</p>
@@ -9602,6 +9612,15 @@ export const SettingsScreen = {
   },
 
   async handleClickEvent(event) {
+    const backControl = event?.target?.closest?.("[data-settings-back]");
+    if (backControl && this.container?.contains?.(backControl)) {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      // The same thing the browser's Back does, because the section is a route.
+      Router.back();
+      return;
+    }
+
     const dialogBackdrop = event?.target?.closest?.(".settings-dialog-backdrop");
     if (
       isDesktopSettingsBrowser() &&
