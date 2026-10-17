@@ -18476,3 +18476,40 @@ html:not([data-nav-placement="top"])
     --seeall-gutter: var(--browser-page-gutter);
   }
 }
+
+/* On a phone the heading follows Discover: centred, with Back taken out of the
+   flow so it cannot push the title off-centre. Back stays inside the heading --
+   it is a child of it, and it travels with it -- and it is positioned against
+   the sticky heading itself, never given a `position` of its own container. */
+@media (max-width: 600px) {
+  .desktop-browser #catalogSeeAll .seeall-header {
+    align-items: center;
+    justify-content: center;
+    padding-inline: calc(var(--seeall-gutter) + 52px);
+  }
+
+  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+    position: absolute;
+    top: 50%;
+    left: var(--seeall-gutter);
+    transform: translateY(-50%);
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-header-copy {
+    width: 100%;
+    text-align: center;
+  }
+
+  .desktop-browser #catalogSeeAll .seeall-title,
+  .desktop-browser #catalogSeeAll .seeall-subtitle {
+    text-align: center;
+  }
+}
+
+/* Same place as Discover's Back on a phone: hard against the safe-area edge,
+   not one gutter in. */
+@media (max-width: 600px) {
+  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+    left: calc(8px + env(safe-area-inset-left, 0px));
+  }
+}
