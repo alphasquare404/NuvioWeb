@@ -3215,7 +3215,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #stream .stream-route-panel-summary::before {
-  content: "Ãƒâ€šÃ‚Â· ";
+  content: "ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ";
 }
 
 .desktop-browser #stream .stream-route-panel-header .stream-route-filter-row {
@@ -14433,7 +14433,7 @@ html:not([data-nav-placement="top"])
 
 /* Account: the signed-in address.
    Side by side, the label took enough of the row that a 26-character address
-   had nowhere to go but through the middle of a word -- "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦@gm / ail.com".
+   had nowhere to go but through the middle of a word -- "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦@gm / ail.com".
    Stacked, the address has the full row and stays in one piece. */
 .desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-status-card {
   display: grid;
@@ -14772,7 +14772,7 @@ html:not([data-nav-placement="top"])
 /* Library filters: one row out, the rest behind a button.
    ------------------------------------------------------------------
    Four stacked pickers took a third of a phone screen before a single item
-   appeared, and all four read "All" ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â a third of the screen spent saying
+   appeared, and all four read "All" ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â a third of the screen spent saying
    nothing was filtered. Type stays out, because it is the one most often
    changed. Genre, Year and Sort fold behind the button beside it. */
 /* The shell-scoped row rules below 600px set wrap and a full-width basis, and
@@ -17684,6 +17684,37 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
    narrow one the mark is centred. A phone whose navigation floats at the top is
    the one case with no bar at all: the centred mark would sit under the pill.
    --------------------------------------------------------------------------- */
+/* ===========================================================================
+   HEADINGS -- the contract
+   ===========================================================================
+   Two shapes, one set of rules.
+
+   1. Overlay bar (`.compact-header`, and Collection's follow layout): a fixed
+      strip that shows nothing until the mark it watches has scrolled past.
+
+   2. Page heading (Settings menu and section, Library, Search, Discover, Cast,
+      Collection's classic layout): the title is on the page from the first
+      frame, is `position: sticky; top: 0; z-index: 8`, and shrinks in place.
+
+   The invariants below are what make the two shapes behave alike; a rule that
+   breaks one of them has broken a page:
+
+   * Never set `position` on a page heading from a later rule. `sticky` is the
+     whole mechanism, and one `position: relative` silently unpins it (this has
+     happened once: the separator block did it, and four pages lost their sticky
+     heading at once).
+   * The collapse is decided by geometry -- the heading's own top reaching the
+     edge -- never by a scroll distance. A heading with a tall top margin would
+     otherwise shrink while it is still travelling.
+   * The safe area belongs to the heading. The page's own top padding is reduced
+     by the same amount on a phone, so the notch is reserved once, not twice.
+   * The separator is a pseudo-element inset to the content width, because the
+     heading's surface is deliberately wider than the content. See the
+     "separator follows the content" block.
+   * Deliberate exceptions: with the navigation at the top the Settings heading
+     is not sticky (the pill owns that band); See All's heading is not sticky
+     yet, and its line is a plain border because it is content-width already.
+   =========================================================================== */
 .desktop-browser .compact-header {
   position: fixed;
   /* From the very top of the screen: on a notched phone the safe area belongs
@@ -18233,17 +18264,10 @@ html:not([data-nav-placement="top"])
    These lines were not removed from an earlier design -- checked against the
    production commit, none of these headings had a border before; the hairline
    only appeared once a heading collapsed into its bar. It is a permanent rule
-   now: the heading is the top of the page, and the line is what says so.
+   now, and it is drawn once, in the block that follows this one: `border-bottom`
+   would run the full width of a heading that is deliberately wider than the
+   page, so the line is a pseudo-element inset to the cards instead.
    --------------------------------------------------------------------------- */
-.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
-.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header,
-.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
-.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header,
-.desktop-browser #catalogSeeAll .seeall-header,
-.desktop-browser #castDetail .person-heading {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
 
 /* The safe area was being counted twice on a phone: the page already reserved
    it in its navigation clearance, and the heading then reserved it again. The
@@ -18282,7 +18306,9 @@ html:not([data-nav-placement="top"])
 .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header,
 .desktop-browser #castDetail .person-heading {
-  position: relative;
+  /* No `position` here: these headings are sticky, and writing `relative` (or
+     anything else) would silently unpin them. A sticky element is already a
+     containing block, so the separator's ::after is positioned against it. */
   border-bottom: 0;
   margin-bottom: 16px;
 }
