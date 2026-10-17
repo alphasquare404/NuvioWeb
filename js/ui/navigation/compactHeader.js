@@ -11,7 +11,6 @@
 // from appearing early: the mark must be fully behind the bar, and the page
 // must actually have been scrolled.
 
-const DEFAULT_ROOT_MARGIN = "-64px 0px 0px 0px";
 const DEFAULT_BAR_HEIGHT = 52;
 
 /**
@@ -56,13 +55,15 @@ export function compactHeaderVisible(entry, context = {}) {
 export function bindCompactHeader({
   bar,
   mark,
-  rootMargin = DEFAULT_ROOT_MARGIN,
+  rootMargin,
   barHeight = DEFAULT_BAR_HEIGHT,
   getScrollTop = () => 0
 } = {}) {
   if (!bar || !mark || typeof globalThis.IntersectionObserver !== "function") {
     return () => {};
   }
+
+  const margin = rootMargin ?? `-${Math.max(0, Math.round(barHeight))}px 0px 0px 0px`;
 
   const apply = (visible) => {
     const next = visible ? "true" : "false";
@@ -76,12 +77,17 @@ export function bindCompactHeader({
   };
 
   apply(false);
+  // The observer only speaks when the intersection changes, so its root has to
+  // be narrowed by exactly the bar's height: then "no longer intersecting" and
+  // "the mark is fully behind the bar" are the same moment. A larger margin
+  // (e.g. 64px) would fire once, while the mark was still peeking below the bar,
+  // and never again.
   const observer = new globalThis.IntersectionObserver(
     (entries) => {
       const entry = entries[entries.length - 1];
       apply(compactHeaderVisible(entry, { barHeight, scrollTop: getScrollTop() }));
     },
-    { rootMargin, threshold: 0 }
+    { rootMargin: margin, threshold: 0 }
   );
   observer.observe(mark);
 
