@@ -18226,3 +18226,21 @@ html:not([data-nav-placement="top"])
   .settings-content-header {
   padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
 }
+
+/* ---------------------------------------------------------------------------
+   A separator under every page heading.
+
+   These lines were not removed from an earlier design -- checked against the
+   production commit, none of these headings had a border before; the hairline
+   only appeared once a heading collapsed into its bar. It is a permanent rule
+   now: the heading is the top of the page, and the line is what says so.
+   --------------------------------------------------------------------------- */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header,
+.desktop-browser #catalogSeeAll .seeall-header,
+.desktop-browser #castDetail .person-heading {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
