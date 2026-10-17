@@ -17402,3 +17402,88 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     max-width: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The compact header: a screen's mark, handed to a bar once it has scrolled out
+   of view.
+
+   The bar is an overlay, so showing it moves nothing. It paints nothing until
+   it is holding the mark; once it is, the page's colour shows through a blur and
+   a hairline closes the edge. On a wide screen the mark sits at the start of the
+   row, beside Back, and the floating navigation keeps the middle to itself; on a
+   narrow one the mark is centred. A phone whose navigation floats at the top is
+   the one case with no bar at all: the centred mark would sit under the pill.
+   --------------------------------------------------------------------------- */
+.desktop-browser .compact-header {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 0;
+  right: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: 52px;
+  /* Clear of Back, which sits at 38-82 on a wide screen. */
+  padding-inline: 96px 48px;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+.desktop-browser .compact-header[data-visible="true"] {
+  opacity: 1;
+  visibility: visible;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+/* The fallback only exists for the case where the logo fails to load; the
+   attribute alone loses to the display rule above it. */
+.desktop-browser .compact-header [hidden] {
+  display: none !important;
+}
+
+.desktop-browser .compact-header-mark {
+  display: block;
+  width: auto;
+  max-width: 180px;
+  max-height: 22px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.desktop-browser .compact-header-title {
+  display: block;
+  max-width: 420px;
+  overflow: hidden;
+  color: var(--text-color);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 960px) {
+  .desktop-browser .compact-header {
+    justify-content: center;
+    padding-inline: max(16px, var(--browser-page-gutter));
+  }
+
+  /* Nothing floats over the page in this case, but the mark is centred and so
+     is the pill: the bar waits until the pill is out of the way instead. */
+  html[data-nav-placement="top"] .desktop-browser .compact-header {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser .compact-header {
+    transition: none;
+  }
+}

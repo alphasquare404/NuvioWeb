@@ -1,5 +1,6 @@
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { bindCompactHeader } from "../../navigation/compactHeader.js";
 import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
@@ -4208,6 +4209,43 @@ export const MetaDetailsScreen = {
     `;
   },
 
+  /**
+   * The bar that takes the mark over once the hero's logo has scrolled past.
+   *
+   * `data-visible` is the only thing the stylesheet reads; the element is an
+   * overlay, so it can appear and disappear without moving the hero.
+   */
+  renderCompactHeader(meta) {
+    if (!Platform.isBrowser()) {
+      return "";
+    }
+    const name = String(meta?.name || "Untitled");
+    const logo = String(meta?.logo || "").trim();
+    const mark = logo
+      ? `<img class="compact-header-mark" src="${escapeAttribute(capTmdbImageSize(logo, "logo"))}" alt=""
+              onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><span class="compact-header-title" hidden>${escapeHtml(name)}</span>`
+      : `<span class="compact-header-title">${escapeHtml(name)}</span>`;
+    return `<div class="compact-header detail-compact-header" data-visible="false" aria-hidden="true">${mark}</div>`;
+  },
+
+  /**
+   * Watches the hero's mark, so the bar shows only once it has gone.
+   *
+   * The hero is re-rendered on enrichment, which replaces both elements, so
+   * this is called again at the end of every layout render.
+   */
+  bindDetailCompactHeader() {
+    this.detailCompactHeaderCleanup?.();
+    this.detailCompactHeaderCleanup = null;
+    const container = this.container;
+    const bar = container?.querySelector?.(".detail-compact-header");
+    const mark = container?.querySelector?.("#detailHeroSection .detail-hero-brand");
+    if (!bar || !mark) {
+      return;
+    }
+    this.detailCompactHeaderCleanup = bindCompactHeader({ bar, mark });
+  },
+
   handleDetailBack() {
     Router.back();
   },
@@ -4233,6 +4271,7 @@ export const MetaDetailsScreen = {
 
         <div class="series-detail-content">
           ${this.renderDesktopBackButton()}
+          ${this.renderCompactHeader(meta)}
           <div id="detailHeroSection">${heroMarkup}</div>
           <div id="detailSeasonRowMount">
             ${this.renderSeasonControls()}
@@ -4255,6 +4294,7 @@ export const MetaDetailsScreen = {
     }
     this._detailHeroMarkup = heroMarkup;
     this.bindDetailChrome();
+    this.bindDetailCompactHeader();
     this.schedulePendingEpisodeNavigation();
     this.scheduleEpisodeVirtualizationSync(this.getRememberedEpisodeIndex());
   },
@@ -4599,6 +4639,7 @@ export const MetaDetailsScreen = {
 
         <div class="series-detail-content movie-detail-content">
           ${this.renderDesktopBackButton()}
+          ${this.renderCompactHeader(meta)}
           <div id="detailHeroSection">${heroMarkup}</div>
           <div id="detailInsightSectionMount">${this.renderMovieInsightSection(meta)}</div>
           <div id="detailCommentsSectionMount">${this.renderStandaloneCommentsSection()}</div>
@@ -4614,6 +4655,7 @@ export const MetaDetailsScreen = {
     }
     this._detailHeroMarkup = heroMarkup;
     this.bindDetailChrome();
+    this.bindDetailCompactHeader();
   },
 
   captureRenderedChromeState() {
@@ -12554,6 +12596,8 @@ export const MetaDetailsScreen = {
   },
 
   cleanup() {
+    this.detailCompactHeaderCleanup?.();
+    this.detailCompactHeaderCleanup = null;
     this.autoOpenContinueWatchingStreamReady = false;
     this.routeHandoffPending = false;
     this.renderedRouteHandoffMarkup = null;
