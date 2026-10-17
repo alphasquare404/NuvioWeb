@@ -17454,7 +17454,7 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: calc(var(--browser-safe-area-top) + 76px) max(20px, var(--browser-page-gutter)) 14px;
+    padding: calc(var(--browser-safe-area-top) + 58px) max(16px, var(--browser-page-gutter)) 6px;
     border-radius: 0;
     background: transparent;
     box-shadow: none;
@@ -17473,7 +17473,7 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     width: auto;
     max-width: min(76%, 360px);
     max-height: 64px;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
     transition:
       max-height 180ms ease,
       margin 180ms ease;
@@ -17529,7 +17529,7 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     #stream
     .stream-route-shell[data-stream-header-collapsed="true"]
     .stream-route-left {
-    padding: calc(var(--browser-safe-area-top) + 8px) max(20px, var(--browser-page-gutter)) 8px;
+    padding: calc(var(--browser-safe-area-top) + 5px) max(16px, var(--browser-page-gutter)) 5px;
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
