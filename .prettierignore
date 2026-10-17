@@ -11,3 +11,10 @@ services/**/runtime
 .claude
 .opencode
 .orchestration
+
+# Legacy stylesheet, unformatted since long before this repository's current
+# formatting rules. Reformatting it costs thousands of unrelated lines, which
+# the pre-commit ratchet exists to refuse; listing it here keeps a single rule
+# change from arriving with a whole-file rewrite attached.
+css/desktop.css
+
