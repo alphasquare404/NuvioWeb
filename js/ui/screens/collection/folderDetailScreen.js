@@ -1727,6 +1727,28 @@ export const FolderDetailScreen = {
       ? `<img class="compact-header-mark" src="${escapeHtml(compactLogo)}" alt="" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><span class="compact-header-title" hidden>${escapeHtml(compactTitle)}</span>`
       : `<span class="compact-header-title">${escapeHtml(compactTitle)}</span>`;
     const compactBar = `<div class="compact-header collection-compact-header" data-visible="false" aria-hidden="true">${compactMark}</div>`;
+    // The tab picker is page furniture, not part of the header: it scrolls away
+    // with the content instead of staying pinned above it.
+    const tabPickerMarkup =
+      (!this.isDesktopBrowser || this.viewMode === "TABBED_GRID") && this.tabs.length > 1
+        ? this.isDesktopBrowser
+          ? this.renderTabPicker()
+          : `
+              <div class="folder-detail-tabs">
+                ${this.tabs
+                  .map(
+                    (tab, index) => `
+                  <button type="button"
+                          class="folder-detail-tab focusable${index === this.selectedTabIndex ? " is-selected" : ""}"
+                          data-action="selectTab"
+                          data-tab-index="${index}"
+                          data-focus-key="tab:${index}">${escapeHtml(tab.label || "Tab")}</button>
+                `
+                  )
+                  .join("")}
+              </div>
+            `
+        : "";
     this.container.innerHTML =
       this.viewMode === "TABBED_GRID" || this.isDesktopBrowser
         ? `
@@ -1758,28 +1780,8 @@ export const FolderDetailScreen = {
               <h2 class="seeall-title">${escapeHtml(this.folder?.title || "Folder")}</h2>
             `
             }
-            ${
-              (!this.isDesktopBrowser || this.viewMode === "TABBED_GRID") && this.tabs.length > 1
-                ? this.isDesktopBrowser
-                  ? this.renderTabPicker()
-                  : `
-              <div class="folder-detail-tabs">
-                ${this.tabs
-                  .map(
-                    (tab, index) => `
-                  <button type="button"
-                          class="folder-detail-tab focusable${index === this.selectedTabIndex ? " is-selected" : ""}"
-                          data-action="selectTab"
-                          data-tab-index="${index}"
-                          data-focus-key="tab:${index}">${escapeHtml(tab.label || "Tab")}</button>
-                `
-                  )
-                  .join("")}
-              </div>
-            `
-                : ""
-            }
           </header>
+          ${tabPickerMarkup ? `<div class="folder-detail-toolbar">${tabPickerMarkup}</div>` : ""}
           ${
             this.viewMode === "TABBED_GRID"
               ? `<section class="seeall-grid">${cards}</section>`

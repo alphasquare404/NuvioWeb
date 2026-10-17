@@ -24,11 +24,11 @@ test("the classic layout keeps its mark in a sticky header that shrinks", async 
   // The stylesheet: sticky, and a collapsed state that shrinks the mark.
   assert.match(
     desktopCss,
-    /\.desktop-folder-detail-shell \.folder-detail-header \{[^}]*position: sticky;[^}]*padding: calc\(env\(safe-area-inset-top, 0px\) \+ 14px\) 0 10px;/
+    /\.desktop-folder-detail-shell \.folder-detail-header \{[^}]*position: sticky;[^}]*padding: calc\(env\(safe-area-inset-top, 0px\) \+ 4px\) 0 10px;/
   );
   assert.match(
     desktopCss,
-    /\.folder-detail-header\[data-collapsed="true"\] \{[^}]*padding-top: calc\(env\(safe-area-inset-top, 0px\) \+ 8px\);[^}]*backdrop-filter: blur\(14px\);/
+    /\.folder-detail-header\[data-collapsed="true"\] \{[^}]*padding-top: calc\(env\(safe-area-inset-top, 0px\) \+ 6px\);[^}]*backdrop-filter: blur\(14px\);/
   );
   assert.match(
     desktopCss,
