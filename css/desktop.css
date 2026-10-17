@@ -19060,3 +19060,116 @@ html:not([data-nav-placement="top"])
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Back controls follow the See All shape: a plain chevron at the page's left
+   edge, vertically on the heading title's own line, with no disc behind it.
+
+   The recipe: the text block is the positioning box (`position: relative`), the
+   control is taken out of the flow by exactly the room the heading reserves
+   (`left: -56px`), and its box is one line of the title's type (`height: 1.1em`
+   with the same font-size), so its centre is the title's centre. Never set
+   `position` on the heading itself -- it is sticky.
+   --------------------------------------------------------------------------- */
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
+  position: relative;
+}
+
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 1.1em;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  font-size: clamp(30px, 2.5vw, 40px);
+  line-height: 1;
+  transform: none;
+}
+
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-desktop-back-button
+  .material-icons {
+  font-size: 0.6em;
+}
+
+@media (min-width: 601px) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+    left: -56px;
+  }
+}
+
+@media (max-width: 600px) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
+    width: 100%;
+  }
+
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+    top: 50%;
+    height: 1.1em;
+    transform: translateY(-50%);
+  }
+}
+
+/* The heading reserves exactly the room the chevron needs, so the title and the
+   subtitle keep one left edge and Back sits outside them. */
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
+  padding-inline: var(--list-heading-gutter);
+}
+
+@media (min-width: 601px) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
+    padding-inline: calc(var(--list-heading-gutter) + 56px) var(--list-heading-gutter);
+  }
+}
+
+/* Discover's Back, settled for both layouts. On a phone it is pinned to the
+   heading's own left edge and starts at the title's line box (its top is the
+   content top, its height one line of the title's type), so the centred title and
+   the chevron share a centre line. On a wide screen it is taken out of the text by
+   the 56px the heading reserves. Collapsed, it uses the collapsed title's size. */
+@media (max-width: 600px) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
+    position: static;
+    text-align: center;
+  }
+
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
+    left: var(--list-heading-gutter);
+    height: 1.1em;
+    transform: none;
+  }
+
+  .desktop-browser
+    .discover-shell.desktop-navigation-enabled
+    .discover-header[data-collapsed="true"]
+    .discover-desktop-back-button {
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    font-size: 18px;
+  }
+}
+
+@media (min-width: 601px) {
+  .desktop-browser
+    .discover-shell.desktop-navigation-enabled
+    .discover-header[data-collapsed="true"]
+    .discover-desktop-back-button {
+    top: 0;
+    font-size: 18px;
+  }
+}
+

@@ -1596,14 +1596,14 @@ export const DiscoverScreen = {
         <main class="home-main discover-main${enterClass}">
           <div class="seeall-shell discover-seeall-shell">
             <header class="seeall-header discover-header">
-              ${
-                useDesktopNavigation
-                  ? `<button class="discover-desktop-back-button" type="button" data-action="desktopDiscoverBack" aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-                      <span class="material-icons" aria-hidden="true">chevron_left</span>
-                    </button>`
-                  : ""
-              }
               <div class="discover-header-copy">
+                ${
+                  useDesktopNavigation
+                    ? `<button class="discover-desktop-back-button" type="button" data-action="desktopDiscoverBack" aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
+                        <span class="material-icons" aria-hidden="true">chevron_left</span>
+                      </button>`
+                    : ""
+                }
                 <h2 class="seeall-title">${escapeHtml(t("discover_title", {}, "Discover"))}</h2>
                 <div class="seeall-subtitle" id="discoverContextLabel">${escapeHtml(contextLabel)}</div>
               </div>
