@@ -18802,11 +18802,3 @@ html:not([data-nav-placement="top"])
   }
 }
 
-/* A line of diagnostic text inside the empty state: which catalog was asked for
-   and what came back. It only appears when the page has nothing to show. */
-.desktop-browser #catalogSeeAll .seeall-empty-detail {
-  margin-top: 8px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-}
