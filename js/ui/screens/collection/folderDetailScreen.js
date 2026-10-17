@@ -1,5 +1,7 @@
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { bindCompactHeader } from "../../navigation/compactHeader.js";
+import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -1705,6 +1707,17 @@ export const FolderDetailScreen = {
 
     const desktopHeaderMeta = this.getDesktopHeaderMetadata();
     const desktopHeaderLogo = String(this.folder?.titleLogoUrl || "").trim();
+    // The bar that takes the mark over once it has scrolled past. The mark is
+    // the collection's logo when it has one, and its title otherwise -- which is
+    // why a collection without a logo still gets a bar, with text in it.
+    const compactTitle = String(
+      this.collection?.title || this.folder?.title || heroDisplay?.title || "Collection"
+    );
+    const compactLogo = String(desktopHeaderLogo || heroDisplay?.logo || "").trim();
+    const compactMark = compactLogo
+      ? `<img class="compact-header-mark" src="${escapeHtml(compactLogo)}" alt="" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><span class="compact-header-title" hidden>${escapeHtml(compactTitle)}</span>`
+      : `<span class="compact-header-title">${escapeHtml(compactTitle)}</span>`;
+    const compactBar = `<div class="compact-header collection-compact-header" data-visible="false" aria-hidden="true">${compactMark}</div>`;
     this.container.innerHTML =
       this.viewMode === "TABBED_GRID" || this.isDesktopBrowser
         ? `
@@ -1715,6 +1728,7 @@ export const FolderDetailScreen = {
           }
           ${this.isDesktopBrowser ? '<div class="folder-detail-desktop-ambient" aria-hidden="true"></div>' : ""}
           <div class="seeall-shell folder-detail-shell${this.isDesktopBrowser ? " desktop-folder-detail-shell" : ""}${enterClass}">
+          ${this.isDesktopBrowser ? compactBar : ""}
           <header class="seeall-header folder-detail-header">
             ${
               this.isDesktopBrowser
@@ -1777,6 +1791,7 @@ export const FolderDetailScreen = {
       `
         : `
         <div class="seeall-shell folder-detail-shell folder-detail-follow-layout">
+          ${this.isDesktopBrowser ? compactBar : ""}
           <section class="folder-follow-hero">
             <div class="folder-follow-hero-media">
               <img class="folder-follow-hero-backdrop" src="${escapeHtml(heroDisplay?.backdrop || "")}" alt="" />
@@ -1799,11 +1814,42 @@ export const FolderDetailScreen = {
       bindDesktopNavigationEvents(this.container);
     }
     this.bindDesktopBrowserEvents();
+    this.bindCollectionCompactHeader();
     this.syncBrowserSelectedTabIntoView();
     this.applyDesktopAmbientTheme();
     this.buildNavigationModel();
     this.restoreFocus();
     this.applyHeroToDom();
+  },
+
+  /**
+   * Watches the collection's mark, so the bar shows only once it has gone.
+   *
+   * Nodes are resolved on every tick: this screen re-renders (hero data,
+   * desktop metadata, tab changes) and each render replaces the bar and the
+   * mark. Binding once to the first pair would leave the bar watching nodes
+   * that are no longer in the document.
+   */
+  bindCollectionCompactHeader() {
+    const container = this.container;
+    if (!container || !this.isDesktopBrowser) {
+      return;
+    }
+    if (this.collectionCompactHeaderBinding) {
+      this.collectionCompactHeaderBinding.refresh();
+      return;
+    }
+    this.collectionCompactHeaderBinding = bindCompactHeader({
+      resolveBar: () => container.querySelector(".collection-compact-header"),
+      resolveMark: () =>
+        // Both layouts: the "follow" hero, and the classic header. The logo
+        // comes first; a collection without one falls back to its title.
+        container.querySelector(".folder-follow-hero-logo:not([hidden])") ||
+        container.querySelector(".folder-follow-hero-title:not(.is-hidden)") ||
+        container.querySelector(".folder-detail-desktop-logo") ||
+        container.querySelector(".folder-detail-desktop-heading h1"),
+      getScrollTop: () => Number(getBrowserVerticalScrollOwner(container)?.scrollTop || 0)
+    });
   },
 
   syncBrowserSelectedTabIntoView() {
@@ -2389,6 +2435,8 @@ export const FolderDetailScreen = {
   },
 
   cleanup() {
+    this.collectionCompactHeaderBinding?.cleanup();
+    this.collectionCompactHeaderBinding = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.mediaContextMenuCleanup?.();
