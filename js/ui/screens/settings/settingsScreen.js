@@ -1,5 +1,6 @@
 import { deferWhileReordering } from "../../components/listReorderDrag.js";
 import { Router } from "../../navigation/router.js";
+import { createScreenPrototype } from "../../navigation/routeLayerInstances.js";
 import {
   readSettingsRouteSection,
   SETTINGS_ROUTE,
@@ -9458,22 +9459,31 @@ export const SettingsScreen = {
     this.applyFocus();
   },
 
-  async activateNavSelection() {
-    const section = this.visibleSections[this.navIndex];
+  // Opening a section by name, not by position. The row that was clicked says
+  // which section it is; asking the index instead meant a stale index (after a
+  // Back, the index and the page being restored disagree for a moment) could
+  // swallow the click and leave the page apparently unresponsive.
+  async openSection(sectionId) {
+    const id = String(sectionId || "").trim();
+    if (!id) {
+      return;
+    }
+    const section =
+      this.visibleSections.find((item) => item.id === id) || getSettingsSectionById(id);
     if (!section) {
       return;
     }
     // The browser opens the section's own page -- the same shape Search has
     // when it opens Discover -- so Back is a route pop and not a handler here.
     if (settingsUsesRoutePages()) {
-      this.activeSection = section.id;
+      this.activeSection = id;
       this.integrationView = "hub";
-      this.contentFocusKey = section.id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
+      this.contentFocusKey = id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
       this.persistUiState();
-      await Router.navigate(SETTINGS_SECTION_ROUTE, { section: section.id });
+      await Router.navigate(SETTINGS_SECTION_ROUTE, { section: id });
       return;
     }
-    if (section.id === "trakt") {
+    if (id === "trakt") {
       if (isDesktopSettingsBrowser()) {
         this.setActiveSection("trakt");
         await this.render();
@@ -9482,10 +9492,18 @@ export const SettingsScreen = {
       }
       return;
     }
-    this.setActiveSection(section.id);
+    this.setActiveSection(id);
     this.integrationView = "hub";
-    this.contentFocusKey = section.id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
+    this.contentFocusKey = id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
     await this.render({ refreshModel: false });
+  },
+
+  async activateNavSelection() {
+    const section = this.visibleSections[this.navIndex];
+    if (!section) {
+      return;
+    }
+    await this.openSection(section.id);
   },
 
   syncNavFocusToActive() {
@@ -9658,7 +9676,9 @@ export const SettingsScreen = {
         this.navIndex = clamp(navIndex, 0, Math.max(0, this.visibleSections.length - 1));
       }
       this.focusZone = "nav";
-      await this.activateNavSelection();
+      // The row itself says which section it opens. Going through the index by
+      // position could open the wrong one, or nothing, once the two disagree.
+      await this.openSection(String(target.dataset.section || ""));
       return;
     }
 
@@ -10120,3 +10140,18 @@ export const SettingsScreen = {
     ScreenUtils.hide(this.container);
   }
 };
+
+/**
+ * The section page's own screen object.
+ *
+ * Two routes, one screen definition: the index in `settings`, the section in
+ * `settingsSection`. They must not be the same object. The router keeps a page
+ * it has navigated away from mounted underneath the next one -- it suspends
+ * `this.routes[current]` and restores it on Back -- so a second route sharing
+ * that object rewrites the container the suspended page still lives in, and
+ * the page restored on Back is drawn into the wrong element with the wrong
+ * state. Each route gets its own instance, built the way the router builds a
+ * second Detail: methods only, taken before this screen has ever run.
+ */
+export const SettingsSectionScreen =
+  createScreenPrototype(SettingsScreen) || SettingsScreen;

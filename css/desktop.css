@@ -14032,13 +14032,13 @@ body.desktop-browser {
 }
 
 /* Hover on the index page is a light on the row, not a box.
-   These rows are borderless inside their group's card, and a border painted on
-   hover would resize the row under the pointer -- the same reason the profile
-   cards only tint. No outline, no border: the hovered row is simply lit. */
+   Every row on this page is a `.settings-nav-item` -- the account card and any
+   ungrouped section included -- so the rule is written once, for the page,
+   rather than per group: scoping it to the groups left the account row with no
+   hover at all. No outline, no border: the hovered row is simply lit. */
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser
     .settings-shell[data-settings-nav-mode="index"]
-    .settings-nav-group
     .settings-nav-item:hover {
     background: var(--focus-bg);
     color: var(--text-color);

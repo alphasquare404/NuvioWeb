@@ -9,7 +9,7 @@ import { MetaDetailsScreen } from "../screens/detail/metaDetailsScreen.js";
 import { LibraryScreen } from "../screens/library/libraryScreen.js";
 import { SearchScreen } from "../screens/search/searchScreen.js";
 import { DiscoverScreen } from "../screens/search/discoverScreen.js";
-import { SettingsScreen } from "../screens/settings/settingsScreen.js";
+import { SettingsScreen, SettingsSectionScreen } from "../screens/settings/settingsScreen.js";
 import { ConsoleDebugScreen } from "../screens/debug/consoleDebugScreen.js";
 import { TraktScreen } from "../screens/trakt/traktScreen.js";
 import { SupportersContributorsScreen } from "../screens/supporters/supportersContributorsScreen.js";
@@ -217,9 +217,10 @@ export const Router = {
     search: SearchScreen,
     discover: DiscoverScreen,
     settings: SettingsScreen,
-    // The section page Settings opens from its index: a route of its own, so
-    // Back is the browser's Back and not a handler inside one screen.
-    settingsSection: SettingsScreen,
+    // The section page Settings opens from its index: a route of its own, with
+    // its own screen instance, so Back is the browser's Back and the page being
+    // returned to is still mounted where the router left it.
+    settingsSection: SettingsSectionScreen,
     debugConsole: ConsoleDebugScreen,
     trakt: TraktScreen,
     supportersContributors: SupportersContributorsScreen,

@@ -115,7 +115,7 @@ test("Back in browser Settings is the browser's own, one route at a time", async
   );
   assert.doesNotMatch(source, /settingsUsesTouchNav/);
   assert.doesNotMatch(source, /closeSectionToIndex/);
-  assert.match(source, /Router\.navigate\(SETTINGS_SECTION_ROUTE, \{ section: section\.id \}\)/);
+  assert.match(source, /Router\.navigate\(SETTINGS_SECTION_ROUTE, \{ section: id \}\)/);
 });
 
 test("the section page carries the same floating back control as every other screen", async () => {
@@ -132,10 +132,12 @@ test("the section page carries the same floating back control as every other scr
 test("hovering a Settings row lights it without changing its box", async () => {
   const desktopCss = await readFile(desktopCssUrl, "utf8");
 
-  // The rows are borderless inside their group card, so a hover border would
-  // resize the row under the pointer. Hover is a tint, like a profile card's.
+  // Every row on the index page is a settings-nav-item, the account card
+  // included; the rule is written for the page, not per group, or the account
+  // row has no hover at all. A hover border would resize a row under the
+  // pointer, so hover is a tint only.
   const hoverRule = desktopCss.match(
-    /\.settings-shell\[data-settings-nav-mode="index"\]\s*\.settings-nav-group\s*\.settings-nav-item:hover \{([\s\S]*?)\}/
+    /\.settings-shell\[data-settings-nav-mode="index"\][\s\S]{0,80}?\.settings-nav-item:hover \{([\s\S]*?)\}/
   );
 
   assert.ok(hoverRule, "the index rows need a hover rule of their own");
@@ -144,10 +146,27 @@ test("hovering a Settings row lights it without changing its box", async () => {
   assert.doesNotMatch(hoverRule[1], /border|outline|font-weight|transform/);
 });
 
-test("each Settings container binds its own listeners, so the section page stays clickable", async () => {
-  // Both routes share one screen object, so a "bound once" flag marked the
-  // index page done and left the section page without a click handler: every
-  // control there, Back included, did nothing.
+test("each Settings route owns its own screen instance", async () => {
+  // The router suspends the page it navigates away from and restores it on
+  // Back. Two routes sharing one screen object meant the restored index was
+  // drawn into the section's container with the section's state: dead rows, a
+  // missing focus, and clicks that did nothing.
+  const source = await settingsScreenSource();
+  const routerSource = await readFile(
+    new URL("../../navigation/router.js", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /export const SettingsSectionScreen =\s*createScreenPrototype\(SettingsScreen\)/
+  );
+  assert.match(routerSource, /settingsSection: SettingsSectionScreen/);
+});
+
+test("each Settings container binds its own listeners, so both pages stay clickable", async () => {
+  // A "bound once" flag on the screen object marked the first page done and
+  // left the other without a click handler: every control there did nothing.
   const source = await settingsScreenSource();
 
   assert.match(source, /this\.container\.__settingsListeners/);
