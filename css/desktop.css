@@ -111,7 +111,8 @@ html.desktop-browser:not(.nuvio-keyboard-nav) .stream-route-card-action.focused:
 }
 
 /* Sign Out reddens and swells by 2% on focus; its resting values, measured. */
-html.desktop-browser:not(.nuvio-keyboard-nav) .settings-account-signout-button.focused:not(.selected) {
+html.desktop-browser:not(.nuvio-keyboard-nav)
+  .settings-account-signout-button.focused:not(.selected) {
   border-color: transparent !important;
   background: rgba(198, 40, 40, 0.12) !important;
   transform: none !important;
@@ -652,7 +653,9 @@ html.desktop-browser {
 
 /* With a Hero, its layout box naturally clears the fixed browser navigation.
    When the Hero is disabled, retain that clearance for the first Home rail. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-hero-disabled .home-route-content {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-hero-disabled
+  .home-route-content {
   padding-top: var(--browser-home-no-hero-top, calc(var(--browser-safe-area-top) + 92px));
 }
 
@@ -736,7 +739,9 @@ html.desktop-browser {
   font-size: 14px;
   font-weight: 700;
   line-height: 1;
-  transition: background-color 160ms ease, transform 160ms ease;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
 }
 
 .desktop-browser .desktop-hero-details-button:focus-visible {
@@ -754,24 +759,32 @@ html.desktop-browser {
 /* Modern Home uses a TV-style absolute row viewport. In browser mode, make
    that viewport follow the hero in normal document flow without changing its
    cards or its own scrolling behavior. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-stage {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-stage {
   position: relative;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-card {
   position: relative;
   inset: auto;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-media {
   top: 0;
   right: 0;
   width: 100%;
   height: 100%;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::before {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-media::before {
   width: 100%;
   background: linear-gradient(
     90deg,
@@ -783,7 +796,9 @@ html.desktop-browser {
   );
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::after {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-media::after {
   background: linear-gradient(
     180deg,
     rgba(5, 5, 6, 0.02) 0%,
@@ -792,7 +807,9 @@ html.desktop-browser {
   );
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-copy {
   top: 0;
   right: auto;
   bottom: 0;
@@ -804,7 +821,9 @@ html.desktop-browser {
 
 /* The browser hero is explicitly selected with these controls. TV retains its
    existing focus-driven indicators and D-pad behavior. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-indicators {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-hero-indicators {
   display: none;
 }
 
@@ -816,11 +835,15 @@ html.desktop-browser {
 /* The browser may pan the page vertically from the hero, but a sideways drag
    is the swipe and never a scroll -- otherwise the page rubber-bands and the
    gesture is cancelled halfway. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-card {
   touch-action: pan-y;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel {
   position: absolute;
   bottom: var(--hero-controls-middle, clamp(26px, 4vh, 48px));
   right: clamp(24px, 5vw, 88px);
@@ -836,19 +859,27 @@ html.desktop-browser {
   box-shadow: none;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel[hidden] {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel[hidden] {
   display: none;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel-button,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel-dot {
   flex: 0 0 auto;
   border: 0;
   cursor: pointer;
   font: inherit;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel-button {
   display: inline-grid;
   width: 30px;
   height: 30px;
@@ -861,7 +892,9 @@ html.desktop-browser {
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel-dots {
   display: inline-flex;
   max-width: min(38vw, 224px);
   align-items: center;
@@ -870,11 +903,15 @@ html.desktop-browser {
   scrollbar-width: none;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots::-webkit-scrollbar {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel-dots::-webkit-scrollbar {
   display: none;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel-dot {
   width: 7px;
   height: 7px;
   padding: 0;
@@ -882,23 +919,33 @@ html.desktop-browser {
   background: rgba(255, 255, 255, 0.4);
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot.is-active {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel-dot.is-active {
   width: 20px;
   background: #fff;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button:focus-visible,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot:focus-visible {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel-button:focus-visible,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .desktop-hero-carousel-dot:focus-visible {
   outline: 2px solid var(--focus-color);
   outline-offset: 2px;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button:hover {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-button:hover {
     color: rgba(255, 255, 255, 0.72);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot:hover {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-dot:hover {
     background: rgba(255, 255, 255, 0.72);
   }
 }
@@ -942,7 +989,10 @@ html.desktop-browser {
   }
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-track {
   --home-track-gap: 12px;
   margin-left: 0;
   padding-left: 0;
@@ -956,39 +1006,59 @@ html.desktop-browser {
 
 /* Desktop catalog shelves retain compact portrait cards. Continue Watching
    is intentionally excluded because it remains a separate landscape section. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs {
   box-sizing: border-box;
   width: 100vw;
   margin-left: calc(50% - 50vw);
   padding-inline: clamp(24px, 2vw, 40px);
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) img {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card)
+  img {
   -webkit-user-drag: none;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card {
   cursor: pointer;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track.is-pointer-dragging {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-track.is-pointer-dragging {
   cursor: grabbing;
 }
 
 /* Continue Watching keeps its landscape markup, but uses a browser-sized
    carousel with the same outer gutter as the desktop catalog shelves. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue {
   box-sizing: border-box;
   width: 100vw;
   margin-left: calc(50% - 50vw);
   padding-inline: calc(clamp(24px, 2vw, 40px) - 8px);
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-row-head {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-row-head {
   padding-left: 8px;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-track {
   --home-track-gap: 14px;
   margin-left: 0;
   padding: 12px 8px 8px;
@@ -998,7 +1068,10 @@ html.desktop-browser {
   touch-action: pan-y;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track.is-pointer-dragging {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-track.is-pointer-dragging {
   cursor: grabbing;
 }
 
@@ -1006,14 +1079,23 @@ html.desktop-browser {
    should retain their native horizontal pan behavior. `pan-y` blocks that
    gesture on iOS/iPadOS even though these tracks overflow horizontally. */
 @media (any-pointer: coarse) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-track,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-track {
     touch-action: auto;
     -webkit-overflow-scrolling: touch;
   }
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-card {
   position: relative;
   z-index: 0;
   flex: 0 0 clamp(340px, 20vw, 390px);
@@ -1022,7 +1104,10 @@ html.desktop-browser {
   border-radius: 16px;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-media {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-media {
   height: auto;
   aspect-ratio: 16 / 9;
   border-radius: 16px;
@@ -1035,18 +1120,34 @@ html.desktop-browser {
 }
 
 /* The horizontal track owns clipping; make only its first direct card grow inward. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track > .home-continue-card:first-child .home-continue-media,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track > .home-poster-card:not(.home-collection-card):first-child .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-track
+  > .home-continue-card:first-child
+  .home-continue-media,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-track
+  > .home-poster-card:not(.home-collection-card):first-child
+  .home-poster-frame {
   transform-origin: left bottom;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-copy {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-copy {
   left: 14px;
   right: 14px;
   bottom: 28px;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-kicker {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-kicker {
   overflow: hidden;
   color: rgba(255, 255, 255, 0.76);
   font-size: 13px;
@@ -1055,7 +1156,10 @@ html.desktop-browser {
   white-space: nowrap;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-title {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-title {
   overflow: hidden;
   margin-top: 3px;
   font-size: 17px;
@@ -1065,7 +1169,10 @@ html.desktop-browser {
   white-space: nowrap;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-subtitle {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-subtitle {
   overflow: hidden;
   margin-top: 2px;
   color: rgba(255, 255, 255, 0.68);
@@ -1114,38 +1221,68 @@ html.desktop-browser {
   }
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-badge {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-badge {
   min-height: 22px;
   padding: 3px 7px;
   font-size: 12px;
   line-height: 1.2;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card.focused,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card:focus-visible {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-card.focused,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-card:focus-visible {
   z-index: 1;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card.focused .home-continue-media,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card:focus-visible .home-continue-media {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-card.focused
+  .home-continue-media,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-row-continue
+  .home-continue-card:focus-visible
+  .home-continue-media {
   box-shadow:
     0 0 0 2px var(--secondary-color),
     0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card:hover {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-continue-card:hover {
     z-index: 1;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card:hover .home-continue-media {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-continue-card:hover
+    .home-continue-media {
     transform: scale(1.03);
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
   }
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card),
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card),
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card).is-expanded {
   position: relative;
   z-index: 0;
   flex: 0 0 clamp(156px, 9.5vw, 194px);
@@ -1155,8 +1292,16 @@ html.desktop-browser {
   transform: none;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-frame,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card)
+  .home-poster-frame,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card).is-expanded
+  .home-poster-frame {
   height: auto;
   aspect-ratio: 2 / 3;
   transform: scale(1);
@@ -1168,27 +1313,62 @@ html.desktop-browser {
     background-color 120ms ease;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-expanded-backdrop,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-expanded-gradient,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-expanded-brand,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-trailer-layer,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-landscape-copy {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card)
+  .home-poster-expanded-backdrop,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card)
+  .home-poster-expanded-gradient,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card)
+  .home-poster-expanded-brand,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card)
+  .home-poster-trailer-layer,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card)
+  .home-poster-landscape-copy {
   display: none !important;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded .content-poster {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card).is-expanded
+  .content-poster {
   opacity: 1 !important;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card) .home-poster-copy,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded .home-poster-copy {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card)
+  .home-poster-copy,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card).is-expanded
+  .home-poster-copy {
   display: block;
   min-height: 0;
   height: auto;
   padding: 9px 2px 0;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-title {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-title {
   overflow: hidden;
   color: var(--text-color);
   font-size: 14px;
@@ -1198,7 +1378,10 @@ html.desktop-browser {
   white-space: nowrap;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-subtitle {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-subtitle {
   margin-top: 3px;
   overflow: hidden;
   color: var(--text-secondary);
@@ -1208,25 +1391,46 @@ html.desktop-browser {
   white-space: nowrap;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).focused,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card):focus-visible {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card).focused,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card):focus-visible {
   z-index: 1;
   transform: none;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).focused .home-poster-frame,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card):focus-visible .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card).focused
+  .home-poster-frame,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card:not(.home-collection-card):focus-visible
+  .home-poster-frame {
   border-color: var(--secondary-color);
   box-shadow: 0 0 0 2px var(--secondary-color);
   background-color: var(--focus-bg);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card):hover {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-card:not(.home-collection-card):hover {
     z-index: 1;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card):hover .home-poster-frame {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-card:not(.home-collection-card):hover
+    .home-poster-frame {
     transform: scale(1.04);
     border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
@@ -1235,32 +1439,48 @@ html.desktop-browser {
 
 /* Collection folders are navigation tiles, not media posters. Their saved
    tileShape controls their desktop aspect ratio without affecting media cards. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card {
   position: relative;
   z-index: 0;
   margin: 0;
   cursor: pointer;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-poster {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card.is-collection-poster {
   flex: 0 0 clamp(156px, 9.5vw, 194px);
   min-width: clamp(156px, 9.5vw, 194px);
   max-width: clamp(156px, 9.5vw, 194px);
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-square {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card.is-collection-square {
   flex: 0 0 clamp(164px, 10vw, 204px);
   min-width: clamp(164px, 10vw, 204px);
   max-width: clamp(164px, 10vw, 204px);
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-landscape {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card.is-collection-landscape {
   flex: 0 0 clamp(280px, 18vw, 360px);
   min-width: clamp(280px, 18vw, 360px);
   max-width: clamp(280px, 18vw, 360px);
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card
+  .home-poster-frame {
   height: auto;
   transform: scale(1);
   transform-origin: center bottom;
@@ -1272,52 +1492,97 @@ html.desktop-browser {
 }
 
 /* Keep edge tiles fully visible when their visual frame grows on hover. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:first-child .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card:first-child
+  .home-poster-frame {
   transform-origin: left bottom;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:last-child .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card:last-child
+  .home-poster-frame {
   transform-origin: right bottom;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-poster .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card.is-collection-poster
+  .home-poster-frame {
   aspect-ratio: 2 / 3;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-square .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card.is-collection-square
+  .home-poster-frame {
   aspect-ratio: 1 / 1;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-landscape .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card.is-collection-landscape
+  .home-poster-frame {
   aspect-ratio: 16 / 9;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card .home-poster-copy {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card
+  .home-poster-copy {
   display: block;
   min-height: 0;
   height: auto;
   padding: 9px 2px 0;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.focused,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:focus-visible {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card.focused,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card:focus-visible {
   z-index: 1;
   transform: none;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.focused .home-poster-frame,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:focus-visible .home-poster-frame {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card.focused
+  .home-poster-frame,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-collection-card:focus-visible
+  .home-poster-frame {
   border-color: var(--secondary-color);
   box-shadow: 0 0 0 2px var(--secondary-color);
   background-color: var(--focus-bg);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:hover {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-collection-card:hover {
     z-index: 1;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:hover .home-poster-frame {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-collection-card:hover
+    .home-poster-frame {
     transform: scale(1.04);
     border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
@@ -1325,7 +1590,9 @@ html.desktop-browser {
 }
 
 @media (max-width: 760px) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs {
     padding-inline: 20px;
   }
 }
@@ -1351,7 +1618,12 @@ html.desktop-browser {
   pointer-events: none;
   opacity: 0.72;
   background-image:
-    radial-gradient(ellipse at 82% 8%, rgb(var(--collection-ambient-rgb) / 0.42), rgb(var(--collection-ambient-rgb) / 0.14) 34%, transparent 64%),
+    radial-gradient(
+      ellipse at 82% 8%,
+      rgb(var(--collection-ambient-rgb) / 0.42),
+      rgb(var(--collection-ambient-rgb) / 0.14) 34%,
+      transparent 64%
+    ),
     linear-gradient(105deg, var(--bg-color) 4%, rgb(0 0 0 / 0.16) 46%, var(--bg-color) 100%),
     var(--collection-ambient-artwork, none);
   background-position: center;
@@ -1580,8 +1852,16 @@ html.desktop-browser {
   outline: none;
 }
 
-.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card.focused .seeall-card-poster-wrap,
-.desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card:focus-visible .seeall-card-poster-wrap {
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .seeall-card.focused
+  .seeall-card-poster-wrap,
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .seeall-card:focus-visible
+  .seeall-card-poster-wrap {
   border-color: var(--secondary-color);
   box-shadow: 0 0 0 2px var(--secondary-color);
   transform: scale(1);
@@ -1631,7 +1911,11 @@ html.desktop-browser {
     z-index: 1;
   }
 
-  .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card:hover .seeall-card-poster-wrap {
+  .desktop-browser
+    #folderDetail
+    .desktop-folder-detail-shell
+    .seeall-card:hover
+    .seeall-card-poster-wrap {
     transform: scale(1.04);
     border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
@@ -1741,7 +2025,9 @@ html.desktop-browser {
   cursor: pointer;
   font-size: 16px;
   font-weight: 700;
-  transition: background-color 160ms ease, transform 160ms ease;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
 }
 
 .desktop-browser #account .desktop-auth-submit:hover:not(:disabled) {
@@ -2193,7 +2479,9 @@ html.desktop-browser {
   font-size: 14px;
   font-weight: 600;
   backdrop-filter: blur(10px);
-  transition: background-color 160ms ease, border-color 160ms ease;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease;
 }
 
 .desktop-browser #account .desktop-qr-back-button:hover {
@@ -2246,7 +2534,13 @@ html.desktop-browser {
 
 .desktop-browser #detail .series-detail-vignette {
   background:
-    linear-gradient(90deg, rgba(4, 7, 11, 0.94) 0%, rgba(8, 12, 17, 0.72) 42%, rgba(8, 12, 17, 0.25) 72%, rgba(8, 12, 17, 0.08) 100%),
+    linear-gradient(
+      90deg,
+      rgba(4, 7, 11, 0.94) 0%,
+      rgba(8, 12, 17, 0.72) 42%,
+      rgba(8, 12, 17, 0.25) 72%,
+      rgba(8, 12, 17, 0.08) 100%
+    ),
     linear-gradient(180deg, rgba(0, 0, 0, 0.08) 42%, var(--detail-bg) 100%);
 }
 
@@ -2481,7 +2775,10 @@ html.desktop-browser {
   line-height: 1;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    outline-color 140ms ease;
 }
 
 .desktop-browser #detail .detail-desktop-back-button:focus-visible,
@@ -2516,7 +2813,10 @@ html.desktop-browser {
   line-height: 1;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    outline-color 140ms ease;
 }
 
 .desktop-browser #stream .stream-desktop-back-button:focus-visible {
@@ -2893,7 +3193,10 @@ html.desktop-browser {
   background: rgba(18, 18, 22, 0.68);
   font-size: 14px;
   line-height: 1.2;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .desktop-browser #stream .stream-route-chip.selected {
@@ -2956,7 +3259,10 @@ html.desktop-browser {
   background: rgba(26, 26, 31, 0.82);
   cursor: pointer;
   transform: none;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser #stream .stream-route-offline-actions {
@@ -3022,7 +3328,9 @@ html.desktop-browser {
 .desktop-browser #stream .stream-route-card:focus-visible {
   border-color: var(--secondary-color);
   background: rgba(31, 31, 37, 0.94);
-  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.58), 0 8px 22px rgba(0, 0, 0, 0.2);
+  box-shadow:
+    0 0 0 2px rgb(var(--secondary-color-rgb) / 0.58),
+    0 8px 22px rgba(0, 0, 0, 0.2);
   outline: none;
   transform: none;
 }
@@ -3224,7 +3532,6 @@ html.desktop-browser {
   background-size: 23px 23px;
 }
 
-
 /* The source identity is rendered before the download controls, but it reads
    last: what this is, then what it is doing, then where it came from and what
    can be done about it. Ordering here rather than moving the markup keeps the
@@ -3370,7 +3677,6 @@ html.desktop-browser {
   font-weight: 700;
   letter-spacing: -0.2px;
 }
-
 
 /* An episode reads as one line -- the code in a chip, the title beside it --
    rather than as two stacked lines of the same weight. Keyed off the code's
@@ -3675,7 +3981,10 @@ html.desktop-browser {
   background: rgba(18, 18, 22, 0.38);
   color: rgba(255, 255, 255, 0.94);
   font-size: 15px;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser #player .player-control-btn.is-primary {
@@ -3744,7 +4053,10 @@ html.desktop-browser {
   color: rgba(255, 255, 255, 0.94);
   cursor: pointer;
   pointer-events: auto;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser #player .player-desktop-tool-icon {
@@ -3920,7 +4232,10 @@ html.desktop-browser {
 }
 
 .desktop-browser .desktop-external-player-actions .desktop-external-player-choice.focused small,
-.desktop-browser .desktop-external-player-actions .desktop-external-player-choice:focus-visible small {
+.desktop-browser
+  .desktop-external-player-actions
+  .desktop-external-player-choice:focus-visible
+  small {
   color: rgba(255, 255, 255, 0.72);
 }
 
@@ -3999,7 +4314,11 @@ html.desktop-browser {
   pointer-events: auto;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease, opacity 200ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    outline-color 140ms ease,
+    opacity 200ms ease;
 }
 
 .desktop-browser #playerUiRoot:not(.controls-visible) .player-desktop-back-button {
@@ -4583,8 +4902,14 @@ html.desktop-browser {
    only the selected-language track rail takes the remaining scroll space. */
 .desktop-browser .stream-download-options-dialog {
   gap: 12px;
-  width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
-  max-width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+  width: min(
+    560px,
+    calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+  );
+  max-width: min(
+    560px,
+    calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+  ) !important;
 }
 
 .desktop-browser .download-options-header {
@@ -4660,10 +4985,17 @@ html.desktop-browser {
   line-height: 1.25;
 }
 
-@media (orientation: landscape) and (min-width: 601px), (orientation: landscape) and (max-height: 650px) {
+@media (orientation: landscape) and (min-width: 601px),
+  (orientation: landscape) and (max-height: 650px) {
   .desktop-browser .stream-download-options-dialog {
-    width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
-    max-width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+    width: min(
+      900px,
+      calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+    );
+    max-width: min(
+      900px,
+      calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+    ) !important;
     padding: 14px 18px;
     gap: 8px;
   }
@@ -4759,8 +5091,14 @@ html.desktop-browser {
 
 @media (orientation: landscape) and (max-height: 650px) {
   .desktop-browser .stream-download-options-dialog {
-    width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
-    max-width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+    width: min(
+      900px,
+      calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+    );
+    max-width: min(
+      900px,
+      calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+    ) !important;
     padding: 12px 16px;
   }
 
@@ -5229,7 +5567,10 @@ html.desktop-browser {
   font-size: 17px;
   line-height: 1.25;
   transform: none;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .desktop-browser #detail .series-insight-tab.selected {
@@ -5272,7 +5613,9 @@ html.desktop-browser {
   height: 96px;
   margin: 0 auto 9px;
   border-radius: 50%;
-  transition: box-shadow 140ms ease, transform 140ms ease;
+  transition:
+    box-shadow 140ms ease,
+    transform 140ms ease;
 }
 
 .desktop-browser #detail .movie-cast-avatar-image {
@@ -5408,7 +5751,10 @@ html.desktop-browser {
   border-width: 1px;
   border-radius: 12px;
   overflow: visible;
-  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
 }
 
 .desktop-browser #detail .detail-morelike-poster,
@@ -5687,7 +6033,10 @@ html.desktop-browser {
   font-weight: 600;
   line-height: 1;
   transform: none;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .desktop-browser #detail .series-season-btn.selected {
@@ -5820,8 +6169,14 @@ html.desktop-browser {
 }
 
 .desktop-browser .nuvio-dialog-panel.season-download-dialog {
-  width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
-  max-width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+  width: min(
+    560px,
+    calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+  );
+  max-width: min(
+    560px,
+    calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+  ) !important;
   max-height: min(74dvh, 600px);
   padding: 20px;
   gap: 10px;
@@ -6093,7 +6448,10 @@ html.desktop-browser {
   right: 6px;
 }
 
-.desktop-browser .season-download-dialog .season-download-source-picker-actions .season-download-secondary-action {
+.desktop-browser
+  .season-download-dialog
+  .season-download-source-picker-actions
+  .season-download-secondary-action {
   align-self: flex-start;
   width: fit-content;
   min-height: 34px;
@@ -6197,7 +6555,10 @@ html.desktop-browser {
     max-height: min(54dvh, 430px);
   }
 
-  .desktop-browser .season-download-dialog .season-download-source-picker-actions .season-download-secondary-action {
+  .desktop-browser
+    .season-download-dialog
+    .season-download-source-picker-actions
+    .season-download-secondary-action {
     min-height: 44px;
   }
 }
@@ -6255,7 +6616,9 @@ html.desktop-browser {
   aspect-ratio: 16 / 9;
   border-radius: 14px;
   overflow: hidden;
-  transition: box-shadow 140ms ease, transform 140ms ease;
+  transition:
+    box-shadow 140ms ease,
+    transform 140ms ease;
 }
 
 .desktop-browser #detail .series-episode-copy {
@@ -6397,7 +6760,9 @@ html.desktop-browser {
 
 .desktop-browser #detail .series-episode-card.focused .series-episode-thumb,
 .desktop-browser #detail .series-episode-card:focus-visible .series-episode-thumb {
-  box-shadow: 0 0 0 2px var(--detail-focus-ring), 0 10px 22px rgba(0, 0, 0, 0.32);
+  box-shadow:
+    0 0 0 2px var(--detail-focus-ring),
+    0 10px 22px rgba(0, 0, 0, 0.32);
   transform: none;
 }
 
@@ -6521,7 +6886,10 @@ html.desktop-browser {
   gap: 2px;
 }
 
-.desktop-browser .settings-shell .settings-nav-item[style*="--settings-nav-accent"] .settings-nav-icon {
+.desktop-browser
+  .settings-shell
+  .settings-nav-item[style*="--settings-nav-accent"]
+  .settings-nav-icon {
   color: rgb(var(--settings-nav-accent));
   background: rgb(var(--settings-nav-accent) / 0.16);
 }
@@ -6727,7 +7095,11 @@ html.desktop-browser {
   background: transparent;
   box-shadow: none;
   transform: none;
-  transition: transform 160ms ease, background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    transform 160ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser .profile-avatar-ring,
@@ -6738,7 +7110,9 @@ html.desktop-browser {
   height: 108px;
   margin: 0 auto;
   border-width: 1px;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser .profile-avatar,
@@ -6865,7 +7239,10 @@ html.desktop-browser {
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser .profile-desktop-back-button {
@@ -6892,7 +7269,10 @@ html.desktop-browser {
   line-height: 1;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    outline-color 140ms ease;
 }
 
 .desktop-browser .profile-desktop-back-button:focus-visible {
@@ -6946,7 +7326,9 @@ html.desktop-browser {
   font-size: 15px;
   font-weight: 600;
   line-height: 1;
-  transition: background-color 140ms ease, border-color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
 }
 
 .desktop-browser .profile-action-pill .material-icons {
@@ -7004,7 +7386,8 @@ html.desktop-browser {
 /* Browser Create Profile keeps the established editor flow but replaces the
    oversized TV canvas with a balanced form and avatar-picker workspace. */
 .desktop-browser .profile-editor-backdrop {
-  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -7012,7 +7395,10 @@ html.desktop-browser {
 
 .desktop-browser .profile-editor-panel {
   width: min(1080px, 100%);
-  max-height: min(760px, calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  max-height: min(
+    760px,
+    calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom))
+  );
   padding: 28px;
   border-radius: 20px;
   overflow: auto;
@@ -7345,7 +7731,6 @@ html.desktop-browser {
 }
 
 @media (hover: hover) and (pointer: fine) {
-
   .desktop-browser .profile-manage-button:hover {
     border-color: rgba(255, 255, 255, 0.36);
     background: rgba(255, 255, 255, 0.1);
@@ -7411,7 +7796,10 @@ html.desktop-browser {
   gap: 12px;
   border-width: 1px;
   border-radius: 12px;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser .settings-shell .settings-row-copy,
@@ -7486,7 +7874,10 @@ html.desktop-browser {
   background: rgb(var(--secondary-color-rgb) / 0.88);
   border: 1px solid rgb(var(--secondary-color-rgb) / 0.96);
   border-radius: 9px;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import {
@@ -7498,21 +7889,39 @@ html.desktop-browser {
   gap: 14px;
 }
 
-.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import.is-disabled,
-.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import:disabled {
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-fusion
+  .settings-fusion-sources-import.is-disabled,
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-fusion
+  .settings-fusion-sources-import:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
 
-.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import:focus-visible,
-.desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-preview-close:focus-visible {
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-fusion
+  .settings-fusion-sources-import:focus-visible,
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-fusion
+  .settings-fusion-preview-close:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.42);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-sources-import:not(:disabled):hover,
-  .desktop-browser .settings-shell .settings-collapsible-fusion .settings-fusion-preview-close:hover {
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible-fusion
+    .settings-fusion-sources-import:not(:disabled):hover,
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible-fusion
+    .settings-fusion-preview-close:hover {
     background: rgb(var(--secondary-color-rgb) / 1);
   }
 }
@@ -7581,7 +7990,10 @@ html.desktop-browser {
   background: rgb(var(--secondary-color-rgb) / 0.9);
   border: 1px solid rgb(var(--secondary-color-rgb) / 1);
   border-radius: 9px;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser .settings-shell .settings-tracking-inline-button.is-secondary {
@@ -7646,7 +8058,9 @@ html.desktop-browser {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser .settings-shell .settings-tracking-inline-button:not(.is-secondary):not(.is-danger):hover {
+  .desktop-browser
+    .settings-shell
+    .settings-tracking-inline-button:not(.is-secondary):not(.is-danger):hover {
     background: rgb(var(--secondary-color-rgb) / 1);
   }
 
@@ -7668,7 +8082,10 @@ html.desktop-browser {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser .settings-shell .settings-fusion-source-action.is-disabled,
@@ -7778,7 +8195,10 @@ html.desktop-browser {
   gap: 8px;
   border-width: 1px;
   border-radius: 14px;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .desktop-browser .settings-shell .settings-theme-swatch-wrap {
@@ -8211,7 +8631,10 @@ html.desktop-browser {
   color: #111;
 }
 
-.desktop-browser .settings-shell .settings-hero-catalog-option.is-selected .settings-hero-catalog-meta {
+.desktop-browser
+  .settings-shell
+  .settings-hero-catalog-option.is-selected
+  .settings-hero-catalog-meta {
   color: rgba(17, 17, 17, 0.68);
 }
 
@@ -8228,7 +8651,9 @@ html.desktop-browser {
   border-color: #111 !important;
   background: #f5f5f5;
   color: #111;
-  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.32), 0 0 0 4px rgb(0 0 0 / 0.38);
+  box-shadow:
+    0 0 0 2px rgb(255 255 255 / 0.32),
+    0 0 0 4px rgb(0 0 0 / 0.38);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -8632,13 +9057,17 @@ html.desktop-browser {
 }
 
 .desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button.focused,
-.desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button:focus-visible {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-presentation-button:focus-visible {
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.55);
   outline: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button:hover:not(.selected) {
+  .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    .library-presentation-button:hover:not(.selected) {
     background: rgba(255, 255, 255, 0.08);
     color: var(--text-color);
   }
@@ -8685,7 +9114,10 @@ html.desktop-browser {
 
 .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor.focused,
 .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor:focus-visible,
-.desktop-browser .library-shell.desktop-navigation-enabled .library-picker.open .library-picker-anchor {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker.open
+  .library-picker-anchor {
   border-color: var(--secondary-color);
   box-shadow: 0 0 0 3px rgb(var(--secondary-color-rgb) / 0.2);
   background: rgba(35, 35, 39, 0.96);
@@ -8754,7 +9186,10 @@ html.desktop-browser {
   margin-bottom: 22px;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row .library-action-button {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-actions-row
+  .library-action-button {
   min-height: 42px;
   padding: 0 16px;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -8763,8 +9198,14 @@ html.desktop-browser {
   transform: none;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row .library-action-button.focused,
-.desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row .library-action-button.background-focused {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-actions-row
+  .library-action-button.focused,
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-actions-row
+  .library-action-button.background-focused {
   box-shadow: 0 0 0 2px var(--secondary-color);
   transform: none;
 }
@@ -8793,7 +9234,10 @@ html.desktop-browser {
   line-height: 1.2;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-status-section .library-grid-wrap {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-status-section
+  .library-grid-wrap {
   padding-bottom: 0;
 }
 
@@ -8864,8 +9308,14 @@ html.desktop-browser {
   transform: none;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card.focused .library-grid-poster,
-.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card:focus-visible .library-grid-poster {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-grid-card.focused
+  .library-grid-poster,
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-grid-card:focus-visible
+  .library-grid-poster {
   border-color: var(--secondary-color);
   box-shadow: 0 0 0 2px var(--secondary-color);
   transform: scale(1);
@@ -8876,7 +9326,10 @@ html.desktop-browser {
     z-index: 1;
   }
 
-  .desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card:hover .library-grid-poster {
+  .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    .library-grid-card:hover
+    .library-grid-poster {
     transform: scale(1.04);
     border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
@@ -8954,7 +9407,9 @@ html.desktop-browser {
   object-fit: cover;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-poster-placeholder {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-download-manager-poster-placeholder {
   display: grid;
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
@@ -9021,7 +9476,9 @@ html.desktop-browser {
   place-items: center;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-download-manager-action:focus-visible {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-download-manager-action:focus-visible {
   outline: 2px solid var(--secondary-color);
   outline-offset: 2px;
 }
@@ -9110,7 +9567,9 @@ html.desktop-browser {
 .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header,
 .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover,
 .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-voice,
-.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover.no-voice {
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-header.no-discover.no-voice {
   grid-template-columns: repeat(2, 48px) minmax(0, 1fr);
   width: 100%;
   max-width: none;
@@ -9124,7 +9583,9 @@ html.desktop-browser {
   grid-template-columns: 48px minmax(0, 1fr);
 }
 
-.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover.no-voice {
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-header.no-discover.no-voice {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -9170,7 +9631,10 @@ html.desktop-browser {
   box-sizing: border-box;
 }
 
-.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-empty-state-idle .search-empty-icon {
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-empty-state-idle
+  .search-empty-icon {
   font-size: clamp(72px, 7vw, 96px);
   color: var(--text-tertiary);
 }
@@ -9225,7 +9689,9 @@ html.desktop-browser {
   touch-action: pan-x pan-y;
 }
 
-.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-track.is-pointer-dragging {
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-results-track.is-pointer-dragging {
   cursor: grabbing;
 }
 
@@ -9273,8 +9739,14 @@ html.desktop-browser {
   z-index: 1;
 }
 
-.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card.focused .search-result-poster-wrap,
-.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card:focus-visible .search-result-poster-wrap {
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-result-card.focused
+  .search-result-poster-wrap,
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-result-card:focus-visible
+  .search-result-poster-wrap {
   border-color: var(--secondary-color);
   box-shadow: 0 0 0 2px var(--secondary-color);
 }
@@ -9298,7 +9770,10 @@ html.desktop-browser {
     z-index: 1;
   }
 
-  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card:hover .search-result-poster-wrap {
+  .desktop-browser
+    .search-screen-shell.desktop-navigation-enabled
+    .search-result-card:hover
+    .search-result-poster-wrap {
     transform: scale(1.04);
     border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
@@ -9390,10 +9865,16 @@ html.desktop-browser {
   cursor: pointer;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    outline-color 140ms ease;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button .material-icons {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-desktop-back-button
+  .material-icons {
   font-size: 18px;
 }
 
@@ -9402,7 +9883,9 @@ html.desktop-browser {
   background: rgba(255, 255, 255, 0.14);
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button:focus-visible {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-desktop-back-button:focus-visible {
   border-color: rgba(255, 255, 255, 0.42);
   outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
   outline-offset: 2px;
@@ -9434,7 +9917,10 @@ html.desktop-browser {
   min-width: 0;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-anchor {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker-anchor {
   min-height: 58px;
   padding: 8px 14px;
   gap: 12px;
@@ -9443,50 +9929,81 @@ html.desktop-browser {
   background: rgba(26, 26, 29, 0.9);
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-title {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker-title {
   font-size: 11px;
   line-height: 1.2;
   letter-spacing: 0.06em;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-value {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker-value {
   font-size: 15px;
   line-height: 1.25;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-icon {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker-icon {
   width: 20px;
   height: 20px;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-chevron {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker-chevron {
   width: 18px;
   height: 18px;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-anchor.focused,
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-anchor:focus-visible,
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker.open .library-picker-anchor {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker-anchor.focused,
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker-anchor:focus-visible,
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker.open
+  .library-picker-anchor {
   border-color: var(--secondary-color);
   box-shadow: 0 0 0 3px rgb(var(--secondary-color-rgb) / 0.2);
   background: rgba(35, 35, 39, 0.96);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-anchor:hover {
+  .desktop-browser
+    .discover-shell.desktop-navigation-enabled
+    .discover-picker-row
+    .library-picker-anchor:hover {
     border-color: rgba(255, 255, 255, 0.36);
     background: rgba(35, 35, 39, 0.96);
   }
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-menu {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker-menu {
   top: calc(100% + 6px);
   max-height: 320px;
   padding: 4px;
   border-radius: 14px;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-picker-row .library-picker-option {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-picker-row
+  .library-picker-option {
   min-height: 40px;
   padding: 0 12px;
   border-radius: 10px;
@@ -9501,7 +10018,10 @@ html.desktop-browser {
   overflow: visible;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"] {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-cloud-toolbar
+  .library-action-button[data-action="refreshCloudLibrary"] {
   box-sizing: border-box;
   flex: 0 0 auto;
   min-width: 0;
@@ -9518,7 +10038,10 @@ html.desktop-browser {
   cursor: pointer;
   transform: none;
   transform-origin: center;
-  transition: background-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    opacity 140ms ease;
 }
 
 .desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar {
@@ -9526,13 +10049,25 @@ html.desktop-browser {
   gap: 16px;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-cloud-search-shell {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-cloud-toolbar
+  .library-cloud-search-shell {
   min-width: 0;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"].focused,
-.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"].background-focused,
-.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"]:active {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-cloud-toolbar
+  .library-action-button[data-action="refreshCloudLibrary"].focused,
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-cloud-toolbar
+  .library-action-button[data-action="refreshCloudLibrary"].background-focused,
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-cloud-toolbar
+  .library-action-button[data-action="refreshCloudLibrary"]:active {
   border-color: transparent;
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.42);
   background: #fff;
@@ -9540,11 +10075,17 @@ html.desktop-browser {
   transform: none;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"]:hover:not(:disabled) {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-cloud-toolbar
+  .library-action-button[data-action="refreshCloudLibrary"]:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.86);
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-cloud-toolbar .library-action-button[data-action="refreshCloudLibrary"]:focus-visible {
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-cloud-toolbar
+  .library-action-button[data-action="refreshCloudLibrary"]:focus-visible {
   outline: 2px solid var(--secondary-color);
   outline-offset: 2px;
 }
@@ -9593,7 +10134,10 @@ html.desktop-browser {
   overflow: visible;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card-poster-wrap {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-grid
+  .seeall-card-poster-wrap {
   height: auto;
   aspect-ratio: 2 / 3;
   border-radius: 14px;
@@ -9605,7 +10149,10 @@ html.desktop-browser {
     box-shadow 120ms ease;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card-poster-image,
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-grid
+  .seeall-card-poster-image,
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card-poster {
   border-radius: 12px;
   -webkit-user-drag: none;
@@ -9628,12 +10175,23 @@ html.desktop-browser {
 }
 
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card.focused,
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card:focus-visible {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-grid
+  .seeall-card:focus-visible {
   z-index: 1;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card.focused .seeall-card-poster-wrap,
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card:focus-visible .seeall-card-poster-wrap {
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-grid
+  .seeall-card.focused
+  .seeall-card-poster-wrap,
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-grid
+  .seeall-card:focus-visible
+  .seeall-card-poster-wrap {
   border-color: var(--secondary-color);
   box-shadow: 0 0 0 2px var(--secondary-color);
   transform: scale(1);
@@ -9644,7 +10202,11 @@ html.desktop-browser {
     z-index: 1;
   }
 
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card:hover .seeall-card-poster-wrap {
+  .desktop-browser
+    .discover-shell.desktop-navigation-enabled
+    .discover-grid
+    .seeall-card:hover
+    .seeall-card-poster-wrap {
     transform: scale(1.04);
     border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
@@ -9689,7 +10251,9 @@ html.desktop-browser {
   }
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-rows-viewport {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-rows-viewport {
   position: relative;
   right: auto;
   bottom: auto;
@@ -9701,7 +10265,9 @@ html.desktop-browser {
   z-index: 3;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-rows-scroll {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-rows-scroll {
   min-height: 0;
   padding-bottom: 48px;
 }
@@ -9783,7 +10349,9 @@ html.desktop-browser {
   font: inherit;
   font-size: 14px;
   line-height: 18px;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
 }
 
 .desktop-browser .desktop-navigation-icon {
@@ -9830,7 +10398,9 @@ html.desktop-browser {
 
 @media (max-width: 760px) {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled > .home-main,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.has-collapsible-sidebar > .home-main,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.has-collapsible-sidebar
+    > .home-main,
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.has-modern-sidebar > .home-main {
     padding: 0;
   }
@@ -9855,7 +10425,9 @@ html.desktop-browser {
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-copy {
     width: min(100% - 32px, 560px);
     max-width: min(100% - 32px, 560px);
     padding: 0 0 28px 16px;
@@ -9887,7 +10459,11 @@ html.desktop-browser {
 .desktop-browser .settings-shell .desktop-addon-primary-action:focus-visible,
 .desktop-browser .settings-shell .desktop-addon-action:focus-visible,
 .desktop-browser .settings-shell .desktop-addon-drag-handle:focus-visible,
-.desktop-browser .settings-shell .desktop-addon-toggle input:focus-visible + .desktop-addon-toggle-track {
+.desktop-browser
+  .settings-shell
+  .desktop-addon-toggle
+  input:focus-visible
+  + .desktop-addon-toggle-track {
   outline: 2px solid rgb(var(--secondary-color-rgb) / 0.76);
   outline-offset: 2px;
 }
@@ -9937,61 +10513,379 @@ html.desktop-browser {
 }
 
 /* Desktop Collection management and editors. */
-.desktop-browser .settings-shell .settings-collapsible-collections .settings-collapsible-body { margin-left: 12px; }
-.desktop-browser .settings-shell .settings-collapsible-collections .settings-subsection-card { background: rgba(255, 255, 255, 0.025); }
-.desktop-browser .desktop-collection-manager { display: grid; gap: 14px; min-width: 0; }
-.desktop-browser .desktop-collection-manager-intro, .desktop-browser .desktop-collection-manager-empty { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.45; }
-.desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-editor-section-heading, .desktop-browser .desktop-collection-editor-row, .desktop-browser .desktop-collection-editor-toggle-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.desktop-browser .desktop-collection-add-form input, .desktop-browser .desktop-collection-editor-card input, .desktop-browser .desktop-collection-source-add select { min-width: 0; height: 42px; padding: 0 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; background: rgba(0,0,0,.24); color: var(--text-color); font: inherit; box-sizing: border-box; }
-.desktop-browser .desktop-collection-add-form input { flex: 1 1 auto; }
-.desktop-browser .desktop-collection-add-form button, .desktop-browser .desktop-collection-editor-section-heading > button, .desktop-browser .desktop-collection-source-add button, .desktop-browser .desktop-collection-editor-actions button { min-height: 38px; padding: 0 13px; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; background: #f4f4f4; color: #151515; font: 600 13px/1 inherit; cursor: pointer; white-space: nowrap; }
-.desktop-browser .desktop-collection-manager-error { margin: -5px 0 0; color: #ff9daa; font-size: 13px; }
-.desktop-browser .desktop-collection-manager-list, .desktop-browser .desktop-collection-editor-list { display: grid; gap: 10px; }
-.desktop-browser .desktop-collection-manager-row, .desktop-browser .desktop-collection-editor-row { padding: 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 13px; background: rgba(255,255,255,.045); }
-.desktop-browser .desktop-collection-manager-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.desktop-browser .desktop-collection-manager-copy { flex: 1 1 auto; min-width: 0; }
-.desktop-browser .desktop-collection-manager-copy h3, .desktop-browser .desktop-collection-manager-copy p, .desktop-browser .desktop-collection-editor-row h3, .desktop-browser .desktop-collection-editor-row p { overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; }
-.desktop-browser .desktop-collection-manager-copy h3, .desktop-browser .desktop-collection-editor-row h3 { color: var(--text-color); font-size: 15px; line-height: 1.3; }
-.desktop-browser .desktop-collection-manager-copy p, .desktop-browser .desktop-collection-editor-row p { margin-top: 4px; color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
-.desktop-browser .desktop-collection-manager-actions, .desktop-browser .desktop-collection-editor-actions { display: flex; flex: 0 0 auto; gap: 7px; }
-.desktop-browser .desktop-collection-manager-actions button, .desktop-browser .desktop-collection-editor-actions button { min-height: 34px; padding: 0 10px; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; background: rgba(255,255,255,.07); color: var(--text-color); cursor: pointer; font: 600 12px/1 inherit; }
-.desktop-browser .desktop-collection-manager-actions .is-danger, .desktop-browser .desktop-collection-editor-actions .is-danger { color: #ffb1b9; }
-.desktop-browser .desktop-collection-drag-handle { display: inline-grid; flex: 0 0 auto; width: 32px; height: 36px; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.15); border-radius: 9px; background: rgba(255,255,255,.04); color: var(--text-tertiary); cursor: grab; touch-action: none; }
-.desktop-browser .desktop-collection-drag-handle:active { cursor: grabbing; }
-.desktop-browser .desktop-collection-editor-shell { min-height: 100vh; padding: clamp(92px, 10vw, 132px) clamp(32px, 4vw, 64px) 72px; background: #111; color: var(--text-color); box-sizing: border-box; }
-.desktop-browser .desktop-collection-editor-shell > * { width: min(100%, 980px); margin-right: auto; margin-left: auto; }
-.desktop-browser .desktop-collection-editor-back { position: fixed; z-index: 20; top: 24px; left: 28px; display: grid; width: 44px; height: 44px; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; background: rgba(0,0,0,.58); color: #fff; cursor: pointer; backdrop-filter: blur(10px); }
-.desktop-browser .desktop-collection-editor-header { margin-bottom: 26px; }
-.desktop-browser .desktop-collection-editor-header p { margin: 0 0 5px; color: var(--text-secondary); font-size: 14px; }
-.desktop-browser .desktop-collection-editor-header h1 { margin: 0; font-size: clamp(27px,3vw,38px); line-height: 1.1; }
-.desktop-browser .desktop-collection-editor-card, .desktop-browser .desktop-collection-editor-section { display: grid; gap: 18px; padding: 20px; border: 1px solid rgba(255,255,255,.1); border-radius: 17px; background: rgba(255,255,255,.035); box-sizing: border-box; }
-.desktop-browser .desktop-collection-editor-section { margin-top: 18px; }
-.desktop-browser .desktop-collection-editor-card label { display: grid; gap: 8px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
-.desktop-browser .desktop-collection-backdrop-preview { width: min(100%, 420px); max-height: 150px; border-radius: 11px; object-fit: cover; }
-.desktop-browser .desktop-collection-editor-toggle-row { justify-content: space-between; padding: 4px 0; }
-.desktop-browser .desktop-collection-editor-toggle-row span { display: grid; gap: 4px; }
-.desktop-browser .desktop-collection-editor-toggle-row strong { font-size: 14px; }
-.desktop-browser .desktop-collection-editor-toggle-row small { color: var(--text-secondary); font-size: 12px; }
-.desktop-browser .desktop-collection-switch input { position: absolute; opacity: 0; pointer-events: none; }
-.desktop-browser .desktop-collection-switch span { display: block; width: 42px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.16); cursor: pointer; transition: background .15s ease; }
-.desktop-browser .desktop-collection-switch span::after { width: 18px; height: 18px; margin: 3px; border-radius: 50%; background: white; content: ""; transition: transform .15s ease; }
-.desktop-browser .desktop-collection-switch input:checked + span { background: rgb(var(--secondary-color-rgb) / .9); }
-.desktop-browser .desktop-collection-switch input:checked + span::after { transform: translateX(18px); }
-.desktop-browser .desktop-collection-segmented { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
-.desktop-browser .desktop-collection-segmented legend { width: 100%; margin-bottom: 3px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
-.desktop-browser .desktop-collection-segmented button { min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; background: rgba(255,255,255,.05); color: var(--text-color); cursor: pointer; }
-.desktop-browser .desktop-collection-segmented button.is-selected { border-color: rgba(255,255,255,.74); background: #f4f4f4; color: #151515; }
-.desktop-browser .desktop-collection-editor-section-heading { justify-content: space-between; }
-.desktop-browser .desktop-collection-editor-section-heading h2 { margin: 0; font-size: 19px; }
-.desktop-browser .desktop-collection-editor-section-heading p { margin: 4px 0 0; color: var(--text-secondary); font-size: 13px; }
-.desktop-browser .desktop-collection-editor-row > div:nth-child(2) { flex: 1 1 auto; min-width: 0; }
-.desktop-browser .desktop-folder-cover { display: grid; flex: 0 0 auto; width: 46px; height: 46px; overflow: hidden; place-items: center; border-radius: 9px; background: rgba(255,255,255,.08); color: var(--text-secondary); }
-.desktop-browser .desktop-folder-cover img { width: 100%; height: 100%; object-fit: cover; }
-.desktop-browser .desktop-collection-source-add { display: flex; gap: 10px; }
-.desktop-browser .desktop-collection-source-add select { flex: 1 1 auto; }
-@media (hover:hover) and (pointer:fine) { .desktop-browser .desktop-collection-manager-row:hover, .desktop-browser .desktop-collection-editor-row:hover { border-color: rgba(255,255,255,.25); background: rgba(255,255,255,.075); } .desktop-browser .desktop-collection-editor-back:hover { background: rgba(255,255,255,.16); } }
-.desktop-browser .desktop-collection-add-form input:focus-visible, .desktop-browser .desktop-collection-editor-card input:focus-visible, .desktop-browser .desktop-collection-editor-back:focus-visible, .desktop-browser .desktop-collection-segmented button:focus-visible, .desktop-browser .desktop-collection-manager-actions button:focus-visible, .desktop-browser .desktop-collection-editor-actions button:focus-visible { outline: 2px solid rgb(var(--secondary-color-rgb) / .9); outline-offset: 2px; }
-@media (max-width: 640px) { .desktop-browser .desktop-collection-editor-shell { padding: 88px 18px 48px; } .desktop-browser .desktop-collection-editor-back { left: 18px; } .desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-editor-section-heading, .desktop-browser .desktop-collection-editor-row { align-items: flex-start; } .desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-source-add { flex-direction: column; } .desktop-browser .desktop-collection-add-form button { width: 100%; } .desktop-browser .desktop-collection-manager-row, .desktop-browser .desktop-collection-editor-row { display: grid; grid-template-columns: auto minmax(0,1fr); } .desktop-browser .desktop-collection-manager-actions, .desktop-browser .desktop-collection-editor-actions { grid-column: 1 / -1; justify-content: flex-end; } }
+.desktop-browser .settings-shell .settings-collapsible-collections .settings-collapsible-body {
+  margin-left: 12px;
+}
+.desktop-browser .settings-shell .settings-collapsible-collections .settings-subsection-card {
+  background: rgba(255, 255, 255, 0.025);
+}
+.desktop-browser .desktop-collection-manager {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.desktop-browser .desktop-collection-manager-intro,
+.desktop-browser .desktop-collection-manager-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.desktop-browser .desktop-collection-add-form,
+.desktop-browser .desktop-collection-editor-section-heading,
+.desktop-browser .desktop-collection-editor-row,
+.desktop-browser .desktop-collection-editor-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.desktop-browser .desktop-collection-add-form input,
+.desktop-browser .desktop-collection-editor-card input,
+.desktop-browser .desktop-collection-source-add select {
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--text-color);
+  font: inherit;
+  box-sizing: border-box;
+}
+.desktop-browser .desktop-collection-add-form input {
+  flex: 1 1 auto;
+}
+.desktop-browser .desktop-collection-add-form button,
+.desktop-browser .desktop-collection-editor-section-heading > button,
+.desktop-browser .desktop-collection-source-add button,
+.desktop-browser .desktop-collection-editor-actions button {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: #f4f4f4;
+  color: #151515;
+  font: 600 13px/1 inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.desktop-browser .desktop-collection-manager-error {
+  margin: -5px 0 0;
+  color: #ff9daa;
+  font-size: 13px;
+}
+.desktop-browser .desktop-collection-manager-list,
+.desktop-browser .desktop-collection-editor-list {
+  display: grid;
+  gap: 10px;
+}
+.desktop-browser .desktop-collection-manager-row,
+.desktop-browser .desktop-collection-editor-row {
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.045);
+}
+.desktop-browser .desktop-collection-manager-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.desktop-browser .desktop-collection-manager-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.desktop-browser .desktop-collection-manager-copy h3,
+.desktop-browser .desktop-collection-manager-copy p,
+.desktop-browser .desktop-collection-editor-row h3,
+.desktop-browser .desktop-collection-editor-row p {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desktop-browser .desktop-collection-manager-copy h3,
+.desktop-browser .desktop-collection-editor-row h3 {
+  color: var(--text-color);
+  font-size: 15px;
+  line-height: 1.3;
+}
+.desktop-browser .desktop-collection-manager-copy p,
+.desktop-browser .desktop-collection-editor-row p {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.desktop-browser .desktop-collection-manager-actions,
+.desktop-browser .desktop-collection-editor-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+.desktop-browser .desktop-collection-manager-actions button,
+.desktop-browser .desktop-collection-editor-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-color);
+  cursor: pointer;
+  font: 600 12px/1 inherit;
+}
+.desktop-browser .desktop-collection-manager-actions .is-danger,
+.desktop-browser .desktop-collection-editor-actions .is-danger {
+  color: #ffb1b9;
+}
+.desktop-browser .desktop-collection-drag-handle {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-tertiary);
+  cursor: grab;
+  touch-action: none;
+}
+.desktop-browser .desktop-collection-drag-handle:active {
+  cursor: grabbing;
+}
+.desktop-browser .desktop-collection-editor-shell {
+  min-height: 100vh;
+  padding: clamp(92px, 10vw, 132px) clamp(32px, 4vw, 64px) 72px;
+  background: #111;
+  color: var(--text-color);
+  box-sizing: border-box;
+}
+.desktop-browser .desktop-collection-editor-shell > * {
+  width: min(100%, 980px);
+  margin-right: auto;
+  margin-left: auto;
+}
+.desktop-browser .desktop-collection-editor-back {
+  position: fixed;
+  z-index: 20;
+  top: 24px;
+  left: 28px;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+.desktop-browser .desktop-collection-editor-header {
+  margin-bottom: 26px;
+}
+.desktop-browser .desktop-collection-editor-header p {
+  margin: 0 0 5px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.desktop-browser .desktop-collection-editor-header h1 {
+  margin: 0;
+  font-size: clamp(27px, 3vw, 38px);
+  line-height: 1.1;
+}
+.desktop-browser .desktop-collection-editor-card,
+.desktop-browser .desktop-collection-editor-section {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.035);
+  box-sizing: border-box;
+}
+.desktop-browser .desktop-collection-editor-section {
+  margin-top: 18px;
+}
+.desktop-browser .desktop-collection-editor-card label {
+  display: grid;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.desktop-browser .desktop-collection-backdrop-preview {
+  width: min(100%, 420px);
+  max-height: 150px;
+  border-radius: 11px;
+  object-fit: cover;
+}
+.desktop-browser .desktop-collection-editor-toggle-row {
+  justify-content: space-between;
+  padding: 4px 0;
+}
+.desktop-browser .desktop-collection-editor-toggle-row span {
+  display: grid;
+  gap: 4px;
+}
+.desktop-browser .desktop-collection-editor-toggle-row strong {
+  font-size: 14px;
+}
+.desktop-browser .desktop-collection-editor-toggle-row small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.desktop-browser .desktop-collection-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.desktop-browser .desktop-collection-switch span {
+  display: block;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.desktop-browser .desktop-collection-switch span::after {
+  width: 18px;
+  height: 18px;
+  margin: 3px;
+  border-radius: 50%;
+  background: white;
+  content: "";
+  transition: transform 0.15s ease;
+}
+.desktop-browser .desktop-collection-switch input:checked + span {
+  background: rgb(var(--secondary-color-rgb) / 0.9);
+}
+.desktop-browser .desktop-collection-switch input:checked + span::after {
+  transform: translateX(18px);
+}
+.desktop-browser .desktop-collection-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.desktop-browser .desktop-collection-segmented legend {
+  width: 100%;
+  margin-bottom: 3px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.desktop-browser .desktop-collection-segmented button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-color);
+  cursor: pointer;
+}
+.desktop-browser .desktop-collection-segmented button.is-selected {
+  border-color: rgba(255, 255, 255, 0.74);
+  background: #f4f4f4;
+  color: #151515;
+}
+.desktop-browser .desktop-collection-editor-section-heading {
+  justify-content: space-between;
+}
+.desktop-browser .desktop-collection-editor-section-heading h2 {
+  margin: 0;
+  font-size: 19px;
+}
+.desktop-browser .desktop-collection-editor-section-heading p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.desktop-browser .desktop-collection-editor-row > div:nth-child(2) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.desktop-browser .desktop-folder-cover {
+  display: grid;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+.desktop-browser .desktop-folder-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.desktop-browser .desktop-collection-source-add {
+  display: flex;
+  gap: 10px;
+}
+.desktop-browser .desktop-collection-source-add select {
+  flex: 1 1 auto;
+}
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .desktop-collection-manager-row:hover,
+  .desktop-browser .desktop-collection-editor-row:hover {
+    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.075);
+  }
+  .desktop-browser .desktop-collection-editor-back:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+}
+.desktop-browser .desktop-collection-add-form input:focus-visible,
+.desktop-browser .desktop-collection-editor-card input:focus-visible,
+.desktop-browser .desktop-collection-editor-back:focus-visible,
+.desktop-browser .desktop-collection-segmented button:focus-visible,
+.desktop-browser .desktop-collection-manager-actions button:focus-visible,
+.desktop-browser .desktop-collection-editor-actions button:focus-visible {
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.9);
+  outline-offset: 2px;
+}
+@media (max-width: 640px) {
+  .desktop-browser .desktop-collection-editor-shell {
+    padding: 88px 18px 48px;
+  }
+  .desktop-browser .desktop-collection-editor-back {
+    left: 18px;
+  }
+  .desktop-browser .desktop-collection-add-form,
+  .desktop-browser .desktop-collection-editor-section-heading,
+  .desktop-browser .desktop-collection-editor-row {
+    align-items: flex-start;
+  }
+  .desktop-browser .desktop-collection-add-form,
+  .desktop-browser .desktop-collection-source-add {
+    flex-direction: column;
+  }
+  .desktop-browser .desktop-collection-add-form button {
+    width: 100%;
+  }
+  .desktop-browser .desktop-collection-manager-row,
+  .desktop-browser .desktop-collection-editor-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .desktop-browser .desktop-collection-manager-actions,
+  .desktop-browser .desktop-collection-editor-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
 
 .desktop-browser .settings-shell .settings-collapsible-home-catalogs .settings-collapsible-body {
   margin-left: 12px;
@@ -10052,7 +10946,10 @@ html.desktop-browser {
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.045);
-  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms ease;
 }
 
 .desktop-browser .settings-shell .desktop-home-catalog-row.is-hidden {
@@ -10099,7 +10996,11 @@ html.desktop-browser {
 }
 
 .desktop-browser .settings-shell .desktop-home-catalog-drag-handle:focus-visible,
-.desktop-browser .settings-shell .desktop-home-catalog-toggle input:focus-visible + .desktop-home-catalog-toggle-track {
+.desktop-browser
+  .settings-shell
+  .desktop-home-catalog-toggle
+  input:focus-visible
+  + .desktop-home-catalog-toggle-track {
   outline: 2px solid rgb(var(--secondary-color-rgb) / 0.76);
   outline-offset: 2px;
 }
@@ -10162,7 +11063,9 @@ html.desktop-browser {
   background: rgba(0, 0, 0, 0.48);
   box-sizing: border-box;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
-  transition: background-color 140ms ease, border-color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
 }
 
 .desktop-browser .settings-shell .desktop-home-catalog-toggle-track span {
@@ -10172,15 +11075,26 @@ html.desktop-browser {
   border-radius: 50%;
   background: #f5f5f5;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.42);
-  transition: transform 140ms ease, background-color 140ms ease;
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease;
 }
 
-.desktop-browser .settings-shell .desktop-home-catalog-toggle input:checked + .desktop-home-catalog-toggle-track {
+.desktop-browser
+  .settings-shell
+  .desktop-home-catalog-toggle
+  input:checked
+  + .desktop-home-catalog-toggle-track {
   border-color: rgb(var(--secondary-color-rgb) / 0.95);
   background: rgb(var(--secondary-color-rgb) / 0.82);
 }
 
-.desktop-browser .settings-shell .desktop-home-catalog-toggle input:checked + .desktop-home-catalog-toggle-track span {
+.desktop-browser
+  .settings-shell
+  .desktop-home-catalog-toggle
+  input:checked
+  + .desktop-home-catalog-toggle-track
+  span {
   transform: translateX(16px);
   background: #fff;
 }
@@ -10224,7 +11138,10 @@ html.desktop-browser {
     background: rgba(255, 255, 255, 0.09);
   }
 
-  .desktop-browser .settings-shell .desktop-home-catalog-toggle:hover .desktop-home-catalog-toggle-track {
+  .desktop-browser
+    .settings-shell
+    .desktop-home-catalog-toggle:hover
+    .desktop-home-catalog-toggle-track {
     border-color: rgba(255, 255, 255, 0.58);
   }
 }
@@ -10485,7 +11402,9 @@ html.desktop-browser {
   background: rgba(0, 0, 0, 0.48);
   box-sizing: border-box;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
-  transition: background-color 140ms ease, border-color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
 }
 
 .desktop-browser .settings-shell .desktop-plugin-toggle-track span {
@@ -10495,20 +11414,35 @@ html.desktop-browser {
   border-radius: 50%;
   background: #f5f5f5;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.42);
-  transition: transform 140ms ease, background-color 140ms ease;
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease;
 }
 
-.desktop-browser .settings-shell .desktop-plugin-toggle input:checked + .desktop-plugin-toggle-track {
+.desktop-browser
+  .settings-shell
+  .desktop-plugin-toggle
+  input:checked
+  + .desktop-plugin-toggle-track {
   border-color: rgb(var(--secondary-color-rgb) / 0.95);
   background: rgb(var(--secondary-color-rgb) / 0.82);
 }
 
-.desktop-browser .settings-shell .desktop-plugin-toggle input:checked + .desktop-plugin-toggle-track span {
+.desktop-browser
+  .settings-shell
+  .desktop-plugin-toggle
+  input:checked
+  + .desktop-plugin-toggle-track
+  span {
   transform: translateX(16px);
   background: #fff;
 }
 
-.desktop-browser .settings-shell .desktop-plugin-toggle input:focus-visible + .desktop-plugin-toggle-track,
+.desktop-browser
+  .settings-shell
+  .desktop-plugin-toggle
+  input:focus-visible
+  + .desktop-plugin-toggle-track,
 .desktop-browser .settings-shell .desktop-plugin-primary-action:focus-visible,
 .desktop-browser .settings-shell .desktop-plugin-action:focus-visible {
   outline: 2px solid rgb(var(--secondary-color-rgb) / 0.76);
@@ -10693,7 +11627,10 @@ html.desktop-browser {
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .desktop-browser .settings-shell .desktop-addon-primary-action {
@@ -10755,7 +11692,10 @@ html.desktop-browser {
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.045);
-  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms ease;
 }
 
 .desktop-browser .settings-shell .desktop-addon-card.is-disabled {
@@ -10875,7 +11815,9 @@ html.desktop-browser {
   background: rgba(0, 0, 0, 0.48);
   box-sizing: border-box;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
-  transition: background-color 140ms ease, border-color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
 }
 
 .desktop-browser .settings-shell .desktop-addon-toggle-track span {
@@ -10885,7 +11827,9 @@ html.desktop-browser {
   border-radius: 50%;
   background: #f5f5f5;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.42);
-  transition: transform 140ms ease, background-color 140ms ease;
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease;
 }
 
 .desktop-browser .settings-shell .desktop-addon-toggle input:checked + .desktop-addon-toggle-track {
@@ -10893,7 +11837,12 @@ html.desktop-browser {
   background: rgb(var(--secondary-color-rgb) / 0.82);
 }
 
-.desktop-browser .settings-shell .desktop-addon-toggle input:checked + .desktop-addon-toggle-track span {
+.desktop-browser
+  .settings-shell
+  .desktop-addon-toggle
+  input:checked
+  + .desktop-addon-toggle-track
+  span {
   transform: translateX(16px);
   background: #fff;
 }
@@ -11081,32 +12030,185 @@ html.desktop-browser {
    whenever it is re-entered over a suspended screen (router.js applyLayerChrome,
    1000 + depth), and at 120 the portal was painted underneath it -- the preview
    opened correctly and was simply invisible. Stays below dialogs (10000+). */
-.desktop-browser .desktop-media-hover-preview { position: fixed; z-index: 1200; overflow: hidden; border: 1px solid rgba(255,255,255,.18); border-radius: 16px; background: rgba(22,22,26,.98); box-shadow: 0 22px 58px rgba(0,0,0,.52); opacity: 0; pointer-events: auto; transform: translateY(8px) scale(.98); transition: opacity 170ms ease, transform 170ms ease; }
-.desktop-browser .desktop-media-hover-preview.is-open { opacity: 1; transform: translateY(0) scale(1); }
-.desktop-browser .desktop-media-hover-preview.is-closing { opacity: 0; pointer-events: none; transform: translateY(5px) scale(.985); }
-.desktop-browser .desktop-media-hover-preview-media { position: relative; isolation: isolate; aspect-ratio: 16 / 9; overflow: hidden; background: #111; }
-.desktop-browser .desktop-media-hover-preview-media > img, .desktop-browser .desktop-media-hover-preview-media > iframe { position: absolute; z-index: 1; inset: 0; display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
-.desktop-browser .desktop-media-hover-preview-media-layer { position: absolute; z-index: 2; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 40%, rgba(22,22,26,.86) 100%); }
-.desktop-browser .desktop-media-hover-preview-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, #31313a, #17171b); }
-.desktop-browser .desktop-media-hover-preview-copy { padding: 14px 15px 15px; }
-.desktop-browser .desktop-media-hover-preview-copy h2 { overflow: hidden; margin: 0; color: #fff; font-size: 18px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-.desktop-browser .desktop-media-hover-preview-meta { overflow: hidden; margin: 6px 0 13px; color: rgba(255,255,255,.63); font-size: 13px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
-.desktop-browser .desktop-media-hover-preview-facts { overflow: hidden; margin: -6px 0 10px; color: rgba(255,255,255,.78); font-size: 12px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-.desktop-browser .desktop-media-hover-preview-facts span { color: rgba(255,255,255,.42); }
-.desktop-browser .desktop-media-hover-preview-overview { display: -webkit-box; margin: 0 0 13px; overflow: hidden; color: rgba(255,255,255,.72); font-size: 13px; line-height: 1.42; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
-.desktop-browser .desktop-media-hover-preview-actions { display: flex; gap: 8px; }
-.desktop-browser .desktop-media-hover-preview-actions button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; font: 600 13px/1 inherit; cursor: pointer; }
-.desktop-browser .desktop-media-hover-preview-actions .material-icons { font-size: 17px; }
-.desktop-browser .desktop-media-hover-preview-primary { background: #f4f4f4; color: #151515; }
-.desktop-browser .desktop-media-hover-preview-secondary { background: rgba(255,255,255,.08); color: #fff; }
-.desktop-browser .desktop-media-hover-preview-library { width: 36px; padding: 0 !important; background: rgba(0,0,0,.34); color: #fff; }
-.desktop-browser .desktop-media-hover-preview-actions button:disabled { cursor: default; opacity: .62; }
-.desktop-browser .desktop-media-hover-preview-actions button:focus-visible { outline: 2px solid var(--secondary-color); outline-offset: 2px; }
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.desktop-hover-preview-active .home-poster-frame { transform: none; border-color: transparent; box-shadow: none; }
-.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card.desktop-hover-preview-active .search-result-poster-wrap { transform: none; border-color: transparent; box-shadow: none; }
-.desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card.desktop-hover-preview-active .library-grid-poster { transform: none; border-color: transparent; box-shadow: none; }
-@media (hover: hover) and (pointer: fine) { .desktop-browser .desktop-media-hover-preview-actions button:not(:disabled):hover { border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.16); } .desktop-browser .desktop-media-hover-preview-actions .desktop-media-hover-preview-primary:not(:disabled):hover { background: #fff; } }
-@media (max-width: 1100px) { .desktop-browser .desktop-media-hover-preview { max-width: calc(100vw - 32px); } }
+.desktop-browser .desktop-media-hover-preview {
+  position: fixed;
+  z-index: 1200;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  background: rgba(22, 22, 26, 0.98);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.52);
+  opacity: 0;
+  pointer-events: auto;
+  transform: translateY(8px) scale(0.98);
+  transition:
+    opacity 170ms ease,
+    transform 170ms ease;
+}
+.desktop-browser .desktop-media-hover-preview.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.desktop-browser .desktop-media-hover-preview.is-closing {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(5px) scale(0.985);
+}
+.desktop-browser .desktop-media-hover-preview-media {
+  position: relative;
+  isolation: isolate;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #111;
+}
+.desktop-browser .desktop-media-hover-preview-media > img,
+.desktop-browser .desktop-media-hover-preview-media > iframe {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: cover;
+}
+.desktop-browser .desktop-media-hover-preview-media-layer {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent 40%, rgba(22, 22, 26, 0.86) 100%);
+}
+.desktop-browser .desktop-media-hover-preview-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #31313a, #17171b);
+}
+.desktop-browser .desktop-media-hover-preview-copy {
+  padding: 14px 15px 15px;
+}
+.desktop-browser .desktop-media-hover-preview-copy h2 {
+  overflow: hidden;
+  margin: 0;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desktop-browser .desktop-media-hover-preview-meta {
+  overflow: hidden;
+  margin: 6px 0 13px;
+  color: rgba(255, 255, 255, 0.63);
+  font-size: 13px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desktop-browser .desktop-media-hover-preview-facts {
+  overflow: hidden;
+  margin: -6px 0 10px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desktop-browser .desktop-media-hover-preview-facts span {
+  color: rgba(255, 255, 255, 0.42);
+}
+.desktop-browser .desktop-media-hover-preview-overview {
+  display: -webkit-box;
+  margin: 0 0 13px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  line-height: 1.42;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+.desktop-browser .desktop-media-hover-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+.desktop-browser .desktop-media-hover-preview-actions button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9px;
+  font: 600 13px/1 inherit;
+  cursor: pointer;
+}
+.desktop-browser .desktop-media-hover-preview-actions .material-icons {
+  font-size: 17px;
+}
+.desktop-browser .desktop-media-hover-preview-primary {
+  background: #f4f4f4;
+  color: #151515;
+}
+.desktop-browser .desktop-media-hover-preview-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.desktop-browser .desktop-media-hover-preview-library {
+  width: 36px;
+  padding: 0 !important;
+  background: rgba(0, 0, 0, 0.34);
+  color: #fff;
+}
+.desktop-browser .desktop-media-hover-preview-actions button:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+.desktop-browser .desktop-media-hover-preview-actions button:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+}
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card.desktop-hover-preview-active
+  .home-poster-frame {
+  transform: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+.desktop-browser
+  .search-screen-shell.desktop-navigation-enabled
+  .search-result-card.desktop-hover-preview-active
+  .search-result-poster-wrap {
+  transform: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-grid-card.desktop-hover-preview-active
+  .library-grid-poster {
+  transform: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .desktop-media-hover-preview-actions button:not(:disabled):hover {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.16);
+  }
+  .desktop-browser
+    .desktop-media-hover-preview-actions
+    .desktop-media-hover-preview-primary:not(:disabled):hover {
+    background: #fff;
+  }
+}
+@media (max-width: 1100px) {
+  .desktop-browser .desktop-media-hover-preview {
+    max-width: calc(100vw - 32px);
+  }
+}
 
 /* Browser responsive shell foundation. Individual screen layouts continue to own
    their content; these rules only establish shared viewport, navigation, and
@@ -11148,8 +12250,7 @@ body.desktop-browser {
 }
 
 .desktop-browser .detail-trailer-modal-backdrop {
-  padding:
-    calc(var(--browser-overlay-inset) + var(--browser-safe-area-top))
+  padding: calc(var(--browser-overlay-inset) + var(--browser-safe-area-top))
     calc(var(--browser-overlay-inset) + var(--browser-safe-area-right))
     calc(var(--browser-overlay-inset) + var(--browser-safe-area-bottom))
     calc(var(--browser-overlay-inset) + var(--browser-safe-area-left));
@@ -11173,7 +12274,11 @@ body.desktop-browser {
   }
 
   .desktop-browser .detail-trailer-modal {
-    width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 40px), 142.22vh);
+    width: min(
+      900px,
+      calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 40px),
+      142.22vh
+    );
   }
 }
 
@@ -11214,7 +12319,10 @@ body.desktop-browser {
   }
 
   .desktop-browser .detail-trailer-modal {
-    width: min(900px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+    width: min(
+      900px,
+      calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+    );
     max-height: calc(100vh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
   }
 
@@ -11226,17 +12334,16 @@ body.desktop-browser {
   }
 
   .desktop-browser .nuvio-dialog-backdrop {
-    padding:
-      calc(12px + var(--browser-safe-area-top))
-      calc(12px + var(--browser-safe-area-right))
-      calc(12px + var(--browser-safe-area-bottom))
-      calc(12px + var(--browser-safe-area-left));
+    padding: calc(12px + var(--browser-safe-area-top)) calc(12px + var(--browser-safe-area-right))
+      calc(12px + var(--browser-safe-area-bottom)) calc(12px + var(--browser-safe-area-left));
     box-sizing: border-box;
   }
 
   .desktop-browser .nuvio-dialog-panel {
     box-sizing: border-box;
-    max-width: calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px) !important;
+    max-width: calc(
+      100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px
+    ) !important;
     max-height: calc(100vh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
     overflow-y: auto;
   }
@@ -11366,7 +12473,11 @@ body.desktop-browser {
   padding-top: 10px;
 }
 
-.desktop-browser #castDetail .browser-person-detail-credits .cast-credit-section + .cast-credit-section {
+.desktop-browser
+  #castDetail
+  .browser-person-detail-credits
+  .cast-credit-section
+  + .cast-credit-section {
   margin-top: 42px;
 }
 
@@ -11412,7 +12523,11 @@ body.desktop-browser {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser #castDetail .browser-person-detail-credits .cast-credit-card:hover .cast-credit-poster {
+  .desktop-browser
+    #castDetail
+    .browser-person-detail-credits
+    .cast-credit-card:hover
+    .cast-credit-poster {
     transform: scale(1.025);
   }
 }
@@ -11420,7 +12535,8 @@ body.desktop-browser {
 @media (max-width: 700px) {
   .desktop-browser #castDetail .browser-person-detail-shell {
     min-height: max(100dvh, 100vh);
-    padding: calc(var(--browser-mobile-nav-clearance) + env(safe-area-inset-top)) var(--browser-page-gutter) calc(34px + env(safe-area-inset-bottom));
+    padding: calc(var(--browser-mobile-nav-clearance) + env(safe-area-inset-top))
+      var(--browser-page-gutter) calc(34px + env(safe-area-inset-bottom));
   }
   .desktop-browser #castDetail .browser-person-detail-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -11467,14 +12583,19 @@ body.desktop-browser {
   @media (max-width: 600px) {
     .desktop-browser .detail-trailer-modal,
     .desktop-browser .nuvio-dialog-panel {
-      max-height: calc(100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
+      max-height: calc(
+        100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px
+      );
     }
   }
 }
 
 @media (max-width: 600px) and (max-height: 500px) {
   .desktop-browser .detail-trailer-modal {
-    width: min(72vw, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+    width: min(
+      72vw,
+      calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+    );
   }
 }
 
@@ -11505,7 +12626,10 @@ body.desktop-browser {
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, calc(-100% + var(--pull-distance)));
-  transition: opacity 150ms ease, transform 180ms ease, background-color 150ms ease;
+  transition:
+    opacity 150ms ease,
+    transform 180ms ease,
+    background-color 150ms ease;
 }
 
 /* A route that is only a doorway: the title's image, and one line saying why
@@ -11623,45 +12747,126 @@ body.desktop-browser {
     --browser-mobile-section-gap: 24px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-hero-disabled .home-route-content {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-hero-disabled
+    .home-route-content {
     --browser-home-no-hero-top: var(--browser-mobile-nav-clearance);
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card { min-height: min(70dvh, 580px); height: min(70dvh, 580px); }
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-card {
+    min-height: min(70dvh, 580px);
+    height: min(70dvh, 580px);
+  }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy { width: min(100%, 520px); max-width: min(100%, 520px); padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 28px; gap: 8px; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-logo { max-height: 82px; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-title-text { font-size: clamp(30px, 9vw, 40px); }
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-copy {
+    width: min(100%, 520px);
+    max-width: min(100%, 520px);
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 28px;
+    gap: 8px;
+  }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-logo {
+    max-height: 82px;
+  }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-title-text {
+    font-size: clamp(30px, 9vw, 40px);
+  }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary { gap: 6px; font-size: 13px; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description { font-size: 14px; line-height: 1.42; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel { right: var(--browser-page-gutter); }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs { gap: var(--browser-mobile-section-gap); padding-inline: var(--browser-page-gutter); }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue { padding-inline: calc(var(--browser-page-gutter) - 8px); }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-track { padding-block: 8px 6px; }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary {
+    gap: 6px;
+    font-size: 13px;
+  }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description {
+    font-size: 14px;
+    line-height: 1.42;
+  }
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel {
+    right: var(--browser-page-gutter);
+  }
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs {
+    gap: var(--browser-mobile-section-gap);
+    padding-inline: var(--browser-page-gutter);
+  }
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue {
+    padding-inline: calc(var(--browser-page-gutter) - 8px);
+  }
+  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-track {
+    padding-block: 8px 6px;
+  }
 
   .desktop-browser #detail .series-detail-backdrop,
   .desktop-browser #detail .series-detail-vignette,
-  .desktop-browser #detail .detail-hero-section { min-height: min(72dvh, 620px); height: min(72dvh, 620px); }
-  .desktop-browser #detail .detail-hero-section { padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 28px; }
-  .desktop-browser #detail .series-detail-title { font-size: clamp(30px, 8.5vw, 40px); }
-  .desktop-browser #detail .detail-meta-row { gap: 7px; }
+  .desktop-browser #detail .detail-hero-section {
+    min-height: min(72dvh, 620px);
+    height: min(72dvh, 620px);
+  }
+  .desktop-browser #detail .detail-hero-section {
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 28px;
+  }
+  .desktop-browser #detail .series-detail-title {
+    font-size: clamp(30px, 8.5vw, 40px);
+  }
+  .desktop-browser #detail .detail-meta-row {
+    gap: 7px;
+  }
 
-  .desktop-browser #folderDetail .desktop-folder-detail-shell { padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 40px; }
+  .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 40px;
+  }
   .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs,
-  .desktop-browser .settings-shell .settings-sidebar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pan-y; }
-  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs::-webkit-scrollbar,
-  .desktop-browser .settings-shell .settings-sidebar::-webkit-scrollbar { display: none; }
-  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tab { flex: 0 0 auto; white-space: nowrap; }
+  .desktop-browser .settings-shell .settings-sidebar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    touch-action: pan-x pan-y;
+  }
+  .desktop-browser
+    #folderDetail
+    .desktop-folder-detail-shell
+    .folder-detail-tabs::-webkit-scrollbar,
+  .desktop-browser .settings-shell .settings-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 
   .desktop-browser .search-screen-shell.desktop-navigation-enabled > .search-content,
   .desktop-browser .library-shell.desktop-navigation-enabled > .library-main,
-  .desktop-browser .settings-shell .settings-workspace { padding-top: var(--browser-mobile-nav-clearance); }
-  .desktop-browser .search-screen-shell.desktop-navigation-enabled > .search-content { padding-inline: var(--browser-page-gutter); padding-bottom: calc(40px + var(--browser-safe-area-bottom)); }
-  .desktop-browser .library-shell.desktop-navigation-enabled > .library-main { padding-inline: var(--browser-page-gutter); padding-bottom: calc(40px + var(--browser-safe-area-bottom)); }
-  .desktop-browser .settings-shell .settings-workspace { padding-inline: var(--browser-page-gutter); padding-bottom: calc(40px + var(--browser-safe-area-bottom)); }
-  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-track { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; touch-action: pan-x pan-y; }
+  .desktop-browser .settings-shell .settings-workspace {
+    padding-top: var(--browser-mobile-nav-clearance);
+  }
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled > .search-content {
+    padding-inline: var(--browser-page-gutter);
+    padding-bottom: calc(40px + var(--browser-safe-area-bottom));
+  }
+  .desktop-browser .library-shell.desktop-navigation-enabled > .library-main {
+    padding-inline: var(--browser-page-gutter);
+    padding-bottom: calc(40px + var(--browser-safe-area-bottom));
+  }
+  .desktop-browser .settings-shell .settings-workspace {
+    padding-inline: var(--browser-page-gutter);
+    padding-bottom: calc(40px + var(--browser-safe-area-bottom));
+  }
+  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-results-track {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+  }
 
   .desktop-browser .settings-shell .settings-sidebar {
     width: fit-content;
@@ -11670,38 +12875,109 @@ body.desktop-browser {
     padding: 8px;
     border-radius: 16px;
   }
-  .desktop-browser .settings-shell .settings-nav-item { flex: 0 0 auto; min-height: var(--browser-mobile-control-size); }
+  .desktop-browser .settings-shell .settings-nav-item {
+    flex: 0 0 auto;
+    min-height: var(--browser-mobile-control-size);
+  }
   .desktop-browser .settings-shell .settings-account-card,
   .desktop-browser .settings-shell .settings-account-list,
   .desktop-browser .settings-shell .settings-account-status-card,
-  .desktop-browser .settings-shell .settings-account-sync-overview { min-width: 0; width: 100%; }
-  .desktop-browser .settings-shell .settings-account-status-card { align-items: flex-start; padding: 14px; gap: 10px; }
-  .desktop-browser .settings-shell .settings-account-status-label { flex: 0 0 auto; font-size: 14px; line-height: 1.3; }
-  .desktop-browser .settings-shell .settings-account-status-value { min-width: 0; font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
-  .desktop-browser .settings-shell .settings-account-sync-overview { padding: 12px; }
-  .desktop-browser .settings-shell .settings-account-sync-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding: 10px; }
-  .desktop-browser .settings-shell .settings-account-sync-total-label { width: auto; flex: none; font-size: 16px; }
-  .desktop-browser .settings-shell .settings-account-profile-name { width: auto; margin-left: 0; font-size: 15px; }
-  .desktop-browser .settings-shell .settings-account-sync-stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
-  .desktop-browser .settings-shell .settings-account-stat { min-width: 0; }
-  .desktop-browser .settings-shell .settings-account-stat strong { font-size: 15px; }
-  .desktop-browser .settings-shell .settings-account-stat small { overflow: hidden; font-size: 10px; text-overflow: ellipsis; }
-  .desktop-browser .settings-shell .settings-account-action-button { min-height: 64px; padding: 14px; gap: 12px; }
-  .desktop-browser .settings-shell .settings-account-button-icon { font-size: 28px; }
-  .desktop-browser .settings-shell .settings-account-button-title { font-size: 17px; }
-  .desktop-browser .settings-shell .settings-account-button-subtitle { font-size: 13px; }
-  .desktop-browser .settings-shell .settings-account-signout-button { min-height: 52px; padding: 12px 14px; }
-  .desktop-browser .settings-shell .settings-account-signout-label { font-size: 16px; }
+  .desktop-browser .settings-shell .settings-account-sync-overview {
+    min-width: 0;
+    width: 100%;
+  }
+  .desktop-browser .settings-shell .settings-account-status-card {
+    align-items: flex-start;
+    padding: 14px;
+    gap: 10px;
+  }
+  .desktop-browser .settings-shell .settings-account-status-label {
+    flex: 0 0 auto;
+    font-size: 14px;
+    line-height: 1.3;
+  }
+  .desktop-browser .settings-shell .settings-account-status-value {
+    min-width: 0;
+    font-size: 15px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .desktop-browser .settings-shell .settings-account-sync-overview {
+    padding: 12px;
+  }
+  .desktop-browser .settings-shell .settings-account-sync-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+  .desktop-browser .settings-shell .settings-account-sync-total-label {
+    width: auto;
+    flex: none;
+    font-size: 16px;
+  }
+  .desktop-browser .settings-shell .settings-account-profile-name {
+    width: auto;
+    margin-left: 0;
+    font-size: 15px;
+  }
+  .desktop-browser .settings-shell .settings-account-sync-stats {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .desktop-browser .settings-shell .settings-account-stat {
+    min-width: 0;
+  }
+  .desktop-browser .settings-shell .settings-account-stat strong {
+    font-size: 15px;
+  }
+  .desktop-browser .settings-shell .settings-account-stat small {
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+  }
+  .desktop-browser .settings-shell .settings-account-action-button {
+    min-height: 64px;
+    padding: 14px;
+    gap: 12px;
+  }
+  .desktop-browser .settings-shell .settings-account-button-icon {
+    font-size: 28px;
+  }
+  .desktop-browser .settings-shell .settings-account-button-title {
+    font-size: 17px;
+  }
+  .desktop-browser .settings-shell .settings-account-button-subtitle {
+    font-size: 13px;
+  }
+  .desktop-browser .settings-shell .settings-account-signout-button {
+    min-height: 52px;
+    padding: 12px 14px;
+  }
+  .desktop-browser .settings-shell .settings-account-signout-label {
+    font-size: 16px;
+  }
 
   /* Legacy fixed-height browser shells use 100vh, which leaves a standalone
      iOS viewport tail when the dynamic viewport is shorter. */
   .desktop-browser #stream,
   .desktop-browser #stream .stream-route-shell,
-  .desktop-browser #player { height: 100dvh; }
+  .desktop-browser #player {
+    height: 100dvh;
+  }
 
   .desktop-browser .profile-pin-desktop-back,
   .desktop-browser #account .desktop-qr-back-button,
-  .desktop-browser #debugConsole .debug-console-back { top: calc(8px + var(--browser-safe-area-top)); left: calc(8px + var(--browser-safe-area-left)); width: var(--browser-mobile-control-size); min-width: var(--browser-mobile-control-size); height: var(--browser-mobile-control-size); min-height: var(--browser-mobile-control-size); }
+  .desktop-browser #debugConsole .debug-console-back {
+    top: calc(8px + var(--browser-safe-area-top));
+    left: calc(8px + var(--browser-safe-area-left));
+    width: var(--browser-mobile-control-size);
+    min-width: var(--browser-mobile-control-size);
+    height: var(--browser-mobile-control-size);
+    min-height: var(--browser-mobile-control-size);
+  }
 
   .desktop-browser #detail .detail-desktop-back-button,
   .desktop-browser #castDetail .detail-desktop-back-button,
@@ -11727,29 +13003,41 @@ body.desktop-browser {
    horizontal overlays here; the bottom gradient remains for copy readability. */
 @media (max-width: 1023px) {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::before,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::before {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-media::before {
     background: none;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop.home-hero-backdrop-transition-enter {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-backdrop.home-hero-backdrop-transition-enter {
     opacity: 0;
     transition: opacity 400ms ease !important;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop.home-hero-backdrop-transition-enter.is-visible {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-backdrop.home-hero-backdrop-transition-enter.is-visible {
     opacity: 1;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop-transition-ghost {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-backdrop-transition-ghost {
     opacity: 1;
     transition: opacity 400ms ease !important;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop-transition-ghost.is-fading-out {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-backdrop-transition-ghost.is-fading-out {
     opacity: 0;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-button {
     display: grid;
     place-items: center;
     padding: 0;
@@ -11841,43 +13129,56 @@ body.desktop-browser {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern {
     --browser-home-rail-gap: var(--browser-card-gap, 12px);
     --browser-home-poster-width: var(--browser-card-standard, clamp(146px, 40vw, 172px));
-    --browser-home-continue-width: var(
-      --browser-card-landscape-width,
-      clamp(292px, 84vw, 348px)
-    );
+    --browser-home-continue-width: var(--browser-card-landscape-width, clamp(292px, 84vw, 348px));
     --browser-home-heading-inset: max(16px, var(--browser-safe-area-left));
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-card {
     min-height: min(66dvh, 560px);
     height: min(66dvh, 560px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-copy {
     padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 22px;
     gap: 7px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-logo {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-logo {
     max-height: 72px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-title-text {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-title-text {
     font-size: clamp(29px, 8.5vw, 38px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-meta-line,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-secondary {
     gap: 8px;
     font-size: 12px;
     line-height: 1.3;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-group {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-meta-group {
     gap: 8px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-description {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-description {
     max-width: 36ch;
     font-size: 14px;
     line-height: 1.42;
@@ -11886,29 +13187,39 @@ body.desktop-browser {
     line-clamp: 3;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-details-button {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-details-button {
     min-height: 40px;
     margin-top: 3px;
     padding-inline: 16px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel {
     right: var(--browser-page-gutter);
     gap: 8px;
     padding: 0;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-button {
     width: 32px;
     height: 32px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel-dots {
     max-width: min(32vw, 150px);
     gap: 6px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue {
     margin-top: -2px;
   }
 
@@ -11916,96 +13227,163 @@ body.desktop-browser {
     margin-bottom: 10px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-title {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-title {
     font-size: clamp(25px, 7vw, 29px);
     line-height: 1.16;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs {
     gap: 30px;
     padding-inline: 0;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue {
     padding-inline: 0;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-row-head,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-row-head {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-row-head,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-row-head {
     padding-left: var(--browser-home-heading-inset);
     padding-right: max(16px, var(--browser-safe-area-right));
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-track,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-track {
     --home-track-gap: var(--browser-home-rail-gap);
     padding-top: 6px;
     padding-bottom: 6px;
     overscroll-behavior-inline: contain;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-track {
     padding-left: var(--browser-safe-area-left);
     padding-right: calc(var(--browser-safe-area-right) + 20px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-track {
     padding-left: var(--browser-safe-area-left);
     padding-right: calc(var(--browser-safe-area-right) + 20px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-continue-card {
     flex-basis: var(--browser-home-continue-width);
     min-width: var(--browser-home-continue-width);
     max-width: var(--browser-home-continue-width);
     border-radius: 15px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-media {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-continue-media {
     border-radius: 15px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-copy {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-continue-copy {
     right: 12px;
     bottom: 25px;
     left: 12px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-kicker,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-subtitle {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-continue-kicker,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-continue-subtitle {
     font-size: 12px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-title {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-continue-title {
     font-size: 16px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card),
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-poster {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-card:not(.home-collection-card),
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-card:not(.home-collection-card).is-expanded,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-collection-card.is-collection-poster {
     flex-basis: var(--browser-home-poster-width);
     min-width: var(--browser-home-poster-width);
     max-width: var(--browser-home-poster-width);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-square {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-collection-card.is-collection-square {
     flex-basis: var(--browser-home-poster-width);
     min-width: var(--browser-home-poster-width);
     max-width: var(--browser-home-poster-width);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-landscape {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-collection-card.is-collection-landscape {
     flex-basis: var(--browser-card-landscape-width, min(76vw, 292px));
     min-width: var(--browser-card-landscape-width, min(76vw, 292px));
     max-width: var(--browser-card-landscape-width, min(76vw, 292px));
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-copy,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card .home-poster-copy {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-copy,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-collection-card
+    .home-poster-copy {
     padding-top: 8px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-title {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-title {
     display: -webkit-box;
     min-height: 2.5em;
     overflow: hidden;
@@ -12017,7 +13395,10 @@ body.desktop-browser {
     white-space: normal;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-subtitle {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-subtitle {
     margin-top: 3px;
     font-size: 12px;
     text-overflow: ellipsis;
@@ -12064,7 +13445,10 @@ body.desktop-browser {
   cursor: pointer;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    outline-color 140ms ease;
 }
 
 .desktop-browser #catalogSeeAll .catalog-seeall-browser-back .material-icons {
@@ -12221,77 +13605,123 @@ body.desktop-browser {
     --browser-home-tablet-continue-width: clamp(360px, 56vw, 460px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-card {
     min-height: min(62dvh, 600px);
     height: min(62dvh, 600px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-copy {
     width: min(62%, 540px);
     max-width: min(62%, 540px);
     padding: calc(var(--browser-safe-area-top) + 92px) var(--browser-home-tablet-gutter) 34px;
     gap: 10px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-logo {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-logo {
     max-height: 96px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-title-text {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-title-text {
     font-size: clamp(34px, 5.5vw, 46px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-meta-line,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-secondary {
     gap: 10px;
     font-size: 13px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-description {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-description {
     max-width: 42ch;
     font-size: 15px;
     line-height: 1.45;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel {
     right: var(--browser-home-tablet-gutter);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs {
     gap: 34px;
     padding-inline: var(--browser-home-tablet-gutter);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue {
     padding-inline: calc(var(--browser-home-tablet-gutter) - 8px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-title {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-title {
     font-size: 28px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-track,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-track {
     --home-track-gap: 14px;
     overscroll-behavior-inline: contain;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-continue-card {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-continue-card {
     flex-basis: var(--browser-home-tablet-continue-width);
     min-width: var(--browser-home-tablet-continue-width);
     max-width: var(--browser-home-tablet-continue-width);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card),
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card).is-expanded,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-poster,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-square {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-card:not(.home-collection-card),
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-card:not(.home-collection-card).is-expanded,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-collection-card.is-collection-poster,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-collection-card.is-collection-square {
     flex-basis: var(--browser-home-tablet-poster-width);
     min-width: var(--browser-home-tablet-poster-width);
     max-width: var(--browser-home-tablet-poster-width);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card.is-collection-landscape {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-collection-card.is-collection-landscape {
     flex-basis: var(--browser-card-landscape-width, clamp(300px, 42vw, 380px));
     min-width: var(--browser-card-landscape-width, clamp(300px, 42vw, 380px));
     max-width: var(--browser-card-landscape-width, clamp(300px, 42vw, 380px));
@@ -12302,12 +13732,16 @@ body.desktop-browser {
    far less vertical room. Keep the hero complete and readable rather than
    clipping its copy before the rails begin. */
 @media (max-width: 1023px) and (max-height: 500px) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-card {
     min-height: min(100dvh, 430px);
     height: min(100dvh, 430px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-copy {
     width: min(58%, 500px);
     max-width: min(58%, 500px);
     padding-top: calc(var(--browser-safe-area-top) + 54px);
@@ -12315,32 +13749,46 @@ body.desktop-browser {
     gap: 5px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-logo {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-logo {
     max-height: 62px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-title-text {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-title-text {
     font-size: clamp(28px, 4vw, 36px);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-meta-line,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-secondary {
     gap: 6px;
     font-size: 12px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-description {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-description {
     font-size: 13px;
     line-height: 1.35;
     -webkit-line-clamp: 2;
     line-clamp: 2;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-details-button {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-details-button {
     min-height: 36px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel {
     right: max(16px, var(--browser-safe-area-right));
   }
 }
@@ -12352,19 +13800,27 @@ body.desktop-browser {
 @media (min-width: 601px) and (max-width: 1023px) and (orientation: portrait) {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern {
     --browser-home-tablet-poster-width: var(--browser-card-standard, clamp(164px, 21vw, 184px));
-    --browser-home-tablet-continue-width: var(--browser-card-landscape-width, clamp(320px, 48vw, 390px));
+    --browser-home-tablet-continue-width: var(
+      --browser-card-landscape-width,
+      clamp(320px, 48vw, 390px)
+    );
   }
 }
 
 @media (min-width: 601px) and (max-width: 1023px) and (orientation: landscape) {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern {
     --browser-home-tablet-poster-width: var(--browser-card-standard, clamp(156px, 19vw, 184px));
-    --browser-home-tablet-continue-width: var(--browser-card-landscape-width, clamp(300px, 42vw, 380px));
+    --browser-home-tablet-continue-width: var(
+      --browser-card-landscape-width,
+      clamp(300px, 42vw, 380px)
+    );
   }
 }
 
 @media (min-width: 601px) and (max-width: 1023px) and (orientation: landscape) and (max-height: 500px) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-copy {
     padding-top: calc(var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 12px);
   }
 }
@@ -12380,10 +13836,7 @@ body.desktop-browser {
   }
 
   .desktop-browser #detail .detail-hero-section {
-    padding:
-      var(--browser-mobile-nav-clearance)
-      var(--browser-page-gutter)
-      24px;
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 24px;
   }
 
   .desktop-browser #detail .detail-hero-brand {
@@ -12737,7 +14190,10 @@ body.desktop-browser {
 .desktop-browser .stream-desktop-back-button .material-icons,
 .desktop-browser .profile-desktop-back-button .material-icons,
 .desktop-browser .profile-pin-desktop-back .material-icons,
-.desktop-browser .desktop-qr-back-button .material-icons { font-size: 24px; line-height: 1; }
+.desktop-browser .desktop-qr-back-button .material-icons {
+  font-size: 24px;
+  line-height: 1;
+}
 
 /* Search and Collection keep their browser shell on touch devices, with
    native horizontal rails and phone-scale spacing. TV layouts are unaffected. */
@@ -12761,7 +14217,9 @@ body.desktop-browser {
     margin-bottom: 24px;
   }
 
-  .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-header.no-discover.no-voice {
+  .desktop-browser
+    .search-screen-shell.desktop-navigation-enabled
+    .search-header.no-discover.no-voice {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -12827,7 +14285,8 @@ body.desktop-browser {
 
   .desktop-browser #folderDetail .desktop-folder-detail-shell {
     min-height: 100dvh;
-    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) calc(40px + var(--browser-safe-area-bottom));
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter)
+      calc(40px + var(--browser-safe-area-bottom));
   }
 
   .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-header {
@@ -12869,7 +14328,10 @@ body.desktop-browser {
     overscroll-behavior-x: contain;
   }
 
-  .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-tabs::-webkit-scrollbar {
+  .desktop-browser
+    #folderDetail
+    .desktop-folder-detail-shell
+    .folder-detail-tabs::-webkit-scrollbar {
     display: none;
   }
 
@@ -12949,7 +14411,8 @@ body.desktop-browser {
    independent, contained layouts below desktop widths. */
 @media (max-width: 600px) {
   .desktop-browser .library-shell.desktop-navigation-enabled > .library-main {
-    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) calc(40px + var(--browser-safe-area-bottom));
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter)
+      calc(40px + var(--browser-safe-area-bottom));
   }
 
   .desktop-browser .library-shell.desktop-navigation-enabled .library-page-header {
@@ -12972,15 +14435,24 @@ body.desktop-browser {
     overscroll-behavior-x: contain;
   }
 
-  .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row::-webkit-scrollbar,
-  .desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row::-webkit-scrollbar,
-  .desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-toggle::-webkit-scrollbar {
+  .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    .library-view-mode-row::-webkit-scrollbar,
+  .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    .library-actions-row::-webkit-scrollbar,
+  .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    .library-presentation-toggle::-webkit-scrollbar {
     display: none;
   }
 
   .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button,
   .desktop-browser .library-shell.desktop-navigation-enabled .library-presentation-button,
-  .desktop-browser .library-shell.desktop-navigation-enabled .library-actions-row .library-action-button {
+  .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    .library-actions-row
+    .library-action-button {
     flex: 0 0 auto;
     min-height: 44px;
   }
@@ -13071,7 +14543,8 @@ body.desktop-browser {
 
   .desktop-browser .settings-shell .settings-workspace {
     gap: 18px;
-    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) calc(40px + var(--browser-safe-area-bottom));
+    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter)
+      calc(40px + var(--browser-safe-area-bottom));
   }
 
   .desktop-browser .settings-shell .settings-sidebar-frame {
@@ -13177,7 +14650,8 @@ body.desktop-browser {
   }
 
   .desktop-browser .settings-shell .settings-dialog-backdrop {
-    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+      max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
   .desktop-browser .settings-shell .settings-dialog,
@@ -13276,8 +14750,7 @@ body.desktop-browser {
   }
 
   .desktop-browser #player .player-startup-error-overlay {
-    padding:
-      max(24px, calc(24px + var(--browser-safe-area-top)))
+    padding: max(24px, calc(24px + var(--browser-safe-area-top)))
       max(24px, calc(24px + var(--browser-safe-area-right)))
       max(24px, calc(24px + var(--browser-safe-area-bottom)))
       max(24px, calc(24px + var(--browser-safe-area-left)));
@@ -13393,11 +14866,8 @@ body.desktop-browser {
   }
 
   .desktop-browser #player .player-controls-overlay {
-    padding:
-      max(10px, var(--browser-safe-area-top))
-      max(12px, var(--browser-safe-area-right))
-      max(12px, var(--browser-safe-area-bottom))
-      max(12px, var(--browser-safe-area-left));
+    padding: max(10px, var(--browser-safe-area-top)) max(12px, var(--browser-safe-area-right))
+      max(12px, var(--browser-safe-area-bottom)) max(12px, var(--browser-safe-area-left));
   }
 
   .desktop-browser #player .player-controls-gradient-top {
@@ -13469,13 +14939,20 @@ body.desktop-browser {
   .desktop-browser #player .player-speed-modal {
     left: max(12px, var(--browser-safe-area-left));
     bottom: max(12px, var(--browser-safe-area-bottom));
-    width: calc(100vw - max(12px, var(--browser-safe-area-left)) - max(12px, var(--browser-safe-area-right)));
-    max-height: calc(100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
+    width: calc(
+      100vw - max(12px, var(--browser-safe-area-left)) - max(12px, var(--browser-safe-area-right))
+    );
+    max-height: calc(
+      100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px
+    );
   }
 
   .desktop-browser #player .player-subtitle-modal,
   .desktop-browser #player .player-audio-modal {
-    height: min(78dvh, calc(100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px));
+    height: min(
+      78dvh,
+      calc(100dvh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px)
+    );
   }
 
   .desktop-browser #player .player-subtitle-modal {
@@ -13568,11 +15045,17 @@ body.desktop-browser {
   }
 
   .desktop-browser #player .player-desktop-playback-tools [data-player-desktop-action="mute"],
-  .desktop-browser #player .player-desktop-playback-tools [data-player-desktop-action="picture-in-picture"] {
+  .desktop-browser
+    #player
+    .player-desktop-playback-tools
+    [data-player-desktop-action="picture-in-picture"] {
     display: none;
   }
 
-  .desktop-browser #player .player-desktop-playback-tools [data-player-desktop-action="fullscreen"] {
+  .desktop-browser
+    #player
+    .player-desktop-playback-tools
+    [data-player-desktop-action="fullscreen"] {
     grid-area: fullscreen;
     width: 40px;
     min-width: 40px;
@@ -13594,7 +15077,10 @@ body.desktop-browser {
     right: max(12px, var(--browser-safe-area-right));
     bottom: calc(96px + var(--browser-safe-area-bottom));
     z-index: 35;
-    width: min(260px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+    width: min(
+      260px,
+      calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)
+    );
     padding: 10px;
     border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 14px;
@@ -13687,21 +15173,36 @@ body.desktop-browser {
   gap: 14px;
   text-align: center;
 }
-.home-offline-state > .material-icons { font-size: 42px; color: rgba(255,255,255,.72); }
-.home-offline-state h1 { margin: 0; font-size: clamp(1.55rem, 4vw, 2.2rem); }
-.home-offline-state p { margin: 0; color: rgba(255,255,255,.72); }
+.home-offline-state > .material-icons {
+  font-size: 42px;
+  color: rgba(255, 255, 255, 0.72);
+}
+.home-offline-state h1 {
+  margin: 0;
+  font-size: clamp(1.55rem, 4vw, 2.2rem);
+}
+.home-offline-state p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+}
 .home-offline-downloads-action {
   min-height: 44px;
   padding: 0 18px;
-  border: 1px solid rgba(255,255,255,.25);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 12px;
-  background: rgba(255,255,255,.12);
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
   font: inherit;
   font-weight: 650;
 }
-.home-offline-downloads-action:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
-.home-offline-reconnect { max-width: 380px; font-size: .9rem; }
+.home-offline-downloads-action:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+.home-offline-reconnect {
+  max-width: 380px;
+  font-size: 0.9rem;
+}
 
 /* Home and Search still declared their own heading size, rail gap and poster
    radius. Pointing them at the shared tokens is what makes the standard poster
@@ -13711,8 +15212,12 @@ body.desktop-browser {
   /* Both of these are declared on the card and the track themselves further up,
      so setting them on the shell is not enough to win. `:not(.is-landscape)`
      keeps Continue Watching and landscape tiles on their own larger radius. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-poster-card:not(.is-landscape),
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-seeall-card,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-poster-card:not(.is-landscape),
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-seeall-card,
   .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card {
     --home-poster-radius: var(--browser-card-radius);
   }
@@ -13720,12 +15225,17 @@ body.desktop-browser {
   /* Landscape tiles are a different shape but share the radius philosophy: a
      Continue Watching card and a landscape collection tile are the same width,
      so they should not round differently. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-collection-card.is-collection-landscape {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-collection-card.is-collection-landscape {
     --home-poster-radius: var(--browser-card-landscape-radius);
     border-radius: var(--browser-card-landscape-radius);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-track {
     --home-track-gap: var(--browser-card-gap);
   }
 
@@ -13735,8 +15245,12 @@ body.desktop-browser {
      makes a Home card structurally identical to a Search card: outer width,
      artwork width, gap and pitch all equal, with no compensation arithmetic.
      The focus box-shadow renders outside the border box and is unaffected. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-poster-card,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-poster-frame {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-poster-card,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-poster-frame {
     border-width: 0;
   }
 
@@ -13755,14 +15269,20 @@ body.desktop-browser {
   /* The frame was height-driven, so its artwork came out narrower than the card
      it sits in. Letting the width lead makes a Home poster exactly as wide as a
      Search poster. Collection tiles keep their own configured aspect ratio. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-poster-card:not(.home-collection-card) .home-poster-frame {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-poster-card:not(.home-collection-card)
+    .home-poster-frame {
     height: auto;
     aspect-ratio: 2 / 3;
   }
 
   /* One line plus ellipsis, with the year directly beneath. The 2-line reserve
      left a blank row under every short title and made rows sit unevenly. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-title,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-title,
   .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-name,
   .desktop-browser #catalogSeeAll .seeall-card-title,
   .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card-title,
@@ -13780,7 +15300,10 @@ body.desktop-browser {
     text-overflow: ellipsis;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-subtitle,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-subtitle,
   .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-date,
   .desktop-browser #catalogSeeAll .seeall-card-year,
   .desktop-browser #folderDetail .seeall-card-year,
@@ -13791,8 +15314,14 @@ body.desktop-browser {
   /* Rails used to start at the screen edge while their heading started at the
      gutter. Padding the track by the same inset the heading uses aligns the
      first card with the heading, and cards still scroll out to the edge. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-track,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-track {
     padding-left: var(--browser-home-heading-inset, var(--browser-page-gutter));
     scroll-padding-left: var(--browser-home-heading-inset, var(--browser-page-gutter));
   }
@@ -13821,12 +15350,17 @@ body.desktop-browser {
     font-size: var(--browser-section-title-size);
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs {
     gap: var(--browser-section-gap);
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-head,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-row-head {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-row-head {
     margin-bottom: var(--browser-section-head-gap);
     padding-left: var(--browser-home-heading-inset, var(--browser-page-gutter));
   }
@@ -13838,7 +15372,9 @@ body.desktop-browser {
    gutter lines the whole column up. Portrait sets this row's inline padding to
    0 and already aligns, so it is deliberately not touched here. */
 @media (max-width: 1023px) and (max-height: 500px) and (orientation: landscape) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue {
     padding-inline: var(--browser-home-tablet-gutter, var(--browser-page-gutter));
   }
 }
@@ -14004,34 +15540,41 @@ body.desktop-browser {
   background: rgba(30, 30, 36, 0.86);
 }
 
-.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item {
+.desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-group
+  .settings-nav-item {
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
-.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item + .settings-nav-item {
+.desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-group
+  .settings-nav-item
+  + .settings-nav-item {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Hover on the index page is focus, not a second appearance.
-   These rows are not cards: the group above them owns the box, and the row
-   itself is borderless, so the ring has to be painted here and with the same
-   weight a remote's focus gives it. `!important` for the same reason the
-   focused ring uses it: the row resets its border to nothing above. */
+/* Hover on the index page is a light on the row, not a box.
+   These rows are borderless inside their group's card, and a border painted on
+   hover would resize the row under the pointer -- the same reason the profile
+   cards only tint. No outline, no border: the hovered row is simply lit. */
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser
     .settings-shell[data-settings-nav-mode="index"]
     .settings-nav-group
     .settings-nav-item:hover {
-    background: var(--card-bg);
-    color: #fff;
-    font-weight: 600;
-    border: 2px solid var(--focus-color) !important;
+    background: var(--focus-bg);
+    color: var(--text-color);
   }
 }
 
-.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-item[style*="--settings-nav-accent"] .settings-nav-icon {
+.desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-item[style*="--settings-nav-accent"]
+  .settings-nav-icon {
   color: rgb(var(--settings-nav-accent));
   background: rgb(var(--settings-nav-accent) / 0.16);
 }
@@ -14067,11 +15610,15 @@ body.desktop-browser {
   font-weight: 650;
 }
 
-.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card-status.is-offline {
+.desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-account-card-status.is-offline {
   color: var(--text-tertiary, #808080);
 }
 
-.desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card-status::before {
+.desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-account-card-status::before {
   content: "";
   width: 7px;
   height: 7px;
@@ -15206,8 +16753,6 @@ body.desktop-browser {
   font-size: 20px;
 }
 
-
-
 /* The episode title and synopsis now sit under the card rather than printed
    across its lower third. Over artwork they needed the card dimmed to stay
    readable, which cost the picture the very part of the frame the thumbnail
@@ -15739,21 +17284,37 @@ body.desktop-browser {
      shelf sat pushed towards the middle and ran off the right-hand side --
      visible on any touch-capable machine with a window wider than the column,
      which is why a mouse-only desktop never showed it. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue {
     padding-inline: 0;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-row-head,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-row-head {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-row-head,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-row-head {
     padding-left: max(var(--browser-page-gutter), var(--browser-safe-area-left));
     padding-right: max(var(--browser-page-gutter), var(--browser-safe-area-right));
   }
 
   /* The first card lines up with the heading above it; the last one is allowed
      to run past the edge. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue .home-track {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-track,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-row-continue
+    .home-track {
     padding-left: max(var(--browser-page-gutter), var(--browser-safe-area-left));
     padding-right: calc(var(--browser-safe-area-right) + 20px);
     scroll-padding-left: max(var(--browser-page-gutter), var(--browser-safe-area-left));
@@ -16020,7 +17581,9 @@ body.desktop-browser {
   gap: 0;
 }
 
-.desktop-browser .player-mobile-more-action.player-mobile-more-icon-action > span:not(.player-control-icon) {
+.desktop-browser
+  .player-mobile-more-action.player-mobile-more-icon-action
+  > span:not(.player-control-icon) {
   display: none;
 }
 
@@ -16220,7 +17783,9 @@ html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-reveal {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1), color 160ms ease;
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    color 160ms ease;
 }
 
 html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-reveal svg {
@@ -16258,7 +17823,9 @@ html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation {
   pointer-events: none;
   transform: translateX(calc(100% + 20px));
   transform-origin: top right;
-  transition: transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1), opacity 180ms ease;
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
 }
 
 html[data-nav-placement="sidebar"].nav-rail-open.desktop-browser .desktop-navigation {
@@ -16629,9 +18196,7 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
   border-radius: var(--browser-card-landscape-radius, 14px);
 }
 
-.desktop-browser
-  .search-screen-shell.desktop-navigation-enabled
-  .search-result-card.is-landscape {
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card.is-landscape {
   flex: 0 0 var(--browser-card-landscape-width, calc(var(--search-desktop-card-width) * 1.9));
   width: var(--browser-card-landscape-width, calc(var(--search-desktop-card-width) * 1.9));
 }
@@ -16661,7 +18226,9 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
    --------------------------------------------------------------------------- */
 @media (max-width: 600px) and (orientation: portrait) {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-copy {
     align-items: center;
     /* Lower than the wide layout leaves it: the picture above is the subject
        on a phone, and the copy is a caption under it. The padding is what
@@ -16674,8 +18241,12 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
     align-items: center;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-meta-line,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-secondary,
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary,
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-chip-row {
@@ -16687,8 +18258,12 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
      the middle. And the spacing: at 8px between every token and dot the
      line needs more width than a phone has, so it wrapped where 4px fits.
      Long genres still wrap, and now they wrap centred. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-group {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-meta-line,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-meta-group {
     justify-content: center;
     gap: 4px;
   }
@@ -16703,7 +18278,9 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
     align-self: center;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .desktop-hero-carousel {
     right: auto;
     bottom: 14px;
     left: 50%;
@@ -16713,12 +18290,12 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
   /* Taller, so the copy ends lower down the screen and the artwork above it
      gets the room an upright poster was made for. */
   .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-card {
     min-height: min(80dvh, 660px);
     height: min(80dvh, 660px);
   }
-
-
 }
 
 /* ---------------------------------------------------------------------------
@@ -16730,7 +18307,9 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
    so this one dissolves too -- the picture is faded out by a mask rather than
    covered by one more layer.
    --------------------------------------------------------------------------- */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-hero-media,
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-backdrop-wrap {
   --home-hero-fade-end: var(--desktop-home-hero-fade-tail, 0px);
   --home-hero-fade-start: calc(var(--home-hero-fade-end) + 200px);
@@ -16765,7 +18344,11 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
    card. Catalog entries rarely carry a logo at all, so the title text is not
    a fallback for unusual cases -- it is what most cards will show.
    --------------------------------------------------------------------------- */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-copy {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card.is-landscape:not(.home-collection-card)
+  .home-poster-landscape-copy {
   display: block !important;
   left: 10px;
   right: 10px;
@@ -16773,12 +18356,20 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
   max-width: calc(100% - 20px);
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-logo {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card.is-landscape:not(.home-collection-card)
+  .home-poster-landscape-logo {
   max-width: 58%;
   max-height: 34px;
 }
 
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-title {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card.is-landscape:not(.home-collection-card)
+  .home-poster-landscape-title {
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -16790,23 +18381,38 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
 
 /* Only the logo goes inside. The name and year sit under the card in this
    build, and printing them twice makes the card look like it is shouting. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-subtitle,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-title {
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card.is-landscape:not(.home-collection-card)
+  .home-poster-landscape-subtitle,
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+  .home-modern-catalogs
+  .home-poster-card.is-landscape:not(.home-collection-card)
+  .home-poster-landscape-title {
   display: none;
 }
 
 @media (max-width: 600px) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-copy {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-card.is-landscape:not(.home-collection-card)
+    .home-poster-landscape-copy {
     left: 8px;
     right: 8px;
     bottom: 7px;
   }
 
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card.is-landscape:not(.home-collection-card) .home-poster-landscape-logo {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-catalogs
+    .home-poster-card.is-landscape:not(.home-collection-card)
+    .home-poster-landscape-logo {
     max-width: 62%;
     max-height: 26px;
   }
-
 }
 
 /* ---------------------------------------------------------------------------
@@ -17207,9 +18813,15 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
    still, and this would undo that.
    --------------------------------------------------------------------------- */
 @media (min-width: 601px) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-imdb {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-meta-line,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-secondary,
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-hero-imdb {
     font-size: 16px;
     line-height: 1.5;
   }
@@ -17219,7 +18831,9 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
      few pixels -- wrapping the rating back onto a row of its own, which is
      what taking it off its own row was for. It is short text over artwork,
      so it is allowed the width it needs. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line {
+  .desktop-browser
+    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
+    .home-modern-hero-meta-line {
     flex-wrap: nowrap;
     white-space: nowrap;
     width: max-content;

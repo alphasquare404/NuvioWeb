@@ -129,13 +129,29 @@ test("the section page carries the same floating back control as every other scr
   assert.match(desktopCss, /\.desktop-browser \.settings-shell \.settings-section-back/);
 });
 
-test("hovering a Settings row paints the focus state, not a separate one", async () => {
+test("hovering a Settings row lights it without changing its box", async () => {
   const desktopCss = await readFile(desktopCssUrl, "utf8");
 
-  // The index rows are borderless inside their group card, so the ring has to
-  // be painted on the row itself, at focus weight.
-  assert.match(
-    desktopCss,
-    /\.settings-shell\[data-settings-nav-mode="index"\]\s*\.settings-nav-group\s*\.settings-nav-item:hover \{\s*background: var\(--card-bg\);\s*color: #fff;\s*font-weight: 600;\s*border: 2px solid var\(--focus-color\) !important;/
+  // The rows are borderless inside their group card, so a hover border would
+  // resize the row under the pointer. Hover is a tint, like a profile card's.
+  const hoverRule = desktopCss.match(
+    /\.settings-shell\[data-settings-nav-mode="index"\]\s*\.settings-nav-group\s*\.settings-nav-item:hover \{([\s\S]*?)\}/
   );
+
+  assert.ok(hoverRule, "the index rows need a hover rule of their own");
+  assert.match(hoverRule[1], /background: var\(--focus-bg\);/);
+  assert.match(hoverRule[1], /color: var\(--text-color\);/);
+  assert.doesNotMatch(hoverRule[1], /border|outline|font-weight|transform/);
+});
+
+test("each Settings container binds its own listeners, so the section page stays clickable", async () => {
+  // Both routes share one screen object, so a "bound once" flag marked the
+  // index page done and left the section page without a click handler: every
+  // control there, Back included, did nothing.
+  const source = await settingsScreenSource();
+
+  assert.match(source, /this\.container\.__settingsListeners/);
+  assert.match(source, /addEventListener\("click", listeners\.click\)/);
+  assert.doesNotMatch(source, /this\.handleClickBound/);
+  assert.doesNotMatch(source, /this\.handleWheelBound/);
 });

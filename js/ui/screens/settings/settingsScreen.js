@@ -2415,13 +2415,18 @@ export const SettingsScreen = {
     const routeName = Router.getCurrent?.() || SETTINGS_ROUTE;
     this.container = document.getElementById(routeName) || document.getElementById(SETTINGS_ROUTE);
     ScreenUtils.show(this.container);
-    if (!this.handleWheelBound) {
-      this.handleWheelBound = this.handleWheelEvent.bind(this);
-      this.container.addEventListener("wheel", this.handleWheelBound, { passive: false });
-    }
-    if (!this.handleClickBound) {
-      this.handleClickBound = this.handleClickEvent.bind(this);
-      this.container.addEventListener("click", this.handleClickBound);
+    // Two routes share this screen, so the listeners belong to the container,
+    // not to this object: a page that mounted first had already marked the
+    // click binding done, and the second page -- the section -- had no click
+    // handler at all. Every row and control there was dead, Back included.
+    if (!this.container.__settingsListeners) {
+      const listeners = {
+        wheel: (event) => this.handleWheelEvent(event),
+        click: (event) => this.handleClickEvent(event)
+      };
+      this.container.__settingsListeners = listeners;
+      this.container.addEventListener("wheel", listeners.wheel, { passive: false });
+      this.container.addEventListener("click", listeners.click);
     }
     if (Platform.isBrowser()) {
       this.browserHorizontalTabScrollCleanup?.();
@@ -10079,11 +10084,11 @@ export const SettingsScreen = {
     this.stopDesktopSimklPolling?.();
     this.stopDebridDeviceAuth();
     this.desktopAddonManager?.dispose?.();
-    if (this.container && this.handleWheelBound) {
-      this.container.removeEventListener("wheel", this.handleWheelBound);
-    }
-    if (this.container && this.handleClickBound) {
-      this.container.removeEventListener("click", this.handleClickBound);
+    const containerListeners = this.container?.__settingsListeners;
+    if (containerListeners) {
+      this.container.removeEventListener("wheel", containerListeners.wheel);
+      this.container.removeEventListener("click", containerListeners.click);
+      delete this.container.__settingsListeners;
     }
     const navSlot = this.container?.querySelector?.("[data-settings-nav]");
     if (navSlot && this.handleRailScrollBound) {
@@ -10093,8 +10098,6 @@ export const SettingsScreen = {
       cancelAnimationFrame(navSlot.settingsScrollAnimationFrame);
       navSlot.settingsScrollAnimationFrame = null;
     }
-    this.handleWheelBound = null;
-    this.handleClickBound = null;
     this.handleRailScrollBound = null;
     this.railScrollNode = null;
     this.activeSection = null;
