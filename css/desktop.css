@@ -18264,3 +18264,62 @@ html:not([data-nav-placement="top"])
   .settings-content-header {
   padding-top: calc(env(safe-area-inset-top, 0px) + 2px);
 }
+
+/* ---------------------------------------------------------------------------
+   The separator follows the content, not the screen.
+
+   The headings are wider than the page's content by design -- their surface has
+   to reach the edges -- but the line under them should be as wide as the cards
+   standing on it. Each heading draws its own line, inset by the same measure it
+   uses to bleed, so the two always agree.
+
+   On desktop the Settings cards sit directly under the heading, touching it;
+   the heading now carries a gap of its own.
+   --------------------------------------------------------------------------- */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header,
+.desktop-browser #castDetail .person-heading {
+  position: relative;
+  border-bottom: 0;
+  margin-bottom: 16px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header::after,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header::after,
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header::after,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading::after,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header::after,
+.desktop-browser #castDetail .person-heading::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: var(--heading-separator-inset, 0);
+  right: var(--heading-separator-inset, 0);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
+  --heading-separator-inset: var(--settings-header-bleed);
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
+  --heading-separator-inset: var(--list-heading-gutter);
+}
+
+.desktop-browser #castDetail .person-heading {
+  --heading-separator-inset: var(--cast-gutter);
+}
+
+/* See All's heading is not wider than its content, so its line already matches
+   the cards and stays a plain border. */
+.desktop-browser #catalogSeeAll .seeall-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
