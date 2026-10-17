@@ -16,6 +16,7 @@ import { renderAppShell } from "./bootstrap/renderAppShell.js";
 import { renderAddonRemotePage } from "./bootstrap/renderAddonRemotePage.js";
 import { preloadStreamBadgeImages } from "./ui/screens/stream/streamScreen.js";
 import { warmStreamingLibs } from "./runtime/loadStreamingLibs.js";
+import { watchServiceWorkerTakeover } from "./core/update/serviceWorkerReload.js";
 import { Platform } from "./platform/index.js";
 import { LocalStore } from "./core/storage/localStore.js";
 import { I18n } from "./i18n/index.js";
@@ -53,7 +54,14 @@ if (
   /^https?:$/.test(globalThis.location?.protocol || "") &&
   !["localhost", "127.0.0.1", "::1"].includes(globalThis.location?.hostname || "")
 ) {
+  // Remembered before registering: a page that was already controlled is being
+  // replaced by a newer worker, which is the only case worth reloading for.
+  const hadServiceWorkerController = Boolean(globalThis.navigator.serviceWorker.controller);
   globalThis.navigator.serviceWorker.register("./sw.js").catch(() => {});
+  watchServiceWorkerTakeover(globalThis.navigator.serviceWorker, {
+    hadController: hadServiceWorkerController,
+    reload: () => globalThis.location.reload()
+  });
 }
 
 // beforeinstallprompt fires once, early. Catching it here rather than in the
