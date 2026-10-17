@@ -9427,51 +9427,6 @@ html.desktop-browser {
   min-width: 0;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
-  position: fixed;
-  z-index: 30;
-  top: calc(
-    var(--browser-floating-nav-top) +
-      (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2
-  );
-  left: clamp(20px, 3.4vw, 64px);
-  display: inline-flex;
-  flex: 0 0 44px;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  min-height: 44px;
-  margin-top: 0;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.54);
-  color: var(--text-color);
-  font: inherit;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition: background-color 140ms ease, border-color 140ms ease, outline-color 140ms ease;
-}
-
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button .material-icons {
-  font-size: 18px;
-}
-
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button:hover {
-  border-color: transparent;
-  background: rgba(255, 255, 255, 0.14);
-}
-
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button:focus-visible {
-  border-color: rgba(255, 255, 255, 0.42);
-  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
-  outline-offset: 2px;
-}
-
 .desktop-browser .discover-shell.desktop-navigation-enabled .seeall-title {
   font-size: clamp(30px, 2.5vw, 40px);
   font-weight: 650;
@@ -18688,55 +18643,6 @@ html:not([data-nav-placement="top"])
   position: relative;
 }
 
-.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 1.1em;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  color: var(--text-color);
-  font-size: clamp(30px, 2.5vw, 40px);
-  line-height: 1;
-  transform: none;
-}
-
-.desktop-browser
-  .discover-shell.desktop-navigation-enabled
-  .discover-desktop-back-button
-  .material-icons {
-  font-size: 0.6em;
-}
-
-@media (min-width: 601px) {
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
-    left: -56px;
-  }
-}
-
-@media (max-width: 600px) {
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
-    width: 100%;
-  }
-
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
-    top: 50%;
-    height: 1.1em;
-    transform: translateY(-50%);
-  }
-}
-
 /* The heading reserves exactly the room the chevron needs, so the title and the
    subtitle keep one left edge and Back sits outside them. */
 .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
@@ -18746,43 +18652,6 @@ html:not([data-nav-placement="top"])
 @media (min-width: 601px) {
   .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
     padding-inline: calc(var(--list-heading-gutter) + 56px) var(--list-heading-gutter);
-  }
-}
-
-/* Discover's Back, settled for both layouts. On a phone it is pinned to the
-   heading's own left edge and starts at the title's line box (its top is the
-   content top, its height one line of the title's type), so the centred title and
-   the chevron share a centre line. On a wide screen it is taken out of the text by
-   the 56px the heading reserves. Collapsed, it uses the collapsed title's size. */
-@media (max-width: 600px) {
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
-    position: static;
-    text-align: center;
-  }
-
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
-    top: calc(env(safe-area-inset-top, 0px) + 10px);
-    left: var(--list-heading-gutter);
-    height: 1.1em;
-    transform: none;
-  }
-
-  .desktop-browser
-    .discover-shell.desktop-navigation-enabled
-    .discover-header[data-collapsed="true"]
-    .discover-desktop-back-button {
-    top: calc(env(safe-area-inset-top, 0px) + 8px);
-    font-size: 18px;
-  }
-}
-
-@media (min-width: 601px) {
-  .desktop-browser
-    .discover-shell.desktop-navigation-enabled
-    .discover-header[data-collapsed="true"]
-    .discover-desktop-back-button {
-    top: 0;
-    font-size: 18px;
   }
 }
 
@@ -18981,7 +18850,6 @@ html:not([data-nav-placement="top"])
   }
 }
 
-
 /* ---------------------------------------------------------------------------
    See All: heading and its Back. Consolidation of the rules that grew over six
    iterations -- one block now owns the shape of this heading.
@@ -19101,4 +18969,92 @@ html:not([data-nav-placement="top"])
     .catalog-seeall-browser-back {
     font-size: 18px;
   }
+}
+
+
+/* ---------------------------------------------------------------------------
+   Discover: heading and its Back, in one block (consolidated from ten).
+   Back is a plain chevron with no disc. On a phone it is pinned to the heading's
+   left edge, starting at the title's line; on a wide screen it is pulled out of
+   the copy by the 56px the heading reserves. Collapsed, it takes the collapsed
+   title's type size so its centre stays the title's centre.
+   The heading keeps its own sticky rule; nothing here sets its position.
+   --------------------------------------------------------------------------- */
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 1.1em;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  font-size: clamp(30px, 2.5vw, 40px);
+  line-height: 1;
+  transform: none;
+  z-index: 30;
+}
+
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-desktop-back-button
+  .material-icons {
+  font-size: 0.6em;
+}
+
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-desktop-back-button:hover,
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-desktop-back-button:focus-visible {
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+    top: 0;
+    left: var(--list-heading-gutter);
+    width: 44px;
+  }
+
+  .desktop-browser
+    .discover-shell.desktop-navigation-enabled
+    .discover-header[data-collapsed="true"]
+    .discover-desktop-back-button {
+    top: 0;
+    font-size: 18px;
+  }
+}
+
+@media (min-width: 601px) {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-desktop-back-button {
+    top: 0;
+    left: -56px;
+    width: 32px;
+  }
+
+  .desktop-browser
+    .discover-shell.desktop-navigation-enabled
+    .discover-header[data-collapsed="true"]
+    .discover-desktop-back-button {
+    font-size: 18px;
+  }
+}
+
+/* The copy is Back's positioning box: without it the chevron would measure from
+   the heading's padding box and sit a line lower. */
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
+  position: relative;
 }
