@@ -3163,7 +3163,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #stream .stream-route-panel-summary::before {
-  content: "· ";
+  content: "Â· ";
 }
 
 .desktop-browser #stream .stream-route-panel-header .stream-route-filter-row {
@@ -14368,7 +14368,7 @@ html:not([data-nav-placement="top"])
 
 /* Account: the signed-in address.
    Side by side, the label took enough of the row that a 26-character address
-   had nowhere to go but through the middle of a word -- "…@gm / ail.com".
+   had nowhere to go but through the middle of a word -- "â€¦@gm / ail.com".
    Stacked, the address has the full row and stays in one piece. */
 .desktop-browser .settings-shell[data-settings-nav-mode] .settings-account-status-card {
   display: grid;
@@ -14707,7 +14707,7 @@ html:not([data-nav-placement="top"])
 /* Library filters: one row out, the rest behind a button.
    ------------------------------------------------------------------
    Four stacked pickers took a third of a phone screen before a single item
-   appeared, and all four read "All" — a third of the screen spent saying
+   appeared, and all four read "All" â€” a third of the screen spent saying
    nothing was filtered. Type stays out, because it is the one most often
    changed. Genre, Year and Sort fold behind the button beside it. */
 /* The shell-scoped row rules below 600px set wrap and a full-width basis, and
@@ -17401,4 +17401,77 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     width: max-content;
     max-width: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Stream: the title mark becomes the page's header.
+
+   It used to sit in a column beside the sources, which read as two halves of
+   one page and left the mark off-centre on a wide screen. As a header box it is
+   the page's identity first, the sources come after it, and the mark is centred
+   in a box of its own -- the same rounded, faintly tinted surface the sources
+   panel uses, so the two read as one page rather than two columns.
+
+   Nothing here is sticky: the sources scroll inside their own panel, so the
+   header is already in view whenever a source is.
+   --------------------------------------------------------------------------- */
+.desktop-browser #stream .stream-route-content {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(16px, 2vw, 26px);
+}
+
+.desktop-browser #stream .stream-route-left {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 22px;
+  border-radius: 22px;
+  background: rgb(var(--bg-elevated-rgb) / 0.22);
+  box-shadow: inset 0 0 0 1px rgb(var(--focus-color-rgb) / 0.035);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.desktop-browser #stream .stream-route-left-inner {
+  width: min(100%, 760px);
+  align-items: center;
+  text-align: center;
+}
+
+.desktop-browser #stream .stream-route-logo {
+  width: auto;
+  max-width: min(70%, 460px);
+  max-height: 64px;
+  margin-bottom: 10px;
+}
+
+/* The episode code reads as a badge rather than a line of text, which is how it
+   already looked on a narrow screen and beside the sources. */
+.desktop-browser #stream .stream-route-episode-code {
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-color);
+  padding: 4px 12px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.desktop-browser #stream .stream-route-subtitle {
+  margin-top: 8px;
+  font-size: 15px;
+}
+
+.desktop-browser #stream .stream-route-detail-line {
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.desktop-browser #stream .stream-route-right {
+  width: 100%;
+  max-width: 1240px;
+  justify-self: center;
 }
