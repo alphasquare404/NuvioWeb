@@ -10,7 +10,10 @@ import { watchedItemsRepository } from "../../../data/repository/watchedItemsRep
 import { CollectionsStore } from "../../../data/local/collectionsStore.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
-import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
+import {
+  getEffectiveTmdbApiKey,
+  TmdbSettingsStore
+} from "../../../data/local/tmdbSettingsStore.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
 import { TRAKT_API_URL, TRAKT_CLIENT_ID } from "../../../config.js";
 import {
@@ -32,7 +35,10 @@ import {
   renderTitleWatchedBadge
 } from "../../components/watchedTitleBadge.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
-import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
+import {
+  bindDesktopNavigationEvents,
+  renderDesktopNavigation
+} from "../../components/desktopNavigation.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import {
@@ -975,7 +981,9 @@ export const FolderDetailScreen = {
     this.tabs = [];
     const preferredHomeLayout = String(this.layoutPrefs?.homeLayout || "classic").toLowerCase();
     this.isDesktopBrowser = Platform.isBrowser();
-    this.sidebarProfile = this.isDesktopBrowser ? await getSidebarProfileState().catch(() => null) : null;
+    this.sidebarProfile = this.isDesktopBrowser
+      ? await getSidebarProfileState().catch(() => null)
+      : null;
     const savedViewMode = String(this.collection?.viewMode || "TABBED_GRID").toUpperCase();
     // Browser collections keep their own information architecture. FOLLOW_LAYOUT
     // intentionally maps to its non-hero row presentation on desktop.
@@ -1183,8 +1191,9 @@ export const FolderDetailScreen = {
         normalized &&
         !/^(none|null|undefined)$/i.test(normalized) &&
         normalized.toLowerCase() !== collectionTitle.toLowerCase() &&
-        values.findIndex((entry) => String(entry || "").toLowerCase() === normalized.toLowerCase()) ===
-          index
+        values.findIndex(
+          (entry) => String(entry || "").toLowerCase() === normalized.toLowerCase()
+        ) === index
       );
     });
   },
@@ -1728,7 +1737,6 @@ export const FolderDetailScreen = {
           }
           ${this.isDesktopBrowser ? '<div class="folder-detail-desktop-ambient" aria-hidden="true"></div>' : ""}
           <div class="seeall-shell folder-detail-shell${this.isDesktopBrowser ? " desktop-folder-detail-shell" : ""}${enterClass}">
-          ${this.isDesktopBrowser ? compactBar : ""}
           <header class="seeall-header folder-detail-header">
             ${
               this.isDesktopBrowser
@@ -1814,6 +1822,7 @@ export const FolderDetailScreen = {
       bindDesktopNavigationEvents(this.container);
     }
     this.bindDesktopBrowserEvents();
+    this.bindCollectionHeaderCollapse();
     this.bindCollectionCompactHeader();
     this.syncBrowserSelectedTabIntoView();
     this.applyDesktopAmbientTheme();
@@ -1850,6 +1859,72 @@ export const FolderDetailScreen = {
         container.querySelector(".folder-detail-desktop-heading h1"),
       getScrollTop: () => Number(getBrowserVerticalScrollOwner(container)?.scrollTop || 0)
     });
+  },
+
+  /**
+   * The collection header keeps its place and shrinks once the page moves.
+   *
+   * `data-collapsed` is the only thing the stylesheet reads: the logo (or the
+   * title, for a collection without one) is already inside the header, so there
+   * is no second bar to keep in step, and nothing to get out of sync when this
+   * screen re-renders.
+   */
+  bindCollectionHeaderCollapse() {
+    const container = this.container;
+    if (!container || !this.isDesktopBrowser) {
+      return;
+    }
+    if (this.collectionHeaderCollapseListener) {
+      this.applyCollectionHeaderCollapse();
+      return;
+    }
+    let frame = 0;
+    const run = () => {
+      frame = 0;
+      this.applyCollectionHeaderCollapse();
+    };
+    const onScroll = () => {
+      if (frame) {
+        return;
+      }
+      const id = globalThis.requestAnimationFrame?.(run);
+      if (id) {
+        frame = id;
+        return;
+      }
+      run();
+    };
+    this.collectionHeaderCollapseListener = onScroll;
+    this.collectionHeaderCollapseFrame = 0;
+    globalThis.document?.addEventListener?.("scroll", onScroll, { capture: true, passive: true });
+    globalThis.addEventListener?.("resize", onScroll, { passive: true });
+    this.applyCollectionHeaderCollapse();
+  },
+
+  applyCollectionHeaderCollapse() {
+    const header = this.container?.querySelector?.(".folder-detail-header");
+    if (!header) {
+      return;
+    }
+    const top = Number(getBrowserVerticalScrollOwner(this.container)?.scrollTop || 0);
+    // Hysteresis, so a scroll that rests on the threshold cannot flicker it.
+    const collapsed = top >= (header.dataset.collapsed === "true" ? 8 : 24);
+    const next = collapsed ? "true" : "false";
+    if (header.dataset.collapsed !== next) {
+      header.dataset.collapsed = next;
+    }
+  },
+
+  unbindCollectionHeaderCollapse() {
+    if (this.collectionHeaderCollapseListener) {
+      globalThis.document?.removeEventListener?.(
+        "scroll",
+        this.collectionHeaderCollapseListener,
+        true
+      );
+      globalThis.removeEventListener?.("resize", this.collectionHeaderCollapseListener);
+      this.collectionHeaderCollapseListener = null;
+    }
   },
 
   syncBrowserSelectedTabIntoView() {
@@ -2223,7 +2298,10 @@ export const FolderDetailScreen = {
   // broad useHomeFollowLayout gate is deliberately left alone: it governs far
   // more than menus, so menus are wired independently of it.
   isPosterOptionsTarget(node) {
-    return Boolean(node?.matches?.(".seeall-card[data-action='openDetail']")) && Boolean(this.container?.contains(node));
+    return (
+      Boolean(node?.matches?.(".seeall-card[data-action='openDetail']")) &&
+      Boolean(this.container?.contains(node))
+    );
   },
 
   async openPosterOptionsMenu(node, invokeOptions = {}) {
@@ -2278,8 +2356,7 @@ export const FolderDetailScreen = {
     }
     const target = this.pendingPosterHoldTarget;
     const hadTimer = Boolean(this.pendingPosterHoldTimer);
-    const heldLongEnough =
-      Number(event?.keyDownDurationMs || 0) >= COLLECTION_POSTER_HOLD_DELAY_MS;
+    const heldLongEnough = Number(event?.keyDownDurationMs || 0) >= COLLECTION_POSTER_HOLD_DELAY_MS;
     this.cancelPendingPosterHold();
     if (hadTimer && target === node) {
       if (heldLongEnough) {
@@ -2435,6 +2512,7 @@ export const FolderDetailScreen = {
   },
 
   cleanup() {
+    this.unbindCollectionHeaderCollapse();
     this.collectionCompactHeaderBinding?.cleanup();
     this.collectionCompactHeaderBinding = null;
     this.browserCardTouchIntentCleanup?.();

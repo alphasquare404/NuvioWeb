@@ -1373,13 +1373,64 @@ html.desktop-browser {
   padding: clamp(92px, 9vw, 132px) clamp(24px, 3.4vw, 64px) 56px;
 }
 
+/* The collection header keeps its place and shrinks, which is the behaviour the
+   maintainer asked for: the logo (or the title, when the collection has none) is
+   in the header itself rather than moved into a second bar that appears later. */
 .desktop-browser #folderDetail .desktop-folder-detail-shell .folder-detail-header {
-  position: static;
-  z-index: auto;
+  position: sticky;
+  top: 0;
+  z-index: 8;
   margin: 0 0 30px;
-  padding: 0;
-  background: none;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 0 10px;
+  background: transparent;
   gap: 18px;
+  transition: padding 180ms ease;
+}
+
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-header[data-collapsed="true"] {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  padding-bottom: 8px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-header[data-collapsed="true"]
+  .folder-detail-desktop-logo {
+  max-height: 22px;
+}
+
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-header[data-collapsed="true"]
+  .folder-detail-desktop-heading {
+  gap: 0;
+}
+
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-header[data-collapsed="true"]
+  .folder-detail-desktop-heading
+  h1 {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-header[data-collapsed="true"]
+  .folder-detail-desktop-heading
+  p {
+  display: none;
 }
 
 .desktop-browser #folderDetail .folder-detail-desktop-back {
@@ -17633,14 +17684,18 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
    --------------------------------------------------------------------------- */
 .desktop-browser .compact-header {
   position: fixed;
-  top: env(safe-area-inset-top, 0px);
+  /* From the very top of the screen: on a notched phone the safe area belongs
+     to the bar's own surface, not to the page behind it. */
+  top: 0;
   left: 0;
   right: 0;
   z-index: 9;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  height: 52px;
+  box-sizing: border-box;
+  height: calc(52px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
   /* Clear of Back, which sits at 38-82 on a wide screen. */
   padding-inline: 96px 48px;
   background: transparent;

@@ -83,10 +83,14 @@ export function bindCompactHeader({
     }
     const mark = resolveMark();
     const rect = mark?.getBoundingClientRect?.();
+    // The bar's own height is what has to be cleared, and on a notched phone it
+    // is taller than the nominal height because it carries the safe area.
+    const measuredBarHeight = Number(bar.getBoundingClientRect?.().height);
     const visible = compactHeaderVisibleFromGeometry({
       markBottom: rect?.bottom,
       markHeight: rect?.height,
-      barHeight,
+      barHeight:
+        Number.isFinite(measuredBarHeight) && measuredBarHeight > 0 ? measuredBarHeight : barHeight,
       scrollTop: getScrollTop()
     });
     setState(bar, visible);
