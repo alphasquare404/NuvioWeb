@@ -19216,3 +19216,53 @@ html:not([data-nav-placement="top"])
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: 0;
 }
+
+/* Cast: the chevron is a child of the sticky heading, so the heading is its
+   positioning box; it is centred on the heading's content box, which is where the
+   centred name sits at rest and collapsed alike. */
+.desktop-browser #castDetail .person-heading {
+  justify-content: center;
+}
+
+.desktop-browser #castDetail .person-heading .detail-desktop-back-button {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  transform: translateY(-50%);
+  z-index: 30;
+}
+
+/* At rest the name is not centred in its box (the heading carries more padding
+   above than below), so the chevron takes the title's own line instead of the box
+   centre; collapsed the box is a fixed-height bar and the centre is the title's. */
+.desktop-browser #castDetail .person-heading .detail-desktop-back-button {
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  height: 1.1em;
+  font-size: clamp(26px, 3vw, 36px);
+  transform: none;
+}
+
+.desktop-browser
+  #castDetail
+  .person-heading[data-collapsed="true"]
+  .detail-desktop-back-button {
+  top: 50%;
+  height: 32px;
+  font-size: 16px;
+  transform: translateY(-50%);
+}

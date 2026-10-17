@@ -381,10 +381,10 @@ export const CastDetailScreen = {
     this.container.innerHTML = `
       <div class="browser-person-detail-shell">
         ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
-        <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-          <span class="material-icons" aria-hidden="true">chevron_left</span>
-        </button>
         <header class="person-heading" data-person-heading>
+          <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
+            <span class="material-icons" aria-hidden="true">chevron_left</span>
+          </button>
           <h1 class="person-heading-title">${escapeHtml(person.name || "Unknown")}</h1>
         </header>
         <div class="browser-person-detail-layout">
