@@ -17942,3 +17942,73 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     gap: 6px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The person page's heading.
+
+   The name is the heading from the first frame, centred, and shrinks to a bar
+   once the page has moved -- the same shape as Settings. The surface reaches
+   both edges and starts at the very top of the screen, so on a notched phone it
+   covers the status-bar strip rather than leaving a box below it.
+   --------------------------------------------------------------------------- */
+.desktop-browser #castDetail .browser-person-detail-shell {
+  --cast-gutter: clamp(24px, 4vw, 64px);
+  padding-inline: var(--cast-gutter);
+}
+
+.desktop-browser #castDetail .person-heading {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin-inline: calc(-1 * var(--cast-gutter));
+  padding: calc(env(safe-area-inset-top, 0px) + 18px) var(--cast-gutter) 14px;
+  background: transparent;
+  transition: padding 180ms ease;
+}
+
+.desktop-browser #castDetail .person-heading-title {
+  margin: 0;
+  color: var(--text-color);
+  font-size: clamp(26px, 3vw, 36px);
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  overflow-wrap: anywhere;
+  transition: font-size 180ms ease;
+}
+
+.desktop-browser #castDetail .person-heading[data-collapsed="true"] {
+  min-height: calc(52px + env(safe-area-inset-top, 0px));
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  padding-bottom: 8px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.desktop-browser #castDetail .person-heading[data-collapsed="true"] .person-heading-title {
+  font-size: 18px;
+}
+
+/* The name is in the heading now, so the layout starts just under it. */
+.desktop-browser #castDetail .browser-person-detail-layout {
+  margin-top: 10px;
+}
+
+@media (any-pointer: coarse) {
+  .desktop-browser #castDetail .browser-person-detail-shell {
+    --cast-gutter: max(16px, var(--browser-page-gutter));
+    padding-top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser #castDetail .person-heading,
+  .desktop-browser #castDetail .person-heading-title {
+    transition: none;
+  }
+}

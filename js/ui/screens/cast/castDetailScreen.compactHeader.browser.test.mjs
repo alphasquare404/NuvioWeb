@@ -5,31 +5,41 @@ import test from "node:test";
 const sourceUrl = new URL("./castDetailScreen.js", import.meta.url);
 const desktopCssUrl = new URL("../../../../css/desktop.css", import.meta.url);
 
-test("the cast page carries the person's name in the compact header", async () => {
+test("the person's name is the page heading, from the first frame", async () => {
   const source = await readFile(sourceUrl, "utf8");
 
-  // A person has no logo, so the mark is the name itself.
-  assert.match(source, /<div class="compact-header person-compact-header" data-visible="false"/);
+  assert.match(source, /<header class="person-heading" data-person-heading>/);
   assert.match(
     source,
-    /<span class="compact-header-title">\$\{escapeHtml\(person\.name \|\| "Unknown"\)\}<\/span>/
+    /<h1 class="person-heading-title">\$\{escapeHtml\(person\.name \|\| "Unknown"\)\}<\/h1>/
   );
+  // No overlay bar any more: the heading itself is the mark.
+  assert.doesNotMatch(source, /person-compact-header/);
 });
 
-test("the bar follows the profile heading, and is cleaned up with the mount", async () => {
+test("the heading shrinks and is cleaned up with the mount", async () => {
   const source = await readFile(sourceUrl, "utf8");
 
-  assert.match(source, /this\.bindPersonCompactHeader\(\);/);
-  assert.match(source, /resolveBar: \(\) => container\.querySelector\("\.person-compact-header"\)/);
+  assert.match(source, /this\.bindPersonHeadingCollapse\(\);/);
+  assert.match(source, /heading\.dataset\.collapsed = next;/);
+  assert.match(source, /cleanup\(\) \{\s*this\.unbindPersonHeadingCollapse\(\);/);
+});
+
+test("the stylesheet keeps the heading centred, sticky, and bar-height when collapsed", async () => {
+  const desktopCss = await readFile(desktopCssUrl, "utf8");
+
   assert.match(
-    source,
-    /resolveMark: \(\) => container\.querySelector\("\.browser-person-detail-profile h1"\)/
+    desktopCss,
+    /\.desktop-browser #castDetail \.person-heading \{[^}]*position: sticky;[^}]*top: 0;[^}]*justify-content: center;/
   );
   assert.match(
-    source,
-    /getScrollTop: \(\) => Number\(getBrowserVerticalScrollOwner\(container\)\?\.scrollTop \|\| 0\)/
+    desktopCss,
+    /\.person-heading\[data-collapsed="true"\] \{[^}]*min-height: calc\(52px \+ env\(safe-area-inset-top, 0px\)\);[^}]*backdrop-filter: blur\(14px\);/
   );
-  assert.match(source, /cleanup\(\) \{\s*this\.personCompactHeaderBinding\?\.cleanup\(\);/);
+  assert.match(
+    desktopCss,
+    /\.person-heading\[data-collapsed="true"\] \.person-heading-title \{\s*font-size: 18px;/
+  );
 });
 
 test("the biography folds to ten lines and offers a control to open it", async () => {
@@ -38,7 +48,6 @@ test("the biography folds to ten lines and offers a control to open it", async (
     readFile(desktopCssUrl, "utf8")
   ]);
 
-  // Only long biographies get the control.
   assert.match(
     source,
     /const biographyIsLong = String\(person\.biography \|\| ""\)\.trim\(\)\.length > 360;/
@@ -48,7 +57,6 @@ test("the biography folds to ten lines and offers a control to open it", async (
     /class="cast-biography-text\$\{this\.biographyExpanded \? " is-expanded" : ""\}"/
   );
   assert.match(source, /data-action="toggleBiography"/);
-  // Toggling swaps a class instead of re-rendering the page.
   assert.match(source, /text\.classList\.toggle\("is-expanded", this\.biographyExpanded\);/);
 
   assert.match(

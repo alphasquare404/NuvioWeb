@@ -1,6 +1,5 @@
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
-import { bindCompactHeader } from "../../navigation/compactHeader.js";
 import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
 import { setBrowserDocumentTitle } from "../../navigation/browserDocumentTitle.js";
 import {
@@ -384,13 +383,12 @@ export const CastDetailScreen = {
         <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
           <span class="material-icons" aria-hidden="true">chevron_left</span>
         </button>
-        <div class="compact-header person-compact-header" data-visible="false" aria-hidden="true">
-          <span class="compact-header-title">${escapeHtml(person.name || "Unknown")}</span>
-        </div>
+        <header class="person-heading" data-person-heading>
+          <h1 class="person-heading-title">${escapeHtml(person.name || "Unknown")}</h1>
+        </header>
         <div class="browser-person-detail-layout">
           <aside class="browser-person-detail-profile">
             <div class="browser-person-detail-avatar">${avatar}</div>
-            <h1>${escapeHtml(person.name || "Unknown")}</h1>
             <dl class="browser-person-detail-facts">
               ${birth ? `<div><dt>Born</dt><dd>${birth}</dd></div>` : ""}
               ${person.placeOfBirth ? `<div><dt>Place of birth</dt><dd>${escapeHtml(person.placeOfBirth)}</dd></div>` : ""}
@@ -428,30 +426,71 @@ export const CastDetailScreen = {
       });
     }
     bindDesktopNavigationEvents(this.container);
-    this.bindPersonCompactHeader();
+    this.bindPersonHeadingCollapse();
   },
 
   /**
-   * The bar that carries the person's name once the profile heading has scrolled
-   * past, so the page always says who it is about.
+   * The page's heading holds the person's name from the first frame, centred,
+   * and shrinks to a bar once the page has moved.
    *
-   * Same component and the same rule as Detail and Collection; the mark here is
-   * text, because a person has no logo.
+   * This is the same idea as the Settings heading: the title is the heading, not
+   * a second copy that appears after another one scrolls away.
    */
-  bindPersonCompactHeader() {
+  bindPersonHeadingCollapse() {
     const container = this.container;
     if (!container) {
       return;
     }
-    if (this.personCompactHeaderBinding) {
-      this.personCompactHeaderBinding.refresh();
+    if (this.personHeadingCollapseListener) {
+      this.applyPersonHeadingCollapse();
       return;
     }
-    this.personCompactHeaderBinding = bindCompactHeader({
-      resolveBar: () => container.querySelector(".person-compact-header"),
-      resolveMark: () => container.querySelector(".browser-person-detail-profile h1"),
-      getScrollTop: () => Number(getBrowserVerticalScrollOwner(container)?.scrollTop || 0)
-    });
+    let frame = 0;
+    const run = () => {
+      frame = 0;
+      this.applyPersonHeadingCollapse();
+    };
+    const onScroll = () => {
+      if (frame) {
+        return;
+      }
+      const id = globalThis.requestAnimationFrame?.(run);
+      if (id) {
+        frame = id;
+        return;
+      }
+      run();
+    };
+    this.personHeadingCollapseListener = onScroll;
+    globalThis.document?.addEventListener?.("scroll", onScroll, { capture: true, passive: true });
+    globalThis.addEventListener?.("resize", onScroll, { passive: true });
+    this.applyPersonHeadingCollapse();
+  },
+
+  applyPersonHeadingCollapse() {
+    const heading = this.container?.querySelector?.(".person-heading");
+    if (!heading) {
+      return;
+    }
+    const top = Number(getBrowserVerticalScrollOwner(this.container)?.scrollTop || 0);
+    // Two thresholds, so a scroll resting on the edge cannot flicker it.
+    const collapsed = top >= (heading.dataset.collapsed === "true" ? 8 : 28);
+    const next = collapsed ? "true" : "false";
+    if (heading.dataset.collapsed !== next) {
+      heading.dataset.collapsed = next;
+    }
+  },
+
+  unbindPersonHeadingCollapse() {
+    if (this.personHeadingCollapseListener) {
+      globalThis.document?.removeEventListener?.(
+        "scroll",
+        this.personHeadingCollapseListener,
+        true
+      );
+      globalThis.removeEventListener?.("resize", this.personHeadingCollapseListener);
+      this.personHeadingCollapseListener = null;
+    }
   },
 
   /**
@@ -713,8 +752,7 @@ export const CastDetailScreen = {
   },
 
   cleanup() {
-    this.personCompactHeaderBinding?.cleanup();
-    this.personCompactHeaderBinding = null;
+    this.unbindPersonHeadingCollapse();
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.mediaContextMenuCleanup?.();
