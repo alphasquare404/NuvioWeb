@@ -4239,7 +4239,13 @@ export const MetaDetailsScreen = {
     this.detailCompactHeaderCleanup = null;
     const container = this.container;
     const bar = container?.querySelector?.(".detail-compact-header");
-    const mark = container?.querySelector?.("#detailHeroSection .detail-hero-brand");
+    // The mark itself, not the block around it: the block also holds the hint
+    // line, and waiting for that to pass kept the bar hidden long after the
+    // logo had gone.
+    const mark =
+      container?.querySelector?.("#detailHeroSection .series-detail-logo") ||
+      container?.querySelector?.("#detailHeroSection .series-detail-title") ||
+      container?.querySelector?.("#detailHeroSection .detail-hero-brand");
     if (!bar || !mark) {
       return;
     }

@@ -37,6 +37,12 @@ export function compactHeaderVisible(entry, context = {}) {
   if (Number.isFinite(bottom) && bottom > coveredAt) {
     return false;
   }
+  // A hidden element -- a logo that failed to load, say -- reports no rectangle
+  // at all. Reading that as "scrolled past" would put an empty bar on screen.
+  const height = Number(entry.boundingClientRect?.height);
+  if (Number.isFinite(height) && height <= 0) {
+    return false;
+  }
   return !entry.isIntersecting;
 }
 
