@@ -18633,3 +18633,138 @@ html:not([data-nav-placement="top"])
   height: 1.1em;
   font-size: clamp(30px, 2.5vw, 40px);
 }
+
+/* Back and the title share one flex line, so they are centred against each other
+   by construction -- no offset to keep in step with the safe area. On a phone the
+   Back keeps a negative start margin equal to its own width plus the gap, so the
+   title stays visually centred while the icon sits in the padding at the left. */
+.desktop-browser #catalogSeeAll .seeall-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+  position: static;
+  top: auto;
+  left: auto;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 1.1em;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-color);
+  font-size: clamp(30px, 2.5vw, 40px);
+  transform: none;
+}
+
+.desktop-browser
+  #catalogSeeAll
+  .seeall-header[data-collapsed="true"]
+  .catalog-seeall-browser-back {
+  font-size: 18px;
+}
+
+@media (max-width: 600px) {
+  .desktop-browser #catalogSeeAll .seeall-title-row {
+    justify-content: center;
+  }
+
+  .desktop-browser #catalogSeeAll .catalog-seeall-browser-back {
+    margin-inline-start: -44px;
+  }
+}
+
+/* Every collapsed heading gets four more pixels of height, so the bars read as
+   one family: two extra at the top, two at the bottom of the shared bar shape. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header[data-collapsed="true"],
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading[data-collapsed="true"],
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header[data-collapsed="true"],
+.desktop-browser #catalogSeeAll .seeall-header[data-collapsed="true"] {
+  padding-bottom: 12px;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header[data-collapsed="true"],
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading[data-collapsed="true"],
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header[data-collapsed="true"] {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+}
+
+.desktop-browser #castDetail .person-heading[data-collapsed="true"] {
+  min-height: calc(56px + env(safe-area-inset-top, 0px));
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  padding-bottom: 10px;
+}
+
+.desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-header[data-collapsed="true"] {
+  min-height: calc(56px + env(safe-area-inset-top, 0px));
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  padding-bottom: 10px;
+}
+
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  padding-bottom: 22px;
+}
+
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 4px);
+  padding-bottom: 10px;
+}
+
+/* The four extra pixels live in the bottom padding only, so every bar lands on
+   the same height; and Discover's subtitle drops its own top margin when folded,
+   which was quietly adding six pixels to that bar alone. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-page-header[data-collapsed="true"],
+.desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading[data-collapsed="true"],
+.desktop-browser .discover-shell.desktop-navigation-enabled .discover-header[data-collapsed="true"],
+.desktop-browser #catalogSeeAll .seeall-header[data-collapsed="true"] {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  padding-bottom: 12px;
+}
+
+.desktop-browser
+  .discover-shell.desktop-navigation-enabled
+  .discover-header[data-collapsed="true"]
+  .seeall-subtitle,
+.desktop-browser
+  #catalogSeeAll
+  .seeall-header[data-collapsed="true"]
+  .seeall-subtitle {
+  margin-top: 0;
+}
+
+/* Settings keeps its notch padding where it was and takes the four pixels in
+   the bottom only, like every other bar. */
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  padding-bottom: 22px;
+}
+
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  padding-bottom: 10px;
+}

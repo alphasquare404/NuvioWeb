@@ -761,9 +761,11 @@ export const CatalogSeeAllScreen = {
     this.container.innerHTML = `
       <div class="seeall-shell">
         <header class="seeall-header">
-          ${this.renderBrowserBackButton()}
           <div class="seeall-header-copy">
-            <h2 class="seeall-title">${escapeHtml(title)}</h2>
+            <div class="seeall-title-row">
+              ${this.renderBrowserBackButton()}
+              <h2 class="seeall-title">${escapeHtml(title)}</h2>
+            </div>
             ${
               // The subtitle line is always rendered. Discover's heading has one,
               // and without it this heading stood shorter than every other; when
