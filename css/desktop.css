@@ -13898,22 +13898,26 @@ body.desktop-browser {
   position: sticky;
   top: var(--settings-header-sticky-top, 0px);
   z-index: 8;
-  /* Solid, with the fade below it: content sliding under the title must not be
-     legible through the heading itself. The fade is a separate strip so the
-     text never sits inside a half-transparent band. */
-  background: var(--bg-color);
+  /* No slab of colour: the bar shows the page's own background exactly as it
+     is, whatever the theme paints there, and blurs whatever scrolls beneath
+     instead of painting over it. A solid fill read as a black box on a themed
+     page, because the page's colour is not always --bg-color. */
+  background: transparent;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-bottom: 1px solid transparent;
+  transition: border-color 180ms ease;
 }
 
-.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header::after,
-.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -8px;
-  height: 8px;
-  background: linear-gradient(to bottom, var(--bg-color), transparent);
-  pointer-events: none;
+/* A hairline once the bar is holding content back, so the edge has a line to
+   stop on; at rest the heading is simply part of the page. */
+.desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header,
+.desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 html[data-nav-placement="top"].desktop-browser .settings-shell[data-settings-nav-mode] {
