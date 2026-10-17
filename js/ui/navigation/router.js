@@ -217,6 +217,9 @@ export const Router = {
     search: SearchScreen,
     discover: DiscoverScreen,
     settings: SettingsScreen,
+    // The section page Settings opens from its index: a route of its own, so
+    // Back is the browser's Back and not a handler inside one screen.
+    settingsSection: SettingsScreen,
     debugConsole: ConsoleDebugScreen,
     trakt: TraktScreen,
     supportersContributors: SupportersContributorsScreen,

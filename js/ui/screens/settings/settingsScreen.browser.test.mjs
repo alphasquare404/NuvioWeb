@@ -85,14 +85,17 @@ test("mobile Playback selector rows preserve full-width copy while toggles retai
   assert.doesNotMatch(desktopCss, /settings-playback-external-player-row\.settings-toggle-row/);
 });
 
-test("Back walks touch Settings from a section to the index before leaving it", async () => {
-  // The remote's handler took this step and the browser's did not, so Back
-  // inside a section fell through to the sidebar branch -- meaningless in a
-  // touch layout -- and returned true anyway, swallowing every Back.
+test("Back in browser Settings is the browser's own, one route at a time", async () => {
+  // Settings is two routes in the browser: the index, and the section opened
+  // from it. Back is a route pop, so the screen must not swallow it and must
+  // not close the section by hand any more.
   const source = await settingsScreenSource();
 
   assert.match(
     source,
-    /consumeBackRequest\(\)\s*\{[\s\S]*?if \(settingsUsesTouchNav\(\)\) \{\s*if \(this\.activeSection === null\) return false;\s*void this\.closeSectionToIndex\(\);\s*return true;\s*\}/
+    /consumeBackRequest\(\)\s*\{[\s\S]*?if \(settingsUsesRoutePages\(\)\) \{\s*return false;\s*\}/
   );
+  assert.doesNotMatch(source, /settingsUsesTouchNav/);
+  assert.doesNotMatch(source, /closeSectionToIndex/);
+  assert.match(source, /Router\.navigate\(SETTINGS_SECTION_ROUTE, \{ section: section\.id \}\)/);
 });

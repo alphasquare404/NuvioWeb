@@ -16,6 +16,7 @@ const APP_SHELL = `
     <div id="search" class="screen"></div>
     <div id="discover" class="screen"></div>
     <div id="settings" class="screen"></div>
+    <div id="settingsSection" class="screen"></div>
     <div id="debugConsole" class="screen"></div>
     <div id="trakt" class="screen"></div>
     <div id="supportersContributors" class="screen"></div>
