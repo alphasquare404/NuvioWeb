@@ -17,30 +17,37 @@ test("the page heading collapses from a scroll listener that belongs to the moun
   assert.match(source, /cleanup\(\)\s*\{[\s\S]{0,120}this\.unbindHeaderCollapse\(\)/);
 });
 
-test("the heading is sticky, and reaches both edges of the page", async () => {
+test("the heading keeps its place only where nothing floats over the top", async () => {
   const desktopCss = await readFile(desktopCssUrl, "utf8");
 
   // One variable carries how far the page's padding holds the heading in, so
   // the bar can be pulled back out to the edges at every width.
   assert.match(desktopCss, /--settings-header-bleed: 48px;/);
   assert.match(desktopCss, /--settings-header-bleed: 16px;/);
+  assert.match(desktopCss, /margin-inline: calc\(-1 \* var\(--settings-header-bleed\)\);/);
+  assert.match(desktopCss, /padding-inline: var\(--settings-header-bleed\);/);
 
-  const headerRule = desktopCss.match(
-    /\.settings-shell\[data-settings-nav-mode\] \.settings-nav-index-header,\s*\n[\s\S]{0,1400}?\n\}/
+  // The exception: with the navigation at the top the heading is left alone,
+  // because a bar there could only sit under the pill and leave a strip of raw
+  // scrolling content above itself.
+  assert.match(
+    desktopCss,
+    /html:not\(\[data-nav-placement="top"\]\)[\s\S]{0,320}?position: sticky;/
   );
-  assert.ok(headerRule, "the sticky heading rule should be there");
-  assert.match(headerRule[0], /position: sticky;/);
-  assert.match(headerRule[0], /margin-inline: calc\(-1 \* var\(--settings-header-bleed\)\);/);
-  assert.match(headerRule[0], /padding-inline: var\(--settings-header-bleed\);/);
+  // No Settings heading is made sticky by a rule that names the top placement.
+  assert.doesNotMatch(
+    desktopCss,
+    /html\[data-nav-placement="top"\][^{}]*settings-[^{}]*\{[^}]*position: sticky/
+  );
 });
 
 test("nothing is painted until the heading has content to hold back", async () => {
   const desktopCss = await readFile(desktopCssUrl, "utf8");
 
   const headerRule = desktopCss.match(
-    /\.settings-shell\[data-settings-nav-mode\] \.settings-nav-index-header,\s*\n[\s\S]{0,1400}?\n\}/
+    /\.settings-shell\[data-settings-nav-mode\] \.settings-nav-index-header,\s*\n[\s\S]{0,900}?\n\}/
   );
-  assert.ok(headerRule);
+  assert.ok(headerRule, "the heading rule should be there");
   // At rest the heading is the top of the page: no fill, no blur, no line.
   assert.match(headerRule[0], /background: transparent;/);
   assert.match(headerRule[0], /border-bottom: 1px solid transparent;/);
@@ -51,6 +58,11 @@ test("nothing is painted until the heading has content to hold back", async () =
   assert.match(
     desktopCss,
     /data-settings-header-collapsed="true"[\s\S]{0,700}?backdrop-filter: blur\(18px\) saturate\(140%\);/
+  );
+  // And the title only shrinks where the bar exists at all.
+  assert.match(
+    desktopCss,
+    /html:not\(\[data-nav-placement="top"\]\)[\s\S]{0,320}?\.settings-title \{\s*font-size: 18px;/
   );
 });
 
