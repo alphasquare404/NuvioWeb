@@ -16988,6 +16988,14 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
+  /* Room under that rule before the first card, which is the space Library's
+     heading already leaves above its tabs. Without it the account card sat on
+     the line. */
+  .desktop-browser .settings-shell .settings-nav-index-header,
+  .desktop-browser .settings-shell .settings-content-header {
+    margin-bottom: 22px;
+  }
+
   /* These headers are flex rows, so centring the text is not enough: the
      heading itself has to span the row before its text has a middle to sit
      in. */
