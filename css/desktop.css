@@ -17415,6 +17415,12 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
   }
 }
 
+/* The empty bar belongs to the phone header only. Without this it is a third
+   grid item on a wide screen, which pushes the mark and the sources out of
+   their columns. */
+.desktop-browser #stream .stream-route-heading {
+  display: none;
+}
 /* ---------------------------------------------------------------------------
    Stream on a phone: the title mark becomes the page's header.
 
@@ -17431,6 +17437,16 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     height: auto;
     min-height: 100vh;
     overflow: visible;
+  }
+  /* The artwork stays the size of the screen. Left to cover a page that is now
+     as tall as its content, it is stretched until it reads as a blurred
+     background; pinned to the viewport it stays as sharp as it was. */
+  .desktop-browser #stream .stream-route-backdrop,
+  .desktop-browser #stream .stream-route-backdrop-dim,
+  .desktop-browser #stream .stream-route-left-gradient,
+  .desktop-browser #stream .stream-route-right-gradient {
+    position: fixed;
+    inset: 0;
   }
 
   .desktop-browser #stream .stream-route-content {
