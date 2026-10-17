@@ -76,7 +76,10 @@ import {
   OFFLINE_PLAYBACK_TARGETS,
   normalizeOfflinePlaybackTarget
 } from "../../../core/offline/offlineHandoffPolicy.js";
-import { enableBrowserPushReturn, getBrowserPushReturnState } from "../../components/browserPushReturn.js";
+import {
+  enableBrowserPushReturn,
+  getBrowserPushReturnState
+} from "../../components/browserPushReturn.js";
 import {
   copyAutomationShortcutTarget,
   getAutomationReturnAvailability,
@@ -136,10 +139,7 @@ import { createDesktopCollectionManager } from "../../components/desktopCollecti
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
-import {
-  DONATIONS_BASE_URL,
-  UNIQUE_CONTRIBUTIONS_BASE_URL
-} from "../../../config.js";
+import { DONATIONS_BASE_URL, UNIQUE_CONTRIBUTIONS_BASE_URL } from "../../../config.js";
 import {
   normalizeContributors,
   normalizeDonationProgress,
@@ -227,7 +227,9 @@ function getFusionSourceDisplay(sourceUrl, index = 0) {
 }
 
 function catalogMediaTypeLabel(type) {
-  const normalized = String(type || "").trim().toLowerCase();
+  const normalized = String(type || "")
+    .trim()
+    .toLowerCase();
   if (normalized === "movie") return "Movie";
   if (normalized === "series" || normalized === "show" || normalized === "tv") return "Show";
   return "";
@@ -734,9 +736,15 @@ const CARD_ORIENTATION_OPTIONS = [
 function renderCardOrientationPreviewMarkup(orientationId) {
   const normalized = String(orientationId || "source").toLowerCase();
   const tall = (count) =>
-    Array.from({ length: count }, () => `<span class="settings-orientation-card is-tall"></span>`).join("");
+    Array.from(
+      { length: count },
+      () => `<span class="settings-orientation-card is-tall"></span>`
+    ).join("");
   const wide = (count) =>
-    Array.from({ length: count }, () => `<span class="settings-orientation-card is-wide"></span>`).join("");
+    Array.from(
+      { length: count },
+      () => `<span class="settings-orientation-card is-wide"></span>`
+    ).join("");
   if (normalized === "portrait") {
     return `<span class="settings-orientation-stage">${tall(4)}</span>`;
   }
@@ -789,7 +797,8 @@ function renderNavPlacementPreviewMarkup(placementId, railCorner = "top-right") 
   const items = (count) =>
     Array.from(
       { length: count },
-      (_, index) => `<span class="settings-nav-preview-item${index === 0 ? " is-active" : ""}"></span>`
+      (_, index) =>
+        `<span class="settings-nav-preview-item${index === 0 ? " is-active" : ""}"></span>`
     ).join("");
   const page = `
     <span class="settings-nav-preview-page">
@@ -944,15 +953,30 @@ const SECTION_META = [
 // which of them belong together. Account is not in a group -- it is the card
 // above them all.
 const SECTION_GROUPS = [
-  { key: "personalize", labelKey: "settings_group_personalize", fallback: "Personalize", ids: ["profiles", "appearance", "layout"] },
+  {
+    key: "personalize",
+    labelKey: "settings_group_personalize",
+    fallback: "Personalize",
+    ids: ["profiles", "appearance", "layout"]
+  },
   {
     key: "content",
     labelKey: "settings_group_content",
     fallback: "Content",
     ids: ["contentDiscovery", "integration", "streams", "trakt"]
   },
-  { key: "watching", labelKey: "settings_group_watching", fallback: "Watching", ids: ["playback", "downloads"] },
-  { key: "system", labelKey: "settings_group_system", fallback: "System", ids: ["advanced", "about"] }
+  {
+    key: "watching",
+    labelKey: "settings_group_watching",
+    fallback: "Watching",
+    ids: ["playback", "downloads"]
+  },
+  {
+    key: "system",
+    labelKey: "settings_group_system",
+    fallback: "System",
+    ids: ["advanced", "about"]
+  }
 ];
 
 // A tint per row, so the eye can find a section by its colour before it has
@@ -2477,18 +2501,25 @@ export const SettingsScreen = {
     this.streamBadgePreviewSourceUrl = null;
     // Desktop-only, temporary presentation state. Do not persist or sync this.
     this.streamBadgeSourcesExpanded = false;
-    this.desktopAboutCommunityState = this.desktopAboutCommunityState || createDesktopAboutCommunityState();
+    this.desktopAboutCommunityState =
+      this.desktopAboutCommunityState || createDesktopAboutCommunityState();
     this.advancedCacheCleared = false;
     this.advancedHeroArtworkCacheCleared = false;
     this.optionDialog = this.optionDialog || null;
     this.pushReturnState = this.pushReturnState || "checking";
     if (Platform.isBrowser() && !this.pushReturnStateLoading) {
       this.pushReturnStateLoading = true;
-      void getBrowserPushReturnState().then((result) => {
-        this.pushReturnState = result.state;
-        this.pushReturnStateLoading = false;
-        void this.render();
-      }).catch(() => { this.pushReturnState = "unavailable"; this.pushReturnStateLoading = false; void this.render(); });
+      void getBrowserPushReturnState()
+        .then((result) => {
+          this.pushReturnState = result.state;
+          this.pushReturnStateLoading = false;
+          void this.render();
+        })
+        .catch(() => {
+          this.pushReturnState = "unavailable";
+          this.pushReturnStateLoading = false;
+          void this.render();
+        });
     }
     this.textDialog = this.textDialog || null;
     this.debridAuthDialog = null;
@@ -2507,23 +2538,31 @@ export const SettingsScreen = {
     };
     this.desktopTraktStatusMessage = this.desktopTraktStatusMessage || null;
     this.desktopTraktErrorMessage = this.desktopTraktErrorMessage || null;
-    this.desktopAddonManager = this.desktopAddonManager || createDesktopAddonManager({
-      requestRender: () => this.render({ refreshModel: false }),
-      isActive: () =>
-        Platform.isBrowser() &&
-        this.activeSection === "contentDiscovery" &&
-        Boolean(this.desktopAddonExpanded) &&
-        Boolean(this.container)
-    });
-    this.desktopPluginManager = this.desktopPluginManager || createDesktopPluginManager({
-      requestRender: () => this.render({ refreshModel: false })
-    });
-    this.desktopHomeCatalogManager = this.desktopHomeCatalogManager || createDesktopHomeCatalogManager({
-      requestRender: () => this.render({ refreshModel: false })
-    });
-    this.desktopCollectionManager = this.desktopCollectionManager || createDesktopCollectionManager({
-      requestRender: () => this.render({ refreshModel: false })
-    });
+    this.desktopAddonManager =
+      this.desktopAddonManager ||
+      createDesktopAddonManager({
+        requestRender: () => this.render({ refreshModel: false }),
+        isActive: () =>
+          Platform.isBrowser() &&
+          this.activeSection === "contentDiscovery" &&
+          Boolean(this.desktopAddonExpanded) &&
+          Boolean(this.container)
+      });
+    this.desktopPluginManager =
+      this.desktopPluginManager ||
+      createDesktopPluginManager({
+        requestRender: () => this.render({ refreshModel: false })
+      });
+    this.desktopHomeCatalogManager =
+      this.desktopHomeCatalogManager ||
+      createDesktopHomeCatalogManager({
+        requestRender: () => this.render({ refreshModel: false })
+      });
+    this.desktopCollectionManager =
+      this.desktopCollectionManager ||
+      createDesktopCollectionManager({
+        requestRender: () => this.render({ refreshModel: false })
+      });
     const [sidebarProfile, initialModel] = await Promise.all([
       getSidebarProfileState(),
       this.collectModel()
@@ -2584,10 +2623,21 @@ export const SettingsScreen = {
       if (!shell) {
         return;
       }
-      const collapsed = shouldCollapseSettingsHeader(
-        readScrollTop(),
-        shell.dataset.settingsHeaderCollapsed === "true"
+      const wasCollapsed = shell.dataset.settingsHeaderCollapsed === "true";
+      const scrollTop = readScrollTop();
+      // Where the heading is decides, not a scroll distance: the heading only
+      // shrinks once it has actually reached the edge. With a distance rule it
+      // shrank while still travelling up, and on a notched phone it disappeared
+      // under the notch before dropping back down into its bar.
+      const header = this.container?.querySelector(
+        ".settings-nav-index-header, .settings-content-header"
       );
+      const top = Number(header?.getBoundingClientRect?.().top);
+      const collapsed = Number.isFinite(top)
+        ? wasCollapsed
+          ? top < 4 && scrollTop > 0
+          : top <= 1 && scrollTop > 0
+        : shouldCollapseSettingsHeader(scrollTop, wasCollapsed);
       const next = collapsed ? "true" : "false";
       if (shell.dataset.settingsHeaderCollapsed !== next) {
         shell.dataset.settingsHeaderCollapsed = next;
@@ -2905,7 +2955,8 @@ export const SettingsScreen = {
     }
     const profiles = Array.isArray(this.model?.profiles) ? this.model.profiles : [];
     const active =
-      profiles.find((profile) => String(profile?.id) === String(this.model?.activeProfileId)) || null;
+      profiles.find((profile) => String(profile?.id) === String(this.model?.activeProfileId)) ||
+      null;
     const name = String(active?.name || "").trim();
     const avatarUrl = String(active?.avatarUrl || "").trim();
     const colour = String(active?.avatarColorHex || "#1E88E5");
@@ -3289,8 +3340,7 @@ export const SettingsScreen = {
     const useLanguageRenderer = this.optionDialog.optionRenderer === "subtitle-language";
     const useSingleChoiceRenderer = this.optionDialog.optionRenderer === "single-choice";
     const useHeroCatalogRenderer = this.optionDialog.optionRenderer === "hero-catalog";
-    const useMultiRenderer =
-      this.optionDialog.optionRenderer === "multi" || useHeroCatalogRenderer;
+    const useMultiRenderer = this.optionDialog.optionRenderer === "multi" || useHeroCatalogRenderer;
     const isP2pConsentDialog =
       String(this.optionDialog.dialogClassName || "") === "settings-p2p-consent-dialog";
     const messageHtml = this.optionDialog.message
@@ -3321,7 +3371,7 @@ export const SettingsScreen = {
                       <span class="settings-hero-catalog-meta">${escapeHtml(String(option.secondary || ""))}</span>
                     </span>`
                     : useLanguageRenderer
-                    ? `<span class="settings-language-option-copy">
+                      ? `<span class="settings-language-option-copy">
                       <span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>
                     </span>
                     <span class="settings-language-option-meta">
@@ -3336,11 +3386,11 @@ export const SettingsScreen = {
                           : ""
                       }
                     </span>`
-                    : useMultiRenderer
-                      ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span><span class="settings-language-option-check" aria-hidden="true">${isSelected ? "&#10003;" : ""}</span>`
-                      : useSingleChoiceRenderer
-                        ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>${isSelected ? '<span class="settings-single-choice-option-check" aria-hidden="true">&#10003;</span>' : ""}`
-                        : `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>`
+                      : useMultiRenderer
+                        ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span><span class="settings-language-option-check" aria-hidden="true">${isSelected ? "&#10003;" : ""}</span>`
+                        : useSingleChoiceRenderer
+                          ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>${isSelected ? '<span class="settings-single-choice-option-check" aria-hidden="true">&#10003;</span>' : ""}`
+                          : `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>`
                 }
               </button>
             `;
@@ -4185,11 +4235,7 @@ export const SettingsScreen = {
             { count: entries, size: kilobytes },
             `Remembered artwork for ${entries} titles Â· ${kilobytes} KB`
           )
-        : t(
-            "advanced_clear_artwork_cache_empty",
-            {},
-            "Nothing remembered yet"
-          );
+        : t("advanced_clear_artwork_cache_empty", {}, "Nothing remembered yet");
     return this.renderActionRow({
       focusKey: "advanced:clearHeroArtworkCache",
       title: t("advanced_clear_artwork_cache", {}, "Clear Artwork Cache"),
@@ -4400,7 +4446,6 @@ export const SettingsScreen = {
         LayoutPreferences.set({ catalogCardOrientation: option.id });
       });
     });
-
 
     this.actionMap.set("layout:collapseSidebar", () => {
       LayoutPreferences.set({ collapseSidebar: !LayoutPreferences.get().collapseSidebar });
@@ -4972,7 +5017,9 @@ export const SettingsScreen = {
                 title: "Catalogs & Collections",
                 subtitle: "Reorder Home catalog and collection rows.",
                 expanded: Boolean(expanded.homeCatalogs),
-                bodyHtml: expanded.homeCatalogs ? this.desktopHomeCatalogManager?.render() || "" : "",
+                bodyHtml: expanded.homeCatalogs
+                  ? this.desktopHomeCatalogManager?.render() || ""
+                  : "",
                 classes: "settings-collapsible-home-catalogs"
               })
             : ""
@@ -5175,7 +5222,11 @@ export const SettingsScreen = {
             ? this.renderActionRow({
                 focusKey: "layout:posterRadius",
                 title: t("layout_card_radius", {}, "Card corner radius"),
-                subtitle: t("layout_section_card_style_desc", {}, "Adjust poster card corner radius"),
+                subtitle: t(
+                  "layout_section_card_style_desc",
+                  {},
+                  "Adjust poster card corner radius"
+                ),
                 value: String(model.layout.posterCardCornerRadiusDp)
               })
             : ""
@@ -5366,7 +5417,9 @@ export const SettingsScreen = {
                   title: t("addon_title", {}, "Addons"),
                   subtitle: "Manage installed addons and sources.",
                   expanded: Boolean(this.desktopAddonExpanded),
-                  bodyHtml: this.desktopAddonExpanded ? this.desktopAddonManager?.render() || "" : "",
+                  bodyHtml: this.desktopAddonExpanded
+                    ? this.desktopAddonManager?.render() || ""
+                    : "",
                   classes: "settings-collapsible-addon"
                 })
               : this.renderActionRow({
@@ -5389,7 +5442,9 @@ export const SettingsScreen = {
                     title: t("plugin_title", {}, "Plugins"),
                     subtitle: "Add custom stream source URL templates.",
                     expanded: Boolean(this.desktopPluginExpanded),
-                    bodyHtml: this.desktopPluginExpanded ? this.desktopPluginManager?.render() || "" : "",
+                    bodyHtml: this.desktopPluginExpanded
+                      ? this.desktopPluginManager?.render() || ""
+                      : "",
                     classes: "settings-collapsible-plugin"
                   })
                 : this.renderActionRow({
@@ -5410,7 +5465,9 @@ export const SettingsScreen = {
                   title: "Collections",
                   subtitle: "Manage custom collections and folders shown on Home.",
                   expanded: Boolean(this.desktopCollectionExpanded),
-                  bodyHtml: this.desktopCollectionExpanded ? this.desktopCollectionManager?.render() || "" : "",
+                  bodyHtml: this.desktopCollectionExpanded
+                    ? this.desktopCollectionManager?.render() || ""
+                    : "",
                   classes: "settings-collapsible-collections"
                 })
               : ""
@@ -5824,7 +5881,7 @@ export const SettingsScreen = {
                           "settings.integration.debrid.providerDescription",
                           { provider: provider.displayName },
                           `Connect your ${provider.displayName} account.`
-                      ),
+                        ),
                   value: maskValue(
                     provider.authMethod === DEBRID_AUTH_METHODS.DEVICE_CODE
                       ? ""
@@ -6524,51 +6581,54 @@ export const SettingsScreen = {
 
     if (!isDesktopBrowser) {
       imports.forEach((importItem, index) => {
-      const focusKey = `streams:import:${index}`;
-      this.actionMap.set(focusKey, () => {
-        const sourceUrl = String(importItem?.sourceUrl || "").trim();
-        const sourceDisplay = getFusionSourceDisplay(sourceUrl, index);
-        const options = [];
-        if (imports.length > 1 && !importItem.isActive) {
-          options.push({ id: "activate", label: "Activate" });
-        }
-        options.push({ id: "edit", label: "Edit URL" });
-        options.push({ id: "preview", label: "Preview" });
-        options.push({ id: "delete", label: "Delete" });
-        options.push({ id: "cancel", labelKey: "action_cancel", label: "Cancel" });
-        this.openOptionDialog({
-          title: isDesktopBrowser
-            ? sourceDisplay.title
-            : sourceUrl || t("settings_stream_badge_urls_title", {}, "Fusion badge URLs"),
-          subtitle: isDesktopBrowser ? sourceDisplay.subtitle : "",
-          options,
-          selectedId: "preview",
-          returnFocusKey: focusKey,
-          onSelect: async (option) => {
-            if (option.id === "activate") {
-              StreamBadgeSettingsStore.setActiveStreamBadgeRulesSource(sourceUrl);
-              this.streamBadgePreviewSourceUrl = sourceUrl;
-              return true;
-            }
-            if (option.id === "preview") {
-              this.streamBadgePreviewSourceUrl = sourceUrl;
-              return true;
-            }
-            if (option.id === "delete") {
-              StreamBadgeSettingsStore.deleteStreamBadgeRulesSource(sourceUrl);
-              if (previewSourceUrl && previewSourceUrl.toLowerCase() === sourceUrl.toLowerCase()) {
-                this.streamBadgePreviewSourceUrl = null;
+        const focusKey = `streams:import:${index}`;
+        this.actionMap.set(focusKey, () => {
+          const sourceUrl = String(importItem?.sourceUrl || "").trim();
+          const sourceDisplay = getFusionSourceDisplay(sourceUrl, index);
+          const options = [];
+          if (imports.length > 1 && !importItem.isActive) {
+            options.push({ id: "activate", label: "Activate" });
+          }
+          options.push({ id: "edit", label: "Edit URL" });
+          options.push({ id: "preview", label: "Preview" });
+          options.push({ id: "delete", label: "Delete" });
+          options.push({ id: "cancel", labelKey: "action_cancel", label: "Cancel" });
+          this.openOptionDialog({
+            title: isDesktopBrowser
+              ? sourceDisplay.title
+              : sourceUrl || t("settings_stream_badge_urls_title", {}, "Fusion badge URLs"),
+            subtitle: isDesktopBrowser ? sourceDisplay.subtitle : "",
+            options,
+            selectedId: "preview",
+            returnFocusKey: focusKey,
+            onSelect: async (option) => {
+              if (option.id === "activate") {
+                StreamBadgeSettingsStore.setActiveStreamBadgeRulesSource(sourceUrl);
+                this.streamBadgePreviewSourceUrl = sourceUrl;
+                return true;
+              }
+              if (option.id === "preview") {
+                this.streamBadgePreviewSourceUrl = sourceUrl;
+                return true;
+              }
+              if (option.id === "delete") {
+                StreamBadgeSettingsStore.deleteStreamBadgeRulesSource(sourceUrl);
+                if (
+                  previewSourceUrl &&
+                  previewSourceUrl.toLowerCase() === sourceUrl.toLowerCase()
+                ) {
+                  this.streamBadgePreviewSourceUrl = null;
+                }
+                return true;
+              }
+              if (option.id === "edit") {
+                openFusionSourceEditor(sourceUrl, focusKey);
+                return true;
               }
               return true;
             }
-            if (option.id === "edit") {
-              openFusionSourceEditor(sourceUrl, focusKey);
-              return true;
-            }
-            return true;
-          }
+          });
         });
-      });
       });
     }
 
@@ -6670,7 +6730,7 @@ export const SettingsScreen = {
             <button class="settings-fusion-sources-import settings-content-focusable focusable${importLimitReached ? " is-disabled" : ""}"
                     data-zone="content"
                     ${this.registerAction("streams:add", importLimitReached ? () => {} : this.actionMap.get("streams:add"))}
-                    ${importLimitReached ? "disabled aria-disabled=\"true\"" : ""}>
+                    ${importLimitReached ? 'disabled aria-disabled="true"' : ""}>
               ${escapeHtml(t("action_import", {}, "Import"))}
             </button>
           </div>
@@ -6926,31 +6986,35 @@ export const SettingsScreen = {
             id === "outplayer"
               ? "Outplayer"
               : id === "lenna"
-              ? "Lenna"
-              : id === "infuse"
-                ? "Infuse"
-                : id === "vlc"
-                  ? "VLC"
-                  : t("common.disabled", {}, "Disabled")
-          , subtitle: id === "lenna" ? "Recommended" : ""
+                ? "Lenna"
+                : id === "infuse"
+                  ? "Infuse"
+                  : id === "vlc"
+                    ? "VLC"
+                    : t("common.disabled", {}, "Disabled"),
+          subtitle: id === "lenna" ? "Recommended" : ""
         }));
         this.openOptionDialog({
           title: "Play with external player",
           options,
-          selectedId: normalizeBrowserExternalPlayer(PlayerSettingsStore.get().browserExternalPlayer),
+          selectedId: normalizeBrowserExternalPlayer(
+            PlayerSettingsStore.get().browserExternalPlayer
+          ),
           returnFocusKey: "playback:externalPlayer",
           onSelect: (option) => PlayerSettingsStore.set({ browserExternalPlayer: option.id })
         });
       });
-      getBrowserExternalPlayerOptions().filter((id) => id !== "disabled").forEach((player) => {
-        this.actionMap.set(`playback:getExternalPlayer:${player}`, () => {
-          const storeUrl = getBrowserExternalPlayerStoreUrl({
-            player,
-            platform: getBrowserExternalPlayerPlatform()
+      getBrowserExternalPlayerOptions()
+        .filter((id) => id !== "disabled")
+        .forEach((player) => {
+          this.actionMap.set(`playback:getExternalPlayer:${player}`, () => {
+            const storeUrl = getBrowserExternalPlayerStoreUrl({
+              player,
+              platform: getBrowserExternalPlayerPlatform()
+            });
+            if (storeUrl) window.open(storeUrl, "_blank", "noopener,noreferrer");
           });
-          if (storeUrl) window.open(storeUrl, "_blank", "noopener,noreferrer");
         });
-      });
       this.actionMap.set("playback:externalPlayerProgress", () => {
         this.openOptionDialog({
           title: "External Player Progress",
@@ -6970,7 +7034,9 @@ export const SettingsScreen = {
               PlayerSettingsStore.get().externalReturnMethod === "notification"
             ) {
               PlayerSettingsStore.set({ externalReturnMethod: "" });
-              this.showToast?.("Return notifications need automatic reporting, so that choice was cleared.");
+              this.showToast?.(
+                "Return notifications need automatic reporting, so that choice was cleared."
+              );
             }
           }
         });
@@ -6985,7 +7051,9 @@ export const SettingsScreen = {
           ...(offered.includes("automation")
             ? [{ id: "automation", label: "A Shortcut automation" }]
             : []),
-          ...(offered.includes("notification") ? [{ id: "notification", label: "A notification" }] : []),
+          ...(offered.includes("notification")
+            ? [{ id: "notification", label: "A notification" }]
+            : []),
           { id: "", label: "Neither" }
         ];
         this.openOptionDialog({
@@ -7529,28 +7597,44 @@ export const SettingsScreen = {
                 value:
                   normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "lenna"
                     ? "Lenna"
-                    : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "outplayer"
+                    : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) ===
+                        "outplayer"
                       ? "Outplayer"
-                      : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "infuse"
-                      ? "Infuse"
-                      : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) === "vlc"
-                        ? "VLC"
-                        : t("common.disabled", {}, "Disabled"),
+                      : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) ===
+                          "infuse"
+                        ? "Infuse"
+                        : normalizeBrowserExternalPlayer(model.player.browserExternalPlayer) ===
+                            "vlc"
+                          ? "VLC"
+                          : t("common.disabled", {}, "Disabled"),
                 classes: "settings-playback-external-player-row"
               })
             : ""
         }
         ${
-          isDesktopBrowser && (() => {
+          isDesktopBrowser &&
+          (() => {
             const player = normalizeBrowserExternalPlayer(model.player.browserExternalPlayer);
-            return player !== "disabled" && Boolean(getBrowserExternalPlayerStoreUrl({
-              player,
-              platform: getBrowserExternalPlayerPlatform()
-            }));
+            return (
+              player !== "disabled" &&
+              Boolean(
+                getBrowserExternalPlayerStoreUrl({
+                  player,
+                  platform: getBrowserExternalPlayerPlatform()
+                })
+              )
+            );
           })()
             ? (() => {
                 const player = normalizeBrowserExternalPlayer(model.player.browserExternalPlayer);
-                const playerName = player === "outplayer" ? "Outplayer" : player === "lenna" ? "Lenna" : player === "infuse" ? "Infuse" : "VLC";
+                const playerName =
+                  player === "outplayer"
+                    ? "Outplayer"
+                    : player === "lenna"
+                      ? "Lenna"
+                      : player === "infuse"
+                        ? "Infuse"
+                        : "VLC";
                 return this.renderActionRow({
                   focusKey: `playback:getExternalPlayer:${player}`,
                   title: `Get ${playerName}`,
@@ -7566,8 +7650,12 @@ export const SettingsScreen = {
             ? this.renderActionRow({
                 focusKey: "playback:externalPlayerProgress",
                 title: "External Player Progress",
-                subtitle: "Choose automatic callbacks where supported or always report playback manually.",
-                value: model.player.externalPlayerProgress === "manual" ? "Always ask manually" : "Automatic when supported",
+                subtitle:
+                  "Choose automatic callbacks where supported or always report playback manually.",
+                value:
+                  model.player.externalPlayerProgress === "manual"
+                    ? "Always ask manually"
+                    : "Automatic when supported",
                 classes: "settings-playback-external-player-row"
               })
             : ""
@@ -7579,10 +7667,11 @@ export const SettingsScreen = {
                 title: "Return to NuvioWeb",
                 subtitle:
                   "Choose whether a notification or an iOS Shortcut automation brings you back after external playback.",
-                value: ({
-                  notification: "A notification",
-                  automation: "A Shortcut automation"
-                })[model.player.externalReturnMethod] || "Not chosen",
+                value:
+                  {
+                    notification: "A notification",
+                    automation: "A Shortcut automation"
+                  }[model.player.externalReturnMethod] || "Not chosen",
                 classes: "settings-playback-external-player-row"
               })
             : ""
@@ -7883,11 +7972,7 @@ export const SettingsScreen = {
             ? this.renderActionRow({
                 focusKey: "playback:trailerDelay",
                 title: t("audio_trailer_delay"),
-                subtitle: t(
-                  "audio_trailer_delay_sub",
-                  {},
-                  "Delay before trailer playback starts"
-                ),
+                subtitle: t("audio_trailer_delay_sub", {}, "Delay before trailer playback starts"),
                 value: `${model.player.trailerDelaySeconds ?? 7}s`
               })
             : ""
@@ -8110,11 +8195,7 @@ export const SettingsScreen = {
     this.stopTraktPolling();
     const poll = async () => {
       const state = TraktAuthService.getCurrentAuthState();
-      if (
-        !state.deviceCode ||
-        !isSettingsPageCurrent() ||
-        this.activeSection !== "trakt"
-      ) {
+      if (!state.deviceCode || !isSettingsPageCurrent() || this.activeSection !== "trakt") {
         this.stopTraktPolling();
         return;
       }
@@ -8535,10 +8616,13 @@ export const SettingsScreen = {
       await this.render();
       const next = SimklAuthService.getCurrentAuthState();
       if (next.userCode && !this.desktopSimklPollTimer) {
-        this.desktopSimklPollTimer = setTimeout(() => {
-          this.desktopSimklPollTimer = null;
-          void poll();
-        }, Math.max(1, Number(next.pollInterval || 5)) * 1000);
+        this.desktopSimklPollTimer = setTimeout(
+          () => {
+            this.desktopSimklPollTimer = null;
+            void poll();
+          },
+          Math.max(1, Number(next.pollInterval || 5)) * 1000
+        );
       }
     };
     void poll();
@@ -8577,9 +8661,12 @@ export const SettingsScreen = {
         this.stopDesktopTraktPolling();
         this.desktopTraktStatusMessage = null;
         this.desktopTraktErrorMessage =
-          result.type === "denied" ? "Trakt authorization was denied." : "Trakt code expired. Start again.";
+          result.type === "denied"
+            ? "Trakt authorization was denied."
+            : "Trakt code expired. Start again.";
       } else if (result.type === "slow_down") {
-        this.desktopTraktStatusMessage = "Trakt is rate limiting requests. Waiting before retrying...";
+        this.desktopTraktStatusMessage =
+          "Trakt is rate limiting requests. Waiting before retrying...";
       } else if (result.type === "failed") {
         this.stopDesktopTraktPolling();
         this.desktopTraktStatusMessage = null;
@@ -8588,10 +8675,13 @@ export const SettingsScreen = {
       await this.render();
       const next = TraktAuthService.getCurrentAuthState();
       if (next.deviceCode && !this.desktopTraktPollTimer) {
-        this.desktopTraktPollTimer = setTimeout(() => {
-          this.desktopTraktPollTimer = null;
-          void poll();
-        }, Math.max(1, Number(next.pollInterval || 5)) * 1000);
+        this.desktopTraktPollTimer = setTimeout(
+          () => {
+            this.desktopTraktPollTimer = null;
+            void poll();
+          },
+          Math.max(1, Number(next.pollInterval || 5)) * 1000
+        );
       }
     };
     void poll();
@@ -8626,7 +8716,9 @@ export const SettingsScreen = {
 
     this.actionMap.set("tracking:desktop:trakt", () => this.toggleDesktopTrackingSection("trakt"));
     this.actionMap.set("tracking:desktop:simkl", () => this.toggleDesktopTrackingSection("simkl"));
-    this.actionMap.set("tracking:desktop:behavior", () => this.toggleDesktopTrackingSection("behavior"));
+    this.actionMap.set("tracking:desktop:behavior", () =>
+      this.toggleDesktopTrackingSection("behavior")
+    );
     this.actionMap.set("tracking:desktop:trakt:connect", async () => {
       this.desktopTraktErrorMessage = null;
       try {
@@ -8636,7 +8728,9 @@ export const SettingsScreen = {
         this.startDesktopTraktPolling();
       } catch (error) {
         this.desktopTraktStatusMessage = null;
-        this.desktopTraktErrorMessage = String(error?.message || error || "Unable to start Trakt sign-in.");
+        this.desktopTraktErrorMessage = String(
+          error?.message || error || "Unable to start Trakt sign-in."
+        );
       }
       await this.render();
     });
@@ -8660,7 +8754,9 @@ export const SettingsScreen = {
         this.startDesktopSimklPolling();
       } catch (error) {
         this.desktopSimklStatusMessage = null;
-        this.desktopSimklErrorMessage = String(error?.message || error || "Unable to start Simkl sign-in.");
+        this.desktopSimklErrorMessage = String(
+          error?.message || error || "Unable to start Simkl sign-in."
+        );
       }
     });
     this.actionMap.set("tracking:desktop:simkl:open", () => {
@@ -8681,7 +8777,9 @@ export const SettingsScreen = {
         this.desktopSimklStatusMessage = "Simkl sync completed.";
       } catch (error) {
         this.desktopSimklStatusMessage = null;
-        this.desktopSimklErrorMessage = String(error?.message || error || "Unable to reach Simkl. Try again.");
+        this.desktopSimklErrorMessage = String(
+          error?.message || error || "Unable to reach Simkl. Try again."
+        );
       }
     });
     this.actionMap.set("tracking:desktop:simkl:disconnect", () => {
@@ -9108,8 +9206,18 @@ export const SettingsScreen = {
       return `${this.renderSectionHeader(SECTION_META.find((item) => item.id === "downloads"))}<div class="settings-group-card"><div class="settings-stack"><p class="settings-row-subtitle">Offline downloads are unavailable in this browser.</p></div></div>`;
     }
     const count = (status) => Number(downloads.statusCounts?.[status] || 0);
-    const persistent = downloads.persistent === true ? "Enabled" : downloads.persistent === false ? "Not enabled" : "Unsupported";
-    const queueTotal = count("downloading") + count("queued") + count("paused") + count("interrupted") + count("failed");
+    const persistent =
+      downloads.persistent === true
+        ? "Enabled"
+        : downloads.persistent === false
+          ? "Not enabled"
+          : "Unsupported";
+    const queueTotal =
+      count("downloading") +
+      count("queued") +
+      count("paused") +
+      count("interrupted") +
+      count("failed");
     this.actionMap.set("downloads:syncOfflineProgress", () => {
       PlayerSettingsStore.set({
         syncOfflineProgress: !PlayerSettingsStore.get().syncOfflineProgress
@@ -9138,24 +9246,48 @@ export const SettingsScreen = {
     this.actionMap.set("downloads:manage", async () => {
       await Router.navigate("library", { downloadManager: true });
     });
-    this.actionMap.set("downloads:deleteIncomplete", () => this.confirmOfflineCleanup({
-      title: "Delete incomplete downloads?", message: "Paused, interrupted, and failed partial downloads will be removed.", action: deleteBrowserOfflineIncompleteDownloads, focusKey: "downloads:deleteIncomplete"
-    }));
-    this.actionMap.set("downloads:deleteSubtitles", () => this.confirmOfflineCleanup({
-      title: "Delete downloaded subtitles?", message: "Downloaded video files will be kept.", action: deleteAllBrowserOfflineSubtitles, focusKey: "downloads:deleteSubtitles"
-    }));
-    this.actionMap.set("downloads:deleteMedia", () => this.confirmOfflineCleanup({
-      title: "Delete all downloaded media?", message: "All offline videos and their downloaded subtitles will be removed.", action: deleteAllBrowserOfflineMedia, focusKey: "downloads:deleteMedia"
-    }));
-    this.actionMap.set("downloads:clearAll", () => this.confirmOfflineCleanup({
-      title: "Clear all offline data?", message: "All Nuvio offline downloads, partial files, queue entries, and subtitles will be removed.", action: async () => { await deleteAllBrowserOfflineMedia(); await deleteAllBrowserOfflineSubtitles(); }, focusKey: "downloads:clearAll"
-    }));
+    this.actionMap.set("downloads:deleteIncomplete", () =>
+      this.confirmOfflineCleanup({
+        title: "Delete incomplete downloads?",
+        message: "Paused, interrupted, and failed partial downloads will be removed.",
+        action: deleteBrowserOfflineIncompleteDownloads,
+        focusKey: "downloads:deleteIncomplete"
+      })
+    );
+    this.actionMap.set("downloads:deleteSubtitles", () =>
+      this.confirmOfflineCleanup({
+        title: "Delete downloaded subtitles?",
+        message: "Downloaded video files will be kept.",
+        action: deleteAllBrowserOfflineSubtitles,
+        focusKey: "downloads:deleteSubtitles"
+      })
+    );
+    this.actionMap.set("downloads:deleteMedia", () =>
+      this.confirmOfflineCleanup({
+        title: "Delete all downloaded media?",
+        message: "All offline videos and their downloaded subtitles will be removed.",
+        action: deleteAllBrowserOfflineMedia,
+        focusKey: "downloads:deleteMedia"
+      })
+    );
+    this.actionMap.set("downloads:clearAll", () =>
+      this.confirmOfflineCleanup({
+        title: "Clear all offline data?",
+        message:
+          "All Nuvio offline downloads, partial files, queue entries, and subtitles will be removed.",
+        action: async () => {
+          await deleteAllBrowserOfflineMedia();
+          await deleteAllBrowserOfflineSubtitles();
+        },
+        focusKey: "downloads:clearAll"
+      })
+    );
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "downloads"))}
       ${this.downloadCleanupMessage ? `<div class="settings-text-dialog-message">${escapeHtml(this.downloadCleanupMessage)}</div>` : ""}
       <div class="settings-group-heading"><div class="settings-group-title">Playback</div></div>
       <div class="settings-group-card"><div class="settings-stack">
-        ${this.renderActionRow({ focusKey: "downloads:playbackTarget", title: "Play downloaded media with", subtitle: "Handing a file to another app copies it; that app then keeps its own copy.", value: ({ ask: "Ask every time", internal: "Nuvio player", external: "Another app" })[normalizeOfflinePlaybackTarget(model.player?.offlinePlaybackTarget)], leadingIcon: "play_circle" })}
+        ${this.renderActionRow({ focusKey: "downloads:playbackTarget", title: "Play downloaded media with", subtitle: "Handing a file to another app copies it; that app then keeps its own copy.", value: { ask: "Ask every time", internal: "Nuvio player", external: "Another app" }[normalizeOfflinePlaybackTarget(model.player?.offlinePlaybackTarget)], leadingIcon: "play_circle" })}
         ${this.renderToggleRow({
           focusKey: "downloads:syncOfflineProgress",
           title: "Sync offline progress (experimental)",
@@ -9197,7 +9329,10 @@ export const SettingsScreen = {
     this.openOptionDialog({
       title,
       message,
-      options: [{ id: "cancel", label: "Cancel" }, { id: "confirm", label: "Delete" }],
+      options: [
+        { id: "cancel", label: "Cancel" },
+        { id: "confirm", label: "Delete" }
+      ],
       selectedId: "cancel",
       returnFocusKey: focusKey,
       onSelect: async (option) => {
@@ -9206,7 +9341,9 @@ export const SettingsScreen = {
           await action();
           this.downloadCleanupMessage = "";
         } catch (error) {
-          this.downloadCleanupMessage = String(error?.message || "Could not clean offline storage.");
+          this.downloadCleanupMessage = String(
+            error?.message || "Could not clean offline storage."
+          );
         }
       }
     });
@@ -9376,7 +9513,11 @@ export const SettingsScreen = {
     if (isDesktopBrowser && this.desktopCollectionExpanded && section.id === "contentDiscovery") {
       this.desktopCollectionManager.bind(contentSlot);
     }
-    if (isDesktopBrowser && this.expandedSections?.layout?.homeCatalogs && section.id === "layout") {
+    if (
+      isDesktopBrowser &&
+      this.expandedSections?.layout?.homeCatalogs &&
+      section.id === "layout"
+    ) {
       this.desktopHomeCatalogManager.bind(contentSlot);
     }
 
@@ -9509,7 +9650,7 @@ export const SettingsScreen = {
         scrollSettingsRailItem(navNode);
       }
       updateSettingsMarqueeTargets(this.container);
-    void this.hydrateAccountCardAvatar();
+      void this.hydrateAccountCardAvatar();
     }
   },
 
@@ -10246,5 +10387,4 @@ export const SettingsScreen = {
  * state. Each route gets its own instance, built the way the router builds a
  * second Detail: methods only, taken before this screen has ever run.
  */
-export const SettingsSectionScreen =
-  createScreenPrototype(SettingsScreen) || SettingsScreen;
+export const SettingsSectionScreen = createScreenPrototype(SettingsScreen) || SettingsScreen;

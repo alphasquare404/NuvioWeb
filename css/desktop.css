@@ -18210,3 +18210,19 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
   box-sizing: border-box;
   width: calc(100% + 2 * var(--list-heading-gutter));
 }
+
+/* The Settings heading carries the safe area from the start.
+   It used to gain that padding only when it collapsed, while the heading was
+   already pinned to the very edge -- so on a notched phone the title travelled
+   under the notch and then dropped back down as it shrank. Now the bar simply
+   holds the edge, and only its type size and surface change. */
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+}

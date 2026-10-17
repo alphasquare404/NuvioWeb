@@ -21,8 +21,12 @@ test("the heading shrinks and is cleaned up with the mount", async () => {
   const source = await readFile(sourceUrl, "utf8");
 
   assert.match(source, /this\.bindPersonHeadingCollapse\(\);/);
-  assert.match(source, /heading\.dataset\.collapsed = next;/);
-  assert.match(source, /cleanup\(\) \{\s*this\.unbindPersonHeadingCollapse\(\);/);
+  // The shrinking is the shared binding's job now, so every page has one rule.
+  assert.match(
+    source,
+    /bindCollapsingHeader\(\{\s*resolveHeader: \(\) => container\.querySelector\("\.person-heading"\)/
+  );
+  assert.match(source, /cleanup\(\) \{\s*this\.personHeadingCollapseBinding\?\.cleanup\(\);/);
 });
 
 test("the stylesheet keeps the heading centred, sticky, and bar-height when collapsed", async () => {

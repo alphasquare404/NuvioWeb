@@ -1,6 +1,7 @@
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
+import { bindCollapsingHeader } from "../../navigation/compactHeader.js";
 import { setBrowserDocumentTitle } from "../../navigation/browserDocumentTitle.js";
 import {
   getEffectiveTmdbApiKey,
@@ -213,7 +214,7 @@ export const CastDetailScreen = {
       this.container.innerHTML = `
         <div class="browser-person-detail-shell">
           ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
-          <div class="browser-person-detail-status">${renderLoadingIndicator()}<span>Loading person details…</span></div>
+          <div class="browser-person-detail-status">${renderLoadingIndicator()}<span>Loading person detailsâ€¦</span></div>
         </div>
       `;
       bindDesktopNavigationEvents(this.container);
@@ -441,56 +442,14 @@ export const CastDetailScreen = {
     if (!container) {
       return;
     }
-    if (this.personHeadingCollapseListener) {
-      this.applyPersonHeadingCollapse();
+    if (this.personHeadingCollapseBinding) {
+      this.personHeadingCollapseBinding.refresh();
       return;
     }
-    let frame = 0;
-    const run = () => {
-      frame = 0;
-      this.applyPersonHeadingCollapse();
-    };
-    const onScroll = () => {
-      if (frame) {
-        return;
-      }
-      const id = globalThis.requestAnimationFrame?.(run);
-      if (id) {
-        frame = id;
-        return;
-      }
-      run();
-    };
-    this.personHeadingCollapseListener = onScroll;
-    globalThis.document?.addEventListener?.("scroll", onScroll, { capture: true, passive: true });
-    globalThis.addEventListener?.("resize", onScroll, { passive: true });
-    this.applyPersonHeadingCollapse();
-  },
-
-  applyPersonHeadingCollapse() {
-    const heading = this.container?.querySelector?.(".person-heading");
-    if (!heading) {
-      return;
-    }
-    const top = Number(getBrowserVerticalScrollOwner(this.container)?.scrollTop || 0);
-    // Two thresholds, so a scroll resting on the edge cannot flicker it.
-    const collapsed = top >= (heading.dataset.collapsed === "true" ? 2 : 28);
-    const next = collapsed ? "true" : "false";
-    if (heading.dataset.collapsed !== next) {
-      heading.dataset.collapsed = next;
-    }
-  },
-
-  unbindPersonHeadingCollapse() {
-    if (this.personHeadingCollapseListener) {
-      globalThis.document?.removeEventListener?.(
-        "scroll",
-        this.personHeadingCollapseListener,
-        true
-      );
-      globalThis.removeEventListener?.("resize", this.personHeadingCollapseListener);
-      this.personHeadingCollapseListener = null;
-    }
+    this.personHeadingCollapseBinding = bindCollapsingHeader({
+      resolveHeader: () => container.querySelector(".person-heading"),
+      getScrollTop: () => Number(getBrowserVerticalScrollOwner(container)?.scrollTop || 0)
+    });
   },
 
   /**
@@ -752,7 +711,8 @@ export const CastDetailScreen = {
   },
 
   cleanup() {
-    this.unbindPersonHeadingCollapse();
+    this.personHeadingCollapseBinding?.cleanup();
+    this.personHeadingCollapseBinding = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.mediaContextMenuCleanup?.();
