@@ -220,24 +220,16 @@ html.desktop-browser {
   --browser-floating-back-control-size: 44px;
 }
 
-/* In an installed iOS PWA, the visual canvas can be taller than the dynamic
-   content viewport. Keep the shared visual root large enough to paint behind
-   the status bar; individual screen content continues to use safe-area-aware
-   spacing and dynamic viewport rules below. */
-@supports (height: 100lvh) {
-  @media (display-mode: standalone) {
-    html.desktop-browser {
-      width: max(100%, 100lvw);
-      min-height: max(100%, 100lvh);
-      height: max(100%, 100lvh);
-    }
+/* U1: one viewport rule for every display mode.
+   The app fills exactly the viewport the engine hands it -- `100dvh`, with `100vh`
+   as the fallback for engines that do not know `dvh`. There is deliberately no
+   `display-mode` branch here: an installed PWA gets the full screen from its own
+   engine, a Safari tab gets the area between the browser's bars, and the page
+   follows whichever it is instead of trying to paint into the chrome.
 
-    body.desktop-browser,
-    .desktop-browser #app {
-      min-height: 100%;
-    }
-  }
-}
+   The old standalone-only `100lvh` block that reached behind the status bar has
+   been removed for the same reason: it made the PWA behave differently from the
+   tab, and the difference was no longer justified. */
 
 html.desktop-browser {
   scroll-behavior: smooth;
@@ -17255,4 +17247,30 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     width: max-content;
     max-width: none;
   }
+}
+
+
+/* U1 + scroll: the document itself is the scroller, not `body`.
+   `body` was left as a scroll container too, so a finger gesture had no
+   document-level scroller to move and `window.scrollY` stayed at 0 while the
+   content grew below the viewport. `html` scrolls; `body` is a plain, tall block;
+   the screens inside it keep their own sizes. */
+html.desktop-browser {
+  height: auto;
+  /* Full from the first frame: the root is as tall as the large viewport, so in
+     an installed PWA the app's own background is painted behind the status bar
+     without waiting for a scroll to expand the viewport. `100vh` is the fallback
+     for engines without `lvh`; the two are equal in a Safari tab, where the
+     browser's chrome is not part of the page at all. */
+  min-height: 100vh;
+  min-height: 100lvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+body.desktop-browser {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
 }

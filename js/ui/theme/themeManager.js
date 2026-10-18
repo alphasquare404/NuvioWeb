@@ -160,6 +160,15 @@ export const ThemeManager = {
     );
     document.documentElement.style.setProperty("color-scheme", "dark");
 
+    // The browser paints its own chrome (the status strip in a tab, and the area
+    // above an installed app's page) with this colour. Keeping it on the theme's
+    // own background makes those strips read as part of the app rather than as a
+    // black band above it.
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta && colors["--bg-color"]) {
+      themeColorMeta.setAttribute("content", colors["--bg-color"]);
+    }
+
     if (!SUPPORTS_CSS_VARS) {
       const colorMap = {
         bg: colors["--bg-color"],

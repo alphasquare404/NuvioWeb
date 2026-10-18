@@ -37,5 +37,84 @@
       src="app.bundle.js?v=20260531supporters2"
       onerror="window.NuvioBootGuard && window.NuvioBootGuard.scriptFailed(this.src)"
     ></script>
+
+    <!-- Temporary viewport diagnostics. Append ?diag=1 to the URL to see what the
+         engine reports about this display mode: browser tab and installed PWA
+         answer differently, and the layout has to follow whichever it is. -->
+    <script>
+      (() => {
+        // Query string first (browser tab), and in an installed PWA the badge has
+        // to come up on its own: a home-screen launch never carries ?diag=1.
+        const standaloneLaunch = matchMedia("(display-mode: standalone)").matches;
+        if (!standaloneLaunch && !/[?&]diag=1(?:&|$)/.test(location.search)) return;
+
+        const cssVh = document.createElement("div");
+        cssVh.style.cssText =
+          "position:absolute;top:0;left:-9999px;visibility:hidden;height:100vh;width:0";
+        const cssDvh = document.createElement("div");
+        cssDvh.style.cssText =
+          "position:absolute;top:0;left:-9999px;visibility:hidden;height:100dvh;width:0";
+        const badge = document.createElement("pre");
+        badge.id = "diagBadge";
+        badge.style.cssText =
+          "position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom, 0px));" +
+          "z-index:2147483647;margin:0;padding:8px 10px;border-radius:10px;" +
+          "background:rgba(0,0,0,.86);color:#fff;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;" +
+          "white-space:pre-wrap;pointer-events:none;outline:1px solid rgba(255,255,255,.25)";
+
+        const envValue = (side) => {
+          const probe = document.createElement("div");
+          probe.style.cssText =
+            "position:absolute;top:0;left:-9999px;visibility:hidden;padding-" +
+            side +
+            ": env(safe-area-inset-" +
+            side +
+            ", 0px)";
+          document.documentElement.appendChild(probe);
+          const value = getComputedStyle(probe).getPropertyValue("padding-" + side);
+          probe.remove();
+          return value;
+        };
+
+        const read = () => {
+          const vv = window.visualViewport;
+          const standalone = matchMedia("(display-mode: standalone)").matches;
+          const lines = [
+            "mode: " + (standalone ? "PWA (standalone)" : "browser tab"),
+            "innerW/H: " + innerWidth + " x " + innerHeight,
+            "visualViewport: " +
+              (vv ? Math.round(vv.width) + " x " + Math.round(vv.height) : "n/a"),
+            "docEl client: " +
+              document.documentElement.clientWidth +
+              " x " +
+              document.documentElement.clientHeight,
+            "html box: " + Math.round(document.documentElement.getBoundingClientRect().height),
+            "body box: " + Math.round(document.body.getBoundingClientRect().height),
+            "screen: " + screen.width + " x " + screen.height + "  dpr " + devicePixelRatio,
+            "css 100vh: " + Math.round(cssVh.getBoundingClientRect().height),
+            "css 100dvh: " + Math.round(cssDvh.getBoundingClientRect().height),
+            "env top/bottom: " + envValue("top") + " / " + envValue("bottom"),
+            "scrollY: " + Math.round(scrollY) + "  bodyScrollH: " + document.body.scrollHeight
+          ];
+          badge.textContent = lines.join("\n");
+        };
+
+        document.documentElement.appendChild(cssVh);
+        document.documentElement.appendChild(cssDvh);
+        const attach = () => {
+          document.body.appendChild(badge);
+          read();
+          setInterval(read, 700);
+          addEventListener("resize", read);
+          addEventListener("scroll", read, { passive: true });
+          if (window.visualViewport) {
+            visualViewport.addEventListener("resize", read);
+            visualViewport.addEventListener("scroll", read);
+          }
+        };
+        if (document.body) attach();
+        else addEventListener("DOMContentLoaded", attach, { once: true });
+      })();
+    </script>
   </body>
 </html>

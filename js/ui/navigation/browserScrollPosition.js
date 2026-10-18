@@ -27,9 +27,18 @@ export function getBrowserVerticalScrollOwner(routeContainer = null) {
   if (isLayeredScreen(routeContainer)) {
     return routeContainer;
   }
-  // The bottom screen scrolls the document. That is `document.body` in this
-  // app's browser shell -- `document.documentElement` never actually moves,
-  // which is why it must not be consulted here.
+  // The bottom screen scrolls the document. Which element that is depends on how
+  // the shell arranges its overflow: the document element scrolls when `html`
+  // owns it (the current shell), and `body` was the scroller before that. Ask the
+  // document which one really moves instead of assuming, and fall back to `body`
+  // so a shell that still scrolls there keeps working.
+  const documentScroller = document.scrollingElement;
+  if (
+    documentScroller &&
+    Number(documentScroller.scrollHeight || 0) > Number(documentScroller.clientHeight || 0) + 1
+  ) {
+    return documentScroller;
+  }
   return document.body || null;
 }
 
@@ -42,6 +51,9 @@ export function setBrowserVerticalScrollTop(value = 0, routeContainer = null) {
   if (!owner) {
     return;
   }
-  const maxScrollTop = Math.max(0, Number(owner.scrollHeight || 0) - Number(owner.clientHeight || 0));
+  const maxScrollTop = Math.max(
+    0,
+    Number(owner.scrollHeight || 0) - Number(owner.clientHeight || 0)
+  );
   owner.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(value || 0)));
 }
