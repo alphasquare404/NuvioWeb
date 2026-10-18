@@ -79,6 +79,20 @@
         const read = () => {
           const vv = window.visualViewport;
           const standalone = matchMedia("(display-mode: standalone)").matches;
+          // Which element a finger actually moves is the question this badge has
+          // to answer, so report every candidate, not just the document.
+          const route = globalThis.__NUVIO_CURRENT_ROUTE__ || "";
+          const activeScreen = route ? document.getElementById(route) : null;
+          const screenLine = activeScreen
+            ? "screen " +
+              route +
+              ": " +
+              (getComputedStyle(activeScreen).position === "fixed" ? "layer" : "flow") +
+              "  top " +
+              Math.round(activeScreen.scrollTop) +
+              " / " +
+              activeScreen.scrollHeight
+            : "screen: n/a";
           const lines = [
             "mode: " + (standalone ? "PWA (standalone)" : "browser tab"),
             "innerW/H: " + innerWidth + " x " + innerHeight,
@@ -94,7 +108,12 @@
             "css 100vh: " + Math.round(cssVh.getBoundingClientRect().height),
             "css 100dvh: " + Math.round(cssDvh.getBoundingClientRect().height),
             "env top/bottom: " + envValue("top") + " / " + envValue("bottom"),
-            "scrollY: " + Math.round(scrollY) + "  bodyScrollH: " + document.body.scrollHeight
+            "scrollY: " + Math.round(scrollY) + "  bodyScrollH: " + document.body.scrollHeight,
+            "html/body top: " +
+              Math.round(document.documentElement.scrollTop) +
+              " / " +
+              Math.round(document.body.scrollTop),
+            screenLine
           ];
           badge.textContent = lines.join("\n");
         };

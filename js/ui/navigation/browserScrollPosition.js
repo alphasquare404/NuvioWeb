@@ -15,9 +15,17 @@
 // `document.body` (939 vs 910 here, 896 vs 852 on a real device), so even the
 // tie-breaker preferred the wrong element.
 function isLayeredScreen(element) {
-  // The router owns this inline style: applyLayerChrome sets it when a screen
-  // becomes a layer, and releasing that layer removes it again.
-  return element?.style?.position === "fixed";
+  if (!element) {
+    return false;
+  }
+  // The router owns the inline style: applyLayerChrome sets it when a screen
+  // becomes a layer, and releasing that layer removes it again. A screen can also
+  // be a layer from the stylesheet -- Home is, so that it scrolls itself instead
+  // of the document -- and then the answer has to come from the computed style.
+  if (element.style?.position === "fixed") {
+    return true;
+  }
+  return typeof getComputedStyle === "function" && getComputedStyle(element).position === "fixed";
 }
 
 export function getBrowserVerticalScrollOwner(routeContainer = null) {

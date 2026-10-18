@@ -17396,20 +17396,13 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
 }
 
 
-/* U1 + scroll: the document itself is the scroller, not `body`.
+/* The document itself is the scroller, not `body`.
    `body` was left as a scroll container too, so a finger gesture had no
    document-level scroller to move and `window.scrollY` stayed at 0 while the
    content grew below the viewport. `html` scrolls; `body` is a plain, tall block;
    the screens inside it keep their own sizes. */
 html.desktop-browser {
   height: auto;
-  /* Full from the first frame: the root is as tall as the large viewport, so in
-     an installed PWA the app's own background is painted behind the status bar
-     without waiting for a scroll to expand the viewport. `100vh` is the fallback
-     for engines without `lvh`; the two are equal in a Safari tab, where the
-     browser's chrome is not part of the page at all. */
-  min-height: 100vh;
-  min-height: 100lvh;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -17419,4 +17412,41 @@ body.desktop-browser {
   height: auto;
   min-height: 100dvh;
   overflow: visible;
+}
+
+/* An installed app gets the whole screen, status bar included, from the first
+   frame. A Safari tab does not: the browser's own chrome is outside the page, so
+   there is nothing to paint there and this rule is deliberately left out of the
+   tab. Keep it to one small branch -- the rest of the shell does not care which
+   display mode it is in. */
+@supports (height: 100lvh) {
+  @media (display-mode: standalone) {
+    html.desktop-browser {
+      min-height: 100lvh;
+    }
+  }
+}
+
+/* The shell's own canvas, for the strips that carry no page content: under a
+   browser's status strip and around the floating navigation. It has to be the
+   tint the pages start with, otherwise those strips read as black bands. */
+html.desktop-browser,
+body.desktop-browser {
+  background-color: var(--app-canvas-color, var(--bg-color));
+}
+
+/* One behaviour for every page, so the browser never shows a different edge on
+   one screen than on another: every screen scrolls its own container, the way the
+   router already treats the screens it layers. The document therefore stays the
+   size of the viewport everywhere, and the browser's own strips stay outside the
+   page on every screen -- the same look from the first frame, with no "full"
+   state that only appears after scrolling. The player is left alone: it owns the
+   whole viewport by itself. */
+.desktop-browser .screen:not(#player) {
+  position: fixed;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-color);
 }

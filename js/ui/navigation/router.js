@@ -636,7 +636,7 @@ export const Router = {
     childContainer.style.setProperty("z-index", String(1000 + depth));
     childContainer.style.setProperty("overflow-y", "auto");
     childContainer.style.setProperty("overscroll-behavior", "contain");
-    childContainer.style.setProperty("background", "var(--bg-color)");
+    // The layer covers the whole viewport, so its own backdrop is what shows in any\n    // strip the page content does not fill -- the black band seen under a short\n    // list. It has to be the same tint as the app canvas, not the bare background.\n    childContainer.style.setProperty("background", "var(--app-canvas-color, var(--bg-color))");
   },
 
   // Paint order must always match stack order. Depth alone is not enough: a
