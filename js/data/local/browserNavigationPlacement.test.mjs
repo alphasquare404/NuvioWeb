@@ -9,30 +9,46 @@ globalThis.localStorage = {
   clear: () => values.clear()
 };
 
-const { normalizeBrowserNavigationPlacement, normalizeBrowserNavigationRailCorner } =
-  await import("./layoutPreferences.js");
+const {
+  normalizeBrowserNavigationStyle,
+  normalizeBrowserNavigationRailCorner,
+  resolveBrowserNavigationStyle,
+  resolveFloatingNavigationPlacement
+} = await import("./layoutPreferences.js");
 
-test("the three placements are kept as they are", () => {
-  assert.equal(normalizeBrowserNavigationPlacement("top"), "top");
-  assert.equal(normalizeBrowserNavigationPlacement("bottom"), "bottom");
-  assert.equal(normalizeBrowserNavigationPlacement("sidebar"), "sidebar");
+// Two shapes, not three positions: where the floating bar sits is decided by the
+// layout, so only the shape is a choice.
+test("the two navigation shapes are kept as they are", () => {
+  assert.equal(normalizeBrowserNavigationStyle("floating"), "floating");
+  assert.equal(normalizeBrowserNavigationStyle(" RAIL "), "rail");
+  assert.equal(normalizeBrowserNavigationStyle("RAIL"), "rail");
 });
 
-test("case and surrounding space do not make a placement unreadable", () => {
-  assert.equal(normalizeBrowserNavigationPlacement("  Bottom "), "bottom");
-  assert.equal(normalizeBrowserNavigationPlacement("SIDEBAR"), "sidebar");
+test("a profile that stored a position is read as the shape it belonged to", () => {
+  assert.equal(normalizeBrowserNavigationStyle("", "sidebar"), "rail");
+  assert.equal(normalizeBrowserNavigationStyle("", "top"), "floating");
+  assert.equal(normalizeBrowserNavigationStyle("", "bottom"), "floating");
+  assert.equal(normalizeBrowserNavigationStyle("rail", "bottom"), "rail");
 });
 
 // A value this build does not know -- written by a newer one, or by hand -- must
-// not move the navigation somewhere nobody can find it. The default is the
-// placement this has always had, so an unreadable setting looks like no setting.
-test("anything else reads as the placement it has always been", () => {
-  assert.equal(normalizeBrowserNavigationPlacement("left"), "top");
-  assert.equal(normalizeBrowserNavigationPlacement("floating-rail"), "top");
-  assert.equal(normalizeBrowserNavigationPlacement(""), "top");
-  assert.equal(normalizeBrowserNavigationPlacement(null), "top");
-  assert.equal(normalizeBrowserNavigationPlacement(undefined), "top");
-  assert.equal(normalizeBrowserNavigationPlacement(42), "top");
+// not move the navigation somewhere nobody can find it. Empty means nobody has
+// chosen, and the resolver then answers with the floating bar.
+test("anything else reads as nobody having chosen", () => {
+  assert.equal(normalizeBrowserNavigationStyle("left"), "");
+  assert.equal(normalizeBrowserNavigationStyle("floating-rail"), "");
+  assert.equal(normalizeBrowserNavigationStyle(""), "");
+  assert.equal(normalizeBrowserNavigationStyle(null), "");
+  assert.equal(normalizeBrowserNavigationStyle(undefined), "");
+  assert.equal(normalizeBrowserNavigationStyle(42), "");
+});
+
+test("the resolved style is always one of the two shapes", () => {
+  assert.equal(resolveBrowserNavigationStyle({ browserNavigationStyle: "rail" }), "rail");
+  assert.equal(resolveBrowserNavigationStyle({ browserNavigationStyle: "floating" }), "floating");
+  assert.equal(resolveBrowserNavigationStyle({}), "floating");
+  assert.equal(resolveBrowserNavigationStyle({ browserNavigationPlacement: "sidebar" }), "rail");
+  assert.equal(resolveBrowserNavigationStyle({ browserNavigationPlacement: "bottom" }), "floating");
 });
 
 test("the three rail corners are kept as they are", () => {
@@ -50,15 +66,13 @@ test("a corner with no rules reads as the default one", () => {
   assert.equal(normalizeBrowserNavigationRailCorner(null), "top-right");
 });
 
-// Nobody has chosen yet, so the device is asked instead. The question is the
-// shape of the thing in the hand: a phone is narrow whichever way it is held,
-// a tablet is not.
-test("the unchosen placement follows the shape of the device", async () => {
-  const { resolveDefaultBrowserNavigationPlacement } = await import("./layoutPreferences.js");
+// The floating bar's edge is not a preference: the shape of the thing in the hand
+// answers it. A phone is narrow whichever way it is held, a tablet is not.
+test("the floating bar sits on the edge the device asks for", () => {
   const onScreen = (width, height) => {
     globalThis.innerWidth = width;
     globalThis.innerHeight = height;
-    return resolveDefaultBrowserNavigationPlacement();
+    return resolveFloatingNavigationPlacement();
   };
   assert.equal(onScreen(414, 896), "bottom");
   assert.equal(onScreen(896, 414), "bottom");
