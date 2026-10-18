@@ -17,7 +17,7 @@ test("the page heading collapses from a scroll listener that belongs to the moun
   assert.match(source, /cleanup\(\)\s*\{[\s\S]{0,120}this\.unbindHeaderCollapse\(\)/);
 });
 
-test("the heading keeps its place only where nothing floats over the top", async () => {
+test("the heading keeps its place in every placement", async () => {
   const desktopCss = await readFile(desktopCssUrl, "utf8");
 
   // One variable carries how far the page's padding holds the heading in, so
@@ -27,18 +27,14 @@ test("the heading keeps its place only where nothing floats over the top", async
   assert.match(desktopCss, /margin-inline: calc\(-1 \* var\(--settings-header-bleed\)\);/);
   assert.match(desktopCss, /padding-inline: var\(--settings-header-bleed\);/);
 
-  // The exception: with the navigation at the top the heading is left alone,
-  // because a bar there could only sit under the pill and leave a strip of raw
-  // scrolling content above itself.
+  // The heading holds the top of the page whichever navigation is in force.
+  // With the bar at the top it used to be left alone, but a heading that scrolls
+  // away under a floating pill reads worse than one that pins beneath it.
   assert.match(
     desktopCss,
     /html:not\(\[data-nav-placement="top"\]\)[\s\S]{0,320}?position: sticky;/
   );
-  // No Settings heading is made sticky by a rule that names the top placement.
-  assert.doesNotMatch(
-    desktopCss,
-    /html\[data-nav-placement="top"\][^{}]*settings-[^{}]*\{[^}]*position: sticky/
-  );
+  assert.match(desktopCss, /html\[data-nav-placement="top"\][\s\S]{0,400}?position: sticky;/);
 });
 
 test("nothing is painted until the heading has content to hold back", async () => {
@@ -54,10 +50,19 @@ test("nothing is painted until the heading has content to hold back", async () =
   assert.doesNotMatch(headerRule[0], /backdrop-filter/);
   assert.doesNotMatch(headerRule[0], /background: var\(--bg-color\);/);
 
-  // Once collapsed it becomes a surface over the page's own colour.
+  // Once collapsed the bar becomes the floating navigation's own glass: the same
+  // blur, the same translucent fill, the same shadow. At rest none of it exists.
   assert.match(
     desktopCss,
-    /data-settings-header-collapsed="true"[\s\S]{0,700}?backdrop-filter: blur\(18px\) saturate\(140%\);/
+    /data-settings-header-collapsed="true"[\s\S]{0,700}?backdrop-filter: blur\(2px\) saturate\(150%\);/
+  );
+  assert.match(
+    desktopCss,
+    /data-settings-header-collapsed="true"[\s\S]{0,700}?background: rgba\(18, 18, 20, 0\.46\);/
+  );
+  assert.match(
+    desktopCss,
+    /data-settings-header-collapsed="true"[\s\S]{0,700}?box-shadow: 0 10px 30px rgba\(0, 0, 0, 0\.26\);/
   );
   // And the title only shrinks where the bar exists at all.
   assert.match(

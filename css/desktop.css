@@ -13920,7 +13920,7 @@ html:not([data-nav-placement="top"]) .desktop-browser
   .settings-shell[data-settings-nav-mode]
   .settings-content-header {
   position: sticky;
-  top: env(safe-area-inset-top, 0px);
+  top: 0;
   z-index: 8;
 }
 
@@ -13936,8 +13936,12 @@ html:not([data-nav-placement="top"])
   .desktop-browser
   .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
   .settings-content-header {
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  /* The same glass the floating navigation wears: its blur, its fill, its
+     shadow. A heading that pins over content is the same kind of object. */
+  backdrop-filter: blur(2px) saturate(150%);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -17449,4 +17453,362 @@ body.desktop-browser {
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--bg-color);
+}
+
+/* ---------------------------------------------------------------------------
+   Settings headings, first pass: one bar that holds the top edge of the page.
+
+   The offset is written against the safe area, not against a number: an installed
+   app paints behind the status bar, so its heading and its Back control have to
+   start below the notch / Dynamic Island, while a browser tab -- where env() is
+   zero -- keeps exactly the position it had.
+
+   Phone: the bar is 76px tall at rest and 52px once it is holding content back,
+   with the title's centre at 40 / 26 from the safe edge. Section pages carry the
+   subtitle at rest and drop it when collapsed.
+   --------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  /* The bar owns the top edge of the screen, safe area included: its box starts
+     at 0, the inset is padding inside it, and its own surface covers the strip
+     above the title so nothing can be read through it. Growing the box by the
+     inset is what keeps the title 22px below the safe edge. */
+  .desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
+  .desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
+    position: sticky;
+    top: 0;
+    box-sizing: border-box;
+    gap: 4px;
+    padding-top: calc(var(--browser-safe-area-top) + 22px);
+    padding-bottom: 19px;
+    /* No min-height: the bar ends where its own padding ends, so a section page
+       with a subtitle is exactly as tall as that subtitle needs and no taller. */
+    /* At rest the bar is simply the top of the page: no fill, no blur. Only the
+       collapsed state in the rule below gives it a surface. */
+    background: transparent;
+  }
+
+  .desktop-browser .settings-shell[data-settings-nav-mode="section"] .settings-content-header {
+    padding-top: calc(var(--browser-safe-area-top) + 14px);
+    padding-bottom: 6px;
+    justify-content: flex-start;
+  }
+
+  /* Collapsed: no gap for a subtitle that is no longer shown, and the bar ends
+     after its own padding, exactly as it does at rest. */
+  .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-nav-index-header,
+  .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-content-header {
+    gap: 0;
+    padding-top: calc(var(--browser-safe-area-top) + 16px);
+    padding-bottom: 16px;
+  }
+
+  /* Scrolled: the floating navigation's own glass -- its blur, its fill, its
+     shadow -- so a pinned heading reads as the same kind of object. At rest the
+     bar stays transparent, as decided. */
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-nav-index-header,
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-content-header {
+    -webkit-backdrop-filter: blur(2px) saturate(150%);
+    backdrop-filter: blur(2px) saturate(150%);
+    background: rgba(18, 18, 20, 0.46);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  }
+
+  /* Back belongs on the bar's own line, clear of the notch. It is a sibling of
+     the heading, not a child, so it is matched from the shell. */
+  .desktop-browser .settings-shell[data-settings-nav-mode="section"] .settings-section-back {
+    position: fixed;
+    top: calc(var(--browser-safe-area-top) + 4px);
+    left: 12px;
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Desktop: the heading now holds the top of the page as well. The rules that
+   used to be limited to the placements with nothing floating over the heading
+   are re-stated for the top placement, so the collapsed bar looks the same
+   whichever navigation is in force. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  position: sticky;
+  top: var(--browser-safe-area-top);
+  z-index: 8;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-title {
+  font-size: 18px;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header
+  .settings-subtitle {
+  max-height: 0;
+  margin: 0;
+  opacity: 0;
+}
+
+@media (max-width: 600px) {
+  /* The page used to hold the heading 8px down from the top; the bar now owns
+     that edge itself, so the padding would only push the whole bar down. */
+  .desktop-browser .settings-shell .settings-workspace {
+    padding-top: 0;
+  }
+
+  /* Collapsed, the bar is the title alone: the subtitle's gap goes with it. */
+  .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-nav-index-header,
+  .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-content-header {
+    gap: 0;
+  }
+}
+
+/* Section pages: the title has to clear the Back control, which floats at the
+   start of the same line, and the subtitle is sized so the resting bar keeps its
+   76px (plus the safe inset) instead of growing by a line. */
+@media (max-width: 600px) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header {
+    padding-inline: 64px 16px;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-subtitle {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+}
+
+/* The section page's Back is the chevron alone: no disc, no border, no shadow.
+   The 44px box stays, because that is the touch target, not the paint. */
+@media (max-width: 600px) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-section-back,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-section-back:hover,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-section-back:focus-visible {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Section pages: the title block is centred on the bar, not merely its text. The
+   block keeps a fixed clearance on each side -- Back's 44px box plus a gap, and
+   the safe insets in landscape -- so the centred line can never reach a control,
+   and a long title is cut with an ellipsis instead of running under one. */
+@media (max-width: 600px) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header {
+    padding-inline:
+      calc(var(--browser-safe-area-left) + 64px)
+      calc(var(--browser-safe-area-right) + 64px);
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-title {
+    width: 100%;
+    margin-inline: auto;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-subtitle {
+    width: 100%;
+    margin-inline: auto;
+    text-align: center;
+  }
+}
+
+/* Wide screens: the section's Back sits inside the bar, on the title's line, as
+   a bare chevron -- no disc, no border, no shadow. The heading becomes one row:
+   control, then the copy block, so the title keeps the space that is left. */
+@media (min-width: 601px) {
+  .desktop-browser .settings-shell[data-settings-nav-mode="section"] .settings-content-header {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-header-copy {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back:hover,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back:focus-visible {
+    position: static;
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    transform: none;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* The bar owns the space under it, and only that space. The index page is a flex
+   list with no gap of its own, so its bar carries the 12px; the section page's
+   content has the gap, so its bar carries none. Card-to-card spacing lives in the
+   stack and is not touched. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header {
+  margin-bottom: 12px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
+  margin-bottom: 0;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content {
+  row-gap: 12px;
+}
+
+/* Wide layout: the Settings heading is part of the page, exactly as it was before
+   this work. No sticky bar, no collapse, no glass -- the browser's wide shell has
+   its navigation at the top and a heading that pins there is one moving surface
+   too many. The narrow layout keeps the sticky bar. */
+@media (min-width: 601px) {
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-nav-index-header,
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header,
+  html[data-nav-placement="top"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-nav-index-header,
+  html[data-nav-placement="top"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header {
+    position: static;
+  }
+}
+
+/* Wide layout: Back leaves the heading and floats at the top left, on the
+   navigation's own line. It is a circle the size of the navigation bar, wearing
+   the same glass -- the same blur, fill, border and shadow -- so the two read as
+   one band of chrome. The heading keeps only its copy. */
+@media (min-width: 601px) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back:hover,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back:focus-visible {
+    position: fixed;
+    top: var(--browser-floating-nav-top);
+    /* On the page's own gutter, so the circle sits in the same column as the
+       heading copy rather than against the window edge. */
+    left: calc(var(--browser-safe-area-left) + clamp(24px, 3vw, 48px));
+    /* The bar's own height is its content box; its 1px border makes the visible
+       pill 2px taller, so the circle adds the same 2px and the two line up. */
+    width: calc(var(--browser-floating-nav-height) + 2px);
+    height: calc(var(--browser-floating-nav-height) + 2px);
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    background: rgba(18, 18, 20, 0.46);
+    -webkit-backdrop-filter: blur(2px) saturate(150%);
+    backdrop-filter: blur(2px) saturate(150%);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 31;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back
+    .settings-section-back-icon {
+    width: 24px;
+    height: 24px;
+  }
 }

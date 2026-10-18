@@ -2622,6 +2622,18 @@ export const SettingsScreen = {
       if (!shell) {
         return;
       }
+      // The wide layout keeps its heading in the page, so there is nothing to
+      // collapse: the title is not a bar there, and shrinking it while it scrolls
+      // away would only make the page twitch. Phones keep the sticky bar.
+      const wideLayout =
+        typeof globalThis.matchMedia === "function" &&
+        globalThis.matchMedia("(min-width: 601px)").matches;
+      if (wideLayout) {
+        if (shell.dataset.settingsHeaderCollapsed !== "false") {
+          shell.dataset.settingsHeaderCollapsed = "false";
+        }
+        return;
+      }
       const collapsed = shouldCollapseSettingsHeader(
         readScrollTop(),
         shell.dataset.settingsHeaderCollapsed === "true"
@@ -2984,9 +2996,9 @@ export const SettingsScreen = {
 
   renderSectionHeader(section) {
     const copy = translateSectionCopy(section);
-    // The section page is a route, so this control pops that route. Placed and
-    // painted like every other back control in the browser build: floating on
-    // the navigation's own line, not in the header flow.
+    // The section page is a route, so this control pops that route. It lives
+    // inside the heading so that on a wide screen it can sit in the bar, on the
+    // title's own line; on a phone it is pinned to the bar's edge instead.
     const back = Platform.isBrowser()
       ? `
       <button class="settings-section-back focusable" type="button" data-settings-back
@@ -2996,10 +3008,12 @@ export const SettingsScreen = {
     `
       : "";
     return `
-      ${back}
       <header class="settings-content-header">
-        <h1 class="settings-title">${escapeHtml(copy.label)}</h1>
-        <p class="settings-subtitle">${escapeHtml(copy.subtitle)}</p>
+        ${back}
+        <div class="settings-header-copy">
+          <h1 class="settings-title">${escapeHtml(copy.label)}</h1>
+          <p class="settings-subtitle">${escapeHtml(copy.subtitle)}</p>
+        </div>
       </header>
     `;
   },
