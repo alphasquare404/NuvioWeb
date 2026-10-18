@@ -141,7 +141,10 @@ export function resolveDefaultBrowserNavigationPlacement() {
  * collapsible side rail, which also owns its corner. Anything unrecognised reads
  * as floating, which is what every build did before the rail existed.
  */
-const BROWSER_NAVIGATION_STYLES = ["floating", "rail"];
+// Three placements again, but for a different reason than before: a touch device
+// may carry the bar at either edge, while the rail keeps its corner. "floating"
+// is read for older profiles and means the placement the layout would pick.
+const BROWSER_NAVIGATION_STYLES = ["top", "bottom", "rail"];
 
 export function normalizeBrowserNavigationStyle(value, legacyPlacement = "") {
   const normalized = String(value || "")
@@ -150,30 +153,36 @@ export function normalizeBrowserNavigationStyle(value, legacyPlacement = "") {
   if (BROWSER_NAVIGATION_STYLES.includes(normalized)) {
     return normalized;
   }
-  // A profile written by a build that stored the placement instead of the shape:
-  // the rail maps to the rail, and both bar positions map to the floating bar.
+  // Older profiles stored either the shape ("floating"/"rail") or the placement
+  // itself; both are read as the placement they described.
   const legacy = String(legacyPlacement || "")
     .trim()
     .toLowerCase();
-  if (legacy === "sidebar") {
+  if (normalized === "rail" || legacy === "sidebar") {
     return "rail";
   }
   if (legacy === "top" || legacy === "bottom") {
-    return "floating";
+    return legacy;
   }
+  // "floating" (or nothing) means: let the layout choose the edge.
   return "";
 }
 
-export function resolveBrowserNavigationStyle(settings = {}) {
-  return normalizeBrowserNavigationStyle(
-    settings?.browserNavigationStyle,
-    settings?.browserNavigationPlacement
-  ) === "rail"
-    ? "rail"
-    : "floating";
+function defaultStyleForDevice() {
+  const device = String(globalThis?.document?.documentElement?.dataset?.device || "");
+  return device === "desktop" ? "top" : "bottom";
 }
 
-/** Where the floating bar belongs on this layout, chosen by the layout itself. */
+export function resolveBrowserNavigationStyle(settings = {}) {
+  return (
+    normalizeBrowserNavigationStyle(
+      settings?.browserNavigationStyle,
+      settings?.browserNavigationPlacement
+    ) || defaultStyleForDevice()
+  );
+}
+
+/** The placement the layout itself would pick, for a device with no choice. */
 export function resolveFloatingNavigationPlacement() {
   return resolveDefaultBrowserNavigationPlacement();
 }
@@ -333,7 +342,7 @@ function applyLayoutPresentation(settings) {
   const navStyle = resolveBrowserNavigationStyle(settings);
   root.dataset.navStyle = navStyle;
   root.dataset.navPlacement =
-    navStyle === "rail" ? "sidebar" : resolveFloatingNavigationPlacement();
+    navStyle === "rail" ? "sidebar" : navStyle === "top" ? "top" : "bottom";
   root.dataset.navRailCorner = settings.browserNavigationRailCorner;
 }
 

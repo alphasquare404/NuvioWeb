@@ -16,24 +16,25 @@ const {
   resolveFloatingNavigationPlacement
 } = await import("./layoutPreferences.js");
 
-// Two shapes, not three positions: where the floating bar sits is decided by the
-// layout, so only the shape is a choice.
-test("the two navigation shapes are kept as they are", () => {
-  assert.equal(normalizeBrowserNavigationStyle("floating"), "floating");
+// Three placements, chosen by the reader: a touch device may carry the bar at
+// either edge, and the rail keeps a corner. "floating" from older builds means
+// "let the layout decide".
+test("the three placements are kept as they are", () => {
+  assert.equal(normalizeBrowserNavigationStyle("top"), "top");
   assert.equal(normalizeBrowserNavigationStyle(" RAIL "), "rail");
-  assert.equal(normalizeBrowserNavigationStyle("RAIL"), "rail");
+  assert.equal(normalizeBrowserNavigationStyle("Bottom"), "bottom");
 });
 
-test("a profile that stored a position is read as the shape it belonged to", () => {
+test("older profiles are read as the placement they described", () => {
   assert.equal(normalizeBrowserNavigationStyle("", "sidebar"), "rail");
-  assert.equal(normalizeBrowserNavigationStyle("", "top"), "floating");
-  assert.equal(normalizeBrowserNavigationStyle("", "bottom"), "floating");
+  assert.equal(normalizeBrowserNavigationStyle("", "top"), "top");
+  assert.equal(normalizeBrowserNavigationStyle("", "bottom"), "bottom");
   assert.equal(normalizeBrowserNavigationStyle("rail", "bottom"), "rail");
+  assert.equal(normalizeBrowserNavigationStyle("floating"), "");
 });
 
-// A value this build does not know -- written by a newer one, or by hand -- must
-// not move the navigation somewhere nobody can find it. Empty means nobody has
-// chosen, and the resolver then answers with the floating bar.
+// A value this build does not know must not move the navigation somewhere the
+// reader cannot find it; empty means nobody has chosen.
 test("anything else reads as nobody having chosen", () => {
   assert.equal(normalizeBrowserNavigationStyle("left"), "");
   assert.equal(normalizeBrowserNavigationStyle("floating-rail"), "");
@@ -43,12 +44,13 @@ test("anything else reads as nobody having chosen", () => {
   assert.equal(normalizeBrowserNavigationStyle(42), "");
 });
 
-test("the resolved style is always one of the two shapes", () => {
+test("the resolved style is always one of the three placements", () => {
   assert.equal(resolveBrowserNavigationStyle({ browserNavigationStyle: "rail" }), "rail");
-  assert.equal(resolveBrowserNavigationStyle({ browserNavigationStyle: "floating" }), "floating");
-  assert.equal(resolveBrowserNavigationStyle({}), "floating");
+  assert.equal(resolveBrowserNavigationStyle({ browserNavigationStyle: "top" }), "top");
+  assert.equal(resolveBrowserNavigationStyle({ browserNavigationStyle: "bottom" }), "bottom");
+  // No choice stored: a device with no class reads as a touch device.
+  assert.equal(resolveBrowserNavigationStyle({}), "bottom");
   assert.equal(resolveBrowserNavigationStyle({ browserNavigationPlacement: "sidebar" }), "rail");
-  assert.equal(resolveBrowserNavigationStyle({ browserNavigationPlacement: "bottom" }), "floating");
 });
 
 test("the three rail corners are kept as they are", () => {

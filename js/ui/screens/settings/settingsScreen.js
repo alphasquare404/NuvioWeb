@@ -33,7 +33,6 @@ import {
 import {
   normalizeBrowserNavigationStyle,
   normalizeBrowserNavigationRailCorner,
-  resolveFloatingNavigationPlacement,
   normalizeCatalogCardOrientation,
   LayoutPreferences
 } from "../../../data/local/layoutPreferences.js";
@@ -761,9 +760,14 @@ function renderCardOrientationPreviewMarkup(orientationId) {
 // only created a setting that could disagree with the device it ran on.
 const BROWSER_NAV_STYLE_OPTIONS = [
   {
-    id: "floating",
-    labelKey: "settings_nav_style_floating",
-    label: "Floating bar"
+    id: "top",
+    labelKey: "settings_nav_style_top",
+    label: "Top bar"
+  },
+  {
+    id: "bottom",
+    labelKey: "settings_nav_style_bottom",
+    label: "Bottom bar"
   },
   {
     id: "rail",
@@ -2625,9 +2629,14 @@ export const SettingsScreen = {
       // The wide layout keeps its heading in the page, so there is nothing to
       // collapse: the title is not a bar there, and shrinking it while it scrolls
       // away would only make the page twitch. Phones keep the sticky bar.
-      const wideLayout =
-        typeof globalThis.matchMedia === "function" &&
-        globalThis.matchMedia("(min-width: 601px)").matches;
+      // Which layout this is comes from the shell's own attribute, not from the
+      // width: a tablet can be running the wide layout at a width a phone would
+      // call narrow.
+      const layout = String(globalThis?.document?.documentElement?.dataset?.layout || "");
+      const wideLayout = layout
+        ? layout === "desktop"
+        : typeof globalThis.matchMedia === "function" &&
+          globalThis.matchMedia("(min-width: 601px)").matches;
       if (wideLayout) {
         if (shell.dataset.settingsHeaderCollapsed !== "false") {
           shell.dataset.settingsHeaderCollapsed = "false";
@@ -4771,11 +4780,16 @@ export const SettingsScreen = {
           ? t("settings.layout.continueWatchingSort.streamingStyle", {}, "Streaming Style")
           : t("settings.layout.continueWatchingSort.default", {}, "Default");
 
+    const wideDevice =
+      String(globalThis?.document?.documentElement?.dataset?.device || "") === "desktop";
+    const navStyleOptions = wideDevice
+      ? BROWSER_NAV_STYLE_OPTIONS.filter((option) => option.id !== "bottom")
+      : BROWSER_NAV_STYLE_OPTIONS;
     const selectedNavStyle =
       normalizeBrowserNavigationStyle(
         model.layout.browserNavigationStyle,
         model.layout.browserNavigationPlacement
-      ) || "floating";
+      ) || (wideDevice ? "top" : "bottom");
     // Browser only: the television has its own navigation and none of these
     // three describe it.
     const selectedCardOrientation = normalizeCatalogCardOrientation(
@@ -4836,16 +4850,18 @@ export const SettingsScreen = {
       ? `
         <div class="settings-stack">
           <div class="settings-layout-grid settings-nav-placement-grid">
-            ${BROWSER_NAV_STYLE_OPTIONS.map((option) =>
-              this.renderNavPlacementCard(
-                option,
-                selectedNavStyle === option.id,
-                `layout:navStyle:${option.id}`,
-                option.id === "rail"
-                  ? renderNavPlacementPreviewMarkup("sidebar", selectedNavRailCorner)
-                  : renderNavPlacementPreviewMarkup(resolveFloatingNavigationPlacement())
+            ${navStyleOptions
+              .map((option) =>
+                this.renderNavPlacementCard(
+                  option,
+                  selectedNavStyle === option.id,
+                  `layout:navStyle:${option.id}`,
+                  option.id === "rail"
+                    ? renderNavPlacementPreviewMarkup("sidebar", selectedNavRailCorner)
+                    : renderNavPlacementPreviewMarkup(option.id)
+                )
               )
-            ).join("")}
+              .join("")}
           </div>
           ${navRailCornerBody}
         </div>`

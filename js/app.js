@@ -26,6 +26,7 @@ import { installExternalPlaybackReturnCoordinator } from "./ui/components/browse
 import { markContinueWatchingStale } from "./ui/screens/home/continueWatchingStaleSignal.js";
 import { watchBrowserInstallAvailability } from "./ui/components/browserInstallPrompt.js";
 import { installBrowserFocusModality } from "./ui/navigation/browserFocusModality.js";
+import { applyDeviceLayout, installDeviceLayoutWatcher } from "./ui/navigation/deviceLayout.js";
 import { installWatchProgressReconnectSync } from "./core/profile/watchProgressReconnect.js";
 import { dispatchOutplayerExplicitFinish } from "./ui/components/browserOutplayerFinishDispatch.js";
 import { PlayerScreen } from "./ui/screens/player/playerScreen.js";
@@ -296,6 +297,11 @@ async function bootstrapApp() {
   const isDesktopBrowser = Platform.isBrowser();
   document.documentElement.classList.toggle("desktop-browser", isDesktopBrowser);
   document.body.classList.toggle("desktop-browser", isDesktopBrowser);
+  // What kind of device this is, and which layout it should therefore get. The
+  // viewport still decides by default; the device class only matters where the
+  // navigation has been moved to the top.
+  applyDeviceLayout();
+  installDeviceLayoutWatcher();
   applyPerformanceMode();
   markBootStage("Loading language resources");
   await I18n.init();

@@ -17812,3 +17812,255 @@ html[data-nav-placement="top"]
     height: 24px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Settings heading when the shell is running the narrow layout.
+
+   The rules above are written for widths, because that is how the shell used to
+   decide. Now that the layout is published on the root element, the heading reads
+   it: a tablet at 744 with the navigation at the bottom is running the narrow
+   layout, and its heading must look like the phone's bar, not like the wide
+   screen's in-page title. The wide rules keep applying to the wide layout only.
+   --------------------------------------------------------------------------- */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  position: sticky;
+  top: 0;
+  box-sizing: border-box;
+  gap: 4px;
+  padding-top: calc(var(--browser-safe-area-top) + 22px);
+  padding-bottom: 19px;
+  background: transparent;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+  padding-top: calc(var(--browser-safe-area-top) + 14px);
+  padding-bottom: 6px;
+  padding-inline: calc(var(--browser-safe-area-left) + 64px)
+    calc(var(--browser-safe-area-right) + 64px);
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-title {
+  width: 100%;
+  margin-inline: auto;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-subtitle {
+  width: 100%;
+  margin-inline: auto;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back:hover,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back:focus-visible {
+  position: fixed;
+  top: calc(var(--browser-safe-area-top) + 4px);
+  left: calc(var(--browser-safe-area-left) + 12px);
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+  z-index: 30;
+}
+
+/* The last pieces of the narrow layout that the width-based block above only gave
+   to phones: the page's own top padding and the title sizes. Scoped to widths the
+   narrow layout can actually meet on a tablet, so phones keep exactly what they
+   already had. */
+@media (min-width: 601px) {
+  html[data-layout="mobile"] .desktop-browser .settings-shell .settings-workspace {
+    padding-top: 0;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-title {
+    font-size: 31px;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-title {
+    font-size: 24px;
+  }
+}
+
+/* Top bar means the wide heading, on any device: reading the placement rather
+   than the width is what lets a phone carry it. The page keeps its own space
+   below the floating bar so the heading never sits under it. The bar's height
+   variable is its content box; its 1px border makes the pill 2px taller, so the
+   12px gap is measured from the border, not from the content. */
+html[data-nav-placement="top"] .desktop-browser .settings-shell .settings-workspace {
+  padding-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 14px
+  );
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  position: static;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back {
+  position: fixed;
+  top: var(--browser-floating-nav-top);
+  left: calc(var(--browser-safe-area-left) + clamp(16px, 3vw, 48px));
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+  z-index: 30;
+}
+
+/* A phone's top bar is centred in the viewport, which at 393px leaves only
+   about 8px between it and the Back circle. Below that the centred bar starts
+   on top of the circle instead. Push it right by just enough to keep the same
+   8px gap: 16px gutter + 54px Back + 8px gap + half the 238px icon-only bar.
+   From 394px up the shift is zero and the bar stays centred. */
+html[data-device="phone"][data-nav-placement="top"]
+  .desktop-browser
+  .desktop-navigation {
+  margin-left: max(0px, calc(197px - 50vw));
+}
+
+/* Between 601 and 760 the bar's own content is 2px shorter than its height
+   variable: 44px items plus 5px scroll padding is 54px, plus the border makes
+   56px, while the rest of the shell assumes 58px. Give it the missing 2px as
+   symmetrical padding so the Back circle, the bar and the heading below it all
+   agree on where the bar ends. */
+@media (min-width: 601px) and (max-width: 760px) {
+  html[data-nav-placement="top"] .desktop-browser .desktop-navigation {
+    padding-block: 1px;
+  }
+}
+
+/* When the bar is at the top, its contents are the wide layout's: a title at the
+   start of its row, the subtitle under it, neither centred. The narrow layout's
+   centring is what was still showing through. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-title {
+  width: auto;
+  margin-inline: 0;
+  overflow: visible;
+  text-align: left;
+  text-overflow: clip;
+  white-space: normal;
+  font-size: clamp(30px, 2.5vw, 40px);
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-subtitle {
+  width: auto;
+  margin-inline: 0;
+  text-align: left;
+  font-size: 16px;
+  line-height: 1.45;
+  max-height: none;
+  opacity: 1;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header {
+  justify-content: flex-start;
+  padding-inline: var(--settings-header-bleed);
+  padding-top: 2px;
+  padding-bottom: 6px;
+}
+
+/* The index header had no equivalent of the section override, so its mobile
+   padding stayed above the title. Same bar, same padding. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header {
+  padding-top: 2px;
+}
