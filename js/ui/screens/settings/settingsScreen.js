@@ -130,7 +130,8 @@ import {
 } from "../../components/sidebarNavigation.js";
 import {
   bindDesktopNavigationEvents,
-  renderDesktopNavigation
+  renderDesktopNavigation,
+  renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
 import { createDesktopAddonManager } from "../../components/desktopAddonManager.js";
 import { createDesktopPluginManager } from "../../components/desktopPluginManager.js";
@@ -2846,6 +2847,7 @@ export const SettingsScreen = {
     // rail beside the content is not, and each section's own header titles
     // it there.
     const showsIndex = settingsUsesRoutePages() && this.activeSection === null;
+    const showRailReveal = showsIndex && Platform.isBrowser();
     const order = new Map(this.visibleSections.map((item, index) => [item.id, index]));
     if (!showsIndex) {
       // The rail reads as one long list of twelve otherwise. It gets the same
@@ -2869,6 +2871,7 @@ export const SettingsScreen = {
     return `
       <header class="settings-nav-index-header">
         <h1 class="settings-title">${escapeHtml(t("nav.settings", {}, "Settings"))}</h1>
+        ${showRailReveal ? renderNavigationRevealButton() : ""}
       </header>
       ${this.renderAccountNavCard(order)}
       ${grouped}
@@ -9457,6 +9460,9 @@ export const SettingsScreen = {
     const dialogSlot = this.container.querySelector("[data-settings-dialog]");
 
     const isDesktopBrowser = Platform.isBrowser();
+    // The index gets a second trigger inside its heading for the top-right
+    // corner. The root slot keeps its own so the bottom corners never live
+    // inside a heading whose glass would become their containing block.
     const rootSidebarHtml = isDesktopBrowser
       ? renderDesktopNavigation({
           selectedRoute: "settings",

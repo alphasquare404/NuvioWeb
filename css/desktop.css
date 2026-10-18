@@ -17839,6 +17839,24 @@ html[data-layout="mobile"]
   background: transparent;
 }
 
+/* The index is the page, so its title is centred on the page -- at every
+   width the narrow layout can cover, not only below 600px. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header {
+  justify-content: center;
+  text-align: center;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header
+  .settings-title {
+  text-align: center;
+}
+
 html[data-layout="mobile"]
   .desktop-browser
   .settings-shell[data-settings-nav-mode="section"]
@@ -17848,8 +17866,11 @@ html[data-layout="mobile"]
   align-items: stretch;
   justify-content: flex-start;
   gap: 4px;
-  padding-top: calc(var(--browser-safe-area-top) + 14px);
-  padding-bottom: 6px;
+  /* The same box as the index, so the two headings collapse to one height.
+     The section's subtitle is what makes it taller at rest; it is the only
+     difference left. */
+  padding-top: calc(var(--browser-safe-area-top) + 22px);
+  padding-bottom: 19px;
   padding-inline: calc(var(--browser-safe-area-left) + 64px)
     calc(var(--browser-safe-area-right) + 64px);
 }
@@ -17867,6 +17888,28 @@ html[data-layout="mobile"]
   white-space: nowrap;
 }
 
+/* Below the wide breakpoint the index title uses the fluid phone size. The
+   section takes the same one; the collapsed 18px rule then wins on both. */
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-title {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+}
+
+/* The section's phone title is larger than the old phone-section rule, so the
+   collapsed size needs a selector that still wins on those widths. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-title {
+  font-size: 18px;
+}
+
 html[data-layout="mobile"]
   .desktop-browser
   .settings-shell[data-settings-nav-mode="section"]
@@ -17877,6 +17920,23 @@ html[data-layout="mobile"]
   text-align: center;
   font-size: 12px;
   line-height: 1.25;
+}
+
+/* Collapsed, the subtitle has no height left. Its gap goes with it, so the
+   section bar ends at the same height as the index bar. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode="section"]
+  .settings-content-header {
+  gap: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-header-copy {
+  gap: 0;
 }
 
 html[data-layout="mobile"]
@@ -17928,13 +17988,6 @@ html[data-layout="mobile"]
     .settings-shell[data-settings-nav-mode]
     .settings-title {
     font-size: 31px;
-  }
-
-  html[data-layout="mobile"]
-    .desktop-browser
-    .settings-shell[data-settings-nav-mode="section"]
-    .settings-title {
-    font-size: 24px;
   }
 }
 
@@ -18017,6 +18070,155 @@ html[data-device="phone"][data-nav-placement="top"]
   }
 }
 
+/* Only the top-right trigger belongs inside the index heading. The index
+   renders both a heading trigger and the shell's own; CSS shows the one the
+   chosen corner calls for, so changing the corner while the index is suspended
+   needs no re-render. The two bottom corners stay in the shell, where the
+   heading's collapsed glass cannot become their containing block. */
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header
+  > .desktop-navigation-reveal {
+  display: inline-flex;
+}
+
+html[data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-root-sidebar-slot
+  .desktop-navigation-reveal {
+  display: none;
+}
+
+/* The Settings rail button follows Back.
+   First Settings, because that is where the heading and Back change shape
+   together; the other shells can take the same treatment once their headings
+   are ready.
+
+   Narrow layout: Back is a bare 44px chevron inside the sticky heading, so the
+   reveal is the same bare control on the same line, with no disc.
+
+   Wide layout: Back is a floating circle on the navigation's line, so the
+   reveal keeps its circle and starts at the navigation's own top edge. */
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal {
+  top: calc(var(--browser-safe-area-top) + 4px);
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: #fff;
+}
+
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal {
+  top: var(--browser-floating-nav-top);
+  /* Same diameter as Back, so the two circles are one band of chrome. */
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+}
+
+/* The rail opens from under its own button. Keep the 10px gap now that the
+   button has moved and, on the narrow layout, changed size. */
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation {
+  top: calc(var(--browser-safe-area-top) + 58px);
+}
+
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation {
+  /* The button is now the bar's full height; keep its 10px gap. */
+  top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 12px
+  );
+}
+
+/* On the index there is no Back to line up with, so the reveal follows the
+   title's own line box: centred on it at rest, and centred again after the
+   heading collapses to the smaller title. The offset is the distance from the
+   safe edge to the top of the 44px control. */
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"] {
+  --settings-index-reveal-offset: 17px;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="index"] {
+    /* Half the index title's line box: clamp(28px, 8vw, 34px) x 1.1 / 2. */
+    --settings-index-reveal-offset: clamp(15.4px, 4.4vw, 18.7px);
+  }
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"][data-settings-header-collapsed="true"] {
+  --settings-index-reveal-offset: 10px;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .desktop-navigation-reveal {
+  /* The button is a child of the index heading now, so it is positioned in
+     the heading's own box instead of being pinned to the viewport. */
+  position: absolute;
+  top: calc(var(--browser-safe-area-top) + var(--settings-index-reveal-offset));
+  transition:
+    top 180ms ease,
+    color 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--settings-index-reveal-offset) + 54px
+  );
+  transition:
+    top 180ms ease,
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="index"]
+    .desktop-navigation-reveal,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="index"]
+    .desktop-navigation {
+    transition: none;
+  }
+}
+
 /* When the bar is at the top, its contents are the wide layout's: a title at the
    start of its row, the subtitle under it, neither centred. The narrow layout's
    centring is what was still showing through. */
@@ -18063,4 +18265,41 @@ html[data-nav-placement="top"]
   .settings-shell[data-settings-nav-mode="index"]
   .settings-nav-index-header {
   padding-top: 2px;
+}
+
+/* The Settings heading's glass, painted one layer down.
+   A backdrop-filter on the heading itself made the heading a containing block
+   for fixed children: Back then measured its left edge from the heading's
+   negative bleed instead of the viewport, and slid off screen when the bar
+   collapsed on a tablet. The heading keeps its border and shadow; the pseudo
+   element owns the fill and the blur. */
+html[data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header::before,
+html[data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  pointer-events: none;
 }
