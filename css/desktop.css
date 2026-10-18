@@ -13958,6 +13958,18 @@ html:not([data-nav-placement="top"])
     .settings-content-header {
     padding-inline-start: calc(var(--settings-header-bleed) + 56px);
   }
+
+  /* On the wide layout Back is above the heading, not on its line. The extra
+     56px only pushes the title off the page's own grid, so the wide layout
+     keeps the same start as every other wide heading. */
+  html[data-layout="desktop"][data-nav-placement="bottom"].desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header,
+  html[data-layout="desktop"][data-nav-placement="sidebar"].desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header {
+    padding-inline-start: var(--settings-header-bleed);
+  }
 }
 
 /* On these two pages the screen element is what scrolls, not the frames the
@@ -18000,6 +18012,29 @@ html[data-nav-placement="top"] .desktop-browser .settings-shell .settings-worksp
   padding-top: calc(
     var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 14px
   );
+}
+
+/* The rail's heading starts on the same line as a top bar's. The rail hides the
+   bar, but the Back circle still owns that top band; the workspace is what was
+   leaving the older 112px above the heading instead of the bar plus the same
+   12px gap. */
+html[data-layout="desktop"][data-nav-placement="sidebar"].desktop-browser
+  .settings-shell
+  .settings-workspace {
+  padding-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 14px
+  );
+}
+
+/* The wide rail heading starts its title on the same 2px line as the top bar's
+   heading; Back is above it in both placements. */
+html[data-layout="desktop"][data-nav-placement="sidebar"].desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="desktop"][data-nav-placement="sidebar"].desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  padding-top: 2px;
 }
 
 html[data-nav-placement="top"]
