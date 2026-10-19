@@ -16,8 +16,10 @@ import {
 } from "../../../core/tmdb/tmdbPersonService.js";
 import {
   bindDesktopNavigationEvents,
-  renderDesktopNavigation
+  renderDesktopNavigation,
+  renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
+import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
   posterItemFromNode,
@@ -94,6 +96,8 @@ export const CastDetailScreen = {
   async mount(params = {}) {
     this.container = document.getElementById("castDetail");
     ScreenUtils.show(this.container);
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = bindPageHeadingCollapse({ container: this.container });
     this.sidebarProfile = Platform.isBrowser()
       ? await getSidebarProfileState().catch(() => null)
       : null;
@@ -378,8 +382,9 @@ export const CastDetailScreen = {
         <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
           <span class="material-icons" aria-hidden="true">chevron_left</span>
         </button>
-        <header class="browser-person-detail-heading">
-          <h1>${escapeHtml(person.name || "Unknown")}</h1>
+        <header class="browser-person-detail-heading page-heading" data-page-heading>
+          <h1 class="page-heading-title">${escapeHtml(person.name || "Unknown")}</h1>
+          ${renderNavigationRevealButton()}
         </header>
         <div class="browser-person-detail-layout">
           <aside class="browser-person-detail-profile">
@@ -650,6 +655,8 @@ export const CastDetailScreen = {
   },
 
   cleanup() {
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.mediaContextMenuCleanup?.();

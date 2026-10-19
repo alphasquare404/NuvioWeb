@@ -6,7 +6,7 @@ import {
   SETTINGS_ROUTE,
   SETTINGS_SECTION_ROUTE
 } from "./settingsRoutes.js";
-import { shouldCollapseSettingsHeader } from "./settingsHeaderCollapse.js";
+import { resolveSettingsHeadingProgress } from "./settingsHeaderCollapse.js";
 import { APP_IDENTITY } from "../../../core/app/appIdentity.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -2639,16 +2639,15 @@ export const SettingsScreen = {
         : typeof globalThis.matchMedia === "function" &&
           globalThis.matchMedia("(min-width: 601px)").matches;
       if (wideLayout) {
+        shell.style.setProperty("--settings-heading-progress", "0");
         if (shell.dataset.settingsHeaderCollapsed !== "false") {
           shell.dataset.settingsHeaderCollapsed = "false";
         }
         return;
       }
-      const collapsed = shouldCollapseSettingsHeader(
-        readScrollTop(),
-        shell.dataset.settingsHeaderCollapsed === "true"
-      );
-      const next = collapsed ? "true" : "false";
+      const progress = resolveSettingsHeadingProgress(readScrollTop());
+      shell.style.setProperty("--settings-heading-progress", progress.toFixed(4));
+      const next = progress >= 0.999 ? "true" : "false";
       if (shell.dataset.settingsHeaderCollapsed !== next) {
         shell.dataset.settingsHeaderCollapsed = next;
       }

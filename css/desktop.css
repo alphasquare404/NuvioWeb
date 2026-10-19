@@ -11256,8 +11256,8 @@ body.desktop-browser {
 
 .desktop-browser #castDetail .browser-person-detail-heading h1 {
   margin: 0;
-  font-size: clamp(34px, 3.6vw, 52px);
-  line-height: 1.05;
+  font-size: clamp(30px, 2.5vw, 40px);
+  line-height: 1.1;
   letter-spacing: -0.03em;
 }
 
@@ -18220,7 +18220,9 @@ html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="t
 html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
   .desktop-browser
   .settings-shell[data-settings-nav-mode="index"][data-settings-header-collapsed="true"] {
-  --settings-index-reveal-offset: 10px;
+  /* The compact bar is only ten pixels taller than the 44px control, so the
+     control starts at the safe edge rather than ten pixels below it. */
+  --settings-index-reveal-offset: 0px;
 }
 
 html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
@@ -18398,4 +18400,574 @@ html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="
   bottom: calc(
     var(--browser-nav-rail-bottom) + var(--browser-floating-nav-height) + 12px
   );
+}
+
+/* ---------------------------------------------------------------------------
+   Library, Search, and Cast headings.
+
+   The Settings index established the bar: on the narrow layout it sticks to
+   the safe-area edge, centres its title, and collapses to the 18px bar once the
+   page is moving. Reuse the same surface here rather than growing three more
+   copies of the animation. The wide layout keeps each page's existing title.
+   --------------------------------------------------------------------------- */
+html[data-layout="mobile"] .desktop-browser #library .page-heading[data-page-heading],
+html[data-layout="mobile"] .desktop-browser #search .page-heading[data-page-heading],
+html[data-layout="mobile"] .desktop-browser #castDetail .page-heading[data-page-heading] {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: padding 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  box-sizing: border-box;
+  width: 100vw;
+  margin: 0 calc(50% - 50vw) 12px;
+  padding: calc(var(--browser-safe-area-top) + 22px)
+    calc(var(--browser-safe-area-right) + 56px) 19px
+    calc(var(--browser-safe-area-left) + 56px);
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+/* These pages used to reserve the top strip as page padding. The heading now
+   owns that strip, as the Settings index heading does. */
+html[data-layout="mobile"] .desktop-browser #library .library-main,
+html[data-layout="mobile"] .desktop-browser #search .search-content,
+html[data-layout="mobile"] .desktop-browser #castDetail .browser-person-detail-shell {
+  padding-top: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library
+  .page-heading[data-page-heading]
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search
+  .page-heading[data-page-heading]
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .page-heading[data-page-heading]
+  .page-heading-title {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 31px;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-align: center;
+  transition: font-size 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #search
+  .search-page-heading.page-heading-title {
+  line-height: 1.1;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #library
+    .page-heading[data-page-heading]
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #search
+    .page-heading[data-page-heading]
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #castDetail
+    .page-heading[data-page-heading]
+    .page-heading-title {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library[data-page-heading-collapsed="true"]
+  .page-heading,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search[data-page-heading-collapsed="true"]
+  .page-heading,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail[data-page-heading-collapsed="true"]
+  .page-heading {
+  /* Compact bar: ten pixels below the safe edge, then the 18px title and
+     enough room for the 44px rail control. */
+  padding-top: calc(var(--browser-safe-area-top) + 10px);
+  padding-bottom: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library[data-page-heading-collapsed="true"]
+  .page-heading::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search[data-page-heading-collapsed="true"]
+  .page-heading::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail[data-page-heading-collapsed="true"]
+  .page-heading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library[data-page-heading-collapsed="true"]
+  .page-heading
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search[data-page-heading-collapsed="true"]
+  .page-heading
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail[data-page-heading-collapsed="true"]
+  .page-heading
+  .page-heading-title {
+  font-size: 18px;
+}
+
+/* The rail trigger lives in the heading on the narrow layout, exactly as it
+   does on the Settings index. Every page gets a copy; CSS shows it only for
+   the top-right corner and hides the shell's copy. */
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  .page-heading[data-page-heading]
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .page-heading[data-page-heading]
+  > .desktop-navigation-reveal {
+  position: absolute;
+  top: calc(var(--browser-safe-area-top) + var(--page-heading-reveal-offset));
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: #fff;
+  transition:
+    top 180ms ease,
+    color 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library
+  .library-shell:has(.page-heading)
+  > .desktop-navigation-reveal,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search
+  .search-screen-shell:has(.page-heading)
+  > .desktop-navigation-reveal,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-shell:has(.page-heading)
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail {
+  --page-heading-reveal-offset: 17px;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #library,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #search,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #castDetail {
+    --page-heading-reveal-offset: clamp(15.4px, 4.4vw, 18.7px);
+  }
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library[data-page-heading-collapsed="true"],
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search[data-page-heading-collapsed="true"],
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail[data-page-heading-collapsed="true"] {
+  --page-heading-reveal-offset: 0px;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--page-heading-reveal-offset) + 54px
+  );
+  transition:
+    top 180ms ease,
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+/* The Settings heading takes the same compact collapsed box as the pages
+   above: ten pixels below the safe edge, the 18px title, fourteen below. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  padding-top: calc(var(--browser-safe-area-top) + 10px);
+  padding-bottom: 14px;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  transition: padding 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-nav-index-header,
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    .page-heading[data-page-heading]
+    > .desktop-navigation-reveal,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #library
+    .desktop-navigation,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #search
+    .desktop-navigation,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #castDetail
+    .desktop-navigation {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Scroll-linked heading progress.
+
+   The heading follows the first 96px of scroll continuously: the same progress
+   drives the title size, the box padding and the chrome that appears behind it.
+   Scrolling back up unwinds it. The binary attributes remain only as the
+   "fully collapsed" state for any legacy rule; they are no longer the trigger.
+   --------------------------------------------------------------------------- */
+html[data-layout="mobile"] .desktop-browser #library .page-heading[data-page-heading],
+html[data-layout="mobile"] .desktop-browser #search .page-heading[data-page-heading],
+html[data-layout="mobile"] .desktop-browser #castDetail .page-heading[data-page-heading] {
+  transition: none;
+  padding-top: calc(
+    var(--browser-safe-area-top) + 22px - 12px * var(--page-heading-progress, 0)
+  );
+  padding-bottom: calc(19px - 5px * var(--page-heading-progress, 0));
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--page-heading-progress, 0)));
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library
+  .page-heading[data-page-heading]
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search
+  .page-heading[data-page-heading]
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .page-heading[data-page-heading]
+  .page-heading-title {
+  --page-heading-title-rest: 31px;
+  font-size: calc(
+    var(--page-heading-title-rest) + (18px - var(--page-heading-title-rest)) *
+      var(--page-heading-progress, 0)
+  );
+  transition: none;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #library
+    .page-heading[data-page-heading]
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #search
+    .page-heading[data-page-heading]
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #castDetail
+    .page-heading[data-page-heading]
+    .page-heading-title {
+    --page-heading-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library
+  .page-heading[data-page-heading]::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search
+  .page-heading[data-page-heading]::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .page-heading[data-page-heading]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  opacity: var(--page-heading-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .page-heading[data-page-heading]
+  > .desktop-navigation-reveal {
+  top: calc(
+    var(--browser-safe-area-top) + var(--page-heading-reveal-offset) *
+      (1 - var(--page-heading-progress, 0))
+  );
+  transition:
+    color 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--page-heading-reveal-offset) *
+      (1 - var(--page-heading-progress, 0)) + 54px
+  );
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+/* Settings' index and section headings use the same progress. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  transition: none;
+  padding-top: calc(
+    var(--browser-safe-area-top) + 22px - 12px * var(--settings-heading-progress, 0)
+  );
+  padding-bottom: calc(19px - 5px * var(--settings-heading-progress, 0));
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--settings-heading-progress, 0)));
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header
+  .settings-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-title {
+  --settings-title-rest: 31px;
+  font-size: calc(
+    var(--settings-title-rest) + (18px - var(--settings-title-rest)) *
+      var(--settings-heading-progress, 0)
+  );
+  transition: none;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="index"]
+    .settings-nav-index-header
+    .settings-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-title {
+    --settings-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-header-copy {
+  --settings-copy-gap: 0px;
+  gap: calc(var(--settings-copy-gap) * (1 - var(--settings-heading-progress, 0)));
+  transition: none;
+}
+
+@media (min-width: 601px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-header-copy {
+    --settings-copy-gap: 6px;
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-subtitle {
+  max-height: calc(48px * (1 - var(--settings-heading-progress, 0)));
+  opacity: calc(1 - var(--settings-heading-progress, 0));
+  transition: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  opacity: var(--settings-heading-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .desktop-navigation-reveal {
+  top: calc(
+    var(--browser-safe-area-top) + var(--settings-index-reveal-offset) *
+      (1 - var(--settings-heading-progress, 0))
+  );
+  transition:
+    color 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--settings-index-reveal-offset) *
+      (1 - var(--settings-heading-progress, 0)) + 54px
+  );
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
 }

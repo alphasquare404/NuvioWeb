@@ -47,8 +47,10 @@ import {
 } from "../../components/sidebarNavigation.js";
 import {
   bindDesktopNavigationEvents,
-  renderDesktopNavigation
+  renderDesktopNavigation,
+  renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
+import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
@@ -483,6 +485,8 @@ export const LibraryScreen = {
 
     this.render();
     this.bindEvents();
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = bindPageHeadingCollapse({ container: this.container });
     if (Platform.isBrowser()) {
       this.offlineDownloadsUnsubscribe = subscribeToOfflineDownloads(() => {
         void this.refreshOfflineLibraryViews();
@@ -1817,10 +1821,11 @@ export const LibraryScreen = {
         }
         <main class="home-main library-main">
           <section class="library-page">
-            <header class="library-page-header">
+            <header class="library-page-header page-heading" data-page-heading>
               <div class="library-page-heading">
-                <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
+                <h1 class="library-page-title page-heading-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
               </div>
+              ${Platform.isBrowser() ? renderNavigationRevealButton() : ""}
             </header>
 
             <div class="library-tabs-row">
@@ -3239,6 +3244,8 @@ export const LibraryScreen = {
   },
 
   cleanup() {
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = null;
     this.desktopMediaHoverPreview?.destroy();
     this.desktopMediaHoverPreview = null;
     this.browserCardTouchIntentCleanup?.();
