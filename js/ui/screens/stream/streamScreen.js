@@ -64,7 +64,6 @@ import {
 } from "../../../core/streams/streamFocusReveal.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
-import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 import {
   getBrowserExternalPlayerOptions,
   getBrowserExternalPlayerPlatform,
@@ -2447,7 +2446,7 @@ export const StreamScreen = {
         <div class="stream-route-backdrop-dim"></div>
         <div class="stream-route-left-gradient"></div>
         <div class="stream-route-right-gradient"></div>
-        <header class="stream-page-heading" data-page-heading>
+        <header class="stream-page-heading">
           <button class="stream-page-heading-back" type="button" data-stream-desktop-back
                   aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
             <span class="material-icons" aria-hidden="true">chevron_left</span>
@@ -2516,8 +2515,6 @@ export const StreamScreen = {
 
     this.restoreScrollPosition();
     this.bindAddonLogoFallbacks();
-    this.streamHeadingCleanup?.();
-    this.streamHeadingCleanup = bindPageHeadingCollapse({ container: this.container });
     ScreenUtils.indexFocusables(this.container);
     this.restoreScrollPosition();
     this.applyFocus();
@@ -3332,8 +3329,6 @@ export const StreamScreen = {
   },
 
   cleanup() {
-    this.streamHeadingCleanup?.();
-    this.streamHeadingCleanup = null;
     this.clearExternalHandoffWatch();
     this.closeOfflineDownloadOptions?.();
     this.cancelAutoPlayCountdown();

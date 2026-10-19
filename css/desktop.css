@@ -19734,25 +19734,22 @@ html[data-layout="mobile"]
     .desktop-browser
     #stream
     .stream-page-heading {
-    position: sticky;
+    position: fixed;
     top: 0;
+    right: 0;
+    left: 0;
     z-index: 8;
     display: flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
     width: 100%;
-    padding-top: calc(
-      var(--browser-safe-area-top) + 22px - 10px *
-        var(--page-heading-progress, 0)
-    );
-    padding-right: calc(var(--browser-safe-area-right) + 64px);
-    padding-bottom: calc(19px - 5px * var(--page-heading-progress, 0));
-    padding-left: calc(var(--browser-safe-area-left) + 64px);
+    padding: calc(var(--browser-safe-area-top) + 22px)
+      calc(var(--browser-safe-area-right) + 64px) 19px
+      calc(var(--browser-safe-area-left) + 64px);
     background: transparent;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 10px 30px
-      rgba(0, 0, 0, calc(0.26 * var(--page-heading-progress, 0)));
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
   }
 
   html[data-layout="mobile"]
@@ -19766,7 +19763,7 @@ html[data-layout="mobile"]
     background: rgba(18, 18, 20, 0.46);
     -webkit-backdrop-filter: blur(2px) saturate(150%);
     backdrop-filter: saturate(150%) blur(2px);
-    opacity: var(--page-heading-progress, 0);
+    opacity: 1;
     pointer-events: none;
   }
 
@@ -19774,14 +19771,10 @@ html[data-layout="mobile"]
     .desktop-browser
     #stream
     .stream-page-heading-copy {
-    --stream-heading-copy-gap: 0px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: calc(
-      var(--stream-heading-copy-gap) *
-        (1 - var(--page-heading-progress, 0))
-    );
+    gap: 0;
     width: 100%;
     min-width: 0;
   }
@@ -19795,9 +19788,7 @@ html[data-layout="mobile"]
     justify-content: center;
     width: 100%;
     min-width: 0;
-    height: calc(
-      34px - 14.2px * var(--page-heading-progress, 0)
-    );
+    height: 34px;
   }
 
   html[data-layout="mobile"]
@@ -19806,11 +19797,6 @@ html[data-layout="mobile"]
     .stream-page-heading-subtitle {
     width: 100%;
     margin: 0;
-    overflow: hidden;
-    max-height: calc(
-      48px * (1 - var(--page-heading-progress, 0))
-    );
-    opacity: calc(1 - var(--page-heading-progress, 0));
     color: var(--text-secondary);
     font-size: 12px;
     line-height: 1.25;
@@ -19826,10 +19812,7 @@ html[data-layout="mobile"]
     margin: 0;
     overflow: hidden;
     color: var(--text-color);
-    font-size: calc(
-      var(--stream-title-rest) + (18px - var(--stream-title-rest)) *
-        var(--page-heading-progress, 0)
-    );
+    font-size: var(--stream-title-rest);
     font-weight: 650;
     line-height: 1.1;
     letter-spacing: -0.03em;
@@ -19843,12 +19826,13 @@ html[data-layout="mobile"]
     #stream
     .stream-page-heading-logo {
     width: auto;
+    height: 20px;
     max-width: min(60vw, 360px);
-    max-height: calc(
-      34px - 14px * var(--page-heading-progress, 0)
-    );
+    max-height: 20px;
     margin: 0;
     object-fit: contain;
+    transform: none;
+    will-change: auto;
   }
 
   html[data-layout="mobile"]
@@ -19856,10 +19840,7 @@ html[data-layout="mobile"]
     #stream
     .stream-page-heading-back {
     position: absolute;
-    top: calc(
-      var(--browser-safe-area-top) + var(--heading-control-rest-offset, 17px) *
-        (1 - var(--page-heading-progress, 0))
-    );
+    top: calc(var(--browser-safe-area-top) + 17px);
     left: calc(var(--browser-safe-area-left) + 12px);
     z-index: 31;
     display: inline-flex;
@@ -19912,7 +19893,35 @@ html[data-layout="mobile"]
     .desktop-browser
     #stream
     .stream-route-content {
-    padding-top: 0;
+    padding-top: calc(var(--browser-safe-area-top) + 91px);
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100svh;
+    overflow: visible;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-shell {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100svh;
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-content {
+    min-height: 100vh;
+    min-height: 100svh;
   }
 }
 
@@ -19930,6 +19939,335 @@ html[data-layout="mobile"]
     .desktop-browser
     #stream
     .stream-page-heading-copy {
-    --stream-heading-copy-gap: 6px;
+    gap: 6px;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-content {
+    padding-top: calc(var(--browser-safe-area-top) + 97px);
+  }
+}
+
+/* Collection editor and folder editor. Both are standalone browser forms:
+   Back lives in the sticky heading and the old desktop header is desktop-only. */
+.collection-editor-mobile-heading {
+  display: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .desktop-collection-editor-shell,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .desktop-collection-editor-shell {
+  padding-top: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .desktop-collection-editor-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .desktop-collection-editor-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .desktop-collection-editor-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .desktop-collection-editor-header {
+  display: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-heading,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-heading {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100vw;
+  margin: 0 calc(50% - 50vw) 12px;
+  padding-top: calc(
+    var(--browser-safe-area-top) + 22px - 10px *
+      var(--page-heading-progress, 0)
+  );
+  padding-right: calc(var(--browser-safe-area-right) + 64px);
+  padding-bottom: calc(19px - 5px * var(--page-heading-progress, 0));
+  padding-left: calc(var(--browser-safe-area-left) + 64px);
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--page-heading-progress, 0)));
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-heading::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-heading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  opacity: var(--page-heading-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-copy,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-copy {
+  --collection-editor-copy-gap: 0px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(
+    var(--collection-editor-copy-gap) *
+      (1 - var(--page-heading-progress, 0))
+  );
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 601px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #collectionEdit
+    .collection-editor-mobile-copy,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #collectionFolderEdit
+    .collection-editor-mobile-copy {
+    --collection-editor-copy-gap: 6px;
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-title {
+  --collection-editor-title-rest: 31px;
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-color);
+  font-size: calc(
+    var(--collection-editor-title-rest) + (18px -
+          var(--collection-editor-title-rest)) *
+      var(--page-heading-progress, 0)
+  );
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #collectionEdit
+    .collection-editor-mobile-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #collectionFolderEdit
+    .collection-editor-mobile-title {
+    --collection-editor-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-subtitle,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-subtitle {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  max-height: calc(48px * (1 - var(--page-heading-progress, 0)));
+  opacity: calc(1 - var(--page-heading-progress, 0));
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-back {
+  position: absolute;
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset, 17px) *
+      (1 - var(--page-heading-progress, 0))
+  );
+  left: calc(var(--browser-safe-area-left) + 12px);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+
+/* Console debug: its own header becomes the mobile heading; Copy/count move
+   into a compact row above the log. It does not need scroll-linked collapse
+   because the log frame is the scroller, not the page. */
+.debug-console-mobile-heading,
+.debug-console-mobile-actions {
+  display: none;
+}
+
+@media (max-width: 1200px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-shell {
+    padding: 0 16px 16px;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-header {
+    display: none;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-heading {
+    position: relative;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100vw;
+    margin: 0 calc(50% - 50vw) 12px;
+    padding-top: calc(var(--browser-safe-area-top) + 22px);
+    padding-right: calc(var(--browser-safe-area-right) + 64px);
+    padding-bottom: 19px;
+    padding-left: calc(var(--browser-safe-area-left) + 64px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-title {
+    width: 100%;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-color);
+    font-size: clamp(28px, 8vw, 34px);
+    font-weight: 650;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-subtitle {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-back {
+    position: absolute;
+    top: calc(var(--browser-safe-area-top) + 17px);
+    left: calc(var(--browser-safe-area-left) + 12px);
+    z-index: 31;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-color);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 12px;
   }
 }

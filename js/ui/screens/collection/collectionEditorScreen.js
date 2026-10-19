@@ -5,8 +5,26 @@ import { CollectionsStore, getCollectionFolderSources } from "../../../data/loca
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
+import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+
+function renderMobileCollectionHeading({ title, subtitle, backAttribute }) {
+  return `<header class="collection-editor-mobile-heading" data-page-heading>
+    <button class="collection-editor-mobile-back" type="button" ${backAttribute} aria-label="Back">
+      <span class="material-icons" aria-hidden="true">chevron_left</span>
+    </button>
+    <div class="collection-editor-mobile-copy">
+      <h1 class="collection-editor-mobile-title">${escapeHtml(title)}</h1>
+      <p class="collection-editor-mobile-subtitle">${escapeHtml(subtitle)}</p>
+    </div>
+  </header>`;
+}
+
+function bindMobileCollectionHeading(screen) {
+  screen.mobileHeadingCleanup?.();
+  screen.mobileHeadingCleanup = bindPageHeadingCollapse({ container: screen.container });
+}
 const profileId = () => String(ProfileManager.getActiveProfileId() || "1");
 const labelForMode = (value) => ({ TABBED_GRID: "Tabs", ROWS: "Rows", FOLLOW_LAYOUT: "Follow Layout" }[String(value || "").toUpperCase()] || "Tabs");
 const labelForShape = (value) => ({ POSTER: "Poster", SQUARE: "Square", LANDSCAPE: "Wide" }[String(value || "").toUpperCase()] || "Square");
@@ -50,7 +68,11 @@ export const CollectionEditorScreen = {
     ScreenUtils.show(this.container);
     await this.render();
   },
-  cleanup() { ScreenUtils.hide(this.container); },
+  cleanup() {
+    this.mobileHeadingCleanup?.();
+    this.mobileHeadingCleanup = null;
+    ScreenUtils.hide(this.container);
+  },
   async render() {
     // A redraw during a drag would destroy the row under the finger.
     if (deferWhileReordering(() => void this.render())) return;
@@ -59,6 +81,11 @@ export const CollectionEditorScreen = {
     const folders = collection.folders || [];
     this.container.innerHTML = `
       <main class="desktop-collection-editor-shell">
+        ${renderMobileCollectionHeading({
+          title: "Edit Collection",
+          subtitle: "Collections",
+          backAttribute: "data-editor-mobile-back"
+        })}
         <button class="desktop-collection-editor-back" type="button" data-editor-back aria-label="Back"><span class="material-icons">chevron_left</span></button>
         <header class="desktop-collection-editor-header"><p>Collections</p><h1>Edit Collection</h1></header>
         <section class="desktop-collection-editor-card">
@@ -73,10 +100,12 @@ export const CollectionEditorScreen = {
           <div class="desktop-collection-editor-list">${folders.length ? folders.map((folder, index) => `<article class="desktop-collection-editor-row"><button type="button" data-folder-drag="${index}" class="desktop-collection-drag-handle"><span class="material-icons">drag_indicator</span></button><div class="desktop-folder-cover">${folder.coverImageUrl ? `<img src="${escapeHtml(folder.coverImageUrl)}" alt="" />` : escapeHtml(folder.coverEmoji || "□")}</div><div><h3>${escapeHtml(folder.title)}</h3><p>${labelForShape(folder.tileShape)} · ${getCollectionFolderSources(folder).length} sources</p></div><div class="desktop-collection-editor-actions"><button type="button" data-edit-folder="${escapeHtml(folder.id)}">Edit</button><button type="button" data-delete-folder="${escapeHtml(folder.id)}" class="is-danger">Delete</button></div></article>`).join("") : '<p class="desktop-collection-manager-empty">No folders yet. Add one to start grouping sources.</p>'}</div>
         </section>
       </main>`;
+    bindMobileCollectionHeading(this);
     this.bind(collection);
   },
   bind(collection) {
     this.container.querySelector("[data-editor-back]")?.addEventListener("click", () => backToSettings());
+    this.container.querySelector("[data-editor-mobile-back]")?.addEventListener("click", () => backToSettings());
     let current = collection;
     const update = (patch) => {
       current = { ...current, ...patch };
@@ -129,7 +158,11 @@ export const CollectionFolderEditorScreen = {
   container: null,
   params: null,
   async mount(params = {}) { this.params = params; this.container = document.getElementById("collectionFolderEdit"); if (!Platform.isBrowser()) { backToSettings(); return; } ScreenUtils.show(this.container); await this.render(); },
-  cleanup() { ScreenUtils.hide(this.container); },
+  cleanup() {
+    this.mobileHeadingCleanup?.();
+    this.mobileHeadingCleanup = null;
+    ScreenUtils.hide(this.container);
+  },
   async render() {
     // A redraw during a drag would destroy the row under the finger.
     if (deferWhileReordering(() => void this.render())) return;
@@ -137,7 +170,8 @@ export const CollectionFolderEditorScreen = {
     if (!collection || !folder) { void Router.navigate("collectionEdit", { collectionId: this.params?.collectionId }); return; }
     const sources = getCollectionFolderSources(folder); const addons = await addonRepository.getInstalledAddons();
     const catalogOptions = addons.flatMap((addon) => (addon.catalogs || []).map((catalog) => ({ addon, catalog }))).filter(({ catalog }) => catalog?.id && catalog?.type);
-    this.container.innerHTML = `<main class="desktop-collection-editor-shell"><button class="desktop-collection-editor-back" type="button" data-folder-back aria-label="Back"><span class="material-icons">chevron_left</span></button><header class="desktop-collection-editor-header"><p>${escapeHtml(collection.title)}</p><h1>Edit Folder</h1></header><section class="desktop-collection-editor-card"><label>Folder Name<input data-folder-field="title" value="${escapeHtml(folder.title)}" /></label><fieldset class="desktop-collection-segmented"><legend>Cover Type</legend><button type="button" data-cover-type="none" class="${!folder.coverImageUrl && !folder.coverEmoji ? "is-selected" : ""}">None</button><button type="button" data-cover-type="emoji" class="${folder.coverEmoji ? "is-selected" : ""}">Emoji</button><button type="button" data-cover-type="image" class="${folder.coverImageUrl ? "is-selected" : ""}">Image URL</button></fieldset><label data-cover-emoji ${folder.coverEmoji ? "" : "hidden"}>Emoji<input data-folder-field="coverEmoji" value="${escapeHtml(folder.coverEmoji || "")}" /></label><label data-cover-image ${folder.coverImageUrl ? "" : "hidden"}>Image URL<input data-folder-field="coverImageUrl" value="${escapeHtml(folder.coverImageUrl || "")}" placeholder="https://…" /></label><img class="desktop-collection-backdrop-preview" data-cover-preview alt="Cover preview" /><label>Animated GIF URL<input data-folder-field="focusGifUrl" value="${escapeHtml(folder.focusGifUrl || "")}" placeholder="https://…" /></label><div class="desktop-collection-editor-toggle-row"><span><strong>Show GIF when configured</strong></span><label class="desktop-collection-switch"><input type="checkbox" data-folder-field="focusGifEnabled" ${folder.focusGifEnabled ? "checked" : ""}/><span></span></label></div><fieldset class="desktop-collection-segmented"><legend>Tile Shape</legend>${["POSTER", "SQUARE", "LANDSCAPE"].map((shape) => `<button type="button" data-tile-shape="${shape}" class="${folder.tileShape === shape ? "is-selected" : ""}">${labelForShape(shape)}</button>`).join("")}</fieldset><div class="desktop-collection-editor-toggle-row"><span><strong>Hide Title</strong></span><label class="desktop-collection-switch"><input type="checkbox" data-folder-field="hideTitle" ${folder.hideTitle ? "checked" : ""}/><span></span></label></div></section><section class="desktop-collection-editor-section"><div class="desktop-collection-editor-section-heading"><div><h2>Catalog Sources</h2><p>Saved source order controls the folder tabs and rows.</p></div></div><div class="desktop-collection-source-add"><select data-source-kind><option value="addon">Addon catalog</option><option value="tmdb">TMDB discover</option><option value="trakt">Trakt list</option></select><select data-addon-source>${catalogOptions.map(({ addon, catalog }, index) => `<option value="${index}">${escapeHtml([catalog.name || catalog.id, catalog.type, addon.displayName || addon.name].filter(Boolean).join(" · "))}</option>`).join("") || '<option value="">No enabled addon catalogs</option>'}</select><select data-tmdb-type hidden><option value="POPULAR">Popular</option><option value="TOP_RATED">Top Rated</option><option value="UPCOMING">Upcoming</option></select><select data-tmdb-media hidden><option value="MOVIE">Movies</option><option value="TV">Series</option></select><input data-tmdb-genre hidden placeholder="Genre filter (optional)" /><input data-trakt-list hidden type="number" min="1" placeholder="Trakt list ID" /><button type="button" data-add-source>Add Source</button></div><div class="desktop-collection-editor-list">${sources.length ? sources.map((source, index) => `<article class="desktop-collection-editor-row"><button type="button" class="desktop-collection-drag-handle" data-source-drag="${index}"><span class="material-icons">drag_indicator</span></button><div><h3>${escapeHtml(sourceLabel(source))}</h3><p>${escapeHtml(source.mediaType || source.type || "Movie")}${source.genre ? ` · ${escapeHtml(source.genre)}` : ""}</p></div><div class="desktop-collection-editor-actions"><button type="button" data-remove-source="${index}" class="is-danger">Remove</button></div></article>`).join("") : '<p class="desktop-collection-manager-empty">No catalog sources yet.</p>'}</div></section></main>`;
+    this.container.innerHTML = `<main class="desktop-collection-editor-shell">${renderMobileCollectionHeading({ title: "Edit Folder", subtitle: collection.title, backAttribute: "data-folder-mobile-back" })}<button class="desktop-collection-editor-back" type="button" data-folder-back aria-label="Back"><span class="material-icons">chevron_left</span></button><header class="desktop-collection-editor-header"><p>${escapeHtml(collection.title)}</p><h1>Edit Folder</h1></header><section class="desktop-collection-editor-card"><label>Folder Name<input data-folder-field="title" value="${escapeHtml(folder.title)}" /></label><fieldset class="desktop-collection-segmented"><legend>Cover Type</legend><button type="button" data-cover-type="none" class="${!folder.coverImageUrl && !folder.coverEmoji ? "is-selected" : ""}">None</button><button type="button" data-cover-type="emoji" class="${folder.coverEmoji ? "is-selected" : ""}">Emoji</button><button type="button" data-cover-type="image" class="${folder.coverImageUrl ? "is-selected" : ""}">Image URL</button></fieldset><label data-cover-emoji ${folder.coverEmoji ? "" : "hidden"}>Emoji<input data-folder-field="coverEmoji" value="${escapeHtml(folder.coverEmoji || "")}" /></label><label data-cover-image ${folder.coverImageUrl ? "" : "hidden"}>Image URL<input data-folder-field="coverImageUrl" value="${escapeHtml(folder.coverImageUrl || "")}" placeholder="https://…" /></label><img class="desktop-collection-backdrop-preview" data-cover-preview alt="Cover preview" /><label>Animated GIF URL<input data-folder-field="focusGifUrl" value="${escapeHtml(folder.focusGifUrl || "")}" placeholder="https://…" /></label><div class="desktop-collection-editor-toggle-row"><span><strong>Show GIF when configured</strong></span><label class="desktop-collection-switch"><input type="checkbox" data-folder-field="focusGifEnabled" ${folder.focusGifEnabled ? "checked" : ""}/><span></span></label></div><fieldset class="desktop-collection-segmented"><legend>Tile Shape</legend>${["POSTER", "SQUARE", "LANDSCAPE"].map((shape) => `<button type="button" data-tile-shape="${shape}" class="${folder.tileShape === shape ? "is-selected" : ""}">${labelForShape(shape)}</button>`).join("")}</fieldset><div class="desktop-collection-editor-toggle-row"><span><strong>Hide Title</strong></span><label class="desktop-collection-switch"><input type="checkbox" data-folder-field="hideTitle" ${folder.hideTitle ? "checked" : ""}/><span></span></label></div></section><section class="desktop-collection-editor-section"><div class="desktop-collection-editor-section-heading"><div><h2>Catalog Sources</h2><p>Saved source order controls the folder tabs and rows.</p></div></div><div class="desktop-collection-source-add"><select data-source-kind><option value="addon">Addon catalog</option><option value="tmdb">TMDB discover</option><option value="trakt">Trakt list</option></select><select data-addon-source>${catalogOptions.map(({ addon, catalog }, index) => `<option value="${index}">${escapeHtml([catalog.name || catalog.id, catalog.type, addon.displayName || addon.name].filter(Boolean).join(" · "))}</option>`).join("") || '<option value="">No enabled addon catalogs</option>'}</select><select data-tmdb-type hidden><option value="POPULAR">Popular</option><option value="TOP_RATED">Top Rated</option><option value="UPCOMING">Upcoming</option></select><select data-tmdb-media hidden><option value="MOVIE">Movies</option><option value="TV">Series</option></select><input data-tmdb-genre hidden placeholder="Genre filter (optional)" /><input data-trakt-list hidden type="number" min="1" placeholder="Trakt list ID" /><button type="button" data-add-source>Add Source</button></div><div class="desktop-collection-editor-list">${sources.length ? sources.map((source, index) => `<article class="desktop-collection-editor-row"><button type="button" class="desktop-collection-drag-handle" data-source-drag="${index}"><span class="material-icons">drag_indicator</span></button><div><h3>${escapeHtml(sourceLabel(source))}</h3><p>${escapeHtml(source.mediaType || source.type || "Movie")}${source.genre ? ` · ${escapeHtml(source.genre)}` : ""}</p></div><div class="desktop-collection-editor-actions"><button type="button" data-remove-source="${index}" class="is-danger">Remove</button></div></article>`).join("") : '<p class="desktop-collection-manager-empty">No catalog sources yet.</p>'}</div></section></main>`;
+    bindMobileCollectionHeading(this);
     this.bind(collection, folder, catalogOptions);
   },
   bind(collection, folder, catalogOptions) {
@@ -150,6 +184,7 @@ export const CollectionFolderEditorScreen = {
       return currentFolder;
     };
     this.container.querySelector("[data-folder-back]")?.addEventListener("click", () => void Router.navigate("collectionEdit", { collectionId: collection.id }));
+    this.container.querySelector("[data-folder-mobile-back]")?.addEventListener("click", () => void Router.navigate("collectionEdit", { collectionId: collection.id }));
     this.container.querySelectorAll("[data-folder-field]").forEach((input) => input.addEventListener(input.type === "checkbox" ? "change" : "change", () => updateFolder({ [input.dataset.folderField]: input.type === "checkbox" ? input.checked : input.value })));
     const coverInput = this.container.querySelector('[data-folder-field="coverImageUrl"]'); const preview = this.container.querySelector("[data-cover-preview]"); if (coverInput && preview) bindImagePreview(coverInput, preview);
     this.container.querySelectorAll("[data-cover-type]").forEach((button) => button.addEventListener("click", () => { const type = button.dataset.coverType; updateFolder(type === "emoji" ? { coverImageUrl: null } : type === "image" ? { coverEmoji: null } : { coverImageUrl: null, coverEmoji: null }); void this.render(); }));
