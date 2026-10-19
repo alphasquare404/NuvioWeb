@@ -28,12 +28,20 @@ export function bindPageHeadingCollapse({
       ? container.querySelector(scrollSelector)
       : null;
 
+  const isScrollable = (element) => {
+    if (!element || element.scrollHeight <= element.clientHeight + 1) {
+      return false;
+    }
+    const overflow = String(globalThis.getComputedStyle?.(element)?.overflowY || "");
+    return overflow === "auto" || overflow === "scroll" || overflow === "overlay";
+  };
+
   const readScrollTop = () => {
     const scrollOwner = getScrollOwner();
-    if (scrollOwner && scrollOwner.scrollHeight > scrollOwner.clientHeight + 1) {
+    if (isScrollable(scrollOwner)) {
       return Number(scrollOwner.scrollTop || 0);
     }
-    if (container.scrollHeight > container.clientHeight + 1) {
+    if (isScrollable(container)) {
       return Number(container.scrollTop || 0);
     }
     const document = globalThis.document;

@@ -8,6 +8,7 @@ import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import { filterReleasedItems } from "../../../core/util/releaseInfoUtils.js";
 import { focusWithoutAutoScroll } from "../../components/sidebarNavigation.js";
+import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 import {
   posterItemFromNode,
   PosterOptionsDialogController
@@ -197,6 +198,11 @@ export const CatalogSeeAllScreen = {
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("catalogSeeAll");
     ScreenUtils.show(this.container);
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = bindPageHeadingCollapse({
+      container: this.container,
+      scrollSelector: ".seeall-shell"
+    });
     this.params = params || {};
     this.layoutPrefs = LayoutPreferences.get();
     const initialItems = Array.isArray(params?.initialItems) ? params.initialItems : [];
@@ -744,13 +750,13 @@ export const CatalogSeeAllScreen = {
 
     this.container.innerHTML = `
       <div class="seeall-shell">
-        <header class="seeall-header">
+        <header class="seeall-header page-heading page-heading-back" data-page-heading>
           ${this.renderBrowserBackButton()}
-          <div class="seeall-header-copy">
-            <h2 class="seeall-title">${escapeHtml(title)}</h2>
+          <div class="seeall-header-copy page-heading-copy">
+            <h1 class="seeall-title page-heading-title">${escapeHtml(title)}</h1>
             ${
               this.layoutPrefs?.catalogAddonNameEnabled !== false && descriptor.addonName
-                ? `<div class="seeall-subtitle">${escapeHtml(t("catalog_see_all_from", [descriptor.addonName], "from %1$s"))}</div>`
+                ? `<div class="seeall-subtitle page-heading-subtitle">${escapeHtml(t("catalog_see_all_from", [descriptor.addonName], "from %1$s"))}</div>`
                 : ""
             }
           </div>
@@ -869,6 +875,8 @@ export const CatalogSeeAllScreen = {
   },
 
   cleanup() {
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = null;
     this.loadToken = (this.loadToken || 0) + 1;
     this.cancelPendingPosterHold();
     this.posterOptionsController?.destroy?.({ restoreFocus: false });

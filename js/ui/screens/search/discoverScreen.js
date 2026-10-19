@@ -37,8 +37,10 @@ import {
 } from "../../components/sidebarNavigation.js";
 import {
   bindDesktopNavigationEvents,
-  renderDesktopNavigation
+  renderDesktopNavigation,
+  renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
+import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
@@ -327,6 +329,11 @@ export const DiscoverScreen = {
   async mount(_params = {}, navigationContext = {}) {
     this.container = document.getElementById("discover");
     ScreenUtils.show(this.container);
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = bindPageHeadingCollapse({
+      container: this.container,
+      scrollSelector: ".discover-main"
+    });
     this.layoutPrefs = LayoutPreferences.get();
     try {
       this.sidebarProfile = await getSidebarProfileState();
@@ -1583,29 +1590,30 @@ export const DiscoverScreen = {
           useDesktopNavigation
             ? renderDesktopNavigation({ selectedRoute: "search", profile: this.sidebarProfile })
             : showRootSidebar
-            ? renderRootSidebar({
-                selectedRoute: "discover",
-                profile: this.sidebarProfile,
-                layout: this.layoutPrefs,
-                expanded: Boolean(this.sidebarExpanded),
-                pillIconOnly: Boolean(this.pillIconOnly)
-              })
+              ? renderRootSidebar({
+                  selectedRoute: "discover",
+                  profile: this.sidebarProfile,
+                  layout: this.layoutPrefs,
+                  expanded: Boolean(this.sidebarExpanded),
+                  pillIconOnly: Boolean(this.pillIconOnly)
+                })
+              : ""
+        }
+        ${
+          useDesktopNavigation
+            ? `<button class="discover-desktop-back-button" type="button" data-action="desktopDiscoverBack" aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
+                <span class="material-icons" aria-hidden="true">chevron_left</span>
+              </button>`
             : ""
         }
         <main class="home-main discover-main${enterClass}">
           <div class="seeall-shell discover-seeall-shell">
-            <header class="seeall-header discover-header">
-              ${
-                useDesktopNavigation
-                  ? `<button class="discover-desktop-back-button" type="button" data-action="desktopDiscoverBack" aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-                      <span class="material-icons" aria-hidden="true">chevron_left</span>
-                    </button>`
-                  : ""
-              }
-              <div class="discover-header-copy">
-                <h2 class="seeall-title">Discover</h2>
-                <div class="seeall-subtitle" id="discoverContextLabel">${escapeHtml(contextLabel)}</div>
+            <header class="seeall-header discover-header page-heading page-heading-back" data-page-heading>
+              <div class="discover-header-copy page-heading-copy">
+                <h1 class="seeall-title page-heading-title">Discover</h1>
+                <div class="seeall-subtitle page-heading-subtitle" id="discoverContextLabel">${escapeHtml(contextLabel)}</div>
               </div>
+              ${useDesktopNavigation ? renderNavigationRevealButton() : ""}
             </header>
             <section class="discover-picker-groups" id="discoverPickerRow">
               <div class="library-picker-row discover-picker-row library-primary-filter-row">
@@ -1642,9 +1650,11 @@ export const DiscoverScreen = {
     this.buildNavigationModel();
     if (useDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
-      this.container.querySelector('[data-action="desktopDiscoverBack"]')?.addEventListener("click", () => {
-        void Router.back();
-      });
+      this.container
+        .querySelector('[data-action="desktopDiscoverBack"]')
+        ?.addEventListener("click", () => {
+          void Router.back();
+        });
     } else if (showRootSidebar) {
       bindRootSidebarEvents(this.container, {
         currentRoute: "discover",
@@ -2013,6 +2023,8 @@ export const DiscoverScreen = {
   },
 
   cleanup() {
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.mediaContextMenuCleanup?.();

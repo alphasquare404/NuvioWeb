@@ -18510,7 +18510,7 @@ html[data-layout="mobile"]
   .page-heading {
   /* Compact bar: ten pixels below the safe edge, then the 18px title and
      enough room for the 44px rail control. */
-  padding-top: calc(var(--browser-safe-area-top) + 10px);
+  padding-top: calc(var(--browser-safe-area-top) + 12px);
   padding-bottom: 14px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
 }
@@ -18674,7 +18674,7 @@ html[data-layout="mobile"]
   .desktop-browser
   .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
   .settings-content-header {
-  padding-top: calc(var(--browser-safe-area-top) + 10px);
+  padding-top: calc(var(--browser-safe-area-top) + 12px);
   padding-bottom: 14px;
 }
 
@@ -18731,7 +18731,7 @@ html[data-layout="mobile"] .desktop-browser #search .page-heading[data-page-head
 html[data-layout="mobile"] .desktop-browser #castDetail .page-heading[data-page-heading] {
   transition: none;
   padding-top: calc(
-    var(--browser-safe-area-top) + 22px - 12px * var(--page-heading-progress, 0)
+    var(--browser-safe-area-top) + 22px - 10px * var(--page-heading-progress, 0)
   );
   padding-bottom: calc(19px - 5px * var(--page-heading-progress, 0));
   box-shadow: 0 10px 30px
@@ -18849,7 +18849,7 @@ html[data-layout="mobile"]
   .settings-content-header {
   transition: none;
   padding-top: calc(
-    var(--browser-safe-area-top) + 22px - 12px * var(--settings-heading-progress, 0)
+    var(--browser-safe-area-top) + 22px - 10px * var(--settings-heading-progress, 0)
   );
   padding-bottom: calc(19px - 5px * var(--settings-heading-progress, 0));
   box-shadow: 0 10px 30px
@@ -18970,4 +18970,320 @@ html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="t
   transition:
     transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
     opacity 180ms ease;
+}
+
+/* Discover and Catalog See All use the same progress, but they have a Back
+   control instead of a root-page heading. */
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading[data-page-heading],
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading[data-page-heading] {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100vw;
+  margin: 0 calc(50% - 50vw) 12px;
+  padding-top: calc(
+    var(--browser-safe-area-top) + 22px - 10px * var(--page-heading-progress, 0)
+  );
+  padding-right: calc(var(--browser-safe-area-right) + 56px);
+  padding-bottom: calc(19px - 5px * var(--page-heading-progress, 0));
+  padding-left: calc(var(--browser-safe-area-left) + 56px);
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+  transition: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .discover-main {
+  padding-top: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-shell {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading.page-heading-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading.page-heading-back {
+  padding-right: calc(var(--browser-safe-area-right) + 64px);
+  padding-left: calc(var(--browser-safe-area-left) + 64px);
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading-copy,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading-copy {
+  --page-heading-copy-gap: 0px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--page-heading-copy-gap) * (1 - var(--page-heading-progress, 0)));
+  width: 100%;
+  min-width: 0;
+  transition: none;
+}
+
+@media (min-width: 601px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #discover
+    .page-heading-copy,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #catalogSeeAll
+    .page-heading-copy {
+    --page-heading-copy-gap: 6px;
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading-title {
+  --page-heading-title-rest: 31px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(
+    var(--page-heading-title-rest) + (18px - var(--page-heading-title-rest)) *
+      var(--page-heading-progress, 0)
+  );
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-align: center;
+  transition: none;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #discover
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #catalogSeeAll
+    .page-heading-title {
+    --page-heading-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading-subtitle,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading-subtitle {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  max-height: calc(48px * (1 - var(--page-heading-progress, 0)));
+  opacity: calc(1 - var(--page-heading-progress, 0));
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  transition: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading[data-page-heading]::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading[data-page-heading]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  opacity: var(--page-heading-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading[data-page-heading],
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading[data-page-heading] {
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--page-heading-progress, 0)));
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .discover-desktop-back-button,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .catalog-seeall-browser-back {
+  position: fixed;
+  top: calc(var(--browser-safe-area-top) + 4px);
+  left: calc(var(--browser-safe-area-left) + 12px);
+  z-index: 30;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #discover
+  .search-screen-shell:has(.page-heading)
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #discover {
+  --page-heading-reveal-offset: 17px;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #discover {
+    --page-heading-reveal-offset: clamp(15.4px, 4.4vw, 18.7px);
+  }
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #discover[data-page-heading-collapsed="true"] {
+  --page-heading-reveal-offset: 0px;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #discover
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--page-heading-reveal-offset) *
+      (1 - var(--page-heading-progress, 0)) + 54px
+  );
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+/* One centre line for the title, Back, and the rail trigger. The controls
+   follow the title's half-line; the compact padding keeps a 44px control
+   inside the safe area. */
+html[data-layout="mobile"] {
+  --heading-control-rest-offset: 17px;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"] {
+    --heading-control-rest-offset: clamp(15.4px, 4.4vw, 18.7px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset) *
+      (1 - var(--settings-heading-progress, 0))
+  );
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-root-sidebar-slot
+  .desktop-navigation-reveal {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset) *
+      (1 - var(--settings-heading-progress, 0))
+  );
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset) *
+      (1 - var(--settings-heading-progress, 0)) + 54px
+  );
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .discover-desktop-back-button,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .catalog-seeall-browser-back {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset) *
+      (1 - var(--page-heading-progress, 0))
+  );
 }
