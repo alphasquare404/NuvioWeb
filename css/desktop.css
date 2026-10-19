@@ -18338,3 +18338,55 @@ html[data-nav-placement]
   backdrop-filter: blur(2px) saturate(150%);
   pointer-events: none;
 }
+
+/* The bottom rail triggers are the same circle as the top-right one in the
+   same layout. On the narrow layout that means the same 44px control; on the
+   wide layout it means the same circle the Back button wears. The panel keeps
+   its 10px gap above the button. */
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-left"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal {
+  width: 44px;
+  height: 44px;
+}
+
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal,
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-left"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal {
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-left"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation {
+  bottom: calc(var(--browser-nav-rail-bottom) + 54px);
+}
+
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation,
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-left"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation {
+  bottom: calc(
+    var(--browser-nav-rail-bottom) + var(--browser-floating-nav-height) + 12px
+  );
+}
