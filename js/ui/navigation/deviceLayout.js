@@ -10,7 +10,7 @@
 // as well as a desktop, while the same width on a phone is still a phone. So the
 // device class is inferred once and published, and the layout resolves as:
 //
-//   - a tablet with the navigation at the bottom               -> mobile
+//   - a tablet with the navigation at the bottom or the rail   -> mobile
 //   - the viewport is wide enough for the wide layout           -> desktop
 //   - the device is a desktop, and the window is wide enough   -> desktop
 //   - a phone or tablet, with the navigation at the top, and
@@ -68,10 +68,10 @@ export function resolveLayout({
   navPlacement = ""
 } = {}) {
   const viewportWidth = Number(width) || 0;
-  // A tablet with the bar at the bottom has chosen the touch shell, and that
-  // answer does not expire at the wide breakpoint. Top and rail still follow
-  // the width, because those are the placements the wide shell is built for.
-  if (deviceClass === "tablet" && navPlacement === "bottom") {
+  // A tablet with the bar at the bottom or the rail has chosen the touch shell,
+  // and that answer does not expire at the wide breakpoint. Top still follows
+  // the width, because the top bar is the placement the wide shell is built for.
+  if (deviceClass === "tablet" && (navPlacement === "bottom" || navPlacement === "sidebar")) {
     return "mobile";
   }
   if (viewportWidth >= WIDE_VIEWPORT) {
@@ -81,8 +81,8 @@ export function resolveLayout({
     return viewportWidth >= MIN_DESKTOP_WIDTH ? "desktop" : "mobile";
   }
   // A phone or tablet: only the wide layout's floor matters, and only when the
-  // navigation has been moved to the top. A rail keeps the phone layout, because
-  // the rail's rules are the wide shell's rules.
+  // navigation has been moved to the top. The tablet's rail and bottom bar have
+  // already returned above.
   if (navPlacement === "top") {
     return "desktop";
   }

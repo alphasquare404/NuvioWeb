@@ -3,9 +3,9 @@ import test from "node:test";
 
 const { resolveLayout } = await import("./deviceLayout.js");
 
-// A tablet with the bar at the bottom asked for the touch shell. The wide
-// breakpoint must not take that answer back at 1024, where an iPad in portrait
-// or landscape would otherwise jump to the desktop layout.
+// A tablet with the bar at the bottom or the rail asked for the touch shell.
+// The wide breakpoint must not take that answer back at 1024, where an iPad in
+// portrait or landscape would otherwise jump to the desktop layout.
 test("a tablet with the bar at the bottom keeps the touch layout at any width", () => {
   for (const width of [393, 834, 1024, 1194, 1366]) {
     assert.equal(
@@ -16,17 +16,23 @@ test("a tablet with the bar at the bottom keeps the touch layout at any width", 
   }
 });
 
-test("the other tablet placements still follow the width", () => {
+test("a tablet with the side rail keeps the touch layout at any width", () => {
+  for (const width of [393, 834, 1024, 1194, 1366]) {
+    assert.equal(
+      resolveLayout({ width, deviceClass: "tablet", navPlacement: "sidebar" }),
+      "mobile",
+      `tablet rail at ${width}px`
+    );
+  }
+});
+
+test("a tablet with the top bar still follows the width", () => {
   assert.equal(
     resolveLayout({ width: 834, deviceClass: "tablet", navPlacement: "top" }),
     "desktop"
   );
   assert.equal(
-    resolveLayout({ width: 834, deviceClass: "tablet", navPlacement: "sidebar" }),
-    "mobile"
-  );
-  assert.equal(
-    resolveLayout({ width: 1024, deviceClass: "tablet", navPlacement: "sidebar" }),
+    resolveLayout({ width: 1024, deviceClass: "tablet", navPlacement: "top" }),
     "desktop"
   );
 });
