@@ -17084,11 +17084,81 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
     .desktop-navigation-enabled {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
   }
+
+  /* Keep one flex direction in both states. The old rule switched row to
+     column at the same moment the label was removed, so nothing could
+     interpolate. Labels stay mounted and collapse through max-height and
+     opacity instead. */
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation,
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
+    transition:
+      width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      min-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      padding 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      gap 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      border-radius 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 160ms ease,
+      color 160ms ease;
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
+    box-sizing: border-box;
+    flex-direction: column;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+    gap: 0;
+    border-radius: 999px;
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser
+    .desktop-navigation-label {
+    display: block;
+    width: auto;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(2px);
+    font-size: 10px;
+    line-height: 12px;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    transition:
+      max-height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 160ms ease,
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser:not(.nav-bottom-collapsed)
+    .desktop-navigation-item {
+    width: 64px;
+    min-width: 64px;
+    height: 52px;
+    padding: 7px 10px 6px;
+    gap: 3px;
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser:not(.nav-bottom-collapsed)
+    .desktop-navigation-label {
+    max-height: 12px;
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser
+    .desktop-navigation-enabled {
+    transition: padding-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html[data-nav-placement="bottom"].desktop-browser .desktop-navigation,
-  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item,
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-label,
+  html[data-nav-placement="bottom"].desktop-browser
+    .desktop-navigation-enabled {
     transition: none;
   }
 }
