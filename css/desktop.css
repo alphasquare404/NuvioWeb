@@ -8530,16 +8530,6 @@ html.desktop-browser {
   letter-spacing: -0.03em;
 }
 
-.desktop-browser .library-shell.desktop-navigation-enabled .library-page-source {
-  margin-top: 6px;
-  padding: 0;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.35;
-  letter-spacing: 0.08em;
-  color: var(--text-secondary);
-}
-
 .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row {
   gap: 8px;
   margin-bottom: 18px;
@@ -11259,6 +11249,18 @@ body.desktop-browser {
     var(--detail-bg, var(--bg-color));
 }
 
+.desktop-browser #castDetail .browser-person-detail-heading {
+  width: min(100%, 1480px);
+  margin: 28px auto 0;
+}
+
+.desktop-browser #castDetail .browser-person-detail-heading h1 {
+  margin: 0;
+  font-size: clamp(34px, 3.6vw, 52px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
 .desktop-browser #castDetail .browser-person-detail-layout {
   display: grid;
   grid-template-columns: minmax(238px, 304px) minmax(0, 1fr);
@@ -11306,16 +11308,10 @@ body.desktop-browser {
   object-fit: cover;
 }
 
-.desktop-browser #castDetail .browser-person-detail-profile h1 {
-  margin: 20px 0 14px;
-  font-size: clamp(30px, 3vw, 44px);
-  line-height: 1.08;
-}
-
 .desktop-browser #castDetail .browser-person-detail-facts {
   display: grid;
   gap: 11px;
-  margin: 0;
+  margin: 20px 0 0;
 }
 
 .desktop-browser #castDetail .browser-person-detail-facts div {
@@ -11414,6 +11410,13 @@ body.desktop-browser {
     min-height: max(100dvh, 100vh);
     padding: calc(var(--browser-mobile-nav-clearance) + env(safe-area-inset-top)) var(--browser-page-gutter) calc(34px + env(safe-area-inset-bottom));
   }
+  .desktop-browser #castDetail .browser-person-detail-heading {
+    margin-top: 20px;
+  }
+  .desktop-browser #castDetail .browser-person-detail-heading h1 {
+    font-size: 30px;
+    line-height: 1.1;
+  }
   .desktop-browser #castDetail .browser-person-detail-layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 32px;
@@ -11430,12 +11433,9 @@ body.desktop-browser {
     grid-row: span 2;
     font-size: 36px;
   }
-  .desktop-browser #castDetail .browser-person-detail-profile h1 {
-    margin: 2px 0 10px;
-    font-size: 30px;
-  }
   .desktop-browser #castDetail .browser-person-detail-facts {
     gap: 7px;
+    margin-top: 0;
   }
   .desktop-browser #castDetail .browser-person-detail-biography {
     grid-column: 1 / -1;
@@ -18035,6 +18035,15 @@ html[data-layout="desktop"][data-nav-placement="sidebar"].desktop-browser
   .settings-shell[data-settings-nav-mode]
   .settings-content-header {
   padding-top: 2px;
+}
+
+/* The index heading carries 2px more inline padding than the section. On the
+   wide layout the section takes the same inset, so both titles sit on one x. */
+html[data-layout="desktop"][data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header {
+  padding-inline: calc(var(--settings-header-bleed) + 2px);
 }
 
 html[data-nav-placement="top"]

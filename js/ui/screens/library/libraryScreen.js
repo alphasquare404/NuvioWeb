@@ -1025,50 +1025,6 @@ export const LibraryScreen = {
     `;
   },
 
-  // The header says which shelf you are on and how much is on it.
-  getLibraryHeaderLabel(state) {
-    if (this.isDownloadManagerView()) {
-      return t(
-        "library_count_queued",
-        { count: this.downloadManagerJobs.length },
-        "Download manager"
-      );
-    }
-    if (this.isDownloadedView()) {
-      return `Downloaded · ${this.formatCount(this.countDownloadedItems(), "title")}`;
-    }
-    const label = this.controller.getSourceLabel();
-    if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
-      return `${label} · ${this.formatCount(state.visibleCloudItems.length, "file")}`;
-    }
-    return `${label} · ${this.formatCount(this.getVisibleSavedItems(state).length, "title")}`;
-  },
-
-  // One title, not one titles.
-  formatCount(count, unit) {
-    const n = Number(count) || 0;
-    if (unit === "file") {
-      return n === 1
-        ? t("library_count_file_one", { count: n }, "1 file")
-        : t("library_count_files", { count: n }, "files");
-    }
-    return n === 1
-      ? t("library_count_title_one", { count: n }, "1 title")
-      : t("library_count_titles", { count: n }, "titles");
-  },
-
-  countDownloadedItems() {
-    const downloads = this.downloadedLibrary || {};
-    if (!downloads.supported || downloads.loading) {
-      return 0;
-    }
-    return filterDownloadedLibraryItems(
-      normalizeDownloadedLibraryType(this.downloadedType),
-      (downloads.movies || []).map(offlineMovieCard),
-      (downloads.series || []).map(offlineSeriesCard)
-    ).length;
-  },
-
   // Searching the saved shelf is a filter over what is already on screen, not
   // a second trip to the provider.
   // One field, but it only ever searches the shelf that is open.
@@ -1100,10 +1056,6 @@ export const LibraryScreen = {
     const mount = this.container.querySelector("#libraryContentAreaMount");
     if (mount instanceof HTMLElement) {
       mount.outerHTML = this.renderLibraryContentArea(state);
-    }
-    const source = this.container.querySelector("#libraryPageSource");
-    if (source instanceof HTMLElement) {
-      source.textContent = this.getLibraryHeaderLabel(state);
     }
     this.buildGridRows();
     ScreenUtils.indexFocusables(this.container);
@@ -1454,11 +1406,6 @@ export const LibraryScreen = {
     if (!this.container || !this.container.querySelector(".library-shell")) {
       this.requestRender();
       return;
-    }
-
-    const sourceNode = this.container.querySelector("#libraryPageSource");
-    if (sourceNode instanceof HTMLElement) {
-      sourceNode.textContent = this.getLibraryHeaderLabel(state);
     }
 
     const pickerMount = this.container.querySelector("#libraryPickerGroupsMount");
@@ -1873,7 +1820,6 @@ export const LibraryScreen = {
             <header class="library-page-header">
               <div class="library-page-heading">
                 <h1 class="library-page-title">${escapeHtml(t("library_title", {}, "Library"))}</h1>
-                <div class="library-page-source" id="libraryPageSource">${escapeHtml(this.getLibraryHeaderLabel(state))}</div>
               </div>
             </header>
 

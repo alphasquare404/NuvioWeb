@@ -1,12 +1,23 @@
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { setBrowserDocumentTitle } from "../../navigation/browserDocumentTitle.js";
-import { getEffectiveTmdbApiKey, TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
+import {
+  getEffectiveTmdbApiKey,
+  TmdbSettingsStore
+} from "../../../data/local/tmdbSettingsStore.js";
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
 import { I18n } from "../../../i18n/index.js";
-import { TmdbPersonService, calculatePersonAge, sortPersonCreditsByLatest, sortPersonCreditsByPopularity } from "../../../core/tmdb/tmdbPersonService.js";
-import { bindDesktopNavigationEvents, renderDesktopNavigation } from "../../components/desktopNavigation.js";
+import {
+  TmdbPersonService,
+  calculatePersonAge,
+  sortPersonCreditsByLatest,
+  sortPersonCreditsByPopularity
+} from "../../../core/tmdb/tmdbPersonService.js";
+import {
+  bindDesktopNavigationEvents,
+  renderDesktopNavigation
+} from "../../components/desktopNavigation.js";
 import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
   posterItemFromNode,
@@ -83,7 +94,9 @@ export const CastDetailScreen = {
   async mount(params = {}) {
     this.container = document.getElementById("castDetail");
     ScreenUtils.show(this.container);
-    this.sidebarProfile = Platform.isBrowser() ? await getSidebarProfileState().catch(() => null) : null;
+    this.sidebarProfile = Platform.isBrowser()
+      ? await getSidebarProfileState().catch(() => null)
+      : null;
     this.params = params || {};
     this.loadToken = (this.loadToken || 0) + 1;
     this.person = null;
@@ -242,8 +255,16 @@ export const CastDetailScreen = {
     const allCredits = uniqueCredits(this.credits);
     if (Platform.isBrowser()) {
       return [
-        { key: "popular", title: t("person_popular", {}, "Popular"), items: sortPersonCreditsByPopularity(allCredits) },
-        { key: "latest", title: t("person_latest", {}, "Latest"), items: sortPersonCreditsByLatest(allCredits) }
+        {
+          key: "popular",
+          title: t("person_popular", {}, "Popular"),
+          items: sortPersonCreditsByPopularity(allCredits)
+        },
+        {
+          key: "latest",
+          title: t("person_latest", {}, "Latest"),
+          items: sortPersonCreditsByLatest(allCredits)
+        }
       ].filter((section) => section.items.length);
     }
     const today = todayIsoDate();
@@ -346,17 +367,23 @@ export const CastDetailScreen = {
       : "";
     const avatar = person.profile
       ? `<img src="${escapeAttribute(person.profile)}" alt="" loading="eager" decoding="async" onerror="this.hidden=true" />`
-      : `<span aria-hidden="true">${escapeHtml(String(person.name || "?").slice(0, 1).toUpperCase())}</span>`;
+      : `<span aria-hidden="true">${escapeHtml(
+          String(person.name || "?")
+            .slice(0, 1)
+            .toUpperCase()
+        )}</span>`;
     this.container.innerHTML = `
       <div class="browser-person-detail-shell">
         ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
         <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
           <span class="material-icons" aria-hidden="true">chevron_left</span>
         </button>
+        <header class="browser-person-detail-heading">
+          <h1>${escapeHtml(person.name || "Unknown")}</h1>
+        </header>
         <div class="browser-person-detail-layout">
           <aside class="browser-person-detail-profile">
             <div class="browser-person-detail-avatar">${avatar}</div>
-            <h1>${escapeHtml(person.name || "Unknown")}</h1>
             <dl class="browser-person-detail-facts">
               ${birth ? `<div><dt>Born</dt><dd>${birth}</dd></div>` : ""}
               ${person.placeOfBirth ? `<div><dt>Place of birth</dt><dd>${escapeHtml(person.placeOfBirth)}</dd></div>` : ""}

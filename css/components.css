@@ -3825,14 +3825,6 @@ button:focus-visible {
   letter-spacing: 1px;
 }
 
-.library-page-source {
-  padding-top: 10px;
-  font-size: 28px;
-  font-weight: 500;
-  letter-spacing: 4px;
-  color: var(--text-tertiary);
-}
-
 .library-picker-groups {
   display: flex;
   flex-direction: column;
