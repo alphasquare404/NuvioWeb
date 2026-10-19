@@ -1722,7 +1722,7 @@ export const FolderDetailScreen = {
     const mobileFolderTitle = String(this.folder?.title || "Folder").trim();
     const mobileFolderLogo = String(this.folder?.titleLogoUrl || "").trim();
     const mobileTabsMarkup =
-      this.tabs.length > 1
+      this.viewMode === "TABBED_GRID" && this.tabs.length > 1
         ? `<div class="folder-detail-mobile-tabs">
             ${this.tabs
               .map(
