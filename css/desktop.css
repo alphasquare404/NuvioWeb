@@ -220,24 +220,16 @@ html.desktop-browser {
   --browser-floating-back-control-size: 44px;
 }
 
-/* In an installed iOS PWA, the visual canvas can be taller than the dynamic
-   content viewport. Keep the shared visual root large enough to paint behind
-   the status bar; individual screen content continues to use safe-area-aware
-   spacing and dynamic viewport rules below. */
-@supports (height: 100lvh) {
-  @media (display-mode: standalone) {
-    html.desktop-browser {
-      width: max(100%, 100lvw);
-      min-height: max(100%, 100lvh);
-      height: max(100%, 100lvh);
-    }
+/* U1: one viewport rule for every display mode.
+   The app fills exactly the viewport the engine hands it -- `100dvh`, with `100vh`
+   as the fallback for engines that do not know `dvh`. There is deliberately no
+   `display-mode` branch here: an installed PWA gets the full screen from its own
+   engine, a Safari tab gets the area between the browser's bars, and the page
+   follows whichever it is instead of trying to paint into the chrome.
 
-    body.desktop-browser,
-    .desktop-browser #app {
-      min-height: 100%;
-    }
-  }
-}
+   The old standalone-only `100lvh` block that reached behind the status bar has
+   been removed for the same reason: it made the PWA behave differently from the
+   tab, and the difference was no longer justified. */
 
 html.desktop-browser {
   scroll-behavior: smooth;
@@ -5506,9 +5498,22 @@ html.desktop-browser {
   font-size: 14px;
 }
 
-.desktop-browser #detail .detail-production-section .detail-production-company-card {
+.desktop-browser #detail .detail-production-section .detail-production-company-card,
+.desktop-browser #detail .detail-network-section .detail-network-company-card {
   background: #fff;
   border-color: rgba(255, 255, 255, 0.72);
+}
+
+.desktop-browser #detail .detail-network-section .detail-network-company-card {
+  color: #111827;
+}
+
+.desktop-browser
+  #detail
+  .detail-network-section
+  .detail-network-company-card
+  span {
+  color: #111827;
 }
 
 .desktop-browser #detail .detail-production-section .detail-production-company-card:focus-visible,
@@ -7953,7 +7958,8 @@ html.desktop-browser {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser #detail .detail-production-section .detail-production-company-card:hover {
+  .desktop-browser #detail .detail-production-section .detail-production-company-card:hover,
+  .desktop-browser #detail .detail-network-section .detail-network-company-card:hover {
     background: #f4f4f4;
     border-color: rgba(0, 0, 0, 0.12);
   }
@@ -8536,16 +8542,6 @@ html.desktop-browser {
   font-weight: 650;
   line-height: 1.1;
   letter-spacing: -0.03em;
-}
-
-.desktop-browser .library-shell.desktop-navigation-enabled .library-page-source {
-  margin-top: 6px;
-  padding: 0;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.35;
-  letter-spacing: 0.08em;
-  color: var(--text-secondary);
 }
 
 .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row {
@@ -11267,6 +11263,18 @@ body.desktop-browser {
     var(--detail-bg, var(--bg-color));
 }
 
+.desktop-browser #castDetail .browser-person-detail-heading {
+  width: min(100%, 1480px);
+  margin: 28px auto 0;
+}
+
+.desktop-browser #castDetail .browser-person-detail-heading h1 {
+  margin: 0;
+  font-size: clamp(30px, 2.5vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
 .desktop-browser #castDetail .browser-person-detail-layout {
   display: grid;
   grid-template-columns: minmax(238px, 304px) minmax(0, 1fr);
@@ -11314,16 +11322,10 @@ body.desktop-browser {
   object-fit: cover;
 }
 
-.desktop-browser #castDetail .browser-person-detail-profile h1 {
-  margin: 20px 0 14px;
-  font-size: clamp(30px, 3vw, 44px);
-  line-height: 1.08;
-}
-
 .desktop-browser #castDetail .browser-person-detail-facts {
   display: grid;
   gap: 11px;
-  margin: 0;
+  margin: 20px 0 0;
 }
 
 .desktop-browser #castDetail .browser-person-detail-facts div {
@@ -11422,6 +11424,13 @@ body.desktop-browser {
     min-height: max(100dvh, 100vh);
     padding: calc(var(--browser-mobile-nav-clearance) + env(safe-area-inset-top)) var(--browser-page-gutter) calc(34px + env(safe-area-inset-bottom));
   }
+  .desktop-browser #castDetail .browser-person-detail-heading {
+    margin-top: 20px;
+  }
+  .desktop-browser #castDetail .browser-person-detail-heading h1 {
+    font-size: 30px;
+    line-height: 1.1;
+  }
   .desktop-browser #castDetail .browser-person-detail-layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 32px;
@@ -11438,12 +11447,9 @@ body.desktop-browser {
     grid-row: span 2;
     font-size: 36px;
   }
-  .desktop-browser #castDetail .browser-person-detail-profile h1 {
-    margin: 2px 0 10px;
-    font-size: 30px;
-  }
   .desktop-browser #castDetail .browser-person-detail-facts {
     gap: 7px;
+    margin-top: 0;
   }
   .desktop-browser #castDetail .browser-person-detail-biography {
     grid-column: 1 / -1;
@@ -13886,6 +13892,155 @@ body.desktop-browser {
   padding: 12px 2px 18px;
 }
 
+/* A heading that keeps its place.
+   ------------------------------------------------------------------
+   The title stays where it is -- centred -- and shrinks to a bar's size once
+   the page has scrolled past the threshold the screen sets on
+   `data-settings-header-collapsed`.
+   Only for the placements where nothing floats over the top of the page: there
+   the bar can hold the edge of the screen. With the navigation at the top it is
+   deliberately left alone -- the bar could not reach the top without going
+   under the pill, and the strip left between them showed raw scrolling content,
+   which read worse than no bar at all.
+   The bar is pulled out to both edges: a band that stopped at the text's margin
+   looked like a panel floating over the page rather than the top of it. */
+.desktop-browser .settings-shell[data-settings-nav-mode] {
+  /* How far the page's own padding holds the heading in from the edge. */
+  --settings-header-bleed: 48px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
+  margin-inline: calc(-1 * var(--settings-header-bleed));
+  /* The negative margin widens the bar; this puts the text back on the page's
+     own grid, so nothing about the heading moves except its background. */
+  padding-inline: var(--settings-header-bleed);
+  /* No slab of colour, and no blur either until the bar has something to hold
+     back: at rest the heading is simply the top of the page. */
+  background: transparent;
+  border-bottom: 1px solid transparent;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header {
+  padding-inline: calc(var(--settings-header-bleed) + 2px);
+}
+
+/* Nothing floats above the page in these two placements, so the heading may
+   hold its edge -- the safe-area edge where there is one. */
+html:not([data-nav-placement="top"]) .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html:not([data-nav-placement="top"]) .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+}
+
+/* Once it is holding content back the bar becomes a surface: the page's colour
+   shows through, and what scrolls beneath is blurred rather than painted over.
+   A solid fill read as a black box on a themed page, because the page's colour
+   is not always --bg-color. */
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header,
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  /* The same glass the floating navigation wears: its blur, its fill, its
+     shadow. A heading that pins over content is the same kind of object. */
+  backdrop-filter: blur(2px) saturate(150%);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+/* A wide page title sits at the start of its row, which is exactly where Back
+   floats once the bar is at the very top. On a narrow page the title is centred
+   and clears the button on its own, so this is only needed from the wider
+   layout up. */
+@media (min-width: 601px) {
+  html[data-nav-placement="bottom"].desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header,
+  html[data-nav-placement="sidebar"].desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header {
+    padding-inline-start: calc(var(--settings-header-bleed) + 56px);
+  }
+
+  /* On the wide layout Back is above the heading, not on its line. The extra
+     56px only pushes the title off the page's own grid, so the wide layout
+     keeps the same start as every other wide heading. */
+  html[data-layout="desktop"][data-nav-placement="bottom"].desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header,
+  html[data-layout="desktop"][data-nav-placement="sidebar"].desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header {
+    padding-inline-start: var(--settings-header-bleed);
+  }
+}
+
+/* On these two pages the screen element is what scrolls, not the frames the
+   rail layout scrolls inside. Left hidden, the frame becomes the sticky box's
+   scrollport and the heading simply scrolls away with the page. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-sidebar-frame,
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-frame {
+  overflow: visible;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-title {
+  transition: font-size 180ms ease;
+}
+
+.desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header
+  .settings-subtitle {
+  overflow: hidden;
+  max-height: 48px;
+  opacity: 1;
+  transition:
+    max-height 180ms ease,
+    margin 180ms ease,
+    opacity 150ms ease;
+}
+
+/* Collapsed: a bar's title, and no subtitle. Scoped the same way as the bar
+   itself, so the title of a page whose heading does not stick never shrinks on
+   its way out of view. */
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-title {
+  font-size: 18px;
+}
+
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header
+  .settings-subtitle {
+  max-height: 0;
+  margin: 0;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser .settings-shell[data-settings-nav-mode] .settings-title,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header
+    .settings-subtitle {
+    transition: none;
+  }
+}
+
 /* Grouped index: each group is one card with its rows divided inside it, an
    account card above them, and the mark at the foot. The wash behind it all is
    the theme's own colour, so it follows whatever Appearance is set to rather
@@ -13910,6 +14065,7 @@ body.desktop-browser {
 .desktop-browser #search,
 .desktop-browser #discover,
 .desktop-browser #settings,
+.desktop-browser #settingsSection,
 .desktop-browser #account,
 .desktop-browser #castDetail,
 .desktop-browser #stream,
@@ -13935,6 +14091,7 @@ body.desktop-browser {
 .desktop-browser #discover .search-screen-shell,
 .desktop-browser #discover .discover-shell,
 .desktop-browser #settings .settings-shell,
+.desktop-browser #settingsSection .settings-shell,
 .desktop-browser #account .desktop-auth-shell,
 .desktop-browser #account .qr-layout,
 .desktop-browser #castDetail .cast-detail-shell,
@@ -16929,11 +17086,81 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
     .desktop-navigation-enabled {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
   }
+
+  /* Keep one flex direction in both states. The old rule switched row to
+     column at the same moment the label was removed, so nothing could
+     interpolate. Labels stay mounted and collapse through max-height and
+     opacity instead. */
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation,
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
+    transition:
+      width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      min-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      padding 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      gap 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      border-radius 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 160ms ease,
+      color 160ms ease;
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
+    box-sizing: border-box;
+    flex-direction: column;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+    gap: 0;
+    border-radius: 999px;
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser
+    .desktop-navigation-label {
+    display: block;
+    width: auto;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(2px);
+    font-size: 10px;
+    line-height: 12px;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    transition:
+      max-height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 160ms ease,
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser:not(.nav-bottom-collapsed)
+    .desktop-navigation-item {
+    width: 64px;
+    min-width: 64px;
+    height: 52px;
+    padding: 7px 10px 6px;
+    gap: 3px;
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser:not(.nav-bottom-collapsed)
+    .desktop-navigation-label {
+    max-height: 12px;
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  html[data-nav-placement="bottom"].desktop-browser
+    .desktop-navigation-enabled {
+    transition: padding-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html[data-nav-placement="bottom"].desktop-browser .desktop-navigation,
-  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item,
+  html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-label,
+  html[data-nav-placement="bottom"].desktop-browser
+    .desktop-navigation-enabled {
     transition: none;
   }
 }
@@ -17014,10 +17241,23 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
      both of them rather than run under one. */
   .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-page-heading,
   .desktop-browser .library-shell.desktop-navigation-enabled .library-page-header,
-  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header,
-  .desktop-browser .settings-shell .settings-nav-index-header,
-  .desktop-browser .settings-shell .settings-content-header {
+  .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header {
     padding-inline: 56px;
+  }
+
+  .desktop-browser .settings-shell[data-settings-nav-mode] {
+    --settings-header-bleed: 16px;
+  }
+
+  /* Clear of the back button on the left and the rail button on the right, and
+     wide enough that a long section title -- "Content & Discovery" -- stays on
+     one line instead of folding into two. */
+  .desktop-browser .settings-shell .settings-content-header {
+    padding-inline: calc(var(--settings-header-bleed) + 24px);
+  }
+
+  .desktop-browser .settings-shell .settings-content-header .settings-title {
+    font-size: clamp(20px, 5.4vw, 26px);
   }
 
   .desktop-browser .discover-shell.desktop-navigation-enabled .discover-header-copy {
@@ -17254,5 +17494,2866 @@ html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-
     white-space: nowrap;
     width: max-content;
     max-width: none;
+  }
+}
+
+
+/* The document itself is the scroller, not `body`.
+   `body` was left as a scroll container too, so a finger gesture had no
+   document-level scroller to move and `window.scrollY` stayed at 0 while the
+   content grew below the viewport. `html` scrolls; `body` is a plain, tall block;
+   the screens inside it keep their own sizes. */
+html.desktop-browser {
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+body.desktop-browser {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+}
+
+/* An installed app gets the whole screen, status bar included, from the first
+   frame. A Safari tab does not: the browser's own chrome is outside the page, so
+   there is nothing to paint there and this rule is deliberately left out of the
+   tab. Keep it to one small branch -- the rest of the shell does not care which
+   display mode it is in. */
+@supports (height: 100lvh) {
+  @media (display-mode: standalone) {
+    html.desktop-browser {
+      min-height: 100lvh;
+    }
+  }
+}
+
+/* The shell's own canvas, for the strips that carry no page content: under a
+   browser's status strip and around the floating navigation. It has to be the
+   tint the pages start with, otherwise those strips read as black bands. */
+html.desktop-browser,
+body.desktop-browser {
+  background-color: var(--app-canvas-color, var(--bg-color));
+}
+
+/* One behaviour for every page, so the browser never shows a different edge on
+   one screen than on another: every screen scrolls its own container, the way the
+   router already treats the screens it layers. The document therefore stays the
+   size of the viewport everywhere, and the browser's own strips stay outside the
+   page on every screen -- the same look from the first frame, with no "full"
+   state that only appears after scrolling. The player is left alone: it owns the
+   whole viewport by itself. */
+.desktop-browser .screen:not(#player) {
+  position: fixed;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-color);
+}
+
+/* ---------------------------------------------------------------------------
+   Settings headings, first pass: one bar that holds the top edge of the page.
+
+   The offset is written against the safe area, not against a number: an installed
+   app paints behind the status bar, so its heading and its Back control have to
+   start below the notch / Dynamic Island, while a browser tab -- where env() is
+   zero -- keeps exactly the position it had.
+
+   Phone: the bar is 76px tall at rest and 52px once it is holding content back,
+   with the title's centre at 40 / 26 from the safe edge. Section pages carry the
+   subtitle at rest and drop it when collapsed.
+   --------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  /* The bar owns the top edge of the screen, safe area included: its box starts
+     at 0, the inset is padding inside it, and its own surface covers the strip
+     above the title so nothing can be read through it. Growing the box by the
+     inset is what keeps the title 22px below the safe edge. */
+  .desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header,
+  .desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
+    position: sticky;
+    top: 0;
+    box-sizing: border-box;
+    gap: 4px;
+    padding-top: calc(var(--browser-safe-area-top) + 22px);
+    padding-bottom: 19px;
+    /* No min-height: the bar ends where its own padding ends, so a section page
+       with a subtitle is exactly as tall as that subtitle needs and no taller. */
+    /* At rest the bar is simply the top of the page: no fill, no blur. Only the
+       collapsed state in the rule below gives it a surface. */
+    background: transparent;
+  }
+
+  .desktop-browser .settings-shell[data-settings-nav-mode="section"] .settings-content-header {
+    padding-top: calc(var(--browser-safe-area-top) + 14px);
+    padding-bottom: 6px;
+    justify-content: flex-start;
+  }
+
+  /* Collapsed: no gap for a subtitle that is no longer shown, and the bar ends
+     after its own padding, exactly as it does at rest. */
+  .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-nav-index-header,
+  .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-content-header {
+    gap: 0;
+    padding-top: calc(var(--browser-safe-area-top) + 16px);
+    padding-bottom: 16px;
+  }
+
+  /* Scrolled: the floating navigation's own glass -- its blur, its fill, its
+     shadow -- so a pinned heading reads as the same kind of object. At rest the
+     bar stays transparent, as decided. */
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-nav-index-header,
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-content-header {
+    -webkit-backdrop-filter: blur(2px) saturate(150%);
+    backdrop-filter: blur(2px) saturate(150%);
+    background: rgba(18, 18, 20, 0.46);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  }
+
+  /* Back belongs on the bar's own line, clear of the notch. It is a sibling of
+     the heading, not a child, so it is matched from the shell. */
+  .desktop-browser .settings-shell[data-settings-nav-mode="section"] .settings-section-back {
+    position: fixed;
+    top: calc(var(--browser-safe-area-top) + 4px);
+    left: 12px;
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Desktop: the heading now holds the top of the page as well. The rules that
+   used to be limited to the placements with nothing floating over the heading
+   are re-stated for the top placement, so the collapsed bar looks the same
+   whichever navigation is in force. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  position: sticky;
+  top: var(--browser-safe-area-top);
+  z-index: 8;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-title {
+  font-size: 18px;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header
+  .settings-subtitle {
+  max-height: 0;
+  margin: 0;
+  opacity: 0;
+}
+
+@media (max-width: 600px) {
+  /* The page used to hold the heading 8px down from the top; the bar now owns
+     that edge itself, so the padding would only push the whole bar down. */
+  .desktop-browser .settings-shell .settings-workspace {
+    padding-top: 0;
+  }
+
+  /* Collapsed, the bar is the title alone: the subtitle's gap goes with it. */
+  .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-nav-index-header,
+  .desktop-browser
+    .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+    .settings-content-header {
+    gap: 0;
+  }
+}
+
+/* Section pages: the title has to clear the Back control, which floats at the
+   start of the same line, and the subtitle is sized so the resting bar keeps its
+   76px (plus the safe inset) instead of growing by a line. */
+@media (max-width: 600px) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header {
+    padding-inline: 64px 16px;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-subtitle {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+}
+
+/* The section page's Back is the chevron alone: no disc, no border, no shadow.
+   The 44px box stays, because that is the touch target, not the paint. */
+@media (max-width: 600px) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-section-back,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-section-back:hover,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-section-back:focus-visible {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Section pages: the title block is centred on the bar, not merely its text. The
+   block keeps a fixed clearance on each side -- Back's 44px box plus a gap, and
+   the safe insets in landscape -- so the centred line can never reach a control,
+   and a long title is cut with an ellipsis instead of running under one. */
+@media (max-width: 600px) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header {
+    padding-inline:
+      calc(var(--browser-safe-area-left) + 64px)
+      calc(var(--browser-safe-area-right) + 64px);
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-title {
+    width: 100%;
+    margin-inline: auto;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-subtitle {
+    width: 100%;
+    margin-inline: auto;
+    text-align: center;
+  }
+}
+
+/* Wide screens: the section's Back sits inside the bar, on the title's line, as
+   a bare chevron -- no disc, no border, no shadow. The heading becomes one row:
+   control, then the copy block, so the title keeps the space that is left. */
+@media (min-width: 601px) {
+  .desktop-browser .settings-shell[data-settings-nav-mode="section"] .settings-content-header {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-header-copy {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back:hover,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back:focus-visible {
+    position: static;
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    transform: none;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* The bar owns the space under it, and only that space. The index page is a flex
+   list with no gap of its own, so its bar carries the 12px; the section page's
+   content has the gap, so its bar carries none. Card-to-card spacing lives in the
+   stack and is not touched. */
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-nav-index-header {
+  margin-bottom: 12px;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content-header {
+  margin-bottom: 0;
+}
+
+.desktop-browser .settings-shell[data-settings-nav-mode] .settings-content {
+  row-gap: 12px;
+}
+
+/* Wide layout: the Settings heading is part of the page, exactly as it was before
+   this work. No sticky bar, no collapse, no glass -- the browser's wide shell has
+   its navigation at the top and a heading that pins there is one moving surface
+   too many. The narrow layout keeps the sticky bar. */
+@media (min-width: 601px) {
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-nav-index-header,
+  html:not([data-nav-placement="top"])
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header,
+  html[data-nav-placement="top"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-nav-index-header,
+  html[data-nav-placement="top"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header {
+    position: static;
+  }
+}
+
+/* Wide layout: Back leaves the heading and floats at the top left, on the
+   navigation's own line. It is a circle the size of the navigation bar, wearing
+   the same glass -- the same blur, fill, border and shadow -- so the two read as
+   one band of chrome. The heading keeps only its copy. */
+@media (min-width: 601px) {
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back:hover,
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back:focus-visible {
+    position: fixed;
+    top: var(--browser-floating-nav-top);
+    /* On the page's own gutter, so the circle sits in the same column as the
+       heading copy rather than against the window edge. */
+    left: calc(var(--browser-safe-area-left) + clamp(24px, 3vw, 48px));
+    /* The bar's own height is its content box; its 1px border makes the visible
+       pill 2px taller, so the circle adds the same 2px and the two line up. */
+    width: calc(var(--browser-floating-nav-height) + 2px);
+    height: calc(var(--browser-floating-nav-height) + 2px);
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    background: rgba(18, 18, 20, 0.46);
+    -webkit-backdrop-filter: blur(2px) saturate(150%);
+    backdrop-filter: blur(2px) saturate(150%);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 31;
+  }
+
+  .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-section-back
+    .settings-section-back-icon {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Settings heading when the shell is running the narrow layout.
+
+   The rules above are written for widths, because that is how the shell used to
+   decide. Now that the layout is published on the root element, the heading reads
+   it: a tablet at 744 with the navigation at the bottom is running the narrow
+   layout, and its heading must look like the phone's bar, not like the wide
+   screen's in-page title. The wide rules keep applying to the wide layout only.
+   --------------------------------------------------------------------------- */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  position: sticky;
+  top: 0;
+  box-sizing: border-box;
+  gap: 4px;
+  padding-top: calc(var(--browser-safe-area-top) + 22px);
+  padding-bottom: 19px;
+  background: transparent;
+}
+
+/* The index is the page, so its title is centred on the page -- at every
+   width the narrow layout can cover, not only below 600px. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header {
+  justify-content: center;
+  text-align: center;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header
+  .settings-title {
+  text-align: center;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+  /* The same box as the index, so the two headings collapse to one height.
+     The section's subtitle is what makes it taller at rest; it is the only
+     difference left. */
+  padding-top: calc(var(--browser-safe-area-top) + 22px);
+  padding-bottom: 19px;
+  padding-inline: calc(var(--browser-safe-area-left) + 64px)
+    calc(var(--browser-safe-area-right) + 64px);
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-title {
+  width: 100%;
+  margin-inline: auto;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Below the wide breakpoint the index title uses the fluid phone size. The
+   section takes the same one; the collapsed 18px rule then wins on both. */
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-title {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+}
+
+/* The section's phone title is larger than the old phone-section rule, so the
+   collapsed size needs a selector that still wins on those widths. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-title {
+  font-size: 18px;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-subtitle {
+  width: 100%;
+  margin-inline: auto;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+/* Collapsed, the subtitle has no height left. Its gap goes with it, so the
+   section bar ends at the same height as the index bar. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode="section"]
+  .settings-content-header {
+  gap: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-header-copy {
+  gap: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back:hover,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back:focus-visible {
+  position: fixed;
+  top: calc(var(--browser-safe-area-top) + 4px);
+  left: calc(var(--browser-safe-area-left) + 12px);
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+  z-index: 30;
+}
+
+/* The last pieces of the narrow layout that the width-based block above only gave
+   to phones: the page's own top padding and the title sizes. Scoped to widths the
+   narrow layout can actually meet on a tablet, so phones keep exactly what they
+   already had. */
+@media (min-width: 601px) {
+  html[data-layout="mobile"] .desktop-browser .settings-shell .settings-workspace {
+    padding-top: 0;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-title {
+    font-size: 31px;
+  }
+}
+
+/* Top bar means the wide heading, on any device: reading the placement rather
+   than the width is what lets a phone carry it. The page keeps its own space
+   below the floating bar so the heading never sits under it. The bar's height
+   variable is its content box; its 1px border makes the pill 2px taller, so the
+   12px gap is measured from the border, not from the content. */
+html[data-nav-placement="top"] .desktop-browser .settings-shell .settings-workspace {
+  padding-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 14px
+  );
+}
+
+/* The rail's heading starts on the same line as a top bar's. The rail hides the
+   bar, but the Back circle still owns that top band; the workspace is what was
+   leaving the older 112px above the heading instead of the bar plus the same
+   12px gap. */
+html[data-layout="desktop"][data-nav-placement="sidebar"].desktop-browser
+  .settings-shell
+  .settings-workspace {
+  padding-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 14px
+  );
+}
+
+/* The wide rail heading starts its title on the same 2px line as the top bar's
+   heading; Back is above it in both placements. */
+html[data-layout="desktop"][data-nav-placement="sidebar"].desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="desktop"][data-nav-placement="sidebar"].desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  padding-top: 2px;
+}
+
+/* The index heading carries 2px more inline padding than the section. On the
+   wide layout the section takes the same inset, so both titles sit on one x. */
+html[data-layout="desktop"][data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header {
+  padding-inline: calc(var(--settings-header-bleed) + 2px);
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  position: static;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back {
+  position: fixed;
+  top: var(--browser-floating-nav-top);
+  left: calc(var(--browser-safe-area-left) + clamp(16px, 3vw, 48px));
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+  z-index: 30;
+}
+
+/* A phone's top bar is centred in the viewport, which at 393px leaves only
+   about 8px between it and the Back circle. Below that the centred bar starts
+   on top of the circle instead. Push it right by just enough to keep the same
+   8px gap: 16px gutter + 54px Back + 8px gap + half the 238px icon-only bar.
+   From 394px up the shift is zero and the bar stays centred. */
+html[data-device="phone"][data-nav-placement="top"]
+  .desktop-browser
+  .desktop-navigation {
+  margin-left: max(0px, calc(197px - 50vw));
+}
+
+/* Between 601 and 760 the bar's own content is 2px shorter than its height
+   variable: 44px items plus 5px scroll padding is 54px, plus the border makes
+   56px, while the rest of the shell assumes 58px. Give it the missing 2px as
+   symmetrical padding so the Back circle, the bar and the heading below it all
+   agree on where the bar ends. */
+@media (min-width: 601px) and (max-width: 760px) {
+  html[data-nav-placement="top"] .desktop-browser .desktop-navigation {
+    padding-block: 1px;
+  }
+}
+
+/* Only the top-right trigger belongs inside the index heading. The index
+   renders both a heading trigger and the shell's own; CSS shows the one the
+   chosen corner calls for, so changing the corner while the index is suspended
+   needs no re-render. The two bottom corners stay in the shell, where the
+   heading's collapsed glass cannot become their containing block. */
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header
+  > .desktop-navigation-reveal {
+  display: inline-flex;
+}
+
+html[data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-root-sidebar-slot
+  .desktop-navigation-reveal {
+  display: none;
+}
+
+/* The Settings rail button follows Back.
+   First Settings, because that is where the heading and Back change shape
+   together; the other shells can take the same treatment once their headings
+   are ready.
+
+   Narrow layout: Back is a bare 44px chevron inside the sticky heading, so the
+   reveal is the same bare control on the same line, with no disc.
+
+   Wide layout: Back is a floating circle on the navigation's line, so the
+   reveal keeps its circle and starts at the navigation's own top edge. */
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal {
+  top: calc(var(--browser-safe-area-top) + 4px);
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: #fff;
+}
+
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal {
+  top: var(--browser-floating-nav-top);
+  /* Same diameter as Back, so the two circles are one band of chrome. */
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+}
+
+/* The rail opens from under its own button. Keep the 10px gap now that the
+   button has moved and, on the narrow layout, changed size. */
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation {
+  top: calc(var(--browser-safe-area-top) + 58px);
+}
+
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation {
+  /* The button is now the bar's full height; keep its 10px gap. */
+  top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 12px
+  );
+}
+
+/* On the index there is no Back to line up with, so the reveal follows the
+   title's own line box: centred on it at rest, and centred again after the
+   heading collapses to the smaller title. The offset is the distance from the
+   safe edge to the top of the 44px control. */
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"] {
+  --settings-index-reveal-offset: 17px;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="index"] {
+    /* Half the index title's line box: clamp(28px, 8vw, 34px) x 1.1 / 2. */
+    --settings-index-reveal-offset: clamp(15.4px, 4.4vw, 18.7px);
+  }
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"][data-settings-header-collapsed="true"] {
+  /* The compact bar is only ten pixels taller than the 44px control, so the
+     control starts at the safe edge rather than ten pixels below it. */
+  --settings-index-reveal-offset: 0px;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .desktop-navigation-reveal {
+  /* The button is a child of the index heading now, so it is positioned in
+     the heading's own box instead of being pinned to the viewport. */
+  position: absolute;
+  top: calc(var(--browser-safe-area-top) + var(--settings-index-reveal-offset));
+  transition:
+    top 180ms ease,
+    color 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--settings-index-reveal-offset) + 54px
+  );
+  transition:
+    top 180ms ease,
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="index"]
+    .desktop-navigation-reveal,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="index"]
+    .desktop-navigation {
+    transition: none;
+  }
+}
+
+/* When the bar is at the top, its contents are the wide layout's: a title at the
+   start of its row, the subtitle under it, neither centred. The narrow layout's
+   centring is what was still showing through. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-title {
+  width: auto;
+  margin-inline: 0;
+  overflow: visible;
+  text-align: left;
+  text-overflow: clip;
+  white-space: normal;
+  font-size: clamp(30px, 2.5vw, 40px);
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-subtitle {
+  width: auto;
+  margin-inline: 0;
+  text-align: left;
+  font-size: 16px;
+  line-height: 1.45;
+  max-height: none;
+  opacity: 1;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header {
+  justify-content: flex-start;
+  padding-inline: var(--settings-header-bleed);
+  padding-top: 2px;
+  padding-bottom: 6px;
+}
+
+/* The index header had no equivalent of the section override, so its mobile
+   padding stayed above the title. Same bar, same padding. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header {
+  padding-top: 2px;
+}
+
+/* The Settings heading's glass, painted one layer down.
+   A backdrop-filter on the heading itself made the heading a containing block
+   for fixed children: Back then measured its left edge from the heading's
+   negative bleed instead of the viewport, and slid off screen when the bar
+   collapsed on a tablet. The heading keeps its border and shadow; the pseudo
+   element owns the fill and the blur. */
+html[data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header::before,
+html[data-nav-placement]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  pointer-events: none;
+}
+
+/* The bottom rail triggers are the same circle as the top-right one in the
+   same layout. On the narrow layout that means the same 44px control; on the
+   wide layout it means the same circle the Back button wears. The panel keeps
+   its 10px gap above the button. */
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-left"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal {
+  width: 44px;
+  height: 44px;
+}
+
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal,
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-left"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation-reveal {
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-left"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation {
+  bottom: calc(var(--browser-nav-rail-bottom) + 54px);
+}
+
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-right"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation,
+html[data-layout="desktop"][data-nav-placement="sidebar"][data-nav-rail-corner="bottom-left"]
+  .desktop-browser
+  .settings-shell
+  .desktop-navigation {
+  bottom: calc(
+    var(--browser-nav-rail-bottom) + var(--browser-floating-nav-height) + 12px
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Library, Search, and Cast headings.
+
+   The Settings index established the bar: on the narrow layout it sticks to
+   the safe-area edge, centres its title, and collapses to the 18px bar once the
+   page is moving. Reuse the same surface here rather than growing three more
+   copies of the animation. The wide layout keeps each page's existing title.
+   --------------------------------------------------------------------------- */
+html[data-layout="mobile"] .desktop-browser #library .page-heading[data-page-heading],
+html[data-layout="mobile"] .desktop-browser #search .page-heading[data-page-heading],
+html[data-layout="mobile"] .desktop-browser #castDetail .page-heading[data-page-heading] {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: padding 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  box-sizing: border-box;
+  width: 100vw;
+  margin: 0 calc(50% - 50vw) 12px;
+  padding: calc(var(--browser-safe-area-top) + 22px)
+    calc(var(--browser-safe-area-right) + 56px) 19px
+    calc(var(--browser-safe-area-left) + 56px);
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+/* These pages used to reserve the top strip as page padding. The heading now
+   owns that strip, as the Settings index heading does. */
+html[data-layout="mobile"] .desktop-browser #library .library-main,
+html[data-layout="mobile"] .desktop-browser #search .search-content,
+html[data-layout="mobile"] .desktop-browser #castDetail .browser-person-detail-shell {
+  padding-top: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library
+  .page-heading[data-page-heading]
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search
+  .page-heading[data-page-heading]
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .page-heading[data-page-heading]
+  .page-heading-title {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 31px;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-align: center;
+  transition: font-size 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #search
+  .search-page-heading.page-heading-title {
+  line-height: 1.1;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #library
+    .page-heading[data-page-heading]
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #search
+    .page-heading[data-page-heading]
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #castDetail
+    .page-heading[data-page-heading]
+    .page-heading-title {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library[data-page-heading-collapsed="true"]
+  .page-heading,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search[data-page-heading-collapsed="true"]
+  .page-heading,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail[data-page-heading-collapsed="true"]
+  .page-heading {
+  /* Compact bar: ten pixels below the safe edge, then the 18px title and
+     enough room for the 44px rail control. */
+  padding-top: calc(var(--browser-safe-area-top) + 12px);
+  padding-bottom: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library[data-page-heading-collapsed="true"]
+  .page-heading::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search[data-page-heading-collapsed="true"]
+  .page-heading::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail[data-page-heading-collapsed="true"]
+  .page-heading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library[data-page-heading-collapsed="true"]
+  .page-heading
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search[data-page-heading-collapsed="true"]
+  .page-heading
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail[data-page-heading-collapsed="true"]
+  .page-heading
+  .page-heading-title {
+  font-size: 18px;
+}
+
+/* The rail trigger lives in the heading on the narrow layout, exactly as it
+   does on the Settings index. Every page gets a copy; CSS shows it only for
+   the top-right corner and hides the shell's copy. */
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  .page-heading[data-page-heading]
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .page-heading[data-page-heading]
+  > .desktop-navigation-reveal {
+  position: absolute;
+  top: calc(var(--browser-safe-area-top) + var(--page-heading-reveal-offset));
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: #fff;
+  transition:
+    top 180ms ease,
+    color 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library
+  .library-shell:has(.page-heading)
+  > .desktop-navigation-reveal,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search
+  .search-screen-shell:has(.page-heading)
+  > .desktop-navigation-reveal,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-shell:has(.page-heading)
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail {
+  --page-heading-reveal-offset: 17px;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #library,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #search,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #castDetail {
+    --page-heading-reveal-offset: clamp(15.4px, 4.4vw, 18.7px);
+  }
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library[data-page-heading-collapsed="true"],
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search[data-page-heading-collapsed="true"],
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail[data-page-heading-collapsed="true"] {
+  --page-heading-reveal-offset: 0px;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--page-heading-reveal-offset) + 54px
+  );
+  transition:
+    top 180ms ease,
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+/* The Settings heading takes the same compact collapsed box as the pages
+   above: ten pixels below the safe edge, the 18px title, fourteen below. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-header-collapsed="true"][data-settings-nav-mode]
+  .settings-content-header {
+  padding-top: calc(var(--browser-safe-area-top) + 12px);
+  padding-bottom: 14px;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  transition: padding 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-nav-index-header,
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-content-header,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    .page-heading[data-page-heading]
+    > .desktop-navigation-reveal,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #library
+    .desktop-navigation,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #search
+    .desktop-navigation,
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #castDetail
+    .desktop-navigation {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Scroll-linked heading progress.
+
+   The heading follows the first 96px of scroll continuously: the same progress
+   drives the title size, the box padding and the chrome that appears behind it.
+   Scrolling back up unwinds it. The binary attributes remain only as the
+   "fully collapsed" state for any legacy rule; they are no longer the trigger.
+   --------------------------------------------------------------------------- */
+html[data-layout="mobile"] .desktop-browser #library .page-heading[data-page-heading],
+html[data-layout="mobile"] .desktop-browser #search .page-heading[data-page-heading],
+html[data-layout="mobile"] .desktop-browser #castDetail .page-heading[data-page-heading] {
+  transition: none;
+  padding-top: calc(
+    var(--browser-safe-area-top) + 22px - 10px * var(--page-heading-progress, 0)
+  );
+  padding-bottom: calc(19px - 5px * var(--page-heading-progress, 0));
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--page-heading-progress, 0)));
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library
+  .page-heading[data-page-heading]
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search
+  .page-heading[data-page-heading]
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .page-heading[data-page-heading]
+  .page-heading-title {
+  --page-heading-title-rest: 31px;
+  font-size: calc(
+    var(--page-heading-title-rest) + (18px - var(--page-heading-title-rest)) *
+      var(--page-heading-progress, 0)
+  );
+  transition: none;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #library
+    .page-heading[data-page-heading]
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #search
+    .page-heading[data-page-heading]
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #castDetail
+    .page-heading[data-page-heading]
+    .page-heading-title {
+    --page-heading-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #library
+  .page-heading[data-page-heading]::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #search
+  .page-heading[data-page-heading]::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .page-heading[data-page-heading]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  opacity: var(--page-heading-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .page-heading[data-page-heading]
+  > .desktop-navigation-reveal {
+  top: calc(
+    var(--browser-safe-area-top) + var(--page-heading-reveal-offset) *
+      (1 - var(--page-heading-progress, 0))
+  );
+  transition:
+    color 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #library
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #search
+  .desktop-navigation,
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--page-heading-reveal-offset) *
+      (1 - var(--page-heading-progress, 0)) + 54px
+  );
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+/* Settings' index and section headings use the same progress. */
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header {
+  transition: none;
+  padding-top: calc(
+    var(--browser-safe-area-top) + 22px - 10px * var(--settings-heading-progress, 0)
+  );
+  padding-bottom: calc(19px - 5px * var(--settings-heading-progress, 0));
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--settings-heading-progress, 0)));
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .settings-nav-index-header
+  .settings-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-title {
+  --settings-title-rest: 31px;
+  font-size: calc(
+    var(--settings-title-rest) + (18px - var(--settings-title-rest)) *
+      var(--settings-heading-progress, 0)
+  );
+  transition: none;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode]
+    .settings-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="index"]
+    .settings-nav-index-header
+    .settings-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-title {
+    --settings-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-header-copy {
+  --settings-copy-gap: 0px;
+  gap: calc(var(--settings-copy-gap) * (1 - var(--settings-heading-progress, 0)));
+  transition: none;
+}
+
+@media (min-width: 601px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header
+    .settings-header-copy {
+    --settings-copy-gap: 6px;
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-subtitle {
+  max-height: calc(48px * (1 - var(--settings-heading-progress, 0)));
+  opacity: calc(1 - var(--settings-heading-progress, 0));
+  transition: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-nav-index-header::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode]
+  .settings-content-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  opacity: var(--settings-heading-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .desktop-navigation-reveal {
+  position: fixed;
+  right: var(--browser-nav-rail-inset);
+  left: auto;
+  top: calc(
+    var(--browser-safe-area-top) + var(--settings-index-reveal-offset) *
+      (1 - var(--settings-heading-progress, 0))
+  );
+  transition:
+    color 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="index"]
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--settings-index-reveal-offset) *
+      (1 - var(--settings-heading-progress, 0)) + 54px
+  );
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+/* Discover and Catalog See All use the same progress, but they have a Back
+   control instead of a root-page heading. */
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading[data-page-heading],
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading[data-page-heading] {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100vw;
+  margin: 0 calc(50% - 50vw) 12px;
+  padding-top: calc(
+    var(--browser-safe-area-top) + 22px - 10px * var(--page-heading-progress, 0)
+  );
+  padding-right: calc(var(--browser-safe-area-right) + 56px);
+  padding-bottom: calc(19px - 5px * var(--page-heading-progress, 0));
+  padding-left: calc(var(--browser-safe-area-left) + 56px);
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+  transition: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .discover-main {
+  padding-top: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-shell {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading.page-heading-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading.page-heading-back {
+  padding-right: calc(var(--browser-safe-area-right) + 64px);
+  padding-left: calc(var(--browser-safe-area-left) + 64px);
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading-copy,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading-copy {
+  --page-heading-copy-gap: 0px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--page-heading-copy-gap) * (1 - var(--page-heading-progress, 0)));
+  width: 100%;
+  min-width: 0;
+  transition: none;
+}
+
+@media (min-width: 601px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #discover
+    .page-heading-copy,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #catalogSeeAll
+    .page-heading-copy {
+    --page-heading-copy-gap: 6px;
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading-title {
+  --page-heading-title-rest: 31px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(
+    var(--page-heading-title-rest) + (18px - var(--page-heading-title-rest)) *
+      var(--page-heading-progress, 0)
+  );
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-align: center;
+  transition: none;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #discover
+    .page-heading-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #catalogSeeAll
+    .page-heading-title {
+    --page-heading-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading-subtitle,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading-subtitle {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  max-height: calc(48px * (1 - var(--page-heading-progress, 0)));
+  opacity: calc(1 - var(--page-heading-progress, 0));
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  transition: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading[data-page-heading]::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading[data-page-heading]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  opacity: var(--page-heading-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .page-heading[data-page-heading],
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .page-heading[data-page-heading] {
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--page-heading-progress, 0)));
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .discover-desktop-back-button,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .catalog-seeall-browser-back {
+  position: fixed;
+  top: calc(var(--browser-safe-area-top) + 4px);
+  left: calc(var(--browser-safe-area-left) + 12px);
+  z-index: 30;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #discover
+  .search-screen-shell:has(.page-heading)
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #discover {
+  --page-heading-reveal-offset: 17px;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+    .desktop-browser
+    #discover {
+    --page-heading-reveal-offset: clamp(15.4px, 4.4vw, 18.7px);
+  }
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #discover[data-page-heading-collapsed="true"] {
+  --page-heading-reveal-offset: 0px;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #discover
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--page-heading-reveal-offset) *
+      (1 - var(--page-heading-progress, 0)) + 54px
+  );
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+/* One centre line for the title, Back, and the rail trigger. The controls
+   follow the title's half-line; the compact padding keeps a 44px control
+   inside the safe area. */
+html[data-layout="mobile"] {
+  --heading-control-rest-offset: 17px;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"] {
+    --heading-control-rest-offset: clamp(15.4px, 4.4vw, 18.7px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-content-header
+  .settings-section-back {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset) *
+      (1 - var(--settings-heading-progress, 0))
+  );
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .settings-root-sidebar-slot
+  .desktop-navigation-reveal {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset) *
+      (1 - var(--settings-heading-progress, 0))
+  );
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  .settings-shell[data-settings-nav-mode="section"]
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset) *
+      (1 - var(--settings-heading-progress, 0)) + 54px
+  );
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #discover
+  .discover-desktop-back-button,
+html[data-layout="mobile"]
+  .desktop-browser
+  #catalogSeeAll
+  .catalog-seeall-browser-back {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset) *
+      (1 - var(--page-heading-progress, 0))
+  );
+}
+
+/* Detail keeps the hero full-bleed, so its heading starts as an empty
+   transparent overlay. The hero logo/title is cloned into the heading only
+   after the original brand has scrolled underneath it. */
+.desktop-browser #detail .detail-heading {
+  display: none;
+}
+
+html[data-layout="mobile"] .desktop-browser #detail .detail-heading {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  padding: calc(
+      var(--browser-safe-area-top) + 22px - 10px *
+        var(--detail-heading-progress, 0)
+    )
+    calc(var(--browser-safe-area-right) + 64px)
+    calc(19px - 5px * var(--detail-heading-progress, 0))
+    calc(var(--browser-safe-area-left) + 64px);
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0));
+  color: #fff;
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--detail-heading-progress, 0)));
+  pointer-events: none;
+}
+
+html[data-layout="mobile"] .desktop-browser #detail .detail-heading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(14, 14, 16, 0.68);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  opacity: var(--detail-heading-glass-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"] .desktop-browser #detail .detail-heading-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: calc(
+    34px - 14.2px * var(--detail-heading-progress, 0)
+  );
+  overflow: hidden;
+  opacity: var(--detail-heading-brand-progress, 0);
+  transform: translateY(
+    calc(4px * (1 - var(--detail-heading-brand-progress, 0)))
+  );
+  pointer-events: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .detail-heading-brand
+  .series-detail-logo {
+  width: auto;
+  max-width: min(42vw, 180px);
+  max-height: 20px;
+  margin: 0;
+  object-fit: contain;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .detail-heading-brand
+  .series-detail-title {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 20px;
+  margin: 0;
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-line-clamp: unset;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .detail-heading-brand
+  .series-detail-title[hidden] {
+  display: none;
+}
+
+html[data-layout="mobile"] .desktop-browser #detail .detail-heading-back {
+  position: absolute;
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset, 17px) *
+      (1 - var(--detail-heading-progress, 0))
+  );
+  left: calc(var(--browser-safe-area-left) + 12px);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .detail-heading
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #detail
+  .detail-heading
+  > .desktop-navigation-reveal {
+  position: absolute;
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset, 17px) *
+      (1 - var(--detail-heading-progress, 0))
+  );
+  right: var(--browser-nav-rail-inset);
+  z-index: 31;
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  transform: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
+  pointer-events: auto;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #detail:has(.detail-heading)
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #detail
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset, 17px) *
+      (1 - var(--detail-heading-progress, 0)) + 54px
+  );
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .series-detail-shell:has(.detail-heading)
+  .series-detail-content
+  .detail-desktop-back-button {
+  display: none;
+}
+
+#detail .series-detail-shell.detail-trailer-active .detail-heading {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Collection from Home: the folder title/logo owns the sticky heading, while
+   its tabs stay in the scrolling body. */
+.folder-detail-mobile-heading,
+.folder-detail-mobile-tabs {
+  display: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell {
+  padding-top: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .desktop-folder-detail-shell
+  .folder-detail-desktop-back {
+  display: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-heading {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100vw;
+  margin: 0 calc(50% - 50vw) 12px;
+  padding-top: calc(
+    var(--browser-safe-area-top) + 22px - 10px *
+      var(--page-heading-progress, 0)
+  );
+  padding-right: calc(var(--browser-safe-area-right) + 64px);
+  padding-bottom: calc(19px - 5px * var(--page-heading-progress, 0));
+  padding-left: calc(var(--browser-safe-area-left) + 64px);
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--page-heading-progress, 0)));
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-heading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  opacity: var(--page-heading-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  height: calc(
+    34px - 14.2px * var(--page-heading-progress, 0)
+  );
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-title {
+  --folder-title-rest: 31px;
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-color);
+  font-size: calc(
+    var(--folder-title-rest) + (18px - var(--folder-title-rest)) *
+      var(--page-heading-progress, 0)
+  );
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #folderDetail
+    .folder-detail-mobile-title {
+    --folder-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-logo {
+  width: auto;
+  max-width: min(60vw, 360px);
+  max-height: calc(
+    34px - 14px * var(--page-heading-progress, 0)
+  );
+  margin: 0;
+  object-fit: contain;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-back {
+  position: absolute;
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset, 17px) *
+      (1 - var(--page-heading-progress, 0))
+  );
+  left: calc(var(--browser-safe-area-left) + 12px);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-heading
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-heading
+  > .desktop-navigation-reveal {
+  position: absolute;
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset, 17px) *
+      (1 - var(--page-heading-progress, 0))
+  );
+  right: var(--browser-nav-rail-inset);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-color);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  transform: none;
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #folderDetail:has(.folder-detail-mobile-heading)
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #folderDetail
+  .desktop-navigation {
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset, 17px) *
+      (1 - var(--page-heading-progress, 0)) + 54px
+  );
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-tabs {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 0 0 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-tab {
+  flex: 0 0 auto;
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+/* Stream: the media logo/title is the sticky heading on the single-column
+   layout. The old hero brand is removed there so it cannot appear twice. */
+.stream-page-heading {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    padding: calc(var(--browser-safe-area-top) + 22px)
+      calc(var(--browser-safe-area-right) + 64px) 19px
+      calc(var(--browser-safe-area-left) + 64px);
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: rgba(18, 18, 20, 0.46);
+    -webkit-backdrop-filter: blur(2px) saturate(150%);
+    backdrop-filter: saturate(150%) blur(2px);
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+    min-width: 0;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading-subtitle {
+    width: 100%;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading-title {
+    --stream-title-rest: 31px;
+    width: 100%;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-color);
+    font-size: var(--stream-title-rest);
+    font-weight: 650;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading-logo {
+    width: auto;
+    height: 20px;
+    max-width: min(60vw, 360px);
+    max-height: 20px;
+    margin: 0;
+    object-fit: contain;
+    transform: none;
+    will-change: auto;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading-back {
+    position: absolute;
+    top: calc(var(--browser-safe-area-top) + 17px);
+    left: calc(var(--browser-safe-area-left) + 12px);
+    z-index: 31;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-color);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-left
+    .stream-route-logo,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-left
+    .stream-route-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-shell
+    > .stream-desktop-back-button {
+    display: none;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-left {
+    display: none;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-right {
+    margin-top: 0;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-content {
+    padding-top: calc(var(--browser-safe-area-top) + 91px);
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100svh;
+    overflow: visible;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-shell {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100svh;
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-content {
+    min-height: 100vh;
+    min-height: 100svh;
+  }
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading-title {
+    --stream-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+@media (min-width: 601px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-page-heading-copy {
+    gap: 6px;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #stream
+    .stream-route-content {
+    padding-top: calc(var(--browser-safe-area-top) + 97px);
+  }
+}
+
+/* Collection editor and folder editor. Both are standalone browser forms:
+   Back lives in the sticky heading and the old desktop header is desktop-only. */
+.collection-editor-mobile-heading {
+  display: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .desktop-collection-editor-shell,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .desktop-collection-editor-shell {
+  padding-top: 0;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .desktop-collection-editor-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .desktop-collection-editor-header,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .desktop-collection-editor-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .desktop-collection-editor-header {
+  display: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-heading,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-heading {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100vw;
+  margin: 0 calc(50% - 50vw) 12px;
+  padding-top: calc(
+    var(--browser-safe-area-top) + 22px - 10px *
+      var(--page-heading-progress, 0)
+  );
+  padding-right: calc(var(--browser-safe-area-right) + 64px);
+  padding-bottom: calc(19px - 5px * var(--page-heading-progress, 0));
+  padding-left: calc(var(--browser-safe-area-left) + 64px);
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--page-heading-progress, 0)));
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-heading::before,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-heading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(18, 18, 20, 0.46);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  opacity: var(--page-heading-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-copy,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-copy {
+  --collection-editor-copy-gap: 0px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(
+    var(--collection-editor-copy-gap) *
+      (1 - var(--page-heading-progress, 0))
+  );
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 601px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #collectionEdit
+    .collection-editor-mobile-copy,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #collectionFolderEdit
+    .collection-editor-mobile-copy {
+    --collection-editor-copy-gap: 6px;
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-title,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-title {
+  --collection-editor-title-rest: 31px;
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-color);
+  font-size: calc(
+    var(--collection-editor-title-rest) + (18px -
+          var(--collection-editor-title-rest)) *
+      var(--page-heading-progress, 0)
+  );
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #collectionEdit
+    .collection-editor-mobile-title,
+  html[data-layout="mobile"]
+    .desktop-browser
+    #collectionFolderEdit
+    .collection-editor-mobile-title {
+    --collection-editor-title-rest: clamp(28px, 8vw, 34px);
+  }
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-subtitle,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-subtitle {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  max-height: calc(48px * (1 - var(--page-heading-progress, 0)));
+  opacity: calc(1 - var(--page-heading-progress, 0));
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionEdit
+  .collection-editor-mobile-back,
+html[data-layout="mobile"]
+  .desktop-browser
+  #collectionFolderEdit
+  .collection-editor-mobile-back {
+  position: absolute;
+  top: calc(
+    var(--browser-safe-area-top) + var(--heading-control-rest-offset, 17px) *
+      (1 - var(--page-heading-progress, 0))
+  );
+  left: calc(var(--browser-safe-area-left) + 12px);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+
+/* Console debug: its own header becomes the mobile heading; Copy/count move
+   into a compact row above the log. It does not need scroll-linked collapse
+   because the log frame is the scroller, not the page. */
+.debug-console-mobile-heading,
+.debug-console-mobile-actions {
+  display: none;
+}
+
+@media (max-width: 1200px) {
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-shell {
+    padding: 0 16px 16px;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-header {
+    display: none;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-heading {
+    position: relative;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100vw;
+    margin: 0 calc(50% - 50vw) 12px;
+    padding-top: calc(var(--browser-safe-area-top) + 22px);
+    padding-right: calc(var(--browser-safe-area-right) + 64px);
+    padding-bottom: 19px;
+    padding-left: calc(var(--browser-safe-area-left) + 64px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-title {
+    width: 100%;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-color);
+    font-size: clamp(28px, 8vw, 34px);
+    font-weight: 650;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-subtitle {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-back {
+    position: absolute;
+    top: calc(var(--browser-safe-area-top) + 17px);
+    left: calc(var(--browser-safe-area-left) + 12px);
+    z-index: 31;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-color);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+  }
+
+  html[data-layout="mobile"]
+    .desktop-browser
+    #debugConsole
+    .debug-console-mobile-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 12px;
   }
 }

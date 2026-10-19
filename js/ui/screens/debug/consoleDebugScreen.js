@@ -183,9 +183,30 @@ export const ConsoleDebugScreen = {
     const events = getConsoleDebugEvents();
     this.container.innerHTML = `
       <div class="debug-console-shell">
+        <header class="debug-console-mobile-heading">
+          <button class="debug-console-mobile-back focusable" type="button" data-focus-key="mobile-back" data-action="back" aria-label="${escapeHtml(t("auth_qr_back", {}, "Back"))}">
+            <span class="material-icons" aria-hidden="true">chevron_left</span>
+          </button>
+          <div class="debug-console-mobile-copy">
+            <h1 class="debug-console-mobile-title">${escapeHtml(t("about_debug_console_title", {}, "Console debug"))}</h1>
+            <p class="debug-console-mobile-subtitle">${escapeHtml(t("debug_console_subtitle", {}, "Last warnings and errors captured from this app session"))}</p>
+          </div>
+        </header>
+        <div class="debug-console-mobile-actions">
+          <button
+            class="debug-console-copy focusable"
+            data-focus-key="mobile-copy"
+            data-action="copy"
+            ${events.length ? "" : "disabled"}
+          >
+            <span class="material-icons" aria-hidden="true">content_copy</span>
+            <span class="debug-console-copy-label">${escapeHtml(this.copyLabel())}</span>
+          </button>
+          <div class="debug-console-count">${escapeHtml(eventCountLabel(events.length))}</div>
+        </div>
         <header class="debug-console-header">
           <button class="debug-console-back focusable" data-focus-key="back" data-action="back">
-            <span class="material-icons" aria-hidden="true">arrow_back</span>
+            <span class="material-icons" aria-hidden="true">chevron_left</span>
             <span>${escapeHtml(t("auth_qr_back", {}, "Back"))}</span>
           </button>
           <div class="debug-console-heading">

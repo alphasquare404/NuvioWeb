@@ -2346,6 +2346,9 @@ export const StreamScreen = {
     const { isSeries, title, subtitle, episodeLabel, detailLine } = this.getHeaderMeta();
     const backdrop = this.getBackdropUrl();
     const logo = this.params?.logo || "";
+    const headingSubtitle = isSeries
+      ? [episodeLabel, subtitle].filter(Boolean).join(" • ")
+      : detailLine || subtitle;
     const shellStableClass = this.hasRenderedStreamRouteShell ? " stable" : "";
     const orderedFilters = this.getOrderedFilterNames();
     const chips = [
@@ -2443,6 +2446,26 @@ export const StreamScreen = {
         <div class="stream-route-backdrop-dim"></div>
         <div class="stream-route-left-gradient"></div>
         <div class="stream-route-right-gradient"></div>
+        <header class="stream-page-heading">
+          <button class="stream-page-heading-back" type="button" data-stream-desktop-back
+                  aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
+            <span class="material-icons" aria-hidden="true">chevron_left</span>
+          </button>
+          <div class="stream-page-heading-copy">
+            <div class="stream-page-heading-brand">
+              ${
+                logo
+                  ? `<img class="stream-page-heading-logo" src="${logo}" alt="${escapeHtml(title)}" />`
+                  : `<h1 class="stream-page-heading-title">${escapeHtml(title || t("stream_panel_title", {}, "Streams"))}</h1>`
+              }
+            </div>
+            ${
+              headingSubtitle
+                ? `<div class="stream-page-heading-subtitle">${escapeHtml(headingSubtitle)}</div>`
+                : ""
+            }
+          </div>
+        </header>
         ${this.renderDesktopBackButton()}
         ${content}
         ${this.renderOfflineDownloadNotice()}
@@ -2496,10 +2519,9 @@ export const StreamScreen = {
     this.restoreScrollPosition();
     this.applyFocus();
     if (Platform.isBrowser()) {
-      const backButton = this.container.querySelector("[data-stream-desktop-back]");
-      if (backButton) {
+      this.container.querySelectorAll("[data-stream-desktop-back]").forEach((backButton) => {
         backButton.onclick = () => this.handleStreamBack();
-      }
+      });
     }
     this.bindDesktopPointerActions();
     this.bindListScrollState();

@@ -14,6 +14,34 @@ const SUPPORTS_CSS_VARS =
   typeof window.CSS.supports === "function" &&
   window.CSS.supports("--probe", "0");
 
+// The colour an empty strip of the app should show. Pages paint their own
+// gradients over `--bg-color`, so a bare `--bg-color` strip (the status strip in
+// a browser tab, the area the floating navigation sits over) read as a black band
+// above and below the page. Mixing a tenth of the theme's accent into the
+// background reproduces the tint the pages start with, which is what the shell
+// uses for both the canvas and the browser's own theme colour.
+function mixHexColors(baseHex, accentHex, accentRatio = 0.1) {
+  const parse = (hex) => {
+    const match = String(hex || "")
+      .trim()
+      .match(/^#([0-9a-f]{6})$/i);
+    if (!match) return null;
+    return [
+      parseInt(match[1].slice(0, 2), 16),
+      parseInt(match[1].slice(2, 4), 16),
+      parseInt(match[1].slice(4, 6), 16)
+    ];
+  };
+  const base = parse(baseHex);
+  const accent = parse(accentHex);
+  if (!base || !accent) return baseHex;
+  const ratio = Math.min(1, Math.max(0, Number(accentRatio) || 0));
+  return `#${base
+    .map((channel, index) => Math.round(channel + (accent[index] - channel) * ratio))
+    .map((channel) => channel.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 function toRgbChannels(hex, fallback = "255 255 255") {
   const value = String(hex || "").trim();
   const match = value.match(/^#([0-9a-f]{6})$/i);
@@ -159,6 +187,18 @@ export const ThemeManager = {
       FONT_STACKS[String(theme.fontFamily || "INTER").toUpperCase()] || FONT_STACKS.INTER
     );
     document.documentElement.style.setProperty("color-scheme", "dark");
+
+    // The strips around the page -- the browser's status strip, and the area the
+    // floating navigation sits over -- carry no page content of their own. Give
+    // them the tint the pages start with instead of the bare background, so they
+    // stop reading as black bands above and below the app.
+    const canvasColor = mixHexColors(colors["--bg-color"], colors["--secondary-color"], 0.1);
+    document.documentElement.style.setProperty("--app-canvas-color", canvasColor);
+
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta && canvasColor) {
+      themeColorMeta.setAttribute("content", canvasColor);
+    }
 
     if (!SUPPORTS_CSS_VARS) {
       const colorMap = {

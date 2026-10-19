@@ -3825,14 +3825,6 @@ button:focus-visible {
   letter-spacing: 1px;
 }
 
-.library-page-source {
-  padding-top: 10px;
-  font-size: 28px;
-  font-weight: 500;
-  letter-spacing: 4px;
-  color: var(--text-tertiary);
-}
-
 .library-picker-groups {
   display: flex;
   flex-direction: column;
@@ -17520,6 +17512,15 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 
 .performance-constrained .nuvio-loading-indicator-spoke {
   animation-duration: 1000ms !important;
+  animation-iteration-count: infinite !important;
+}
+
+/* The route handoff is the only thing on screen while a stream resolves, so
+   its spinner has to keep moving even when the device is put in the reduced
+   animation mode. Without this the generic rule runs one 0.01ms frame and
+   leaves a ring that looks like a static decoration. */
+.performance-constrained .route-handoff-spinner {
+  animation-duration: 750ms !important;
   animation-iteration-count: infinite !important;
 }
 

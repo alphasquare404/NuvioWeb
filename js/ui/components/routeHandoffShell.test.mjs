@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { renderRouteHandoffShell } from "./routeHandoffShell.js";
+
+const componentsCss = await readFile(
+  new URL("../../../css/components.css", import.meta.url),
+  "utf8"
+);
 
 test("the wait says what it is waiting for, where a screen reader will read it", () => {
   const markup = renderRouteHandoffShell({ label: "Finding a stream…" });
@@ -56,6 +62,18 @@ test("it carries its own classes, not the stream route's", () => {
   ]) {
     assert.match(markup, new RegExp(`class="${className}"`));
   }
+});
+
+test("the spinner keeps moving in performance mode", () => {
+  // `.performance-constrained *` shortens every animation to one 0.01ms frame.
+  // A phone Safari reports four cores, so the handoff ring was ending before it
+  // could visibly turn; the other shared indicators already opt back in.
+  const rule = /\.performance-constrained \.route-handoff-spinner\s*\{([^}]*)\}/.exec(
+    componentsCss
+  );
+  assert.ok(rule, "performance mode has a route spinner exception");
+  assert.match(rule[1], /animation-duration:\s*750ms\s*!important/);
+  assert.match(rule[1], /animation-iteration-count:\s*infinite\s*!important/);
 });
 
 test("the same inputs give the same markup, so a repaint is a no-op", () => {

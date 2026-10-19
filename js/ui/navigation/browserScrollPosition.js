@@ -15,9 +15,17 @@
 // `document.body` (939 vs 910 here, 896 vs 852 on a real device), so even the
 // tie-breaker preferred the wrong element.
 function isLayeredScreen(element) {
-  // The router owns this inline style: applyLayerChrome sets it when a screen
-  // becomes a layer, and releasing that layer removes it again.
-  return element?.style?.position === "fixed";
+  if (!element) {
+    return false;
+  }
+  // The router owns the inline style: applyLayerChrome sets it when a screen
+  // becomes a layer, and releasing that layer removes it again. A screen can also
+  // be a layer from the stylesheet -- Home is, so that it scrolls itself instead
+  // of the document -- and then the answer has to come from the computed style.
+  if (element.style?.position === "fixed") {
+    return true;
+  }
+  return typeof getComputedStyle === "function" && getComputedStyle(element).position === "fixed";
 }
 
 export function getBrowserVerticalScrollOwner(routeContainer = null) {
@@ -27,9 +35,18 @@ export function getBrowserVerticalScrollOwner(routeContainer = null) {
   if (isLayeredScreen(routeContainer)) {
     return routeContainer;
   }
-  // The bottom screen scrolls the document. That is `document.body` in this
-  // app's browser shell -- `document.documentElement` never actually moves,
-  // which is why it must not be consulted here.
+  // The bottom screen scrolls the document. Which element that is depends on how
+  // the shell arranges its overflow: the document element scrolls when `html`
+  // owns it (the current shell), and `body` was the scroller before that. Ask the
+  // document which one really moves instead of assuming, and fall back to `body`
+  // so a shell that still scrolls there keeps working.
+  const documentScroller = document.scrollingElement;
+  if (
+    documentScroller &&
+    Number(documentScroller.scrollHeight || 0) > Number(documentScroller.clientHeight || 0) + 1
+  ) {
+    return documentScroller;
+  }
   return document.body || null;
 }
 
@@ -42,6 +59,9 @@ export function setBrowserVerticalScrollTop(value = 0, routeContainer = null) {
   if (!owner) {
     return;
   }
-  const maxScrollTop = Math.max(0, Number(owner.scrollHeight || 0) - Number(owner.clientHeight || 0));
+  const maxScrollTop = Math.max(
+    0,
+    Number(owner.scrollHeight || 0) - Number(owner.clientHeight || 0)
+  );
   owner.scrollTop = Math.max(0, Math.min(maxScrollTop, Number(value || 0)));
 }

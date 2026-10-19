@@ -27,8 +27,10 @@ import {
 } from "../../components/sidebarNavigation.js";
 import {
   bindDesktopNavigationEvents,
-  renderDesktopNavigation
+  renderDesktopNavigation,
+  renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
+import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 import {
   PosterOptionsDialogController,
   posterItemFromNode
@@ -456,6 +458,11 @@ export const SearchScreen = {
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("search");
     ScreenUtils.show(this.container);
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = bindPageHeadingCollapse({
+      container: this.container,
+      scrollSelector: ".search-content"
+    });
     this.searchRouteEnterPending = true;
     this.activationGuardUntil = Date.now() + 220;
     this.layoutPrefs = LayoutPreferences.get();
@@ -949,7 +956,10 @@ export const SearchScreen = {
               })
         }
         <main class="home-main search-content">
-          <h1 class="search-page-heading">${escapeHtml(t("sidebar.search", {}, "Search"))}</h1>
+          <header class="search-page-header page-heading" data-page-heading>
+            <h1 class="search-page-heading page-heading-title">${escapeHtml(t("sidebar.search", {}, "Search"))}</h1>
+            ${renderNavigationRevealButton()}
+          </header>
           <section class="search-header${this.layoutPrefs?.discoverLocation === "in_search" ? "" : " no-discover"}${showVoiceSearch ? "" : " no-voice"}">
             ${
               this.layoutPrefs?.discoverLocation === "in_search"
@@ -2295,6 +2305,8 @@ export const SearchScreen = {
   },
 
   cleanup() {
+    this.pageHeadingCollapseCleanup?.();
+    this.pageHeadingCollapseCleanup = null;
     this.desktopMediaHoverPreview?.destroy();
     this.desktopMediaHoverPreview = null;
     this.browserCardTouchIntentCleanup?.();

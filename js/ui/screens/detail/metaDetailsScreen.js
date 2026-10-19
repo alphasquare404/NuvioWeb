@@ -62,7 +62,8 @@ import {
 import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import {
   bindDesktopNavigationEvents,
-  renderDesktopNavigation
+  renderDesktopNavigation,
+  renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
@@ -4208,6 +4209,139 @@ export const MetaDetailsScreen = {
     `;
   },
 
+  renderDetailHeading() {
+    if (!Platform.isBrowser()) {
+      return "";
+    }
+    return `
+      <header class="detail-heading" data-detail-heading>
+        <button class="detail-heading-back" type="button" data-detail-back
+                aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
+          <span class="material-icons" aria-hidden="true">chevron_left</span>
+        </button>
+        <div class="detail-heading-brand" data-detail-heading-brand aria-hidden="true"></div>
+        ${renderNavigationRevealButton()}
+      </header>
+    `;
+  },
+
+  syncDetailHeadingBrand() {
+    const target = this.container?.querySelector("[data-detail-heading-brand]");
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const source = this.container?.querySelector(".detail-hero-brand");
+    const nodes =
+      source instanceof HTMLElement
+        ? Array.from(source.children).filter(
+            (node) =>
+              node instanceof HTMLElement &&
+              node.matches(".series-detail-logo, .series-detail-title")
+          )
+        : [];
+    const signature = nodes.map((node) => node.outerHTML).join("|");
+    if (target.dataset.brandSignature === signature) {
+      this.scheduleDetailHeadingProgress?.();
+      return;
+    }
+    target.dataset.brandSignature = signature;
+    target.innerHTML = nodes.map((node) => node.outerHTML).join("");
+    this.scheduleDetailHeadingProgress?.();
+  },
+
+  bindDetailHeading() {
+    this.detailHeadingCleanup?.();
+    this.detailHeadingCleanup = null;
+    this.detailBrandObserver?.disconnect();
+    this.detailBrandObserver = null;
+    this.scheduleDetailHeadingProgress = null;
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+    const shell = this.container.querySelector(".series-detail-shell");
+    const heading = this.container.querySelector("[data-detail-heading]");
+    if (!(shell instanceof HTMLElement) || !(heading instanceof HTMLElement)) {
+      return;
+    }
+
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      const layout = String(globalThis?.document?.documentElement?.dataset?.layout || "");
+      if (layout === "desktop") {
+        shell.style.setProperty("--detail-heading-progress", "0");
+        shell.style.setProperty("--detail-heading-glass-progress", "0");
+        shell.style.setProperty("--detail-heading-brand-progress", "0");
+        shell.removeAttribute("data-detail-heading-collapsed");
+        return;
+      }
+      const brand = this.container?.querySelector(".detail-hero-brand");
+      const headingRect = heading.getBoundingClientRect();
+      const brandRect = brand?.getBoundingClientRect?.() || null;
+      const start = headingRect.bottom;
+      const progress = brandRect ? Math.max(0, Math.min(1, (start - brandRect.bottom) / 32)) : 0;
+      const glassProgress = Math.min(1, progress * 1.5);
+      const brandProgress = Math.max(0, Math.min(1, (progress - 0.55) / 0.45));
+      shell.style.setProperty("--detail-heading-progress", progress.toFixed(4));
+      shell.style.setProperty("--detail-heading-glass-progress", glassProgress.toFixed(4));
+      shell.style.setProperty("--detail-heading-brand-progress", brandProgress.toFixed(4));
+      if (progress >= 0.999) {
+        shell.dataset.detailHeadingCollapsed = "true";
+      } else {
+        delete shell.dataset.detailHeadingCollapsed;
+      }
+    };
+
+    const schedule = () => {
+      if (frame) {
+        return;
+      }
+      const request = globalThis.requestAnimationFrame?.(apply);
+      if (request) {
+        frame = request;
+        return;
+      }
+      apply();
+    };
+    this.scheduleDetailHeadingProgress = schedule;
+
+    const onScroll = () => schedule();
+    globalThis.document?.addEventListener?.("scroll", onScroll, {
+      capture: true,
+      passive: true
+    });
+    globalThis.addEventListener?.("resize", schedule, { passive: true });
+    globalThis.addEventListener?.("orientationchange", schedule, { passive: true });
+
+    const brand = this.container.querySelector(".detail-hero-brand");
+    if (brand instanceof HTMLElement && typeof globalThis.MutationObserver === "function") {
+      this.detailBrandObserver = new globalThis.MutationObserver(() => {
+        this.syncDetailHeadingBrand();
+        schedule();
+      });
+      this.detailBrandObserver.observe(brand, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["src", "hidden", "style", "class"]
+      });
+    }
+
+    this.detailHeadingCleanup = () => {
+      globalThis.document?.removeEventListener?.("scroll", onScroll, true);
+      globalThis.removeEventListener?.("resize", schedule);
+      globalThis.removeEventListener?.("orientationchange", schedule);
+      if (frame) {
+        globalThis.cancelAnimationFrame?.(frame);
+        frame = 0;
+      }
+      this.scheduleDetailHeadingProgress = null;
+    };
+
+    this.syncDetailHeadingBrand();
+    schedule();
+  },
+
   handleDetailBack() {
     Router.back();
   },
@@ -4230,6 +4364,8 @@ export const MetaDetailsScreen = {
         <div class="detail-trailer-loading-spinner" aria-hidden="true">${renderLoadingIndicator({ className: "player-loading-spinner-ring" })}</div>
         <div class="series-detail-vignette"></div>
         <div class="detail-bottom-shadow"></div>
+
+        ${this.renderDetailHeading()}
 
         <div class="series-detail-content">
           ${this.renderDesktopBackButton()}
@@ -4596,6 +4732,8 @@ export const MetaDetailsScreen = {
         <div class="detail-trailer-loading-spinner" aria-hidden="true">${renderLoadingIndicator({ className: "player-loading-spinner-ring" })}</div>
         <div class="series-detail-vignette"></div>
         <div class="detail-bottom-shadow"></div>
+
+        ${this.renderDetailHeading()}
 
         <div class="series-detail-content movie-detail-content">
           ${this.renderDesktopBackButton()}
@@ -8376,7 +8514,7 @@ export const MetaDetailsScreen = {
       .slice(0, 10)
       .map(
         (company) => `
-      <article class="detail-company-card focusable${production ? " detail-production-company-card" : ""}"
+      <article class="detail-company-card focusable${production ? " detail-production-company-card" : " detail-network-company-card"}"
                data-company-name="${escapeHtml(company.name || "")}">
         ${company.logo ? `<img src="${company.logo}" alt="${escapeHtml(company.name || "Company")}" loading="lazy" decoding="async" />` : `<span>${escapeHtml(company.name || "")}</span>`}
       </article>
@@ -8384,7 +8522,7 @@ export const MetaDetailsScreen = {
       )
       .join("");
     return `
-      <section class="detail-company-section${production ? " detail-production-section" : ""}">
+      <section class="detail-company-section${production ? " detail-production-section" : " detail-network-section"}">
         <h3 class="detail-company-title">${escapeHtml(title)}</h3>
         <div class="detail-company-track" data-scroll-key="company:${escapeHtml(String(title || "").toLowerCase())}">${logos}</div>
       </section>
@@ -8882,11 +9020,11 @@ export const MetaDetailsScreen = {
     if (!content) {
       return;
     }
+    this.bindDetailHeading();
     if (Platform.isBrowser()) {
-      const backButton = this.container?.querySelector("[data-detail-back]");
-      if (backButton) {
+      this.container?.querySelectorAll("[data-detail-back]").forEach((backButton) => {
         backButton.onclick = () => this.handleDetailBack();
-      }
+      });
       bindDesktopNavigationEvents(this.container);
       this.bindDesktopDetailActions();
       this.bindDesktopInsightTabActions();
@@ -12565,6 +12703,10 @@ export const MetaDetailsScreen = {
     this.episodeContextMenuCleanup = null;
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
+    this.detailBrandObserver?.disconnect();
+    this.detailBrandObserver = null;
+    this.detailHeadingCleanup?.();
+    this.detailHeadingCleanup = null;
     this.detailLoadToken = (this.detailLoadToken || 0) + 1;
     this.holdDetailArtwork = false;
     this.holdDetailRatings = false;

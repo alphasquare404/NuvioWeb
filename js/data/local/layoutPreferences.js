@@ -42,12 +42,12 @@ const DEFAULTS = {
   preferExternalMetaAddonDetail: true,
   blurUnwatchedEpisodes: false,
   collapseSidebar: false,
-  // Where the browser build puts its primary navigation. Empty means nobody
-  // has chosen, and the choice is then made from the shape of the thing it is
-  // running on -- see resolveDefaultBrowserNavigationPlacement.
-  browserNavigationPlacement: "",
-  // Which corner the side rail hangs from. Only read when the placement is
-  // the rail; the other two placements have nowhere to put it.
+  // How the browser build draws its primary navigation: a floating bar, or a
+  // side rail. Where the floating bar sits is not a preference -- it follows the
+  // layout, bottom on a phone and top on a desktop -- so only the shape is stored.
+  browserNavigationStyle: "",
+  // Which corner the side rail hangs from. Only read when the style is the rail;
+  // the floating bar has no corner to put anywhere.
   browserNavigationRailCorner: "top-right",
   modernSidebar: false,
   modernSidebarBlur: false,
@@ -104,10 +104,13 @@ export function shouldDrawCardLandscape(orientation, sourceShape = "") {
   const mode = normalizeCatalogCardOrientation(orientation);
   if (mode === "landscape") return true;
   if (mode === "portrait") return false;
-  return String(sourceShape || "").trim().toLowerCase() === "landscape";
+  return (
+    String(sourceShape || "")
+      .trim()
+      .toLowerCase() === "landscape"
+  );
 }
 
-const BROWSER_NAVIGATION_PLACEMENTS = ["top", "bottom", "sidebar"];
 const BROWSER_NAVIGATION_RAIL_CORNERS = ["top-right", "bottom-right", "bottom-left"];
 
 /**
@@ -132,6 +135,59 @@ export function resolveDefaultBrowserNavigationPlacement() {
 }
 
 /**
+ * The two navigation shapes the browser build offers.
+ *
+ * "floating" is a bar pinned to the edge the layout asks for; "rail" is the
+ * collapsible side rail, which also owns its corner. Anything unrecognised reads
+ * as floating, which is what every build did before the rail existed.
+ */
+// Three placements again, but for a different reason than before: a touch device
+// may carry the bar at either edge, while the rail keeps its corner. "floating"
+// is read for older profiles and means the placement the layout would pick.
+const BROWSER_NAVIGATION_STYLES = ["top", "bottom", "rail"];
+
+export function normalizeBrowserNavigationStyle(value, legacyPlacement = "") {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (BROWSER_NAVIGATION_STYLES.includes(normalized)) {
+    return normalized;
+  }
+  // Older profiles stored either the shape ("floating"/"rail") or the placement
+  // itself; both are read as the placement they described.
+  const legacy = String(legacyPlacement || "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "rail" || legacy === "sidebar") {
+    return "rail";
+  }
+  if (legacy === "top" || legacy === "bottom") {
+    return legacy;
+  }
+  // "floating" (or nothing) means: let the layout choose the edge.
+  return "";
+}
+
+function defaultStyleForDevice() {
+  const device = String(globalThis?.document?.documentElement?.dataset?.device || "");
+  return device === "desktop" ? "top" : "bottom";
+}
+
+export function resolveBrowserNavigationStyle(settings = {}) {
+  return (
+    normalizeBrowserNavigationStyle(
+      settings?.browserNavigationStyle,
+      settings?.browserNavigationPlacement
+    ) || defaultStyleForDevice()
+  );
+}
+
+/** The placement the layout itself would pick, for a device with no choice. */
+export function resolveFloatingNavigationPlacement() {
+  return resolveDefaultBrowserNavigationPlacement();
+}
+
+/**
  * The corner the side rail hangs from.
  *
  * Top left is deliberately not offered: that is where Back lives, and a rail
@@ -144,19 +200,6 @@ export function normalizeBrowserNavigationRailCorner(value) {
   return BROWSER_NAVIGATION_RAIL_CORNERS.includes(normalized) ? normalized : "top-right";
 }
 
-/**
- * Anything that is not one of the three placements is the one this has always
- * been. A stored value from a newer build, or a hand-edited one, moves the
- * navigation somewhere nobody can see rather than failing visibly, so it is
- * read as the default instead.
- */
-export function normalizeBrowserNavigationPlacement(value) {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-  return BROWSER_NAVIGATION_PLACEMENTS.includes(normalized) ? normalized : "top";
-}
-
 function normalizeLayoutPreferences(value = {}) {
   const merged = {
     ...DEFAULTS,
@@ -166,7 +209,9 @@ function normalizeLayoutPreferences(value = {}) {
   const discoverLocation = String(
     value?.discoverLocation ?? (value?.searchDiscoverEnabled === false ? "off" : "in_search")
   ).toLowerCase();
-  const continueWatchingCardStyle = String(merged.continueWatchingCardStyle || "card").toLowerCase();
+  const continueWatchingCardStyle = String(
+    merged.continueWatchingCardStyle || "card"
+  ).toLowerCase();
 
   return {
     ...merged,
@@ -181,7 +226,13 @@ function normalizeLayoutPreferences(value = {}) {
       ? discoverLocation
       : "in_search",
     searchDiscoverEnabled: discoverLocation !== "off",
-    heroCatalogKeys: [...new Set((Array.isArray(merged.heroCatalogKeys) ? merged.heroCatalogKeys : []).map(String).filter(Boolean))],
+    heroCatalogKeys: [
+      ...new Set(
+        (Array.isArray(merged.heroCatalogKeys) ? merged.heroCatalogKeys : [])
+          .map(String)
+          .filter(Boolean)
+      )
+    ],
     modernLandscapePostersEnabled: Boolean(merged.modernLandscapePostersEnabled),
     modernHeroFullScreenBackdropEnabled: Boolean(merged.modernHeroFullScreenBackdropEnabled),
     focusedPosterBackdropExpandEnabled: Boolean(merged.focusedPosterBackdropExpandEnabled),
@@ -200,12 +251,21 @@ function normalizeLayoutPreferences(value = {}) {
     posterCardCornerRadiusDp: Math.max(0, Number(merged.posterCardCornerRadiusDp ?? 12) || 12),
     fastHorizontalNavigationEnabled: Boolean(
       value?.fastHorizontalNavigationEnabled ??
-        LocalStore.get("fastHorizontalNavigationEnabled", false)
+      LocalStore.get("fastHorizontalNavigationEnabled", false)
     ),
     cardDepthEnabled: Boolean(merged.cardDepthEnabled),
-    cardDepthEdgeStrength: Math.min(100, Math.max(0, Number(merged.cardDepthEdgeStrength ?? 28) || 0)),
-    cardDepthSheenStrength: Math.min(100, Math.max(0, Number(merged.cardDepthSheenStrength ?? 10) || 0)),
-    cardDepthEdgeCoverage: Math.min(100, Math.max(0, Number(merged.cardDepthEdgeCoverage ?? 0) || 0)),
+    cardDepthEdgeStrength: Math.min(
+      100,
+      Math.max(0, Number(merged.cardDepthEdgeStrength ?? 28) || 0)
+    ),
+    cardDepthSheenStrength: Math.min(
+      100,
+      Math.max(0, Number(merged.cardDepthSheenStrength ?? 10) || 0)
+    ),
+    cardDepthEdgeCoverage: Math.min(
+      100,
+      Math.max(0, Number(merged.cardDepthEdgeCoverage ?? 0) || 0)
+    ),
     cardDepthPostersEnabled: merged.cardDepthPostersEnabled !== false,
     cardDepthContinueWatchingEnabled: merged.cardDepthContinueWatchingEnabled !== false,
     cardDepthEpisodeCardsEnabled: merged.cardDepthEpisodeCardsEnabled !== false,
@@ -221,11 +281,12 @@ function normalizeLayoutPreferences(value = {}) {
     nextUpFromFurthestEpisode: merged.nextUpFromFurthestEpisode !== false,
     continueWatchingSortMode: normalizeContinueWatchingSortMode(merged.continueWatchingSortMode),
     collapseSidebar: modernSidebar ? false : Boolean(merged.collapseSidebar),
-    // Empty stays empty: it means nobody has chosen, and that is worth
-    // storing as such rather than as whatever this device would pick today.
-    browserNavigationPlacement: merged.browserNavigationPlacement
-      ? normalizeBrowserNavigationPlacement(merged.browserNavigationPlacement)
-      : "",
+    // Empty stays empty: it means nobody has chosen, and a profile written before
+    // the two shapes existed is read from its stored placement instead.
+    browserNavigationStyle: normalizeBrowserNavigationStyle(
+      merged.browserNavigationStyle,
+      merged.browserNavigationPlacement
+    ),
     catalogCardOrientation: normalizeCatalogCardOrientation(merged.catalogCardOrientation),
     browserNavigationRailCorner: normalizeBrowserNavigationRailCorner(
       merged.browserNavigationRailCorner
@@ -242,13 +303,26 @@ const store = createProfileScopedStore({
   normalize: normalizeLayoutPreferences
 });
 
+// The floating bar's edge follows the viewport, so a resize that crosses the
+// phone line has to move it. Re-applying the stored settings is enough: nothing
+// is stored about the edge itself.
+if (typeof globalThis.addEventListener === "function") {
+  globalThis.addEventListener("resize", () => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    applyLayoutPresentation(store.get());
+  });
+}
 function applyLayoutPresentation(settings) {
   const root = globalThis?.document?.documentElement;
   if (!root) return;
   root.dataset.cardDepth = settings.cardDepthEnabled ? "true" : "false";
   root.dataset.cardDepthPosters = settings.cardDepthPostersEnabled !== false ? "true" : "false";
-  root.dataset.cardDepthContinueWatching = settings.cardDepthContinueWatchingEnabled !== false ? "true" : "false";
-  root.dataset.cardDepthEpisodes = settings.cardDepthEpisodeCardsEnabled !== false ? "true" : "false";
+  root.dataset.cardDepthContinueWatching =
+    settings.cardDepthContinueWatchingEnabled !== false ? "true" : "false";
+  root.dataset.cardDepthEpisodes =
+    settings.cardDepthEpisodeCardsEnabled !== false ? "true" : "false";
   root.dataset.cardDepthCast = settings.cardDepthCastEnabled !== false ? "true" : "false";
   root.dataset.cardDepthTrailers = settings.cardDepthTrailersEnabled !== false ? "true" : "false";
   root.style.setProperty("--card-depth-edge", String(settings.cardDepthEdgeStrength / 100));
@@ -256,13 +330,19 @@ function applyLayoutPresentation(settings) {
   root.style.setProperty("--card-depth-coverage", String(settings.cardDepthEdgeCoverage / 100));
   root.style.setProperty(
     "--card-depth-coverage-size",
-    `${12 + Math.round(18 * settings.cardDepthEdgeCoverage / 100)}px`
+    `${12 + Math.round((18 * settings.cardDepthEdgeCoverage) / 100)}px`
   );
   // One attribute drives every rule that moves the navigation, because the bar
   // is fixed and each screen only pads itself clear of it. Written here so it
   // follows the preference wherever it is read or changed, including a profile
   // switch, rather than needing a screen to remember to apply it.
-  root.dataset.navPlacement = settings.browserNavigationPlacement;
+  // Only the shape is stored. A floating bar sits on the edge the layout asks
+  // for -- bottom on a phone, top on a desktop -- so the placement is derived
+  // here, every time, instead of being a third thing to choose and keep in sync.
+  const navStyle = resolveBrowserNavigationStyle(settings);
+  root.dataset.navStyle = navStyle;
+  root.dataset.navPlacement =
+    navStyle === "rail" ? "sidebar" : navStyle === "top" ? "top" : "bottom";
   root.dataset.navRailCorner = settings.browserNavigationRailCorner;
 }
 
@@ -272,15 +352,9 @@ export const LayoutPreferences = {
   },
 
   get() {
-    const stored = store.get();
-    // The one preference with no fixed default: an unanswered placement is
-    // answered by the device, every time it is read.
-    const settings = stored.browserNavigationPlacement
-      ? stored
-      : {
-          ...stored,
-          browserNavigationPlacement: resolveDefaultBrowserNavigationPlacement()
-        };
+    const settings = store.get();
+    // The floating bar's edge is derived, so it is re-derived on every read:
+    // the layout can cross the phone line while the app is running.
     applyLayoutPresentation(settings);
     return settings;
   },
