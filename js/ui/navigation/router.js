@@ -1063,10 +1063,28 @@ export const Router = {
       return;
     }
 
-    await this.back({ skipConsume: true, skipHistory: true });
+    await this.back({
+      skipConsume: true,
+      skipHistory: true,
+      skipPendingHistoryCheck: true
+    });
   },
 
   async back(options = {}) {
+    // A forward navigation commits its browser entry only after the screen has
+    // finished mounting. A Back during that window still sees the caller's
+    // history state, so history.back() would skip the caller and land on an
+    // older page. Resolve against the entry that is actually committed.
+    const committedHistoryRoute = String(window?.history?.state?.route || "");
+    if (
+      !options?.skipPendingHistoryCheck &&
+      committedHistoryRoute &&
+      committedHistoryRoute !== this.current
+    ) {
+      await this.backFromPendingNavigation();
+      return;
+    }
+
     const currentScreen = this.getCurrentScreen();
     const consumeResult = !options?.skipConsume
       ? currentScreen?.consumeBackRequest?.({
