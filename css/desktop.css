@@ -19287,3 +19287,186 @@ html[data-layout="mobile"]
       (1 - var(--page-heading-progress, 0))
   );
 }
+
+/* Detail keeps the hero full-bleed, so its heading starts as an empty
+   transparent overlay. The hero logo/title is cloned into the heading only
+   after the original brand has scrolled underneath it. */
+.desktop-browser #detail .detail-heading {
+  display: none;
+}
+
+html[data-layout="mobile"] .desktop-browser #detail .detail-heading {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(var(--browser-safe-area-top) + 46px);
+  padding: calc(var(--browser-safe-area-top) + 12px)
+    calc(var(--browser-safe-area-right) + 64px) 14px
+    calc(var(--browser-safe-area-left) + 64px);
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0));
+  color: #fff;
+  box-shadow: 0 10px 30px
+    rgba(0, 0, 0, calc(0.26 * var(--detail-heading-progress, 0)));
+  pointer-events: none;
+}
+
+html[data-layout="mobile"] .desktop-browser #detail .detail-heading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(14, 14, 16, 0.68);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  opacity: var(--detail-heading-glass-progress, 0);
+  pointer-events: none;
+}
+
+html[data-layout="mobile"] .desktop-browser #detail .detail-heading-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 20px;
+  overflow: hidden;
+  opacity: var(--detail-heading-brand-progress, 0);
+  transform: translateY(
+    calc(4px * (1 - var(--detail-heading-brand-progress, 0)))
+  );
+  pointer-events: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .detail-heading-brand
+  .series-detail-logo {
+  width: auto;
+  max-width: min(42vw, 180px);
+  max-height: 20px;
+  margin: 0;
+  object-fit: contain;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .detail-heading-brand
+  .series-detail-title {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 20px;
+  margin: 0;
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-line-clamp: unset;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .detail-heading-brand
+  .series-detail-title[hidden] {
+  display: none;
+}
+
+html[data-layout="mobile"] .desktop-browser #detail .detail-heading-back {
+  position: absolute;
+  top: var(--browser-safe-area-top);
+  left: calc(var(--browser-safe-area-left) + 12px);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .detail-heading
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #detail
+  .detail-heading
+  > .desktop-navigation-reveal {
+  position: absolute;
+  top: var(--browser-safe-area-top);
+  right: calc(var(--browser-safe-area-right) + 12px);
+  z-index: 31;
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  transform: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
+  pointer-events: auto;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #detail:has(.detail-heading)
+  > .desktop-navigation-reveal {
+  display: none;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #detail
+  .desktop-navigation {
+  top: calc(var(--browser-safe-area-top) + 54px);
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    opacity 180ms ease;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #detail
+  .series-detail-shell:has(.detail-heading)
+  .series-detail-content
+  .detail-desktop-back-button {
+  display: none;
+}
+
+#detail .series-detail-shell.detail-trailer-active .detail-heading {
+  opacity: 0;
+  pointer-events: none;
+}
