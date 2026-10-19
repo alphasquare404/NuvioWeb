@@ -5498,9 +5498,22 @@ html.desktop-browser {
   font-size: 14px;
 }
 
-.desktop-browser #detail .detail-production-section .detail-production-company-card {
+.desktop-browser #detail .detail-production-section .detail-production-company-card,
+.desktop-browser #detail .detail-network-section .detail-network-company-card {
   background: #fff;
   border-color: rgba(255, 255, 255, 0.72);
+}
+
+.desktop-browser #detail .detail-network-section .detail-network-company-card {
+  color: #111827;
+}
+
+.desktop-browser
+  #detail
+  .detail-network-section
+  .detail-network-company-card
+  span {
+  color: #111827;
 }
 
 .desktop-browser #detail .detail-production-section .detail-production-company-card:focus-visible,
@@ -7945,7 +7958,8 @@ html.desktop-browser {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desktop-browser #detail .detail-production-section .detail-production-company-card:hover {
+  .desktop-browser #detail .detail-production-section .detail-production-company-card:hover,
+  .desktop-browser #detail .detail-network-section .detail-network-company-card:hover {
     background: #f4f4f4;
     border-color: rgba(0, 0, 0, 0.12);
   }

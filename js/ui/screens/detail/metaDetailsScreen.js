@@ -8514,7 +8514,7 @@ export const MetaDetailsScreen = {
       .slice(0, 10)
       .map(
         (company) => `
-      <article class="detail-company-card focusable${production ? " detail-production-company-card" : ""}"
+      <article class="detail-company-card focusable${production ? " detail-production-company-card" : " detail-network-company-card"}"
                data-company-name="${escapeHtml(company.name || "")}">
         ${company.logo ? `<img src="${company.logo}" alt="${escapeHtml(company.name || "Company")}" loading="lazy" decoding="async" />` : `<span>${escapeHtml(company.name || "")}</span>`}
       </article>
@@ -8522,7 +8522,7 @@ export const MetaDetailsScreen = {
       )
       .join("");
     return `
-      <section class="detail-company-section${production ? " detail-production-section" : ""}">
+      <section class="detail-company-section${production ? " detail-production-section" : " detail-network-section"}">
         <h3 class="detail-company-title">${escapeHtml(title)}</h3>
         <div class="detail-company-track" data-scroll-key="company:${escapeHtml(String(title || "").toLowerCase())}">${logos}</div>
       </section>
