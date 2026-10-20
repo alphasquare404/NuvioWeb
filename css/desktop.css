@@ -936,6 +936,7 @@ html.desktop-browser {
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track {
   --home-track-gap: 12px;
+  align-items: flex-start;
   margin-left: 0;
   padding-left: 0;
   padding-right: 24px;
