@@ -3835,13 +3835,22 @@ export const SettingsScreen = {
     await this.render({ refreshModel: false });
   },
 
-  renderCollapsibleRow({ focusKey, title, subtitle, expanded, bodyHtml = "", classes = "" }) {
+  renderCollapsibleRow({
+    focusKey,
+    title,
+    subtitle,
+    expanded,
+    bodyHtml = "",
+    classes = "",
+    leadingIconSrc = ""
+  }) {
     return `
       <div class="settings-collapsible${classes ? ` ${classes}` : ""}${expanded ? " is-open" : ""}">
         <button class="settings-action-row settings-collapsible-trigger settings-content-focusable focusable${expanded ? " is-open" : ""}"
                 data-zone="content"
                 ${this.registerAction(focusKey, this.actionMap.get(focusKey))}
                 data-role="section-toggle">
+          ${leadingIconSrc ? `<img class="settings-row-leading-image" src="${escapeHtml(leadingIconSrc)}" alt="" aria-hidden="true">` : ""}
           <span class="settings-row-copy">
             <span class="settings-row-title">${escapeHtml(title)}</span>
             ${subtitle ? `<span class="settings-row-subtitle">${escapeHtml(subtitle)}</span>` : ""}
@@ -9120,9 +9129,9 @@ export const SettingsScreen = {
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "trakt"))}
       <div class="settings-group-card settings-group-card-fill">
         <div class="settings-stack settings-desktop-tracking-stack">
-          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:trakt", title: "Trakt", subtitle: traktConnected ? `Connected as ${trakt.username || "Trakt user"}` : traktWaiting ? "Waiting for approval" : traktBridgeStatus === "unavailable" ? "Unavailable on this server" : "Not connected", expanded: Boolean(expanded.trakt), bodyHtml: expanded.trakt ? `${traktBody}${this.desktopTraktErrorMessage ? `<p class="settings-tracking-error">${escapeHtml(this.desktopTraktErrorMessage)}</p>` : ""}` : "", classes: "settings-collapsible-tracking" })}
-          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:simkl", title: "Simkl", subtitle: simklConnected ? `Connected as ${simkl.username || "Simkl user"}` : simklWaiting ? "Waiting for approval" : "Not connected", expanded: Boolean(expanded.simkl), bodyHtml: expanded.simkl ? `${simklBody}${this.desktopSimklErrorMessage ? `<p class="settings-tracking-error">${escapeHtml(this.desktopSimklErrorMessage)}</p>` : ""}` : "", classes: "settings-collapsible-tracking" })}
-          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:mdblist", title: "MDBList", subtitle: mdbListConnected ? `Connected as ${mdbList.username || "MDBList user"}` : mdbListWaiting ? "Waiting for approval" : mdbListBridgeStatus === "unavailable" ? "Unavailable on this server" : "Not connected", expanded: Boolean(expanded.mdblist), bodyHtml: expanded.mdblist ? `${mdbListBody}${this.desktopMdbListErrorMessage ? `<p class="settings-tracking-error">${escapeHtml(this.desktopMdbListErrorMessage)}</p>` : ""}` : "", classes: "settings-collapsible-tracking" })}
+          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:trakt", title: "Trakt", subtitle: traktConnected ? `Connected as ${trakt.username || "Trakt user"}` : traktWaiting ? "Waiting for approval" : traktBridgeStatus === "unavailable" ? "Unavailable on this server" : "Not connected", expanded: Boolean(expanded.trakt), bodyHtml: expanded.trakt ? `${traktBody}${this.desktopTraktErrorMessage ? `<p class="settings-tracking-error">${escapeHtml(this.desktopTraktErrorMessage)}</p>` : ""}` : "", classes: "settings-collapsible-tracking tracking-provider-card tracking-provider-card-trakt", leadingIconSrc: "assets/icons/trakt_tv_glyph.svg" })}
+          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:simkl", title: "Simkl", subtitle: simklConnected ? `Connected as ${simkl.username || "Simkl user"}` : simklWaiting ? "Waiting for approval" : "Not connected", expanded: Boolean(expanded.simkl), bodyHtml: expanded.simkl ? `${simklBody}${this.desktopSimklErrorMessage ? `<p class="settings-tracking-error">${escapeHtml(this.desktopSimklErrorMessage)}</p>` : ""}` : "", classes: "settings-collapsible-tracking tracking-provider-card tracking-provider-card-simkl", leadingIconSrc: "assets/icons/simkl_tv_glyph.svg" })}
+          ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:mdblist", title: "MDBList", subtitle: mdbListConnected ? `Connected as ${mdbList.username || "MDBList user"}` : mdbListWaiting ? "Waiting for approval" : mdbListBridgeStatus === "unavailable" ? "Unavailable on this server" : "Not connected", expanded: Boolean(expanded.mdblist), bodyHtml: expanded.mdblist ? `${mdbListBody}${this.desktopMdbListErrorMessage ? `<p class="settings-tracking-error">${escapeHtml(this.desktopMdbListErrorMessage)}</p>` : ""}` : "", classes: "settings-collapsible-tracking tracking-provider-card tracking-provider-card-mdblist", leadingIconSrc: "assets/icons/mdblist_logo.svg" })}
           ${this.renderCollapsibleRow({ focusKey: "tracking:desktop:behavior", title: "Sources & Behavior", subtitle: "Choose the sources used for Library, progress, and related content.", expanded: Boolean(expanded.behavior), bodyHtml: expanded.behavior ? behaviorBody : "", classes: "settings-collapsible-tracking" })}
         </div>
       </div>
@@ -9133,7 +9142,9 @@ export const SettingsScreen = {
     if (isDesktopSettingsBrowser()) {
       return this.renderDesktopTrackingSection();
     }
-    this.actionMap.set("trakt:open", () => Router.navigate("trakt"));
+    this.actionMap.set("trakt:open", () =>
+      Router.navigate("settingsSection", { section: "trakt" })
+    );
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "trakt"))}
       <div class="settings-group-card settings-group-card-fill">
@@ -9923,7 +9934,7 @@ export const SettingsScreen = {
         this.setActiveSection("trakt");
         await this.render();
       } else {
-        await Router.navigate("trakt");
+        await Router.navigate("settingsSection", { section: "trakt" });
       }
       return;
     }

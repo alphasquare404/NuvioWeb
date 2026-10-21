@@ -851,6 +851,15 @@ export const Router = {
     const fromHistory = Boolean(options?.fromHistory);
     const skipStackPush = Boolean(options?.skipStackPush);
     const replaceHistory = Boolean(options?.replaceHistory);
+
+    // Tracking used to be its own route. Settings sections are the only
+    // browser path now, so keep old links working instead of mounting a second
+    // copy of the tracking UI.
+    if (routeName === "trakt") {
+      routeName = "settingsSection";
+      params = { ...(params || {}), section: "trakt" };
+    }
+
     const targetParams = params || {};
 
     if (!this.routes[routeName]) {

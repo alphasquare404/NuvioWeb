@@ -21306,3 +21306,375 @@ html.desktop-browser:not(.nuvio-keyboard-nav)
     color-mix(in srgb, rgb(var(--collection-ambient-rgb)) 62%, white);
   outline: none;
 }
+
+/* Desktop Settings uses a collapsible row instead of the mobile tracking
+   route. Give those rows the same branded treatment without hiding their
+   existing inline provider controls. */
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 18px;
+  background: #191a1f;
+  color: #fff;
+  box-shadow: 0 14px 32px rgb(0 0 0 / 0.2);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  right: -28px;
+  bottom: -38px;
+  width: 250px;
+  height: 250px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.14;
+  transform: rotate(-9deg);
+  pointer-events: none;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-trakt {
+  background:
+    radial-gradient(circle at 80% 20%, rgb(255 255 255 / 0.14), transparent 43%),
+    linear-gradient(120deg, #55146f 0%, #9d185b 48%, #ed2637 100%);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-trakt::before {
+  background-image: url("/assets/icons/trakt_tv_glyph.svg");
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-simkl {
+  background:
+    radial-gradient(circle at 82% 22%, rgb(255 255 255 / 0.1), transparent 45%),
+    linear-gradient(120deg, #101114 0%, #24262b 58%, #15161a 100%);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-simkl::before {
+  background-image: url("/assets/icons/simkl_tv_glyph.svg");
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-mdblist {
+  background:
+    radial-gradient(circle at 82% 20%, rgb(255 255 255 / 0.16), transparent 45%),
+    linear-gradient(120deg, #07518f 0%, #0c6bb6 52%, #0b4e8b 100%);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-mdblist::before {
+  background-image: url("/assets/icons/mdblist_logo.svg");
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger {
+  position: relative;
+  z-index: 1;
+  min-height: 82px;
+  padding: 14px 18px;
+  border: 0 !important;
+  background: transparent !important;
+  color: #fff;
+  box-shadow: none;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-title {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-subtitle {
+  color: rgb(255 255 255 / 0.8);
+  font-size: 13px;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-value {
+  color: rgb(255 255 255 / 0.72);
+  font-size: 12px;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-icon {
+  color: #fff;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-leading-image {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  padding: 7px;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 0.16);
+  object-fit: contain;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger.focused,
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger:focus-visible {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.72);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body {
+  position: relative;
+  z-index: 1;
+  margin-left: 0;
+  padding: 0 16px 16px;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-subsection-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-action-row {
+  border-color: rgb(255 255 255 / 0.2);
+  background: rgb(255 255 255 / 0.94);
+  color: #121318;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-action-row
+  .settings-row-title {
+  color: #121318;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-action-row
+  .settings-row-subtitle,
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-action-row
+  .settings-row-value {
+  color: rgb(18 19 24 / 0.62);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-row-title,
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-row-subtitle {
+  color: rgb(255 255 255 / 0.86);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-row-icon {
+  color: #121318;
+}
+
+@media (max-width: 720px) {
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card {
+    border-color: transparent;
+    background-clip: padding-box;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger {
+    min-height: 96px;
+    padding: 16px 18px;
+    border-radius: 20px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger
+    .settings-row-title {
+    font-size: 24px;
+    line-height: 1.1;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger
+    .settings-row-subtitle {
+    margin-top: 5px;
+    font-size: 14px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger
+    .settings-row-value {
+    display: none;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger
+    .settings-row-leading-image {
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
+    padding: 8px;
+    border-radius: 14px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-body {
+    padding: 0 16px 16px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-body
+    .settings-tracking-provider-status,
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-body
+    .settings-tracking-provider-status
+    + p,
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-body
+    .settings-trakt-body-copy {
+    color: rgb(255 255 255 / 0.84);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-button {
+    min-height: 48px;
+    padding: 0 16px;
+    border-color: #fff;
+    border-radius: 12px;
+    background: #fff;
+    color: #111;
+    font-size: 14px;
+    font-weight: 650;
+    white-space: normal;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-button.is-secondary {
+    border-color: rgb(255 255 255 / 0.28);
+    background: rgb(255 255 255 / 0.14);
+    color: #fff;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-button.is-danger {
+    border-color: rgb(255 178 176 / 0.32);
+    background: rgb(0 0 0 / 0.2);
+    color: #ffd2d0;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-actions {
+    gap: 10px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-actions
+    > .settings-tracking-inline-button:only-child {
+    flex: 1 1 100%;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-activation-code {
+    color: #fff;
+    border-color: rgb(255 255 255 / 0.24);
+    background: rgb(0 0 0 / 0.18);
+  }
+}
