@@ -60,6 +60,7 @@ import {
 import { clearExternalPlaybackHandoff } from "../../components/browserExternalPlaybackHandoff.js";
 import { resolveExternalResumeSeconds } from "../../components/externalPlayerResume.js";
 import { bindBrowserPushReturn } from "../../components/browserPushReturn.js";
+import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 import { markBrowserExternalPlaybackFinished } from "../../components/browserExternalPlaybackFinish.js";
 import {
   externalPlaybackReportDurationSeconds,
@@ -5118,9 +5119,17 @@ export const PlayerScreen = {
       onSingleTap: ({ controlsWereVisible } = {}) =>
         this.handleBrowserVideoAreaTap(Boolean(controlsWereVisible))
     });
+    this.playerRailDragCleanup?.();
+    this.playerRailDragCleanup = bindHorizontalRailDragScroll({
+      container: this.container,
+      trackSelector:
+        ".player-episode-season-tabs, .player-dialog-tabs, .player-sources-filters, .player-episode-stream-filters"
+    });
   },
 
   unbindDesktopPlayerPointerBridge() {
+    this.playerRailDragCleanup?.();
+    this.playerRailDragCleanup = null;
     if (!this.container || !this.boundDesktopPlayerClickHandler) {
       return;
     }

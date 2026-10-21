@@ -93,6 +93,7 @@ import {
   shouldPaintRouteHandoff
 } from "../../../core/streams/streamAutoResolve.js";
 import { renderRouteHandoffShell } from "../../components/routeHandoffShell.js";
+import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 import {
   createOfflineMediaId,
   canQueueBrowserOfflineDownload,
@@ -8573,6 +8574,18 @@ export const MetaDetailsScreen = {
     });
   },
 
+  bindDesktopSecondaryRailDragScrolling() {
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+    this.desktopSecondaryRailDragCleanup?.();
+    this.desktopSecondaryRailDragCleanup = bindHorizontalRailDragScroll({
+      container: this.container,
+      trackSelector:
+        ".movie-cast-track, .series-cast-track, .detail-company-track, .detail-comments-modes, .detail-comments-track, .series-insight-tabs, .series-rating-seasons, .series-episode-ratings-grid"
+    });
+  },
+
   bindDesktopPreviewRailDragScrolling() {
     const tracks = Array.from(this.container?.querySelectorAll(".detail-morelike-track") || []);
     tracks.forEach((track) => {
@@ -9117,6 +9130,7 @@ export const MetaDetailsScreen = {
     }
     this.bindDesktopSeasonDragScrolling();
     this.bindDesktopPreviewRailDragScrolling();
+    this.bindDesktopSecondaryRailDragScrolling();
     if (this.detailFocusHandler) {
       this.container.removeEventListener("focusin", this.detailFocusHandler, true);
     }
@@ -12703,6 +12717,8 @@ export const MetaDetailsScreen = {
     this.episodeContextMenuCleanup = null;
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
+    this.desktopSecondaryRailDragCleanup?.();
+    this.desktopSecondaryRailDragCleanup = null;
     this.detailBrandObserver?.disconnect();
     this.detailBrandObserver = null;
     this.detailHeadingCleanup?.();

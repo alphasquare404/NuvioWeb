@@ -55,6 +55,7 @@ import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
+import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 import { createDesktopMediaHoverPreview } from "../../components/desktopMediaHoverPreview.js";
 import {
   getDesktopMediaLibraryMembership,
@@ -533,6 +534,11 @@ export const LibraryScreen = {
           tabSelector: ".library-presentation-button"
         }
       ]);
+      this.libraryRailDragCleanup?.();
+      this.libraryRailDragCleanup = bindHorizontalRailDragScroll({
+        container: this.container,
+        trackSelector: ".library-view-mode-row, .library-actions-row, .library-presentation-toggle"
+      });
     }
 
     // The listeners below are anonymous and never removed, so they are added
@@ -3254,6 +3260,8 @@ export const LibraryScreen = {
     this.mediaContextMenuCleanup = null;
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
+    this.libraryRailDragCleanup?.();
+    this.libraryRailDragCleanup = null;
     this.cancelScheduledRender();
     this.clearClosingPicker();
     this.lastRenderedExpandedPicker = null;

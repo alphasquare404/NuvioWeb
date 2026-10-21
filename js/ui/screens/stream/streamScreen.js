@@ -64,6 +64,7 @@ import {
 } from "../../../core/streams/streamFocusReveal.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 import {
   getBrowserExternalPlayerOptions,
   getBrowserExternalPlayerPlatform,
@@ -2610,6 +2611,11 @@ export const StreamScreen = {
       }
     };
     this.container.addEventListener("click", this.boundStreamFilterRowHandler, true);
+    this.streamRailDragCleanup?.();
+    this.streamRailDragCleanup = bindHorizontalRailDragScroll({
+      container: this.container,
+      trackSelector: ".stream-route-chip-track"
+    });
   },
 
   renderOfflineDownloadNotice() {
@@ -3329,6 +3335,8 @@ export const StreamScreen = {
   },
 
   cleanup() {
+    this.streamRailDragCleanup?.();
+    this.streamRailDragCleanup = null;
     this.clearExternalHandoffWatch();
     this.closeOfflineDownloadOptions?.();
     this.cancelAutoPlayCountdown();
