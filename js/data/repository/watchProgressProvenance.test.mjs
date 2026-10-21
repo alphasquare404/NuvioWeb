@@ -16,12 +16,15 @@ const { watchProgressOwner, isWatchProgressFromOtherSource } =
 test("playback recorded while a provider owned progress belongs to that provider", () => {
   assert.equal(watchProgressOwner({ source: "simkl_local" }), WatchProgressSource.SIMKL);
   assert.equal(watchProgressOwner({ source: "trakt_local" }), WatchProgressSource.TRAKT);
+  assert.equal(watchProgressOwner({ source: "mdblist_local" }), WatchProgressSource.MDBLIST);
 });
 
 test("a provider's own records belong to it too", () => {
   assert.equal(watchProgressOwner({ source: "simkl_playback" }), WatchProgressSource.SIMKL);
   assert.equal(watchProgressOwner({ source: "simkl_history" }), WatchProgressSource.SIMKL);
   assert.equal(watchProgressOwner({ source: "trakt_history" }), WatchProgressSource.TRAKT);
+  assert.equal(watchProgressOwner({ source: "mdblist_playback" }), WatchProgressSource.MDBLIST);
+  assert.equal(watchProgressOwner({ source: "mdblist_history" }), WatchProgressSource.MDBLIST);
 });
 
 test("Nuvio Sync's own playback belongs to no provider", () => {
@@ -77,5 +80,6 @@ test("only Nuvio Sync's own playback belongs in Nuvio's cloud", async () => {
   assert.equal(isNuvioSyncOwnedProgress({ source: "simkl_local" }), false);
   assert.equal(isNuvioSyncOwnedProgress({ source: "simkl_playback" }), false);
   assert.equal(isNuvioSyncOwnedProgress({ source: "trakt_local" }), false);
+  assert.equal(isNuvioSyncOwnedProgress({ source: "mdblist_local" }), false);
   assert.equal(isNuvioSyncOwnedProgress({}), true);
 });

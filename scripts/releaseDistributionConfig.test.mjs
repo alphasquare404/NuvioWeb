@@ -11,7 +11,7 @@ async function readRepositoryFile(path) {
 function metadataTagBlocks(workflow) {
   return [
     ...workflow.matchAll(
-      /id: (?:frontend|trakt|debrid|external-return)-meta[\s\S]*?tags: \|\r?\n((?:\s+type=.*\r?\n)+)/g
+      /id: (?:frontend|trakt|mdblist|debrid|external-return)-meta[\s\S]*?tags: \|\r?\n((?:\s+type=.*\r?\n)+)/g
     )
   ].map((match) =>
     match[1]
@@ -40,10 +40,17 @@ test("GHCR publishing separates web development and release channels consistentl
     "type=sha,format=short,prefix=sha-"
   ];
 
-  assert.equal(tagBlocks.length, 4);
-  assert.deepEqual(tagBlocks, [expectedTags, expectedTags, expectedTags, expectedTags]);
+  assert.equal(tagBlocks.length, 5);
+  assert.deepEqual(tagBlocks, [
+    expectedTags,
+    expectedTags,
+    expectedTags,
+    expectedTags,
+    expectedTags
+  ]);
   assert.match(workflow, /steps\.frontend-meta\.outputs\.tags/);
   assert.match(workflow, /steps\.trakt-meta\.outputs\.tags/);
+  assert.match(workflow, /steps\.mdblist-meta\.outputs\.tags/);
   assert.match(workflow, /steps\.debrid-meta\.outputs\.tags/);
   assert.match(workflow, /steps\.external-return-meta\.outputs\.tags/);
   assert.match(workflow, /NUVIO_BUILD_CHANNEL=.*github\.ref_type == 'tag'.*'stable'.*'nightly'/);
@@ -64,6 +71,7 @@ test("Compose defaults every production service to stable without a tag environm
 
   assert.match(compose, /ghcr\.io\/alphasquare404\/nuvioweb:stable/);
   assert.match(compose, /ghcr\.io\/alphasquare404\/nuvioweb-trakt-auth-bridge:stable/);
+  assert.match(compose, /ghcr\.io\/alphasquare404\/nuvioweb-mdblist-bridge:stable/);
   assert.match(compose, /ghcr\.io\/alphasquare404\/nuvioweb-debrid-api-bridge:stable/);
   assert.match(compose, /ghcr\.io\/alphasquare404\/nuvioweb-external-return-bridge:stable/);
   assert.doesNotMatch(compose, /NUVIO_TAG/);
@@ -84,6 +92,7 @@ test("Docker Quick Deploy documents hosted defaults and server-only Trakt config
     /NUVIO_SUPABASE_FALLBACK_URL=https:\/\/api-two\.nuvioapp\.space/
   );
   assert.match(environmentTemplate, /TRAKT_CLIENT_SECRET=/);
+  assert.match(environmentTemplate, /MDBLIST_CLIENT_ID=/);
   assert.match(environmentTemplate, /Server-only Trakt bridge values/);
   assert.doesNotMatch(environmentTemplate, /service[_-]?role/i);
   assert.match(readme, /### Quick Deploy with Docker/);

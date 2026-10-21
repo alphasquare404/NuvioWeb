@@ -3,12 +3,14 @@ import { createProfileScopedStore } from "./profileScopedStore.js";
 export const WatchProgressSource = {
   TRAKT: "trakt",
   SIMKL: "simkl",
+  MDBLIST: "mdblist",
   NUVIO_SYNC: "nuvio_sync"
 };
 
 export const TraktLibrarySourceMode = {
   TRAKT: "trakt",
   SIMKL: "simkl",
+  MDBLIST: "mdblist",
   LOCAL: "local"
 };
 
@@ -51,6 +53,7 @@ function normalizeWatchProgressSource(value) {
   const normalized = String(value || WatchProgressSource.TRAKT).toLowerCase();
   if (normalized === WatchProgressSource.NUVIO_SYNC) return WatchProgressSource.NUVIO_SYNC;
   if (normalized === WatchProgressSource.SIMKL) return WatchProgressSource.SIMKL;
+  if (normalized === WatchProgressSource.MDBLIST) return WatchProgressSource.MDBLIST;
   return WatchProgressSource.TRAKT;
 }
 
@@ -58,6 +61,7 @@ function normalizeLibrarySourceMode(value) {
   const normalized = String(value || TraktLibrarySourceMode.TRAKT).toLowerCase();
   if (normalized === TraktLibrarySourceMode.LOCAL) return TraktLibrarySourceMode.LOCAL;
   if (normalized === TraktLibrarySourceMode.SIMKL) return TraktLibrarySourceMode.SIMKL;
+  if (normalized === TraktLibrarySourceMode.MDBLIST) return TraktLibrarySourceMode.MDBLIST;
   return TraktLibrarySourceMode.TRAKT;
 }
 

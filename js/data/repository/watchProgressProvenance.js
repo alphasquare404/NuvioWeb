@@ -15,6 +15,7 @@ export function watchProgressOwner(item = {}) {
   const source = String(item?.source || "").toLowerCase();
   if (source.startsWith("trakt")) return WatchProgressSource.TRAKT;
   if (source.startsWith("simkl")) return WatchProgressSource.SIMKL;
+  if (source.startsWith("mdblist")) return WatchProgressSource.MDBLIST;
   return "";
 }
 

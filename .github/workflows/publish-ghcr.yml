@@ -80,6 +80,20 @@ jobs:
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
 
+      - name: Extract MDBList bridge image metadata
+        id: mdblist-meta
+        uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96 # v5.6.1
+        with:
+          images: ghcr.io/alphasquare404/nuvioweb-mdblist-bridge
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=nightly,enable=${{ github.ref == 'refs/heads/web' }}
+            type=raw,value=latest
+            type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,format=short,prefix=sha-
+
       - name: Extract debrid bridge image metadata
         id: debrid-meta
         uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96 # v5.6.1
@@ -132,6 +146,18 @@ jobs:
           push: true
           tags: ${{ steps.trakt-meta.outputs.tags }}
           labels: ${{ steps.trakt-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and publish MDBList bridge image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: ./services/mdblist-bridge/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.mdblist-meta.outputs.tags }}
+          labels: ${{ steps.mdblist-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

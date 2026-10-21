@@ -861,7 +861,9 @@ export const LibraryScreen = {
       `;
     }
     const listPickerMarkup =
-      state.sourceMode === "trakt" || (Platform.isBrowser() && state.sourceMode === "simkl")
+      state.sourceMode === "trakt" ||
+      state.sourceMode === "mdblist" ||
+      (Platform.isBrowser() && state.sourceMode === "simkl")
         ? this.renderPicker(
             "list",
             state.sourceMode === "simkl"

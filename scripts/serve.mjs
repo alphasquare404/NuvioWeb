@@ -4,10 +4,16 @@ import path from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { buildRuntimeEnvScript, readEnvProperties } from "./envProperties.mjs";
+import {
+  buildRuntimeEnvScript,
+  parseProperties,
+  readEnvProperties,
+  resolveLocalPropertiesSource
+} from "./envProperties.mjs";
 import { createDebridApiBridgeHandler } from "../services/debrid-api-bridge/bridge.mjs";
 import { createExternalReturnHandler } from "../services/external-return-bridge/bridge.mjs";
 import { createTraktAuthBridgeHandler } from "../services/trakt-auth-bridge/bridge.mjs";
+import { createMdbListBridgeHandler } from "../services/mdblist-bridge/bridge.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -25,6 +31,17 @@ const externalReturnHandler = createExternalReturnHandler();
 // so Trakt sign-in could be exercised in a container and nowhere else -- which
 // is a poor place to find out that the bridge refuses every request.
 const traktAuthBridgeHandler = createTraktAuthBridgeHandler();
+let mdbListBridgeHandler = null;
+
+async function getMdbListBridgeHandler() {
+  if (mdbListBridgeHandler) return mdbListBridgeHandler;
+  const sourcePath = await resolveLocalPropertiesSource({ rootDir });
+  const properties = sourcePath ? parseProperties(await readFile(sourcePath, "utf8")) : {};
+  mdbListBridgeHandler = createMdbListBridgeHandler({
+    environment: { ...properties, ...process.env }
+  });
+  return mdbListBridgeHandler;
+}
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -211,6 +228,12 @@ const server = http.createServer(async (request, response) => {
     }
     if (requestUrl.pathname.startsWith("/api/trakt/")) {
       await traktAuthBridgeHandler(request, response);
+      return;
+    }
+    if (requestUrl.pathname.startsWith("/api/mdblist/")) {
+      await (
+        await getMdbListBridgeHandler()
+      )(request, response);
       return;
     }
     if (requestUrl.pathname === "/nuvio.env.js") {

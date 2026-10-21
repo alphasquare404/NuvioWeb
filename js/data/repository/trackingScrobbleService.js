@@ -1,12 +1,13 @@
 import { TraktScrobbleService } from "./traktScrobbleService.js";
 import { SimklScrobbleService } from "./simklScrobbleService.js";
+import { MdbListScrobbleService } from "./mdbListScrobbleService.js";
 import {
   shouldSendTerminalScrobbleReport,
   terminalScrobbleAction,
   terminalScrobbleReportKey
 } from "./terminalScrobbleReport.js";
 
-const providers = [TraktScrobbleService, SimklScrobbleService];
+const providers = [TraktScrobbleService, SimklScrobbleService, MdbListScrobbleService];
 let lastTerminalReportKey = "";
 
 function enabledProviders() {

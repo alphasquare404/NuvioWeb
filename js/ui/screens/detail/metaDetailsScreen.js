@@ -1546,7 +1546,7 @@ function detailUsesTouchLayout() {
 // Trakt and the local library keep a named list instead, so there the question
 // is about that one list.
 function librarySnapshotHasMembership(listMembership = {}, sourceMode) {
-  if (sourceMode === LibrarySourceMode.SIMKL) {
+  if (sourceMode === LibrarySourceMode.SIMKL || sourceMode === LibrarySourceMode.MDBLIST) {
     return Object.values(listMembership).some(Boolean);
   }
   const key = sourceMode === LibrarySourceMode.TRAKT ? "watchlist" : "local";
@@ -6893,7 +6893,9 @@ export const MetaDetailsScreen = {
     if (sourceMode === LibrarySourceMode.SIMKL) {
       return "simkl:status:plantowatch";
     }
-    return sourceMode === LibrarySourceMode.TRAKT ? "watchlist" : "local";
+    return sourceMode === LibrarySourceMode.TRAKT || sourceMode === LibrarySourceMode.MDBLIST
+      ? "watchlist"
+      : "local";
   },
 
   decorateDesktopLibraryDestinationDialog() {
@@ -7537,7 +7539,7 @@ export const MetaDetailsScreen = {
           return;
         }
         const desiredMembership =
-          sourceMode === LibrarySourceMode.SIMKL
+          sourceMode === LibrarySourceMode.SIMKL || sourceMode === LibrarySourceMode.MDBLIST
             ? Object.fromEntries(
                 tabs
                   .filter((tab) => tab.isMembershipDestination !== false)

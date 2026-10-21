@@ -93,16 +93,17 @@ docker compose up -d
 docker compose ps
 ```
 
-`docker compose ps` should show these four NuvioWeb services running:
+`docker compose ps` should show these five NuvioWeb services running:
 
 - `nuvioweb`
 - `nuvioweb-trakt-auth-bridge`
+- `nuvioweb-mdblist-bridge`
 - `nuvioweb-debrid-api-bridge`
 - `nuvioweb-external-return-bridge`
 
 Open `http://SERVER_IP:4173`. Set `NUVIO_PORT` in `.env` before starting if
 you need a different host port. You can also edit `.env` for Simkl, Premiumize,
-Trakt, or a custom/self-hosted compatible Nuvio backend. See
+Trakt, MDBList, or a custom/self-hosted compatible Nuvio backend. See
 [environment configuration](docs/environment.md) for every supported value.
 
 ### Configuration
@@ -125,15 +126,17 @@ docker compose up -d --force-recreate
 `PREMIUMIZE_CLIENT_ID` are browser-public runtime values. The frontend receives
 only `TRAKT_CLIENT_ID`; `TRAKT_CLIENT_SECRET` and `TRAKT_REDIRECT_URI` are
 server-only values passed exclusively to the internal `trakt-auth-bridge`
-container. Nginx routes only `/api/trakt/*` to that sidecar; neither server
-value is written to `nuvio.env.js`, bundled, or exposed on a host port. Never
+container. `MDBLIST_CLIENT_ID` is likewise server-only and used only by
+`mdblist-bridge`. Nginx routes `/api/trakt/*` and `/api/mdblist/*` to those
+sidecars; server-only values are not written to `nuvio.env.js`, bundled, or
+exposed on a host port. Never
 place Supabase service-role keys, access tokens, provider credentials, or other
 private values in browser runtime configuration.
 
 ### Release Channels
 
 Use the default `:stable` tag for normal self-hosting. To switch channels, edit
-all four `image:` tags in `docker-compose.yml` to the same tag before pulling.
+all five `image:` tags in `docker-compose.yml` to the same tag before pulling.
 
 | Tag | Meaning |
 | --- | --- |
