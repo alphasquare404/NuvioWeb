@@ -5173,6 +5173,7 @@ export const HomeScreen = {
         poster: node.dataset.posterSrc || null,
         background: node.dataset.backdropSrc || null,
         backdrop: node.dataset.backdropSrc || null,
+        artShape: node.classList.contains("is-landscape") ? "landscape" : "portrait",
         logo: node.dataset.logoSrc || null,
         addonBaseUrl: node.dataset.addonBaseUrl || "",
         addonId: node.dataset.addonId || "",
