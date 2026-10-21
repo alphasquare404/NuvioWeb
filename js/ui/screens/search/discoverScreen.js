@@ -12,6 +12,7 @@ import {
   setBrowserVerticalScrollTop
 } from "../../navigation/browserScrollPosition.js";
 import { renderContentFilterPicker } from "../../components/filterPicker.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import {
   PosterOptionsDialogController,
   posterItemFromNode
@@ -1602,7 +1603,7 @@ export const DiscoverScreen = {
         ${
           useDesktopNavigation
             ? `<button class="discover-desktop-back-button" type="button" data-action="desktopDiscoverBack" aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-                <span class="material-icons" aria-hidden="true">chevron_left</span>
+                ${renderBackButtonIcon()}
               </button>`
             : ""
         }

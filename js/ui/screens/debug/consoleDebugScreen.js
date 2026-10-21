@@ -7,6 +7,7 @@ import { Platform } from "../../../platform/index.js";
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { copyTextToClipboard } from "../../components/browserDeviceCodeActions.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import {
   buildLogText,
   eventLevelLabel,
@@ -185,7 +186,7 @@ export const ConsoleDebugScreen = {
       <div class="debug-console-shell">
         <header class="debug-console-mobile-heading">
           <button class="debug-console-mobile-back focusable" type="button" data-focus-key="mobile-back" data-action="back" aria-label="${escapeHtml(t("auth_qr_back", {}, "Back"))}">
-            <span class="material-icons" aria-hidden="true">chevron_left</span>
+            ${renderBackButtonIcon()}
           </button>
           <div class="debug-console-mobile-copy">
             <h1 class="debug-console-mobile-title">${escapeHtml(t("about_debug_console_title", {}, "Console debug"))}</h1>
@@ -206,7 +207,7 @@ export const ConsoleDebugScreen = {
         </div>
         <header class="debug-console-header">
           <button class="debug-console-back focusable" data-focus-key="back" data-action="back">
-            <span class="material-icons" aria-hidden="true">chevron_left</span>
+            ${renderBackButtonIcon()}
             <span>${escapeHtml(t("auth_qr_back", {}, "Back"))}</span>
           </button>
           <div class="debug-console-heading">
