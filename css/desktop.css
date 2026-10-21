@@ -7151,10 +7151,29 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser .profile-avatar-tile {
+  position: relative;
   width: 100%;
   height: auto;
+  min-height: 68px;
   max-width: 84px;
   aspect-ratio: 1;
+}
+
+/* The tile owns its square. An image that contributes its own intrinsic
+   height can outgrow a grid row on WebKit; absolute fill breaks that
+   dependency, which matters most in All where there are the most rows. */
+.desktop-browser .profile-avatar-tile-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.desktop-browser .profile-editor-avatar-grid {
+  align-items: start;
+  grid-auto-rows: minmax(68px, auto);
 }
 
 .desktop-browser .profile-avatar-tile.is-selected,
