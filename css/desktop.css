@@ -21678,3 +21678,90 @@ html.desktop-browser:not(.nuvio-keyboard-nav)
     background: rgb(0 0 0 / 0.18);
   }
 }
+
+
+
+/* The automatic build confirmation is a short capsule at the top, then it
+   leaves in the same direction it arrived. */
+.browser-update-toast {
+  position: fixed;
+  z-index: 10000;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  max-width: calc(
+    100vw - 28px - env(safe-area-inset-left, 0px) -
+      env(safe-area-inset-right, 0px)
+  );
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 7px 12px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 999px;
+  background: rgb(25 25 29 / 0.94);
+  color: rgba(255 255 255 / 0.94);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+  animation: browser-update-capsule-in 220ms ease-out both;
+}
+
+.browser-update-toast.is-leaving {
+  animation: browser-update-capsule-out 240ms ease-in both;
+  pointer-events: none;
+}
+
+@keyframes browser-update-capsule-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -120%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes browser-update-capsule-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -120%);
+  }
+}
+
+.browser-update-title {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.browser-update-link {
+  flex: 0 0 auto;
+  color: #b9d7ff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.browser-update-link:hover,
+.browser-update-link:focus-visible {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.browser-update-link:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}

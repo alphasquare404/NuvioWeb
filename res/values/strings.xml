@@ -1983,6 +1983,8 @@
     <string name="update_download_complete">Download complete. Ready to install.</string>
     <string name="update_up_to_date">System is up to date. Latest changes:</string>
     <string name="update_close">Close</string>
+    <string name="update_browser_updated_title">NuvioWeb updated</string>
+    <string name="update_browser_see_changes">See changes</string>
     <string name="update_open_settings">Open Settings</string>
     <string name="update_install">Install</string>
     <string name="update_ignore">Ignore</string>

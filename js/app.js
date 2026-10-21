@@ -17,6 +17,7 @@ import { renderAddonRemotePage } from "./bootstrap/renderAddonRemotePage.js";
 import { preloadStreamBadgeImages } from "./ui/screens/stream/streamScreen.js";
 import { warmStreamingLibs } from "./runtime/loadStreamingLibs.js";
 import { watchServiceWorkerTakeover } from "./core/update/serviceWorkerReload.js";
+import { announceBuildUpdate, markBuildUpdateApplied } from "./core/update/buildUpdateNotice.js";
 import { Platform } from "./platform/index.js";
 import { LocalStore } from "./core/storage/localStore.js";
 import { I18n } from "./i18n/index.js";
@@ -43,6 +44,9 @@ import { PlayerScreen } from "./ui/screens/player/playerScreen.js";
   }
 })();
 
+const BUILD_STAMP = typeof __NUVIO_BUILD_STAMP__ === "string" ? __NUVIO_BUILD_STAMP__ : "";
+globalThis.__NUVIO_BUILD_STAMP__ = BUILD_STAMP;
+
 const GUEST_QR_BYPASS_KEY = "skipAuthQrGate";
 const SIGNED_OUT_ALLOWED_ROUTES = new Set(["trakt"]);
 let hasSelectedProfileThisSession = false;
@@ -61,7 +65,10 @@ if (
   globalThis.navigator.serviceWorker.register("./sw.js").catch(() => {});
   watchServiceWorkerTakeover(globalThis.navigator.serviceWorker, {
     hadController: hadServiceWorkerController,
-    reload: () => globalThis.location.reload()
+    reload: () => {
+      markBuildUpdateApplied();
+      globalThis.location.reload();
+    }
   });
 }
 
@@ -436,6 +443,11 @@ async function bootstrapApp() {
     onManualFallbackResolved: () => PlayerScreen.dismissExternalPlaybackManualFallback?.()
   });
   logStartupTiming("auth-bootstrap-complete", bootstrapStartedAt);
+  if (Platform.isBrowser()) {
+    // The build stamp is written before the update prompt reloads. Seeing a
+    // different one here is the confirmation that the new bundle is running.
+    announceBuildUpdate();
+  }
 }
 
 // Infuse and Lenna report a position but never a duration, so they borrow the
