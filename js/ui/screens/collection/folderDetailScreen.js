@@ -1206,15 +1206,18 @@ export const FolderDetailScreen = {
     const ambientLayer = this.container.querySelector(".folder-detail-desktop-ambient");
     if (!ambientLayer) return;
 
+    this.container.removeAttribute("data-collection-ambient");
+    this.container.style.removeProperty("--collection-ambient-rgb");
     const cssUrl = artworkUrl.replace(/["\\]/g, "\\$&");
-    ambientLayer.style.setProperty(
-      "--collection-ambient-artwork",
-      artworkUrl ? `url("${cssUrl}")` : "none"
-    );
+    const artworkValue = artworkUrl ? `url("${cssUrl}")` : "none";
+    ambientLayer.style.setProperty("--collection-ambient-artwork", artworkValue);
+    this.container.style.setProperty("--collection-ambient-artwork", artworkValue);
+    this.container.dataset.collectionArtwork = artworkUrl ? "true" : "false";
     this.ambientArtworkUrl = artworkUrl;
     void extractCollectionAmbientColor(artworkUrl).then((rgb) => {
       if (!rgb || this.ambientArtworkUrl !== artworkUrl || !this.container) return;
       this.container.style.setProperty("--collection-ambient-rgb", rgb.join(" "));
+      this.container.dataset.collectionAmbient = "true";
     });
   },
 
@@ -1728,21 +1731,27 @@ export const FolderDetailScreen = {
     const desktopHeaderLogo = String(this.folder?.titleLogoUrl || "").trim();
     const mobileFolderTitle = String(this.folder?.title || "Folder").trim();
     const mobileFolderLogo = String(this.folder?.titleLogoUrl || "").trim();
+    const useMobileTabPicker =
+      this.isDesktopBrowser && document.documentElement?.dataset?.layout === "mobile";
     const mobileTabsMarkup =
       this.viewMode === "TABBED_GRID" && this.tabs.length > 1
-        ? `<div class="folder-detail-mobile-tabs">
-            ${this.tabs
-              .map(
-                (tab, index) => `
-              <button type="button"
-                      class="folder-detail-tab folder-detail-mobile-tab focusable${index === this.selectedTabIndex ? " is-selected" : ""}"
-                      data-action="selectTab"
-                      data-tab-index="${index}"
-                      data-focus-key="mobile-tab:${index}">${escapeHtml(tab.label || "Tab")}</button>
-            `
-              )
-              .join("")}
-          </div>`
+        ? this.isDesktopBrowser
+          ? useMobileTabPicker
+            ? `<div class="folder-detail-mobile-picker">${this.renderTabPicker()}</div>`
+            : ""
+          : `<div class="folder-detail-mobile-tabs">
+              ${this.tabs
+                .map(
+                  (tab, index) => `
+                <button type="button"
+                        class="folder-detail-tab folder-detail-mobile-tab focusable${index === this.selectedTabIndex ? " is-selected" : ""}"
+                        data-action="selectTab"
+                        data-tab-index="${index}"
+                        data-focus-key="mobile-tab:${index}">${escapeHtml(tab.label || "Tab")}</button>
+              `
+                )
+                .join("")}
+            </div>`
         : "";
     this.container.innerHTML =
       this.viewMode === "TABBED_GRID" || this.isDesktopBrowser
@@ -1796,7 +1805,9 @@ export const FolderDetailScreen = {
             ${
               (!this.isDesktopBrowser || this.viewMode === "TABBED_GRID") && this.tabs.length > 1
                 ? this.isDesktopBrowser
-                  ? this.renderTabPicker()
+                  ? useMobileTabPicker
+                    ? ""
+                    : this.renderTabPicker()
                   : `
               <div class="folder-detail-tabs">
                 ${this.tabs
@@ -2487,7 +2498,10 @@ export const FolderDetailScreen = {
     this.boundDesktopCollectionClickContainer = null;
     this.boundDesktopCollectionClickHandler = null;
     this.ambientArtworkUrl = "";
+    this.container?.removeAttribute("data-collection-ambient");
+    this.container?.removeAttribute("data-collection-artwork");
     this.container?.style?.removeProperty("--collection-ambient-rgb");
+    this.container?.style?.removeProperty("--collection-ambient-artwork");
     ScreenUtils.hide(this.container);
   }
 };

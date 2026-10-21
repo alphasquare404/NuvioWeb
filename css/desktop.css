@@ -457,44 +457,9 @@ html.desktop-browser {
   height: 32px;
 }
 
-.desktop-browser .detail-trailer-modal-close {
-  position: absolute;
-  z-index: 2;
-  top: -18px;
-  right: -18px;
-  display: inline-grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  color: #fff;
-  background: rgba(18, 22, 28, 0.94);
-  font-size: 28px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.desktop-browser .detail-trailer-modal-close:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.86);
-  outline-offset: 3px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .desktop-browser .detail-trailer-modal-close:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-}
-
 @media (max-width: 700px) {
   .desktop-browser .detail-trailer-modal-backdrop {
     padding: 22px;
-  }
-
-  .desktop-browser .detail-trailer-modal-close {
-    top: 10px;
-    right: 10px;
   }
 }
 
@@ -11364,13 +11329,6 @@ body.desktop-browser {
     max-height: calc(100vh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
   }
 
-  .desktop-browser .detail-trailer-modal-close {
-    top: 8px;
-    right: 8px;
-    width: 44px;
-    height: 44px;
-  }
-
   .desktop-browser .nuvio-dialog-backdrop {
     padding:
       calc(12px + var(--browser-safe-area-top))
@@ -21085,4 +21043,266 @@ html:not([data-nav-placement="top"])
 .desktop-browser .library-cloud-filter-row .library-cloud-refresh-button {
   align-self: center;
   margin-left: 0;
+}
+
+/* The menu itself must change even when artwork colour extraction fails:
+   the Folder Detail backdrop still uses the neutral ambient fallback, and the
+   picker should match that rather than falling back to Settings' surface. */
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-anchor {
+  border-color: rgb(var(--collection-ambient-rgb, 35 40 52) / 0.5) !important;
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 26%,
+    var(--bg-color)
+  ) !important;
+}
+
+html.desktop-browser:not(.nuvio-keyboard-nav)
+  #folderDetail
+  .folder-detail-tab-picker
+  .library-picker-anchor.focused:not(.selected) {
+  border-color: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 64%,
+    white
+  ) !important;
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 34%,
+    var(--bg-color)
+  ) !important;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-menu {
+  border-color: rgb(var(--collection-ambient-rgb, 35 40 52) / 0.42) !important;
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 18%,
+    var(--bg-color)
+  ) !important;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option {
+  color: var(--text-color);
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option.selected {
+  background: rgb(var(--collection-ambient-rgb, 35 40 52) / 0.24) !important;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option:hover,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option.focused,
+.desktop-browser
+  #folderDetail
+  .folder-detail-tab-picker
+  .library-picker-option:focus-visible {
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 42%,
+    var(--bg-color)
+  ) !important;
+  color: var(--text-color) !important;
+  box-shadow: inset 0 0 0 1px
+    color-mix(
+      in srgb,
+      rgb(var(--collection-ambient-rgb, 35 40 52)) 62%,
+      white
+    ) !important;
+  outline: none;
+}
+
+/* Cross-origin artwork can load as a CSS background but cannot be read back
+   through canvas. In that case the menu samples the artwork visually instead
+   of falling back to Settings' surface. */
+.desktop-browser
+  #folderDetail[data-collection-artwork="true"]:not(
+    [data-collection-ambient="true"]
+  )
+  .folder-detail-tab-picker
+  .library-picker-menu {
+  position: absolute;
+  isolation: isolate;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--bg-color) 88%, transparent) !important;
+}
+
+.desktop-browser
+  #folderDetail[data-collection-artwork="true"]:not(
+    [data-collection-ambient="true"]
+  )
+  .folder-detail-tab-picker
+  .library-picker-menu::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgb(10 10 12 / 0.72), rgb(10 10 12 / 0.84)),
+    var(--collection-ambient-artwork, none);
+  background-position: center;
+  background-size: cover;
+  filter: blur(18px) saturate(1.35);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.desktop-browser
+  #folderDetail[data-collection-artwork="true"]:not(
+    [data-collection-ambient="true"]
+  )
+  .folder-detail-tab-picker
+  .library-picker-menu
+  > .library-picker-option {
+  position: relative;
+  z-index: 1;
+}
+
+/* Browser/PWA phones use the same category dropdown as desktop. TV/native
+   keeps the horizontal tab rail. */
+.folder-detail-mobile-picker {
+  display: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-picker {
+  display: block;
+  padding: 0 0 12px;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-picker
+  .folder-detail-tab-picker {
+  width: 100%;
+}
+
+/* Only wear the artwork palette when extraction actually produced a colour.
+   Without it the picker keeps its normal surface instead of tinting with the
+   neutral fallback. */
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-anchor {
+  border-color: rgb(var(--collection-ambient-rgb) / 0.5);
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 26%,
+    var(--bg-color)
+  );
+}
+
+html.desktop-browser:not(.nuvio-keyboard-nav)
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-anchor.focused:not(.selected) {
+  border-color: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 64%,
+    white
+  ) !important;
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 34%,
+    var(--bg-color)
+  ) !important;
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker.open
+  .library-picker-anchor,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker:focus-within
+  .library-picker-anchor,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-anchor.focused,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-anchor:focus-visible {
+  border-color: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 64%,
+    white
+  );
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 34%,
+    var(--bg-color)
+  ) !important;
+  box-shadow: 0 0 0 3px rgb(var(--collection-ambient-rgb) / 0.3);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser
+    #folderDetail[data-collection-ambient="true"]
+    .folder-detail-tab-picker
+    .library-picker-anchor:hover {
+    border-color: color-mix(
+      in srgb,
+      rgb(var(--collection-ambient-rgb)) 54%,
+      white
+    );
+    background: color-mix(
+      in srgb,
+      rgb(var(--collection-ambient-rgb)) 30%,
+      var(--bg-color)
+    );
+  }
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-menu {
+  border-color: rgb(var(--collection-ambient-rgb) / 0.42);
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 18%,
+    var(--bg-color)
+  );
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option {
+  color: var(--text-color);
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option.selected {
+  background: rgb(var(--collection-ambient-rgb) / 0.24);
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option:hover,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option.focused,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option:focus-visible {
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 42%,
+    var(--bg-color)
+  );
+  color: var(--text-color);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, rgb(var(--collection-ambient-rgb)) 62%, white);
+  outline: none;
 }

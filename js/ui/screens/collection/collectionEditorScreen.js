@@ -27,7 +27,7 @@ function bindMobileCollectionHeading(screen) {
   screen.mobileHeadingCleanup = bindPageHeadingCollapse({ container: screen.container });
 }
 const profileId = () => String(ProfileManager.getActiveProfileId() || "1");
-const labelForMode = (value) => ({ TABBED_GRID: "Tabs", ROWS: "Rows", FOLLOW_LAYOUT: "Follow Layout" }[String(value || "").toUpperCase()] || "Tabs");
+const labelForMode = (value) => ({ TABBED_GRID: "Grid", ROWS: "Rows", FOLLOW_LAYOUT: "Follow Layout" }[String(value || "").toUpperCase()] || "Grid");
 const labelForShape = (value) => ({ POSTER: "Poster", SQUARE: "Square", LANDSCAPE: "Wide" }[String(value || "").toUpperCase()] || "Square");
 
 function getCollection(id) {
@@ -95,7 +95,7 @@ export const CollectionEditorScreen = {
           <img class="desktop-collection-backdrop-preview" data-backdrop-preview alt="Backdrop preview" />
           <div class="desktop-collection-editor-toggle-row"><span><strong>Pin Above Catalogs</strong><small>Show this collection before standard catalog rows.</small></span><label class="desktop-collection-switch"><input type="checkbox" data-field="pinToTop" ${collection.pinToTop ? "checked" : ""}/><span></span></label></div>
           <fieldset class="desktop-collection-segmented"><legend>View Mode</legend>${["TABBED_GRID", "ROWS", "FOLLOW_LAYOUT"].map((mode) => `<button type="button" data-view-mode="${mode}" class="${collection.viewMode === mode ? "is-selected" : ""}">${labelForMode(mode)}</button>`).join("")}</fieldset>
-          <div class="desktop-collection-editor-toggle-row"><span><strong>Show “All” Tab</strong><small>Used when the collection is displayed as tabs.</small></span><label class="desktop-collection-switch"><input type="checkbox" data-field="showAllTab" ${collection.showAllTab ? "checked" : ""}/><span></span></label></div>
+          <div class="desktop-collection-editor-toggle-row"><span><strong>Show “All” Tab</strong><small>Used in Grid view.</small></span><label class="desktop-collection-switch"><input type="checkbox" data-field="showAllTab" ${collection.showAllTab ? "checked" : ""}/><span></span></label></div>
         </section>
         <section class="desktop-collection-editor-section"><div class="desktop-collection-editor-section-heading"><div><h2>Folders</h2><p>Folders appear in their saved order.</p></div><button type="button" data-add-folder>Add Folder</button></div>
           <div class="desktop-collection-editor-list">${folders.length ? folders.map((folder, index) => `<article class="desktop-collection-editor-row"><button type="button" data-folder-drag="${index}" class="desktop-collection-drag-handle"><span class="material-icons">drag_indicator</span></button><div class="desktop-folder-cover">${folder.coverImageUrl ? `<img src="${escapeHtml(folder.coverImageUrl)}" alt="" />` : escapeHtml(folder.coverEmoji || "□")}</div><div><h3>${escapeHtml(folder.title)}</h3><p>${labelForShape(folder.tileShape)} · ${getCollectionFolderSources(folder).length} sources</p></div><div class="desktop-collection-editor-actions"><button type="button" data-edit-folder="${escapeHtml(folder.id)}">Edit</button><button type="button" data-delete-folder="${escapeHtml(folder.id)}" class="is-danger">Delete</button></div></article>`).join("") : '<p class="desktop-collection-manager-empty">No folders yet. Add one to start grouping sources.</p>'}</div>

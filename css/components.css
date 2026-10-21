@@ -985,6 +985,12 @@ button:focus-visible {
   border: 0;
   opacity: 0;
   cursor: text;
+  /* iOS still paints the native caret on a transparent input. The PIN boxes
+     draw the only cursor, so keep the native text/caret fully invisible. */
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  caret-color: transparent !important;
+  text-shadow: none !important;
 }
 
 .profile-pin-box-row.is-shaking {
@@ -1047,9 +1053,22 @@ button:focus-visible {
     transform 140ms ease;
 }
 
+.profile-pin-box {
+  position: relative;
+}
+
+/* The dot stays centred in the box but out of the flex flow. While empty it
+   must not take half of the box's centre away from the cursor. */
+.profile-pin-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.72);
+}
+
 .profile-pin-box.is-filled .profile-pin-dot {
   opacity: 1;
-  transform: scale(1);
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .profile-pin-box.is-active .profile-pin-cursor {
