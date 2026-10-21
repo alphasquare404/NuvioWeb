@@ -9,6 +9,8 @@ export const ENV_PROPERTY_KEYS = [
   "TV_LOGIN_WEB_BASE_URL",
   "YOUTUBE_PROXY_URL",
   "INTRODB_API_URL",
+  "PROBE_ENDPOINT",
+  "REMUX_ENDPOINT",
   "IMDB_RATINGS_API_BASE_URL",
   "IMDB_TAPFRAME_API_BASE_URL",
   "AVATAR_PUBLIC_BASE_URL",
@@ -31,6 +33,8 @@ const DEFAULT_ENV_VALUES = {
   TV_LOGIN_WEB_BASE_URL: "",
   YOUTUBE_PROXY_URL: "youtube-proxy.html",
   INTRODB_API_URL: "https://api.introdb.app/",
+  PROBE_ENDPOINT: "",
+  REMUX_ENDPOINT: "",
   IMDB_RATINGS_API_BASE_URL: "",
   IMDB_TAPFRAME_API_BASE_URL: "",
   AVATAR_PUBLIC_BASE_URL: "",
@@ -156,15 +160,8 @@ export function buildRuntimeEnvScript(env = {}) {
 `;
 }
 
-export async function writeRuntimeEnvScriptFile(
-  targetPath,
-  { rootDir, sourcePath = "" } = {}
-) {
+export async function writeRuntimeEnvScriptFile(targetPath, { rootDir, sourcePath = "" } = {}) {
   const result = await readEnvProperties({ rootDir, sourcePath });
-  await writeFile(
-    targetPath,
-    buildRuntimeEnvScript(result.env),
-    "utf8"
-  );
+  await writeFile(targetPath, buildRuntimeEnvScript(result.env), "utf8");
   return result;
 }

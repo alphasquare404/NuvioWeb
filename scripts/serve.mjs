@@ -8,6 +8,9 @@ import { buildRuntimeEnvScript, readEnvProperties } from "./envProperties.mjs";
 import { createDebridApiBridgeHandler } from "../services/debrid-api-bridge/bridge.mjs";
 import { createExternalReturnHandler } from "../services/external-return-bridge/bridge.mjs";
 import { createTraktAuthBridgeHandler } from "../services/trakt-auth-bridge/bridge.mjs";
+import { createIntrodbBridgeHandler } from "../services/introdb-bridge/bridge.mjs";
+import { createRemuxBridgeHandler } from "../services/remux-bridge/bridge.mjs";
+import { createProbeBridgeHandler } from "../services/probe-bridge/bridge.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -25,6 +28,27 @@ const externalReturnHandler = createExternalReturnHandler();
 // so Trakt sign-in could be exercised in a container and nowhere else -- which
 // is a poor place to find out that the bridge refuses every request.
 const traktAuthBridgeHandler = createTraktAuthBridgeHandler();
+// IntroDB serves its segments with Access-Control-Allow-Origin limited to its own
+// site, so the browser cannot read them cross-origin. Mounted here for the same
+// reason as the others: the deployed page is served by this process, which makes a
+// relay on this origin the only way the data can reach a browser at all.
+const introdbBridgeHandler = createIntrodbBridgeHandler();
+// Safari cannot open an MKV because of the container, not the codec — measured, not
+// assumed. This bridge moves the bytes into an MP4 so the built-in player can open
+// them, and because it fetches the source itself, a CDN without CORS stops being an
+// obstacle too.
+// Which container and codecs a source really has, so the app can say how it will
+// be played before anyone presses play.
+const probeBridgeHandler = createProbeBridgeHandler({
+  ffprobePath: process.env.FFPROBE_PATH || "ffprobe"
+});
+const remuxBridgeHandler = createRemuxBridgeHandler({
+  ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+  allowHosts: String(process.env.REMUX_ALLOW_HOSTS || "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+});
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -211,6 +235,18 @@ const server = http.createServer(async (request, response) => {
     }
     if (requestUrl.pathname.startsWith("/api/trakt/")) {
       await traktAuthBridgeHandler(request, response);
+      return;
+    }
+    if (requestUrl.pathname.startsWith("/api/introdb/")) {
+      await introdbBridgeHandler(request, response);
+      return;
+    }
+    if (requestUrl.pathname.startsWith("/api/probe")) {
+      await probeBridgeHandler(request, response);
+      return;
+    }
+    if (requestUrl.pathname.startsWith("/api/remux")) {
+      await remuxBridgeHandler(request, response);
       return;
     }
     if (requestUrl.pathname === "/nuvio.env.js") {

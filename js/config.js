@@ -31,6 +31,13 @@ export const PARENTAL_GUIDE_API_URL = "https://api.tiffara.com/";
 export const INTRODB_API_URL = String(
   runtimeEnv.INTRODB_API_URL || "https://api.introdb.app/"
 ).trim();
+// Same-origin remux relay. Empty means the deployment does not run one, and
+// nothing about playback changes.
+// What this deployment can afford to do with a stream it cannot hand straight to
+// the player. Empty means "not offered": the app then labels streams by estimate
+// and never calls anyone.
+export const PROBE_ENDPOINT = String(runtimeEnv.PROBE_ENDPOINT || "").trim();
+export const REMUX_ENDPOINT = String(runtimeEnv.REMUX_ENDPOINT || "").trim();
 export const IMDB_RATINGS_API_BASE_URL = String(runtimeEnv.IMDB_RATINGS_API_BASE_URL || "").trim();
 export const IMDB_TAPFRAME_API_BASE_URL = String(
   runtimeEnv.IMDB_TAPFRAME_API_BASE_URL || ""
