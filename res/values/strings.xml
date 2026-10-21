@@ -481,6 +481,10 @@
     <string name="automation_return_tutorial_open">Trouble playing it? Open on YouTube</string>
     <string name="automation_return_caution">The Automation runs when the player closes, so close the player by its own Close button. Swiping it away from the app switcher still sends nothing back.</string>
     <string name="poster_view_larger">View poster</string>
+    <string name="choose_stream">Choose stream</string>
+    <string name="stream_copy_link">Copy stream link</string>
+    <string name="stream_open_external">Open in external player</string>
+    <string name="stream_open_internal">Open in internal player</string>
     <string name="stream_opening_player">Opening player…</string>
     <string name="settings_card_customization_title">Card Customization</string>
     <string name="settings_card_customization_subtitle">Orientation, size, corners and depth surfaces</string>

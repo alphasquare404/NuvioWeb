@@ -6562,7 +6562,7 @@ export const MetaDetailsScreen = {
     });
     options.push({
       action: "playManually",
-      label: t("play_manually", {}, "Play manually")
+      label: t("choose_stream", {}, "Choose stream")
     });
     // Per episode, because that is the file the subtitle belongs to. The hero
     // button only ever covers whichever episode the hero itself would play.
@@ -7136,6 +7136,161 @@ export const MetaDetailsScreen = {
       Boolean(node?.matches?.(".series-primary-btn.focusable, .series-circle-btn.focusable")) &&
       (action === "playDefault" || action === "toggleLibrary")
     );
+  },
+
+  bindHeroTouchHold() {
+    if (!Platform.isBrowser() || !this.container) {
+      return null;
+    }
+    const cardSelector = ".series-primary-btn[data-action='playDefault']";
+    const longPressMs = 550;
+    const moveTolerancePx = 10;
+    let active = null;
+    let ignoreClickUntil = 0;
+    const now = () => globalThis.performance?.now?.() ?? Date.now();
+
+    const clearTimer = () => {
+      if (active?.timer) {
+        clearTimeout(active.timer);
+        active.timer = null;
+      }
+    };
+
+    const onTouchStart = (event) => {
+      if (event.touches?.length !== 1) return;
+      const target = event.target instanceof Element ? event.target.closest(cardSelector) : null;
+      if (!(target instanceof HTMLElement) || !this.container?.contains(target)) return;
+      // Claim the gesture before WebKit gets a chance to start selecting the
+      // button label or raise its callout. Tap and hold are answered below.
+      event.preventDefault();
+      clearTimer();
+      this.guardHeroHoldTextSelection();
+      active = {
+        node: target,
+        pointerId: event.touches[0].identifier,
+        startX: event.touches[0].clientX,
+        startY: event.touches[0].clientY,
+        startedAt: now(),
+        held: false,
+        timer: null
+      };
+      active.timer = setTimeout(() => {
+        if (!active) return;
+        active.held = true;
+        active.timer = null;
+        this.guardHeroHoldTextSelection();
+      }, longPressMs);
+    };
+
+    const onTouchMove = (event) => {
+      if (!active) return;
+      const touch = event.touches?.[0];
+      if (!touch || touch.identifier !== active.pointerId) return;
+      const dx = Number(touch.clientX) - active.startX;
+      const dy = Number(touch.clientY) - active.startY;
+      event.preventDefault();
+      if (Math.hypot(dx, dy) > moveTolerancePx) {
+        clearTimer();
+        active = null;
+      }
+    };
+
+    const finish = () => {
+      if (!active) return null;
+      clearTimer();
+      const node = active.node;
+      const held = active.held || now() - active.startedAt >= longPressMs;
+      active = null;
+      ignoreClickUntil = now() + 800;
+      return { node, held };
+    };
+
+    const onTouchEnd = (event) => {
+      const result = finish();
+      if (!result) return;
+      event.preventDefault();
+      this.guardHeroHoldTextSelection();
+      globalThis.getSelection?.()?.removeAllRanges?.();
+      void this.playDefaultFromHero(result.held ? { manualSelection: true } : undefined).catch(
+        (error) =>
+          console.warn(
+            result.held
+              ? "Failed to open stream selection from hero hold"
+              : "Failed to open hero stream",
+            error
+          )
+      );
+    };
+
+    const onTouchCancel = () => {
+      clearTimer();
+      active = null;
+    };
+
+    const onClick = (event) => {
+      if (now() > ignoreClickUntil) return;
+      const target = event.target instanceof Element ? event.target.closest(cardSelector) : null;
+      if (!target || !this.container?.contains(target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+    };
+
+    this.container.addEventListener("touchstart", onTouchStart, {
+      capture: true,
+      passive: false
+    });
+    this.container.addEventListener("touchmove", onTouchMove, {
+      capture: true,
+      passive: false
+    });
+    this.container.addEventListener("touchend", onTouchEnd, true);
+    this.container.addEventListener("touchcancel", onTouchCancel, true);
+    this.container.addEventListener("click", onClick, true);
+    return () => {
+      clearTimer();
+      active = null;
+      this.container?.removeEventListener("touchstart", onTouchStart, true);
+      this.container?.removeEventListener("touchmove", onTouchMove, true);
+      this.container?.removeEventListener("touchend", onTouchEnd, true);
+      this.container?.removeEventListener("touchcancel", onTouchCancel, true);
+      this.container?.removeEventListener("click", onClick, true);
+    };
+  },
+
+  guardHeroHoldTextSelection() {
+    const root = document.documentElement;
+    root.classList.add("is-hero-stream-hold");
+    if (!this.heroTextSelectionChangeHandler) {
+      this.heroTextSelectionChangeHandler = () => {
+        if (!root.classList.contains("is-hero-stream-hold")) return;
+        globalThis.getSelection?.()?.removeAllRanges?.();
+      };
+      document.addEventListener("selectionchange", this.heroTextSelectionChangeHandler);
+    }
+    // Keep selection disabled beyond the release, across the route handoff:
+    // browsers can commit a long-press selection after pointerup, when the
+    // Stream page is already painting underneath it.
+    if (this.heroTextSelectionGuardTimer) {
+      clearTimeout(this.heroTextSelectionGuardTimer);
+    }
+    this.heroTextSelectionGuardTimer = setTimeout(() => {
+      this.releaseHeroSelectionGuard();
+    }, 2200);
+    globalThis.getSelection?.()?.removeAllRanges?.();
+  },
+
+  releaseHeroSelectionGuard() {
+    document.documentElement.classList.remove("is-hero-stream-hold");
+    if (this.heroTextSelectionChangeHandler) {
+      document.removeEventListener("selectionchange", this.heroTextSelectionChangeHandler);
+      this.heroTextSelectionChangeHandler = null;
+    }
+    if (this.heroTextSelectionGuardTimer) {
+      clearTimeout(this.heroTextSelectionGuardTimer);
+      this.heroTextSelectionGuardTimer = null;
+    }
+    globalThis.getSelection?.()?.removeAllRanges?.();
   },
 
   cancelPendingHeroHold() {
@@ -9042,6 +9197,37 @@ export const MetaDetailsScreen = {
       this.bindDesktopDetailActions();
       this.bindDesktopInsightTabActions();
       this.bindDesktopCastPersonActions();
+      if (!this.boundHeroSelectStartHandler && this.container) {
+        this.boundHeroSelectStartHandler = (event) => {
+          const target =
+            event.target instanceof Element
+              ? event.target.closest(".series-primary-btn[data-action='playDefault']")
+              : null;
+          if (!target || !this.container?.contains(target)) return;
+          event.preventDefault();
+          globalThis.getSelection?.()?.removeAllRanges?.();
+        };
+        this.container.addEventListener("selectstart", this.boundHeroSelectStartHandler, true);
+      }
+      if (!this.boundHeroSelectionPointerDownHandler && this.container) {
+        // Selection can begin before the hold threshold is reached. Start the
+        // guard as soon as a finger lands on the hero button, not only once the
+        // long-press callback fires.
+        this.boundHeroSelectionPointerDownHandler = (event) => {
+          if (event.pointerType !== "touch") return;
+          const target =
+            event.target instanceof Element
+              ? event.target.closest(".series-primary-btn[data-action='playDefault']")
+              : null;
+          if (!target || !this.container?.contains(target)) return;
+          this.guardHeroHoldTextSelection();
+        };
+        this.container.addEventListener(
+          "pointerdown",
+          this.boundHeroSelectionPointerDownHandler,
+          true
+        );
+      }
       const seasonDownloadButton = this.container?.querySelector("[data-action='downloadSeason']");
       if (seasonDownloadButton instanceof HTMLButtonElement) {
         seasonDownloadButton.onclick = () => void this.openSeasonDownloadDialog();
@@ -9077,10 +9263,21 @@ export const MetaDetailsScreen = {
           return this.openEpisodeHoldMenu(node, { invocation: { type: "touch" } });
         }
       });
+      this.heroTouchHoldCleanup?.();
+      this.heroTouchHoldCleanup = this.bindHeroTouchHold();
       this.episodeContextMenuCleanup?.();
       this.episodeContextMenuCleanup = bindMediaContextMenu(this.container, {
-        cardSelector: ".series-episode-card[data-action='openEpisodeStreams']",
+        cardSelector:
+          ".series-episode-card[data-action='openEpisodeStreams'], .series-primary-btn[data-action='playDefault']",
         onInvoke: (node, pointer) => {
+          if (node?.matches?.(".series-primary-btn[data-action='playDefault']")) {
+            // Right-clicking the hero button opens the stream picker directly;
+            // the context menu itself is intentionally skipped.
+            void this.playDefaultFromHero({ manualSelection: true }).catch((error) =>
+              console.warn("Failed to open stream selection from hero context menu", error)
+            );
+            return;
+          }
           this.openEpisodeHoldMenu(node, {
             invocation: { type: "pointer", x: pointer.x, y: pointer.y }
           });
@@ -12706,6 +12903,23 @@ export const MetaDetailsScreen = {
   },
 
   cleanup() {
+    this.heroTouchHoldCleanup?.();
+    this.heroTouchHoldCleanup = null;
+    // The selection guard intentionally outlives this screen for its short
+    // timer: Detail unmounts while Stream paints, and releasing it here would
+    // let the browser commit the long-press selection on the incoming page.
+    if (this.boundHeroSelectStartHandler && this.container) {
+      this.container.removeEventListener("selectstart", this.boundHeroSelectStartHandler, true);
+      this.boundHeroSelectStartHandler = null;
+    }
+    if (this.boundHeroSelectionPointerDownHandler && this.container) {
+      this.container.removeEventListener(
+        "pointerdown",
+        this.boundHeroSelectionPointerDownHandler,
+        true
+      );
+      this.boundHeroSelectionPointerDownHandler = null;
+    }
     this.autoOpenContinueWatchingStreamReady = false;
     this.routeHandoffPending = false;
     this.renderedRouteHandoffMarkup = null;

@@ -2594,6 +2594,19 @@ html.desktop-browser {
   font-size: 16px;
   gap: 9px;
   flex: 0 0 auto;
+  /* Holding this button opens the stream picker; the browser must not begin
+     selecting the hero copy underneath the finger while that happens. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.desktop-browser #detail .series-primary-btn *,
+html.is-hero-stream-hold,
+html.is-hero-stream-hold * {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
 }
 
 .desktop-browser #detail .series-secondary-btn {

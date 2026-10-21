@@ -2808,6 +2808,7 @@ export function createPosterCardMarkup(
 
 const CONTINUE_WATCHING_ACTION_ICONS = {
   details: "info",
+  chooseStream: "playlist_play",
   playManually: "play_arrow",
   startOver: "replay",
   resume: "play_arrow",
@@ -4644,15 +4645,13 @@ export const HomeScreen = {
     const options = [
       { action: "details", label: t("cw_action_go_to_details", {}, "Go to details") }
     ];
-    if (this.showContinueWatchingManualPlayOption) {
-      options.push({ action: "playManually", label: t("play_manually", {}, "Play manually") });
-    }
     if (!item.isNextUp) {
       options.push({
         action: "startOver",
         label: t("cw_action_start_from_beginning", {}, "Start from beginning")
       });
     }
+    options.push({ action: "chooseStream", label: t("choose_stream", {}, "Choose stream") });
     options.push({ action: "remove", label: t("cw_action_remove", {}, "Remove") });
     return options;
   },
@@ -5705,7 +5704,7 @@ export const HomeScreen = {
     if (option.action === "startOver") {
       return this.openContinueWatchingFromItem(item, { startOver: true });
     }
-    if (option.action === "playManually") {
+    if (option.action === "chooseStream") {
       return this.openContinueWatchingFromItem(item, { manualSelection: true });
     }
     if (option.action === "details") {
