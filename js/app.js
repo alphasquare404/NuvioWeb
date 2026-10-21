@@ -52,6 +52,7 @@ const SIGNED_OUT_ALLOWED_ROUTES = new Set(["trakt"]);
 let hasSelectedProfileThisSession = false;
 let appShellRendered = false;
 const STARTUP_PERF_DEBUG = Boolean(globalThis.__NUVIO_DEBUG_STARTUP_PERF__);
+const hadServiceWorkerControllerAtBoot = Boolean(globalThis.navigator?.serviceWorker?.controller);
 
 if (
   Platform.isBrowser() &&
@@ -61,10 +62,9 @@ if (
 ) {
   // Remembered before registering: a page that was already controlled is being
   // replaced by a newer worker, which is the only case worth reloading for.
-  const hadServiceWorkerController = Boolean(globalThis.navigator.serviceWorker.controller);
   globalThis.navigator.serviceWorker.register("./sw.js").catch(() => {});
   watchServiceWorkerTakeover(globalThis.navigator.serviceWorker, {
-    hadController: hadServiceWorkerController,
+    hadController: hadServiceWorkerControllerAtBoot,
     reload: () => {
       markBuildUpdateApplied();
       globalThis.location.reload();
@@ -446,7 +446,9 @@ async function bootstrapApp() {
   if (Platform.isBrowser()) {
     // The build stamp is written before the update prompt reloads. Seeing a
     // different one here is the confirmation that the new bundle is running.
-    announceBuildUpdate();
+    announceBuildUpdate({
+      existingInstall: hadServiceWorkerControllerAtBoot
+    });
   }
 }
 

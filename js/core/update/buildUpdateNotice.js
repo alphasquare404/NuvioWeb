@@ -103,7 +103,8 @@ export function announceBuildUpdate({
   session = globalThis.sessionStorage,
   stamp = currentBuildStamp(),
   currentCommit = APP_IDENTITY.commit,
-  repositoryUrl = APP_IDENTITY.sourceRepositoryUrl
+  repositoryUrl = APP_IDENTITY.sourceRepositoryUrl,
+  existingInstall = false
 } = {}) {
   const currentStamp = String(stamp || "").trim();
   if (!currentStamp) return false;
@@ -131,7 +132,15 @@ export function announceBuildUpdate({
     // A private or full storage area should not stop the app from loading.
   }
 
-  if (!appliedFromReload && !buildUpdateChanged(previousStamp, currentStamp)) {
+  // A build that predates this notice has no stored stamp. If the page was
+  // already controlled, this is an existing install taking the first build
+  // that can announce itself, not a brand-new install.
+  const firstAnnouncementForExistingInstall = Boolean(existingInstall && !previousStamp);
+  if (
+    !appliedFromReload &&
+    !firstAnnouncementForExistingInstall &&
+    !buildUpdateChanged(previousStamp, currentStamp)
+  ) {
     return false;
   }
 
