@@ -9936,12 +9936,109 @@ html.is-hero-stream-hold * {
   background: rgba(255, 255, 255, 0.035);
 }
 
+/* Addons is already one card inside the Content & Discovery group. The
+   generic expanded row adds another bordered, padded card around the manager,
+   which then sits inside Installed Addons' own panel. Drop that wrapper so
+   Installed Addons can take the full width of its Addons row. */
 .desktop-browser .settings-shell .settings-collapsible-addon .settings-collapsible-body {
-  margin-left: 12px;
+  margin-left: 0;
 }
 
 .desktop-browser .settings-shell .settings-collapsible-addon .settings-subsection-card {
-  background: rgba(255, 255, 255, 0.025);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-addon .desktop-addon-manager,
+.desktop-browser .settings-shell .settings-collapsible-addon .desktop-addon-section {
+  width: 100%;
+}
+
+/* Plugins, Home Catalogs & Collections and Collections carry the same wrapper
+   inside an already-carded row. Flatten that wrapper and let their own panels
+   use the width of the row. */
+.desktop-browser
+  .settings-shell
+  :is(
+    .settings-collapsible-plugin,
+    .settings-collapsible-home-catalogs,
+    .settings-collapsible-collections
+  )
+  .settings-collapsible-body {
+  margin-left: 0;
+}
+
+.desktop-browser
+  .settings-shell
+  :is(
+    .settings-collapsible-plugin,
+    .settings-collapsible-home-catalogs,
+    .settings-collapsible-collections
+  )
+  .settings-subsection-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-plugin
+  :is(.desktop-plugin-manager, .desktop-plugin-section),
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-home-catalogs
+  :is(.desktop-home-catalog-manager, .desktop-home-catalog-section),
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-collections
+  .desktop-collection-manager {
+  width: 100%;
+}
+
+/* These three managers own their panels and their rules are declared later in
+   this file; keep the flattened frame at section-screen specificity. */
+.desktop-browser
+  #settingsSection
+  :is(
+    .settings-collapsible-plugin,
+    .settings-collapsible-home-catalogs,
+    .settings-collapsible-collections
+  )
+  .settings-collapsible-body {
+  margin-left: 0;
+}
+
+.desktop-browser
+  #settingsSection
+  :is(
+    .settings-collapsible-plugin,
+    .settings-collapsible-home-catalogs,
+    .settings-collapsible-collections
+  )
+  .settings-subsection-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser
+  #settingsSection
+  .settings-collapsible-plugin
+  :is(.desktop-plugin-manager, .desktop-plugin-section),
+.desktop-browser
+  #settingsSection
+  .settings-collapsible-home-catalogs
+  :is(.desktop-home-catalog-manager, .desktop-home-catalog-section),
+.desktop-browser
+  #settingsSection
+  .settings-collapsible-collections
+  .desktop-collection-manager {
+  width: 100%;
 }
 
 /* Desktop Plugins expandable Settings section. */
