@@ -19,7 +19,6 @@ import {
   renderDesktopNavigation,
   renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
-import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
   posterItemFromNode,
@@ -97,8 +96,6 @@ export const CastDetailScreen = {
   async mount(params = {}) {
     this.container = document.getElementById("castDetail");
     ScreenUtils.show(this.container);
-    this.pageHeadingCollapseCleanup?.();
-    this.pageHeadingCollapseCleanup = bindPageHeadingCollapse({ container: this.container });
     this.sidebarProfile = Platform.isBrowser()
       ? await getSidebarProfileState().catch(() => null)
       : null;
@@ -106,6 +103,7 @@ export const CastDetailScreen = {
     this.loadToken = (this.loadToken || 0) + 1;
     this.person = null;
     this.credits = [];
+    this.biographyExpanded = false;
     this.posterOptionsController = null;
     this.posterOptionsFocusRestore = null;
     this.pendingPosterHoldTarget = null;
@@ -380,10 +378,10 @@ export const CastDetailScreen = {
     this.container.innerHTML = `
       <div class="browser-person-detail-shell">
         ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
-        <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-          <span class="material-icons" aria-hidden="true">chevron_left</span>
-        </button>
-        <header class="browser-person-detail-heading page-heading" data-page-heading>
+        <header class="browser-person-detail-heading cast-page-heading page-heading" data-page-heading>
+          <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
+            <span class="material-icons" aria-hidden="true">chevron_left</span>
+          </button>
           <h1 class="page-heading-title">${escapeHtml(person.name || "Unknown")}</h1>
           ${renderNavigationRevealButton()}
         </header>
@@ -395,12 +393,17 @@ export const CastDetailScreen = {
               ${person.placeOfBirth ? `<div><dt>Place of birth</dt><dd>${escapeHtml(person.placeOfBirth)}</dd></div>` : ""}
               <div><dt>Credits</dt><dd>${Number(this.credits?.length || 0)}</dd></div>
             </dl>
-            <section class="browser-person-detail-biography"><h2>Biography</h2><p>${escapeHtml(person.biography || "No biography available.")}</p></section>
+            <section class="browser-person-detail-biography">
+              <h2>Biography</h2>
+              <p class="browser-person-detail-biography-copy" id="castBiographyCopy">${escapeHtml(person.biography || "No biography available.")}</p>
+              <button class="browser-person-detail-biography-toggle focusable" type="button" data-action="toggleBiography" aria-controls="castBiographyCopy" aria-expanded="false" hidden>${escapeHtml(t("detail_description_more", {}, "more"))}</button>
+            </section>
           </aside>
           <main class="browser-person-detail-credits">${this.renderCreditSections()}</main>
         </div>
       </div>
     `;
+    this.syncBiographyToggle();
     ScreenUtils.indexFocusables(this.container);
     this.bindBrowserPersonActions();
     if (Platform.isBrowser()) {
@@ -435,12 +438,32 @@ export const CastDetailScreen = {
         Router.back();
       } else if (target.dataset.action === "openDetail") {
         this.openDetailFromNode(target);
+      } else if (target.dataset.action === "toggleBiography") {
+        this.biographyExpanded = !this.biographyExpanded;
+        this.syncBiographyToggle();
       } else {
         return;
       }
       event.preventDefault();
     };
     this.container.addEventListener("click", this.boundBrowserPersonActionHandler);
+  },
+
+  syncBiographyToggle() {
+    const copy = this.container?.querySelector(".browser-person-detail-biography-copy");
+    const toggle = this.container?.querySelector(".browser-person-detail-biography-toggle");
+    if (!(copy instanceof HTMLElement) || !(toggle instanceof HTMLButtonElement)) {
+      return;
+    }
+    const expanded = Boolean(this.biographyExpanded);
+    copy.classList.remove("is-expanded");
+    const canExpand = copy.scrollHeight > copy.clientHeight + 1;
+    copy.classList.toggle("is-expanded", expanded);
+    toggle.hidden = !canExpand && !expanded;
+    toggle.textContent = expanded
+      ? t("detail_description_less", {}, "less")
+      : t("detail_description_more", {}, "more");
+    toggle.setAttribute("aria-expanded", String(expanded));
   },
 
   syncFocusedCardScroll({ instant = false } = {}) {
@@ -661,8 +684,6 @@ export const CastDetailScreen = {
   },
 
   cleanup() {
-    this.pageHeadingCollapseCleanup?.();
-    this.pageHeadingCollapseCleanup = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
     this.castCreditDragCleanup?.();

@@ -11384,6 +11384,41 @@ body.desktop-browser {
   overflow-wrap: anywhere;
 }
 
+.desktop-browser #castDetail .browser-person-detail-biography-copy {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 10;
+  line-clamp: 10;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography-copy.is-expanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography-toggle {
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--secondary-color);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography-toggle[hidden] {
+  display: none;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography-toggle:focus-visible {
+  outline: 2px solid var(--detail-focus-ring, rgba(255, 255, 255, 0.82));
+  outline-offset: 3px;
+}
+
 .desktop-browser #castDetail .browser-person-detail-credits {
   min-width: 0;
   padding-top: 10px;
@@ -18944,6 +18979,133 @@ html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="t
   transition:
     transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
     opacity 180ms ease;
+}
+
+/* Cast's heading is already entering from a compact Detail heading. Keep it
+   at that compact height from the start instead of expanding and collapsing
+   again, so Back does not jump between the two pages. */
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading.cast-page-heading {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100vw;
+  margin: 0 calc(50% - 50vw) 12px;
+  padding: calc(var(--browser-safe-area-top) + 12px)
+    calc(var(--browser-safe-area-right) + 56px) 14px
+    calc(var(--browser-safe-area-left) + 56px);
+  background: rgba(18, 18, 20, 0.46);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  text-align: center;
+  transition: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading.cast-page-heading
+  .page-heading-title {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-size: 18px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .detail-desktop-back-button {
+  position: absolute;
+  top: var(--browser-safe-area-top);
+  left: calc(var(--browser-safe-area-left) + 12px);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
+  pointer-events: auto;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .detail-desktop-back-button:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .desktop-navigation-reveal {
+  top: var(--browser-safe-area-top);
+}
+
+/* The floating top bar owns the top strip. Leave its height plus a gap above
+   the compact heading, and pin the heading below it rather than under it. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-shell {
+  padding-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 18px
+  );
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading {
+  margin-top: 0;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading {
+  top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 8px
+  );
+  padding-top: 12px;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .detail-desktop-back-button,
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .desktop-navigation-reveal {
+  top: 0;
 }
 
 /* Settings' index and section headings use the same progress. */
