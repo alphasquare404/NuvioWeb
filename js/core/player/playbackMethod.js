@@ -1,0 +1,223 @@
+// How a stream will be played, decided before it is played.
+//
+// The ladder is a cost ladder, not a guess:
+//   direct           — the container and the codecs are things <video> already plays
+//   remux            — the container is the problem, the codecs are fine
+//   audio-transcode  — the picture is fine, the audio track is not
+//   transcode        — the picture itself has to be re-encoded, which is the
+//                      expensive one and the one worth warning about
+//
+// Two sources feed it, deliberately. The addon's own text (resolution, codec tags,
+// extension) is free and available for every row of a list; a server-side probe is
+// exact but costs a request, so it is asked for once a row is actually in focus.
+// The first gives a label, the second turns it into a decision.
+
+export const PLAYBACK_METHODS = Object.freeze({
+  UNKNOWN: "unknown",
+  DIRECT: "direct",
+  REMUX: "remux",
+  AUDIO_TRANSCODE: "audio-transcode",
+  TRANSCODE: "transcode"
+});
+
+// Colours the UI applies. Green is a container fix, yellow is audio only, red is a
+// re-encode — the three levels deserve to be told apart at a glance.
+export const PLAYBACK_METHOD_TONES = Object.freeze({
+  [PLAYBACK_METHODS.UNKNOWN]: "neutral",
+  [PLAYBACK_METHODS.DIRECT]: "green",
+  [PLAYBACK_METHODS.REMUX]: "yellow",
+  [PLAYBACK_METHODS.AUDIO_TRANSCODE]: "orange",
+  [PLAYBACK_METHODS.TRANSCODE]: "red"
+});
+
+// A filename often sits inside an addon's description followed by a space or a
+// bracket, so the boundary is "not a letter or digit" rather than end-of-string.
+const BOUNDARY = "(?:$|[^a-z0-9])";
+const HLS = new RegExp("\\.m3u8" + BOUNDARY, "i");
+const DASH = new RegExp("\\.mpd" + BOUNDARY, "i");
+const MKV = new RegExp("\\.mkv" + BOUNDARY, "i");
+const AVI = new RegExp("\\.avi" + BOUNDARY, "i");
+const M2TS = new RegExp("\\.m2ts" + BOUNDARY, "i");
+// Addons often name the container without an extension ("MKV | 1080p").
+const MKV_WORD = /\bmkv\b|matroska/i;
+const MP4_WORD = /\bmp4\b/i;
+const MP4 = new RegExp("\\.(?:mp4|m4v)" + BOUNDARY, "i");
+const WEBM = new RegExp("\\.webm" + BOUNDARY, "i");
+const TS = new RegExp("\\.ts" + BOUNDARY, "i");
+
+const VIDEO_HINTS = [
+  [/av1|\bav01\b/i, "av1"],
+  [/hevc|h\.?265|x265|\bhvc1\b|\bhev1\b/i, "hevc"],
+  [/x264|h\.?264|\bavc1?\b|\bavc\b|\bavc\b|8bit/i, "h264"],
+  [/\bvvc\b|h\.?266/i, "unknown"]
+];
+
+const AUDIO_HINTS = [
+  [/truehd|atmos/i, "truehd"],
+  [/flac/i, "flac"],
+  // "DDP5.1" glues the channel layout to the codec, so no trailing word boundary.
+  [/eac3|e-ac-3|\bddp|\bdd\+/i, "eac3"],
+  [/\bdts\b/i, "dts"],
+  [/\bac3\b|\bdd\b/i, "ac3"],
+  [/\bopus\b/i, "opus"],
+  [/aac/i, "aac"]
+];
+
+export function detectContainer(url = "") {
+  const value = String(url || "");
+  if (HLS.test(value)) return "hls";
+  if (DASH.test(value)) return "dash";
+  if (MKV.test(value) || MKV_WORD.test(value)) return "mkv";
+  if (AVI.test(value)) return "mkv"; // same problem for the player: no native support
+  if (M2TS.test(value)) return "mkv";
+  if (WEBM.test(value)) return "webm";
+  if (MP4.test(value) || MP4_WORD.test(value)) return "mp4";
+  if (TS.test(value)) return "ts";
+  return "unknown";
+}
+
+/** Codec hints, from the URL's extension or from whatever the addon printed. */
+export function detectVideoCodec(text = "") {
+  const value = String(text || "");
+  for (const [pattern, codec] of VIDEO_HINTS) {
+    if (pattern.test(value)) return codec;
+  }
+  return "unknown";
+}
+
+export function detectAudioCodec(text = "") {
+  const value = String(text || "");
+  for (const [pattern, codec] of AUDIO_HINTS) {
+    if (pattern.test(value)) return codec;
+  }
+  return "unknown";
+}
+
+function codecSupported(codec, capabilities = {}) {
+  switch (codec) {
+    case "h264":
+      return capabilities.h264 !== false;
+    case "hevc":
+      return capabilities.hevc === true;
+    case "av1":
+      return capabilities.av1 === true;
+    case "eac3":
+      return capabilities.eac3 === true;
+    case "ac3":
+      return capabilities.ac3 !== false;
+    case "dts":
+      return capabilities.dts === true;
+    case "opus":
+      return capabilities.opus === true;
+    case "aac":
+      return capabilities.aac !== false;
+    default:
+      // Unknown is not evidence of a problem: assume the device copes, and let the
+      // probe or the first failure correct it.
+      return true;
+  }
+}
+
+/**
+ * @param {object} input
+ * @param {string} input.url            the stream source
+ * @param {string} input.label          the addon's own text for the row
+ * @param {object|null} input.probe     {container, videoCodec, audioCodec} from the server
+ * @param {object} input.capabilities   what this device claims it can decode
+ */
+export function classifyPlayback({ url = "", label = "", probe = null, capabilities = {} } = {}) {
+  const exact = Boolean(probe);
+  const text = `${url} ${label}`;
+  const container = String(probe?.container || detectContainer(text) || "unknown").toLowerCase();
+  const videoCodec = String(probe?.videoCodec || detectVideoCodec(text) || "unknown").toLowerCase();
+  const audioCodec = String(probe?.audioCodec || detectAudioCodec(text) || "unknown").toLowerCase();
+  const confidence = exact ? "exact" : "estimate";
+
+  // Adaptive streaming is not remuxed: the manifest already carries the segments
+  // the device can take, and the player negotiates.
+  if (container === "hls" || container === "dash") {
+    return {
+      method: PLAYBACK_METHODS.DIRECT,
+      reason: "adaptive-stream",
+      confidence,
+      container,
+      videoCodec,
+      audioCodec
+    };
+  }
+
+  // Nothing to go on: no extension, no filename, no codec tags, no probe. Saying
+  // "Direct" here would be a guess dressed as a decision.
+  if (container === "unknown" && videoCodec === "unknown") {
+    return {
+      method: PLAYBACK_METHODS.UNKNOWN,
+      reason: "not-enough-information",
+      confidence,
+      container,
+      videoCodec,
+      audioCodec
+    };
+  }
+
+  const videoOk = codecSupported(videoCodec, capabilities);
+  const audioOk = codecSupported(audioCodec, capabilities);
+
+  if (!videoOk) {
+    return {
+      method: PLAYBACK_METHODS.TRANSCODE,
+      reason: `video-${videoCodec}-unsupported`,
+      confidence,
+      container,
+      videoCodec,
+      audioCodec
+    };
+  }
+
+  // An unrecognised container may be an MKV; only a named, playable one is Direct.
+  if (container === "unknown") {
+    return {
+      method: PLAYBACK_METHODS.UNKNOWN,
+      reason: "container-unknown",
+      confidence,
+      container,
+      videoCodec,
+      audioCodec
+    };
+  }
+
+  const containerOk = container === "mp4" || container === "webm";
+  if (!containerOk) {
+    return {
+      method: PLAYBACK_METHODS.REMUX,
+      reason: `container-${container}`,
+      confidence,
+      container,
+      videoCodec,
+      audioCodec
+    };
+  }
+
+  if (!audioOk) {
+    return {
+      method: PLAYBACK_METHODS.AUDIO_TRANSCODE,
+      reason: `audio-${audioCodec}-unsupported`,
+      confidence,
+      container,
+      videoCodec,
+      audioCodec
+    };
+  }
+
+  return {
+    method: PLAYBACK_METHODS.DIRECT,
+    reason: "supported",
+    confidence,
+    container,
+    videoCodec,
+    audioCodec
+  };
+}
+
+export function playbackMethodTone(method) {
+  return PLAYBACK_METHOD_TONES[method] || "neutral";
+}

@@ -1,4 +1,12 @@
 import { Router } from "../../navigation/router.js";
+import { loadMoviModule } from "../../../core/player/movi/moviEngine.js";
+import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
+import { renderStreamPlaybackBadge } from "../../components/streamPlaybackBadge.js";
+import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
+import { createStreamProber } from "../../../core/player/streamProbe.js";
+import { PROBE_ENDPOINT } from "../../../config.js";
+import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
+import { PLAYBACK_METHODS, classifyPlayback } from "../../../core/player/playbackMethod.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
@@ -426,6 +434,23 @@ function sortStreamsByAddonOrder(streams = [], sourceChips = []) {
   });
 }
 
+/**
+ * Would this row play without a relay or a re-encode?
+ *
+ * The same estimate the badge shows, so the filter and the label can never disagree
+ * about a particular row.
+ */
+function isDirectPlayableStream(stream = {}) {
+  const result = classifyPlayback({
+    url: stream.url || stream.externalUrl || "",
+    label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
+    capabilities: getDeviceCapabilities()
+  });
+  return result.method === PLAYBACK_METHODS.DIRECT;
+}
+
+const streamProber = createStreamProber({ endpoint: PROBE_ENDPOINT });
+
 export const StreamScreen = {
   cancelScheduledRender() {
     if (this.renderDelayTimer) {
@@ -675,9 +700,36 @@ export const StreamScreen = {
     };
   },
 
+  /**
+   * Warm the movi runtime while the user is still choosing a link.
+   *
+   * Deliberately fire-and-forget: if it fails, the player route loads the module
+   * itself and reports the failure where it belongs, rather than this screen
+   * showing an error about a player nobody has opened yet.
+   */
+  prefetchMoviEngine() {
+    let wanted = false;
+    try {
+      wanted = shouldUseMovi(PlayerSettingsStore.get());
+    } catch {
+      return;
+    }
+    if (!wanted) return;
+    void loadMoviModule().catch(() => {});
+  },
+
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("stream");
     ScreenUtils.show(this.container);
+    // Answers from the probe endpoint, keyed by source URL, plus the one-shot guard
+    // that stops the screen asking for the same batch on every render.
+    this._probeResults = new Map();
+    this._probesScheduled = false;
+    // The movi runtime is ~23 MB (element.js plus its wasm) and is fetched when the
+    // player route opens. Fetching it while the user is still choosing a link moves
+    // that wait somewhere it is not felt: this screen is usually up for several
+    // seconds before a tap, and the download runs in the background.
+    void this.prefetchMoviEngine();
     if (this.hasAutoResolvedChoice(params)) {
       this.autoResolvedPlaybackPending = true;
       this.renderAutoResolvedHandoff(params?.backdrop || "");
@@ -1264,6 +1316,28 @@ export const StreamScreen = {
     if (this.autoResumeAttempted) {
       return;
     }
+    // Opening the stream list in order to choose means choosing, not resuming.
+    // This path is not gated by the auto-play mode at all, so without this the
+    // manual entry point could never be reached on an item with saved progress.
+    //
+    // The same applies to anything with nothing to resume: a next-episode entry
+    // starts at zero by definition, so "continue where you left off" would jump the
+    // user into a stream list they never asked to skip, at a position that does not
+    // exist yet.
+    const resumePositionMs = Number(this.params?.resumePositionMs);
+    const nothingToResume = !(resumePositionMs > 0);
+    // "Manual (choose stream)" has to mean manual on this path too. Until now it
+    // only gated stream *selection*, so an item with saved progress jumped straight
+    // into whichever stream it remembered — which is auto-play under another name.
+    const autoPlayMode = String(PlayerSettingsStore.get().streamAutoPlayMode || "MANUAL")
+      .trim()
+      .toUpperCase();
+    const manualMode = autoPlayMode === "MANUAL";
+    if (this.params?.manualSelection || nothingToResume || manualMode) {
+      this.autoResumeAttempted = true;
+      this.autoResumeUiActive = false;
+      return;
+    }
     const settings = PlayerSettingsStore.get();
     const reusableStream = settings.streamReuseLastLinkEnabled
       ? StreamPreferencesStore.getValid(
@@ -1499,10 +1573,21 @@ export const StreamScreen = {
       return cache.result;
     }
     const orderedStreams = sortStreamsByAddonOrder(this.streams, this.sourceChips);
-    const result =
+    let result =
       filter === "all"
         ? orderedStreams
         : orderedStreams.filter((stream) => stream.addonName === filter);
+    // "Show only direct streams" means exactly that. An empty list is the honest
+    // answer when nothing qualifies — falling back to the full list would quietly
+    // play the very streams the filter was asked to hide, and auto-select reads this
+    // same list, so it must see the strict one too.
+    if (PlayerSettingsStore.get().showOnlyDirectStreams === true) {
+      const direct = result.filter((stream) => isDirectPlayableStream(stream));
+      this._directFilterHidden = result.length - direct.length;
+      result = direct;
+    } else {
+      this._directFilterHidden = 0;
+    }
     this._filteredStreamsCache = {
       streams: this.streams,
       chips: this.sourceChips,
@@ -2229,21 +2314,126 @@ export const StreamScreen = {
     return `<button type="button" class="stream-route-offline-action ${className}" data-offline-action="${action}" data-stream-id="${escapeHtml(streamId)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${escapeHtml(icon)}</button>`;
   },
 
+  /**
+   * Ask the deployment what the rows the estimate could not read actually contain.
+   *
+   * Only rows labelled Unknown are sent — a handful per list, once — because the
+   * rest are already answered by the addon's own text. Results are cached inside the
+   * prober, so a later render finds nothing left to ask.
+   */
+  /**
+   * Give the "TB Instant" rows a URL before anyone can talk about them.
+   *
+   * Those rows arrive without a source: the addon defers the debrid lookup until
+   * something asks for it. An unresolved row cannot be probed and cannot be played,
+   * so the resolver is asked for at most a few of them, one at a time, and the
+   * answer is written back onto the stream object — the play path then reuses it
+   * instead of resolving a second time.
+   *
+   * Only rows the estimate called Unknown, only rows with no URL, and only when the
+   * probe endpoint is configured: nothing here runs in a deployment that did not ask
+   * for it.
+   */
+  async resolveUnknownRows({ limit = 3 } = {}) {
+    const context = { season: this.params?.season ?? null, episode: this.params?.episode ?? null };
+    const candidates = this.streams
+      .filter((stream) => {
+        if (String(stream.url || stream.externalUrl || "").trim()) return false;
+        const verdict = classifyPlayback({
+          url: "",
+          label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
+          capabilities: getDeviceCapabilities()
+        });
+        if (verdict.method !== PLAYBACK_METHODS.UNKNOWN) return false;
+        return DirectDebridResolver.canResolveStream(stream, context);
+      })
+      .slice(0, Math.max(0, limit));
+
+    let resolved = 0;
+    for (const stream of candidates) {
+      try {
+        const cached = DirectDebridResolver.cachedPlayableStream(stream, context);
+        const url = String(cached?.url || "").trim();
+        if (url) {
+          stream.url = url;
+          resolved += 1;
+          continue;
+        }
+        const result = await DirectDebridResolver.resolve(stream, context);
+        const fresh = String(result?.url || result?.stream?.url || "").trim();
+        if (fresh) {
+          stream.url = fresh;
+          resolved += 1;
+        }
+      } catch {
+        // One row failing to resolve must not stop the others, and must not touch
+        // playback: it simply stays unresolved and unlabelled.
+      }
+    }
+    return resolved;
+  },
+
+  scheduleUnknownProbes() {
+    if (!streamProber.enabled || !this.streams.length) return;
+    if (this._probeOutstanding) return;
+    this._probeOutstanding = true;
+    void this.resolveUnknownRows()
+      .catch(() => 0)
+      .then(() => this.runUnknownProbes())
+      .finally(() => {
+        this._probeOutstanding = false;
+      });
+  },
+
+  runUnknownProbes() {
+    // Addon rows arrive without a URL and get one later, so a single pass at first
+    // render would look at empty strings and give up. Each render offers whatever is
+    // resolvable now, and URLs already sent are never sent twice.
+    const sent = this._probeSent || (this._probeSent = new Set());
+    const rows = this.streams
+      .map((stream) => ({
+        url: String(stream.url || stream.externalUrl || "").trim(),
+        label: [stream.name, stream.title, stream.description].filter(Boolean).join(" ")
+      }))
+      .filter((row) => row.url && !sent.has(row.url));
+    if (!rows.length) return Promise.resolve();
+    for (const row of rows) sent.add(row.url);
+    return streamProber
+      .probeUnknown(rows, { capabilities: getDeviceCapabilities(), limit: 5 })
+      .then((results) => {
+        if (!results.size || this.disposed) return;
+        for (const [url, probe] of results) this._probeResults.set(url, probe);
+        this.requestRender({ delayMs: 0 });
+      })
+      .catch(() => {});
+  },
+
   renderStreamCard(stream, index, streamBadgesEnabled = true, badgeSettings = null) {
+    this.scheduleUnknownProbes();
     if (Platform.isBrowser()) {
       const sourceModel = normalizeSourceForDisplay(stream, {
         badgeSettings,
         streamBadgesEnabled,
         addonLogoLookup: this.addonLogoLookup
       });
+      const badge = renderStreamPlaybackBadge({
+        url: stream.url || stream.externalUrl || "",
+        label: `${sourceModel?.title || stream.title || stream.name || ""} ${
+          sourceModel?.description || stream.description || ""
+        }`,
+        capabilities: getDeviceCapabilities(),
+        probe: this._probeResults?.get(stream.url || stream.externalUrl || "") || null
+      });
       return `
         <div class="stream-route-card-row" data-stream-row="${index}">
           <article class="stream-route-card stream-route-card-action focusable${this.isCardActionFocused(index, "play") ? " focused" : ""}"
+                   style="position: relative;"
                    data-action="playStream"
                    data-card-action="play"
                    data-stream-id="${escapeHtml(stream.id)}"
                    data-stream-row="${index}">
             ${renderBrowserSourceCardContent(sourceModel)}
+            ${badge}
             ${this.renderOfflineDownloadActions(stream)}
           </article>
         </div>
@@ -2283,12 +2473,19 @@ export const StreamScreen = {
     return `
       <div class="stream-route-card-row" data-stream-row="${index}">
         <article class="stream-route-card stream-route-card-action focusable${this.isCardActionFocused(index, "play") ? " focused" : ""}"
+                   style="position: relative;"
                  data-action="playStream"
                  data-card-action="play"
                  data-stream-id="${escapeHtml(stream.id)}"
                  data-stream-row="${index}">
           <div class="stream-route-card-copy">
             <div class="stream-route-card-heading">${escapeHtml(headline)}</div>
+            ${renderStreamPlaybackBadge({
+              url: stream.url || stream.externalUrl || "",
+              label: `${headline} ${quality} ${stream.description || stream.title || ""}`,
+              capabilities: getDeviceCapabilities(),
+              probe: this._probeResults?.get(stream.url || stream.externalUrl || "") || null
+            })}
             ${topBadges || ""}
             ${!badges ? `<div class="stream-route-card-quality">${escapeHtml(quality)}</div>` : ""}
             ${descriptionLines.map((line, lineIndex) => `<div class="stream-route-card-line${lineIndex > 0 ? " secondary" : ""}">${escapeHtml(line)}</div>`).join("")}
@@ -2971,7 +3168,6 @@ export const StreamScreen = {
     launchBrowserExternalPlayer({ href: prepared.launch.href });
     return true;
   },
-
   async playStream(
     streamId,
     {
@@ -3069,7 +3265,7 @@ export const StreamScreen = {
       return;
     }
 
-    return Router.navigate("player", {
+    const playbackParams = {
       streamUrl: offlineObjectUrl || selected.url || selected.externalUrl || null,
       itemId: this.params?.itemId || null,
       itemType: itemType || "movie",
@@ -3127,8 +3323,14 @@ export const StreamScreen = {
       nextEpisodeTitle: this.params?.nextEpisodeTitle || "",
       nextEpisodeReleased: this.params?.nextEpisodeReleased || "",
       offlineObjectUrl: offlineObjectUrl || null,
-      offlineDownloadId: offlineDownload?.downloadId || null
-    });
+      offlineDownloadId: offlineDownload?.downloadId || null,
+      // Only hls.js receives these today; the movi element takes them on the
+      // `headers` attribute, which the spike proved reaches every request. The
+      // router decides which engine reads this, so the parameter is simply
+      // always carried.
+      requestHeaders: selected.behaviorHints?.proxyHeaders?.request || null
+    };
+    return Router.navigate("player", playbackParams);
   },
 
   onPointerFocus(target) {

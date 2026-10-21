@@ -17421,6 +17421,7 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 }
 
 .stream-route-card {
+  position: relative;
   flex: 1 1 auto;
   width: 100%;
   min-height: 214px;
