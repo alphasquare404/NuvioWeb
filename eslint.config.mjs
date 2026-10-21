@@ -8,6 +8,9 @@ const runtimeGlobals = {
   // Substituted by scripts/build.mjs, so it is absent while linting. config.js
   // reads it behind a typeof guard precisely because it may not exist.
   __NUVIO_BUILD_ENV__: "readonly",
+  // Written into the bundle by scripts/build.mjs so the running page can tell
+  // which build produced it, and whether the worker just installed a newer one.
+  __NUVIO_BUILD_STAMP__: "readonly",
   // Same shape: the service worker source carries this until build.mjs writes
   // the real locale list in its place.
   __NUVIO_LOCALE_ASSETS__: "readonly",
