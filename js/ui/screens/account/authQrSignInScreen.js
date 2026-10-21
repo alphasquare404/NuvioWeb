@@ -5,6 +5,7 @@ import { ScreenUtils } from "../../navigation/screen.js";
 import { AuthManager } from "../../../core/auth/authManager.js";
 import { I18n } from "../../../i18n/index.js";
 import { Platform } from "../../../platform/index.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 
 let pollInterval = null;
 let countdownInterval = null;
@@ -42,7 +43,7 @@ export const AuthQrSignInScreen = {
       <div class="qr-layout">
         ${
           this.isDesktopBrowser
-            ? '<button type="button" id="qr-browser-back-btn" class="desktop-qr-back-button" aria-label="Back to sign in"><span class="material-icons" aria-hidden="true">chevron_left</span><span>Back</span></button>'
+            ? `<button type="button" id="qr-browser-back-btn" class="desktop-qr-back-button" aria-label="Back to sign in">${renderBackButtonIcon()}<span>Back</span></button>`
             : ""
         }
         <section class="qr-left-panel">

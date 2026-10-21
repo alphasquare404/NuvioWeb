@@ -1,4 +1,5 @@
 import { deferWhileReordering } from "../../components/listReorderDrag.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import { Router } from "../../navigation/router.js";
 import { createScreenPrototype } from "../../navigation/routeLayerInstances.js";
 import {
@@ -3020,7 +3021,7 @@ export const SettingsScreen = {
       ? `
       <button class="settings-section-back focusable" type="button" data-settings-back
               aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-        ${iconSvg(ROW_ICONS.back, "settings-section-back-icon")}
+        ${renderBackButtonIcon("round-back-icon settings-section-back-icon")}
       </button>
     `
       : "";

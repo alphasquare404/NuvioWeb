@@ -66,6 +66,7 @@ import {
   renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import { openDesktopContextMenu } from "../../components/desktopContextMenu.js";
@@ -4205,7 +4206,7 @@ export const MetaDetailsScreen = {
     return `
       <button class="detail-desktop-back-button" type="button" data-detail-back
               aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-        <span class="material-icons" aria-hidden="true">chevron_left</span>
+        ${renderBackButtonIcon()}
       </button>
     `;
   },
@@ -4218,7 +4219,7 @@ export const MetaDetailsScreen = {
       <header class="detail-heading" data-detail-heading>
         <button class="detail-heading-back" type="button" data-detail-back
                 aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-          <span class="material-icons" aria-hidden="true">chevron_left</span>
+          ${renderBackButtonIcon()}
         </button>
         <div class="detail-heading-brand" data-detail-heading-brand aria-hidden="true"></div>
         ${renderNavigationRevealButton()}

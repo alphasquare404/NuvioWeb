@@ -20554,3 +20554,398 @@ html[data-layout="mobile"]
     margin-bottom: 12px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Wide desktop page frame.
+
+   Search, Library, Discover, Settings and See All had each grown their own
+   top clearance and side gutter. At 1440 the differences were small enough to
+   miss, but on a 1920 screen Search's 1440px child cap centered its heading
+   240px into the page while its search field stayed at the 38px gutter. These
+   rules give the wide top-bar layout one frame: the same top line as Settings'
+   headings, one side gutter, and See All's title below Back on that frame
+   instead of beside it.
+   --------------------------------------------------------------------------- */
+html[data-layout="desktop"][data-nav-placement="top"].desktop-browser {
+  --desktop-page-gutter: clamp(24px, 2vw, 40px);
+  --desktop-page-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 16px
+  );
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #search
+  .search-content,
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #library
+  .library-main,
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #discover
+  .discover-main {
+  padding-top: var(--desktop-page-top);
+  padding-left: var(--desktop-page-gutter);
+  padding-right: var(--desktop-page-gutter);
+  scroll-padding-top: var(--desktop-page-top);
+}
+
+/* The old 1440px child cap centered the Search heading and result rows while
+   the search field stayed full-width. Remove it from the page frame. */
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #search
+  .search-content
+  > * {
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #library
+  .library-main {
+  padding-left: var(--desktop-page-gutter);
+  padding-right: var(--desktop-page-gutter);
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settings
+  .settings-workspace,
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settingsSection
+  .settings-workspace {
+  padding-left: var(--desktop-page-gutter);
+  padding-right: var(--desktop-page-gutter);
+}
+
+/* Settings' headers carry an extra 2px inset for their own controls. On the
+   shared frame that offset put both Settings titles 2px right of every other
+   page title, so keep the bleed but put the copy on the frame's gutter. */
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settings
+  .settings-nav-index-header,
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settingsSection
+  .settings-content-header {
+  padding-left: var(--settings-header-bleed);
+  padding-right: var(--settings-header-bleed);
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settingsSection
+  .settings-section-back {
+  left: calc(var(--browser-safe-area-left) + var(--desktop-page-gutter));
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-shell {
+  padding-top: var(--desktop-page-top);
+  padding-left: var(--desktop-page-gutter);
+  padding-right: var(--desktop-page-gutter);
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-header {
+  display: block;
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-title {
+  font-size: clamp(30px, 2.5vw, 40px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-subtitle {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .catalog-seeall-browser-back {
+  position: fixed;
+  top: var(--browser-floating-nav-top);
+  left: calc(var(--browser-safe-area-left) + var(--desktop-page-gutter));
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+}
+
+/* One chevron for every round Back control. */
+.round-back-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  .round-back-icon {
+  width: 24px;
+  height: 24px;
+}
+
+/* The fixed circles on a wide top-bar page all take Settings section's Back
+   as the reference: one glass circle, one 54px box, one gutter, one icon. */
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  :is(
+    #detail .detail-desktop-back-button,
+    #castDetail .detail-desktop-back-button,
+    #stream .stream-desktop-back-button,
+    #discover .discover-desktop-back-button,
+    #catalogSeeAll .catalog-seeall-browser-back,
+    #folderDetail .folder-detail-desktop-back,
+    #settings .settings-section-back,
+    #settingsSection .settings-section-back,
+    .desktop-collection-editor-back,
+    .profile-desktop-back-button,
+    .profile-pin-desktop-back
+  ) {
+  position: fixed;
+  top: var(--browser-floating-nav-top);
+  left: calc(var(--browser-safe-area-left) + var(--desktop-page-gutter));
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  color: var(--text-color);
+  transform: none;
+}
+
+/* See All on a narrow layout with the top bar follows Settings section too:
+   Back owns the bar line, the title belongs to the page below it. */
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-shell {
+  padding-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 16px
+  );
+  padding-left: var(--browser-page-gutter);
+  padding-right: var(--browser-page-gutter);
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-header {
+  position: static;
+  display: block;
+  top: auto;
+  padding: 0;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-title {
+  width: 100%;
+  margin: 0;
+  text-align: left;
+  font-size: 31px;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-subtitle {
+  margin-top: 6px;
+  text-align: left;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .catalog-seeall-browser-back {
+  position: fixed;
+  top: var(--browser-floating-nav-top);
+  left: calc(var(--browser-safe-area-left) + var(--browser-page-gutter));
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"][data-nav-placement="top"]
+    .desktop-browser
+    #catalogSeeAll
+    .seeall-title {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+}
+
+/* On a phone the top bar switches the app to the wide layout, but these
+   headings still carried the old narrow-screen centring: 56px side padding
+   and a centred title. Settings index stays left-aligned at this width, so
+   Search, Library and Discover follow it. */
+@media (max-width: 600px) {
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #search
+    .search-page-heading,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #library
+    .library-page-header,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #discover
+    .discover-header {
+    padding-left: 0;
+    padding-right: 0;
+    text-align: left;
+  }
+
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #search
+    .search-page-heading,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #library
+    .library-page-title,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #discover
+    .page-heading-title {
+    width: 100%;
+    margin: 0;
+    text-align: left;
+    font-size: 30px;
+    line-height: 1.1;
+  }
+
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #library
+    .library-page-header,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #discover
+    .discover-header {
+    justify-content: flex-start;
+  }
+}
+
+/* Top navigation: the floating bar already separates the page from the app,
+   so the heading is a title, not a framed bar. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  #search
+  .search-page-heading,
+html[data-nav-placement="top"]
+  .desktop-browser
+  #library
+  .library-page-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  #discover
+  .discover-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  #settings
+  .settings-nav-index-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  #settingsSection
+  .settings-content-header {
+  border-bottom: 0;
+}
+
+/* Discover's subtitle belongs to the title block on the left, exactly where
+   Settings puts its section subtitle. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  #discover
+  .discover-header-copy {
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  #discover
+  .page-heading-subtitle {
+  width: 100%;
+  margin: 6px 0 0;
+  text-align: left;
+}
+
+/* Bottom bar and side rail keep the hairline. Settings was the one page whose
+   index and section headings had no rule under them there. */
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  #settings
+  .settings-nav-index-header,
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  #settingsSection
+  .settings-content-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}

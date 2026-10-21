@@ -65,6 +65,7 @@ import {
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import { openDesktopContextMenu } from "../../components/desktopContextMenu.js";
@@ -654,7 +655,7 @@ export const StreamScreen = {
     return `
       <button class="stream-desktop-back-button" type="button" data-stream-desktop-back
               aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-        <span class="material-icons" aria-hidden="true">chevron_left</span>
+        ${renderBackButtonIcon()}
       </button>
     `;
   },
@@ -2454,7 +2455,7 @@ export const StreamScreen = {
         <header class="stream-page-heading">
           <button class="stream-page-heading-back" type="button" data-stream-desktop-back
                   aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-            <span class="material-icons" aria-hidden="true">chevron_left</span>
+            ${renderBackButtonIcon()}
           </button>
           <div class="stream-page-heading-copy">
             <div class="stream-page-heading-brand">

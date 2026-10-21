@@ -2,6 +2,7 @@ import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { Environment } from "../../../platform/environment.js";
 import { Platform } from "../../../platform/index.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
@@ -1757,7 +1758,7 @@ export const FolderDetailScreen = {
             this.isDesktopBrowser
               ? `<header class="folder-detail-mobile-heading" data-page-heading>
                    <button class="folder-detail-mobile-back" type="button" data-action="back" aria-label="Back">
-                     <span class="material-icons" aria-hidden="true">chevron_left</span>
+                     ${renderBackButtonIcon()}
                    </button>
                    <div class="folder-detail-mobile-brand">
                      ${
@@ -1776,7 +1777,7 @@ export const FolderDetailScreen = {
               this.isDesktopBrowser
                 ? `
               <button class="folder-detail-desktop-back focusable" type="button" data-action="back" data-focus-key="back" aria-label="Back">
-                <span class="material-icons" aria-hidden="true">chevron_left</span>
+                ${renderBackButtonIcon()}
               </button>
               <div class="folder-detail-desktop-heading" aria-label="${escapeHtml(this.collection?.title || "Collection")}">
                 ${

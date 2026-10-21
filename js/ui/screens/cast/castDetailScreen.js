@@ -19,6 +19,7 @@ import {
   renderDesktopNavigation,
   renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
   posterItemFromNode,
@@ -236,7 +237,7 @@ export const CastDetailScreen = {
       this.container.innerHTML = `
         <div class="browser-person-detail-shell">
           ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
-          <div class="browser-person-detail-status is-error"><p>${escapeHtml(message)}</p><button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}"><span class="material-icons" aria-hidden="true">chevron_left</span></button></div>
+          <div class="browser-person-detail-status is-error"><p>${escapeHtml(message)}</p><button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">${renderBackButtonIcon()}</button></div>
         </div>
       `;
       ScreenUtils.indexFocusables(this.container);
@@ -380,7 +381,7 @@ export const CastDetailScreen = {
         ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
         <header class="browser-person-detail-heading cast-page-heading page-heading" data-page-heading>
           <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-            <span class="material-icons" aria-hidden="true">chevron_left</span>
+            ${renderBackButtonIcon()}
           </button>
           <h1 class="page-heading-title">${escapeHtml(person.name || "Unknown")}</h1>
           ${renderNavigationRevealButton()}

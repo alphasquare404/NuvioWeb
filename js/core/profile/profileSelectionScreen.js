@@ -7,6 +7,7 @@ import { ScreenUtils } from "../../ui/navigation/screen.js";
 import { AvatarRepository } from "../../data/remote/supabase/avatarRepository.js";
 import { I18n } from "../../i18n/index.js";
 import { NuvioDialog } from "../../ui/components/nuvioDialog.js";
+import { renderBackButtonIcon } from "../../ui/components/backButtonIcon.js";
 import { detailWatchedEnrichmentService } from "../../data/repository/detailWatchedEnrichmentService.js";
 import { resolveExperienceRoute } from "./experienceModeRouting.js";
 import { renderLoadingIndicator } from "../../ui/components/loadingIndicator.js";
@@ -554,7 +555,7 @@ export const ProfileSelectionScreen = {
           isDesktopBrowser && this.isManagementMode
             ? `<button class="profile-desktop-back-button" type="button" data-action="close-management" aria-label="${escapeHtml(
                 t("common.back", {}, "Back")
-              )}"><span class="material-icons" aria-hidden="true">chevron_left</span></button>`
+              )}">${renderBackButtonIcon()}</button>`
             : ""
         }
         <div class="profile-main-layer"${isPinActive ? ' aria-hidden="true"' : ""}>
