@@ -46,6 +46,7 @@ import {
   PosterOptionsDialogController
 } from "../../components/posterOptionsMenu.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
+import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 
 const TMDB_API_URL = "https://api.themoviedb.org/3";
@@ -1362,6 +1363,11 @@ export const FolderDetailScreen = {
         { rowSelector: ".folder-detail-tabs", tabSelector: ".folder-detail-tab" }
       ]);
     }
+    this.folderRowDragCleanup?.();
+    this.folderRowDragCleanup = bindHorizontalRailDragScroll({
+      container: this.container,
+      trackSelector: ".folder-row-track"
+    });
     this.boundDesktopCollectionClickContainer = this.container;
   },
 
@@ -2455,6 +2461,8 @@ export const FolderDetailScreen = {
     this.cancelPendingPosterHold();
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
+    this.folderRowDragCleanup?.();
+    this.folderRowDragCleanup = null;
     this.cancelScheduledRender();
     if (this.useHomeFollowLayout) {
       HomeScreen.cancelModernCameraFollow.call(this, { stopAnimations: true });

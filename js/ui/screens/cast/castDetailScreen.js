@@ -28,6 +28,7 @@ import {
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
+import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w780";
@@ -418,6 +419,11 @@ export const CastDetailScreen = {
       });
     }
     bindDesktopNavigationEvents(this.container);
+    this.castCreditDragCleanup?.();
+    this.castCreditDragCleanup = bindHorizontalRailDragScroll({
+      container: this.container,
+      trackSelector: ".cast-credit-track"
+    });
   },
 
   bindBrowserPersonActions() {
@@ -659,6 +665,8 @@ export const CastDetailScreen = {
     this.pageHeadingCollapseCleanup = null;
     this.browserCardTouchIntentCleanup?.();
     this.browserCardTouchIntentCleanup = null;
+    this.castCreditDragCleanup?.();
+    this.castCreditDragCleanup = null;
     this.mediaContextMenuCleanup?.();
     this.mediaContextMenuCleanup = null;
     this.loadToken = (this.loadToken || 0) + 1;

@@ -936,6 +936,7 @@ html.desktop-browser {
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track {
   --home-track-gap: 12px;
+  align-items: flex-start;
   margin-left: 0;
   padding-left: 0;
   padding-right: 24px;
@@ -1603,10 +1604,14 @@ html.desktop-browser {
   gap: 14px;
   padding: 10px 2px 16px;
   cursor: grab;
-  /* A reorder handle.s whole gesture is the vertical drag. pan-y gave exactly
-     that to the page scroller, which then cancelled the pointer and ended the
-     drag before it began. */
-  touch-action: none;
+  /* Touch keeps native horizontal panning; mouse drag is handled in JS. */
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.desktop-browser .horizontal-rail-drag-active {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track .seeall-card {

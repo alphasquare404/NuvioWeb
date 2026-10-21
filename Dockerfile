@@ -7,6 +7,11 @@ RUN npm ci
 
 COPY . .
 
+ARG NUVIO_BUILD_CHANNEL=local
+ARG NUVIO_BUILD_COMMIT=
+ENV NUVIO_BUILD_CHANNEL=$NUVIO_BUILD_CHANNEL \
+    NUVIO_BUILD_COMMIT=$NUVIO_BUILD_COMMIT
+
 # Build generic browser assets only. Public deployment values are written to
 # nuvio.env.js by the Nginx runtime entrypoint, never baked into image layers.
 RUN npm run build

@@ -62,7 +62,6 @@ jobs:
           tags: |
             type=raw,value=nightly,enable=${{ github.ref == 'refs/heads/web' }}
             type=raw,value=latest
-            type=raw,value=desktop
             type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
@@ -77,7 +76,6 @@ jobs:
           tags: |
             type=raw,value=nightly,enable=${{ github.ref == 'refs/heads/web' }}
             type=raw,value=latest
-            type=raw,value=desktop
             type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
@@ -92,7 +90,6 @@ jobs:
           tags: |
             type=raw,value=nightly,enable=${{ github.ref == 'refs/heads/web' }}
             type=raw,value=latest
-            type=raw,value=desktop
             type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
@@ -107,7 +104,6 @@ jobs:
           tags: |
             type=raw,value=nightly,enable=${{ github.ref == 'refs/heads/web' }}
             type=raw,value=latest
-            type=raw,value=desktop
             type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
@@ -119,6 +115,9 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
+          build-args: |
+            NUVIO_BUILD_CHANNEL=${{ github.ref_type == 'tag' && 'stable' || 'nightly' }}
+            NUVIO_BUILD_COMMIT=${{ github.sha }}
           tags: ${{ steps.frontend-meta.outputs.tags }}
           labels: ${{ steps.frontend-meta.outputs.labels }}
           cache-from: type=gha

@@ -14,6 +14,8 @@ test("application metadata supplies the independent fork version and repository 
 
   assert.match(metadata.version, /^\d+\.\d+\.\d+$/);
   assert.equal(metadata.version, version);
+  assert.equal(metadata.identity.channel, "local");
+  assert.equal(metadata.identity.commit, "");
   assert.equal(metadata.identity.upstreamVersion, "0.3.35");
   assert.equal(metadata.identity.maintainer, "alphasquare");
   assert.equal(metadata.identity.sourceRepositoryUrl, "https://github.com/alphasquare404/NuvioWeb");

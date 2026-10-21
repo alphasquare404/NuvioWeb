@@ -89,6 +89,7 @@ import {
 } from "../../components/browserAutomationReturn.js";
 import { selectReturnMethodsOffered } from "../onboarding/quickSetupSteps.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
+import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 import {
   copyDeviceAuthorizationCode,
   openDeviceAuthorizationLink
@@ -2472,6 +2473,11 @@ export const SettingsScreen = {
       this.browserHorizontalTabScrollCleanup = bindBrowserHorizontalTabScroll(this.container, [
         { rowSelector: ".settings-sidebar", tabSelector: ".settings-nav-item" }
       ]);
+      this.settingsRailDragCleanup?.();
+      this.settingsRailDragCleanup = bindHorizontalRailDragScroll({
+        container: this.container,
+        trackSelector: ".settings-sidebar, .settings-theme-row"
+      });
     }
     this.settingsRouteEnterPending = true;
     const persistedUiState = readSettingsUiState();
@@ -9150,7 +9156,15 @@ export const SettingsScreen = {
         <div class="settings-about-brand">
           <img class="settings-about-logo" src="assets/brand/app_logo_wordmark.png" alt="${escapeHtml(APP_IDENTITY.name)}" />
           <h2 class="settings-about-name">${escapeHtml(APP_IDENTITY.name)}</h2>
-          <p class="settings-about-copy">Version ${escapeHtml(APP_IDENTITY.version)}</p>
+          ${
+            APP_IDENTITY.channel === "nightly"
+              ? `<p class="settings-about-copy">Nightly build</p>${
+                  APP_IDENTITY.commit
+                    ? `<p class="settings-about-copy">Build sha-${escapeHtml(APP_IDENTITY.commit)}</p>`
+                    : ""
+                }`
+              : `<p class="settings-about-copy">Version ${escapeHtml(APP_IDENTITY.version)}</p>`
+          }
           <p class="settings-about-copy">Based on Nuvio ${escapeHtml(APP_IDENTITY.upstreamVersion)}</p>
           <p class="settings-about-copy">Originally created by Tapframe and contributors.</p>
           <p class="settings-about-copy">Built upon web/community work by WhiteGiso, edoedac0, and other contributors.</p>
@@ -10360,6 +10374,8 @@ export const SettingsScreen = {
     this.offlineDownloadsUnsubscribe = null;
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
+    this.settingsRailDragCleanup?.();
+    this.settingsRailDragCleanup = null;
     this.stopTraktPolling?.();
     this.stopDesktopTraktPolling?.();
     this.stopDesktopSimklPolling?.();
