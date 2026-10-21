@@ -519,6 +519,7 @@ function normalizeTraktWatchProgressSourceForAndroid(value) {
     .toLowerCase();
   if (normalized === "nuvio_sync" || normalized === "nuviosync") return "NUVIO_SYNC";
   if (normalized === "simkl") return "SIMKL";
+  if (normalized === "mdblist") return "MDBLIST";
   return "TRAKT";
 }
 
@@ -528,6 +529,7 @@ function normalizeTraktWatchProgressSourceForWeb(value) {
     .toUpperCase();
   if (normalized === "NUVIO_SYNC") return "nuvio_sync";
   if (normalized === "SIMKL") return "simkl";
+  if (normalized === "MDBLIST") return "mdblist";
   return "trakt";
 }
 

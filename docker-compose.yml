@@ -35,6 +35,13 @@ services:
       TRAKT_REDIRECT_URI: ${TRAKT_REDIRECT_URI:-urn:ietf:wg:oauth:2.0:oob}
     restart: unless-stopped
 
+  mdblist-bridge:
+    container_name: nuvioweb-mdblist-bridge
+    image: ghcr.io/alphasquare404/nuvioweb-mdblist-bridge:stable
+    environment:
+      MDBLIST_CLIENT_ID: ${MDBLIST_CLIENT_ID:-}
+    restart: unless-stopped
+
   debrid-api-bridge:
     container_name: nuvioweb-debrid-api-bridge
     image: ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:stable

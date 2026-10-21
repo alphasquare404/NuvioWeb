@@ -4,6 +4,8 @@ import { LocalStore } from "../../core/storage/localStore.js";
 import { WatchProgressSource } from "../local/traktSettingsStore.js";
 import { SimklAuthStore } from "../local/simklAuthStore.js";
 import { SimklSyncService } from "./simklSyncService.js";
+import { MdbListAuthStore } from "../local/mdbListAuthStore.js";
+import { MdbListSyncService } from "./mdbListSyncService.js";
 import { TraktAuthService, requestJson as traktRequestJson } from "./traktAuthService.js";
 import { ownsWatchProgress } from "./trackingWriteScope.js";
 
@@ -23,6 +25,7 @@ function activeProfileId() {
 function selectedLocalWatchedSource() {
   if (shouldUseTrakt()) return "trakt_local";
   if (shouldUseSimkl()) return "simkl_local";
+  if (shouldUseMdbList()) return "mdblist_local";
   return WatchProgressSource.NUVIO_SYNC;
 }
 
@@ -32,6 +35,10 @@ function shouldUseSimkl() {
 
 function shouldUseTrakt() {
   return ownsWatchProgress(WatchProgressSource.TRAKT) && TraktAuthService.isAuthenticated();
+}
+
+function shouldUseMdbList() {
+  return ownsWatchProgress(WatchProgressSource.MDBLIST) && MdbListAuthStore.isAuthenticated();
 }
 
 function traktIds(item = {}) {
@@ -270,11 +277,26 @@ class WatchedItemsRepository {
   async getAll(limit = Infinity, { allowStale = false } = {}) {
     const profileId = activeProfileId();
     const local = WatchedItemsStore.listForProfile(profileId);
-    if (!shouldUseSimkl()) return local.slice(0, limit);
-    const fetched = await SimklSyncService.getWatchedItems({ allowStale }).catch(() => []);
+    // A provider source answers with its own history. Local rows written under
+    // another provider would otherwise keep their badges beside MDBList's.
+    const visibleLocal = shouldUseMdbList()
+      ? local.filter((item) =>
+          String(item.source || "")
+            .toLowerCase()
+            .startsWith("mdblist")
+        )
+      : local;
+    const fetched = shouldUseSimkl()
+      ? await SimklSyncService.getWatchedItems({ allowStale }).catch(() => [])
+      : shouldUseMdbList()
+        ? await MdbListSyncService.getWatchedItems({ allowStale }).catch(() => [])
+        : [];
+    // Run this even when the provider answers empty: that empty answer is how
+    // an un-mark tombstone learns the provider has agreed and can be forgotten.
     const remote = applyUnmarkTombstones(fetched, profileId);
+    if (!fetched.length) return visibleLocal.slice(0, limit);
     const remoteKeys = new Set(remote.map(watchedKey));
-    return [...remote, ...local.filter((item) => !remoteKeys.has(watchedKey(item)))].slice(
+    return [...remote, ...visibleLocal.filter((item) => !remoteKeys.has(watchedKey(item)))].slice(
       0,
       limit
     );
@@ -322,6 +344,11 @@ class WatchedItemsRepository {
     if (shouldUseTrakt() && options.skipTrackingWrite !== true) {
       void writeTraktHistory(item, false).catch((error) => {
         console.warn("Trakt watched history update failed", error);
+      });
+    }
+    if (shouldUseMdbList() && options.skipTrackingWrite !== true) {
+      void MdbListSyncService.markWatched(item).catch((error) => {
+        console.warn("MDBList watched history update failed", error);
       });
     }
   }
@@ -420,6 +447,34 @@ class WatchedItemsRepository {
         }
       })().catch((error) => {
         console.warn("Trakt watched history removal failed", error);
+      });
+    }
+
+    if (shouldUseMdbList()) {
+      const targets = removedItems.length
+        ? removedItems
+        : [
+            {
+              contentId,
+              contentType:
+                options?.contentType ||
+                (options?.season != null || options?.episode != null ? "series" : "movie"),
+              title: options?.title,
+              year: options?.year,
+              season: options?.season ?? null,
+              episode: options?.episode ?? null,
+              videoId: options?.videoId || null,
+              imdbId: options?.imdbId,
+              tmdbId: options?.tmdbId,
+              traktId: options?.traktId
+            }
+          ];
+      void (async () => {
+        for (const item of targets) {
+          await MdbListSyncService.unmarkWatched(item);
+        }
+      })().catch((error) => {
+        console.warn("MDBList watched history removal failed", error);
       });
     }
   }
