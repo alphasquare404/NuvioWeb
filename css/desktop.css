@@ -20949,3 +20949,24 @@ html:not([data-nav-placement="top"])
   .settings-content-header {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* Cloud's Search belongs beside Refresh, as the same square action. Left to
+   its generic row rule it took the picker row's text height and, on a tablet,
+   stayed next to the pickers while Refresh was pushed to the far edge. */
+.desktop-browser
+  .library-picker-row.library-cloud-filter-row
+  .library-search-button {
+  flex: 0 0 52px;
+  align-self: center;
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  min-height: 52px;
+  margin-left: auto;
+  border-radius: 14px;
+}
+
+.desktop-browser .library-cloud-filter-row .library-cloud-refresh-button {
+  align-self: center;
+  margin-left: 0;
+}
