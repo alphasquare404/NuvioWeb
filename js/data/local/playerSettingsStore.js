@@ -65,6 +65,10 @@ const DEFAULTS = {
   streamReuseLastLinkEnabled: false,
   streamReuseLastLinkCacheHours: 24,
   streamAutoPlayTimeoutSeconds: 3,
+  // Which playback implementation draws the picture. Opt-in and never assumed:
+  // the movi engine needs WebCodecs and a CORS-readable source, so a profile
+  // that never asked for it must keep the built-in player.
+  playerEngine: "native",
   // Apple browser users without a stored preference receive the verified
   // Lenna path; platform-specific consumers keep Android on its own options.
   browserExternalPlayer: "lenna",
@@ -77,6 +81,8 @@ const DEFAULTS = {
   // one moment when two devices can both hold viewing neither has seen, and
   // this is the least dependable part of sync, so nobody gets it by surprise.
   syncOfflineProgress: false,
+  // Hide every stream that would need a relay or a re-encode.
+  showOnlyDirectStreams: false,
   // Which assisted way back from an external player the person set up. Empty
   // until they choose: an existing profile may already have a Push
   // subscription, and that subscription is the only record the notification
@@ -165,18 +171,40 @@ function normalizeNextEpisodeThresholdMode(value) {
 }
 
 function normalizeBrowserExternalPlayer(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["disabled", "outplayer", "lenna", "infuse", "vlc"].includes(normalized) ? normalized : "disabled";
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  return ["disabled", "outplayer", "lenna", "infuse", "vlc"].includes(normalized)
+    ? normalized
+    : "disabled";
 }
 
 function normalizeExternalPlayerProgress(value) {
-  return String(value || "").trim().toLowerCase() === "manual" ? "manual" : "automatic";
+  return String(value || "")
+    .trim()
+    .toLowerCase() === "manual"
+    ? "manual"
+    : "automatic";
+}
+
+const PLAYER_ENGINES = ["native", "movi"];
+
+// A stored value that no longer names a known engine falls back instead of being
+// kept: the playback route chooses on this value alone, so an unknown string
+// would be a player that never opens.
+function normalizePlayerEngine(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  return PLAYER_ENGINES.includes(normalized) ? normalized : DEFAULTS.playerEngine;
 }
 
 const EXTERNAL_RETURN_METHODS = ["notification", "automation"];
 
 function normalizeExternalReturnMethod(value) {
-  const next = String(value || "").trim().toLowerCase();
+  const next = String(value || "")
+    .trim()
+    .toLowerCase();
   return EXTERNAL_RETURN_METHODS.includes(next) ? next : "";
 }
 
@@ -292,13 +320,27 @@ export function normalizePlayerSettings(settings = {}) {
     ...DEFAULTS,
     ...persistentSettings,
     trailerAutoplay: persistentSettings.trailerAutoplay ?? DEFAULTS.trailerAutoplay,
-    trailerDelaySeconds: Math.min(15, Math.max(0, Math.trunc(Number(persistentSettings.trailerDelaySeconds ?? 7)) || 0)),
+    trailerDelaySeconds: Math.min(
+      15,
+      Math.max(0, Math.trunc(Number(persistentSettings.trailerDelaySeconds ?? 7)) || 0)
+    ),
     loadingOverlayEnabled: persistentSettings.loadingOverlayEnabled !== false,
     showPlayerLoadingStatus: persistentSettings.showPlayerLoadingStatus !== false,
     pauseOverlayEnabled: persistentSettings.pauseOverlayEnabled !== false,
     parentalGuideEnabled: persistentSettings.parentalGuideEnabled !== false,
-    autoSkipSegmentTypes: [...new Set((Array.isArray(persistentSettings.autoSkipSegmentTypes) ? persistentSettings.autoSkipSegmentTypes : []).map((entry) => String(entry).toLowerCase()).filter((entry) => ["intro", "recap", "outro"].includes(entry)))],
-    addonSubtitleStartupMode: ["FAST_STARTUP", "PREFERRED_ONLY", "ALL_SUBTITLES"].includes(String(persistentSettings.addonSubtitleStartupMode || "").toUpperCase())
+    autoSkipSegmentTypes: [
+      ...new Set(
+        (Array.isArray(persistentSettings.autoSkipSegmentTypes)
+          ? persistentSettings.autoSkipSegmentTypes
+          : []
+        )
+          .map((entry) => String(entry).toLowerCase())
+          .filter((entry) => ["intro", "recap", "outro"].includes(entry))
+      )
+    ],
+    addonSubtitleStartupMode: ["FAST_STARTUP", "PREFERRED_ONLY", "ALL_SUBTITLES"].includes(
+      String(persistentSettings.addonSubtitleStartupMode || "").toUpperCase()
+    )
       ? String(persistentSettings.addonSubtitleStartupMode).toUpperCase()
       : "ALL_SUBTITLES",
     addonSubtitleStartupModeAutoPreferred: Boolean(
@@ -339,10 +381,12 @@ export function normalizePlayerSettings(settings = {}) {
     externalPlayerProgress: normalizeExternalPlayerProgress(
       persistentSettings.externalPlayerProgress ?? DEFAULTS.externalPlayerProgress
     ),
+    playerEngine: normalizePlayerEngine(persistentSettings.playerEngine ?? DEFAULTS.playerEngine),
     offlinePlaybackTarget: normalizeOfflinePlaybackTarget(
       persistentSettings.offlinePlaybackTarget ?? DEFAULTS.offlinePlaybackTarget
     ),
     syncOfflineProgress: persistentSettings.syncOfflineProgress === true,
+    showOnlyDirectStreams: persistentSettings.showOnlyDirectStreams === true,
     externalReturnMethod: normalizeExternalReturnMethod(
       persistentSettings.externalReturnMethod ?? DEFAULTS.externalReturnMethod
     ),
@@ -366,9 +410,7 @@ export function normalizePlayerSettings(settings = {}) {
     stillWatchingEpisodeThreshold: normalizeStillWatchingThreshold(
       settings.stillWatchingEpisodeThreshold ?? DEFAULTS.stillWatchingEpisodeThreshold
     ),
-    osdClockEnabled: Boolean(
-      persistentSettings.osdClockEnabled ?? DEFAULTS.osdClockEnabled
-    ),
+    osdClockEnabled: Boolean(persistentSettings.osdClockEnabled ?? DEFAULTS.osdClockEnabled),
     subtitlesEnabled: true,
     secondaryPreferredAudioLanguage: (() => {
       const normalized = String(

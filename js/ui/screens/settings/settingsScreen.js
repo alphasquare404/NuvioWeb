@@ -19,6 +19,7 @@ import { CollectionsStore, buildCollectionHomeKey } from "../../../data/local/co
 import { ThemeStore } from "../../../data/local/themeStore.js";
 import { ThemeManager } from "../../theme/themeManager.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
+import { hasWebCodecs } from "../../../core/player/movi/moviCapability.js";
 import {
   SUBTITLE_VERTICAL_OFFSET_DEFAULT,
   SUBTITLE_VERTICAL_OFFSET_MAX,
@@ -2414,6 +2415,52 @@ function isAppearanceThemeFocusKey(focusKey) {
   return String(focusKey || "").startsWith("appearance:theme:");
 }
 
+/**
+ * Rows the movi engine ignores, and so must not be offered while it is the one
+ * playing.
+ *
+ * Each of these is a real feature of the built-in player, not a mistake. But a
+ * switch that cannot do anything is worse than a missing switch: it reads as a
+ * broken feature rather than as the boundary of an engine.
+ *
+ * Module-level on purpose. `createScreenPrototype()` copies only functions from a
+ * screen onto the section screens it derives, leaving data properties behind, so
+ * a list kept on the object would be `undefined` the moment this screen is
+ * rendered as a section — and the settings page would crash on its first row.
+ */
+const MOVI_IGNORED_ROW_KEYS = [
+  // Player chrome and behaviour the movi route does not implement.
+  "playback:autoplay",
+  "playback:loadingOverlay",
+  "playback:loadingStatus",
+  "playback:pauseOverlay",
+  "playback:parentalGuide",
+  // The session belongs to the built-in player, which owns next-episode and
+  // still-watching prompts; the movi route ends when the file does.
+  "playback:nextEpisodeThresholdMode",
+  "playback:nextEpisodeThresholdValue",
+  "playback:stillWatching",
+  "playback:stillWatchingThreshold",
+  // Track selection: the route follows the profile's language and does not
+  // choose tracks by hand, so these have nothing to act on.
+  "playback:audioLanguage",
+  "playback:secondaryAudioLanguage",
+  "playback:secondarySubtitleLanguage",
+  "playback:useForcedSubtitles",
+  "playback:showOnlyPreferredSubtitleLanguages",
+  "playback:subtitleStartupMode",
+  "playback:renderMode",
+  // Subtitle appearance: the overlay draws with its own defaults for now, so
+  // these would be switches that change nothing.
+  "playback:subtitleSize",
+  "playback:subtitleOffset",
+  "playback:subtitleBold",
+  "playback:subtitleTextColor",
+  "playback:subtitleBackgroundColor",
+  "playback:subtitleOutline",
+  "playback:subtitleOutlineColor"
+];
+
 export const SettingsScreen = {
   getCurrentRailScrollTop() {
     const rail = this.container?.querySelector?.("[data-settings-nav]");
@@ -3029,6 +3076,32 @@ export const SettingsScreen = {
     `;
   },
 
+  /**
+   * Is playback being handed to another app?
+   *
+   * `browserExternalPlayer` stores "disabled" for "inside Nuvio", so this is the
+   * one question the Play-with row and every external-only row below it ask.
+   */
+  /**
+   * Should this row be left out because the movi engine cannot honour it?
+   *
+   * Reads the module-level list, never `this`: this method is copied onto the
+   * section screens by prototype, and anything kept in a data property would not
+   * travel with it.
+   */
+  rowHiddenForEngine(focusKey) {
+    if (!MOVI_IGNORED_ROW_KEYS.includes(String(focusKey || ""))) return false;
+    if (!hasWebCodecs()) return false;
+    const settings = PlayerSettingsStore.get();
+    if (String(settings.playerEngine || "") !== "movi") return false;
+    // Handing playback to another app means no engine of ours plays at all.
+    return normalizeBrowserExternalPlayer(settings.browserExternalPlayer) === "disabled";
+  },
+
+  playWithUsesExternal(model = {}) {
+    return normalizeBrowserExternalPlayer(model.player?.browserExternalPlayer) !== "disabled";
+  },
+
   renderActionRow({
     focusKey,
     title,
@@ -3042,6 +3115,7 @@ export const SettingsScreen = {
     disabled = false,
     planned = false
   }) {
+    if (this.rowHiddenForEngine(focusKey)) return "";
     const inert = disabled || planned;
     const trailing = external ? "external" : icon;
     const tailContent = [
@@ -3076,6 +3150,7 @@ export const SettingsScreen = {
     disabled = false,
     planned = false
   }) {
+    if (this.rowHiddenForEngine(focusKey)) return "";
     const inert = disabled || planned;
     return `
       <button class="settings-action-row settings-toggle-row settings-content-focusable focusable${inert ? " is-disabled" : ""}${planned ? " is-planned" : ""}"
@@ -6987,6 +7062,7 @@ export const SettingsScreen = {
     togglePlayerSetting("playback:loadingStatus", "showPlayerLoadingStatus");
     togglePlayerSetting("playback:pauseOverlay", "pauseOverlayEnabled");
     togglePlayerSetting("playback:parentalGuide", "parentalGuideEnabled");
+    togglePlayerSetting("playback:showOnlyDirectStreams", "showOnlyDirectStreams");
     ["intro", "recap", "outro"].forEach((type) =>
       this.actionMap.set(`playback:autoSkip:${type}`, () => {
         const current = PlayerSettingsStore.get().autoSkipSegmentTypes || [];
@@ -7003,21 +7079,51 @@ export const SettingsScreen = {
       });
     });
     if (isDesktopBrowser) {
+      this.actionMap.set("playback:playWith", () => {
+        const externalIds = getBrowserExternalPlayerOptions().filter((id) => id !== "disabled");
+        const current = normalizeBrowserExternalPlayer(
+          PlayerSettingsStore.get().browserExternalPlayer
+        );
+        this.openOptionDialog({
+          title: "Play with",
+          message:
+            "Internal playback keeps Nuvio's own player. An external player opens the stream in another app and reports the position back when you return.",
+          options: [
+            { id: "internal", label: "Internal player" },
+            ...(externalIds.length ? [{ id: "external", label: "External player" }] : [])
+          ],
+          selectedId: current === "disabled" ? "internal" : "external",
+          returnFocusKey: "playback:playWith",
+          onSelect: (option) => {
+            if (option.id === "internal") {
+              PlayerSettingsStore.set({ browserExternalPlayer: "disabled" });
+              return;
+            }
+            // "External" has to name an app: keep the one already chosen, or fall
+            // back to the first the platform offers.
+            const next = current === "disabled" ? externalIds[0] : current;
+            if (!next) return;
+            PlayerSettingsStore.set({ browserExternalPlayer: next });
+          }
+        });
+      });
       this.actionMap.set("playback:externalPlayer", () => {
-        const options = getBrowserExternalPlayerOptions().map((id) => ({
-          id,
-          label:
-            id === "outplayer"
-              ? "Outplayer"
-              : id === "lenna"
-                ? "Lenna"
-                : id === "infuse"
-                  ? "Infuse"
-                  : id === "vlc"
-                    ? "VLC"
-                    : t("common.disabled", {}, "Disabled"),
-          subtitle: id === "lenna" ? "Recommended" : ""
-        }));
+        const options = getBrowserExternalPlayerOptions()
+          .filter((id) => id !== "disabled")
+          .map((id) => ({
+            id,
+            label:
+              id === "outplayer"
+                ? "Outplayer"
+                : id === "lenna"
+                  ? "Lenna"
+                  : id === "infuse"
+                    ? "Infuse"
+                    : id === "vlc"
+                      ? "VLC"
+                      : t("common.disabled", {}, "Disabled"),
+            subtitle: id === "lenna" ? "Recommended" : ""
+          }));
         this.openOptionDialog({
           title: "Play with external player",
           options,
@@ -7062,6 +7168,24 @@ export const SettingsScreen = {
                 "Return notifications need automatic reporting, so that choice was cleared."
               );
             }
+          }
+        });
+      });
+      this.actionMap.set("playback:playerEngine", () => {
+        const capable = hasWebCodecs();
+        this.openOptionDialog({
+          title: "Playback engine",
+          message: capable
+            ? "The movi engine plays MKV, HEVC 10-bit, AV1 and E-AC3 inside Nuvio, which the built-in player hands to another app.\n\nIt reads the stream itself, so the source must allow that — a proxied stream, not a bare provider link. Cast, picture-in-picture and the volume boost are only in the built-in player."
+            : "This browser has no WebCodecs, so the movi engine cannot decode anything here. The built-in player is used whatever this is set to.",
+          options: [
+            { id: "native", label: "Built-in player" },
+            { id: "movi", label: "movi engine" }
+          ],
+          selectedId: PlayerSettingsStore.get().playerEngine || "native",
+          returnFocusKey: "playback:playerEngine",
+          onSelect: (option) => {
+            PlayerSettingsStore.set({ playerEngine: option.id });
           }
         });
       });
@@ -7615,6 +7739,18 @@ export const SettingsScreen = {
         ${
           isDesktopBrowser
             ? this.renderActionRow({
+                focusKey: "playback:playWith",
+                title: "Play with",
+                subtitle:
+                  "Play inside Nuvio, or hand the stream to another app when the built-in player cannot take it.",
+                value: this.playWithUsesExternal(model) ? "External player" : "Internal player",
+                classes: "settings-playback-play-with-row"
+              })
+            : ""
+        }
+        ${
+          isDesktopBrowser && this.playWithUsesExternal(model)
+            ? this.renderActionRow({
                 focusKey: "playback:externalPlayer",
                 title: "Play with external player",
                 subtitle: "Choose the default player used after selecting a compatible stream.",
@@ -7670,7 +7806,24 @@ export const SettingsScreen = {
             : ""
         }
         ${
-          isDesktopBrowser
+          !isDesktopBrowser || !this.playWithUsesExternal(model)
+            ? this.renderActionRow({
+                focusKey: "playback:playerEngine",
+                title: "Playback engine",
+                subtitle:
+                  "Which implementation draws the picture. The movi engine adds MKV, HEVC 10-bit, AV1 and E-AC3, and needs a stream the browser may read directly (CORS) plus WebCodecs.",
+                value:
+                  model.player.playerEngine === "movi"
+                    ? hasWebCodecs()
+                      ? "movi engine"
+                      : "movi engine (unavailable on this device)"
+                    : "Built-in player",
+                classes: "settings-playback-engine-row"
+              })
+            : ""
+        }
+        ${
+          isDesktopBrowser && this.playWithUsesExternal(model)
             ? this.renderActionRow({
                 focusKey: "playback:externalPlayerProgress",
                 title: "External Player Progress",
@@ -7685,7 +7838,7 @@ export const SettingsScreen = {
             : ""
         }
         ${
-          isDesktopBrowser
+          isDesktopBrowser && this.playWithUsesExternal(model)
             ? this.renderActionRow({
                 focusKey: "playback:returnMethod",
                 title: "Return to NuvioWeb",
@@ -7702,6 +7855,7 @@ export const SettingsScreen = {
         }
         ${
           isDesktopBrowser &&
+          this.playWithUsesExternal(model) &&
           model.player.externalReturnMethod === "automation" &&
           getAutomationReturnAvailability() !== "unsupported"
             ? this.renderActionRow({
@@ -7743,6 +7897,13 @@ export const SettingsScreen = {
               })
             : ""
         }
+        ${this.renderToggleRow({
+          focusKey: "playback:showOnlyDirectStreams",
+          title: "Show only direct streams",
+          subtitle:
+            "Hide streams that would need a remux or a transcode. Estimated from the stream card; if nothing is left, the full list is shown instead.",
+          checked: Boolean(model.player.showOnlyDirectStreams)
+        })}
         ${this.renderToggleRow({
           focusKey: "playback:skipIntro",
           title: t("settings.playback.skipIntro.title", {}, "Skip Intro"),

@@ -148,3 +148,24 @@ test("a prototype taken after the screen has run carries its bound handlers", ()
   assert.equal(typeof shared.boundActionHandler, "function");
   assert.equal(shared.bindActions(), "skipped");
 });
+
+test("a section screen inherits methods but not data, so render config must live at module scope", () => {
+  const screen = {
+    ignoredRows: ["playback:skipIntro"],
+    renderRows() {
+      return this.ignoredRows.includes("playback:skipIntro");
+    }
+  };
+
+  const prototype = createScreenPrototype(screen);
+  const instance = Object.create(prototype);
+
+  assert.equal(typeof instance.renderRows, "function");
+  // Data is dropped on purpose -- a new page must not read the previous one's
+  // meta or scroll position. The consequence: a list a screen needs WHILE it
+  // renders cannot live on the screen, because the section screens built from
+  // this prototype never receive it. Keeping one there crashed the Playback
+  // settings page on its first row.
+  assert.equal(instance.ignoredRows, undefined);
+  assert.throws(() => instance.renderRows(), TypeError);
+});

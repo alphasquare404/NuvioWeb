@@ -1,5 +1,10 @@
 import { HomeScreen } from "../screens/home/homeScreen.js";
 import { PlayerScreen } from "../screens/player/playerScreen.js";
+import { MoviPlayerScreen } from "../screens/player/movi/moviPlayerScreen.js";
+import { shouldRoutePlayerToMovi } from "../../core/player/movi/moviCapability.js";
+import { applyRemuxSource } from "../../core/player/remuxSource.js";
+import { REMUX_ENDPOINT } from "../../config.js";
+import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { AccountScreen } from "../screens/account/accountScreen.js";
 import { AuthQrSignInScreen } from "../screens/account/authQrSignInScreen.js";
 import { AuthSignInScreen } from "../screens/account/authSignInScreen.js";
@@ -119,10 +124,11 @@ const NUVIO_HISTORY_STATE_KEY = "__nuvioHistory";
 // entry, which is what that store is for.
 const MAX_SUSPENDED_LAYERS = 4;
 
-// The one screen never kept alive underneath another: its <video> holds decoder
-// and network resources that must be released when it is left, never retained
-// merely to preserve navigation state.
-const NEVER_SUSPEND_ROUTES = new Set(["player"]);
+// The screens never kept alive underneath another: their media elements hold
+// decoder and network resources that must be released when they are left, never
+// retained merely to preserve navigation state. The movi route owns a WASM
+// demuxer and its cache, so it belongs here for the same reason as `player`.
+const NEVER_SUSPEND_ROUTES = new Set(["player", "moviPlayer"]);
 
 // The inline styles the router owns on whichever screen is drawn as a layer.
 const LAYER_CHROME_PROPERTIES = [
@@ -205,6 +211,7 @@ export const Router = {
   routes: {
     home: HomeScreen,
     player: PlayerScreen,
+    moviPlayer: MoviPlayerScreen,
     account: AccountScreen,
     authQrSignIn: AuthQrSignInScreen,
     authSignIn: AuthSignInScreen,
@@ -847,6 +854,22 @@ export const Router = {
 
   async navigate(routeName, params = {}, options = {}) {
     const navigationStart = ROUTER_PERF_DEBUG ? routerPerfNow() : 0;
+
+    // Which engine draws the picture is a route decision, and the player route
+    // has six doorways (stream picker, detail, library, next episode...). Asking
+    // each caller to remember the choice means one of them forgets, so it is
+    // answered here instead, once, for whoever asked. The rule itself lives in
+    // moviCapability so it can be tested without a router.
+    // Safari cannot open an MKV because of the container, not the codec. When the
+    // deployment runs a remux relay, the source is rewritten to it here — the one
+    // place every player doorway passes through — and the existing player opens it.
+    if (routeName === "player") {
+      params = applyRemuxSource(params, REMUX_ENDPOINT);
+    }
+
+    if (routeName === "player" && shouldRoutePlayerToMovi(params, PlayerSettingsStore.get())) {
+      routeName = "moviPlayer";
+    }
 
     const fromHistory = Boolean(options?.fromHistory);
     const skipStackPush = Boolean(options?.skipStackPush);
