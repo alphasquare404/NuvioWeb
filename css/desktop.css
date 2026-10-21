@@ -1355,6 +1355,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #folderDetail .desktop-folder-detail-shell {
+  --folder-detail-rail-gutter: clamp(24px, 3.4vw, 64px);
   position: relative;
   z-index: 1;
   box-sizing: border-box;
@@ -1609,6 +1610,20 @@ html.desktop-browser {
   -webkit-overflow-scrolling: touch;
 }
 
+/* The phone rail is full-bleed: its scrollport reaches the viewport edges
+   while the first card still starts on the page gutter. Tablet and desktop
+   kept the scrollport inside the shell padding, so a partial card was cut at
+   the content edge with a visible strip beyond it. Match the phone geometry
+   above 600px; the phone rule already owns its own edges. */
+@media (min-width: 601px) {
+  .desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track {
+    box-sizing: border-box;
+    width: calc(100% + 2 * var(--folder-detail-rail-gutter));
+    margin-inline: calc(-1 * var(--folder-detail-rail-gutter));
+    padding-inline: var(--folder-detail-rail-gutter);
+  }
+}
+
 .desktop-browser .horizontal-rail-drag-active {
   cursor: grabbing;
   user-select: none;
@@ -1637,6 +1652,7 @@ html.desktop-browser {
 
 @media (max-width: 900px) {
   .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    --folder-detail-rail-gutter: 24px;
     padding-inline: 24px;
   }
 
@@ -12942,6 +12958,7 @@ body.desktop-browser {
   }
 
   .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    --folder-detail-rail-gutter: clamp(28px, 4vw, 44px);
     padding: calc(var(--browser-safe-area-top) + 96px) clamp(28px, 4vw, 44px) 52px;
   }
 
