@@ -33,13 +33,47 @@ const DEFAULT_SWEEP_MS = 5 * 60 * 1000;
 const HEALTH_PATH = "/api/remux/health";
 const STREAM_PATH = "/api/remux";
 
-function json(response, status, payload) {
+function json(response, status, payload, extraHeaders = null) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff"
+    "X-Content-Type-Options": "nosniff",
+    ...(extraHeaders || {})
   });
   response.end(JSON.stringify(payload));
+}
+
+/**
+ * Who is asking, for the per-caller limit.
+ *
+ * Behind the tunnel the socket address is the proxy, so the forwarded header is the
+ * only useful answer; without it every caller would share one bucket and the limit
+ * would become a global one. Kept local rather than imported from the transcode
+ * bridge, which already imports this file.
+ */
+function clientAddress(request) {
+  const forwarded = String(request?.headers?.["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  if (forwarded) return forwarded;
+  const real = String(request?.headers?.["x-real-ip"] || "").trim();
+  if (real) return real;
+  return String(request?.socket?.remoteAddress || "unknown");
+}
+
+/** How many bytes the source says it has, or 0 when it will not say. */
+async function fetchSourceSize(url) {
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 5000) : null;
+  try {
+    const response = await fetch(url, { method: "HEAD", signal: controller?.signal });
+    const length = Number(response.headers.get("content-length"));
+    return Number.isFinite(length) && length > 0 ? length : 0;
+  } catch {
+    return 0;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** Only what can actually be fetched, and nothing that pretends to be local. */
@@ -94,12 +128,32 @@ export function createRemuxBridgeHandler({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   maxTotalBytes = DEFAULT_MAX_BYTES,
   sweepIntervalMs = DEFAULT_SWEEP_MS,
+  // Deployment policy, permissive by default so the library stays usable in tests and
+  // in an embedder that sets its own limits; the server reads these from the
+  // environment. Zero always means "no limit".
+  maxConcurrent = 0,
+  perIpConcurrent = 0,
+  maxSourceBytes = 0,
+  dailyBudgetBytes = 0,
+  sourceSize = null,
   allowHosts = null,
   spawnImpl = spawn,
   now = () => Date.now()
 } = {}) {
   /** key -> { promise, file, lastUsed } — one ffmpeg run per source, shared by all askers. */
   const jobs = new Map();
+  // What is being relayed right now, and by whom. A remux is a copy of a whole film:
+  // two at once can already saturate a home uplink, so the count is the thing worth
+  // limiting, not the request rate.
+  const running = new Map();
+  const runningByIp = new Map();
+  const starting = new Set();
+  const dayStamp = () => new Date(now()).toISOString().slice(0, 10);
+  let budget = { day: dayStamp(), bytes: 0 };
+  const budgetUsedToday = () => {
+    if (budget.day !== dayStamp()) budget = { day: dayStamp(), bytes: 0 };
+    return budget.bytes;
+  };
 
   /**
    * Delete what is expired, then trim until the directory fits its budget.
@@ -146,6 +200,9 @@ export function createRemuxBridgeHandler({
       try {
         size = statSync(job.file).size;
       } catch {
+        // The output is gone while the entry is not: forget the entry, or the next
+        // request is answered from a file that no longer exists.
+        jobs.delete(key);
         continue;
       }
       total += size;
@@ -236,7 +293,17 @@ export function createRemuxBridgeHandler({
     const existing = jobs.get(key);
     if (existing) {
       existing.lastUsed = now();
-      return existing.promise;
+      // Same rule as the transcode bridge: an entry whose file is gone must not be
+      // handed back. The directory sweep judges a file by its own timestamp, so it
+      // can remove one whose entry still looks recently used, and the next play
+      // then failed with ENOENT -- 500 on a stream that used to work.
+      try {
+        const file = await existing.promise;
+        if (existsSync(file) && statSync(file).size > 0) return file;
+      } catch {
+        // The earlier attempt failed; ask ffmpeg again below.
+      }
+      jobs.delete(key);
     }
     const job = { lastUsed: now(), file: null, promise: null };
     job.promise = remux(source, key).then((file) => {
@@ -252,13 +319,104 @@ export function createRemuxBridgeHandler({
     }
   }
 
+  /**
+   * May this request start a new remux?
+   *
+   * Answered before any work is queued, with a status the client can act on: a busy
+   * server is `429` and a spent budget is `503`, because retrying in five seconds and
+   * retrying tomorrow are different instructions. Never refuses a request that would
+   * only join a job already running or serve a prepared file.
+   */
+  async function admit(url, address) {
+    const used = budgetUsedToday();
+    if (dailyBudgetBytes > 0 && used >= dailyBudgetBytes) {
+      return {
+        status: 503,
+        payload: {
+          ok: false,
+          error: "quota-exhausted",
+          usedBytesToday: used,
+          dailyBudgetBytes
+        },
+        headers: { "Retry-After": "3600" }
+      };
+    }
+    if (maxConcurrent > 0 && running.size >= maxConcurrent) {
+      return {
+        status: 429,
+        payload: {
+          ok: false,
+          error: "busy",
+          active: running.size,
+          maxConcurrent,
+          retryAfterSeconds: 5
+        },
+        headers: { "Retry-After": "5" }
+      };
+    }
+    if (perIpConcurrent > 0 && (runningByIp.get(address) || 0) >= perIpConcurrent) {
+      return {
+        status: 429,
+        payload: { ok: false, error: "caller-busy", retryAfterSeconds: 5 },
+        headers: { "Retry-After": "5" }
+      };
+    }
+    if (maxSourceBytes > 0) {
+      const size = typeof sourceSize === "function" ? await sourceSize(url) : 0;
+      if (size > maxSourceBytes) {
+        return {
+          status: 413,
+          payload: { ok: false, error: "source-too-large", size, maxSourceBytes },
+          headers: null
+        };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Account for one running relay.
+   *
+   * The guard is what makes the count honest: two requests for the same source that
+   * both passed the limit check must not both be counted, or one film would look like
+   * two and the next caller would be refused for nothing.
+   */
+  function beginWork(key, address) {
+    if (starting.has(key) || jobs.has(key)) return false;
+    starting.add(key);
+    running.set(key, address);
+    runningByIp.set(address, (runningByIp.get(address) || 0) + 1);
+    return true;
+  }
+
+  function endWork(key, address) {
+    if (!starting.has(key)) return;
+    starting.delete(key);
+    running.delete(key);
+    const remaining = (runningByIp.get(address) || 1) - 1;
+    if (remaining > 0) runningByIp.set(address, remaining);
+    else runningByIp.delete(address);
+  }
+
   return async function handleRemuxBridge(request, response) {
     const requestUrl = new URL(
       request.url || "/",
       `http://${request.headers?.host || "localhost"}`
     );
     if (requestUrl.pathname === HEALTH_PATH) {
-      json(response, 200, { ok: true });
+      // What this deployment offers, and how much of its budget is left, so a client
+      // can say "server is preparing, queued" instead of failing silently.
+      const used = budgetUsedToday();
+      json(response, 200, {
+        ok: true,
+        maxConcurrent,
+        active: running.size,
+        busy: maxConcurrent > 0 && running.size >= maxConcurrent,
+        maxSourceBytes,
+        dailyBudgetBytes,
+        usedBytesToday: used,
+        remainingBytesToday: dailyBudgetBytes > 0 ? Math.max(0, dailyBudgetBytes - used) : 0
+      });
       return;
     }
     if (requestUrl.pathname !== STREAM_PATH) {
@@ -277,12 +435,31 @@ export function createRemuxBridgeHandler({
     }
     sweep();
 
+    // Joining a job that is already running, or serving a file already prepared, costs
+    // nothing new and must never be refused by a limit.
+    const known = jobs.has(parsed.key);
+    const address = clientAddress(request);
+    if (!known) {
+      const refusal = await admit(parsed.url, address);
+      if (refusal) {
+        json(response, refusal.status, refusal.payload, refusal.headers);
+        return;
+      }
+    }
+    const didWork = known ? false : beginWork(parsed.key, address);
+
     let file;
     try {
       file = await fileFor(parsed.url, parsed.key);
     } catch {
       json(response, 502, { ok: false, error: "remux-failed" });
       return;
+    } finally {
+      if (didWork) endWork(parsed.key, address);
+    }
+    if (didWork) {
+      budgetUsedToday();
+      budget.bytes += statSync(file).size;
     }
 
     const size = statSync(file).size;
