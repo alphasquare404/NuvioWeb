@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   PLAYBACK_METHODS,
   classifyPlayback,
+  detectAudioChannels,
   detectAudioCodec,
   detectContainer,
   detectVideoCodec,
@@ -258,4 +259,34 @@ test("an unresolved row is still estimated from its own label", () => {
     capabilities: capable
   });
   assert.equal(bare.method, PLAYBACK_METHODS.UNKNOWN);
+});
+
+test("multichannel aac asks for the audio relay on a device that only plays stereo", () => {
+  // Measured on the phone: a 5.1 AAC track played a silent film over the copy relay,
+  // because iOS drops the multichannel track instead of failing. The ladder must treat
+  // that exactly like DTS -- the audio relay downmixes it to stereo.
+  const apple = { h264: true, hevc: true, aac: true, requiresStereoAac: true };
+  const desktop = { h264: true, hevc: true, aac: true, requiresStereoAac: false };
+  const label = "Film.2026.1080p.WEBRip.AAC5.1.10bits.x265-Rapta.mkv";
+
+  const onApple = classifyPlayback({ url: "", label, capabilities: apple });
+  assert.equal(onApple.method, PLAYBACK_METHODS.AUDIO_TRANSCODE);
+  assert.equal(onApple.reason, "audio-aac-multichannel");
+
+  // A browser that can play 5.1 keeps the cheap path.
+  assert.equal(
+    classifyPlayback({ url: "", label, capabilities: desktop }).method,
+    PLAYBACK_METHODS.REMUX
+  );
+
+  // Stereo stays a copy, so the common case is not made expensive.
+  const stereo = "Film.2026.1080p.WEBRip.AAC2.0.x265.mkv";
+  assert.equal(
+    classifyPlayback({ url: "", label: stereo, capabilities: apple }).method,
+    PLAYBACK_METHODS.REMUX
+  );
+  assert.equal(detectAudioChannels("AAC5.1"), 6);
+  assert.equal(detectAudioChannels("DDP7.1"), 8);
+  assert.equal(detectAudioChannels("AAC2.0"), 2);
+  assert.equal(detectAudioChannels("no layout here"), 0);
 });

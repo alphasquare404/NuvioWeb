@@ -63,6 +63,24 @@ const AUDIO_HINTS = [
   [/aac/i, "aac"]
 ];
 
+/**
+ * How many channels the text claims.
+ *
+ * `AAC5.1` and `DDP5.1` glue the layout to the codec, and an iPhone plays AAC stereo but
+ * not multichannel AAC: the picture runs and the audio is silent, which is the worst kind
+ * of failure because nothing reports an error. Numbers only; 0 means "not stated".
+ */
+export function detectAudioChannels(text = "") {
+  const value = String(text || "");
+  const glued = /(?:aac|ddp|eac3|ac3|dd)\s*([1-8])[.\-]([01])/i.exec(value);
+  const layout = glued || /\b([1-8])[.\-]([01])\b/.exec(value);
+  if (layout) {
+    const channels = Number(layout[1]) + Number(layout[2]);
+    return Number.isFinite(channels) && channels > 0 ? channels : 0;
+  }
+  const explicit = /\b([2-8])\s*(?:ch|channels)\b/i.exec(value);
+  return explicit ? Number(explicit[1]) : 0;
+}
 export function detectContainer(url = "") {
   const value = String(url || "");
   if (HLS.test(value)) return "hls";
@@ -134,6 +152,7 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   // simply has no opinion here and the file is treated as it always was.
   const videoTag = String(probe?.videoTag || "").toLowerCase();
   const audioCodec = String(probe?.audioCodec || detectAudioCodec(text) || "unknown").toLowerCase();
+  const audioChannels = detectAudioChannels(text);
   const confidence = exact ? "exact" : "estimate";
 
   // Adaptive streaming is not remuxed: the manifest already carries the segments
@@ -163,6 +182,10 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   }
 
   const videoOk = codecSupported(videoCodec, capabilities);
+  // Multichannel AAC is the silent failure: iOS plays the picture and drops the track.
+  // It needs the audio relay (which downmixes to stereo) exactly like DTS does.
+  const stereoOnly = capabilities.requiresStereoAac === true;
+  const multichannelBlocked = stereoOnly && audioChannels > 2;
   const audioOk = codecSupported(audioCodec, capabilities);
 
   if (!videoOk) {
@@ -184,7 +207,8 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
       confidence,
       container,
       videoCodec,
-      audioCodec
+      audioCodec,
+      audioChannels
     };
   }
 
@@ -195,10 +219,10 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   // "Remux", sent it to the remux relay, and produced an MP4 whose audio the device
   // still cannot decode -- a relabelled failure, not a fix. Yellow now means
   // exactly what it says: the audio is fine and only the box is wrong.
-  if (!audioOk) {
+  if (!audioOk || multichannelBlocked) {
     return {
       method: PLAYBACK_METHODS.AUDIO_TRANSCODE,
-      reason: `audio-${audioCodec}-unsupported`,
+      reason: `audio-${audioCodec}-${multichannelBlocked ? "multichannel" : "unsupported"}`,
       confidence,
       container,
       videoCodec,

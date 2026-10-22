@@ -52,6 +52,10 @@ export function detectDeviceCapabilities(
   // A platform that only accepts hvc1 turns an `hev1` file into a relay job, not a
   // direct play -- the label would otherwise promise something it cannot deliver.
   capabilities.hevcHvc1Required = requiresHvc1HevcTag(userAgent, maxTouchPoints);
+  // The same platforms that demand hvc1 play AAC only in stereo through <video>: a 5.1
+  // track yields a silent film, so the ladder must ask for the audio relay instead of
+  // promising a copy that cannot be heard.
+  capabilities.requiresStereoAac = capabilities.hevcHvc1Required === true;
   return capabilities;
 }
 
