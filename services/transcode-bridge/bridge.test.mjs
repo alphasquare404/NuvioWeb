@@ -1,3 +1,4 @@
+import { hlsJobIsIdle } from "./bridge.mjs";
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
@@ -242,4 +243,33 @@ test("a re-encoded picture is H.264 and never tagged as HEVC", () => {
   // The copied-HEVC case still asks for the tag.
   const copied = transcodeArgs("https://cdn/a.mkv", "/tmp/out.mp4", { videoTag: "hvc1" });
   assert.equal(copied.includes("-tag:v"), true);
+});
+
+test("a silent hls job is idle, a finished one never is", () => {
+  const at = 1_000_000;
+  const idleMs = 60_000;
+  assert.equal(
+    hlsJobIsIdle({ lastRequestAt: at - 120_000 }, { at, idleMs }),
+    true,
+    "silent for two minutes"
+  );
+  assert.equal(
+    hlsJobIsIdle({ lastRequestAt: at - 30_000 }, { at, idleMs }),
+    false,
+    "asked 30s ago"
+  );
+  assert.equal(
+    hlsJobIsIdle({ lastRequestAt: at - 120_000, done: true }, { at, idleMs }),
+    false,
+    "finished work is kept"
+  );
+  assert.equal(hlsJobIsIdle({ lastRequestAt: at - 120_000, failed: true }, { at, idleMs }), false);
+  assert.equal(hlsJobIsIdle(null, { at, idleMs }), false);
+  assert.equal(
+    hlsJobIsIdle({ lastRequestAt: at - 120_000 }, { at, idleMs: 0 }),
+    false,
+    "0 disables it"
+  );
+  // A job that has only ever been created is aged from its creation time.
+  assert.equal(hlsJobIsIdle({ lastUsed: at - 120_000 }, { at, idleMs }), true);
 });

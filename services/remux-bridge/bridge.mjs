@@ -138,10 +138,12 @@ export function createRemuxBridgeHandler({
   maxConcurrent = 0,
   perIpConcurrent = 0,
   maxSourceBytes = 0,
+  abandonGraceMs = Number(process.env.RELAY_ABANDON_GRACE_MS ?? 5000) || 0,
   dailyBudgetBytes = 0,
   sourceSize = null,
   allowHosts = null,
   spawnImpl = spawn,
+  log = console,
   now = () => Date.now()
 } = {}) {
   /** key -> { promise, file, lastUsed } — one ffmpeg run per source, shared by all askers. */
@@ -152,6 +154,13 @@ export function createRemuxBridgeHandler({
   const running = new Map();
   const runningByIp = new Map();
   const starting = new Set();
+  // Who is still waiting on each source, and what to do when nobody is. A remux takes
+  // minutes and holds a queue slot the whole time, so a viewer who closes the app must
+  // not keep the server busy for the rest of the film -- but a reload must not throw
+  // away work either, hence the grace period.
+  const waiting = new Map();
+  const abandonTimers = new Map();
+  let abandoned = 0;
   const dayStamp = () => new Date(now()).toISOString().slice(0, 10);
   let budget = { day: dayStamp(), bytes: 0 };
   const budgetUsedToday = () => {
@@ -266,17 +275,20 @@ export function createRemuxBridgeHandler({
       [...baseArgs, file]
     ];
     for (const args of attempts) {
-      const ok = await runFfmpeg(args);
+      const ok = await runFfmpeg(args, key);
       if (ok && existsSync(file) && statSync(file).size > 0) return file;
       await rm(file, { force: true }).catch(() => {});
     }
     throw new Error("remux-failed");
   }
 
-  function runFfmpeg(args) {
+  function runFfmpeg(args, key = "") {
     return new Promise((resolve) => {
       let settled = false;
       const child = spawnImpl(ffmpegPath, args, { stdio: "ignore" });
+      // Held on the job so an abandoned run can be killed from outside this promise.
+      const job = jobs.get(key);
+      if (job) job.child = child;
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -297,9 +309,69 @@ export function createRemuxBridgeHandler({
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        const owner = jobs.get(key);
+        if (owner && owner.child === child) owner.child = null;
         resolve(code === 0);
       });
     });
+  }
+
+  /**
+   * Note that someone is waiting on a source, and hand back the release function.
+   *
+   * A new request also calls off a pending abandonment: a viewer reloading the page
+   * looks exactly like one leaving, followed by one arriving.
+   */
+  function watchWaiter(key) {
+    waiting.set(key, (waiting.get(key) || 0) + 1);
+    const pending = abandonTimers.get(key);
+    if (pending) {
+      clearTimeout(pending);
+      abandonTimers.delete(key);
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const left = Math.max(0, (waiting.get(key) || 1) - 1);
+      if (left > 0) {
+        waiting.set(key, left);
+        return;
+      }
+      waiting.delete(key);
+      scheduleAbandon(key);
+    };
+  }
+
+  function scheduleAbandon(key) {
+    if (abandonGraceMs <= 0) {
+      cancelIfAbandoned(key);
+      return;
+    }
+    const timer = setTimeout(() => {
+      abandonTimers.delete(key);
+      cancelIfAbandoned(key);
+    }, abandonGraceMs);
+    timer.unref?.();
+    abandonTimers.set(key, timer);
+  }
+
+  /** Nobody is waiting any more: stop paying for a film nobody will watch. */
+  function cancelIfAbandoned(key) {
+    if (waiting.has(key)) return;
+    const job = jobs.get(key);
+    // A finished file is not abandoned work: it is cheap, and it is exactly what the
+    // viewer needs if they come back. Only a run in progress is worth cancelling.
+    if (!job || job.file) return;
+    jobs.delete(key);
+    try {
+      job.child?.kill("SIGKILL");
+    } catch {
+      // already gone
+    }
+    void rm(path.join(workDir, `${key}.mp4`), { force: true }).catch(() => {});
+    abandoned += 1;
+    log?.log?.(`[remux] abandoned ${key.slice(0, 8)}`);
   }
 
   async function fileFor(source, key) {
@@ -324,7 +396,7 @@ export function createRemuxBridgeHandler({
       }
       jobs.delete(key);
     }
-    const job = { lastUsed: now(), file: null, promise: null };
+    const job = { lastUsed: now(), file: null, promise: null, child: null };
     job.promise = remux(source, key).then((file) => {
       job.file = file;
       return file;
@@ -434,7 +506,8 @@ export function createRemuxBridgeHandler({
         maxSourceBytes,
         dailyBudgetBytes,
         usedBytesToday: used,
-        remainingBytesToday: dailyBudgetBytes > 0 ? Math.max(0, dailyBudgetBytes - used) : 0
+        remainingBytesToday: dailyBudgetBytes > 0 ? Math.max(0, dailyBudgetBytes - used) : 0,
+        abandoned
       });
       return;
     }
@@ -467,6 +540,12 @@ export function createRemuxBridgeHandler({
     }
     const didWork = known ? false : beginWork(parsed.key, address);
 
+    // Counted before the work starts, because that is when the viewer can leave. The
+    // response closing early is the only reliable signal: the request itself does not
+    // finish until the file is ready.
+    const release = watchWaiter(parsed.key);
+    response.once("close", release);
+
     let file;
     try {
       file = await fileFor(parsed.url, parsed.key);
@@ -475,6 +554,9 @@ export function createRemuxBridgeHandler({
       return;
     } finally {
       if (didWork) endWork(parsed.key, address);
+      // After a successful run the file is finished work, so releasing here cannot
+      // cancel anything; it only stops the waiter being counted forever.
+      release();
     }
     if (didWork) {
       budgetUsedToday();

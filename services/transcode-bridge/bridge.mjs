@@ -344,6 +344,21 @@ export function rewriteHlsPlaylist(text, { key = "", token = "", base = "" } = {
     .join("\n");
 }
 
+/**
+ * Has this HLS job gone quiet for too long?
+ *
+ * A phone plays, pauses, or closes and simply stops asking. The job outlives the
+ * request that started it -- that is what makes playback start early -- so silence is
+ * the only signal available, and a finished job is never idle: its segments are what a
+ * paused viewer returns to.
+ */
+export function hlsJobIsIdle(job, { at = Date.now(), idleMs = 0 } = {}) {
+  if (!job || job.done || job.failed) return false;
+  if (!(idleMs > 0)) return false;
+  const lastSeen = Number(job.lastRequestAt || job.lastUsed || 0);
+  return at - lastSeen >= idleMs;
+}
+
 export function createTranscodeBridgeHandler({
   ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg",
   workDir = process.env.TRANSCODE_WORK_DIR || path.join(tmpdir(), "nuvio-transcode"),
@@ -362,6 +377,10 @@ export function createTranscodeBridgeHandler({
   perIpConcurrent = 0,
   maxSourceBytes = 0,
   dailyBudgetBytes = 0,
+  // How long a run may go with nobody asking for anything. A paused player is silent
+  // too, so this is minutes by default: short enough to free a home uplink, long
+  // enough that pausing to answer a message does not end the film.
+  hlsIdleMs = Number(process.env.RELAY_HLS_IDLE_MS ?? 60_000) || 0,
   sourceSize = null,
   spawnImpl = spawn,
   log = console,
@@ -378,6 +397,7 @@ export function createTranscodeBridgeHandler({
   const starting = new Set();
   const dayStamp = () => new Date(now()).toISOString().slice(0, 10);
   let budget = { day: dayStamp(), bytes: 0 };
+  let abandoned = 0;
   const budgetUsedToday = () => {
     if (budget.day !== dayStamp()) budget = { day: dayStamp(), bytes: 0 };
     return budget.bytes;
@@ -462,13 +482,47 @@ export function createTranscodeBridgeHandler({
   const sweeper = setInterval(() => void sweep(), sweepIntervalMs);
   sweeper.unref?.();
 
-  function runFfmpeg(args, { cwd = undefined } = {}) {
+  /**
+   * Nobody is asking for segments any more: stop producing them.
+   *
+   * An HLS job outlives the request that started it, on purpose -- that is what lets a
+   * phone play while the rest is still being made. So "the client is gone" cannot be
+   * told from a closed connection; it is told from silence. A paused player is silent
+   * too, which is why the window is measured in minutes and not seconds.
+   */
+  function cancelIfIdle(key) {
+    const job = hlsJobs.get(key);
+    if (!hlsJobIsIdle(job, { at: now(), idleMs: hlsIdleMs })) return;
+    hlsJobs.delete(key);
+    jobs.delete(key);
+    try {
+      job.child?.kill("SIGKILL");
+    } catch {
+      // already gone
+    }
+    void rm(job.dir, { recursive: true, force: true }).catch(() => {});
+    abandoned += 1;
+    log.warn(`[transcode] abandoned ${key.slice(0, 8)} idle`);
+  }
+
+  const idleCheck = setInterval(
+    () => {
+      for (const key of [...hlsJobs.keys()]) cancelIfIdle(key);
+    },
+    Math.max(20, Math.min(hlsIdleMs || 15000, 15000))
+  );
+  idleCheck.unref?.();
+
+  function runFfmpeg(args, { cwd = undefined, key = "" } = {}) {
     return new Promise((resolve) => {
       let settled = false;
       // `cwd` is how an HLS job keeps every file it writes inside its own directory:
       // ffmpeg resolves bare output names against the working directory, not against
       // the playlist, so without this the init segment landed in the app's folder.
       const child = spawnImpl(ffmpegPath, args, { stdio: "ignore", cwd });
+      // Held on the job so an abandoned run can be killed from outside this promise.
+      const owner = hlsJobs.get(key) || jobs.get(key);
+      if (owner) owner.child = child;
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -489,6 +543,8 @@ export function createTranscodeBridgeHandler({
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        const current = hlsJobs.get(key) || jobs.get(key);
+        if (current && current.child === child) current.child = null;
         resolve(code === 0);
       });
     });
@@ -554,16 +610,28 @@ export function createTranscodeBridgeHandler({
     const existing = hlsJobs.get(key);
     if (existing) {
       existing.lastUsed = now();
+      existing.lastRequestAt = now();
       return existing;
     }
     const dir = path.join(workDir, key);
-    const job = { dir, lastUsed: now(), done: false, failed: false };
+    const job = {
+      dir,
+      lastUsed: now(),
+      // When the player last asked for the playlist or a segment. A paused player asks
+      // for nothing, which is indistinguishable from one that closed the app -- hence
+      // a generous idle window rather than an instant kill.
+      lastRequestAt: now(),
+      done: false,
+      failed: false,
+      child: null
+    };
     job.promise = mkdir(dir, { recursive: true })
       .then(async () => {
         const playlistPath = path.join(dir, "index.m3u8");
         for (const videoTag of ["hvc1", ""]) {
           const ok = await runFfmpeg(hlsArgs(source, dir, { bitrate, plan, videoTag }), {
-            cwd: dir
+            cwd: dir,
+            key
           });
           if (ok) {
             job.done = true;
@@ -792,6 +860,13 @@ export function createTranscodeBridgeHandler({
   function serveHlsMedia(key, name, request, response) {
     const dir = path.join(workDir, key);
     const full = path.join(dir, name);
+    // A segment request is a viewer still watching. Without this the idle timer would
+    // count only playlist polls and could cancel a film that is playing fine.
+    const job = hlsJobs.get(key);
+    if (job) {
+      job.lastUsed = now();
+      job.lastRequestAt = now();
+    }
     if (!full.startsWith(`${dir}${path.sep}`) || !existsSync(full)) {
       // The playlist only lists finished segments, so this is a request that came
       // too early or a key nobody started. Either way there is nothing to send.
@@ -890,7 +965,9 @@ export function createTranscodeBridgeHandler({
         dailyBudgetBytes,
         usedBytesToday: budgetUsedToday(),
         remainingBytesToday:
-          dailyBudgetBytes > 0 ? Math.max(0, dailyBudgetBytes - budgetUsedToday()) : 0
+          dailyBudgetBytes > 0 ? Math.max(0, dailyBudgetBytes - budgetUsedToday()) : 0,
+        hlsIdleMs,
+        abandoned
       });
       return;
     }

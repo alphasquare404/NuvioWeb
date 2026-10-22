@@ -236,3 +236,44 @@ test("a finished file outlives the short clock, an orphan does not", async () =>
     assert.equal(names.length, 1, "only the finished output remains");
   });
 });
+
+test("a viewer who leaves stops the work, and a reload does not", async () => {
+  // The client disconnects while the relay is still producing; with no one else
+  // waiting, the run is cancelled after the grace period and its output removed.
+  const killed = [];
+  let release = null;
+  const gate = new Promise((resolve) => (release = resolve));
+  await withServer(
+    {
+      abandonGraceMs: 20,
+      spawnImpl: (_binary, args) => {
+        const handlers = new Map();
+        void gate.then(() => {
+          writeFileSync(args[args.length - 1], Buffer.alloc(4096, 5));
+          handlers.get("close")?.(0);
+        });
+        return {
+          on(event, handler) {
+            handlers.set(event, handler);
+            return this;
+          },
+          kill(signal) {
+            killed.push(signal);
+          }
+        };
+      }
+    },
+    async ({ url, workDir }) => {
+      const controller = new AbortController();
+      const pending = fetch(url, { signal: controller.signal }).catch(() => null);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      controller.abort();
+      await pending;
+      // Longer than the grace period: the abandonment timer has fired by now.
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      assert.deepEqual(killed, ["SIGKILL"], "the abandoned run must be killed");
+      assert.deepEqual(await readdir(workDir), [], "its half-written output must be gone");
+      release();
+    }
+  );
+});
