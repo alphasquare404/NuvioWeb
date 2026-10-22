@@ -3282,6 +3282,26 @@ export const StreamScreen = {
   },
 
   /**
+   * The playlist URL for a remux, when this deployment can deliver one.
+   *
+   * Same copy the file path makes -- picture and audio untouched, container fixed --
+   * only handed over as segments so the first one can play while the rest is still
+   * being produced. Empty string means "use the file", which is the honest answer on a
+   * deployment without a transcode endpoint, without HLS, or without a token.
+   */
+  async remuxPlaylistUrl(url) {
+    if (!TRANSCODE_ENDPOINT) return "";
+    const access = await transcodeAccess.resolve();
+    if (!access?.hls) return "";
+    const token = String(TranscodeSettingsStore.get().token || "").trim();
+    if (!isTranscodeAccessGranted({ mode: access?.mode, token })) return "";
+    return buildTranscodePlaylistUrl(url, {
+      endpoint: TRANSCODE_ENDPOINT,
+      token,
+      plan: { video: "copy", audio: "copy", height: 0, channels: 2 }
+    });
+  },
+  /**
    * The URL the in-app player should open for this row.
    *
    * The ladder has already answered whether the audio track alone is the problem.
@@ -3313,6 +3333,13 @@ export const StreamScreen = {
         // The player is told how to wait for this source instead of being asked to sit
         // through the copy: a remux needs minutes before its first byte, and the
         // player's own patience is eighteen seconds.
+        // Two ways to deliver the same copy. Whole-file was the only one before, and it
+        // made a 1.93 GB source sit for 85 seconds before anything appeared. HLS hands
+        // over the same copy in segments, so playback starts in seconds; it is preferred
+        // whenever this deployment can do it, and the file stays as the fallback -- which
+        // is also the only shape an offline download can use.
+        const playlistUrl = await this.remuxPlaylistUrl(url);
+        if (playlistUrl) return playlistUrl;
         return buildRemuxUrl(url, REMUX_ENDPOINT);
       }
       return url;
