@@ -195,8 +195,26 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   }
 
   const videoOk = codecSupported(videoCodec, capabilities);
-  const audioOk = codecSupported(audioCodec, capabilities);
+  // An unnamed audio codec is not a refusal: the relay picks a track or downmixes when
+  // the file is served. Spending a probe on it would buy nothing the relay cannot do
+  // anyway, and that is exactly the load this rule is meant to remove.
+  const audioUnknown = audioCodec === "unknown";
+  const audioOk = audioUnknown ? true : codecSupported(audioCodec, capabilities);
 
+  // A video codec the text did not name decides remux versus a full re-encode -- a large
+  // difference, and one only ffprobe can settle. It is asked before the container, because
+  // "unsupported container" only says the relay will be used, not which relay does what.
+  if (videoCodec === "unknown") {
+    return {
+      method: PLAYBACK_METHODS.UNKNOWN,
+      reason: "video-unknown",
+      confidence,
+      container,
+      videoCodec,
+      audioCodec,
+      audioChannels
+    };
+  }
   if (!videoOk) {
     return {
       method: PLAYBACK_METHODS.TRANSCODE,

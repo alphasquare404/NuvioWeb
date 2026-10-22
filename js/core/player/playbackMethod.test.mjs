@@ -199,7 +199,10 @@ test("a probe turns an estimate into a decision", () => {
 
 test("an unknown codec is not treated as a failure", () => {
   const result = classifyPlayback({ url: "https://cdn/a.mp4", label: "", capabilities: weak });
-  assert.equal(result.method, PLAYBACK_METHODS.DIRECT);
+  // Not a failure, but not an answer either: an unnamed video codec decides remux versus a
+  // full re-encode, so it goes to the probe rather than being guessed as Direct.
+  assert.equal(result.method, PLAYBACK_METHODS.UNKNOWN);
+  assert.equal(result.reason, "video-unknown");
   assert.equal(result.videoCodec, "unknown");
 });
 
@@ -250,7 +253,9 @@ test("an unresolved row is still estimated from its own label", () => {
     label: "TB Instant Silo.S02E02.1080p.WEBRip.mkv",
     capabilities: capable
   });
-  assert.equal(withName.method, PLAYBACK_METHODS.REMUX);
+  // A container is not enough to promise a remux: without a named video codec the relay
+  // cannot know whether a copy is enough, so the row stays Unknown until it is probed.
+  assert.equal(withName.method, PLAYBACK_METHODS.UNKNOWN);
 
   // Nothing to read is still nothing to read.
   const bare = classifyPlayback({
