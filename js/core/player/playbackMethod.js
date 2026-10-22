@@ -48,7 +48,10 @@ const TS = new RegExp("\\.ts" + BOUNDARY, "i");
 const VIDEO_HINTS = [
   [/av1|\bav01\b/i, "av1"],
   [/hevc|h\.?265|x265|\bhvc1\b|\bhev1\b/i, "hevc"],
-  [/x264|h\.?264|\bavc1?\b|\bavc\b|\bavc\b|8bit/i, "h264"],
+  // `8bit` used to be here and it was wrong: it describes the depth, not the codec, and
+  // it turned an unrecognised picture into a confident "h264 -> Direct". A stream whose
+  // probe reported MPEG-4 Part 2 was shown as Direct for exactly that reason.
+  [/x264|h\.?264|\bavc1?\b|\bavc\b/i, "h264"],
   [/\bvvc\b|h\.?266/i, "unknown"]
 ];
 
