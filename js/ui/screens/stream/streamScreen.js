@@ -1474,7 +1474,11 @@ export const StreamScreen = {
         const url = String(stream.url || stream.externalUrl || "").trim();
         return url && !this._probeResults?.has(url) && !this._probeFailed?.has(url);
       });
-      if (unanswered.length) {
+      // The pipeline, not just the row list: some rows already have answers while others
+      // are still queued, and deciding on that half-filled view is how auto-play "failed"
+      // a second before the direct rows appeared.
+      const probesBusy = this._probeOutstanding === true || (this._probePending?.size || 0) > 0;
+      if (probesBusy || unanswered.length) {
         // The owner already has one knob for "how long may the app wait before choosing",
         // so the probe wait uses it instead of a hidden constant. No waiting at all (0)
         // still needs a few seconds: without an answer there is nothing to choose.
