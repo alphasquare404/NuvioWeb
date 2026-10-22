@@ -368,6 +368,13 @@ const server = http.createServer(async (request, response) => {
       // naming a relay that is switched off. A feature that is on but has no explicit
       // endpoint gets the path this server actually mounts.
       const resolved = { ...env };
+      // How many rows one page open may probe. A deployment used by a few people does not
+      // need a budget at all, so 0 means unlimited; a public one sets it to keep the probe
+      // load (and its downloads) predictable.
+      const pageLimit =
+        String(process.env.PROBE_PAGE_LIMIT ?? "").trim() ||
+        String(env.PROBE_PAGE_LIMIT ?? "").trim();
+      resolved.PROBE_PAGE_LIMIT = pageLimit || "20";
       Object.entries(FEATURE_SWITCHES).forEach(([switchKey, endpointKey]) => {
         const raw = String(process.env[switchKey] ?? "").trim();
         const on = isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey]);

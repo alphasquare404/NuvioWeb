@@ -3,6 +3,9 @@ import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 
 export const ENV_PROPERTY_KEYS = [
+  // How many rows one page open may probe. Reaches the app as a number; 0 means unlimited,
+  // which is what a self-hoster with a handful of users wants.
+  "PROBE_PAGE_LIMIT",
   "NUVIO_SUPABASE_URL",
   "NUVIO_SUPABASE_ANON_KEY",
   "NUVIO_SUPABASE_FALLBACK_URL",

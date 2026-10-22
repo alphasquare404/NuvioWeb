@@ -2454,7 +2454,15 @@ export const StreamScreen = {
       });
   },
 
-  runUnknownProbes({ maxBatches = 3 } = {}) {
+  runUnknownProbes({ maxBatches = null } = {}) {
+    // How many rows a page open may probe comes from the deployment, because it is a
+    // question about the server, not about the phone. 0 means unlimited, which is right
+    // for a self-hoster with a handful of users.
+    const configuredLimit = Number(globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20);
+    const pageLimit =
+      Number.isFinite(configuredLimit) && configuredLimit >= 0 ? configuredLimit : 20;
+    if (pageLimit === 0) maxBatches = Number.POSITIVE_INFINITY;
+    else if (maxBatches == null) maxBatches = Math.max(1, Math.ceil(pageLimit / 5));
     // Addon rows arrive without a URL and get one later, so a single pass at first
     // render would look at empty strings and give up. Each render offers whatever is
     // resolvable now, and URLs already sent are never sent twice.
