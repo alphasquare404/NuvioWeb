@@ -3300,7 +3300,7 @@ export const StreamScreen = {
    * being made. Empty string means "use the file", which is the honest answer on a
    * deployment without a transcode endpoint, without HLS, or without a token.
    */
-  async remuxPlaylistUrl(url, { downmix = false } = {}) {
+  async remuxPlaylistUrl(url, { audioIndex = 0 } = {}) {
     const why = (reason) => {
       console.warn(`[Playback] hls skipped: ${reason}`);
       return "";
@@ -3313,7 +3313,7 @@ export const StreamScreen = {
     const playlistUrl = buildTranscodePlaylistUrl(url, {
       endpoint: TRANSCODE_ENDPOINT,
       token,
-      plan: { video: "copy", audio: downmix ? "aac" : "copy", height: 0, channels: 2 }
+      plan: { video: "copy", audio: "copy", height: 0, channels: 2, audioIndex }
     });
     if (!playlistUrl) why("built-nothing");
     return playlistUrl;
@@ -3451,7 +3451,7 @@ export const StreamScreen = {
         // finished first -- but only a playlist that already holds a segment may be
         // handed over, or the player sees a zero-length video and calls it finished.
         const playlistUrl = await this.remuxPlaylistUrl(url, {
-          downmix: verdict.audioDownmix === true
+          audioIndex: Number(verdict.audioIndex) || 0
         });
         const playable = playlistUrl ? await this.isPlayableHlsPlaylist(playlistUrl) : false;
         // Cannot be skipped if this branch runs: says whether a playlist was offered at all.

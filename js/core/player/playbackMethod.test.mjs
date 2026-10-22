@@ -260,68 +260,50 @@ test("an unresolved row is still estimated from its own label", () => {
   });
   assert.equal(bare.method, PLAYBACK_METHODS.UNKNOWN);
 });
-
-test("multichannel is converted only when the container has no relay to carry it", () => {
-  const apple = { h264: true, hevc: true, aac: true, requiresStereoAac: true };
-  const probe = (tracks) => ({
-    container: "mp4",
-    videoCodec: "hevc",
-    videoTag: "hvc1",
-    audioCodec: "aac",
-    audioChannels: tracks[0]?.channels || 0,
-    audioStreams: tracks
+test("an existing aac track is selected instead of converting anything", () => {
+  const apple = { h264: true, hevc: true, aac: true, eac3: false, hevcHvc1Required: true };
+  const probe = (tracks, extra = {}) => ({
+    container: "mkv",
+    videoCodec: "h264",
+    audioCodec: tracks[0].codec,
+    audioChannels: tracks[0].channels,
+    audioStreams: tracks,
+    ...extra
   });
-  const only51 = [{ index: 0, codec: "aac", channels: 6 }];
-  const stereoFirst = [
-    { index: 0, codec: "aac", channels: 2 },
-    { index: 1, codec: "aac", channels: 6 }
+  const eac3ThenAac = [
+    { index: 0, codec: "eac3", channels: 6 },
+    { index: 1, codec: "aac", channels: 2 }
   ];
 
-  // An MKV is remuxed anyway, so the relay downmixes in that same pass: no probe, and
-  // the verdict says so instead of asking for a second job.
-  const mkv = classifyPlayback({
-    url: "",
-    label: "judul.x265.AAC5.1.mkv",
-    capabilities: apple
-  });
-  assert.equal(mkv.method, PLAYBACK_METHODS.REMUX);
-  assert.equal(mkv.audioDownmix, true);
-
-  // An MP4 would be played directly, where nothing can intervene. Probed and found
-  // without a stereo track: the audio relay is the only way to hear it.
-  const mp4 = classifyPlayback({
-    url: "",
-    label: "judul.x265.AAC5.1.mp4",
-    capabilities: apple,
-    probe: probe(only51)
-  });
-  // Probed without a stereo track: remux with the audio downmixed in the same pass,
-  // not a separate audio job.
-  assert.equal(mp4.method, PLAYBACK_METHODS.REMUX);
-  assert.equal(mp4.audioDownmix, true);
-  assert.equal(mp4.reason, "remux-audio-downmix");
-
-  // Same file, stereo first: play it as it is.
-  assert.equal(
-    classifyPlayback({
+  // Measured on a phone: mapping the second track played with sound and no encoding.
+  for (const extra of [{}, { container: "mp4", videoCodec: "hevc", videoTag: "hvc1" }]) {
+    const verdict = classifyPlayback({
       url: "",
-      label: "judul.x265.AAC5.1.mp4",
+      label: "judul.x265.mkv",
       capabilities: apple,
-      probe: probe(stereoFirst)
-    }).method,
-    PLAYBACK_METHODS.DIRECT
-  );
+      probe: probe(eac3ThenAac, extra)
+    });
+    assert.equal(verdict.method, PLAYBACK_METHODS.REMUX);
+    assert.equal(verdict.audioIndex, 1);
+    assert.equal(verdict.reason, "audio-track-selected");
+  }
 
-  // Unprobed MP4 stays Direct so that the probe happens at all.
-  assert.equal(
-    classifyPlayback({ url: "", label: "judul.x265.AAC5.1.mp4", capabilities: apple }).method,
-    PLAYBACK_METHODS.DIRECT
-  );
+  // No AAC track anywhere: conversion really is the only way to hear it.
+  const onlyEac3 = classifyPlayback({
+    url: "",
+    label: "judul.x265.mkv",
+    capabilities: apple,
+    probe: probe([{ index: 0, codec: "eac3", channels: 6 }])
+  });
+  assert.equal(onlyEac3.method, PLAYBACK_METHODS.AUDIO_TRANSCODE);
 
-  // A device that plays multichannel keeps the cheap path everywhere.
-  const desktop = { ...apple, requiresStereoAac: false };
-  assert.equal(
-    classifyPlayback({ url: "", label: "judul.x265.AAC5.1.mkv", capabilities: desktop }).method,
-    PLAYBACK_METHODS.REMUX
-  );
+  // AAC 5.1 plays (measured), so it is not converted and needs no track selection.
+  const aac51 = classifyPlayback({
+    url: "",
+    label: "judul.x265.mkv",
+    capabilities: apple,
+    probe: probe([{ index: 0, codec: "aac", channels: 6 }])
+  });
+  assert.equal(aac51.method, PLAYBACK_METHODS.REMUX);
+  assert.equal(aac51.audioIndex, 0);
 });

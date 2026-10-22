@@ -113,6 +113,10 @@ export function transcodePlanQuery(plan) {
   if (Number.isInteger(height) && height > 0) parts.push(`h=${height}`);
   const channels = Number(plan.channels || 0);
   if (Number.isInteger(channels) && channels > 0) parts.push(`ac=${channels}`);
+  // Which audio track to take: a copy of the second track is not the same file as a
+  // copy of the first, so it belongs in the request and in the cache key.
+  const audioIndex = Number(plan.audioIndex || 0);
+  if (Number.isInteger(audioIndex) && audioIndex > 0) parts.push(`ai=${audioIndex}`);
   return parts;
 }
 

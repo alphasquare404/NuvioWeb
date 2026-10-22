@@ -185,8 +185,23 @@ export function parseTranscodePlan(searchParams) {
     }
   }
 
-  const plan = { video, audio, height, channels };
-  return { ok: true, plan, signature: `v${video}-a${audio}-h${height}-c${channels}` };
+  // Which audio track to use. A release often carries E-AC-3 5.1 first and AAC
+  // stereo second: selecting the second is a copy, downmixing the first is an encode.
+  let audioIndex = 0;
+  const rawAudioIndex = read("ai");
+  if (rawAudioIndex) {
+    audioIndex = Number(rawAudioIndex);
+    if (!Number.isInteger(audioIndex) || audioIndex < 0 || audioIndex > 7) {
+      return { ok: false, reason: "invalid-audio-index" };
+    }
+  }
+
+  const plan = { video, audio, height, channels, audioIndex };
+  return {
+    ok: true,
+    plan,
+    signature: `v${video}-a${audio}-h${height}-c${channels}-i${audioIndex}`
+  };
 }
 
 /**
@@ -206,7 +221,11 @@ export function isPlanOffered(plan) {
 
 /** The codec half of the command, shared by every delivery shape. */
 function codecArgs(chosen, { bitrate, videoTag = "" }) {
-  const args = ["-map", "0:v:0", "-map", "0:a:0?"];
+  const audioTrack =
+    Number.isInteger(chosen?.audioIndex) && chosen.audioIndex > 0
+      ? `0:a:${chosen.audioIndex}`
+      : "0:a:0?";
+  const args = ["-map", "0:v:0", "-map", audioTrack];
   if (chosen.video === "copy") {
     args.push("-c:v", "copy");
   } else {

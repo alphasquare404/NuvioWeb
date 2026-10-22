@@ -195,12 +195,6 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   }
 
   const videoOk = codecSupported(videoCodec, capabilities);
-  // Multichannel AAC is the silent failure: iOS plays the picture and drops the track.
-  // It needs the audio relay (which downmixes to stereo) exactly like DTS does.
-  const stereoOnly = capabilities.requiresStereoAac === true;
-  // Blocked only when the row has no stereo to fall back to. A stereo track elsewhere in
-  // the file still needs the relay to select it, which is the next step -- so it is not
-  // counted as playable yet, but the reason says so.
   const audioOk = codecSupported(audioCodec, capabilities);
 
   if (!videoOk) {
@@ -230,45 +224,27 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
 
   const containerOk = container === "mp4" || container === "webm";
 
-  // Two separate questions. A row already probed and found without a stereo track is
-  // blocked only when its container is otherwise playable -- an MKV is remuxed anyway,
-  // and the relay downmixes in that same pass. Until it is probed, a Direct row stays
-  // Direct so that the probe happens at all.
-  const probedTracks = audioStreams.length > 0;
-  const multichannelBlocked =
-    stereoOnly && audioChannels > 2 && !stereoFirst && containerOk && probedTracks;
-  const audioDownmix = stereoOnly && audioChannels > 2 && !stereoFirst;
-  // Probed and found without a stereo track: the container is fixed and the audio is
-  // downmixed in the same relay pass. That is a remux, not a second kind of job -- and it
-  // keeps the whole thing inside one request.
-  if (multichannelBlocked) {
-    return {
-      method: PLAYBACK_METHODS.REMUX,
-      reason: "remux-audio-downmix",
-      confidence,
-      container,
-      videoCodec,
-      audioCodec,
-      audioChannels,
-      audioDownmix: true
-    };
-  }
+  // A probed file can carry several audio tracks. When one of them is AAC -- a codec
+  // this device really plays -- the answer is to select that track, not to re-encode
+  // anything: measured on a WEBRip whose E-AC-3 5.1 came first and AAC stereo second,
+  // mapping the second track played with sound and no encoding at all.
+  const playableTrack = audioStreams.find(
+    (track) => String(track?.codec || "").toLowerCase() === "aac"
+  );
+  const selectedAudioIndex = playableTrack ? Number(playableTrack.index) || 0 : 0;
+  const audioTrackSelected = selectedAudioIndex > 0;
   // Audio before container, because the audio transcode relay also rewrites the
   // container: it copies the picture into an MP4 and only re-encodes the audio.
   // Reading them the other way round labelled every MKV with a DTS or E-AC3 track
   // "Remux", sent it to the remux relay, and produced an MP4 whose audio the device
   // still cannot decode -- a relabelled failure, not a fix. Yellow now means
   // exactly what it says: the audio is fine and only the box is wrong.
-  if (!audioOk) {
+  // An unsupported first track is only a reason to convert when there is no playable
+  // track to switch to. Selecting an existing AAC track beats encoding a new one.
+  if (!audioOk && !audioTrackSelected) {
     return {
       method: PLAYBACK_METHODS.AUDIO_TRANSCODE,
-      reason: `audio-${audioCodec}-${
-        multichannelBlocked
-          ? audioStreams.some((track) => Number(track?.channels) === 2)
-            ? "multichannel-stereo-elsewhere"
-            : "multichannel"
-          : "unsupported"
-      }`,
+      reason: `audio-${audioCodec}-unsupported`,
       confidence,
       container,
       videoCodec,
@@ -277,11 +253,13 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
     };
   }
 
-  if (!containerOk) {
+  // A playable track that is not the first one still needs the relay: the player takes
+  // track 0 and nothing can change that from the list.
+  if (!containerOk || audioTrackSelected) {
     return {
       method: PLAYBACK_METHODS.REMUX,
-      audioDownmix,
-      reason: `container-${container}`,
+      audioIndex: selectedAudioIndex,
+      reason: audioTrackSelected ? "audio-track-selected" : `container-${container}`,
       confidence,
       container,
       videoCodec,
@@ -300,7 +278,7 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   if (videoCodec === "hevc" && videoTag === "hev1" && capabilities.hevcHvc1Required === true) {
     return {
       method: PLAYBACK_METHODS.REMUX,
-      audioDownmix,
+      audioIndex: selectedAudioIndex,
       reason: "hevc-tag-hev1",
       confidence,
       container,

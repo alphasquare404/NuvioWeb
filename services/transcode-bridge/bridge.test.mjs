@@ -110,8 +110,14 @@ test("an HEVC output is tagged for Safari, and the tag stays optional", () => {
 
 test("a request without a plan asks for what the app has always asked for", () => {
   const result = parseTranscodePlan(new URLSearchParams(""));
-  assert.deepEqual(result.plan, { video: "copy", audio: "aac", height: 0, channels: 2 });
-  assert.equal(result.signature, "vcopy-aaac-h0-c2");
+  assert.deepEqual(result.plan, {
+    video: "copy",
+    audio: "aac",
+    height: 0,
+    channels: 2,
+    audioIndex: 0
+  });
+  assert.equal(result.signature, "vcopy-aaac-h0-c2-i0");
 });
 
 test("the plan is read from the query, and out-of-range values are refused", () => {
@@ -121,7 +127,8 @@ test("the plan is read from the query, and out-of-range values are refused", () 
     video: "copy",
     audio: "aac",
     height: 0,
-    channels: 1
+    channels: 1,
+    audioIndex: 0
   });
   assert.equal(read("h=1080").plan.height, 1080);
   assert.equal(read("h=2160").reason, "invalid-height");
@@ -156,13 +163,13 @@ test("the plan is part of the cache key, because it is part of the output", () =
 
 test("the arguments follow the plan", () => {
   const mono = transcodeArgs("https://cdn/a.mkv", "/tmp/out.mp4", {
-    plan: { video: "copy", audio: "aac", height: 0, channels: 1 }
+    plan: { video: "copy", audio: "aac", height: 0, channels: 1, audioIndex: 0 }
   });
   assert.equal(mono[mono.indexOf("-ac") + 1], "1");
   assert.equal(mono[mono.indexOf("-c:v") + 1], "copy");
 
   const copiedAudio = transcodeArgs("https://cdn/a.mkv", "/tmp/out.mp4", {
-    plan: { video: "copy", audio: "copy", height: 0, channels: 2 }
+    plan: { video: "copy", audio: "copy", height: 0, channels: 2, audioIndex: 0 }
   });
   assert.equal(copiedAudio[copiedAudio.indexOf("-c:a") + 1], "copy");
   // Only an audio-only job has any business setting a bitrate.
@@ -205,7 +212,7 @@ test("the playlist points at URLs this bridge can answer", () => {
 test("the hls command writes an event playlist of four-second fragments", () => {
   const dir = path.join("/tmp", "job");
   const args = hlsArgs("https://cdn/a.mkv", dir, {
-    plan: { video: "copy", audio: "aac", height: 0, channels: 2 }
+    plan: { video: "copy", audio: "aac", height: 0, channels: 2, audioIndex: 0 }
   });
   const value = (flag) => args[args.indexOf(flag) + 1];
   assert.equal(value("-f"), "hls");
@@ -291,7 +298,7 @@ test("the remux shape is offered: copy the picture, copy the audio", () => {
 test("an hls command that copies audio does not encode it", () => {
   const args = hlsArgs("https://cdn.test/a.mkv", "jobdir", {
     videoTag: "hvc1",
-    plan: { video: "copy", audio: "copy", height: 0, channels: 2 }
+    plan: { video: "copy", audio: "copy", height: 0, channels: 2, audioIndex: 0 }
   });
   assert.equal(args.includes("-c:a"), true);
   assert.equal(args[args.indexOf("-c:a") + 1], "copy");
