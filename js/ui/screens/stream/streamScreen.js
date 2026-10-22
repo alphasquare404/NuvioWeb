@@ -3300,16 +3300,22 @@ export const StreamScreen = {
    * deployment without a transcode endpoint, without HLS, or without a token.
    */
   async remuxPlaylistUrl(url) {
-    if (!TRANSCODE_ENDPOINT) return "";
+    const why = (reason) => {
+      console.warn(`[Playback] hls skipped: ${reason}`);
+      return "";
+    };
+    if (!TRANSCODE_ENDPOINT) return why("no-endpoint");
     const access = await transcodeAccess.resolve();
-    if (!access?.hls) return "";
+    if (!access?.hls) return why(`no-hls(mode=${access?.mode || "?"})`);
     const token = String(TranscodeSettingsStore.get().token || "").trim();
-    if (!isTranscodeAccessGranted({ mode: access?.mode, token })) return "";
-    return buildTranscodePlaylistUrl(url, {
+    if (!isTranscodeAccessGranted({ mode: access?.mode, token })) return why("token-not-granted");
+    const playlistUrl = buildTranscodePlaylistUrl(url, {
       endpoint: TRANSCODE_ENDPOINT,
       token,
       plan: { video: "copy", audio: "copy", height: 0, channels: 2 }
     });
+    if (!playlistUrl) why("built-nothing");
+    return playlistUrl;
   },
 
   /**
@@ -3331,7 +3337,10 @@ export const StreamScreen = {
         .split(/\r?\n/)
         .map((line) => line.trim())
         .find((line) => line && !line.startsWith("#"));
-      if (!segment) return false;
+      if (!segment) {
+        console.warn("[Playback] hls playlist has no segment uri");
+        return false;
+      }
       const head = await fetch(new URL(segment, base).href, { method: "HEAD", cache: "no-store" });
       // Declared segments are the whole test. This HEAD used to be required, and it
       // rejected healthy playlists -- measured: the playlist advertised one segment and
