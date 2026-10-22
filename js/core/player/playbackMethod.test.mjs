@@ -295,7 +295,11 @@ test("multichannel is converted only when the container has no relay to carry it
     capabilities: apple,
     probe: probe(only51)
   });
-  assert.equal(mp4.method, PLAYBACK_METHODS.AUDIO_TRANSCODE);
+  // Probed without a stereo track: remux with the audio downmixed in the same pass,
+  // not a separate audio job.
+  assert.equal(mp4.method, PLAYBACK_METHODS.REMUX);
+  assert.equal(mp4.audioDownmix, true);
+  assert.equal(mp4.reason, "remux-audio-downmix");
 
   // Same file, stereo first: play it as it is.
   assert.equal(

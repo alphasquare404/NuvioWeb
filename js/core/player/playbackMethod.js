@@ -229,6 +229,7 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   }
 
   const containerOk = container === "mp4" || container === "webm";
+
   // Two separate questions. A row already probed and found without a stereo track is
   // blocked only when its container is otherwise playable -- an MKV is remuxed anyway,
   // and the relay downmixes in that same pass. Until it is probed, a Direct row stays
@@ -237,13 +238,28 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   const multichannelBlocked =
     stereoOnly && audioChannels > 2 && !stereoFirst && containerOk && probedTracks;
   const audioDownmix = stereoOnly && audioChannels > 2 && !stereoFirst;
+  // Probed and found without a stereo track: the container is fixed and the audio is
+  // downmixed in the same relay pass. That is a remux, not a second kind of job -- and it
+  // keeps the whole thing inside one request.
+  if (multichannelBlocked) {
+    return {
+      method: PLAYBACK_METHODS.REMUX,
+      reason: "remux-audio-downmix",
+      confidence,
+      container,
+      videoCodec,
+      audioCodec,
+      audioChannels,
+      audioDownmix: true
+    };
+  }
   // Audio before container, because the audio transcode relay also rewrites the
   // container: it copies the picture into an MP4 and only re-encodes the audio.
   // Reading them the other way round labelled every MKV with a DTS or E-AC3 track
   // "Remux", sent it to the remux relay, and produced an MP4 whose audio the device
   // still cannot decode -- a relabelled failure, not a fix. Yellow now means
   // exactly what it says: the audio is fine and only the box is wrong.
-  if (!audioOk || multichannelBlocked) {
+  if (!audioOk) {
     return {
       method: PLAYBACK_METHODS.AUDIO_TRANSCODE,
       reason: `audio-${audioCodec}-${
