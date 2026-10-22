@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, statSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, rename, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, rename, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseByteRange } from "../remux-bridge/bridge.mjs";
@@ -22,7 +22,10 @@ import { parseByteRange } from "../remux-bridge/bridge.mjs";
 //   lan    only addresses on the private network
 
 const ACCESS = Object.freeze({ OPEN: "open", TOKEN: "token", LAN: "lan" });
-const DEFAULT_TTL_MS = 60 * 60 * 1000;
+// Two clocks: a finished output is kept for hours because a paused viewer needs it,
+// while an unfinished one can never be played and is swept quickly.
+const DEFAULT_FINISHED_TTL_MS = 3 * 60 * 60 * 1000;
+const DEFAULT_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_BYTES = 4 * 1024 * 1024 * 1024;
 const DEFAULT_SWEEP_MS = 5 * 60 * 1000;
@@ -348,6 +351,7 @@ export function createTranscodeBridgeHandler({
   token = process.env.TRANSCODE_TOKEN || "",
   bitrate = process.env.TRANSCODE_AUDIO_BITRATE || "192k",
   ttlMs = DEFAULT_TTL_MS,
+  finishedTtlMs = DEFAULT_FINISHED_TTL_MS,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   maxTotalBytes = DEFAULT_MAX_BYTES,
   sweepIntervalMs = DEFAULT_SWEEP_MS,
@@ -380,7 +384,15 @@ export function createTranscodeBridgeHandler({
   };
 
   async function sweep() {
+    // Two clocks. A finished output only costs disk and is what a paused viewer needs
+    // on return, so it is kept for hours; an abandoned or half-written one can never
+    // be played and is swept quickly.
     const cutoff = now() - ttlMs;
+    const finishedCutoff = now() - finishedTtlMs;
+    const finishedFiles = new Set();
+    for (const job of jobs.values()) {
+      if (job.file) finishedFiles.add(path.basename(job.file));
+    }
     let names = [];
     try {
       names = await readdir(workDir);
@@ -390,21 +402,25 @@ export function createTranscodeBridgeHandler({
     for (const name of names) {
       const full = path.join(workDir, name);
       if (name.endsWith(".mp4")) {
+        const limit = finishedFiles.has(name) ? finishedCutoff : cutoff;
         try {
           const info = await stat(full);
-          if (info.mtimeMs < cutoff) await rm(full, { force: true });
+          if (info.mtimeMs < limit) await rm(full, { force: true });
         } catch {
           // already gone
         }
         continue;
       }
       // An HLS job owns a directory of segments. Its timestamp moves as segments
-      // are written, so a directory left alone for the whole TTL is finished work
-      // nobody came back for.
+      // are written, so a directory left alone is work nobody came back for -- on the
+      // long clock when the run finished, because a paused player stops asking for
+      // segments and its playlist must still be there when it resumes.
       if (/^[a-f0-9]{32}$/.test(name)) {
+        const hlsJob = hlsJobs.get(name);
+        const limit = hlsJob?.done ? finishedCutoff : cutoff;
         try {
           const info = await stat(full);
-          if (info.mtimeMs < cutoff) {
+          if (info.mtimeMs < limit) {
             await rm(full, { recursive: true, force: true });
             hlsJobs.delete(name);
           }
@@ -489,7 +505,12 @@ export function createTranscodeBridgeHandler({
       // cheaper than that, and re-transcoding is what the request actually wanted.
       try {
         const file = await existing.promise;
-        if (existsSync(file) && statSync(file).size > 0) return file;
+        if (existsSync(file) && statSync(file).size > 0) {
+          // Being watched leaves a mark on the file: a paused viewer sends nothing,
+          // and an untouched file is what a size-driven sweep discards first.
+          void utimes(file, new Date(now()), new Date(now())).catch(() => {});
+          return file;
+        }
       } catch {
         // The earlier attempt failed. Asking ffmpeg again is the answer.
       }

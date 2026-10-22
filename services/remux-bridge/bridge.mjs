@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,9 +22,12 @@ import path from "node:path";
 // Deliberately narrow, like the other bridges: one source parameter, http(s) only,
 // a size of work nobody can ask for twice at once, and temporary files that expire.
 
-// An hour, so a film paused for a while and a download that dropped can both pick
-// up where they left off without paying for the remux twice.
-const DEFAULT_TTL_MS = 60 * 60 * 1000;
+// Two clocks, because the two kinds of leftover cost different things. A finished
+// file only occupies disk and is what a paused viewer needs when they come back, so it
+// is kept for hours. Anything unfinished -- an abandoned run, a file left by a crash --
+// can never be played and is swept quickly.
+const DEFAULT_FINISHED_TTL_MS = 3 * 60 * 60 * 1000;
+const DEFAULT_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 // Room for a couple of films in flight without letting the directory grow without
 // limit. Overridable per deployment.
@@ -125,6 +128,7 @@ export function createRemuxBridgeHandler({
   ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg",
   workDir = path.join(tmpdir(), "nuvio-remux"),
   ttlMs = DEFAULT_TTL_MS,
+  finishedTtlMs = DEFAULT_FINISHED_TTL_MS,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   maxTotalBytes = DEFAULT_MAX_BYTES,
   sweepIntervalMs = DEFAULT_SWEEP_MS,
@@ -163,11 +167,19 @@ export function createRemuxBridgeHandler({
    * someone is still watching. Age first, then the least recently used.
    */
   async function sweep() {
+    // What a job owns: a finished file is aged on the long clock, everything else on
+    // the short one.
     const cutoff = now() - ttlMs;
+    const finishedCutoff = now() - finishedTtlMs;
+    const finishedFiles = new Set();
+    for (const job of jobs.values()) {
+      if (job.file) finishedFiles.add(path.basename(job.file));
+    }
 
     // Files left by a previous process are not in the map at all — after a restart
     // the map is empty while the directory is not — so the directory is swept too,
-    // by the file's own timestamp.
+    // by the file's own timestamp. A file with no entry is unknown, so it gets the
+    // short clock: it might be a run that was killed halfway.
     let names = [];
     try {
       names = await readdir(workDir);
@@ -177,16 +189,17 @@ export function createRemuxBridgeHandler({
     for (const name of names) {
       if (!name.endsWith(".mp4")) continue;
       const full = path.join(workDir, name);
+      const limit = finishedFiles.has(name) ? finishedCutoff : cutoff;
       try {
         const info = await stat(full);
-        if (info.mtimeMs < cutoff) await rm(full, { force: true });
+        if (info.mtimeMs < limit) await rm(full, { force: true });
       } catch {
         // gone already
       }
     }
 
     for (const [key, job] of jobs) {
-      if (job.file && job.lastUsed < cutoff) {
+      if (job.file && job.lastUsed < finishedCutoff) {
         jobs.delete(key);
         void rm(job.file, { force: true }).catch(() => {});
       }
@@ -299,7 +312,13 @@ export function createRemuxBridgeHandler({
       // then failed with ENOENT -- 500 on a stream that used to work.
       try {
         const file = await existing.promise;
-        if (existsSync(file) && statSync(file).size > 0) return file;
+        if (existsSync(file) && statSync(file).size > 0) {
+          // Warm the file on disk too. A viewer who pauses sends no requests, and a
+          // file that looks untouched is the first thing a size-driven sweep throws
+          // away -- so being watched has to leave a mark on the file itself.
+          void utimes(file, new Date(now()), new Date(now())).catch(() => {});
+          return file;
+        }
       } catch {
         // The earlier attempt failed; ask ffmpeg again below.
       }

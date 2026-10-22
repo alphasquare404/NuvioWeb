@@ -89,6 +89,8 @@ const remuxBridgeHandler = createRemuxBridgeHandler({
   ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
   // Deployment policy. One relay at a time by default: a remux is a copy of a whole
   // film, so the limit that matters on a home connection is how many run at once.
+  ttlMs: Number(process.env.REMUX_TTL_MS ?? 15 * 60 * 1000) || 0,
+  finishedTtlMs: Number(process.env.REMUX_FINISHED_TTL_MS ?? 3 * 60 * 60 * 1000) || 0,
   maxConcurrent: Number(process.env.REMUX_MAX_CONCURRENT ?? 1) || 0,
   perIpConcurrent: Number(process.env.REMUX_PER_IP_CONCURRENT ?? 1) || 0,
   maxSourceBytes: Number(process.env.REMUX_MAX_SOURCE_BYTES ?? 4 * 1024 * 1024 * 1024) || 0,
@@ -111,6 +113,8 @@ const transcodeBridgeHandler = createTranscodeBridgeHandler({
   // Transcoding is the expensive one, so it is the most tightly limited by default:
   // one production at a time and a 2 GB source ceiling. An audio-only pass is cheap,
   // but the same knobs have to hold a full re-encode if a deployment enables it.
+  ttlMs: Number(process.env.TRANSCODE_TTL_MS ?? 15 * 60 * 1000) || 0,
+  finishedTtlMs: Number(process.env.TRANSCODE_FINISHED_TTL_MS ?? 3 * 60 * 60 * 1000) || 0,
   maxConcurrent: Number(process.env.TRANSCODE_MAX_CONCURRENT ?? 1) || 0,
   perIpConcurrent: Number(process.env.TRANSCODE_PER_IP_CONCURRENT ?? 1) || 0,
   maxSourceBytes: Number(process.env.TRANSCODE_MAX_SOURCE_BYTES ?? 2 * 1024 * 1024 * 1024) || 0,

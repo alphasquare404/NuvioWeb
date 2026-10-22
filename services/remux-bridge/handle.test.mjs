@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
-import { writeFileSync, rmSync } from "node:fs";
+import { writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRemuxBridgeServer } from "./bridge.mjs";
@@ -212,4 +212,27 @@ test("health advertises the limits the client is held to", async () => {
       assert.equal(body.remainingBytesToday, 100000);
     }
   );
+});
+
+test("a finished file outlives the short clock, an orphan does not", async () => {
+  // Two clocks: what a viewer might come back to is kept for hours, while a file
+  // nobody owns cannot be played and goes quickly. Both are exercised by setting the
+  // short clock to zero and the long one to an hour.
+  await withServer({ ttlMs: 0, finishedTtlMs: 60 * 60 * 1000 }, async ({ url, workDir }) => {
+    const orphan = path.join(workDir, "0123456789abcdef0123456789abcdef.mp4");
+    writeFileSync(orphan, Buffer.alloc(16, 1));
+
+    const first = await fetch(url);
+    assert.equal(first.status, 200);
+    await first.arrayBuffer();
+
+    // Any later request runs the sweep first.
+    const second = await fetch(url);
+    assert.equal(second.status, 200, "the finished output must still be there");
+    await second.arrayBuffer();
+
+    assert.equal(existsSync(orphan), false, "a file no job owns is swept on the short clock");
+    const names = await readdir(workDir);
+    assert.equal(names.length, 1, "only the finished output remains");
+  });
 });
