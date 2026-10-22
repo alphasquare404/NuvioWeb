@@ -151,6 +151,16 @@ export function createProbeBridgeHandler({
   // Requests per caller per minute. The probe is cheap, but it is public: one client
   // looping a list should not be able to occupy the bridge. 0 disables the limit.
   rateLimitPerMinute = Number(process.env.PROBE_RATE_LIMIT_PER_MINUTE ?? 120) || 0,
+  // How many ffprobe may run at once. Without this a burst of users opens that many
+  // processes, sockets and CDN connections at the same moment; the work is the same, only
+  // the spike is gone. 0 disables the limit.
+  maxConcurrent = Number(process.env.PROBE_MAX_CONCURRENT ?? 8) || 0,
+  // Bytes this bridge may download per day. A probe reads a few MB from the source, and
+  // with 300 users that adds up; this is the ceiling that keeps it inside a hosting quota.
+  dailyByteBudget = Number(process.env.PROBE_DAILY_BYTES ?? 0) || 0,
+  // What one probe is charged against that budget. Measured reads ranged 2-20 MB; 10 MB is
+  // the middle and keeps the ceiling honest rather than optimistic.
+  probeCostBytes = Number(process.env.PROBE_COST_BYTES ?? 10 * 1024 * 1024) || 0,
   now = () => Date.now()
 } = {}) {
   const cache = new Map();
@@ -167,6 +177,29 @@ export function createProbeBridgeHandler({
   // What this bridge costs, countable: one request per row the screen decided to ask
   // about, and a hit whenever the same URL is asked twice inside the TTL.
   const stats = { requests: 0, hits: 0, hitsByIdentity: 0, joined: 0, misses: 0, failures: 0 };
+  // Running now, and what has been consumed today. Both reset by themselves.
+  let running = 0;
+  const waiters = [];
+  const dayStamp = () => new Date(now()).toISOString().slice(0, 10);
+  let budget = { day: dayStamp(), bytes: 0 };
+  const bytesUsedToday = () => {
+    if (budget.day !== dayStamp()) budget = { day: dayStamp(), bytes: 0 };
+    return budget.bytes;
+  };
+  const acquireSlot = () =>
+    new Promise((resolve) => {
+      if (!(maxConcurrent > 0) || running < maxConcurrent) {
+        running += 1;
+        resolve();
+        return;
+      }
+      waiters.push(resolve);
+    });
+  const releaseSlot = () => {
+    const next = waiters.shift();
+    if (next) next();
+    else running = Math.max(0, running - 1);
+  };
   // Caller -> timestamps inside the current minute window.
   const rateWindows = new Map();
   const callerOf = (request) => {
@@ -284,6 +317,10 @@ export function createProbeBridgeHandler({
         ttlMs,
         maxEntries,
         rateLimitPerMinute,
+        maxConcurrent,
+        dailyByteBudget,
+        usedBytesToday: bytesUsedToday(),
+        busy: maxConcurrent > 0 && running >= maxConcurrent,
         negativeSize: failed.size,
         requests: stats.requests,
         hits: stats.hits,
@@ -366,9 +403,37 @@ export function createProbeBridgeHandler({
       return;
     }
 
-    const job = probe(parsed.url)
+    if (dailyByteBudget > 0 && bytesUsedToday() >= dailyByteBudget) {
+      stats.failures += 1;
+      log.warn("[probe] refused budget");
+      json(
+        response,
+        503,
+        {
+          ok: false,
+          error: "probe-budget-exhausted",
+          usedBytesToday: bytesUsedToday(),
+          dailyByteBudget
+        },
+        { "Retry-After": "3600" }
+      );
+      return;
+    }
+
+    // One ffprobe at a time per slot, and each run is charged a fixed size. ffprobe does
+    // not report how many bytes it read, so the budget counts probes against an assumed
+    // cost -- predictable, and it is what actually bounds the monthly traffic.
+    const job = (async () => {
+      await acquireSlot();
+      try {
+        return await probe(parsed.url);
+      } finally {
+        releaseSlot();
+      }
+    })()
       .then((value) => {
         cache.set(key, { value, expiresAt: now() + ttlMs });
+        budget.bytes += Math.max(0, Number(probeCostBytes) || 0);
         pruneProbeCache(cache, { at: now(), maxEntries });
         failed.delete(key);
         return value;
