@@ -71,7 +71,7 @@ test("each cost has its own colour: green, yellow, orange, red", () => {
     label: "1080p x264 DDP5.1",
     capabilities: { ...ALL, eac3: false }
   });
-  assert.match(audio, />Transcode</);
+  assert.match(audio, />Transcode [A-Z0-9.]+.AAC</);
   assert.match(audio, /rgba\(190,94,20/); // orange
 
   const full = renderStreamPlaybackBadge({
@@ -127,7 +127,7 @@ test("a deployment without a transcode endpoint says so instead of promising one
     capabilities: { h264: true, aac: true, eac3: false }
   };
   const promised = renderStreamPlaybackBadge({ ...args, transcodeAvailable: true });
-  assert.match(promised, />Transcode</);
+  assert.match(promised, />Transcode [A-Z0-9.]+→AAC</);
   assert.match(promised, /rgba\(190,94,20/);
 
   const unavailable = renderStreamPlaybackBadge({ ...args, transcodeAvailable: false });

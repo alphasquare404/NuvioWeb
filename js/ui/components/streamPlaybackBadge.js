@@ -73,11 +73,18 @@ export function renderStreamPlaybackBadge({
     (!remuxAvailable && result.method === "remux");
   const tone = unavailable ? "neutral" : playbackMethodTone(result.method);
   const palette = COLORS[tone] || COLORS.neutral;
+  // Say what is being changed, not just that something is. "Transcode" alone leaves the
+  // question the label exists to answer open: can this play, and what will happen to it?
+  const audioCodec = String(result.audioCodec || "").toLowerCase();
+  const audioConversion =
+    audioCodec === "aac" ? "5.1→2.0" : `${audioCodec ? audioCodec.toUpperCase() : "audio"}→AAC`;
   const text = unavailable
     ? result.method === "remux"
       ? REMUX_UNAVAILABLE_LABEL
       : TRANSCODE_UNAVAILABLE_LABEL
-    : LABELS[result.method] || "Direct";
+    : result.method === "audio-transcode"
+      ? `${LABELS[result.method]} ${audioConversion}`
+      : LABELS[result.method] || "Direct";
   const detail = unavailable
     ? result.method === "remux"
       ? "this deployment does not run a remux endpoint"

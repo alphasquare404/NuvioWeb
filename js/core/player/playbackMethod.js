@@ -53,10 +53,11 @@ const VIDEO_HINTS = [
 ];
 
 const AUDIO_HINTS = [
-  [/truehd|atmos/i, "truehd"],
   [/flac/i, "flac"],
-  // "DDP5.1" glues the channel layout to the codec, so no trailing word boundary.
+  // "DDP5.1" glues the channel layout to the codec, so no trailing word boundary. This
+  // sits before the Atmos rule because "DDP5.1 Atmos" is E-AC-3 with Atmos, not TrueHD.
   [/eac3|e-ac-3|\bddp|\bdd\+/i, "eac3"],
+  [/truehd|atmos/i, "truehd"],
   [/\bdts\b/i, "dts"],
   [/\bac3\b|\bdd\b/i, "ac3"],
   [/\bopus\b/i, "opus"],
