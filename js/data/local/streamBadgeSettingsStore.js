@@ -38,11 +38,19 @@ function normalizeStreamBadgeSettings(value = {}) {
     source.badge_placement ??
     source.streamBadgePlacement ??
     source.stream_badge_placement;
+  const labelAddonsSource = source.labelAddons ?? source.label_addons;
   return {
     rules: normalizeStreamBadgeRules(rulesSource),
     showFileSizeBadges: showFileSizeBadges !== false,
     showAddonLogo: showAddonLogo !== false,
-    badgePlacement: normalizeBadgePlacement(badgePlacement)
+    badgePlacement: normalizeBadgePlacement(badgePlacement),
+    // Everything this store returns must name every field it accepts, or a saved value is
+    // dropped on the way back out -- which is exactly why a chosen addon list kept reading
+    // as "All addons".
+    showPlaybackLabels: (source.showPlaybackLabels ?? source.show_playback_labels) !== false,
+    labelAddons: Array.isArray(labelAddonsSource)
+      ? labelAddonsSource.map((name) => String(name || "").trim()).filter(Boolean)
+      : []
   };
 }
 
