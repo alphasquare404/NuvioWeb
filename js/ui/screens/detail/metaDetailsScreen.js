@@ -1,6 +1,10 @@
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
+import { classifyPlayback } from "../../../core/player/playbackMethod.js";
+import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
+import { createStreamProber } from "../../../core/player/streamProbe.js";
+import { PROBE_ENDPOINT } from "../../../config.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
@@ -3301,7 +3305,7 @@ export const MetaDetailsScreen = {
       this.renderRouteHandoff();
     }
 
-    const resolution = await resolveAutoPlayStream({
+    let resolution = await resolveAutoPlayStream({
       itemType: params?.itemType,
       videoId: params?.videoId || params?.itemId,
       settings,
@@ -3311,6 +3315,15 @@ export const MetaDetailsScreen = {
       ),
       shouldCancel: cancelled
     });
+    // The waiting screen is already up, and it is the right place to settle "only direct
+    // streams": the answer needs ffprobe, and a decision taken before it lands is a guess.
+    if (settings.showOnlyDirectStreams === true && resolution?.streams?.length) {
+      resolution = await this.keepOnlyDirectResolution(resolution, cancelled);
+      if (cancelled()) {
+        this.releaseRouteHandoff();
+        return false;
+      }
+    }
     // Nothing took this route over, so the page it was holding back is where
     // the person stays.
     if (cancelled()) {
@@ -3328,6 +3341,50 @@ export const MetaDetailsScreen = {
     );
   },
 
+  /**
+   * Narrow an auto-play resolution to the streams that really play as they are.
+   *
+   * The decision this replaces was taken from the addon text, which this session proved
+   * wrong about codecs twice. Here the waiting screen is already up, so asking ffprobe
+   * costs nothing the person can see -- and "no direct stream" then falls through to the
+   * picker instead of an unplayable player.
+   */
+  async keepOnlyDirectResolution(resolution, cancelled = () => false) {
+    const streams = Array.isArray(resolution?.streams) ? resolution.streams : [];
+    const capabilities = getDeviceCapabilities();
+    const configured = Number(globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20);
+    const limit = Number.isFinite(configured) && configured > 0 ? configured : 20;
+    const targets = streams
+      .slice(0, limit)
+      .map((stream) => ({
+        url: String(stream?.url || stream?.externalUrl || "").trim(),
+        label: [stream?.name, stream?.title, stream?.description].filter(Boolean).join(" ")
+      }))
+      .filter((row) => row.url);
+    if (!targets.length) {
+      return resolution;
+    }
+    const prober = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 3000 });
+    if (!prober.enabled) return resolution;
+    const probes = await prober
+      .probeUnknown(targets, { capabilities, limit })
+      .catch(() => new Map());
+    const direct = streams.filter((stream) => {
+      const url = String(stream?.url || stream?.externalUrl || "").trim();
+      const probe = probes.get(url) || null;
+      if (!probe) return false;
+      return (
+        classifyPlayback({
+          url,
+          label: [stream?.name, stream?.title, stream?.description].filter(Boolean).join(" "),
+          probe,
+          capabilities
+        }).method === "direct"
+      );
+    });
+    if (cancelled()) return resolution;
+    return { ...resolution, streams, selected: direct[0] || null, directStreams: direct };
+  },
   getStreamNavigationOptions() {
     // Continue Watching mounts Detail only to resolve the Stream target. Replace
     // that transient browser-history entry too, otherwise it can resurface after
