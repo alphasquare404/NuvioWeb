@@ -6569,6 +6569,20 @@ export const SettingsScreen = {
   },
 
   renderStreamsSection(model) {
+    // A section that throws leaves the shell mounted and the page blank, which is
+    // indistinguishable from a dead app. Say what broke instead, and keep the message in
+    // the console where it can be copied.
+    try {
+      return this.buildStreamsSection(model);
+    } catch (error) {
+      console.error("[Settings] streams section failed", error);
+      return `<p class="settings-row-subtitle">${escapeHtml(
+        t("settings_stream_section_failed", {}, "This section could not be shown.")
+      )}<br><code>${escapeHtml(String(error?.message || error || "unknown error"))}</code></p>`;
+    }
+  },
+
+  buildStreamsSection(model) {
     const isDesktopBrowser = isDesktopSettingsBrowser();
     const badgeSettings = model.streamBadgeSettings || StreamBadgeSettingsStore.get();
     // A profile saved before this field existed has no `labelAddons`; reading `.length` off

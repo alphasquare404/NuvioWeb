@@ -1502,6 +1502,7 @@
     <string name="playback_transcode_token_placeholder">Paste the token this deployment gave you</string>
     <string name="playback_transcode_token_set">Configured</string>
     <string name="playback_transcode_token_unset">Not configured</string>
+    <string name="settings_stream_section_failed">This section could not be shown.</string>
     <string name="settings_stream_playback_labels">Show labels on stream card</string>
     <string name="settings_stream_playback_labels_description">Draw the playback label on each card, and decide which addons may draw it.</string>
     <string name="settings_stream_label_addons">Addons that may draw the label</string>
