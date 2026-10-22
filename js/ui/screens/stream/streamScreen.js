@@ -3375,7 +3375,12 @@ export const StreamScreen = {
       }
       if (inner) {
         const playlistUrl = await this.remuxPlaylistUrl(inner);
-        if (playlistUrl && (await this.isPlayableHlsPlaylist(playlistUrl))) return playlistUrl;
+        const playable = playlistUrl ? await this.isPlayableHlsPlaylist(playlistUrl) : false;
+        // Cannot be skipped if this branch runs: says whether a playlist was offered at all.
+        console.warn(
+          `[Playback] remux branch playlist=${playlistUrl ? "offered" : "none"} playable=${playable}`
+        );
+        if (playable) return playlistUrl;
       }
       return url;
     }
@@ -3399,7 +3404,12 @@ export const StreamScreen = {
         // finished first -- but only a playlist that already holds a segment may be
         // handed over, or the player sees a zero-length video and calls it finished.
         const playlistUrl = await this.remuxPlaylistUrl(url);
-        if (playlistUrl && (await this.isPlayableHlsPlaylist(playlistUrl))) return playlistUrl;
+        const playable = playlistUrl ? await this.isPlayableHlsPlaylist(playlistUrl) : false;
+        // Cannot be skipped if this branch runs: says whether a playlist was offered at all.
+        console.warn(
+          `[Playback] remux branch playlist=${playlistUrl ? "offered" : "none"} playable=${playable}`
+        );
+        if (playable) return playlistUrl;
         return buildRemuxUrl(url, REMUX_ENDPOINT);
       }
       return url;
