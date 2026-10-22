@@ -112,6 +112,21 @@ jobs:
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
 
+      - name: Extract transcode bridge image metadata
+        id: transcode-meta
+        uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96 # v5.6.1
+        with:
+          images: ghcr.io/alphasquare404/nuvioweb-transcode-bridge
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=nightly,enable=${{ github.ref == 'refs/heads/web' }}
+            type=raw,value=latest
+            type=raw,value=desktop
+            type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,format=short,prefix=sha-
+
       - name: Build and publish image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
@@ -157,5 +172,19 @@ jobs:
           push: true
           tags: ${{ steps.external-return-meta.outputs.tags }}
           labels: ${{ steps.external-return-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Carries ffmpeg, so its layer cache is worth keeping separate from the
+      # node-only bridges.
+      - name: Build and publish transcode bridge image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: ./services/transcode-bridge/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.transcode-meta.outputs.tags }}
+          labels: ${{ steps.transcode-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

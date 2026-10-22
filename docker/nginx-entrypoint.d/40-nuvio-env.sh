@@ -54,6 +54,9 @@ EOF
   write_value SIMKL_CLIENT_ID "${SIMKL_CLIENT_ID:-}"; printf ',\n'
   write_value SIMKL_APP_NAME "${SIMKL_APP_NAME:-nuvio}"; printf ',\n'
   write_value PREMIUMIZE_CLIENT_ID "${PREMIUMIZE_CLIENT_ID:-}"; printf ',\n'
+  write_value PROBE_ENDPOINT "${PROBE_ENDPOINT:-}"; printf ',\n'
+  write_value REMUX_ENDPOINT "${REMUX_ENDPOINT:-}"; printf ',\n'
+  write_value TRANSCODE_ENDPOINT "${TRANSCODE_ENDPOINT:-}"; printf ',\n'
   write_value AUTOMATION_SHORTCUT_URL "${AUTOMATION_SHORTCUT_URL:-}"
   cat <<'EOF'
   };
