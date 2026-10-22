@@ -290,3 +290,46 @@ test("multichannel aac asks for the audio relay on a device that only plays ster
   assert.equal(detectAudioChannels("AAC2.0"), 2);
   assert.equal(detectAudioChannels("no layout here"), 0);
 });
+
+test("the probe's channel count wins over the label, and canPlayType still gates the codec", () => {
+  const apple = { h264: true, hevc: true, aac: true, requiresStereoAac: true };
+  const probe = (channels) => ({
+    container: "mp4",
+    videoCodec: "hevc",
+    videoTag: "hvc1",
+    audioCodec: "aac",
+    audioChannels: channels
+  });
+  // Label says nothing; the probe knows it is 5.1, which the phone cannot play.
+  const guessed = classifyPlayback({
+    url: "",
+    label: "Film.1080p.WEBRip.mkv",
+    capabilities: apple
+  });
+  const measured = classifyPlayback({
+    url: "",
+    label: "Film.1080p.WEBRip.mkv",
+    capabilities: apple,
+    probe: probe(6)
+  });
+  assert.equal(guessed.method, PLAYBACK_METHODS.REMUX);
+  assert.equal(measured.method, PLAYBACK_METHODS.AUDIO_TRANSCODE);
+
+  // Two channels measured: cheap copy again.
+  assert.equal(
+    classifyPlayback({
+      url: "",
+      label: "Film.1080p.WEBRip.mkv",
+      capabilities: apple,
+      probe: probe(2)
+    }).method,
+    PLAYBACK_METHODS.DIRECT
+  );
+
+  // And a device that cannot play AAC at all is still refused on codec grounds.
+  const noAac = { h264: true, hevc: true, aac: false, requiresStereoAac: true };
+  assert.equal(
+    classifyPlayback({ url: "", label: "Film.mkv", capabilities: noAac, probe: probe(6) }).method,
+    PLAYBACK_METHODS.AUDIO_TRANSCODE
+  );
+});

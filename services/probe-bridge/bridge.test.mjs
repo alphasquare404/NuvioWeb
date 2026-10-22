@@ -26,6 +26,7 @@ test("ffprobe output is reduced to the facts the decision needs", () => {
     // between a file Apple plays and one it refuses.
     videoTag: "",
     audioCodec: "eac3",
+    audioChannels: 0,
     width: 1920,
     height: 800,
     durationSeconds: 3120.4
@@ -108,4 +109,27 @@ test("an answer is keyed by the file when the caller can name it", () => {
     byId,
     probeCacheKey({ host: "cdn.test", identity: "torbox|abc|2|film.mkv", urlKey: "urlhash" })
   );
+});
+
+test("the channel count travels with the answer, because no browser API can report it", () => {
+  const result = normalizeProbe({
+    streams: [
+      {
+        codec_type: "video",
+        codec_name: "hevc",
+        codec_tag_string: "hvc1",
+        width: 1920,
+        height: 1080
+      },
+      { codec_type: "audio", codec_name: "aac", channels: 6 }
+    ],
+    format: { format_name: "matroska,webm" }
+  });
+  assert.equal(result.audioChannels, 6);
+  // A probe without the field still yields a usable shape.
+  const silent = normalizeProbe({
+    streams: [{ codec_type: "video", codec_name: "h264" }],
+    format: {}
+  });
+  assert.equal(silent.audioChannels, 0);
 });

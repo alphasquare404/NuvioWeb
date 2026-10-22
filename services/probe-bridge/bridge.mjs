@@ -83,6 +83,8 @@ export function normalizeProbe(probeJson) {
       ? String(video.codec_tag_string).toLowerCase()
       : "",
     audioCodec: String(audio?.codec_name || "unknown").toLowerCase(),
+    // The detail no browser API can answer: canPlayType says "aac yes", never "stereo only".
+    audioChannels: Number(audio?.channels) || 0,
     width: Number(video?.width) || 0,
     height: Number(video?.height) || 0,
     durationSeconds: Number(probeJson?.format?.duration) || 0
@@ -177,7 +179,7 @@ export function createProbeBridgeHandler({
         "-v",
         "error",
         "-show_entries",
-        "stream=codec_type,codec_name,codec_tag_string,width,height",
+        "stream=codec_type,codec_name,codec_tag_string,width,height,channels",
         "-show_entries",
         "format=format_name,duration",
         "-of",

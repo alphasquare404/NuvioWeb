@@ -152,7 +152,10 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   // simply has no opinion here and the file is treated as it always was.
   const videoTag = String(probe?.videoTag || "").toLowerCase();
   const audioCodec = String(probe?.audioCodec || detectAudioCodec(text) || "unknown").toLowerCase();
-  const audioChannels = detectAudioChannels(text);
+  // The probe knows the channel count exactly; the label is a fallback for rows that have
+  // not been probed. canPlayType is still what answers "is this codec playable at all".
+  const probedChannels = Number(probe?.audioChannels) || 0;
+  const audioChannels = probedChannels > 0 ? probedChannels : detectAudioChannels(text);
   const confidence = exact ? "exact" : "estimate";
 
   // Adaptive streaming is not remuxed: the manifest already carries the segments

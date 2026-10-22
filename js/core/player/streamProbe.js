@@ -141,7 +141,8 @@ export function createStreamProber({
         // one thing the addon's text never says. Dropping it here made the whole
         // classification blind to it.
         videoTag: String(data.videoTag || ""),
-        audioCodec: String(data.audioCodec || "unknown")
+        audioCodec: String(data.audioCodec || "unknown"),
+        audioChannels: Number(data.audioChannels) || 0
       };
     } catch {
       return null;

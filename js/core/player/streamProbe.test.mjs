@@ -145,7 +145,8 @@ const okProbe = () => ({
     container: "mkv",
     videoCodec: "hevc",
     videoTag: "hev1",
-    audioCodec: "aac"
+    audioCodec: "aac",
+    audioChannels: 0
   })
 });
 
@@ -163,7 +164,8 @@ test("a probe is cached, and concurrent callers share one request", async () => 
     container: "mkv",
     videoCodec: "hevc",
     videoTag: "hev1",
-    audioCodec: "aac"
+    audioCodec: "aac",
+    audioChannels: 0
   });
 
   await prober.probe("https://cdn/stream/abc");
@@ -183,7 +185,8 @@ test("a failure is not cached, and never throws", async () => {
     container: "mkv",
     videoCodec: "hevc",
     videoTag: "hev1",
-    audioCodec: "aac"
+    audioCodec: "aac",
+    audioChannels: 0
   });
   assert.equal(calls.length, 2, "a refusal is not remembered as an answer");
 });
