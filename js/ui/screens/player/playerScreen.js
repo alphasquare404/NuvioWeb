@@ -10925,19 +10925,33 @@ export const PlayerScreen = {
     if (raw.includes("/api/remux")) label = "remux";
     else if (raw.includes("/api/transcode")) label = "transcode";
     const message = this.relayStatusText ? `${this.relayStatusText.replace("{kind}", label)}` : "";
-    if (typeof document === "undefined") return;
-    for (const id of ["playerLoadingOverlay", "playerBufferingSpinner"]) {
-      const root = document.getElementById(id);
-      const node = root?.querySelector?.(".player-loading-status");
-      if (!node) continue;
-      if (message) {
-        node.textContent = message;
-        node.classList.remove("hidden");
-      } else {
-        node.textContent = "";
-        node.classList.add("hidden");
+    // The overlay lives under the screen's own root, which is not necessarily the
+    // document: searching only `document` found nothing, so the message silently never
+    // appeared. Every plausible root is tried, and the write is retried once in case
+    // the splash markup is still being built when the wait begins.
+    const roots = [];
+    const push = (candidate) => {
+      if (candidate && !roots.includes(candidate)) roots.push(candidate);
+    };
+    push(this.uiRefs?.root);
+    if (typeof document !== "undefined") push(document);
+    push(this.video?.getRootNode?.());
+    const apply = () => {
+      let written = false;
+      for (const scope of roots) {
+        for (const id of ["playerLoadingOverlay", "playerBufferingSpinner"]) {
+          const host = scope?.getElementById?.(id) || scope?.querySelector?.(`#${id}`);
+          const node = host?.querySelector?.(".player-loading-status");
+          if (!node) continue;
+          node.textContent = message;
+          node.classList.toggle("hidden", !message);
+          written = true;
+        }
       }
-    }
+      return written;
+    };
+    if (apply()) return;
+    if (typeof setTimeout === "function") setTimeout(apply, 400);
   },
   /** Ask the relay how this source is doing, without starting anything. */
   async relayPrepareState(streamUrl) {
