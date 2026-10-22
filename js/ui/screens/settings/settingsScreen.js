@@ -6923,8 +6923,8 @@ export const SettingsScreen = {
             {},
             "Empty means every addon. Names separated by commas."
           ),
-          value: badgeSettings.labelAddons.length
-            ? badgeSettings.labelAddons.join(", ")
+          value: labelAddons.length
+            ? labelAddons.join(", ")
             : t("settings_stream_label_addons_all", {}, "All addons")
         })}
         ${this.renderToggleRow({

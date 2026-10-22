@@ -359,6 +359,33 @@ const server = http.createServer(async (request, response) => {
       await transcodeBridgeHandler(request, response);
       return;
     }
+    // Where a phone can put an error it cannot show anyone. Bounded, and only the fields
+    // the client hook sends; nothing is written to disk.
+    if (requestUrl.pathname === "/api/debug/log") {
+      if (request.method !== "POST") {
+        response.writeHead(405, { "Content-Type": "text/plain" });
+        response.end("POST only");
+        return;
+      }
+      let body = "";
+      request.on("data", (chunk) => {
+        if (body.length < 16_384) body += chunk;
+      });
+      request.on("end", () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          console.error(
+            `[client-${String(payload.kind || "error")}] ${String(payload.message || "").slice(0, 400)}\n  at ${String(payload.at || "")} ${String(payload.url || "")}\n${String(payload.stack || "").slice(0, 2000)}`
+          );
+        } catch {
+          console.error("[client-error] unreadable payload");
+        }
+        response.writeHead(204);
+        response.end();
+      });
+      return;
+    }
+
     if (requestUrl.pathname === "/nuvio.env.js") {
       const { env } = await readEnvProperties({ rootDir });
       // This is where a deployment's one switch becomes the app's answer. The
