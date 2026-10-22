@@ -25,12 +25,13 @@ const DEFAULT_TIMEOUT_MS = 20_000;
 const PROBE_PATH = "/api/probe";
 const HEALTH_PATH = "/api/probe/health";
 
-function json(response, status, payload) {
+function json(response, status, payload, extraHeaders = null) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
-    "Access-Control-Allow-Origin": "*"
+    "Access-Control-Allow-Origin": "*",
+    ...(extraHeaders || {})
   });
   response.end(JSON.stringify(payload));
 }
@@ -137,6 +138,9 @@ export function createProbeBridgeHandler({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   spawnImpl = spawn,
   log = console,
+  // Requests per caller per minute. The probe is cheap, but it is public: one client
+  // looping a list should not be able to occupy the bridge. 0 disables the limit.
+  rateLimitPerMinute = Number(process.env.PROBE_RATE_LIMIT_PER_MINUTE ?? 120) || 0,
   now = () => Date.now()
 } = {}) {
   const cache = new Map();
@@ -153,6 +157,37 @@ export function createProbeBridgeHandler({
   // What this bridge costs, countable: one request per row the screen decided to ask
   // about, and a hit whenever the same URL is asked twice inside the TTL.
   const stats = { requests: 0, hits: 0, hitsByIdentity: 0, joined: 0, misses: 0, failures: 0 };
+  // Caller -> timestamps inside the current minute window.
+  const rateWindows = new Map();
+  const callerOf = (request) => {
+    const forwarded = String(request?.headers?.["x-forwarded-for"] || "")
+      .split(",")[0]
+      .trim();
+    if (forwarded) return forwarded;
+    const real = String(request?.headers?.["x-real-ip"] || "").trim();
+    if (real) return real;
+    return String(request?.socket?.remoteAddress || "unknown");
+  };
+  /** True when this caller is over its allowance for the last minute. */
+  const rateLimited = (caller) => {
+    if (!(rateLimitPerMinute > 0)) return false;
+    const nowMs = now();
+    const windowStart = nowMs - 60_000;
+    const hits = (rateWindows.get(caller) || []).filter((at) => at > windowStart);
+    if (hits.length >= rateLimitPerMinute) {
+      rateWindows.set(caller, hits);
+      return true;
+    }
+    hits.push(nowMs);
+    rateWindows.set(caller, hits);
+    // Keep the map from growing with every caller ever seen.
+    if (rateWindows.size > 5000) {
+      for (const [key, value] of rateWindows) {
+        if (!value.some((at) => at > windowStart)) rateWindows.delete(key);
+      }
+    }
+    return false;
+  };
   // Two different costs, counted apart: a probe that decides whether a file plays
   // (`tag`) and one that only sharpens a label (`unknown`). The server cannot tell
   // them apart by itself, so the caller says which budget it came from.
@@ -238,6 +273,7 @@ export function createProbeBridgeHandler({
         cacheSize: cache.size,
         ttlMs,
         maxEntries,
+        rateLimitPerMinute,
         negativeSize: failed.size,
         requests: stats.requests,
         hits: stats.hits,
@@ -266,6 +302,17 @@ export function createProbeBridgeHandler({
     }
     if (request.method !== "GET") {
       json(response, 405, { ok: false, error: "method_not_allowed" });
+      return;
+    }
+
+    if (rateLimited(callerOf(request))) {
+      log.warn("[probe] refused rate-limit");
+      json(
+        response,
+        429,
+        { ok: false, error: "rate-limited", perMinute: rateLimitPerMinute },
+        { "Retry-After": "10" }
+      );
       return;
     }
 
