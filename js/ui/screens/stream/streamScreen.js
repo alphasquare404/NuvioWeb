@@ -2127,12 +2127,21 @@ export const StreamScreen = {
   // the header cannot disagree with the rows underneath it, and it says nothing
   // at all when there is nothing to report rather than printing three zeroes.
   renderStreamPanelSummary() {
-    if (!Environment.isBrowser() || !this.offlineDownloadsSupported) return "";
+    // A line that says the list is still being checked. Without it the cards change under
+    // the reader with no explanation, and "Checking…" on a card looks like a stuck label.
+    const checking = this._probePending?.size || 0;
+    const checkingLine =
+      checking > 0
+        ? `<span class="stream-route-panel-summary">${escapeHtml(
+            t("stream_panel_checking", { count: checking }, `Checking ${checking} stream(s)…`)
+          )}</span>`
+        : "";
+    if (!Environment.isBrowser() || !this.offlineDownloadsSupported) return checkingLine;
     const summary = summariseOfflineDownloads(
       this.offlineDownloadMetadata ? [...this.offlineDownloadMetadata.values()] : []
     );
-    if (!summary) return "";
-    return `<span class="stream-route-panel-summary">${escapeHtml(summary)}</span>`;
+    if (!summary) return checkingLine;
+    return `${checkingLine}<span class="stream-route-panel-summary">${escapeHtml(summary)}</span>`;
   },
 
   // What a download is doing reads as a sentence on its own line, the way the
