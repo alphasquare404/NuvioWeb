@@ -1109,7 +1109,9 @@ export function createTranscodeBridgeHandler({
           json(response, 502, { ok: false, error: "transcode-failed" });
           return;
         }
-        log.log(`[transcode] hls ${parsed.key.slice(0, 8)} ${host}`);
+        log.log(
+          `[transcode] hls ${parsed.key.slice(0, 8)} segments=${(text.match(/#EXTINF/g) || []).length} ${host}`
+        );
         response.writeHead(200, {
           "Content-Type": "application/vnd.apple.mpegurl",
           "Cache-Control": "no-store",

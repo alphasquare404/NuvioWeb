@@ -3291,6 +3291,54 @@ export const StreamScreen = {
    * called -- the label is a statement about the file, not permission to spend
    * somebody else's CPU.
    */
+  /**
+   * The HLS delivery for a remux, when this deployment can produce one.
+   *
+   * Same copy the file path makes -- container fixed, picture and audio untouched --
+   * only handed over as segments so the first one can play while the rest is still
+   * being made. Empty string means "use the file", which is the honest answer on a
+   * deployment without a transcode endpoint, without HLS, or without a token.
+   */
+  async remuxPlaylistUrl(url) {
+    if (!TRANSCODE_ENDPOINT) return "";
+    const access = await transcodeAccess.resolve();
+    if (!access?.hls) return "";
+    const token = String(TranscodeSettingsStore.get().token || "").trim();
+    if (!isTranscodeAccessGranted({ mode: access?.mode, token })) return "";
+    return buildTranscodePlaylistUrl(url, {
+      endpoint: TRANSCODE_ENDPOINT,
+      token,
+      plan: { video: "copy", audio: "copy", height: 0, channels: 2 }
+    });
+  },
+
+  /**
+   * Is this playlist worth handing to a player?
+   *
+   * A playlist holding no segment is not a failed load -- it is a zero-duration video,
+   * and a player reports that as "finished", which is how one tap ended up back on the
+   * detail page after two seconds. So the playlist is fetched and its first segment
+   * asked for before the player ever sees it; anything less and the file is used.
+   */
+  async isPlayableHlsPlaylist(playlistUrl) {
+    try {
+      const response = await fetch(playlistUrl, { cache: "no-store" });
+      if (!response.ok) return false;
+      const text = await response.text();
+      if (!text.includes("#EXTINF")) return false;
+      const base = playlistUrl.slice(0, playlistUrl.lastIndexOf("/") + 1);
+      const segment = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line && !line.startsWith("#"));
+      if (!segment) return false;
+      const head = await fetch(new URL(segment, base).href, { method: "HEAD", cache: "no-store" });
+      return head.ok;
+    } catch {
+      return false;
+    }
+  },
+
   async resolvePlayerSource(stream) {
     const url = String(stream?.url || stream?.externalUrl || "").trim();
     // The remux decision does not depend on the transcode endpoint: a deployment can
@@ -3313,6 +3361,11 @@ export const StreamScreen = {
         // The player is told how to wait for this source instead of being asked to sit
         // through the copy: a remux needs minutes before its first byte, and the
         // player's own patience is eighteen seconds.
+        // Two deliveries of the same copy. HLS starts in seconds, the file has to be
+        // finished first -- but only a playlist that already holds a segment may be
+        // handed over, or the player sees a zero-length video and calls it finished.
+        const playlistUrl = await this.remuxPlaylistUrl(url);
+        if (playlistUrl && (await this.isPlayableHlsPlaylist(playlistUrl))) return playlistUrl;
         return buildRemuxUrl(url, REMUX_ENDPOINT);
       }
       return url;
