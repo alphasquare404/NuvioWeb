@@ -10912,16 +10912,53 @@ export const PlayerScreen = {
    *
    * Returns true when the caller may proceed (ready, or nothing to wait for).
    */
+  /** Ask the relay how this source is doing, without starting anything. */
+  async relayPrepareState(streamUrl) {
+    const raw = String(streamUrl || "").trim();
+    if (!raw.includes("/api/remux")) return "unknown";
+    let prepareUrl = "";
+    try {
+      const parsed = new URL(
+        raw,
+        typeof location !== "undefined" ? location.origin : "http://localhost"
+      );
+      const source = parsed.searchParams.get("u");
+      if (!source) return "unknown";
+      prepareUrl = `${parsed.origin}/api/remux/status?u=${encodeURIComponent(source)}`;
+    } catch {
+      return "unknown";
+    }
+    try {
+      const response = await fetch(prepareUrl, { cache: "no-store" });
+      if (!response.ok) return "unknown";
+      const data = await response.json().catch(() => null);
+      return String(data?.state || "unknown");
+    } catch {
+      return "unknown";
+    }
+  },
   async awaitRelayedSource(streamUrl, mountToken = null) {
     if (this.relayPrepareDone) return true;
-    const prepareUrl = String(this.relayPrepareUrl || "").trim();
-    if (
-      !prepareUrl ||
-      !this.relayPlaybackUrl ||
-      String(streamUrl || "") !== this.relayPlaybackUrl
-    ) {
-      return true;
+    // Recognise the relay from the URL itself. Depending on a parameter meant that one
+    // plumbing mistake -- a value that never reached this screen -- silently disabled
+    // the gate, and the only symptom was the same "Playback error" as before.
+    let prepareUrl = "";
+    const raw = String(streamUrl || "").trim();
+    if (raw.includes("/api/remux")) {
+      try {
+        const parsed = new URL(
+          raw,
+          typeof location !== "undefined" ? location.origin : "http://localhost"
+        );
+        const source = parsed.searchParams.get("u");
+        if (source)
+          prepareUrl = `${parsed.origin}/api/remux/status?u=${encodeURIComponent(source)}`;
+      } catch {
+        prepareUrl = "";
+      }
     }
+    if (!prepareUrl) prepareUrl = String(this.relayPrepareUrl || "").trim();
+    if (!prepareUrl) return true;
     const deadline = Date.now() + 15 * 60 * 1000;
     let asked = false;
     while (Date.now() < deadline) {
@@ -10971,6 +11008,19 @@ export const PlayerScreen = {
     this.playbackStallTimer = setTimeout(() => {
       this.playbackStallTimer = null;
       if (this.isExternalFrameMode() || !this.loadingVisible || !this.activePlaybackUrl) {
+        return;
+      }
+
+      // A relay produces nothing until it has copied the film, so the source is not
+      // stalled, only early. Asking the relay and keeping the spinner up turns a
+      // guaranteed false error into a wait -- and this check sits in the guard itself,
+      // so it holds for every way a source reaches the screen.
+      if (String(this.activePlaybackUrl || "").includes("/api/remux")) {
+        void this.relayPrepareState(this.activePlaybackUrl).then((state) => {
+          if (state !== "ready" && this.loadingVisible) {
+            this.schedulePlaybackStallGuard({ timeoutMs: 4000 });
+          }
+        });
         return;
       }
 
