@@ -7948,7 +7948,11 @@ export const SettingsScreen = {
                 ),
                 value: TranscodeSettingsStore.get().token
                   ? t("playback_transcode_token_set", {}, "Configured")
-                  : t("playback_transcode_token_unset", {}, "Not configured"),
+                  : t(
+                      "playback_transcode_token_unset",
+                      {},
+                      "Not configured - every relay request will be refused until a token is set"
+                    ),
                 icon: "vpn_key"
               })
             : ""
