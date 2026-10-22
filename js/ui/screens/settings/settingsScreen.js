@@ -6639,26 +6639,21 @@ export const SettingsScreen = {
       StreamBadgeSettingsStore.setShowPlaybackLabels(current.showPlaybackLabels === false);
     });
 
-    this.actionMap.set("streams:edit:labelAddons", () => {
+    // The same picker the autoplay settings use: a list of what is installed, not a box
+    // asking the owner to spell addon names from memory.
+    this.actionMap.set("streams:edit:labelAddons", async () => {
+      const addons = await addonRepository.getInstalledAddons().catch(() => []);
+      const options = addons
+        .map((addon) => String(addon?.displayName || addon?.name || "").trim())
+        .filter(Boolean)
+        .map((name) => ({ id: name, label: name }));
       const current = StreamBadgeSettingsStore.snapshot();
-      this.openTextDialog({
+      this.openMultiChoiceDialog({
         title: t("settings_stream_label_addons", {}, "Addons that may draw the label"),
-        value: (Array.isArray(current.labelAddons) ? current.labelAddons : []).join(", "),
-        placeholder: t(
-          "settings_stream_label_addons_placeholder",
-          {},
-          "Comma separated addon names, empty for all"
-        ),
+        options,
+        selectedIds: Array.isArray(current.labelAddons) ? current.labelAddons : [],
         returnFocusKey: "streams:edit:labelAddons",
-        clearLabel: t("common.clear", {}, "Clear"),
-        onClear: () => StreamBadgeSettingsStore.set({ labelAddons: [] }),
-        onSubmit: (value) =>
-          StreamBadgeSettingsStore.set({
-            labelAddons: String(value || "")
-              .split(",")
-              .map((entry) => entry.trim())
-              .filter(Boolean)
-          })
+        onToggle: (selectedIds) => StreamBadgeSettingsStore.set({ labelAddons: selectedIds })
       });
     });
 
