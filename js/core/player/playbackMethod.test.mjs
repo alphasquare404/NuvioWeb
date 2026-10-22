@@ -312,3 +312,29 @@ test("an existing aac track is selected instead of converting anything", () => {
   assert.equal(aac51.method, PLAYBACK_METHODS.REMUX);
   assert.equal(aac51.audioIndex, 0);
 });
+
+test("a row without a named video stays Unknown until the probe decides", () => {
+  const apple = { h264: true, hevc: true, aac: true, eac3: false, av1: false };
+  const label = "judul.1080p.WEB-DL.mkv";
+  const row = { url: "https://cdn/judul.1080p.WEB-DL.mkv", label, capabilities: apple };
+
+  // Before the probe: no promise is made. This is the label the list shows first.
+  const estimate = classifyPlayback(row);
+  assert.equal(estimate.method, PLAYBACK_METHODS.UNKNOWN);
+  assert.equal(estimate.reason, "video-unknown");
+
+  // The probe answers with a picture this device plays: a copy is enough.
+  const remuxed = classifyPlayback({
+    ...row,
+    probe: { container: "mkv", videoCodec: "hevc", videoTag: "hvc1", audioCodec: "aac" }
+  });
+  assert.equal(remuxed.method, PLAYBACK_METHODS.REMUX);
+
+  // The probe answers with a picture it cannot play: that is a re-encode.
+  const encoded = classifyPlayback({
+    ...row,
+    probe: { container: "mkv", videoCodec: "av1", videoTag: "", audioCodec: "aac" }
+  });
+  assert.equal(encoded.method, PLAYBACK_METHODS.TRANSCODE);
+  assert.equal(encoded.reason, "video-av1-unsupported");
+});
