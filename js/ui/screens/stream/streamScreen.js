@@ -2553,11 +2553,15 @@ export const StreamScreen = {
       });
       const urlKey = stream.url || stream.externalUrl || "";
       const labelSettings = StreamBadgeSettingsStore.snapshot();
+      // A profile saved before this field existed has no `labelAddons` at all.
+      const allowedLabelAddons = Array.isArray(labelSettings.labelAddons)
+        ? labelSettings.labelAddons
+        : [];
       const addonName = String(stream?.addonName || stream?.addon || "").trim();
       // The owner decides whether a label is drawn, and which addons may draw one.
       const labelAllowed =
         labelSettings.showPlaybackLabels !== false &&
-        (labelSettings.labelAddons.length === 0 || labelSettings.labelAddons.includes(addonName));
+        (allowedLabelAddons.length === 0 || allowedLabelAddons.includes(addonName));
       const badge = labelAllowed
         ? renderStreamPlaybackBadge({
             url: urlKey,
