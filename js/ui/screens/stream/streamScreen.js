@@ -755,6 +755,9 @@ export const StreamScreen = {
     // Which urls are being probed right now, so a card can say "checking" rather than
     // "unknown" while it waits.
     this._probePending = new Set();
+    // Rows whose probe came back empty. They stay "unknown" instead of pretending to check
+    // forever; everything else that has not been answered yet reads as "checking".
+    this._probeFailed = new Set();
     this._probesScheduled = false;
     // The movi runtime is ~23 MB (element.js plus its wasm) and is fetched when the
     // player route opens. Fetching it while the user is still choosing a link moves
@@ -2499,7 +2502,12 @@ export const StreamScreen = {
       // pass asks again -- cheaply, because the server already finished the ffprobe
       // and has it cached. Keeping it marked "sent" cost the row its label forever.
       for (const row of targets) {
-        if (!results.has(row.url)) sent.delete(row.url);
+        if (!results.has(row.url)) {
+          sent.delete(row.url);
+          this._probeFailed.add(row.url);
+        } else {
+          this._probeFailed.delete(row.url);
+        }
       }
       if (!results.size || this.disposed) return;
       for (const [url, probe] of results) this._probeResults.set(url, probe);
@@ -2576,7 +2584,10 @@ export const StreamScreen = {
             remuxAvailable: Boolean(REMUX_ENDPOINT),
             probe: this._probeResults?.get(urlKey) || null,
             // While the answer is on its way the card says so, instead of looking unanswered.
-            probing: this._probePending?.has(urlKey) === true
+            probing:
+              !this._probeResults?.get(urlKey) &&
+              !this._probeFailed?.has(urlKey) &&
+              (this._probePending?.has(urlKey) === true || streamProber.enabled)
           })
         : "";
       return `
