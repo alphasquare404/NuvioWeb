@@ -7571,6 +7571,19 @@ export const PlayerScreen = {
     }
 
     const mode = String(settings.streamAutoPlayMode || "MANUAL").toUpperCase();
+    // The list these candidates came from is the same one the stream screen shows, so the
+    // owner's "only show direct streams" choice has to hold here too: an episode that
+    // autoplays a row the list was told to hide is the filter being bypassed.
+    let candidates = streamItems;
+    if (settings.showOnlyDirectStreams === true) {
+      candidates = await this.selectDirectPlayableCandidates(streamItems);
+      if (!candidates.length) {
+        // Nothing plays as it is: stop, rather than quietly play what the filter hides.
+        console.warn("[Autoplay] no direct stream for the next episode; staying put");
+        return null;
+      }
+    }
+
     const preferBingeGroup = Boolean(settings.streamAutoPlayPreferBingeGroupForNextEpisode);
     const shouldAutoSelectInManualMode =
       mode === "MANUAL" && (Boolean(settings.autoplayNextEpisode) || preferBingeGroup);
@@ -7587,7 +7600,7 @@ export const PlayerScreen = {
               .map((addon) => String(addon?.displayName || addon?.name || "").trim())
               .filter(Boolean)
           );
-    return selectAutoPlayStream(streamItems, {
+    return selectAutoPlayStream(candidates, {
       mode: shouldAutoSelectInManualMode ? "FIRST_STREAM" : mode,
       source: shouldAutoSelectInManualMode
         ? "ALL_SOURCES"
@@ -7600,6 +7613,54 @@ export const PlayerScreen = {
       preferBingeGroupInSelection: preferBingeGroup,
       bingeGroupOnly: Boolean(options.bingeGroupOnly || bingeGroupOnlyManualMode)
     });
+  },
+
+  async selectDirectPlayableCandidates(streamItems = []) {
+    // The label comes from the probe, never from the text: this session proved the addon
+    // text wrong about codecs twice. A row that cannot be probed is not counted as direct.
+    const rows = streamItems
+      .map((stream) => ({
+        stream,
+        url: String(stream.url || stream.externalUrl || "").trim()
+      }))
+      .filter((row) => row.url);
+    if (!rows.length) return [];
+
+    const [{ classifyPlayback }, { getDeviceCapabilities }, probeModule] = await Promise.all([
+      import("../../../core/player/playbackMethod.js"),
+      import("../../../core/player/deviceCapabilities.js"),
+      import("../../../core/player/streamProbe.js")
+    ]);
+    const capabilities = getDeviceCapabilities();
+    const limitRaw = Number(globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 20;
+    const targets = rows.slice(0, limit).map((row) => ({
+      url: row.url,
+      label: [row.stream.name, row.stream.title, row.stream.description].filter(Boolean).join(" ")
+    }));
+
+    let probes = new Map();
+    if (probeModule.streamProber?.enabled) {
+      probes = await probeModule.streamProber
+        .probeUnknown(targets, { capabilities, limit })
+        .catch(() => new Map());
+    }
+
+    return rows
+      .filter((row) => {
+        const probe = probes.get(row.url) || null;
+        if (!probe) return false;
+        const verdict = classifyPlayback({
+          url: row.url,
+          label: [row.stream.name, row.stream.title, row.stream.description]
+            .filter(Boolean)
+            .join(" "),
+          probe,
+          capabilities
+        });
+        return verdict.method === "direct";
+      })
+      .map((row) => row.stream);
   },
 
   async resolveNextEpisodeStreamByAutoPlayPolicy(nextEpisode, itemType, settings) {
