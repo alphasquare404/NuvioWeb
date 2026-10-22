@@ -7578,8 +7578,10 @@ export const PlayerScreen = {
     if (settings.showOnlyDirectStreams === true) {
       candidates = await this.selectDirectPlayableCandidates(streamItems);
       if (!candidates.length) {
-        // Nothing plays as it is: stop, rather than quietly play what the filter hides.
-        console.warn("[Autoplay] no direct stream for the next episode; staying put");
+        // Nothing plays as it is. Returning null makes the caller open the next-episode
+        // picker -- the same path as "autoplay next episode" being switched off -- instead
+        // of quietly playing a row the filter was asked to hide.
+        console.warn("[Autoplay] no direct stream for the next episode; opening the list");
         return null;
       }
     }
