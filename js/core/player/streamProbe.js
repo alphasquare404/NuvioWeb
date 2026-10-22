@@ -28,18 +28,12 @@ import { PLAYBACK_METHODS, classifyPlayback } from "./playbackMethod.js";
  */
 export function isAudioCriticalVerdict(verdict, capabilities = {}) {
   if (capabilities.requiresStereoAac !== true) return false;
-  // A row already headed for the audio relay is the one where a probe can still change
-  // the answer: it may carry a stereo track, in which case nothing needs converting.
-  if (verdict?.method === PLAYBACK_METHODS.AUDIO_TRANSCODE) {
-    return String(verdict?.reason || "").includes("multichannel");
-  }
-  if (verdict?.method !== PLAYBACK_METHODS.DIRECT && verdict?.method !== PLAYBACK_METHODS.REMUX) {
-    return false;
-  }
+  // Only a Direct row needs the answer. A row that is remuxed anyway passes through the
+  // relay, and the relay can downmix in the same job -- probing it would add cost and
+  // change nothing. So: direct play, multichannel stated, ask once.
+  if (verdict?.method !== PLAYBACK_METHODS.DIRECT) return false;
   const channels = Number(verdict?.audioChannels) || 0;
-  // 0 means "the text did not say": still worth asking, because a 5.1 file usually
-  // arrives with no layout in its name at all.
-  return channels > 2 || channels === 0;
+  return channels > 2;
 }
 export function isTagCriticalVerdict(verdict, capabilities = {}) {
   return (

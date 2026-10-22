@@ -201,8 +201,6 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   // Blocked only when the row has no stereo to fall back to. A stereo track elsewhere in
   // the file still needs the relay to select it, which is the next step -- so it is not
   // counted as playable yet, but the reason says so.
-  const multichannelBlocked = stereoOnly && audioChannels > 2 && !stereoFirst;
-  const stereoElsewhere = stereoOnly && audioChannels > 2 && stereoExists && !stereoFirst;
   const audioOk = codecSupported(audioCodec, capabilities);
 
   if (!videoOk) {
@@ -231,6 +229,14 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   }
 
   const containerOk = container === "mp4" || container === "webm";
+  // Two separate questions. A row already probed and found without a stereo track is
+  // blocked only when its container is otherwise playable -- an MKV is remuxed anyway,
+  // and the relay downmixes in that same pass. Until it is probed, a Direct row stays
+  // Direct so that the probe happens at all.
+  const probedTracks = audioStreams.length > 0;
+  const multichannelBlocked =
+    stereoOnly && audioChannels > 2 && !stereoFirst && containerOk && probedTracks;
+  const audioDownmix = stereoOnly && audioChannels > 2 && !stereoFirst;
   // Audio before container, because the audio transcode relay also rewrites the
   // container: it copies the picture into an MP4 and only re-encodes the audio.
   // Reading them the other way round labelled every MKV with a DTS or E-AC3 track
@@ -242,7 +248,7 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
       method: PLAYBACK_METHODS.AUDIO_TRANSCODE,
       reason: `audio-${audioCodec}-${
         multichannelBlocked
-          ? stereoElsewhere
+          ? audioStreams.some((track) => Number(track?.channels) === 2)
             ? "multichannel-stereo-elsewhere"
             : "multichannel"
           : "unsupported"
@@ -258,6 +264,7 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   if (!containerOk) {
     return {
       method: PLAYBACK_METHODS.REMUX,
+      audioDownmix,
       reason: `container-${container}`,
       confidence,
       container,
@@ -277,6 +284,7 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   if (videoCodec === "hevc" && videoTag === "hev1" && capabilities.hevcHvc1Required === true) {
     return {
       method: PLAYBACK_METHODS.REMUX,
+      audioDownmix,
       reason: "hevc-tag-hev1",
       confidence,
       container,

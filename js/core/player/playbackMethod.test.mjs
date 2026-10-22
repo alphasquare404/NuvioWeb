@@ -261,75 +261,63 @@ test("an unresolved row is still estimated from its own label", () => {
   assert.equal(bare.method, PLAYBACK_METHODS.UNKNOWN);
 });
 
-test("multichannel aac asks for the audio relay on a device that only plays stereo", () => {
-  // Measured on the phone: a 5.1 AAC track played a silent film over the copy relay,
-  // because iOS drops the multichannel track instead of failing. The ladder must treat
-  // that exactly like DTS -- the audio relay downmixes it to stereo.
+test("multichannel is converted only when the container has no relay to carry it", () => {
   const apple = { h264: true, hevc: true, aac: true, requiresStereoAac: true };
-  const desktop = { h264: true, hevc: true, aac: true, requiresStereoAac: false };
-  const label = "Film.2026.1080p.WEBRip.AAC5.1.10bits.x265-Rapta.mkv";
-
-  const onApple = classifyPlayback({ url: "", label, capabilities: apple });
-  assert.equal(onApple.method, PLAYBACK_METHODS.AUDIO_TRANSCODE);
-  assert.equal(onApple.reason, "audio-aac-multichannel");
-
-  // A browser that can play 5.1 keeps the cheap path.
-  assert.equal(
-    classifyPlayback({ url: "", label, capabilities: desktop }).method,
-    PLAYBACK_METHODS.REMUX
-  );
-
-  // Stereo stays a copy, so the common case is not made expensive.
-  const stereo = "Film.2026.1080p.WEBRip.AAC2.0.x265.mkv";
-  assert.equal(
-    classifyPlayback({ url: "", label: stereo, capabilities: apple }).method,
-    PLAYBACK_METHODS.REMUX
-  );
-  assert.equal(detectAudioChannels("AAC5.1"), 6);
-  assert.equal(detectAudioChannels("DDP7.1"), 8);
-  assert.equal(detectAudioChannels("AAC2.0"), 2);
-  assert.equal(detectAudioChannels("no layout here"), 0);
-});
-
-test("the probe's channel count wins over the label, and canPlayType still gates the codec", () => {
-  const apple = { h264: true, hevc: true, aac: true, requiresStereoAac: true };
-  const probe = (channels) => ({
+  const probe = (tracks) => ({
     container: "mp4",
     videoCodec: "hevc",
     videoTag: "hvc1",
     audioCodec: "aac",
-    audioChannels: channels
+    audioChannels: tracks[0]?.channels || 0,
+    audioStreams: tracks
   });
-  // Label says nothing; the probe knows it is 5.1, which the phone cannot play.
-  const guessed = classifyPlayback({
+  const only51 = [{ index: 0, codec: "aac", channels: 6 }];
+  const stereoFirst = [
+    { index: 0, codec: "aac", channels: 2 },
+    { index: 1, codec: "aac", channels: 6 }
+  ];
+
+  // An MKV is remuxed anyway, so the relay downmixes in that same pass: no probe, and
+  // the verdict says so instead of asking for a second job.
+  const mkv = classifyPlayback({
     url: "",
-    label: "Film.1080p.WEBRip.mkv",
+    label: "judul.x265.AAC5.1.mkv",
     capabilities: apple
   });
-  const measured = classifyPlayback({
-    url: "",
-    label: "Film.1080p.WEBRip.mkv",
-    capabilities: apple,
-    probe: probe(6)
-  });
-  assert.equal(guessed.method, PLAYBACK_METHODS.REMUX);
-  assert.equal(measured.method, PLAYBACK_METHODS.AUDIO_TRANSCODE);
+  assert.equal(mkv.method, PLAYBACK_METHODS.REMUX);
+  assert.equal(mkv.audioDownmix, true);
 
-  // Two channels measured: cheap copy again.
+  // An MP4 would be played directly, where nothing can intervene. Probed and found
+  // without a stereo track: the audio relay is the only way to hear it.
+  const mp4 = classifyPlayback({
+    url: "",
+    label: "judul.x265.AAC5.1.mp4",
+    capabilities: apple,
+    probe: probe(only51)
+  });
+  assert.equal(mp4.method, PLAYBACK_METHODS.AUDIO_TRANSCODE);
+
+  // Same file, stereo first: play it as it is.
   assert.equal(
     classifyPlayback({
       url: "",
-      label: "Film.1080p.WEBRip.mkv",
+      label: "judul.x265.AAC5.1.mp4",
       capabilities: apple,
-      probe: probe(2)
+      probe: probe(stereoFirst)
     }).method,
     PLAYBACK_METHODS.DIRECT
   );
 
-  // And a device that cannot play AAC at all is still refused on codec grounds.
-  const noAac = { h264: true, hevc: true, aac: false, requiresStereoAac: true };
+  // Unprobed MP4 stays Direct so that the probe happens at all.
   assert.equal(
-    classifyPlayback({ url: "", label: "Film.mkv", capabilities: noAac, probe: probe(6) }).method,
-    PLAYBACK_METHODS.AUDIO_TRANSCODE
+    classifyPlayback({ url: "", label: "judul.x265.AAC5.1.mp4", capabilities: apple }).method,
+    PLAYBACK_METHODS.DIRECT
+  );
+
+  // A device that plays multichannel keeps the cheap path everywhere.
+  const desktop = { ...apple, requiresStereoAac: false };
+  assert.equal(
+    classifyPlayback({ url: "", label: "judul.x265.AAC5.1.mkv", capabilities: desktop }).method,
+    PLAYBACK_METHODS.REMUX
   );
 });

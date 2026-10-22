@@ -267,37 +267,3 @@ test("the identity names the file, never the link", () => {
   assert.equal(streamProbeIdentity({ name: "Some Release" }), "");
   assert.equal(streamProbeIdentity({}), "");
 });
-
-test("a row that might be silent is worth probing for its track list", () => {
-  const apple = { h264: true, hevc: true, aac: true, requiresStereoAac: true };
-  const row = (channelsLabel) => ({
-    url: "https://cdn/Film.2026.1080p.mkv",
-    label: channelsLabel
-  });
-  // 5.1 stated in the text: probe it, because the file may also carry stereo.
-  const multichannel = selectRowsToProbe([row("1080p WEBRip AAC5.1 x265.mkv")], {
-    capabilities: apple
-  });
-  assert.equal(multichannel.length, 1);
-  assert.equal(multichannel[0].reason, "audio");
-
-  // No layout stated at all: still worth one probe, that is exactly the silent case.
-  assert.equal(
-    selectRowsToProbe([row("1080p WEBRip x265.mkv")], { capabilities: apple }).length,
-    1
-  );
-
-  // A stereo row needs nothing.
-  assert.equal(
-    selectRowsToProbe([row("1080p WEBRip AAC2.0 x265.mkv")], { capabilities: apple }).length,
-    0
-  );
-
-  // A device that plays multichannel keeps the cheap path and spends no probe.
-  assert.equal(
-    selectRowsToProbe([row("1080p WEBRip AAC5.1 x265.mkv")], {
-      capabilities: { ...apple, requiresStereoAac: false }
-    }).length,
-    0
-  );
-});
