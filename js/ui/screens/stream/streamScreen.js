@@ -3519,7 +3519,14 @@ export const StreamScreen = {
       const video = /[?&]v=([a-z0-9]+)/i.exec(source)?.[1] || "";
       const audio = /[?&]a=([a-z0-9]+)/i.exec(source)?.[1] || "";
       const plan = video ? ` plan=v${video}-a${audio}` : "";
-      console.warn(`[Playback] source kind=${kind} host=${host || "-"}${plan}`);
+      // Why the HLS delivery was not chosen, said out loud. A silent fallback looks
+      // exactly like a broken relay, and in this case the answer was simply "this
+      // profile has no transcode token" -- a setting wiped by reinstalling the app.
+      let hls = "n/a";
+      if (!TRANSCODE_ENDPOINT) hls = "no-endpoint";
+      else if (!String(TranscodeSettingsStore.get().token || "").trim()) hls = "no-token";
+      else hls = "token-present";
+      console.warn(`[Playback] source kind=${kind} host=${host || "-"}${plan} hls=${hls}`);
     }
 
     const playbackParams = {
