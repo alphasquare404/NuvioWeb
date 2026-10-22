@@ -1475,18 +1475,30 @@ export const StreamScreen = {
         return url && !this._probeResults?.has(url) && !this._probeFailed?.has(url);
       });
       if (unanswered.length) {
-        const attempts = Number(this._autoPlayProbeWaits || 0) + 1;
-        this._autoPlayProbeWaits = attempts;
-        if (attempts <= 40) {
+        // The owner already has one knob for "how long may the app wait before choosing",
+        // so the probe wait uses it instead of a hidden constant. No waiting at all (0)
+        // still needs a few seconds: without an answer there is nothing to choose.
+        const rawSeconds = Math.trunc(Number(settings.streamAutoPlayTimeoutSeconds || 0));
+        const waitSeconds =
+          rawSeconds === 2147483647 ? 120 : Math.max(5, rawSeconds > 0 ? rawSeconds : 0);
+        const deadline =
+          this._autoPlayProbeDeadline ||
+          (this._autoPlayProbeDeadline = Date.now() + waitSeconds * 1000);
+        if (Date.now() < deadline) {
           setTimeout(() => {
             this.maybeAutoPlayStream({ allLoaded: true });
           }, 750);
         } else {
+          this._autoPlayProbeDeadline = null;
           this.autoPlayAttempted = true;
-          console.warn("[Autoplay] gave up waiting for probes", { unanswered: unanswered.length });
+          console.warn("[Autoplay] gave up waiting for probes", {
+            unanswered: unanswered.length,
+            waitedSeconds: waitSeconds
+          });
         }
         return;
       }
+      this._autoPlayProbeDeadline = null;
     }
 
     const selected = selectAutoPlayStream(this.getFilteredStreams(), {
