@@ -3122,7 +3122,10 @@ export const SettingsScreen = {
   }) {
     if (this.rowHiddenForEngine(focusKey)) return "";
     const inert = disabled || planned;
-    const trailing = external ? "external" : icon;
+    // An unknown icon name used to crash the whole section: `ROW_ICONS[name]` was
+    // undefined and the renderer tried to draw it. Fall back to the chevron instead.
+    const iconName = external ? "external" : ROW_ICONS[icon] ? icon : "chevron";
+    const trailing = iconName;
     const tailContent = [
       planned ? `<span class="settings-row-badge">${escapeHtml(t("common.soon"))}</span>` : "",
       value ? `<span class="settings-row-value">${escapeHtml(value)}</span>` : "",
@@ -6568,6 +6571,9 @@ export const SettingsScreen = {
   renderStreamsSection(model) {
     const isDesktopBrowser = isDesktopSettingsBrowser();
     const badgeSettings = model.streamBadgeSettings || StreamBadgeSettingsStore.get();
+    // A profile saved before this field existed has no `labelAddons`; reading `.length` off
+    // it is what such a profile would crash on.
+    const labelAddons = Array.isArray(badgeSettings.labelAddons) ? badgeSettings.labelAddons : [];
     const rules = badgeSettings.rules || { imports: [] };
     const imports = Array.isArray(rules.imports) ? rules.imports : [];
     const previewSourceUrl = String(this.streamBadgePreviewSourceUrl || "").trim();
@@ -6623,7 +6629,7 @@ export const SettingsScreen = {
       const current = StreamBadgeSettingsStore.snapshot();
       this.openTextDialog({
         title: t("settings_stream_label_addons", {}, "Addons that may draw the label"),
-        value: current.labelAddons.join(", "),
+        value: (Array.isArray(current.labelAddons) ? current.labelAddons : []).join(", "),
         placeholder: t(
           "settings_stream_label_addons_placeholder",
           {},
@@ -6893,7 +6899,6 @@ export const SettingsScreen = {
               {},
               "Draw the playback label on each card, and decide which addons may draw it."
             ),
-            icon: "sell",
             checked: badgeSettings.showPlaybackLabels !== false
           })}
         ${this.renderActionRow({
@@ -6906,8 +6911,7 @@ export const SettingsScreen = {
           ),
           value: badgeSettings.labelAddons.length
             ? badgeSettings.labelAddons.join(", ")
-            : t("settings_stream_label_addons_all", {}, "All addons"),
-          icon: "apps"
+            : t("settings_stream_label_addons_all", {}, "All addons")
         })}
         ${this.renderToggleRow({
           focusKey: "streams:toggle:sizeBadges",
