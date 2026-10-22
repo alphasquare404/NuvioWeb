@@ -385,7 +385,7 @@ export function createTranscodeBridgeHandler({
   // How long a run may go with nobody asking for anything. A paused player is silent
   // too, so this is minutes by default: short enough to free a home uplink, long
   // enough that pausing to answer a message does not end the film.
-  hlsIdleMs = Number(process.env.RELAY_HLS_IDLE_MS ?? 60_000) || 0,
+  hlsIdleMs = Number(process.env.RELAY_HLS_IDLE_MS ?? 100_000) || 0,
   abandonGraceMs = Number(process.env.RELAY_ABANDON_GRACE_MS ?? 5000) || 0,
   monthlyEgressBytes = Number(process.env.RELAY_MONTHLY_EGRESS_BYTES ?? 0) || 0,
   sourceSize = null,

@@ -180,6 +180,34 @@ function resolveDistPathForRootFile(rootFilePath) {
   return path.join(distDir, relativePath);
 }
 
+/**
+ * Files that must never be served, whatever is on disk.
+ *
+ * The repository is the web root, so gitignore protects the repo but not the server:
+ * `local.properties` holds the Supabase key and answered 200 over HTTP, as did
+ * `package.json`. A denylist is the only thing standing between a config file and a
+ * stranger with a browser.
+ */
+const PRIVATE_PATHS = [
+  "/local.properties",
+  "/local.example.properties",
+  "/package.json",
+  "/package-lock.json",
+  "/pnpm-lock.yaml",
+  "/yarn.lock",
+  "/.env",
+  "/.env.example"
+];
+const PRIVATE_PREFIXES = ["/node_modules/", "/scripts/", "/services/", "/docker/", "/.git/"];
+
+function isPrivatePath(pathname = "") {
+  const value = String(pathname || "");
+  if (PRIVATE_PATHS.includes(value)) return true;
+  if (PRIVATE_PREFIXES.some((prefix) => value.startsWith(prefix))) return true;
+  if (value.startsWith("/.")) return true;
+  if (value.includes("/.")) return true;
+  return false;
+}
 async function resolveRequestFile(pathname) {
   const rootPath = resolveRequestPath(pathname);
   const rootStat = await stat(rootPath).catch(() => null);
@@ -361,6 +389,15 @@ const server = http.createServer(async (request, response) => {
         response,
         `${requestUrl.pathname}${requestUrl.search || ""}`
       );
+      return;
+    }
+
+    if (isPrivatePath(requestUrl.pathname)) {
+      response.writeHead(404, {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store"
+      });
+      response.end("Not found");
       return;
     }
 

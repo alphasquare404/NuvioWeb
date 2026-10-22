@@ -10925,8 +10925,8 @@ export const PlayerScreen = {
     this.relayStatusText = String(text || "");
     let label = "sumber";
     const raw = String(streamUrl || "");
-    if (raw.includes("/api/remux")) label = "remux";
-    else if (raw.includes("/api/transcode")) label = "transcode";
+    if (raw.includes("/api/remux")) label = "remuxing";
+    else if (raw.includes("/api/transcode")) label = "transcoding";
     const message = this.relayStatusText ? `${this.relayStatusText.replace("{kind}", label)}` : "";
     // The overlay lives under the screen's own root, which is not necessarily the
     // document: searching only `document` found nothing, so the message silently never
