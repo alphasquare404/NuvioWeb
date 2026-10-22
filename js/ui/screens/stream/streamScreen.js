@@ -1467,6 +1467,28 @@ export const StreamScreen = {
     const installedAddonNames = collectInstalledAddonNames(
       addonRepository.getCachedInstalledAddons()
     );
+    // With the direct filter on, an empty list is usually "not answered yet", not "nothing
+    // to play". Concluding now would make auto-play look broken, so wait for the probes.
+    if (PlayerSettingsStore.get().showOnlyDirectStreams === true) {
+      const unanswered = this.streams.filter((stream) => {
+        const url = String(stream.url || stream.externalUrl || "").trim();
+        return url && !this._probeResults?.has(url) && !this._probeFailed?.has(url);
+      });
+      if (unanswered.length) {
+        const attempts = Number(this._autoPlayProbeWaits || 0) + 1;
+        this._autoPlayProbeWaits = attempts;
+        if (attempts <= 40) {
+          setTimeout(() => {
+            this.maybeAutoPlayStream({ allLoaded: true });
+          }, 750);
+        } else {
+          this.autoPlayAttempted = true;
+          console.warn("[Autoplay] gave up waiting for probes", { unanswered: unanswered.length });
+        }
+        return;
+      }
+    }
+
     const selected = selectAutoPlayStream(this.getFilteredStreams(), {
       mode: settings.streamAutoPlayMode,
       source: settings.streamAutoPlaySource,
