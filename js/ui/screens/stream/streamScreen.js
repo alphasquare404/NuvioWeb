@@ -3293,11 +3293,15 @@ export const StreamScreen = {
    * Returns true when the source is ready to be played from the relay.
    */
   async prepareRelaySource(relayUrl, originalUrl) {
-    const base = String(REMUX_ENDPOINT || "").trim();
+    const base = String(REMUX_ENDPOINT || "")
+      .trim()
+      .replace(/\/+$/, "");
     if (!base) return false;
-    const statusUrl = `${base}${base.includes("?") ? "&" : "?"}status`;
-    const queryFor = (extra = "") =>
-      `${statusUrl}${statusUrl.includes("?") ? "&" : "?"}u=${encodeURIComponent(originalUrl)}${extra}`;
+    // The status route is a path under the relay endpoint (`/api/remux/status`), not a
+    // query parameter on it: appending "?status" addressed the stream path instead,
+    // which starts a full remux and holds the connection until the film is copied.
+    const statusUrl = `${base}/status`;
+    const queryFor = (extra = "") => `${statusUrl}?u=${encodeURIComponent(originalUrl)}${extra}`;
     const overlay = this.showRelayPreparing();
     const started = Date.now();
     try {
@@ -3385,7 +3389,10 @@ export const StreamScreen = {
    */
   async resolvePlayerSource(stream) {
     const url = String(stream?.url || stream?.externalUrl || "").trim();
-    if (!url || !TRANSCODE_ENDPOINT) return url;
+    // The remux decision does not depend on the transcode endpoint: a deployment can
+    // run the container copy and not the audio one, and returning early here skipped
+    // the remux path entirely for exactly that configuration.
+    if (!url) return url;
     const capabilities = getDeviceCapabilities();
     const verdict = classifyPlayback({
       url,
@@ -3405,7 +3412,14 @@ export const StreamScreen = {
         // Preparing is therefore its own step, with its own screen, instead of
         // something the player is asked to sit through.
         const relayUrl = buildRemuxUrl(url, REMUX_ENDPOINT);
-        const ready = await this.prepareRelaySource(relayUrl, url);
+        // A failure here must not swallow the tap: the player can still be opened with
+        // the original link, which is a worse experience but an honest one.
+        let ready = false;
+        try {
+          ready = await this.prepareRelaySource(relayUrl, url);
+        } catch {
+          ready = false;
+        }
         return ready ? relayUrl : url;
       }
       return url;
