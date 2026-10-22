@@ -53,6 +53,7 @@ test("each cost has its own colour: green, yellow, orange, red", () => {
   const direct = renderStreamPlaybackBadge({
     url: "https://cdn/a.mp4",
     label: "1080p x264 AAC",
+    probe: { container: "mp4", videoCodec: "h264", audioCodec: "aac" },
     capabilities: ALL
   });
   assert.match(direct, />Direct</);
@@ -61,6 +62,7 @@ test("each cost has its own colour: green, yellow, orange, red", () => {
   const remux = renderStreamPlaybackBadge({
     url: "https://cdn/a.mkv",
     label: "1080p HEVC AAC",
+    probe: { container: "mkv", videoCodec: "hevc", audioCodec: "aac" },
     capabilities: ALL
   });
   assert.match(remux, />Remux</);
@@ -69,6 +71,7 @@ test("each cost has its own colour: green, yellow, orange, red", () => {
   const audio = renderStreamPlaybackBadge({
     url: "https://cdn/a.mp4",
     label: "1080p x264 DDP5.1",
+    probe: { container: "mp4", videoCodec: "h264", audioCodec: "eac3", audioChannels: 6 },
     capabilities: { ...ALL, eac3: false }
   });
   assert.match(audio, />Transcode [A-Z0-9.]+.AAC</);
@@ -77,6 +80,7 @@ test("each cost has its own colour: green, yellow, orange, red", () => {
   const full = renderStreamPlaybackBadge({
     url: "https://cdn/a.mkv",
     label: "1080p AV1",
+    probe: { container: "mkv", videoCodec: "av1", audioCodec: "aac" },
     capabilities: { ...ALL, av1: false }
   });
   assert.match(full, />Transcode</);
@@ -84,12 +88,14 @@ test("each cost has its own colour: green, yellow, orange, red", () => {
 });
 
 test("an estimate says so, an exact probe does not", () => {
+  // Without a probe the label makes no claim at all, which is the point of this change.
   const estimate = renderStreamPlaybackBadge({
     url: "https://cdn/a.mkv",
     label: "1080p HEVC",
     capabilities: ALL
   });
-  assert.match(estimate, /perkiraan/);
+  assert.match(estimate, />Unknown</);
+  assert.match(estimate, /waiting for the probe/);
 
   const exact = renderStreamPlaybackBadge({
     url: "https://cdn/a.mkv",
@@ -126,11 +132,19 @@ test("a deployment without a transcode endpoint says so instead of promising one
     label: "1080p x264 DDP5.1",
     capabilities: { h264: true, aac: true, eac3: false }
   };
-  const promised = renderStreamPlaybackBadge({ ...args, transcodeAvailable: true });
+  const promised = renderStreamPlaybackBadge({
+    ...args,
+    probe: { container: "mp4", videoCodec: "h264", audioCodec: "eac3", audioChannels: 6 },
+    transcodeAvailable: true
+  });
   assert.match(promised, />Transcode [A-Z0-9.]+→AAC</);
   assert.match(promised, /rgba\(190,94,20/);
 
-  const unavailable = renderStreamPlaybackBadge({ ...args, transcodeAvailable: false });
+  const unavailable = renderStreamPlaybackBadge({
+    ...args,
+    probe: { container: "mp4", videoCodec: "h264", audioCodec: "eac3", audioChannels: 6 },
+    transcodeAvailable: false
+  });
   assert.match(unavailable, />Transcode \(unavailable\)</);
   assert.match(unavailable, /this deployment does not run a transcode endpoint/);
   // Neutral, not orange: the card must not look like an offer it cannot honour.
@@ -140,6 +154,7 @@ test("a deployment without a transcode endpoint says so instead of promising one
   const direct = renderStreamPlaybackBadge({
     url: "https://cdn/a.mp4",
     label: "1080p x264 AAC",
+    probe: { container: "mp4", videoCodec: "h264", audioCodec: "aac" },
     capabilities: { h264: true, aac: true },
     transcodeAvailable: false
   });
@@ -153,10 +168,18 @@ test("remux is described the same way when the deployment cannot relay it", () =
     label: "1080p HEVC AAC",
     capabilities: { h264: true, hevc: true, aac: true }
   };
-  const offered = renderStreamPlaybackBadge({ ...args, remuxAvailable: true });
+  const offered = renderStreamPlaybackBadge({
+    ...args,
+    probe: { container: "mkv", videoCodec: "hevc", audioCodec: "aac" },
+    remuxAvailable: true
+  });
   assert.match(offered, />Remux</);
 
-  const unavailable = renderStreamPlaybackBadge({ ...args, remuxAvailable: false });
+  const unavailable = renderStreamPlaybackBadge({
+    ...args,
+    probe: { container: "mkv", videoCodec: "hevc", audioCodec: "aac" },
+    remuxAvailable: false
+  });
   assert.match(unavailable, />Remux \(unavailable\)</);
   assert.match(unavailable, /does not run a remux endpoint/);
   assert.match(unavailable, /rgba\(120,120,120/);

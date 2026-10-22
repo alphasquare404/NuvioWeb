@@ -1,4 +1,8 @@
-import { classifyPlayback, playbackMethodTone } from "../../core/player/playbackMethod.js";
+import {
+  classifyPlayback,
+  detectContainer,
+  playbackMethodTone
+} from "../../core/player/playbackMethod.js";
 
 // The label that answers "how will this stream be played?" before anyone presses
 // play. Three costs, three colours: green for a container swap, yellow for audio
@@ -23,6 +27,10 @@ const LABELS = {
  */
 export const TRANSCODE_UNAVAILABLE_LABEL = "Transcode (unavailable)";
 export const REMUX_UNAVAILABLE_LABEL = "Remux (unavailable)";
+/** The text cannot decide; only a probe can. Said plainly instead of guessing. */
+export const UNPROBED_LABEL = "Unknown";
+/** A container nothing can open, on a deployment with no relay to fix it. */
+export const UNSUPPORTED_LABEL = "Unsupported";
 
 const COLORS = {
   neutral: { background: "rgba(120,120,120,0.85)", color: "#f0f0f0" },
@@ -67,6 +75,21 @@ export function renderStreamPlaybackBadge({
   transcodeAvailable = true,
   remuxAvailable = true
 } = {}) {
+  // The addon text is a description, and this session proved it wrong twice: `8bit` was
+  // read as h264, `AAC5.1` was really E-AC-3. So the text may only *exclude* a row that
+  // nothing can open; every other label waits for the probe.
+  if (!probe) {
+    const container = detectContainer(`${url} ${label}`);
+    const relayed = Boolean(remuxAvailable || transcodeAvailable);
+    const impossible =
+      (container === "mkv" || container === "ts" || container === "avi") && !relayed;
+    if (impossible) {
+      const palette = COLORS.neutral;
+      return `<span class="stream-playback-badge" title="this container needs a relay, and this deployment runs none" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(UNSUPPORTED_LABEL)}</span>`;
+    }
+    const palette = COLORS.neutral;
+    return `<span class="stream-playback-badge" title="waiting for the probe: the text cannot be trusted with codecs" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(UNPROBED_LABEL)}</span>`;
+  }
   const result = describePlaybackMethod({ url, label, probe, capabilities });
   const unavailable =
     (!transcodeAvailable && result.method === "audio-transcode") ||
