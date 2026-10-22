@@ -4,6 +4,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
+import { createEgressBudget } from "../shared/egressBudget.mjs";
 import path from "node:path";
 
 // Remux bridge.
@@ -139,6 +140,7 @@ export function createRemuxBridgeHandler({
   perIpConcurrent = 0,
   maxSourceBytes = 0,
   abandonGraceMs = Number(process.env.RELAY_ABANDON_GRACE_MS ?? 5000) || 0,
+  monthlyEgressBytes = Number(process.env.RELAY_MONTHLY_EGRESS_BYTES ?? 0) || 0,
   dailyBudgetBytes = 0,
   sourceSize = null,
   allowHosts = null,
@@ -158,6 +160,9 @@ export function createRemuxBridgeHandler({
   // minutes and holds a queue slot the whole time, so a viewer who closes the app must
   // not keep the server busy for the rest of the film -- but a reload must not throw
   // away work either, hence the grace period.
+  // What the server is allowed to send this calendar month. Egress is the direction a
+  // commercial host bills, so this is the budget that maps to an invoice.
+  const egress = createEgressBudget({ now, monthlyBytes: monthlyEgressBytes });
   const waiting = new Map();
   const abandonTimers = new Map();
   let abandoned = 0;
@@ -419,6 +424,17 @@ export function createRemuxBridgeHandler({
    * only join a job already running or serve a prepared file.
    */
   async function admit(url, address) {
+    if (egress.exhausted()) {
+      return {
+        status: 503,
+        payload: {
+          ok: false,
+          error: "bandwidth-quota-exhausted",
+          ...egress.snapshot()
+        },
+        headers: { "Retry-After": String(egress.retryAfterSeconds()) }
+      };
+    }
     const used = budgetUsedToday();
     if (dailyBudgetBytes > 0 && used >= dailyBudgetBytes) {
       return {
@@ -507,6 +523,8 @@ export function createRemuxBridgeHandler({
         dailyBudgetBytes,
         usedBytesToday: used,
         remainingBytesToday: dailyBudgetBytes > 0 ? Math.max(0, dailyBudgetBytes - used) : 0,
+        ...egress.snapshot(),
+        maxDiskBytes: maxTotalBytes,
         abandoned
       });
       return;
@@ -583,6 +601,7 @@ export function createRemuxBridgeHandler({
         response.end();
         return;
       }
+      egress.add(range.end - range.start + 1);
       createReadStream(file, range).pipe(response);
       return;
     }
@@ -592,6 +611,7 @@ export function createRemuxBridgeHandler({
       response.end();
       return;
     }
+    egress.add(size);
     createReadStream(file).pipe(response);
   };
 }

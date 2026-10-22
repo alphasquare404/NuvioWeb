@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, statSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, rename, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createEgressBudget } from "../shared/egressBudget.mjs";
 import path from "node:path";
 import { parseByteRange } from "../remux-bridge/bridge.mjs";
 
@@ -381,6 +382,8 @@ export function createTranscodeBridgeHandler({
   // too, so this is minutes by default: short enough to free a home uplink, long
   // enough that pausing to answer a message does not end the film.
   hlsIdleMs = Number(process.env.RELAY_HLS_IDLE_MS ?? 60_000) || 0,
+  abandonGraceMs = Number(process.env.RELAY_ABANDON_GRACE_MS ?? 5000) || 0,
+  monthlyEgressBytes = Number(process.env.RELAY_MONTHLY_EGRESS_BYTES ?? 0) || 0,
   sourceSize = null,
   spawnImpl = spawn,
   log = console,
@@ -395,6 +398,11 @@ export function createTranscodeBridgeHandler({
   const running = new Map();
   const runningByIp = new Map();
   const starting = new Set();
+  // Egress is what a host bills, so it is budgeted per calendar month.
+  const egress = createEgressBudget({ now, monthlyBytes: monthlyEgressBytes });
+  // Buffered work is tied to a client, so it can be cancelled when the last one leaves.
+  const waiting = new Map();
+  const abandonTimers = new Map();
   const dayStamp = () => new Date(now()).toISOString().slice(0, 10);
   let budget = { day: dayStamp(), bytes: 0 };
   let abandoned = 0;
@@ -550,6 +558,64 @@ export function createTranscodeBridgeHandler({
     });
   }
 
+  /**
+   * A buffered transcode tied to one client: when the last one leaves, so does the
+   * work. Same reasoning as the remux bridge -- a run nobody will watch must not hold
+   * the queue slot for the rest of the film -- with the same grace period, so a reload
+   * does not throw the work away.
+   */
+  function watchWaiter(key) {
+    waiting.set(key, (waiting.get(key) || 0) + 1);
+    const pending = abandonTimers.get(key);
+    if (pending) {
+      clearTimeout(pending);
+      abandonTimers.delete(key);
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const left = Math.max(0, (waiting.get(key) || 1) - 1);
+      if (left > 0) {
+        waiting.set(key, left);
+        return;
+      }
+      waiting.delete(key);
+      scheduleAbandon(key);
+    };
+  }
+
+  function scheduleAbandon(key) {
+    if (abandonGraceMs <= 0) {
+      cancelIfAbandoned(key);
+      return;
+    }
+    const timer = setTimeout(() => {
+      abandonTimers.delete(key);
+      cancelIfAbandoned(key);
+    }, abandonGraceMs);
+    timer.unref?.();
+    abandonTimers.set(key, timer);
+  }
+
+  function cancelIfAbandoned(key) {
+    if (waiting.has(key)) return;
+    const job = jobs.get(key);
+    if (!job) return;
+    // Finished work is not abandoned work: it costs only disk, and it is exactly what
+    // the viewer needs if they come back.
+    if (job.file && existsSync(job.file)) return;
+    jobs.delete(key);
+    try {
+      job.child?.kill("SIGKILL");
+    } catch {
+      // already gone
+    }
+    void rm(path.join(workDir, `${key}.mp4`), { force: true }).catch(() => {});
+    abandoned += 1;
+    log.log(`[transcode] abandoned ${key.slice(0, 8)}`);
+  }
+
   async function fileFor(source, key, plan) {
     const existing = jobs.get(key);
     if (existing) {
@@ -581,7 +647,9 @@ export function createTranscodeBridgeHandler({
       // nothing when the picture is not HEVC: ffmpeg refuses the tag at header
       // time, before the first byte of the source has been read.
       for (const videoTag of ["hvc1", ""]) {
-        const ok = await runFfmpeg(transcodeArgs(source, file, { bitrate, videoTag, plan }));
+        const ok = await runFfmpeg(transcodeArgs(source, file, { bitrate, videoTag, plan }), {
+          key
+        });
         if (ok && existsSync(file) && statSync(file).size > 0) return file;
         await rm(file, { force: true }).catch(() => {});
       }
@@ -699,10 +767,12 @@ export function createTranscodeBridgeHandler({
         response.end();
         return;
       }
+      egress.add(range.end - range.start + 1);
       createReadStream(file, range).pipe(response);
       return;
     }
 
+    egress.add(size);
     response.writeHead(200, { ...headers, "Content-Length": size });
     if (request.method === "HEAD") {
       response.end();
@@ -966,6 +1036,8 @@ export function createTranscodeBridgeHandler({
         usedBytesToday: budgetUsedToday(),
         remainingBytesToday:
           dailyBudgetBytes > 0 ? Math.max(0, dailyBudgetBytes - budgetUsedToday()) : 0,
+        ...egress.snapshot(),
+        maxDiskBytes: maxTotalBytes,
         hlsIdleMs,
         abandoned
       });
@@ -1103,6 +1175,10 @@ export function createTranscodeBridgeHandler({
       }
     }
     const didWork = needsWork ? beginWork(parsed.key, address) : false;
+    // Counted before the work starts, because that is when the viewer can leave; the
+    // response closing early is the only reliable signal.
+    const release = watchWaiter(parsed.key);
+    response.once("close", release);
     try {
       log.log(`[transcode] buffered ${parsed.key.slice(0, 8)} ${host}`);
       file = await fileFor(parsed.url, parsed.key, plan);
@@ -1112,6 +1188,7 @@ export function createTranscodeBridgeHandler({
       return;
     } finally {
       if (didWork) endWork(parsed.key, address);
+      release();
     }
     if (didWork) {
       budgetUsedToday();

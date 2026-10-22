@@ -94,6 +94,8 @@ const remuxBridgeHandler = createRemuxBridgeHandler({
   maxConcurrent: Number(process.env.REMUX_MAX_CONCURRENT ?? 1) || 0,
   perIpConcurrent: Number(process.env.REMUX_PER_IP_CONCURRENT ?? 1) || 0,
   maxSourceBytes: Number(process.env.REMUX_MAX_SOURCE_BYTES ?? 4 * 1024 * 1024 * 1024) || 0,
+  maxTotalBytes: Number(process.env.REMUX_MAX_DISK_BYTES ?? 8 * 1024 * 1024 * 1024) || 0,
+  monthlyEgressBytes: Number(process.env.RELAY_MONTHLY_EGRESS_BYTES ?? 0) || 0,
   dailyBudgetBytes: Number(process.env.REMUX_DAILY_BUDGET_BYTES ?? 0) || 0,
   allowHosts: String(process.env.REMUX_ALLOW_HOSTS || "")
     .split(",")
@@ -118,6 +120,8 @@ const transcodeBridgeHandler = createTranscodeBridgeHandler({
   maxConcurrent: Number(process.env.TRANSCODE_MAX_CONCURRENT ?? 1) || 0,
   perIpConcurrent: Number(process.env.TRANSCODE_PER_IP_CONCURRENT ?? 1) || 0,
   maxSourceBytes: Number(process.env.TRANSCODE_MAX_SOURCE_BYTES ?? 2 * 1024 * 1024 * 1024) || 0,
+  maxTotalBytes: Number(process.env.TRANSCODE_MAX_DISK_BYTES ?? 4 * 1024 * 1024 * 1024) || 0,
+  monthlyEgressBytes: Number(process.env.RELAY_MONTHLY_EGRESS_BYTES ?? 0) || 0,
   dailyBudgetBytes: Number(process.env.TRANSCODE_DAILY_BUDGET_BYTES ?? 0) || 0
 });
 
