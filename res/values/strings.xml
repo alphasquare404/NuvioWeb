@@ -1502,6 +1502,17 @@
     <string name="playback_transcode_token_placeholder">Paste the token this deployment gave you</string>
     <string name="playback_transcode_token_set">Configured</string>
     <string name="playback_transcode_token_unset">Not configured</string>
+    <string name="settings_stream_playback_labels">Show labels on stream card</string>
+    <string name="settings_stream_playback_labels_description">Draw the playback label on each card, and decide which addons may draw it.</string>
+    <string name="settings_stream_label_addons">Addons that may draw the label</string>
+    <string name="settings_stream_label_addons_description">Empty means every addon. Names separated by commas.</string>
+    <string name="settings_stream_label_addons_all">All addons</string>
+    <string name="settings_stream_label_addons_placeholder">Comma separated addon names, empty for all</string>
+    <string name="settings_stream_only_direct">Only show Direct streams</string>
+    <string name="settings_stream_only_direct_description">Hide every row that would need a relay or a re-encode, so only files that play as they are remain.</string>
+    <string name="stream_label_checking">Checking…</string>
+    <string name="stream_label_unknown">Unknown</string>
+    <string name="stream_label_unsupported">Unsupported</string>
     <string name="subtitle_style_reset_action">Reset to default</string>
     <string name="playback_transcode_token_unset_warning">Not configured - every relay request will be refused until a token is set</string>
     <string name="playback_preparing_relay">Preparing %1$s - %2$s seconds</string>

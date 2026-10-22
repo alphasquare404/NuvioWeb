@@ -6612,6 +6612,36 @@ export const SettingsScreen = {
       StreamBadgeSettingsStore.setShowAddonLogo(!badgeSettings.showAddonLogo);
     });
 
+    // The label is a claim; the owner decides whether it is drawn, and whether only rows
+    // that play as they are may appear at all.
+    this.actionMap.set("streams:toggle:playbackLabels", () => {
+      const current = StreamBadgeSettingsStore.snapshot();
+      StreamBadgeSettingsStore.setShowPlaybackLabels(current.showPlaybackLabels === false);
+    });
+
+    this.actionMap.set("streams:edit:labelAddons", () => {
+      const current = StreamBadgeSettingsStore.snapshot();
+      this.openTextDialog({
+        title: t("settings_stream_label_addons", {}, "Addons that may draw the label"),
+        value: current.labelAddons.join(", "),
+        placeholder: t(
+          "settings_stream_label_addons_placeholder",
+          {},
+          "Comma separated addon names, empty for all"
+        ),
+        returnFocusKey: "streams:edit:labelAddons",
+        clearLabel: t("common.clear", {}, "Clear"),
+        onClear: () => StreamBadgeSettingsStore.set({ labelAddons: [] }),
+        onSubmit: (value) =>
+          StreamBadgeSettingsStore.set({
+            labelAddons: String(value || "")
+              .split(",")
+              .map((entry) => entry.trim())
+              .filter(Boolean)
+          })
+      });
+    });
+
     const badgePlacement =
       String(badgeSettings.badgePlacement || "BOTTOM")
         .trim()
@@ -6856,15 +6886,39 @@ export const SettingsScreen = {
       <div class="settings-group-card settings-group-card-fill">
         <div class="settings-stack">
           ${this.renderToggleRow({
-            focusKey: "streams:toggle:sizeBadges",
-            title: t("settings_stream_size_badges_title", {}, "Size badges"),
+            focusKey: "streams:toggle:playbackLabels",
+            title: t("settings_stream_playback_labels", {}, "Show labels on stream card"),
             subtitle: t(
-              "settings_stream_size_badges_description",
+              "settings_stream_playback_labels_description",
               {},
-              "Show file size badges in stream results and player source panels."
+              "Draw the playback label on each card, and decide which addons may draw it."
             ),
-            checked: badgeSettings.showFileSizeBadges !== false
+            icon: "sell",
+            checked: badgeSettings.showPlaybackLabels !== false
           })}
+        ${this.renderActionRow({
+          focusKey: "streams:edit:labelAddons",
+          title: t("settings_stream_label_addons", {}, "Addons that may draw the label"),
+          subtitle: t(
+            "settings_stream_label_addons_description",
+            {},
+            "Empty means every addon. Names separated by commas."
+          ),
+          value: badgeSettings.labelAddons.length
+            ? badgeSettings.labelAddons.join(", ")
+            : t("settings_stream_label_addons_all", {}, "All addons"),
+          icon: "apps"
+        })}
+        ${this.renderToggleRow({
+          focusKey: "streams:toggle:sizeBadges",
+          title: t("settings_stream_size_badges_title", {}, "Size badges"),
+          subtitle: t(
+            "settings_stream_size_badges_description",
+            {},
+            "Show file size badges in stream results and player source panels."
+          ),
+          checked: badgeSettings.showFileSizeBadges !== false
+        })}
           ${this.renderToggleRow({
             focusKey: "streams:toggle:addonLogo",
             title: t("settings_stream_addon_logo_title", {}, "Addon logo"),

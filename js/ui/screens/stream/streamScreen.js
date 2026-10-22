@@ -752,6 +752,9 @@ export const StreamScreen = {
     // Answers from the probe endpoint, keyed by source URL, plus the one-shot guard
     // that stops the screen asking for the same batch on every render.
     this._probeResults = new Map();
+    // Which urls are being probed right now, so a card can say "checking" rather than
+    // "unknown" while it waits.
+    this._probePending = new Set();
     this._probesScheduled = false;
     // The movi runtime is ~23 MB (element.js plus its wasm) and is fetched when the
     // player route opens. Fetching it while the user is still choosing a link moves
@@ -2506,8 +2509,15 @@ export const StreamScreen = {
       for (let index = 0; index < batchesLeft; index += 1) {
         const targets = nextTargets();
         if (!targets.length) return;
-        for (const row of targets) sent.add(row.url);
+        for (const row of targets) {
+          sent.add(row.url);
+          this._probePending?.add(row.url);
+        }
+        // The cards render "Checking…" while this is in flight; that is the label the list
+        // shows instead of pretending the row is unknown.
+        this.requestRender({ delayMs: 0 });
         const results = await streamProber.probeUnknown(targets, { capabilities, limit: 5 });
+        for (const row of targets) this._probePending?.delete(row.url);
         applyResults(targets, results);
         if (this.disposed) return;
       }
@@ -2524,19 +2534,30 @@ export const StreamScreen = {
         streamBadgesEnabled,
         addonLogoLookup: this.addonLogoLookup
       });
-      const badge = renderStreamPlaybackBadge({
-        url: stream.url || stream.externalUrl || "",
-        label: `${sourceModel?.title || stream.title || stream.name || ""} ${
-          sourceModel?.description || stream.description || ""
-        }`,
-        capabilities: getDeviceCapabilities(),
-        // Whether this deployment even offers the relay the label would name. An
-        // empty endpoint means "not offered", and the card says so instead of
-        // promising a relay that cannot happen.
-        transcodeAvailable: Boolean(TRANSCODE_ENDPOINT),
-        remuxAvailable: Boolean(REMUX_ENDPOINT),
-        probe: this._probeResults?.get(stream.url || stream.externalUrl || "") || null
-      });
+      const urlKey = stream.url || stream.externalUrl || "";
+      const labelSettings = StreamBadgeSettingsStore.snapshot();
+      const addonName = String(stream?.addonName || stream?.addon || "").trim();
+      // The owner decides whether a label is drawn, and which addons may draw one.
+      const labelAllowed =
+        labelSettings.showPlaybackLabels !== false &&
+        (labelSettings.labelAddons.length === 0 || labelSettings.labelAddons.includes(addonName));
+      const badge = labelAllowed
+        ? renderStreamPlaybackBadge({
+            url: urlKey,
+            label: `${sourceModel?.title || stream.title || stream.name || ""} ${
+              sourceModel?.description || stream.description || ""
+            }`,
+            capabilities: getDeviceCapabilities(),
+            // Whether this deployment even offers the relay the label would name. An
+            // empty endpoint means "not offered", and the card says so instead of
+            // promising a relay that cannot happen.
+            transcodeAvailable: Boolean(TRANSCODE_ENDPOINT),
+            remuxAvailable: Boolean(REMUX_ENDPOINT),
+            probe: this._probeResults?.get(urlKey) || null,
+            // While the answer is on its way the card says so, instead of looking unanswered.
+            probing: this._probePending?.has(urlKey) === true
+          })
+        : "";
       return `
         <div class="stream-route-card-row" data-stream-row="${index}">
           <article class="stream-route-card stream-route-card-action focusable${this.isCardActionFocused(index, "play") ? " focused" : ""}"

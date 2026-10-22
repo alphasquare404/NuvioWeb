@@ -29,6 +29,8 @@ export const TRANSCODE_UNAVAILABLE_LABEL = "Transcode (unavailable)";
 export const REMUX_UNAVAILABLE_LABEL = "Remux (unavailable)";
 /** The text cannot decide; only a probe can. Said plainly instead of guessing. */
 export const UNPROBED_LABEL = "Unknown";
+/** The probe is running right now: still a label, and the card never looks finished. */
+export const PROBING_LABEL = "Checking…";
 /** A container nothing can open, on a deployment with no relay to fix it. */
 export const UNSUPPORTED_LABEL = "Unsupported";
 
@@ -73,12 +75,17 @@ export function renderStreamPlaybackBadge({
   probe = null,
   capabilities = {},
   transcodeAvailable = true,
-  remuxAvailable = true
+  remuxAvailable = true,
+  probing = false
 } = {}) {
   // The addon text is a description, and this session proved it wrong twice: `8bit` was
   // read as h264, `AAC5.1` was really E-AC-3. So the text may only *exclude* a row that
   // nothing can open; every other label waits for the probe.
   if (!probe) {
+    if (probing) {
+      const palette = COLORS.neutral;
+      return `<span class="stream-playback-badge" title="asking the server what this file really is" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(PROBING_LABEL)}</span>`;
+    }
     const container = detectContainer(`${url} ${label}`);
     const relayed = Boolean(remuxAvailable || transcodeAvailable);
     const impossible =
