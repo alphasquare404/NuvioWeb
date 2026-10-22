@@ -10912,6 +10912,33 @@ export const PlayerScreen = {
    *
    * Returns true when the caller may proceed (ready, or nothing to wait for).
    */
+  /**
+   * Say, on the screen the viewer is looking at, that the relay is working.
+   *
+   * The splash already has a status slot that nothing ever wrote to, which is why a
+   * two-minute copy looked identical to a broken source: the logo just kept animating.
+   */
+  setRelayStatusText(text, streamUrl = this.activePlaybackUrl) {
+    this.relayStatusText = String(text || "");
+    let label = "sumber";
+    const raw = String(streamUrl || "");
+    if (raw.includes("/api/remux")) label = "remux";
+    else if (raw.includes("/api/transcode")) label = "transcode";
+    const message = this.relayStatusText ? `${this.relayStatusText.replace("{kind}", label)}` : "";
+    if (typeof document === "undefined") return;
+    for (const id of ["playerLoadingOverlay", "playerBufferingSpinner"]) {
+      const root = document.getElementById(id);
+      const node = root?.querySelector?.(".player-loading-status");
+      if (!node) continue;
+      if (message) {
+        node.textContent = message;
+        node.classList.remove("hidden");
+      } else {
+        node.textContent = "";
+        node.classList.add("hidden");
+      }
+    }
+  },
   /** Ask the relay how this source is doing, without starting anything. */
   async relayPrepareState(streamUrl) {
     const raw = String(streamUrl || "").trim();
@@ -10960,6 +10987,7 @@ export const PlayerScreen = {
     if (!prepareUrl) prepareUrl = String(this.relayPrepareUrl || "").trim();
     if (!prepareUrl) return true;
     const deadline = Date.now() + 15 * 60 * 1000;
+    const startedAt = Date.now();
     let asked = false;
     while (Date.now() < deadline) {
       if (mountToken && !this.isActiveMountToken(mountToken)) return false;
@@ -10982,8 +11010,13 @@ export const PlayerScreen = {
       if (!data) return true;
       if (data.state === "ready") {
         this.relayPrepareDone = true;
+        this.setRelayStatusText("", streamUrl);
         return true;
       }
+      this.setRelayStatusText(
+        `Menyiapkan {kind}… ${Math.max(0, Math.round((Date.now() - startedAt) / 1000))} detik`,
+        streamUrl
+      );
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
     // Nothing arrived in fifteen minutes: hand it to the normal path, whose error is
@@ -11018,6 +11051,7 @@ export const PlayerScreen = {
       if (String(this.activePlaybackUrl || "").includes("/api/remux")) {
         void this.relayPrepareState(this.activePlaybackUrl).then((state) => {
           if (state !== "ready" && this.loadingVisible) {
+            this.setRelayStatusText("Menyiapkan {kind}…", this.activePlaybackUrl);
             this.schedulePlaybackStallGuard({ timeoutMs: 4000 });
           }
         });
