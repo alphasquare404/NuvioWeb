@@ -1,3 +1,4 @@
+import { tracePlayback, traceUrlKind, traceHost } from "../../../core/util/playbackTrace.js";
 import { Router } from "../../navigation/router.js";
 import { loadMoviModule } from "../../../core/player/movi/moviEngine.js";
 import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
@@ -3355,6 +3356,60 @@ export const StreamScreen = {
     }
   },
 
+  /**
+   * Record every input that decided this tap, before anything is chosen.
+   *
+   * Called once per tap, next to the moment of navigation, and kept in one array so the
+   * whole story can be copied from the phone instead of reconstructed by guesswork.
+   */
+  async traceTapDecision(stream, playerSource) {
+    const raw = String(stream?.url || stream?.externalUrl || "").trim();
+    const label = [stream?.name, stream?.title, stream?.description].filter(Boolean).join(" ");
+    const probe = this._probeResults?.get(raw) || null;
+    const verdict = classifyPlayback({
+      url: raw,
+      label,
+      probe,
+      capabilities: getDeviceCapabilities()
+    });
+    let access = null;
+    try {
+      access = await transcodeAccess.resolve();
+    } catch {
+      access = null;
+    }
+    const token = String(TranscodeSettingsStore.get().token || "").trim();
+    tracePlayback("tap", {
+      stream: String(stream?.id || "-").slice(0, 12),
+      source: traceUrlKind(raw),
+      host: traceHost(raw),
+      verdict: verdict?.method || "-",
+      reason: verdict?.reason || "-",
+      confidence: verdict?.confidence || "-",
+      container: verdict?.container || "-",
+      video: verdict?.videoCodec || "-",
+      audio: verdict?.audioCodec || "-",
+      tag: probe?.videoTag || "-",
+      probed: Boolean(probe)
+    });
+    tracePlayback("relays", {
+      remux: Boolean(REMUX_ENDPOINT),
+      transcode: Boolean(TRANSCODE_ENDPOINT),
+      mode: access?.mode || "-",
+      hls: Boolean(access?.hls),
+      token: token ? `present(${token.length})` : "empty"
+    });
+    tracePlayback("chosen", {
+      kind: traceUrlKind(playerSource),
+      host: traceHost(playerSource),
+      plan: /[?&]v=([a-z0-9]+)/i.exec(String(playerSource || ""))?.[1]
+        ? `v${/[?&]v=([a-z0-9]+)/i.exec(String(playerSource))[1]}-a${
+            /[?&]a=([a-z0-9]+)/i.exec(String(playerSource))?.[1] || "?"
+          }`
+        : "-",
+      length: String(playerSource || "").length
+    });
+  },
   async resolvePlayerSource(stream) {
     const url = String(stream?.url || stream?.externalUrl || "").trim();
     // The remux decision does not depend on the transcode endpoint: a deployment can
@@ -3573,6 +3628,7 @@ export const StreamScreen = {
       console.warn(`[Playback] source kind=${kind} host=${host || "-"}${plan} hls=${hls}`);
     }
 
+    void this.traceTapDecision?.(selected, playerSource);
     const playbackParams = {
       streamUrl: playerSource || null,
       itemId: this.params?.itemId || null,
