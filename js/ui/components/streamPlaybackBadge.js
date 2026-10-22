@@ -82,10 +82,9 @@ export function renderStreamPlaybackBadge({
   // read as h264, `AAC5.1` was really E-AC-3. So the text may only *exclude* a row that
   // nothing can open; every other label waits for the probe.
   if (!probe) {
-    if (probing) {
-      const palette = COLORS.neutral;
-      return `<span class="stream-playback-badge" title="asking the server what this file really is" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(PROBING_LABEL)}</span>`;
-    }
+    // The exclusion comes first, and it is not something a probe could change: an MKV on a
+    // deployment with no relay cannot play, so saying "Checking…" would only delay the
+    // truth. Everything else waits for its answer.
     const container = detectContainer(`${url} ${label}`);
     const relayed = Boolean(remuxAvailable || transcodeAvailable);
     const impossible =
@@ -93,6 +92,10 @@ export function renderStreamPlaybackBadge({
     if (impossible) {
       const palette = COLORS.neutral;
       return `<span class="stream-playback-badge" title="this container needs a relay, and this deployment runs none" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(UNSUPPORTED_LABEL)}</span>`;
+    }
+    if (probing) {
+      const palette = COLORS.neutral;
+      return `<span class="stream-playback-badge" title="asking the server what this file really is" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(PROBING_LABEL)}</span>`;
     }
     const palette = COLORS.neutral;
     return `<span class="stream-playback-badge" title="waiting for the probe: the text cannot be trusted with codecs" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(UNPROBED_LABEL)}</span>`;
