@@ -36,6 +36,9 @@ const DEFAULT_MAX_BYTES = 8 * 1024 * 1024 * 1024;
 const DEFAULT_SWEEP_MS = 5 * 60 * 1000;
 const HEALTH_PATH = "/api/remux/health";
 const STREAM_PATH = "/api/remux";
+// Preparing is a step of its own, not something the player should be asked to wait
+// for: a remux copies a whole film, and a player gives up long before that.
+const STATUS_PATH = "/api/remux/status";
 
 function json(response, status, payload, extraHeaders = null) {
   response.writeHead(status, {
@@ -526,6 +529,43 @@ export function createRemuxBridgeHandler({
         ...egress.snapshot(),
         maxDiskBytes: maxTotalBytes,
         abandoned
+      });
+      return;
+    }
+    if (requestUrl.pathname === STATUS_PATH) {
+      const parsedStatus = parseRemuxSource(requestUrl.searchParams.get("u"), { allowHosts });
+      if (!parsedStatus.ok) {
+        json(response, 400, { ok: false, error: parsedStatus.reason });
+        return;
+      }
+      const file = path.join(workDir, `${parsedStatus.key}.mp4`);
+      const ready = existsSync(file) && statSync(file).size > 0;
+      const runningJob = jobs.get(parsedStatus.key);
+      const wantsStart = requestUrl.searchParams.get("start") === "1";
+      let refusal = null;
+      if (!ready && !runningJob && wantsStart) {
+        const address = clientAddress(request);
+        refusal = await admit(parsedStatus.url, address);
+        if (!refusal) {
+          const didWork = beginWork(parsedStatus.key, address);
+          const started = Promise.resolve(fileFor(parsedStatus.url, parsedStatus.key)).finally(
+            () => {
+              if (didWork) endWork(parsedStatus.key, address);
+            }
+          );
+          void started.catch(() => {});
+        }
+      }
+      if (refusal) {
+        json(response, refusal.status, refusal.payload, refusal.headers);
+        return;
+      }
+      json(response, 200, {
+        ok: true,
+        state: ready ? "ready" : runningJob || wantsStart ? "working" : "missing",
+        bytes: ready ? statSync(file).size : 0,
+        active: running.size,
+        maxConcurrent
       });
       return;
     }
