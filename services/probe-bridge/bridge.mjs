@@ -256,6 +256,8 @@ export function createProbeBridgeHandler({
       const args = [
         "-v",
         "error",
+        "-user_agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
         "-show_entries",
         "stream=codec_type,codec_name,codec_tag_string,width,height,channels",
         "-show_entries",
