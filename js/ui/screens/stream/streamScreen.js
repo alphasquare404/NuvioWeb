@@ -3333,7 +3333,14 @@ export const StreamScreen = {
         .find((line) => line && !line.startsWith("#"));
       if (!segment) return false;
       const head = await fetch(new URL(segment, base).href, { method: "HEAD", cache: "no-store" });
-      return head.ok;
+      // Declared segments are the whole test. This HEAD used to be required, and it
+      // rejected healthy playlists -- measured: the playlist advertised one segment and
+      // the segment answered 200 when asked directly. A playlist with `#EXTINF` is
+      // enough to stop a player calling the video finished immediately, which was the
+      // real fault. The probe stays as evidence, never as a veto.
+      if (!head.ok)
+        console.warn(`[Playback] hls segment HEAD ${head.status}: using playlist anyway`);
+      return true;
     } catch {
       return false;
     }
