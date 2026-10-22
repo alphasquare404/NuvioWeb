@@ -3361,6 +3361,24 @@ export const StreamScreen = {
     // run the container copy and not the audio one, and returning early here skipped
     // the remux path entirely for exactly that configuration.
     if (!url) return url;
+    // A row can arrive already wrapped for the file relay: the router does that for a
+    // `.mkv` before this function ever sees it. Classifying that URL asks what the
+    // bridge looks like, not what the film looks like -- so the remux branch never ran
+    // and every tap waited for a whole copy. Unwrap first, decide on the real source,
+    // then deliver it the fast way when the deployment offers it.
+    if (url.includes("/api/remux?")) {
+      let inner = "";
+      try {
+        inner = new URL(url, location.href).searchParams.get("u") || "";
+      } catch {
+        inner = "";
+      }
+      if (inner) {
+        const playlistUrl = await this.remuxPlaylistUrl(inner);
+        if (playlistUrl && (await this.isPlayableHlsPlaylist(playlistUrl))) return playlistUrl;
+      }
+      return url;
+    }
     const capabilities = getDeviceCapabilities();
     const verdict = classifyPlayback({
       url,
