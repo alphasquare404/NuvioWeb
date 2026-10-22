@@ -3,7 +3,11 @@ import { ScreenUtils } from "../../navigation/screen.js";
 import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
 import { classifyPlayback } from "../../../core/player/playbackMethod.js";
 import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
-import { createStreamProber } from "../../../core/player/streamProbe.js";
+import { createStreamProber, streamProbeIdentity } from "../../../core/player/streamProbe.js";
+import {
+  DirectDebridStreamPreparer,
+  directDebridPreparationKey
+} from "../../../core/debrid/directDebridStreamPreparer.js";
 import { PROBE_ENDPOINT } from "../../../config.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
@@ -3354,35 +3358,88 @@ export const MetaDetailsScreen = {
     const capabilities = getDeviceCapabilities();
     const configured = Number(globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20);
     const limit = Number.isFinite(configured) && configured > 0 ? configured : 20;
-    const targets = streams
-      .slice(0, limit)
-      .map((stream) => ({
-        url: String(stream?.url || stream?.externalUrl || "").trim(),
-        label: [stream?.name, stream?.title, stream?.description].filter(Boolean).join(" ")
-      }))
-      .filter((row) => row.url);
-    if (!targets.length) {
-      return resolution;
-    }
-    const prober = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 3000 });
-    if (!prober.enabled) return resolution;
-    const probes = await prober
-      .probeUnknown(targets, { capabilities, limit })
-      .catch(() => new Map());
-    const direct = streams.filter((stream) => {
-      const url = String(stream?.url || stream?.externalUrl || "").trim();
-      const probe = probes.get(url) || null;
-      if (!probe) return false;
-      return (
-        classifyPlayback({
-          url,
-          label: [stream?.name, stream?.title, stream?.description].filter(Boolean).join(" "),
-          probe,
-          capabilities
-        }).method === "direct"
-      );
-    });
+    const prober = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 12000 });
+    if (!prober.enabled || !streams.length) return resolution;
+
+    // Ask about every candidate, in order, and stop at the first one that plays as it is.
+    // `probeUnknown` could not do this: it skips rows the addon text already calls Direct --
+    // exactly the rows worth picking -- so nothing was ever confirmed and the selection came
+    // back empty every time.
+    // A magnet is not a URL: ffprobe can only ask about a link the debrid service has
+    // already resolved. Without this the probe had nothing to say and every handoff ended
+    // with "no direct stream", which is what opened an empty list every time.
+    const top = streams.slice(0, Math.min(limit, 5));
+    const resolvedByKey = new Map();
+    await DirectDebridStreamPreparer.prepare(top, {
+      season: this.params?.season == null ? null : Number(this.params.season),
+      episode: this.params?.episode == null ? null : Number(this.params.episode),
+      playerSettings: PlayerSettingsStore.get(),
+      installedAddonNames: new Set(
+        (addonRepository.getCachedInstalledAddons() || [])
+          .map((addon) => String(addon?.displayName || addon?.name || "").trim())
+          .filter(Boolean)
+      ),
+      onPrepared: (stream, prepared) => {
+        const url = String(prepared?.url || "").trim();
+        if (url) resolvedByKey.set(directDebridPreparationKey(stream), url);
+      }
+    }).catch(() => {});
     if (cancelled()) return resolution;
+
+    const isMagnet = (value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .startsWith("magnet:");
+    const candidates = top.map((stream) => {
+      const direct = [stream?.url, stream?.externalUrl].find((value) => value && !isMagnet(value));
+      return {
+        stream,
+        url: String(resolvedByKey.get(directDebridPreparationKey(stream)) || direct || "").trim()
+      };
+    });
+    const probes = new Map();
+    const batchSize = 6;
+    for (let index = 0; index < candidates.length; index += batchSize) {
+      if (cancelled()) return resolution;
+      const batch = candidates.slice(index, index + batchSize);
+      await Promise.all(
+        batch.map(async (candidate) => {
+          if (!candidate.url) return;
+          const probe = await prober
+            .probe(candidate.url, {
+              reason: "selection",
+              identity: streamProbeIdentity(candidate.stream)
+            })
+            .catch(() => null);
+          if (probe) probes.set(candidate.url, probe);
+        })
+      );
+    }
+
+    const direct = candidates
+      .filter((candidate) => {
+        const probe = probes.get(candidate.url) || null;
+        if (!probe) return false;
+        return (
+          classifyPlayback({
+            url: candidate.url,
+            label: [candidate.stream?.name, candidate.stream?.title, candidate.stream?.description]
+              .filter(Boolean)
+              .join(" "),
+            probe,
+            capabilities
+          }).method === "direct"
+        );
+      })
+      .map((candidate) => candidate.stream);
+
+    if (cancelled()) return resolution;
+    console.log("[Autoplay] direct candidates", {
+      asked: candidates.length,
+      answered: probes.size,
+      direct: direct.length
+    });
     return { ...resolution, streams, selected: direct[0] || null, directStreams: direct };
   },
   getStreamNavigationOptions() {
