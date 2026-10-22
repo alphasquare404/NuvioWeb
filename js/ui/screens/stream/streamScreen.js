@@ -3335,51 +3335,72 @@ export const StreamScreen = {
    * probe is evidence, never a veto -- an escaping error there used to turn a healthy
    * playlist into `playable=false` with nothing in the console to say why.
    */
+  /**
+   * Is this playlist worth handing to a player?
+   *
+   * Only the playlist itself decides: a playlist with `#EXTINF` has a declared segment,
+   * which is what stops a player treating the video as finished. The segment probe is
+   * evidence, never a veto -- and it must be resolved against the page, because the
+   * playlist url is relative and `new URL(relative, relative)` throws.
+   *
+   * A busy server (429) is not a refusal of this source, only of its turn, so it is
+   * retried a few times before the slow whole-file relay is chosen.
+   */
   async isPlayableHlsPlaylist(playlistUrl) {
-    let response;
-    try {
-      response = await fetch(playlistUrl, { cache: "no-store" });
-    } catch (error) {
-      console.warn(`[Playback] hls playlist fetch failed: ${error?.message || error}`);
-      return false;
-    }
-    if (!response.ok) {
-      console.warn(`[Playback] hls playlist ${response.status}`);
-      return false;
-    }
-    let text = "";
-    try {
-      text = await response.text();
-    } catch (error) {
-      console.warn(`[Playback] hls playlist unreadable: ${error?.message || error}`);
-      return false;
-    }
-    if (!text.includes("#EXTINF")) {
-      console.warn(`[Playback] hls playlist without segments (${text.length} bytes)`);
-      return false;
-    }
-    const base = playlistUrl.slice(0, playlistUrl.lastIndexOf("/") + 1);
-    const segment = text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find((line) => line && !line.startsWith("#"));
-    if (!segment) {
-      console.warn("[Playback] hls playlist has no segment uri");
-      return false;
-    }
-    // Fire and forget, in its own guard: nothing below may change the answer.
-    void (async () => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      let response;
       try {
-        const head = await fetch(new URL(segment, base).href, {
-          method: "HEAD",
-          cache: "no-store"
-        });
-        console.warn(`[Playback] hls segment HEAD ${head.status}`);
+        response = await fetch(playlistUrl, { cache: "no-store" });
       } catch (error) {
-        console.warn(`[Playback] hls segment probe failed: ${error?.message || error}`);
+        console.warn(`[Playback] hls playlist fetch failed: ${error?.message || error}`);
+        return false;
       }
-    })();
-    return true;
+      if (response.status === 429 || response.status === 503) {
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2000;
+        console.warn(`[Playback] hls playlist busy (${response.status}), retry in ${waitMs}ms`);
+        await new Promise((resolve) => setTimeout(resolve, Math.min(waitMs, 5000)));
+        continue;
+      }
+      if (!response.ok) {
+        console.warn(`[Playback] hls playlist ${response.status}`);
+        return false;
+      }
+      let text = "";
+      try {
+        text = await response.text();
+      } catch (error) {
+        console.warn(`[Playback] hls playlist unreadable: ${error?.message || error}`);
+        return false;
+      }
+      if (!text.includes("#EXTINF")) {
+        console.warn(`[Playback] hls playlist without segments (${text.length} bytes)`);
+        return false;
+      }
+      const pageBase =
+        typeof location !== "undefined" && location.href ? location.href : "http://localhost/";
+      const segment = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line && !line.startsWith("#"));
+      if (!segment) {
+        console.warn("[Playback] hls playlist has no segment uri");
+        return false;
+      }
+      // Fire and forget, in its own guard: nothing below may change the answer.
+      void (async () => {
+        try {
+          const segmentUrl = new URL(segment, new URL(playlistUrl, pageBase).href).href;
+          const head = await fetch(segmentUrl, { method: "HEAD", cache: "no-store" });
+          console.warn(`[Playback] hls segment HEAD ${head.status}`);
+        } catch (error) {
+          console.warn(`[Playback] hls segment probe failed: ${error?.message || error}`);
+        }
+      })();
+      return true;
+    }
+    console.warn("[Playback] hls playlist still busy after retries");
+    return false;
   },
   async resolvePlayerSource(stream) {
     const url = String(stream?.url || stream?.externalUrl || "").trim();
