@@ -758,6 +758,10 @@ export const StreamScreen = {
     // Rows whose probe came back empty. They stay "unknown" instead of pretending to check
     // forever; everything else that has not been answered yet reads as "checking".
     this._probeFailed = new Set();
+    // A failed probe is not free: the server still ran ffprobe, and repeating it at once is
+    // how 3580 requests turned into 3266 failures. Each url gets a cooldown and a cap.
+    this._probeAttempts = new Map();
+    this._probeCooldownUntil = new Map();
     this._probesScheduled = false;
     // The movi runtime is ~23 MB (element.js plus its wasm) and is fetched when the
     // player route opens. Fetching it while the user is still choosing a link moves
@@ -1436,6 +1440,27 @@ export const StreamScreen = {
   },
 
   /** True when no probe is running, queued, or still unanswered. */
+  /** May this url be asked again yet? Two attempts, a minute apart. */
+  canProbeRow(url) {
+    if (!url) return false;
+    if ((this._probeCooldownUntil?.get(url) || 0) > Date.now()) return false;
+    return (this._probeAttempts?.get(url) || 0) < 2;
+  },
+
+  markProbeFailure(url) {
+    if (!url) return;
+    this._probeFailed.add(url);
+    this._probeAttempts.set(url, (this._probeAttempts.get(url) || 0) + 1);
+    this._probeCooldownUntil.set(url, Date.now() + 60 * 1000);
+  },
+
+  markProbeSuccess(url) {
+    if (!url) return;
+    this._probeFailed.delete(url);
+    this._probeAttempts.delete(url);
+    this._probeCooldownUntil.delete(url);
+  },
+
   probesSettled() {
     if (this._probeOutstanding === true) return false;
     if ((this._probePending?.size || 0) > 0) return false;
@@ -2553,7 +2578,7 @@ export const StreamScreen = {
           // after its link was re-issued with a fresh token.
           identity: streamProbeIdentity(stream)
         }))
-        .filter((row) => row.url && !sent.has(row.url));
+        .filter((row) => row.url && !sent.has(row.url) && this.canProbeRow(row.url));
       // Mark only the rows actually asked about. Marking every candidate is what left
       // every row past the fifth permanently unprobed, because the batch is capped at
       // five: rows 6..n were recorded as "sent" and never examined on any later render.
@@ -2566,10 +2591,11 @@ export const StreamScreen = {
       // and has it cached. Keeping it marked "sent" cost the row its label forever.
       for (const row of targets) {
         if (!results.has(row.url)) {
+          // Released for later, not for the next render: without a pause this is a loop.
           sent.delete(row.url);
-          this._probeFailed.add(row.url);
+          this.markProbeFailure(row.url);
         } else {
-          this._probeFailed.delete(row.url);
+          this.markProbeSuccess(row.url);
         }
       }
       if (!results.size || this.disposed) return;
