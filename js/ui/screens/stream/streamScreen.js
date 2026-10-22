@@ -1435,6 +1435,16 @@ export const StreamScreen = {
     this.requestRender({ delayMs: 0 });
   },
 
+  /** True when no probe is running, queued, or still unanswered. */
+  probesSettled() {
+    if (this._probeOutstanding === true) return false;
+    if ((this._probePending?.size || 0) > 0) return false;
+    return !this.streams.some((stream) => {
+      const url = String(stream.url || stream.externalUrl || "").trim();
+      return url && !this._probeResults?.has(url) && !this._probeFailed?.has(url);
+    });
+  },
+
   maybeAutoPlayStream({ allLoaded = false } = {}) {
     if (this.autoResumeUiActive || this.autoPlayAttempted || this.autoPlayCountdown) {
       return;
@@ -1516,7 +1526,9 @@ export const StreamScreen = {
       preferBingeGroupInSelection: Boolean(preferredBingeGroup)
     });
     if (!selected?.id) {
-      if (allLoaded) {
+      // Not a verdict while probes are still arriving: leaving this unset is what lets the
+      // list retry once the answers are in.
+      if (allLoaded && this.probesSettled()) {
         this.autoPlayAttempted = true;
       }
       return;
@@ -2576,6 +2588,17 @@ export const StreamScreen = {
       this._probeRevision = (this._probeRevision || 0) + 1;
       this._filteredStreamsCache = null;
       this.requestRender({ delayMs: 0 });
+
+      // Auto-play may have looked before any answer existed and decided there was nothing
+      // to play. Now that answers are here, it gets to look again -- the stream screen is
+      // the last chance to honour "auto play the first stream".
+      if (
+        !this.autoPlayAttempted &&
+        PlayerSettingsStore.get().showOnlyDirectStreams === true &&
+        this.probesSettled()
+      ) {
+        setTimeout(() => this.maybeAutoPlayStream({ allLoaded: true }), 0);
+      }
     };
 
     // Several batches inside one pass, concurrently each. Waiting for a scroll to
