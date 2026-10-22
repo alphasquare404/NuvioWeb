@@ -1502,6 +1502,9 @@
     <string name="playback_transcode_token_placeholder">Paste the token this deployment gave you</string>
     <string name="playback_transcode_token_set">Configured</string>
     <string name="playback_transcode_token_unset">Not configured</string>
+    <string name="subtitle_style_reset_action">Reset to default</string>
+    <string name="playback_transcode_token_unset_warning">Not configured - every relay request will be refused until a token is set</string>
+    <string name="playback_preparing_relay">Preparing %1$s - %2$s seconds</string>
     <string name="playback_transcode_token_sub">The secret this deployment\'s audio transcode endpoint asks for. Without it, a stream whose audio track cannot be decoded is not transcoded.</string>
     <string name="player_sync_line">Sync Line</string>
     <string name="subtitle_timing_press_sync">Press Sync when you hear a dialog line.</string>

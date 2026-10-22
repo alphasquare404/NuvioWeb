@@ -11039,7 +11039,14 @@ export const PlayerScreen = {
         return true;
       }
       this.setRelayStatusText(
-        `Menyiapkan {kind}… ${Math.max(0, Math.round((Date.now() - startedAt) / 1000))} detik`,
+        t(
+          "playback_preparing_relay",
+          {
+            kind: String(streamUrl || "").includes("/api/remux") ? "remuxing" : "transcoding",
+            seconds: Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+          },
+          `Preparing ${String(streamUrl || "").includes("/api/remux") ? "remuxing" : "transcoding"} - ${Math.max(0, Math.round((Date.now() - startedAt) / 1000))} seconds`
+        ),
         streamUrl
       );
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -11076,7 +11083,14 @@ export const PlayerScreen = {
       if (String(this.activePlaybackUrl || "").includes("/api/remux")) {
         void this.relayPrepareState(this.activePlaybackUrl).then((state) => {
           if (state !== "ready" && this.loadingVisible) {
-            this.setRelayStatusText("Menyiapkan {kind}…", this.activePlaybackUrl);
+            this.setRelayStatusText(
+              t(
+                "playback_preparing_relay",
+                { kind: "remuxing", seconds: "" },
+                "Preparing remuxing"
+              ),
+              this.activePlaybackUrl
+            );
             this.schedulePlaybackStallGuard({ timeoutMs: 4000 });
           }
         });
