@@ -9868,6 +9868,9 @@ export const PlayerScreen = {
     }
     const showStartupOverlay =
       this.isStartupLoadingVisible() && PlayerSettingsStore.get().loadingOverlayEnabled !== false;
+    // Re-applied here because the overlay is re-shown after error and resume paths, and
+    // the status text has to survive those.
+    if (this.relayStatusText) this.setRelayStatusText(this.relayStatusText);
     const showBufferingSpinner = this.isBufferingSpinnerVisible();
     const preserveProgressFocus = Boolean(
       showStartupOverlay &&
@@ -10929,6 +10932,14 @@ export const PlayerScreen = {
     // document: searching only `document` found nothing, so the message silently never
     // appeared. Every plausible root is tried, and the write is retried once in case
     // the splash markup is still being built when the wait begins.
+    // The player keeps direct references to these nodes; they are the only reliable way
+    // in, because the UI is not necessarily anywhere under `document`.
+    for (const host of [this.uiRefs?.loadingOverlay, this.uiRefs?.bufferingSpinner]) {
+      const node = host?.querySelector?.(".player-loading-status");
+      if (!node) continue;
+      node.textContent = message;
+      node.classList.toggle("hidden", !message);
+    }
     const roots = [];
     const push = (candidate) => {
       if (candidate && !roots.includes(candidate)) roots.push(candidate);
