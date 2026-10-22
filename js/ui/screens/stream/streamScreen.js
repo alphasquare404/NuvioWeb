@@ -473,7 +473,9 @@ function isDirectPlayableStream(stream = {}, probe = null) {
 // server keeps working and caches the result, and the next pass collects it instantly
 // because a timed-out row is deliberately left retryable. Waiting eight seconds per
 // batch was what turned a list into half a minute of yellow-label roulette.
-const streamProber = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 3000 });
+// A probe reads a remote header: measured 2.5-4 s on a good link, and the bridge itself
+// allows far longer. Aborting at three seconds is what turned answered rows into Unknown.
+const streamProber = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 15000 });
 // Asked once per session, because only the bridge knows whether it wants a secret:
 // `open` and `lan` do not, and `token` does. Asking first is what keeps the app
 // from calling an endpoint the deployment never authorised.
