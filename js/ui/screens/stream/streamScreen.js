@@ -3327,88 +3327,59 @@ export const StreamScreen = {
    * detail page after two seconds. So the playlist is fetched and its first segment
    * asked for before the player ever sees it; anything less and the file is used.
    */
+  /**
+   * Is this playlist worth handing to a player?
+   *
+   * Only the playlist itself decides. A playlist with `#EXTINF` has a declared segment,
+   * which is exactly what stops a player treating the video as finished. The segment
+   * probe is evidence, never a veto -- an escaping error there used to turn a healthy
+   * playlist into `playable=false` with nothing in the console to say why.
+   */
   async isPlayableHlsPlaylist(playlistUrl) {
+    let response;
     try {
-      const response = await fetch(playlistUrl, { cache: "no-store" });
-      if (!response.ok) return false;
-      const text = await response.text();
-      if (!text.includes("#EXTINF")) return false;
-      const base = playlistUrl.slice(0, playlistUrl.lastIndexOf("/") + 1);
-      const segment = text
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .find((line) => line && !line.startsWith("#"));
-      if (!segment) {
-        console.warn("[Playback] hls playlist has no segment uri");
-        return false;
-      }
-      const head = await fetch(new URL(segment, base).href, { method: "HEAD", cache: "no-store" });
-      // Declared segments are the whole test. This HEAD used to be required, and it
-      // rejected healthy playlists -- measured: the playlist advertised one segment and
-      // the segment answered 200 when asked directly. A playlist with `#EXTINF` is
-      // enough to stop a player calling the video finished immediately, which was the
-      // real fault. The probe stays as evidence, never as a veto.
-      if (!head.ok)
-        console.warn(`[Playback] hls segment HEAD ${head.status}: using playlist anyway`);
-      return true;
-    } catch {
+      response = await fetch(playlistUrl, { cache: "no-store" });
+    } catch (error) {
+      console.warn(`[Playback] hls playlist fetch failed: ${error?.message || error}`);
       return false;
     }
-  },
-
-  /**
-   * Record every input that decided this tap, before anything is chosen.
-   *
-   * Called once per tap, next to the moment of navigation, and kept in one array so the
-   * whole story can be copied from the phone instead of reconstructed by guesswork.
-   */
-  async traceTapDecision(stream, playerSource) {
-    const raw = String(stream?.url || stream?.externalUrl || "").trim();
-    const label = [stream?.name, stream?.title, stream?.description].filter(Boolean).join(" ");
-    const probe = this._probeResults?.get(raw) || null;
-    const verdict = classifyPlayback({
-      url: raw,
-      label,
-      probe,
-      capabilities: getDeviceCapabilities()
-    });
-    let access = null;
-    try {
-      access = await transcodeAccess.resolve();
-    } catch {
-      access = null;
+    if (!response.ok) {
+      console.warn(`[Playback] hls playlist ${response.status}`);
+      return false;
     }
-    const token = String(TranscodeSettingsStore.get().token || "").trim();
-    tracePlayback("tap", {
-      stream: String(stream?.id || "-").slice(0, 12),
-      source: traceUrlKind(raw),
-      host: traceHost(raw),
-      verdict: verdict?.method || "-",
-      reason: verdict?.reason || "-",
-      confidence: verdict?.confidence || "-",
-      container: verdict?.container || "-",
-      video: verdict?.videoCodec || "-",
-      audio: verdict?.audioCodec || "-",
-      tag: probe?.videoTag || "-",
-      probed: Boolean(probe)
-    });
-    tracePlayback("relays", {
-      remux: Boolean(REMUX_ENDPOINT),
-      transcode: Boolean(TRANSCODE_ENDPOINT),
-      mode: access?.mode || "-",
-      hls: Boolean(access?.hls),
-      token: token ? `present(${token.length})` : "empty"
-    });
-    tracePlayback("chosen", {
-      kind: traceUrlKind(playerSource),
-      host: traceHost(playerSource),
-      plan: /[?&]v=([a-z0-9]+)/i.exec(String(playerSource || ""))?.[1]
-        ? `v${/[?&]v=([a-z0-9]+)/i.exec(String(playerSource))[1]}-a${
-            /[?&]a=([a-z0-9]+)/i.exec(String(playerSource))?.[1] || "?"
-          }`
-        : "-",
-      length: String(playerSource || "").length
-    });
+    let text = "";
+    try {
+      text = await response.text();
+    } catch (error) {
+      console.warn(`[Playback] hls playlist unreadable: ${error?.message || error}`);
+      return false;
+    }
+    if (!text.includes("#EXTINF")) {
+      console.warn(`[Playback] hls playlist without segments (${text.length} bytes)`);
+      return false;
+    }
+    const base = playlistUrl.slice(0, playlistUrl.lastIndexOf("/") + 1);
+    const segment = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith("#"));
+    if (!segment) {
+      console.warn("[Playback] hls playlist has no segment uri");
+      return false;
+    }
+    // Fire and forget, in its own guard: nothing below may change the answer.
+    void (async () => {
+      try {
+        const head = await fetch(new URL(segment, base).href, {
+          method: "HEAD",
+          cache: "no-store"
+        });
+        console.warn(`[Playback] hls segment HEAD ${head.status}`);
+      } catch (error) {
+        console.warn(`[Playback] hls segment probe failed: ${error?.message || error}`);
+      }
+    })();
+    return true;
   },
   async resolvePlayerSource(stream) {
     const url = String(stream?.url || stream?.externalUrl || "").trim();
