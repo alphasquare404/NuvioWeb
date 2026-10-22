@@ -1619,13 +1619,26 @@ export const StreamScreen = {
     // answer when nothing qualifies — falling back to the full list would quietly
     // play the very streams the filter was asked to hide, and auto-select reads this
     // same list, so it must see the strict one too.
-    if (PlayerSettingsStore.get().showOnlyDirectStreams === true) {
-      const direct = result.filter((stream) =>
-        isDirectPlayableStream(
-          stream,
-          this._probeResults?.get(String(stream.url || stream.externalUrl || "")) || null
-        )
+    // The chosen addons are the list, not just a label permission: a stream from an addon
+    // the owner did not pick has no business appearing under a heading that says it did.
+    const labelSettings = StreamBadgeSettingsStore.snapshot();
+    const labelAddons = Array.isArray(labelSettings.labelAddons) ? labelSettings.labelAddons : [];
+    if (labelAddons.length) {
+      result = result.filter((stream) =>
+        labelAddons.includes(String(stream?.addonName || stream?.addon || "").trim())
       );
+    }
+
+    if (PlayerSettingsStore.get().showOnlyDirectStreams === true) {
+      // Only an answered "direct" survives: a row still being checked has not earned its
+      // place yet, and showing it would put unverified streams behind a filter that
+      // promises the opposite.
+      const direct = result.filter((stream) => {
+        const url = String(stream.url || stream.externalUrl || "").trim();
+        const probe = this._probeResults?.get(url) || null;
+        if (!probe) return false;
+        return isDirectPlayableStream(stream, probe);
+      });
       this._directFilterHidden = result.length - direct.length;
       result = direct;
     } else {
