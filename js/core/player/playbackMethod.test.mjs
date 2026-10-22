@@ -102,6 +102,80 @@ test("a playable picture with an unsupported audio track is the cheap case", () 
   assert.equal(result.reason, "audio-eac3-unsupported");
 });
 
+test("an mkv with unsupported audio is transcoded, not merely remuxed", () => {
+  // The gap this closes, measured with a real DTS file: the container used to
+  // decide first, so a DTS or E-AC3 MKV was labelled "Remux", sent to the remux
+  // relay, and came back as an MP4 with the same undecodable audio. The audio
+  // transcode relay copies the picture *and* writes an MP4, so it is the only
+  // relay that fixes this file.
+  const result = classifyPlayback({
+    url: "https://cdn/a.mkv",
+    label: "1080p x264 DTS-HD",
+    capabilities: weak
+  });
+  assert.equal(result.method, PLAYBACK_METHODS.AUDIO_TRANSCODE);
+  assert.equal(result.reason, "audio-dts-unsupported");
+  assert.equal(playbackMethodTone(result.method), "orange");
+});
+
+test("an mkv whose audio is playable is still only a container problem", () => {
+  const result = classifyPlayback({
+    url: "https://cdn/a.mkv",
+    label: "1080p x264 AAC",
+    capabilities: capable
+  });
+  assert.equal(result.method, PLAYBACK_METHODS.REMUX);
+  assert.equal(playbackMethodTone(result.method), "yellow");
+});
+
+test("HEVC tagged hev1 is a retag for a platform that only opens hvc1", () => {
+  // Measured on a real 1080p x265 webrip: container mp4, HEVC Main 10, AAC 5.1 --
+  // every codec supported, and the player still refused it with networkState 3
+  // because the track said hev1. A `-c copy -tag:v hvc1` pass played it.
+  const apple = { ...capable, hevcHvc1Required: true };
+  const hev1 = {
+    container: "mp4",
+    videoCodec: "hevc",
+    videoTag: "hev1",
+    audioCodec: "aac"
+  };
+  const result = classifyPlayback({
+    url: "https://cdn/a.mp4",
+    label: "1080p x265",
+    probe: hev1,
+    capabilities: apple
+  });
+  assert.equal(result.method, PLAYBACK_METHODS.REMUX);
+  assert.equal(result.reason, "hevc-tag-hev1");
+  assert.equal(playbackMethodTone(result.method), "yellow");
+
+  // Already hvc1: nothing to repair.
+  const hvc1 = classifyPlayback({
+    url: "https://cdn/a.mp4",
+    label: "1080p x265",
+    probe: { ...hev1, videoTag: "hvc1" },
+    capabilities: apple
+  });
+  assert.equal(hvc1.method, PLAYBACK_METHODS.DIRECT);
+
+  // A platform that opens both tags keeps playing it directly.
+  const android = classifyPlayback({
+    url: "https://cdn/a.mp4",
+    label: "1080p x265",
+    probe: hev1,
+    capabilities: capable
+  });
+  assert.equal(android.method, PLAYBACK_METHODS.DIRECT);
+
+  // An estimate without a probe has no tag to judge, so it stays as it was.
+  const estimate = classifyPlayback({
+    url: "https://cdn/a.mp4",
+    label: "1080p x265 AAC",
+    capabilities: apple
+  });
+  assert.equal(estimate.method, PLAYBACK_METHODS.DIRECT);
+});
+
 test("adaptive streams are left to the player, which negotiates", () => {
   for (const url of ["https://cdn/a.m3u8", "https://cdn/a.mpd"]) {
     const result = classifyPlayback({ url, label: "1080p HEVC", capabilities: weak });

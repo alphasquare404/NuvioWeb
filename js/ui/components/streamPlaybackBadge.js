@@ -12,6 +12,18 @@ const LABELS = {
   transcode: "Transcode"
 };
 
+/**
+ * What a card says when the deployment cannot do what the label would promise.
+ *
+ * A badge is a claim about the stream, but playability is a claim about the
+ * deployment too: a server with no transcode endpoint cannot turn a DTS track into
+ * AAC, and one with no remux cannot put an MKV into an MP4. Naming an unavailable
+ * relay would then be a promise nobody keeps, so the card says so in the neutral
+ * tone -- the same rule the endpoint contract already follows.
+ */
+export const TRANSCODE_UNAVAILABLE_LABEL = "Transcode (unavailable)";
+export const REMUX_UNAVAILABLE_LABEL = "Remux (unavailable)";
+
 const COLORS = {
   neutral: { background: "rgba(120,120,120,0.85)", color: "#f0f0f0" },
   green: { background: "rgba(31,122,77,0.92)", color: "#eafff2" },
@@ -42,17 +54,36 @@ export function describePlaybackMethod({
  *
  * `probe` is optional: without it the badge is an estimate from the addon's text,
  * which is all that exists before a row is focused.
+ *
+ * `transcodeAvailable` says whether this deployment offers the audio transcode relay
+ * at all. When it does not, a row that needs one is described as unavailable rather
+ * than promised: the label is the app's word that something can be played.
  */
 export function renderStreamPlaybackBadge({
   url = "",
   label = "",
   probe = null,
-  capabilities = {}
+  capabilities = {},
+  transcodeAvailable = true,
+  remuxAvailable = true
 } = {}) {
   const result = describePlaybackMethod({ url, label, probe, capabilities });
-  const tone = playbackMethodTone(result.method);
+  const unavailable =
+    (!transcodeAvailable && result.method === "audio-transcode") ||
+    (!remuxAvailable && result.method === "remux");
+  const tone = unavailable ? "neutral" : playbackMethodTone(result.method);
   const palette = COLORS[tone] || COLORS.neutral;
-  const text = LABELS[result.method] || "Direct";
-  const detail = result.confidence === "exact" ? result.reason : `${result.reason} (perkiraan)`;
+  const text = unavailable
+    ? result.method === "remux"
+      ? REMUX_UNAVAILABLE_LABEL
+      : TRANSCODE_UNAVAILABLE_LABEL
+    : LABELS[result.method] || "Direct";
+  const detail = unavailable
+    ? result.method === "remux"
+      ? "this deployment does not run a remux endpoint"
+      : "this deployment does not run a transcode endpoint"
+    : result.confidence === "exact"
+      ? result.reason
+      : `${result.reason} (perkiraan)`;
   return `<span class="stream-playback-badge" title="${escapeHtml(detail)}" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(text)}</span>`;
 }

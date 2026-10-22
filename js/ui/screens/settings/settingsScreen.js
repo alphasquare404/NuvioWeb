@@ -55,6 +55,7 @@ import {
   DebridSettingsStore
 } from "../../../data/local/debridSettingsStore.js";
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
+import { TranscodeSettingsStore } from "../../../data/local/transcodeSettingsStore.js";
 import { DebridApi } from "../../../data/remote/api/debridApi.js";
 import { DEBRID_AUTH_METHODS, DebridProviders } from "../../../core/debrid/debridProviders.js";
 import {
@@ -141,7 +142,11 @@ import { createDesktopCollectionManager } from "../../components/desktopCollecti
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
-import { DONATIONS_BASE_URL, UNIQUE_CONTRIBUTIONS_BASE_URL } from "../../../config.js";
+import {
+  DONATIONS_BASE_URL,
+  TRANSCODE_ENDPOINT,
+  UNIQUE_CONTRIBUTIONS_BASE_URL
+} from "../../../config.js";
 import {
   normalizeContributors,
   normalizeDonationProgress,
@@ -7063,6 +7068,31 @@ export const SettingsScreen = {
     togglePlayerSetting("playback:pauseOverlay", "pauseOverlayEnabled");
     togglePlayerSetting("playback:parentalGuide", "parentalGuideEnabled");
     togglePlayerSetting("playback:showOnlyDirectStreams", "showOnlyDirectStreams");
+    // The one relay that spends the deployment's CPU rather than its bandwidth, so
+    // a deployment in `token` mode asks for its secret before anything may call it.
+    // Per profile, and never synced: it unlocks a server, not an account.
+    this.actionMap.set("playback:transcodeToken", () => {
+      this.openTextDialog({
+        title: t("playback_transcode_token", {}, "Transcode token"),
+        value: TranscodeSettingsStore.get().token || "",
+        sensitive: true,
+        placeholder: t(
+          "playback_transcode_token_placeholder",
+          {},
+          "Paste the token this deployment gave you"
+        ),
+        returnFocusKey: "playback:transcodeToken",
+        clearLabel: t("common.clear", {}, "Clear"),
+        onClear: () => {
+          TranscodeSettingsStore.clearToken();
+          return true;
+        },
+        onSubmit: (value) => {
+          TranscodeSettingsStore.setToken(value);
+          return true;
+        }
+      });
+    });
     ["intro", "recap", "outro"].forEach((type) =>
       this.actionMap.set(`playback:autoSkip:${type}`, () => {
         const current = PlayerSettingsStore.get().autoSkipSegmentTypes || [];
@@ -7904,6 +7934,25 @@ export const SettingsScreen = {
             "Hide streams that would need a remux or a transcode. Estimated from the stream card; if nothing is left, the full list is shown instead.",
           checked: Boolean(model.player.showOnlyDirectStreams)
         })}
+        ${
+          // Only offered where the deployment runs the endpoint: a field that
+          // cannot do anything is worse than no field.
+          TRANSCODE_ENDPOINT
+            ? this.renderActionRow({
+                focusKey: "playback:transcodeToken",
+                title: t("playback_transcode_token", {}, "Transcode token"),
+                subtitle: t(
+                  "playback_transcode_token_sub",
+                  {},
+                  "The secret this deployment's audio transcode endpoint asks for. Without it, a stream whose audio track cannot be decoded is not transcoded."
+                ),
+                value: TranscodeSettingsStore.get().token
+                  ? t("playback_transcode_token_set", {}, "Configured")
+                  : t("playback_transcode_token_unset", {}, "Not configured"),
+                icon: "vpn_key"
+              })
+            : ""
+        }
         ${this.renderToggleRow({
           focusKey: "playback:skipIntro",
           title: t("settings.playback.skipIntro.title", {}, "Skip Intro"),

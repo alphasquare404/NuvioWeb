@@ -16,8 +16,27 @@ const CODEC_PROBES = {
 
 let cached = null;
 
+/**
+ * Does this platform refuse HEVC that is tagged the other way?
+ *
+ * Apple's media stack opens HEVC only when the track says `hvc1`; a file tagged
+ * `hev1` — which is how essentially every x265 webrip in an MP4 arrives — is
+ * refused with no diagnosis at all (`networkState: 3`, "not supported"). There is
+ * no API that answers this, so it is read from the platform: iPhone/iPad, and the
+ * iPadOS build that reports itself as a Mac with a touch screen.
+ */
+export function requiresHvc1HevcTag(userAgent = "", maxTouchPoints = 0) {
+  const agent = String(userAgent || "");
+  if (/iP(hone|ad|od)/i.test(agent)) return true;
+  return /Macintosh/.test(agent) && Number(maxTouchPoints) > 1;
+}
+
 export function detectDeviceCapabilities(
-  source = globalThis.MediaSource || globalThis.ManagedMediaSource
+  source = globalThis.MediaSource || globalThis.ManagedMediaSource,
+  {
+    userAgent = globalThis.navigator?.userAgent || "",
+    maxTouchPoints = globalThis.navigator?.maxTouchPoints || 0
+  } = {}
 ) {
   const capabilities = {};
   for (const [codec, type] of Object.entries(CODEC_PROBES)) {
@@ -30,6 +49,9 @@ export function detectDeviceCapabilities(
   // No platform exposes a DTS capability through isTypeSupported; the safe reading
   // is "assume not", which only ever downgrades to an audio transcode.
   capabilities.dts = false;
+  // A platform that only accepts hvc1 turns an `hev1` file into a relay job, not a
+  // direct play -- the label would otherwise promise something it cannot deliver.
+  capabilities.hevcHvc1Required = requiresHvc1HevcTag(userAgent, maxTouchPoints);
   return capabilities;
 }
 

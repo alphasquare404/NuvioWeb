@@ -3,7 +3,7 @@
 // The ladder is a cost ladder, not a guess:
 //   direct           — the container and the codecs are things <video> already plays
 //   remux            — the container is the problem, the codecs are fine
-//   audio-transcode  — the picture is fine, the audio track is not
+//   audio-transcode  — the audio track is the problem, whatever the container is
 //   transcode        — the picture itself has to be re-encoded, which is the
 //                      expensive one and the one worth warning about
 //
@@ -130,6 +130,9 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   const text = `${url} ${label}`;
   const container = String(probe?.container || detectContainer(text) || "unknown").toLowerCase();
   const videoCodec = String(probe?.videoCodec || detectVideoCodec(text) || "unknown").toLowerCase();
+  // Only a probe knows the tag; the addon's text never carries it, so an estimate
+  // simply has no opinion here and the file is treated as it always was.
+  const videoTag = String(probe?.videoTag || "").toLowerCase();
   const audioCodec = String(probe?.audioCodec || detectAudioCodec(text) || "unknown").toLowerCase();
   const confidence = exact ? "exact" : "estimate";
 
@@ -186,6 +189,23 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   }
 
   const containerOk = container === "mp4" || container === "webm";
+  // Audio before container, because the audio transcode relay also rewrites the
+  // container: it copies the picture into an MP4 and only re-encodes the audio.
+  // Reading them the other way round labelled every MKV with a DTS or E-AC3 track
+  // "Remux", sent it to the remux relay, and produced an MP4 whose audio the device
+  // still cannot decode -- a relabelled failure, not a fix. Yellow now means
+  // exactly what it says: the audio is fine and only the box is wrong.
+  if (!audioOk) {
+    return {
+      method: PLAYBACK_METHODS.AUDIO_TRANSCODE,
+      reason: `audio-${audioCodec}-unsupported`,
+      confidence,
+      container,
+      videoCodec,
+      audioCodec
+    };
+  }
+
   if (!containerOk) {
     return {
       method: PLAYBACK_METHODS.REMUX,
@@ -197,10 +217,17 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
     };
   }
 
-  if (!audioOk) {
+  // The container is right, the codecs are right, and the file still will not open:
+  // HEVC in an MP4 is tagged either `hvc1` (parameter sets in the sample
+  // description) or `hev1` (in band). Apple opens only the first, refuses the
+  // second with `networkState: 3` and no message -- and essentially every x265
+  // webrip is the second. That is a one-flag copy, so it belongs in the container
+  // relay, not in a re-encode: measured on a real 1080p webrip, a `-c copy -tag:v
+  // hvc1` pass turned an unplayable file into a playing one with no quality cost.
+  if (videoCodec === "hevc" && videoTag === "hev1" && capabilities.hevcHvc1Required === true) {
     return {
-      method: PLAYBACK_METHODS.AUDIO_TRANSCODE,
-      reason: `audio-${audioCodec}-unsupported`,
+      method: PLAYBACK_METHODS.REMUX,
+      reason: "hevc-tag-hev1",
       confidence,
       container,
       videoCodec,

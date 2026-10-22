@@ -3,8 +3,24 @@ import { loadMoviModule } from "../../../core/player/movi/moviEngine.js";
 import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
 import { renderStreamPlaybackBadge } from "../../components/streamPlaybackBadge.js";
 import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
-import { createStreamProber } from "../../../core/player/streamProbe.js";
-import { PROBE_ENDPOINT } from "../../../config.js";
+import {
+  createStreamProber,
+  isTagCriticalVerdict,
+  selectRowsToProbe,
+  shouldProbeVerdict,
+  streamProbeIdentity
+} from "../../../core/player/streamProbe.js";
+import {
+  buildTranscodePlan,
+  buildTranscodePlaylistUrl,
+  buildTranscodeUrl,
+  createTranscodeAccess,
+  isTranscodeAccessGranted,
+  shouldTranscodeSource
+} from "../../../core/player/transcodeSource.js";
+import { buildPlayerSubtitle } from "../../../core/util/runtimeLabel.js";
+import { PROBE_ENDPOINT, REMUX_ENDPOINT, TRANSCODE_ENDPOINT } from "../../../config.js";
+import { buildRemuxUrl } from "../../../core/player/remuxSource.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { PLAYBACK_METHODS, classifyPlayback } from "../../../core/player/playbackMethod.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
@@ -38,6 +54,7 @@ import {
 import { DebridStreamPresentation } from "../../../core/debrid/directDebridStreamPresentation.js";
 import { DebridSettingsStore } from "../../../data/local/debridSettingsStore.js";
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
+import { TranscodeSettingsStore } from "../../../data/local/transcodeSettingsStore.js";
 import {
   getCachedAddonLogoDisplayUrl,
   hasFailedAddonLogo,
@@ -437,19 +454,29 @@ function sortStreamsByAddonOrder(streams = [], sourceChips = []) {
 /**
  * Would this row play without a relay or a re-encode?
  *
- * The same estimate the badge shows, so the filter and the label can never disagree
- * about a particular row.
+ * The same answer the badge shows, probe included, so the filter and the label can
+ * never disagree about a particular row. Without the probe the filter kept calling
+ * an `hev1` HEVC file direct while its own badge had already turned yellow.
  */
-function isDirectPlayableStream(stream = {}) {
+function isDirectPlayableStream(stream = {}, probe = null) {
   const result = classifyPlayback({
     url: stream.url || stream.externalUrl || "",
     label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
+    probe,
     capabilities: getDeviceCapabilities()
   });
   return result.method === PLAYBACK_METHODS.DIRECT;
 }
 
-const streamProber = createStreamProber({ endpoint: PROBE_ENDPOINT });
+// Three seconds, not eight. A probe that has not answered by then is not lost: the
+// server keeps working and caches the result, and the next pass collects it instantly
+// because a timed-out row is deliberately left retryable. Waiting eight seconds per
+// batch was what turned a list into half a minute of yellow-label roulette.
+const streamProber = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 3000 });
+// Asked once per session, because only the bridge knows whether it wants a secret:
+// `open` and `lan` do not, and `token` does. Asking first is what keeps the app
+// from calling an endpoint the deployment never authorised.
+const transcodeAccess = createTranscodeAccess({ endpoint: TRANSCODE_ENDPOINT });
 
 export const StreamScreen = {
   cancelScheduledRender() {
@@ -1568,7 +1595,11 @@ export const StreamScreen = {
       cache &&
       cache.streams === this.streams &&
       cache.chips === this.sourceChips &&
-      cache.filter === filter
+      cache.filter === filter &&
+      // A probe answer can turn a green row into a yellow one, and the filter has to
+      // follow it. Without this the list stayed cached as "all direct" even after
+      // the badge had already changed its mind.
+      cache.probeRevision === this._probeRevision
     ) {
       return cache.result;
     }
@@ -1582,7 +1613,12 @@ export const StreamScreen = {
     // play the very streams the filter was asked to hide, and auto-select reads this
     // same list, so it must see the strict one too.
     if (PlayerSettingsStore.get().showOnlyDirectStreams === true) {
-      const direct = result.filter((stream) => isDirectPlayableStream(stream));
+      const direct = result.filter((stream) =>
+        isDirectPlayableStream(
+          stream,
+          this._probeResults?.get(String(stream.url || stream.externalUrl || "")) || null
+        )
+      );
       this._directFilterHidden = result.length - direct.length;
       result = direct;
     } else {
@@ -1592,6 +1628,7 @@ export const StreamScreen = {
       streams: this.streams,
       chips: this.sourceChips,
       filter,
+      probeRevision: this._probeRevision || 0,
       result
     };
     return result;
@@ -2336,18 +2373,46 @@ export const StreamScreen = {
    */
   async resolveUnknownRows({ limit = 3 } = {}) {
     const context = { season: this.params?.season ?? null, episode: this.params?.episode ?? null };
-    const candidates = this.streams
-      .filter((stream) => {
-        if (String(stream.url || stream.externalUrl || "").trim()) return false;
-        const verdict = classifyPlayback({
-          url: "",
-          label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
-          capabilities: getDeviceCapabilities()
-        });
-        if (verdict.method !== PLAYBACK_METHODS.UNKNOWN) return false;
-        return DirectDebridResolver.canResolveStream(stream, context);
-      })
-      .slice(0, Math.max(0, limit));
+    const capabilities = getDeviceCapabilities();
+    // Addons do list the same link more than once: the same torrent, the same file,
+    // sometimes from two addons. Resolving each occurrence is a separate debrid
+    // lookup that buys nothing, and it spends the three slots a pass has. The key is
+    // the one this screen already uses to recognise one file behind several rows.
+    const byLink = new Map();
+    for (const stream of this.streams) {
+      if (String(stream.url || stream.externalUrl || "").trim()) continue;
+      const verdict = classifyPlayback({
+        url: "",
+        label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
+        capabilities
+      });
+      // Not only `Unknown` rows any more. A "Ready (TB)" line carries no URL until
+      // something asks for it, and its text says mp4 + HEVC + AAC, so the estimate
+      // calls it Direct and this filter used to skip it -- which meant it was never
+      // resolved, never probed, and never learned that its HEVC is tagged `hev1`.
+      if (!shouldProbeVerdict(verdict, capabilities)) continue;
+      if (!DirectDebridResolver.canResolveStream(stream, context)) continue;
+      // Ordered, not merely filtered. The budget is three rows per pass, and a list
+      // has far more Unknown rows than tag-critical ones: taking them in list order
+      // meant the row whose label decides whether playback works could sit at #10 and
+      // never be reached. The rows that matter are resolved first.
+      const tagCritical = isTagCriticalVerdict(verdict, capabilities) ? 1 : 0;
+      const linkKey =
+        directDebridPreparationKey(stream) ||
+        String(stream.id || stream.url || stream.name || "").trim();
+      if (!linkKey) continue;
+      const existing = byLink.get(linkKey);
+      // A duplicate whose text makes it tag-critical wins: that is the one worth the
+      // slot, and the label of the other occurrence reads the same probe answer.
+      if (!existing || tagCritical > existing.tagCritical) {
+        byLink.set(linkKey, { stream, tagCritical });
+      }
+    }
+    const ranked = [...byLink.values()];
+    const candidates = ranked
+      .sort((left, right) => right.tagCritical - left.tagCritical)
+      .slice(0, Math.max(0, limit))
+      .map((entry) => entry.stream);
 
     let resolved = 0;
     for (const stream of candidates) {
@@ -2385,27 +2450,69 @@ export const StreamScreen = {
       });
   },
 
-  runUnknownProbes() {
+  runUnknownProbes({ maxBatches = 3 } = {}) {
     // Addon rows arrive without a URL and get one later, so a single pass at first
     // render would look at empty strings and give up. Each render offers whatever is
     // resolvable now, and URLs already sent are never sent twice.
     const sent = this._probeSent || (this._probeSent = new Set());
-    const rows = this.streams
-      .map((stream) => ({
-        url: String(stream.url || stream.externalUrl || "").trim(),
-        label: [stream.name, stream.title, stream.description].filter(Boolean).join(" ")
-      }))
-      .filter((row) => row.url && !sent.has(row.url));
-    if (!rows.length) return Promise.resolve();
-    for (const row of rows) sent.add(row.url);
-    return streamProber
-      .probeUnknown(rows, { capabilities: getDeviceCapabilities(), limit: 5 })
-      .then((results) => {
-        if (!results.size || this.disposed) return;
-        for (const [url, probe] of results) this._probeResults.set(url, probe);
-        this.requestRender({ delayMs: 0 });
-      })
-      .catch(() => {});
+    const capabilities = getDeviceCapabilities();
+
+    const nextTargets = () => {
+      const rows = this.streams
+        .map((stream) => ({
+          url: String(stream.url || stream.externalUrl || "").trim(),
+          label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
+          // Provider-agnostic identity, so the bridge can answer the same file again
+          // after its link was re-issued with a fresh token.
+          identity: streamProbeIdentity(stream)
+        }))
+        .filter((row) => row.url && !sent.has(row.url));
+      // Mark only the rows actually asked about. Marking every candidate is what left
+      // every row past the fifth permanently unprobed, because the batch is capped at
+      // five: rows 6..n were recorded as "sent" and never examined on any later render.
+      return selectRowsToProbe(rows, { capabilities, limit: 5 });
+    };
+
+    const applyResults = (targets, results) => {
+      // A probe that timed out or failed is not an answer. Releasing it means the next
+      // pass asks again -- cheaply, because the server already finished the ffprobe
+      // and has it cached. Keeping it marked "sent" cost the row its label forever.
+      for (const row of targets) {
+        if (!results.has(row.url)) sent.delete(row.url);
+      }
+      if (!results.size || this.disposed) return;
+      for (const [url, probe] of results) this._probeResults.set(url, probe);
+      // A tag that changes the answer is worth a line in the debug console: it is the
+      // difference between "Direct" and a relay, and the only place the phone can show
+      // it without the player.
+      const retagged = [...results.values()].filter((probe) => probe?.videoTag === "hev1");
+      if (retagged.length && capabilities?.hevcHvc1Required) {
+        console.warn(
+          `[Playback] ${retagged.length} HEVC stream(s) tagged hev1: remux to hvc1 instead of direct`
+        );
+      }
+      // The badge and the "show only direct" filter both read these, and the filtered
+      // list is cached: bump the revision so both are recomputed.
+      this._probeRevision = (this._probeRevision || 0) + 1;
+      this._filteredStreamsCache = null;
+      this.requestRender({ delayMs: 0 });
+    };
+
+    // Several batches inside one pass, concurrently each. Waiting for a scroll to
+    // start the next five made a list settle in half-minute steps; the batches are
+    // independent, so they can follow each other immediately.
+    const drain = async (batchesLeft) => {
+      for (let index = 0; index < batchesLeft; index += 1) {
+        const targets = nextTargets();
+        if (!targets.length) return;
+        for (const row of targets) sent.add(row.url);
+        const results = await streamProber.probeUnknown(targets, { capabilities, limit: 5 });
+        applyResults(targets, results);
+        if (this.disposed) return;
+      }
+    };
+
+    return drain(Math.max(1, maxBatches)).catch(() => {});
   },
 
   renderStreamCard(stream, index, streamBadgesEnabled = true, badgeSettings = null) {
@@ -2422,6 +2529,11 @@ export const StreamScreen = {
           sourceModel?.description || stream.description || ""
         }`,
         capabilities: getDeviceCapabilities(),
+        // Whether this deployment even offers the relay the label would name. An
+        // empty endpoint means "not offered", and the card says so instead of
+        // promising a relay that cannot happen.
+        transcodeAvailable: Boolean(TRANSCODE_ENDPOINT),
+        remuxAvailable: Boolean(REMUX_ENDPOINT),
         probe: this._probeResults?.get(stream.url || stream.externalUrl || "") || null
       });
       return `
@@ -3168,6 +3280,62 @@ export const StreamScreen = {
     launchBrowserExternalPlayer({ href: prepared.launch.href });
     return true;
   },
+
+  /**
+   * The URL the in-app player should open for this row.
+   *
+   * The ladder has already answered whether the audio track alone is the problem.
+   * Turning that answer into a request is a second decision, and a stricter one:
+   * the deployment has to run the endpoint, and this profile has to be allowed to
+   * use it. Without both, the original source comes back untouched and nothing is
+   * called -- the label is a statement about the file, not permission to spend
+   * somebody else's CPU.
+   */
+  async resolvePlayerSource(stream) {
+    const url = String(stream?.url || stream?.externalUrl || "").trim();
+    if (!url || !TRANSCODE_ENDPOINT) return url;
+    const capabilities = getDeviceCapabilities();
+    const verdict = classifyPlayback({
+      url,
+      label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
+      probe: this._probeResults?.get(url) || null,
+      capabilities
+    });
+    if (!shouldTranscodeSource({ url, verdict, endpoint: TRANSCODE_ENDPOINT })) {
+      // A container fix, or the HEVC tag Apple refuses: both are a plain copy on the
+      // server, and both are the remux relay's job. Wrapping here rather than only
+      // in the router is what lets a `.mp4` that needs a retag be repaired -- the
+      // router only knows to wrap an `.mkv`.
+      if (verdict.method === PLAYBACK_METHODS.REMUX && REMUX_ENDPOINT) {
+        return buildRemuxUrl(url, REMUX_ENDPOINT);
+      }
+      return url;
+    }
+    // What this device needs produced, not what the server assumes: a device that
+    // cannot decode AAC has nothing to gain here and must not spend the CPU.
+    const requested = buildTranscodePlan({ capabilities, verdict });
+    if (!requested.ok) return url;
+    const access = await transcodeAccess.resolve();
+    const token = String(TranscodeSettingsStore.get().token || "").trim();
+    if (!isTranscodeAccessGranted({ mode: access?.mode, token })) return url;
+    // A playlist is the one delivery iOS accepts for something still being made;
+    // the single file has to be finished first, and a film is minutes. A deployment
+    // that does not advertise HLS keeps the file, which plays -- only later.
+    if (access?.hls) {
+      const playlist = buildTranscodePlaylistUrl(url, {
+        endpoint: TRANSCODE_ENDPOINT,
+        token,
+        plan: requested.plan
+      });
+      if (playlist) return playlist;
+    }
+    return buildTranscodeUrl(url, {
+      endpoint: TRANSCODE_ENDPOINT,
+      token,
+      plan: requested.plan
+    });
+  },
+
   async playStream(
     streamId,
     {
@@ -3265,8 +3433,11 @@ export const StreamScreen = {
       return;
     }
 
+    // A downloaded file is already on this device; it is never relayed.
+    const playerSource = offlineObjectUrl || (await this.resolvePlayerSource(selected));
+
     const playbackParams = {
-      streamUrl: offlineObjectUrl || selected.url || selected.externalUrl || null,
+      streamUrl: playerSource || null,
       itemId: this.params?.itemId || null,
       itemType: itemType || "movie",
       imdbId: this.params?.imdbId || null,
@@ -3287,7 +3458,14 @@ export const StreamScreen = {
           ? `S${this.params.season}E${this.params.episode}`
           : null,
       playerTitle: this.params?.itemTitle || this.params?.playerTitle || "Untitled",
-      playerSubtitle: this.params?.episodeTitle || this.params?.playerSubtitle || "",
+      // The runtime travels with the metadata the app already has. An HLS playlist
+      // still being written carries no total duration, so the player's scrubber
+      // cannot show one yet -- this at least says how long the thing is while that
+      // is true, without touching the player itself.
+      playerSubtitle: buildPlayerSubtitle({
+        title: this.params?.episodeTitle || this.params?.playerSubtitle || "",
+        minutes: this.params?.runtime || this.params?.runtimeMinutes || 0
+      }),
       playerEpisodeTitle: this.params?.episodeTitle || "",
       playerReleaseYear: this.params?.year || "",
       playerBackdropUrl: this.getBackdropUrl() || null,

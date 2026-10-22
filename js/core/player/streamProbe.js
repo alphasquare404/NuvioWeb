@@ -8,11 +8,42 @@
 
 import { PLAYBACK_METHODS, classifyPlayback } from "./playbackMethod.js";
 
-/** Rows the estimate could not decide, and so the only ones worth probing. */
-export function selectRowsToProbe(rows = [], { capabilities = {}, limit = 5 } = {}) {
-  const picked = [];
+/**
+ * Is this the shape where a probe decides whether the file plays at all?
+ *
+ * `Unknown` is the original case: the text said too little, so one request turns a
+ * grey label into a real one. The other case is narrower and more valuable: HEVC
+ * inside an MP4 the text calls playable, where Apple opens the file only when the
+ * track is tagged `hvc1` and an x265 webrip is tagged `hev1`. The text never says
+ * which, so without a probe the card promises "Direct" and the player then refuses
+ * with no message.
+ */
+export function isTagCriticalVerdict(verdict, capabilities = {}) {
+  return (
+    verdict?.method === PLAYBACK_METHODS.DIRECT &&
+    verdict?.videoCodec === "hevc" &&
+    verdict?.container === "mp4" &&
+    capabilities.hevcHvc1Required === true
+  );
+}
+
+/**
+ * Which rows are worth one request, and in what order.
+ *
+ * Two classes, deliberately not equal. A tag-critical row decides whether playback
+ * works at all, so those go first and may use the whole batch. An `Unknown` row only
+ * turns a grey label into a certain one -- useful, cosmetic -- so it gets its own
+ * small budget and cannot crowd out the rows that matter. Before this split every
+ * candidate was one undifferentiated list, which is why one visit to a long list
+ * spent most of its ffprobe runs on files whose only gain was a nicer label.
+ */
+export function selectRowsToProbe(
+  rows = [],
+  { capabilities = {}, limit = 5, certaintyLimit = 2 } = {}
+) {
+  const important = [];
+  const certainty = [];
   for (const row of Array.isArray(rows) ? rows : []) {
-    if (picked.length >= limit) break;
     // A row whose URL has not been resolved yet cannot be probed. Asking about an
     // empty string spends the whole batch and returns nothing — which is exactly how
     // the first version silently did nothing on a list where most URLs were pending.
@@ -23,9 +54,50 @@ export function selectRowsToProbe(rows = [], { capabilities = {}, limit = 5 } = 
       label: row?.label || "",
       capabilities
     });
-    if (verdict.method === PLAYBACK_METHODS.UNKNOWN) picked.push(row);
+    if (isTagCriticalVerdict(verdict, capabilities)) {
+      if (important.length < limit) important.push({ ...row, reason: "tag" });
+      continue;
+    }
+    if (verdict?.method === PLAYBACK_METHODS.UNKNOWN && certainty.length < certaintyLimit) {
+      certainty.push({ ...row, reason: "unknown" });
+    }
   }
-  return picked;
+  return [...important, ...certainty];
+}
+
+/** The single answer both callers share: a tag to settle, or no conclusion at all. */
+export function shouldProbeVerdict(verdict, capabilities = {}) {
+  if (verdict?.method === PLAYBACK_METHODS.UNKNOWN) return true;
+  return isTagCriticalVerdict(verdict, capabilities);
+}
+
+/**
+ * A name for the file that does not depend on how a provider shapes its links.
+ * TorBox puts a token in the query, AllDebrid puts it in a path segment, Real-Debrid
+ * often has none at all, and signed CDN links carry their own parameter names. Parsing
+ * those would be a new rule per provider and would never cover a token inside the
+ * path. The identity is taken from what the app already knows instead: which service,
+ * which torrent, which file inside it. `url` is deliberately absent -- the whole point
+ * is that a re-issued link is the same file.
+ *
+ * Empty when nothing identifies the file, which leaves the bridge on its URL key.
+ */
+export function streamProbeIdentity(stream = {}) {
+  const resolve = stream?.clientResolve || stream?.raw?.clientResolve || null;
+  const parts = resolve
+    ? [resolve.service, resolve.infoHash, resolve.fileIdx, resolve.filename]
+    : [stream?.addonName, stream?.infoHash, stream?.fileIdx, stream?.name || stream?.title];
+  const identity = parts
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join("|");
+  // Without a hash or a file index there is nothing stable to key on: a name alone
+  // would collide across addons that happen to word a release the same way.
+  const hasIdentity = Boolean(
+    String(resolve?.infoHash || stream?.infoHash || "").trim() ||
+    String(resolve?.fileIdx ?? stream?.fileIdx ?? "").trim()
+  );
+  return hasIdentity ? identity : "";
 }
 
 /**
@@ -43,9 +115,18 @@ export function createStreamProber({
   const pending = new Map();
   const base = String(endpoint || "").trim();
 
-  async function request(url) {
+  async function request(url, reason = "", identity = "") {
     const separator = base.includes("?") ? "&" : "?";
-    const target = `${base}${separator}u=${encodeURIComponent(url)}`;
+    // `why` is the client saying which budget this request came from. The server
+    // cannot work that out by itself, and without it the two costs -- the check that
+    // decides whether a file plays, and the one that only sharpens a label -- are
+    // indistinguishable in the totals.
+    const why = reason ? `&why=${encodeURIComponent(reason)}` : "";
+    // `id` is the file's identity, not the link's: the bridge keys its answer on this
+    // when present, so a re-issued token does not buy a second ffprobe. The URL still
+    // travels -- it is what gets probed.
+    const ref = identity ? `&id=${encodeURIComponent(identity)}` : "";
+    const target = `${base}${separator}u=${encodeURIComponent(url)}${why}${ref}`;
     const controller = typeof AbortController === "function" ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
     try {
@@ -56,6 +137,10 @@ export function createStreamProber({
       return {
         container: String(data.container || "unknown"),
         videoCodec: String(data.videoCodec || "unknown"),
+        // The tag decides whether Apple will open an HEVC file at all, and it is the
+        // one thing the addon's text never says. Dropping it here made the whole
+        // classification blind to it.
+        videoTag: String(data.videoTag || ""),
         audioCodec: String(data.audioCodec || "unknown")
       };
     } catch {
@@ -71,12 +156,12 @@ export function createStreamProber({
     },
 
     /** Cached by URL; concurrent callers share one request. */
-    async probe(url) {
+    async probe(url, { reason = "", identity = "" } = {}) {
       const key = String(url || "").trim();
       if (!base || !key) return null;
       if (cache.has(key)) return cache.get(key);
       if (pending.has(key)) return pending.get(key);
-      const promise = request(key).then((result) => {
+      const promise = request(key, reason, identity).then((result) => {
         pending.delete(key);
         if (result) cache.set(key, result);
         return result;
@@ -91,7 +176,10 @@ export function createStreamProber({
       const targets = selectRowsToProbe(rows, { capabilities, limit });
       await Promise.all(
         targets.map(async (row) => {
-          const result = await this.probe(row?.url || "");
+          const result = await this.probe(row?.url || "", {
+            reason: row?.reason || "",
+            identity: row?.identity || ""
+          });
           if (result) results.set(String(row?.url || ""), result);
         })
       );
