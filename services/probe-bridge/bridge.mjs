@@ -86,6 +86,16 @@ export function normalizeProbe(probeJson) {
     audioCodec: String(audio?.codec_name || "unknown").toLowerCase(),
     // The detail no browser API can answer: canPlayType says "aac yes", never "stereo only".
     audioChannels: Number(audio?.channels) || 0,
+    // Every track, not just the first: a release can carry 5.1 and stereo side by side,
+    // and whether a stereo track exists decides "play it" from "convert it".
+    audioStreams: (Array.isArray(streams) ? streams : [])
+      .map((stream, index) => ({ stream, index }))
+      .filter((entry) => entry.stream?.codec_type === "audio")
+      .map((entry, audioIndex) => ({
+        index: audioIndex,
+        codec: String(entry.stream?.codec_name || "unknown").toLowerCase(),
+        channels: Number(entry.stream?.channels) || 0
+      })),
     width: Number(video?.width) || 0,
     height: Number(video?.height) || 0,
     durationSeconds: Number(probeJson?.format?.duration) || 0

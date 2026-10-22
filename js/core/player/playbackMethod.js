@@ -157,6 +157,13 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   // not been probed. canPlayType is still what answers "is this codec playable at all".
   const probedChannels = Number(probe?.audioChannels) || 0;
   const audioChannels = probedChannels > 0 ? probedChannels : detectAudioChannels(text);
+  // A probe that saw every track settles the question the label cannot: a release may
+  // carry 5.1 *and* stereo, in which case nothing needs converting -- only the right
+  // track has to be played. `audioStreams` is empty for an unprobed row, so the label
+  // stays the fallback.
+  const audioStreams = Array.isArray(probe?.audioStreams) ? probe.audioStreams : [];
+  const stereoFirst = audioStreams.length > 0 && Number(audioStreams[0]?.channels) === 2;
+  const stereoExists = audioStreams.some((track) => Number(track?.channels) === 2);
   const confidence = exact ? "exact" : "estimate";
 
   // Adaptive streaming is not remuxed: the manifest already carries the segments
@@ -168,7 +175,8 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
       confidence,
       container,
       videoCodec,
-      audioCodec
+      audioCodec,
+      audioChannels
     };
   }
 
@@ -181,7 +189,8 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
       confidence,
       container,
       videoCodec,
-      audioCodec
+      audioCodec,
+      audioChannels
     };
   }
 
@@ -189,7 +198,11 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   // Multichannel AAC is the silent failure: iOS plays the picture and drops the track.
   // It needs the audio relay (which downmixes to stereo) exactly like DTS does.
   const stereoOnly = capabilities.requiresStereoAac === true;
-  const multichannelBlocked = stereoOnly && audioChannels > 2;
+  // Blocked only when the row has no stereo to fall back to. A stereo track elsewhere in
+  // the file still needs the relay to select it, which is the next step -- so it is not
+  // counted as playable yet, but the reason says so.
+  const multichannelBlocked = stereoOnly && audioChannels > 2 && !stereoFirst;
+  const stereoElsewhere = stereoOnly && audioChannels > 2 && stereoExists && !stereoFirst;
   const audioOk = codecSupported(audioCodec, capabilities);
 
   if (!videoOk) {
@@ -199,7 +212,8 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
       confidence,
       container,
       videoCodec,
-      audioCodec
+      audioCodec,
+      audioChannels
     };
   }
 
@@ -226,11 +240,18 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   if (!audioOk || multichannelBlocked) {
     return {
       method: PLAYBACK_METHODS.AUDIO_TRANSCODE,
-      reason: `audio-${audioCodec}-${multichannelBlocked ? "multichannel" : "unsupported"}`,
+      reason: `audio-${audioCodec}-${
+        multichannelBlocked
+          ? stereoElsewhere
+            ? "multichannel-stereo-elsewhere"
+            : "multichannel"
+          : "unsupported"
+      }`,
       confidence,
       container,
       videoCodec,
-      audioCodec
+      audioCodec,
+      audioChannels
     };
   }
 
@@ -241,7 +262,8 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
       confidence,
       container,
       videoCodec,
-      audioCodec
+      audioCodec,
+      audioChannels
     };
   }
 
@@ -259,7 +281,8 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
       confidence,
       container,
       videoCodec,
-      audioCodec
+      audioCodec,
+      audioChannels
     };
   }
 

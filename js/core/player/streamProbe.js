@@ -18,6 +18,29 @@ import { PLAYBACK_METHODS, classifyPlayback } from "./playbackMethod.js";
  * which, so without a probe the card promises "Direct" and the player then refuses
  * with no message.
  */
+/**
+ * Does a probe decide whether this row will be *heard*, not just played?
+ *
+ * A multichannel track on a device that plays only stereo is silent, and the text cannot
+ * say whether the file also carries a stereo track. That is worth one probe: the answer
+ * turns "convert the audio" into "play the track that is already there", or confirms the
+ * conversion really is needed.
+ */
+export function isAudioCriticalVerdict(verdict, capabilities = {}) {
+  if (capabilities.requiresStereoAac !== true) return false;
+  // A row already headed for the audio relay is the one where a probe can still change
+  // the answer: it may carry a stereo track, in which case nothing needs converting.
+  if (verdict?.method === PLAYBACK_METHODS.AUDIO_TRANSCODE) {
+    return String(verdict?.reason || "").includes("multichannel");
+  }
+  if (verdict?.method !== PLAYBACK_METHODS.DIRECT && verdict?.method !== PLAYBACK_METHODS.REMUX) {
+    return false;
+  }
+  const channels = Number(verdict?.audioChannels) || 0;
+  // 0 means "the text did not say": still worth asking, because a 5.1 file usually
+  // arrives with no layout in its name at all.
+  return channels > 2 || channels === 0;
+}
 export function isTagCriticalVerdict(verdict, capabilities = {}) {
   return (
     verdict?.method === PLAYBACK_METHODS.DIRECT &&
@@ -56,6 +79,10 @@ export function selectRowsToProbe(
     });
     if (isTagCriticalVerdict(verdict, capabilities)) {
       if (important.length < limit) important.push({ ...row, reason: "tag" });
+      continue;
+    }
+    if (isAudioCriticalVerdict(verdict, capabilities)) {
+      if (important.length < limit) important.push({ ...row, reason: "audio" });
       continue;
     }
     if (verdict?.method === PLAYBACK_METHODS.UNKNOWN && certainty.length < certaintyLimit) {
@@ -142,7 +169,14 @@ export function createStreamProber({
         // classification blind to it.
         videoTag: String(data.videoTag || ""),
         audioCodec: String(data.audioCodec || "unknown"),
-        audioChannels: Number(data.audioChannels) || 0
+        audioChannels: Number(data.audioChannels) || 0,
+        audioStreams: Array.isArray(data.audioStreams)
+          ? data.audioStreams.map((track) => ({
+              index: Number(track?.index) || 0,
+              codec: String(track?.codec || "unknown").toLowerCase(),
+              channels: Number(track?.channels) || 0
+            }))
+          : []
       };
     } catch {
       return null;

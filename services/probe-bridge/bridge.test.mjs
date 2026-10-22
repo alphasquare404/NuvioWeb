@@ -27,6 +27,7 @@ test("ffprobe output is reduced to the facts the decision needs", () => {
     videoTag: "",
     audioCodec: "eac3",
     audioChannels: 0,
+    audioStreams: [{ index: 0, codec: "eac3", channels: 0 }],
     width: 1920,
     height: 800,
     durationSeconds: 3120.4
