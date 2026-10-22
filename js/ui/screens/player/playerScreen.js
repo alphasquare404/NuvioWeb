@@ -2278,6 +2278,13 @@ export const PlayerScreen = {
     this.selectedManifestSubtitleTrackId = null;
     this.hlsManifestSubtitlePromotionUrls = new Set();
     this.activePlaybackUrl = initialStreamUrl || null;
+    // A relay has nothing to serve until it has copied the film. When the list knows a
+    // source is relayed, it hands over a status URL for that exact source, and the
+    // player waits for it here instead of letting an eighteen-second stall guard turn
+    // a working relay into "Playback error".
+    this.relayPrepareUrl = String(params?.relayPrepare || "").trim();
+    this.relayPlaybackUrl = String(params?.relayPlaybackUrl || "").trim();
+    this.relayPrepareDone = false;
     this.resetPictureInPictureAvailability();
     this.pendingPlaybackRestore = buildPendingPlaybackRestore(params);
     this.trackDiscoveryToken = 0;
@@ -10496,6 +10503,13 @@ export const PlayerScreen = {
       return;
     }
 
+    // A relayed source has to exist before it can produce a frame. Waiting here keeps
+    // the spinner up and the stall guard unarmed: a server copying a film is not a
+    // playback error, and eighteen seconds is not long enough to copy one.
+    if (!(await this.awaitRelayedSource(streamUrl, mountToken))) {
+      return;
+    }
+
     if (this.offlineObjectUrl && String(streamUrl) !== this.offlineObjectUrl) {
       this.releaseOfflineObjectUrl();
     }
@@ -10887,6 +10901,58 @@ export const PlayerScreen = {
     this.scheduleBufferingSpinnerRefresh();
   },
 
+  /**
+   * Wait for a relayed source to exist before asking for a frame.
+   *
+   * A remux copies the whole film before it can serve one byte -- minutes, measured --
+   * while this screen gives a source eighteen seconds to produce a frame. That is not a
+   * playback failure, only a wait that had nowhere to happen, so it happens here: the
+   * spinner stays up, the stall guard is not armed yet, and the source is loaded when
+   * the server says it is ready.
+   *
+   * Returns true when the caller may proceed (ready, or nothing to wait for).
+   */
+  async awaitRelayedSource(streamUrl, mountToken = null) {
+    if (this.relayPrepareDone) return true;
+    const prepareUrl = String(this.relayPrepareUrl || "").trim();
+    if (
+      !prepareUrl ||
+      !this.relayPlaybackUrl ||
+      String(streamUrl || "") !== this.relayPlaybackUrl
+    ) {
+      return true;
+    }
+    const deadline = Date.now() + 15 * 60 * 1000;
+    let asked = false;
+    while (Date.now() < deadline) {
+      if (mountToken && !this.isActiveMountToken(mountToken)) return false;
+      let response = null;
+      try {
+        // `start=1` once, on the first call: it tells the server to begin the copy. The
+        // rest only ask how it is going, so a reload of the same source is not restarted.
+        response = await fetch(`${prepareUrl}${asked ? "" : "&start=1"}`, { cache: "no-store" });
+      } catch {
+        return true;
+      }
+      asked = true;
+      if (response.status === 429 || response.status === 503) {
+        // Busy or over budget: the server is not refusing the source, only its turn.
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        continue;
+      }
+      if (!response.ok) return true;
+      const data = await response.json().catch(() => null);
+      if (!data) return true;
+      if (data.state === "ready") {
+        this.relayPrepareDone = true;
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    // Nothing arrived in fifteen minutes: hand it to the normal path, whose error is
+    // more truthful than waiting for ever.
+    return true;
+  },
   getPlaybackStallTimeoutMs({ startup = false } = {}) {
     return startup ? 18000 : 9000;
   },

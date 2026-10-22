@@ -3282,102 +3282,6 @@ export const StreamScreen = {
   },
 
   /**
-   * Wait for the relay to have something to serve, showing that it is working.
-   *
-   * The alternative -- handing the relay URL to the player and hoping -- produces
-   * "Playback error: startup-stall" after eighteen seconds while the server is still
-   * copying a film that takes minutes. Nothing about that is the player's fault, so it
-   * is not the player's wait: the list asks the relay to start, says so, and only then
-   * opens the player, which finds a finished file and starts at once.
-   *
-   * Returns true when the source is ready to be played from the relay.
-   */
-  async prepareRelaySource(relayUrl, originalUrl) {
-    const base = String(REMUX_ENDPOINT || "")
-      .trim()
-      .replace(/\/+$/, "");
-    if (!base) return false;
-    // The status route is a path under the relay endpoint (`/api/remux/status`), not a
-    // query parameter on it: appending "?status" addressed the stream path instead,
-    // which starts a full remux and holds the connection until the film is copied.
-    const statusUrl = `${base}/status`;
-    const queryFor = (extra = "") => `${statusUrl}?u=${encodeURIComponent(originalUrl)}${extra}`;
-    const overlay = this.showRelayPreparing();
-    const started = Date.now();
-    try {
-      let first = true;
-      for (let attempt = 0; attempt < 240; attempt += 1) {
-        let response;
-        try {
-          response = await fetch(queryFor(first ? "&start=1" : ""), { cache: "no-store" });
-        } catch {
-          return false;
-        }
-        if (response.status === 429 || response.status === 503) {
-          // Busy or over budget: worth waiting a moment, but the user is told why.
-          overlay?.update?.("Server sedang menyiapkan film lain…", attempt);
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          first = false;
-          continue;
-        }
-        if (!response.ok) return false;
-        const data = await response.json().catch(() => null);
-        if (data?.state === "ready") return true;
-        if (!data) return false;
-        const seconds = Math.round((Date.now() - started) / 1000);
-        overlay?.update?.(`Menyiapkan untuk diputar… ${seconds} detik`, attempt);
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        first = false;
-      }
-      return false;
-    } finally {
-      overlay?.close?.();
-    }
-  },
-
-  showRelayPreparing() {
-    if (typeof document === "undefined" || !document.body) return null;
-    const host = document.createElement("div");
-    host.setAttribute("role", "status");
-    host.style.cssText =
-      "position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;gap:10px;" +
-      "align-items:center;justify-content:center;background:rgba(0,0,0,0.88);color:#f2f2f2;" +
-      "font:600 15px/1.4 system-ui,-apple-system,sans-serif;text-align:center;padding:24px;";
-    const title = document.createElement("div");
-    title.textContent = "Menyiapkan untuk diputar…";
-    title.style.cssText = "font-size:17px;";
-    const hint = document.createElement("div");
-    hint.textContent =
-      "Server menyalin berkas ini sekali saja. Setelah selesai, tap berikutnya langsung jalan.";
-    hint.style.cssText =
-      "font:400 13px/1.5 system-ui,-apple-system,sans-serif;opacity:.75;max-width:320px;";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.textContent = "Batal";
-    cancel.style.cssText =
-      "margin-top:6px;padding:8px 18px;border-radius:10px;border:1px solid rgba(255,255,255,.3);" +
-      "background:transparent;color:#f2f2f2;font:600 13px system-ui,-apple-system,sans-serif;";
-    let cancelled = false;
-    cancel.addEventListener("click", () => {
-      cancelled = true;
-      host.remove();
-    });
-    host.append(title, hint, cancel);
-    document.body.append(host);
-    return {
-      update(text) {
-        if (!cancelled) title.textContent = text;
-      },
-      close() {
-        host.remove();
-      },
-      get cancelled() {
-        return cancelled;
-      }
-    };
-  },
-
-  /**
    * The URL the in-app player should open for this row.
    *
    * The ladder has already answered whether the audio track alone is the problem.
@@ -3406,21 +3310,10 @@ export const StreamScreen = {
       // in the router is what lets a `.mp4` that needs a retag be repaired -- the
       // router only knows to wrap an `.mkv`.
       if (verdict.method === PLAYBACK_METHODS.REMUX && REMUX_ENDPOINT) {
-        // A remux copies the whole film before the first byte can be served, which is
-        // far longer than a player will wait -- measured: a 3.4 GB webrip needs
-        // minutes, the player gives up at eighteen seconds and shows "startup-stall".
-        // Preparing is therefore its own step, with its own screen, instead of
-        // something the player is asked to sit through.
-        const relayUrl = buildRemuxUrl(url, REMUX_ENDPOINT);
-        // A failure here must not swallow the tap: the player can still be opened with
-        // the original link, which is a worse experience but an honest one.
-        let ready = false;
-        try {
-          ready = await this.prepareRelaySource(relayUrl, url);
-        } catch {
-          ready = false;
-        }
-        return ready ? relayUrl : url;
+        // The player is told how to wait for this source instead of being asked to sit
+        // through the copy: a remux needs minutes before its first byte, and the
+        // player's own patience is eighteen seconds.
+        return buildRemuxUrl(url, REMUX_ENDPOINT);
       }
       return url;
     }
@@ -3590,6 +3483,16 @@ export const StreamScreen = {
       episodes: Array.isArray(this.params?.episodes) ? this.params.episodes : [],
       streamCandidates: playerStreamCandidates,
       preferredStreamId: selected.id,
+      // A relayed source cannot be ready when the player opens it: the server has to
+      // copy the film first. The player is given the status URL for this exact source
+      // so it can wait, with its spinner, before it asks for a frame.
+      relayPrepare:
+        REMUX_ENDPOINT && String(playerSource || "").startsWith(String(REMUX_ENDPOINT).trim())
+          ? `${String(REMUX_ENDPOINT).trim().replace(/\/+$/, "")}/status?u=${encodeURIComponent(
+              String(selected?.url || selected?.externalUrl || "").trim()
+            )}`
+          : null,
+      relayPlaybackUrl: playerSource || null,
       playbackSourceContext: selected.streamOrigin || {
         addonId: selected.addonId || "",
         addonBaseUrl: selected.addonBaseUrl || "",
