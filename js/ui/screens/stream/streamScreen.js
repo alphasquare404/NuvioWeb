@@ -2745,6 +2745,11 @@ export const StreamScreen = {
     const showAddonLogo = badgeSettings.showAddonLogo === true;
     const addonLogosReady = !showAddonLogo || !filtered.length || this.areAddonLogosReady(filtered);
 
+    // Probing used to be scheduled from a rendered card, which meant a list filtered down
+    // to nothing never asked for a single probe -- and so could never fill itself. The list
+    // asks here, where it runs whether or not a card survives the filter.
+    this.scheduleUnknownProbes();
+
     let body = "";
     if (filtered.length && addonLogosReady) {
       body = filtered
@@ -2763,7 +2768,15 @@ export const StreamScreen = {
     } else if (this.error) {
       body = `<div class="stream-route-empty">${escapeHtml(this.error)}</div>`;
     } else if (!filtered.length) {
-      body = `<div class="stream-route-empty">No sources found for this filter.</div>`;
+      body = `<div class="stream-route-empty">${escapeHtml(
+        this._probePending?.size
+          ? t(
+              "stream_empty_checking",
+              {},
+              "Checking the sources… this list fills as answers arrive."
+            )
+          : t("stream_empty_filter", {}, "No sources found for this filter.")
+      )}</div>`;
     }
     const offlineCopies = (this.offlineLocalCopies || [])
       .map((download) => this.renderOfflineCopyRow(download))

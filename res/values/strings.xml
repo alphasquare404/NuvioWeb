@@ -1511,6 +1511,8 @@
     <string name="settings_stream_label_addons_placeholder">Comma separated addon names, empty for all</string>
     <string name="settings_stream_only_direct">Only show Direct streams</string>
     <string name="settings_stream_only_direct_description">Hide every row that would need a relay or a re-encode, so only files that play as they are remain.</string>
+    <string name="stream_empty_checking">Checking the sources… this list fills as answers arrive.</string>
+    <string name="stream_empty_filter">No sources found for this filter.</string>
     <string name="stream_panel_checking">Checking %1$s stream(s)…</string>
     <string name="stream_label_checking">Checking…</string>
     <string name="stream_label_unknown">Unknown</string>
