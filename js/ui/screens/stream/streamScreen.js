@@ -3442,6 +3442,33 @@ export const StreamScreen = {
     // A downloaded file is already on this device; it is never relayed.
     const playerSource = offlineObjectUrl || (await this.resolvePlayerSource(selected));
 
+    // One line, so a tap that goes wrong can be explained from the phone instead of
+    // guessed at: which delivery the app chose, where it points, and with what plan.
+    // Without it, "the player ended in two seconds" was indistinguishable from a relay
+    // that was never asked -- and the server log showed it was never asked.
+    if (Platform.isBrowser()) {
+      const source = String(playerSource || "");
+      const kind = !source
+        ? "none"
+        : source.includes("/hls/index.m3u8")
+          ? "hls-playlist"
+          : source.includes("/api/transcode")
+            ? "transcode-file"
+            : source.includes("/api/remux")
+              ? "remux-file"
+              : "direct";
+      let host = "";
+      try {
+        host = new URL(source, location.href).host;
+      } catch {
+        host = "";
+      }
+      const video = /[?&]v=([a-z0-9]+)/i.exec(source)?.[1] || "";
+      const audio = /[?&]a=([a-z0-9]+)/i.exec(source)?.[1] || "";
+      const plan = video ? ` plan=v${video}-a${audio}` : "";
+      console.warn(`[Playback] source kind=${kind} host=${host || "-"}${plan}`);
+    }
+
     const playbackParams = {
       streamUrl: playerSource || null,
       itemId: this.params?.itemId || null,
