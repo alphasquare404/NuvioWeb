@@ -4,19 +4,62 @@ import path from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { buildRuntimeEnvScript, readEnvProperties } from "./envProperties.mjs";
+import {
+  FEATURE_DEFAULTS,
+  FEATURE_SWITCHES,
+  buildRuntimeEnvScript,
+  isFeatureEnabled,
+  readEnvProperties
+} from "./envProperties.mjs";
 import { createDebridApiBridgeHandler } from "../services/debrid-api-bridge/bridge.mjs";
 import { createExternalReturnHandler } from "../services/external-return-bridge/bridge.mjs";
 import { createTraktAuthBridgeHandler } from "../services/trakt-auth-bridge/bridge.mjs";
 import { createIntrodbBridgeHandler } from "../services/introdb-bridge/bridge.mjs";
 import { createRemuxBridgeHandler } from "../services/remux-bridge/bridge.mjs";
 import { createProbeBridgeHandler } from "../services/probe-bridge/bridge.mjs";
+import { createTranscodeBridgeHandler } from "../services/transcode-bridge/bridge.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
+// Switches a deployment can flip without touching code. They are read here, at
+// start-up, and are the runtime truth: a bridge that is off answers the same shape as
+// one that was never built, so a client sees a clear "not offered" instead of a
+// half-working endpoint. Endpoints in the bundle still decide whether the app *tries*.
+const envFlag = (name, fallback = true) => {
+  const raw = String(process.env[name] ?? "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return fallback;
+  return !["0", "false", "no", "off", "disabled"].includes(raw);
+};
+const featureEnabled = {
+  probe: envFlag("PROBE_ENABLED", FEATURE_DEFAULTS.PROBE_ENABLED),
+  remux: envFlag("REMUX_ENABLED", FEATURE_DEFAULTS.REMUX_ENABLED),
+  transcode: envFlag("TRANSCODE_ENABLED", FEATURE_DEFAULTS.TRANSCODE_ENABLED)
+};
+// The paths this server mounts. A feature that is on and not given an endpoint gets
+// its own, which is what makes "probe is on by default" true without configuration.
+const FEATURE_PATHS = {
+  PROBE_ENDPOINT: "/api/probe",
+  REMUX_ENDPOINT: "/api/remux",
+  TRANSCODE_ENDPOINT: "/api/transcode"
+};
+function refuseDisabled(response, name) {
+  response.writeHead(404, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff"
+  });
+  response.end(JSON.stringify({ ok: false, error: "disabled", feature: name }));
+}
+// Said out loud at start-up: "which relays are on" is the first question an operator
+// asks, and it used to be discoverable only by probing endpoints one by one.
+console.log(
+  `[relays] probe=${featureEnabled.probe} remux=${featureEnabled.remux} transcode=${featureEnabled.transcode}`
+);
 const mediaRuntimePath = path.join(rootDir, "services", "webos", "runtime", "media-http.cjs");
 const mediaServerPorts = [2710, 2711, 2712, 2713, 2714];
 const mediaProbeTimeoutMs = 1200;
@@ -44,10 +87,34 @@ const probeBridgeHandler = createProbeBridgeHandler({
 });
 const remuxBridgeHandler = createRemuxBridgeHandler({
   ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+  // Deployment policy. One relay at a time by default: a remux is a copy of a whole
+  // film, so the limit that matters on a home connection is how many run at once.
+  maxConcurrent: Number(process.env.REMUX_MAX_CONCURRENT ?? 1) || 0,
+  perIpConcurrent: Number(process.env.REMUX_PER_IP_CONCURRENT ?? 1) || 0,
+  maxSourceBytes: Number(process.env.REMUX_MAX_SOURCE_BYTES ?? 4 * 1024 * 1024 * 1024) || 0,
+  dailyBudgetBytes: Number(process.env.REMUX_DAILY_BUDGET_BYTES ?? 0) || 0,
   allowHosts: String(process.env.REMUX_ALLOW_HOSTS || "")
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean)
+});
+// The audio half of "this will not play": the picture is fine and the audio track
+// is not (E-AC3, DTS, TrueHD). Where remux moves bytes, this one spends CPU, so it
+// is mounted whether or not anyone may use it and the access mode decides: `token`
+// is the default and it refuses everything until the deployment sets a token, and
+// `lan` judges the caller by the address a tunnel forwards, not by the socket.
+const transcodeBridgeHandler = createTranscodeBridgeHandler({
+  ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+  access: process.env.TRANSCODE_ACCESS || "token",
+  token: process.env.TRANSCODE_TOKEN || "",
+  bitrate: process.env.TRANSCODE_AUDIO_BITRATE || "192k",
+  // Transcoding is the expensive one, so it is the most tightly limited by default:
+  // one production at a time and a 2 GB source ceiling. An audio-only pass is cheap,
+  // but the same knobs have to hold a full re-encode if a deployment enables it.
+  maxConcurrent: Number(process.env.TRANSCODE_MAX_CONCURRENT ?? 1) || 0,
+  perIpConcurrent: Number(process.env.TRANSCODE_PER_IP_CONCURRENT ?? 1) || 0,
+  maxSourceBytes: Number(process.env.TRANSCODE_MAX_SOURCE_BYTES ?? 2 * 1024 * 1024 * 1024) || 0,
+  dailyBudgetBytes: Number(process.env.TRANSCODE_DAILY_BUDGET_BYTES ?? 0) || 0
 });
 
 const mimeTypes = {
@@ -242,20 +309,41 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     if (requestUrl.pathname.startsWith("/api/probe")) {
+      if (!featureEnabled.probe) return refuseDisabled(response, "probe");
       await probeBridgeHandler(request, response);
       return;
     }
     if (requestUrl.pathname.startsWith("/api/remux")) {
+      if (!featureEnabled.remux) return refuseDisabled(response, "remux");
       await remuxBridgeHandler(request, response);
+      return;
+    }
+    if (requestUrl.pathname.startsWith("/api/transcode")) {
+      if (!featureEnabled.transcode) return refuseDisabled(response, "transcode");
+      await transcodeBridgeHandler(request, response);
       return;
     }
     if (requestUrl.pathname === "/nuvio.env.js") {
       const { env } = await readEnvProperties({ rootDir });
+      // This is where a deployment's one switch becomes the app's answer. The
+      // endpoints are read at runtime (js/config.js prefers __NUVIO_ENV__), so a
+      // feature turned off here bakes an empty endpoint for this page load and the app
+      // stops calling it -- no rebuild, and the badge says "unavailable" rather than
+      // naming a relay that is switched off. A feature that is on but has no explicit
+      // endpoint gets the path this server actually mounts.
+      const resolved = { ...env };
+      Object.entries(FEATURE_SWITCHES).forEach(([switchKey, endpointKey]) => {
+        const raw = String(process.env[switchKey] ?? "").trim();
+        const on = isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey]);
+        resolved[endpointKey] = on
+          ? String(env[endpointKey] || "").trim() || FEATURE_PATHS[endpointKey]
+          : "";
+      });
       response.writeHead(200, {
         "Cache-Control": "no-store",
         "Content-Type": "application/javascript; charset=utf-8"
       });
-      response.end(buildRuntimeEnvScript(env));
+      response.end(buildRuntimeEnvScript(resolved));
       return;
     }
 
