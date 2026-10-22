@@ -326,11 +326,7 @@ test("a plan the bridge cannot perform is refused by name", async () => {
     assert.equal(video.status, 501);
     const payload = await video.json();
     assert.equal(payload.error, "plan-not-offered");
-    assert.deepEqual(payload.offered, { video: "copy", audio: "aac" });
-
-    const audioCopy = await fetch(`${base}/api/transcode?${u}&a=copy`);
-    assert.equal(audioCopy.status, 501);
-    await audioCopy.arrayBuffer();
+    assert.deepEqual(payload.offered, { video: "copy", audio: "aac", audioModes: ["aac", "copy"] });
 
     assert.equal((await readdir(workDir)).length, 0, "nothing was transcoded");
   });
@@ -413,7 +409,7 @@ test("health advertises the delivery the app may ask for", async () => {
     const response = await fetch(`${base}/api/transcode/health`);
     const body = await response.json();
     assert.equal(body.hls, true);
-    assert.deepEqual(body.offered, { video: "copy", audio: "aac" });
+    assert.deepEqual(body.offered, { video: "copy", audio: "aac", audioModes: ["aac", "copy"] });
   });
 });
 

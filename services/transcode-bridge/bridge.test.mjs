@@ -138,7 +138,7 @@ test("the bridge only performs the plans it advertises", () => {
   // a copy is exactly the file the device already said it cannot play.
   assert.equal(isPlanOffered({ video: "copy", audio: "aac" }), true);
   assert.equal(isPlanOffered({ video: "h264", audio: "aac" }), false);
-  assert.equal(isPlanOffered({ video: "copy", audio: "copy" }), false);
+  // `audio: copy` used to be refused; it is the remux shape and is now offered as\n  // HLS, so it must be accepted here while a re-encode stays refused.\n  assert.equal(isPlanOffered({ video: "copy", audio: "copy" }), true);
 });
 
 test("the plan is part of the cache key, because it is part of the output", () => {
@@ -272,4 +272,30 @@ test("a silent hls job is idle, a finished one never is", () => {
   );
   // A job that has only ever been created is aged from its creation time.
   assert.equal(hlsJobIsIdle({ lastUsed: at - 120_000 }, { at, idleMs }), true);
+});
+
+test("the remux shape is offered: copy the picture, copy the audio", () => {
+  // The container needs fixing, the audio does not. Delivered as HLS this is what makes
+  // a film start in seconds instead of after a full copy.
+  assert.equal(isPlanOffered({ video: "copy", audio: "copy" }), true);
+  assert.equal(isPlanOffered({ video: "copy", audio: "aac" }), true);
+  // Still refused: a re-encode asked for and approximated would ship the file the
+  // device already rejected.
+  assert.equal(isPlanOffered({ video: "h264", audio: "copy" }), false);
+
+  const plan = parseTranscodePlan(new URLSearchParams("v=copy&a=copy"));
+  assert.equal(plan.ok, true);
+  assert.equal(plan.plan.audio, "copy");
+});
+
+test("an hls command that copies audio does not encode it", () => {
+  const args = hlsArgs("https://cdn.test/a.mkv", "jobdir", {
+    videoTag: "hvc1",
+    plan: { video: "copy", audio: "copy", height: 0, channels: 2 }
+  });
+  assert.equal(args.includes("-c:a"), true);
+  assert.equal(args[args.indexOf("-c:a") + 1], "copy");
+  assert.equal(args.includes("-b:a"), false, "copied audio has no bitrate to set");
+  assert.equal(args.includes("-c:v"), true);
+  assert.equal(args[args.indexOf("-c:v") + 1], "copy");
 });

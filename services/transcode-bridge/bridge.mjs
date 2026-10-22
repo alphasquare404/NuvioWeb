@@ -197,7 +197,11 @@ export function parseTranscodePlan(searchParams) {
  * the device already refused.
  */
 export function isPlanOffered(plan) {
-  return plan?.video === "copy" && plan?.audio === "aac";
+  if (plan?.video !== "copy") return false;
+  // `audio: copy` is the remux shape: the container needs fixing, the audio does not.
+  // Delivering it as HLS is what lets a film start playing in seconds instead of after
+  // the whole file has been copied -- the same trick the audio path already uses.
+  return plan?.audio === "aac" || plan?.audio === "copy";
 }
 
 /** The codec half of the command, shared by every delivery shape. */
@@ -913,7 +917,7 @@ export function createTranscodeBridgeHandler({
         ok: false,
         error: "plan-not-offered",
         plan: planResult.plan,
-        offered: { video: "copy", audio: "aac" }
+        offered: { video: "copy", audio: "aac", audioModes: ["aac", "copy"] }
       });
       return null;
     }
@@ -1027,7 +1031,7 @@ export function createTranscodeBridgeHandler({
         ok: true,
         access: normalizeAccess(access),
         hls: true,
-        offered: { video: "copy", audio: "aac" },
+        offered: { video: "copy", audio: "aac", audioModes: ["aac", "copy"] },
         maxConcurrent,
         active: running.size,
         busy: maxConcurrent > 0 && running.size >= maxConcurrent,
