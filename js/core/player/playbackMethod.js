@@ -130,6 +130,12 @@ function codecSupported(codec, capabilities = {}) {
       return capabilities.opus === true;
     case "aac":
       return capabilities.aac !== false;
+    case "mpeg4":
+    case "mp4v":
+      // MPEG-4 Part 2: no browser and no iPhone plays it inside <video>. Measured on a
+      // real stream whose probe reported `mpeg4` / `mp4v` -- the ladder used to see only
+      // its AC-3 track and promise an audio conversion for a picture nothing can decode.
+      return false;
     default:
       // Unknown is not evidence of a problem: assume the device copes, and let the
       // probe or the first failure correct it.
