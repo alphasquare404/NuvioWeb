@@ -49,3 +49,12 @@ test("byte ranges are clamped to the file, and nonsense is refused", () => {
   assert.equal(parseByteRange("", 1000), null);
   assert.equal(parseByteRange("bytes=0-10", 0), null);
 });
+
+test("audio track selection belongs in the remux identity and rejects invalid indices", () => {
+  const first = parseRemuxSource("https://cdn.test/a.mkv");
+  const second = parseRemuxSource("https://cdn.test/a.mkv", { audioIndex: 1 });
+  assert.notEqual(first.key, second.key);
+  assert.equal(second.audioIndex, 1);
+  for (const audioIndex of [-1, 1.5, 128, "bad"])
+    assert.equal(parseRemuxSource("https://cdn.test/a.mkv", { audioIndex }).ok, false);
+});

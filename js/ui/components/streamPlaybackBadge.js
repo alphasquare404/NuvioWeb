@@ -1,12 +1,8 @@
-import {
-  classifyPlayback,
-  detectContainer,
-  playbackMethodTone
-} from "../../core/player/playbackMethod.js";
+import { classifyPlayback, playbackMethodTone } from "../../core/player/playbackMethod.js";
 
 // The label that answers "how will this stream be played?" before anyone presses
-// play. Three costs, three colours: green for a container swap, yellow for audio
-// only, red for a re-encode.
+// play. Three costs, three colours: green for direct, yellow for remux,
+// orange for audio conversion, red for full conversion.
 
 const LABELS = {
   unknown: "Unknown",
@@ -82,17 +78,6 @@ export function renderStreamPlaybackBadge({
   // read as h264, `AAC5.1` was really E-AC-3. So the text may only *exclude* a row that
   // nothing can open; every other label waits for the probe.
   if (!probe) {
-    // The exclusion comes first, and it is not something a probe could change: an MKV on a
-    // deployment with no relay cannot play, so saying "Checking…" would only delay the
-    // truth. Everything else waits for its answer.
-    const container = detectContainer(`${url} ${label}`);
-    const relayed = Boolean(remuxAvailable || transcodeAvailable);
-    const impossible =
-      (container === "mkv" || container === "ts" || container === "avi") && !relayed;
-    if (impossible) {
-      const palette = COLORS.neutral;
-      return `<span class="stream-playback-badge" title="this container needs a relay, and this deployment runs none" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(UNSUPPORTED_LABEL)}</span>`;
-    }
     if (probing) {
       const palette = COLORS.neutral;
       return `<span class="stream-playback-badge" title="asking the server what this file really is" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(PROBING_LABEL)}</span>`;
@@ -102,28 +87,37 @@ export function renderStreamPlaybackBadge({
   }
   const result = describePlaybackMethod({ url, label, probe, capabilities });
   const unavailable =
-    (!transcodeAvailable && result.method === "audio-transcode") ||
-    (!remuxAvailable && result.method === "remux");
-  const tone = unavailable ? "neutral" : playbackMethodTone(result.method);
+    (transcodeAvailable === false && result.method === "audio-transcode") ||
+    (remuxAvailable === false && result.method === "remux");
+  const unverified =
+    (transcodeAvailable == null && result.method === "audio-transcode") ||
+    (remuxAvailable == null && result.method === "remux");
+  const tone = unavailable || unverified ? "neutral" : playbackMethodTone(result.method);
   const palette = COLORS[tone] || COLORS.neutral;
   // Say what is being changed, not just that something is. "Transcode" alone leaves the
   // question the label exists to answer open: can this play, and what will happen to it?
   const audioCodec = String(result.audioCodec || "").toLowerCase();
   const audioConversion =
-    audioCodec === "aac" ? "5.1→2.0" : `${audioCodec ? audioCodec.toUpperCase() : "audio"}→AAC`;
-  const text = unavailable
-    ? result.method === "remux"
-      ? REMUX_UNAVAILABLE_LABEL
-      : TRANSCODE_UNAVAILABLE_LABEL
-    : result.method === "audio-transcode"
-      ? `${LABELS[result.method]} ${audioConversion}`
-      : LABELS[result.method] || "Direct";
-  const detail = unavailable
-    ? result.method === "remux"
-      ? "this deployment does not run a remux endpoint"
-      : "this deployment does not run a transcode endpoint"
-    : result.confidence === "exact"
-      ? result.reason
-      : `${result.reason} (perkiraan)`;
-  return `<span class="stream-playback-badge" title="${escapeHtml(detail)}" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(text)}</span>`;
+    audioCodec === "aac"
+      ? "audio→AAC 2.0"
+      : `${audioCodec ? audioCodec.toUpperCase() : "audio"}→AAC`;
+  const text = unverified
+    ? `${result.method === "remux" ? "Remux" : "Transcode"} (unverified)`
+    : unavailable
+      ? result.method === "remux"
+        ? REMUX_UNAVAILABLE_LABEL
+        : TRANSCODE_UNAVAILABLE_LABEL
+      : result.method === "audio-transcode"
+        ? `${LABELS[result.method]} ${audioConversion}`
+        : LABELS[result.method] || "Direct";
+  const hdr = ["smpte2084", "arib-std-b67"].includes(probe?.colorTransfer);
+  const displayText = result.method === "direct" && hdr ? "Direct : HDR" : text;
+  const detail = unverified
+    ? "relay availability has not been verified"
+    : unavailable
+      ? result.method === "remux"
+        ? "the remux service is unavailable"
+        : "the audio transcode service is unavailable or access is missing"
+      : `${result.reason} (${result.confidence === "predicted" ? "device prediction; playback not verified" : "perkiraan"})`;
+  return `<span class="stream-playback-badge" title="${escapeHtml(`${detail}${hdr ? "; HDR source metadata; HDR display/tone mapping not verified" : ""}`)}" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(displayText)}</span>`;
 }

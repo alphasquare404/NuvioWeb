@@ -4,6 +4,7 @@ import { detectDeviceCapabilities } from "../../core/player/deviceCapabilities.j
 import { renderStreamPlaybackBadge } from "./streamPlaybackBadge.js";
 
 const ALL = {
+  containers: { mp4: true, webm: true, mkv: false, ts: false, avi: false },
   h264: true,
   hevc: true,
   av1: true,
@@ -18,7 +19,7 @@ function fakePlatform(supported) {
   return { isTypeSupported: (type) => supported.some((entry) => type.includes(entry)) };
 }
 
-test("capabilities are read from the platform, and missing APIs mean no", () => {
+test("capabilities distinguish an explicit refusal from an unavailable API", () => {
   const none = detectDeviceCapabilities(fakePlatform([]));
   assert.equal(none.h264, false);
   assert.equal(none.hevc, false);
@@ -34,7 +35,7 @@ test("capabilities are read from the platform, and missing APIs mean no", () => 
       throw new Error("nope");
     }
   });
-  assert.equal(broken.h264, false);
+  assert.equal(broken.h264, null);
 });
 
 test("the badge sits in the top right corner and is rounded", () => {
@@ -130,7 +131,7 @@ test("a deployment without a transcode endpoint says so instead of promising one
   const args = {
     url: "https://cdn/a.mp4",
     label: "1080p x264 DDP5.1",
-    capabilities: { h264: true, aac: true, eac3: false }
+    capabilities: { containers: { mp4: true, mkv: false }, h264: true, aac: true, eac3: false }
   };
   const promised = renderStreamPlaybackBadge({
     ...args,
@@ -146,7 +147,7 @@ test("a deployment without a transcode endpoint says so instead of promising one
     transcodeAvailable: false
   });
   assert.match(unavailable, />Transcode \(unavailable\)</);
-  assert.match(unavailable, /this deployment does not run a transcode endpoint/);
+  assert.match(unavailable, /the audio transcode service is unavailable or access is missing/);
   // Neutral, not orange: the card must not look like an offer it cannot honour.
   assert.match(unavailable, /rgba\(120,120,120/);
 
@@ -155,7 +156,7 @@ test("a deployment without a transcode endpoint says so instead of promising one
     url: "https://cdn/a.mp4",
     label: "1080p x264 AAC",
     probe: { container: "mp4", videoCodec: "h264", audioCodec: "aac" },
-    capabilities: { h264: true, aac: true },
+    capabilities: { containers: { mp4: true, mkv: false }, h264: true, aac: true },
     transcodeAvailable: false
   });
   assert.match(direct, />Direct</);
@@ -166,7 +167,7 @@ test("remux is described the same way when the deployment cannot relay it", () =
   const args = {
     url: "https://cdn/a.mkv",
     label: "1080p HEVC AAC",
-    capabilities: { h264: true, hevc: true, aac: true }
+    capabilities: { containers: { mp4: true, mkv: false }, h264: true, hevc: true, aac: true }
   };
   const offered = renderStreamPlaybackBadge({
     ...args,
@@ -181,6 +182,25 @@ test("remux is described the same way when the deployment cannot relay it", () =
     remuxAvailable: false
   });
   assert.match(unavailable, />Remux \(unavailable\)</);
-  assert.match(unavailable, /does not run a remux endpoint/);
+  assert.match(unavailable, /remux service is unavailable/);
   assert.match(unavailable, /rgba\(120,120,120/);
+});
+
+test("configured but unchecked relay is distinct from a working service", () => {
+  const html = renderStreamPlaybackBadge({
+    probe: { container: "mkv", videoCodec: "h264", audioCodec: "aac" },
+    capabilities: ALL,
+    remuxAvailable: null
+  });
+  assert.match(html, />Remux \(unverified\)</);
+  assert.match(html, /rgba\(120,120,120/);
+});
+test("the red full-transcode label stays diagnostic even without a service", () => {
+  const html = renderStreamPlaybackBadge({
+    probe: { container: "mp4", videoCodec: "av1", audioCodec: "aac" },
+    capabilities: { av1: false, aac: true },
+    transcodeAvailable: false
+  });
+  assert.match(html, />Transcode</);
+  assert.match(html, /rgba\(163,42,42/);
 });

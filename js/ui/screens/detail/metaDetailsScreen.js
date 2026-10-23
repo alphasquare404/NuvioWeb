@@ -1,3 +1,5 @@
+import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
+import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
 import {
   StartupLoadingOverlay,
   usesUnifiedStartup
@@ -3436,7 +3438,14 @@ export const MetaDetailsScreen = {
       selectedPlugins: settings.streamAutoPlaySelectedPlugins
     };
     const eligible = filterAutoPlaySourceStreams(streams, selectionOptions);
-    const prober = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 15000 });
+    const prober = createStreamProber({
+      endpoint: PROBE_ENDPOINT,
+      timeoutMs: 15000,
+      assess: (probe) =>
+        assessPlaybackCapabilities(probe, {
+          engine: shouldUseMovi(PlayerSettingsStore.get()) ? "movi" : "native"
+        })
+    });
     if (!prober.enabled || !eligible.length) return { ...resolution, selected: null };
 
     // Apply autoplay source permissions before spending resolution and probe budgets.

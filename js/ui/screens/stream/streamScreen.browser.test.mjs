@@ -214,14 +214,19 @@ async function probeTestScreen(name, limit, run) {
   const saved = {
     env: globalThis.__NUVIO_ENV__,
     fetch: globalThis.fetch,
-    media: globalThis.MediaSource
+    media: globalThis.MediaSource,
+    document: globalThis.document
   };
   const requests = [];
   globalThis.__NUVIO_ENV__ = {
     PROBE_ENDPOINT: "https://probe.test/probe",
-    PROBE_PAGE_LIMIT: limit
+    PROBE_PAGE_LIMIT: limit,
+    REMUX_ENDPOINT: "/api/remux"
   };
   globalThis.MediaSource = { isTypeSupported: () => true };
+  globalThis.document = {
+    createElement: () => ({ canPlayType: (type) => (type.includes("matroska") ? "" : "probably") })
+  };
   globalThis.fetch = async (url) => {
     requests.push(new URL(url).searchParams.get("u"));
     return { ok: true, json: async () => ({ ok: true, ...directProbe }) };
@@ -250,6 +255,7 @@ async function probeTestScreen(name, limit, run) {
     globalThis.__NUVIO_ENV__ = saved.env;
     globalThis.fetch = saved.fetch;
     globalThis.MediaSource = saved.media;
+    globalThis.document = saved.document;
     globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = saved.badgeSettings;
     globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = saved.playerSettings;
   }
@@ -434,4 +440,44 @@ test("late labels cannot autoplay or resume after Finding stream has finished", 
   } finally {
     globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = saved;
   }
+});
+
+test("filename container hints do not exclude an otherwise eligible probe", async () => {
+  await probeTestScreen("probe-file-facts", 1, async (screen) => {
+    screen.streams = screen.streams.map((stream) => ({
+      ...stream,
+      name: "Addon claims movie.mkv"
+    }));
+    const candidates = screen.getProbeCandidates();
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].id, screen.streams[0].id);
+  });
+});
+
+test("source preparation uses the MKV capability verdict even when remux is configured", async () => {
+  await probeTestScreen("remux-verdict", 0, async (screen) => {
+    const source = { url: "https://media.test/source.mkv", name: "H264 AAC" };
+    const relayCalls = [];
+    screen.remuxPlaylistUrl = async (url) => {
+      relayCalls.push(url);
+      return "/api/remux/hls/test/index.m3u8";
+    };
+    screen.isPlayableHlsPlaylist = async () => true;
+    for (const containerSupported of [true, false]) {
+      screen._probeResults.set(source.url, {
+        ...directProbe,
+        container: "mkv",
+        playbackCapabilities: {
+          engine: "native",
+          video: true,
+          container: containerSupported,
+          audio: [{ index: 0, supported: true }],
+          relayVideo: true
+        }
+      });
+      const prepared = await screen.resolvePlayerSource(source);
+      assert.equal(prepared, containerSupported ? source.url : "/api/remux/hls/test/index.m3u8");
+      assert.equal(relayCalls.length, containerSupported ? 0 : 1);
+    }
+  });
 });

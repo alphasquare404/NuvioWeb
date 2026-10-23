@@ -11085,7 +11085,7 @@ export const PlayerScreen = {
       );
       const source = parsed.searchParams.get("u");
       if (!source) return "unknown";
-      prepareUrl = `${parsed.origin}/api/remux/status?u=${encodeURIComponent(source)}`;
+      prepareUrl = `${parsed.origin}/api/remux/status?u=${encodeURIComponent(source)}&ai=${encodeURIComponent(parsed.searchParams.get("ai") || "0")}`;
     } catch {
       return "unknown";
     }
@@ -11113,7 +11113,7 @@ export const PlayerScreen = {
         );
         const source = parsed.searchParams.get("u");
         if (source)
-          prepareUrl = `${parsed.origin}/api/remux/status?u=${encodeURIComponent(source)}`;
+          prepareUrl = `${parsed.origin}/api/remux/status?u=${encodeURIComponent(source)}&ai=${encodeURIComponent(parsed.searchParams.get("ai") || "0")}`;
       } catch {
         prepareUrl = "";
       }

@@ -20,8 +20,7 @@ export const PLAYBACK_METHODS = Object.freeze({
   TRANSCODE: "transcode"
 });
 
-// Colours the UI applies. Green is a container fix, yellow is audio only, red is a
-// re-encode — the three levels deserve to be told apart at a glance.
+// Direct is green, remux yellow, audio conversion orange, full conversion red.
 export const PLAYBACK_METHOD_TONES = Object.freeze({
   [PLAYBACK_METHODS.UNKNOWN]: "neutral",
   [PLAYBACK_METHODS.DIRECT]: "green",
@@ -70,9 +69,8 @@ const AUDIO_HINTS = [
 /**
  * How many channels the text claims.
  *
- * `AAC5.1` and `DDP5.1` glue the layout to the codec, and an iPhone plays AAC stereo but
- * not multichannel AAC: the picture runs and the audio is silent, which is the worst kind
- * of failure because nothing reports an error. Numbers only; 0 means "not stated".
+ * `AAC5.1` and `DDP5.1` glue the layout to the codec.
+ * Numbers only; 0 means "not stated". Capability is assessed separately.
  */
 export function detectAudioChannels(text = "") {
   const value = String(text || "");
@@ -90,8 +88,8 @@ export function detectContainer(url = "") {
   if (HLS.test(value)) return "hls";
   if (DASH.test(value)) return "dash";
   if (MKV.test(value) || MKV_WORD.test(value)) return "mkv";
-  if (AVI.test(value)) return "mkv"; // same problem for the player: no native support
-  if (M2TS.test(value)) return "mkv";
+  if (AVI.test(value)) return "avi";
+  if (M2TS.test(value)) return "ts";
   if (WEBM.test(value)) return "webm";
   if (MP4.test(value) || MP4_WORD.test(value)) return "mp4";
   if (TS.test(value)) return "ts";
@@ -116,34 +114,8 @@ export function detectAudioCodec(text = "") {
 }
 
 function codecSupported(codec, capabilities = {}) {
-  switch (codec) {
-    case "h264":
-      return capabilities.h264 !== false;
-    case "hevc":
-      return capabilities.hevc === true;
-    case "av1":
-      return capabilities.av1 === true;
-    case "eac3":
-      return capabilities.eac3 === true;
-    case "ac3":
-      return capabilities.ac3 !== false;
-    case "dts":
-      return capabilities.dts === true;
-    case "opus":
-      return capabilities.opus === true;
-    case "aac":
-      return capabilities.aac !== false;
-    case "mpeg4":
-    case "mp4v":
-      // MPEG-4 Part 2: no browser and no iPhone plays it inside <video>. Measured on a
-      // real stream whose probe reported `mpeg4` / `mp4v` -- the ladder used to see only
-      // its AC-3 track and promise an audio conversion for a picture nothing can decode.
-      return false;
-    default:
-      // Unknown is not evidence of a problem: assume the device copes, and let the
-      // probe or the first failure correct it.
-      return true;
-  }
+  const value = capabilities[codec];
+  return typeof value === "boolean" ? value : null;
 }
 
 /**
@@ -158,35 +130,27 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   const text = `${url} ${label}`;
   const container = String(probe?.container || detectContainer(text) || "unknown").toLowerCase();
   const videoCodec = String(probe?.videoCodec || detectVideoCodec(text) || "unknown").toLowerCase();
-  // Only a probe knows the tag; the addon's text never carries it, so an estimate
-  // simply has no opinion here and the file is treated as it always was.
-  const videoTag = String(probe?.videoTag || "").toLowerCase();
   const audioCodec = String(probe?.audioCodec || detectAudioCodec(text) || "unknown").toLowerCase();
   // The probe knows the channel count exactly; the label is a fallback for rows that have
   // not been probed. canPlayType is still what answers "is this codec playable at all".
   const probedChannels = Number(probe?.audioChannels) || 0;
   const audioChannels = probedChannels > 0 ? probedChannels : detectAudioChannels(text);
-  // A probe that saw every track settles the question the label cannot: a release may
-  // carry 5.1 *and* stereo, in which case nothing needs converting -- only the right
-  // track has to be played. `audioStreams` is empty for an unprobed row, so the label
-  // stays the fallback.
   const audioStreams = Array.isArray(probe?.audioStreams) ? probe.audioStreams : [];
-  const stereoFirst = audioStreams.length > 0 && Number(audioStreams[0]?.channels) === 2;
-  const stereoExists = audioStreams.some((track) => Number(track?.channels) === 2);
-  const confidence = exact ? "exact" : "estimate";
-
-  // Adaptive streaming is not remuxed: the manifest already carries the segments
-  // the device can take, and the player negotiates.
+  const confidence = exact ? "predicted" : "estimate";
+  const assessment = probe?.playbackCapabilities;
+  const outcome = (method, reason, extra = {}) => ({
+    method,
+    reason,
+    confidence,
+    container,
+    videoCodec,
+    audioCodec,
+    audioChannels,
+    ...extra
+  });
+  // A probe may describe one variant, not all variants the manifest can select.
   if (container === "hls" || container === "dash") {
-    return {
-      method: PLAYBACK_METHODS.DIRECT,
-      reason: "adaptive-stream",
-      confidence,
-      container,
-      videoCodec,
-      audioCodec,
-      audioChannels
-    };
+    return outcome(PLAYBACK_METHODS.UNKNOWN, "adaptive-variants-unverified");
   }
 
   // Nothing to go on: no extension, no filename, no codec tags, no probe. Saying
@@ -203,12 +167,12 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
     };
   }
 
-  const videoOk = codecSupported(videoCodec, capabilities);
-  // An unnamed audio codec is not a refusal: the relay picks a track or downmixes when
-  // the file is served. Spending a probe on it would buy nothing the relay cannot do
-  // anyway, and that is exactly the load this rule is meant to remove.
-  const audioUnknown = audioCodec === "unknown";
-  const audioOk = audioUnknown ? true : codecSupported(audioCodec, capabilities);
+  const videoOk = assessment ? assessment.video : codecSupported(videoCodec, capabilities);
+  const trackSupport = (track) =>
+    assessment
+      ? (assessment.audio?.find((item) => item.index === track.index)?.supported ?? null)
+      : codecSupported(track.codec, capabilities);
+  const audioOk = probe?.hasAudio === false ? true : trackSupport({ index: 0, codec: audioCodec });
 
   // A video codec the text did not name decides remux versus a full re-encode -- a large
   // difference, and one only ffprobe can settle. It is asked before the container, because
@@ -224,7 +188,8 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
       audioChannels
     };
   }
-  if (!videoOk) {
+  if (videoOk == null) return outcome(PLAYBACK_METHODS.UNKNOWN, "video-capability-unknown");
+  if (videoOk === false) {
     return {
       method: PLAYBACK_METHODS.TRANSCODE,
       reason: `video-${videoCodec}-unsupported`,
@@ -249,17 +214,24 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
     };
   }
 
-  const containerOk = container === "mp4" || container === "webm";
-
-  // A probed file can carry several audio tracks. When one of them is AAC -- a codec
-  // this device really plays -- the answer is to select that track, not to re-encode
-  // anything: measured on a WEBRip whose E-AC-3 5.1 came first and AAC stereo second,
-  // mapping the second track played with sound and no encoding at all.
-  const playableTrack = audioStreams.find(
-    (track) => String(track?.codec || "").toLowerCase() === "aac"
-  );
+  const containerOk = assessment
+    ? assessment.container === true &&
+      !assessment.audio?.find((track) => track.index === 0)?.needsRemux
+    : capabilities.containers?.[container] === true;
+  if (assessment?.engine === "movi" && assessment.container == null) {
+    return outcome(PLAYBACK_METHODS.UNKNOWN, "engine-path-unverified");
+  }
+  const containerSupported = assessment
+    ? assessment.container
+    : capabilities.containers?.[container];
+  if (containerSupported == null)
+    return outcome(PLAYBACK_METHODS.UNKNOWN, "container-capability-unknown");
+  // Keep the first playable track. Only change tracks to solve an actual refusal.
+  const playableTrack =
+    audioOk === false ? audioStreams.find((track) => trackSupport(track) === true) : null;
   const selectedAudioIndex = playableTrack ? Number(playableTrack.index) || 0 : 0;
   const audioTrackSelected = selectedAudioIndex > 0;
+  if (audioOk == null) return outcome(PLAYBACK_METHODS.UNKNOWN, "audio-capability-unknown");
   // Audio before container, because the audio transcode relay also rewrites the
   // container: it copies the picture into an MP4 and only re-encodes the audio.
   // Reading them the other way round labelled every MKV with a DTS or E-AC3 track
@@ -268,7 +240,10 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   // exactly what it says: the audio is fine and only the box is wrong.
   // An unsupported first track is only a reason to convert when there is no playable
   // track to switch to. Selecting an existing AAC track beats encoding a new one.
-  if (!audioOk && !audioTrackSelected) {
+  if (audioOk === false && !audioTrackSelected) {
+    // The configured audio relay copies video into MP4. Check that output too.
+    if (assessment?.relayVideo === false)
+      return outcome(PLAYBACK_METHODS.TRANSCODE, "relay-output-video-unsupported");
     return {
       method: PLAYBACK_METHODS.AUDIO_TRANSCODE,
       reason: `audio-${audioCodec}-unsupported`,
@@ -283,10 +258,14 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
   // A playable track that is not the first one still needs the relay: the player takes
   // track 0 and nothing can change that from the list.
   if (!containerOk || audioTrackSelected) {
+    if (assessment?.relayVideo === false)
+      return outcome(PLAYBACK_METHODS.TRANSCODE, "relay-output-video-unsupported");
     return {
       method: PLAYBACK_METHODS.REMUX,
       audioIndex: selectedAudioIndex,
-      reason: audioTrackSelected ? "audio-track-selected" : `container-${container}`,
+      reason: audioTrackSelected
+        ? "audio-track-selected"
+        : assessment?.containerReason || `container-${container}`,
       confidence,
       container,
       videoCodec,
@@ -295,14 +274,8 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
     };
   }
 
-  // The container is right, the codecs are right, and the file still will not open:
-  // HEVC in an MP4 is tagged either `hvc1` (parameter sets in the sample
-  // description) or `hev1` (in band). Apple opens only the first, refuses the
-  // second with `networkState: 3` and no message -- and essentially every x265
-  // webrip is the second. That is a one-flag copy, so it belongs in the container
-  // relay, not in a re-encode: measured on a real 1080p webrip, a `-c copy -tag:v
-  // hvc1` pass turned an unplayable file into a playing one with no quality cost.
-  if (videoCodec === "hevc" && videoTag === "hev1" && capabilities.hevcHvc1Required === true) {
+  // Retag only when querying the actual tag failed but the repaired tag succeeded.
+  if (assessment?.needsRetag === true) {
     return {
       method: PLAYBACK_METHODS.REMUX,
       audioIndex: selectedAudioIndex,

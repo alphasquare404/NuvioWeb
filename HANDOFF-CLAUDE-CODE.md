@@ -443,3 +443,54 @@ Validasi akhir overlay: build 521ff82bba7c; 1311 tes lulus. CSS lama dipertahank
 - Overlay memperbarui title/subtitle/backdrop/logo pada node yang sama; metadata item lain ditolak. Logo ditampilkan setelah onload berhasil; onerror tetap menampilkan judul yang benar. Callback gambar milik overlay lama diabaikan. Pembaruan metadata tidak memundurkan tahap Checking ke Finding.
 - Verifikasi: 1320 tes lulus, 0 gagal; build ee7a101882ac. Tes khusus mencakup stale meta, logo terlambat, error gambar, dan callback judul lama.
 - Chrome profil utama saat uji memakai Manual (pengaturan tidak diubah): Obsession Detail -> Home -> Moana manual -> pilih Direct. Semua jejak overlay bertitle Moana, tidak memakai logo Obsession; screenshot moana-overlay-logo-fixed.png menunjukkan logo dan latar Moana yang sesuai. Simulasi latensi sementara dikembalikan nol.
+
+## 23. Dasar label kompatibilitas perangkat — 2026-10-23
+
+Pengguna menyetujui perbaikan hasil audit label, dengan pengecualian eksplisit:
+label merah tetap diagnostik full transcode; jangan membangun alur konversi video penuh.
+Urutan berikutnya: audit player mobile/PWA, sorting kemampuan perangkat, eksperimen WASM.
+Filter/sorting Connected Services dan sinkronisasinya belum diubah.
+
+- Codec yang tidak diketahui/kemampuan API yang tidak tersedia kini Unknown, bukan otomatis didukung. HLS/DASH tetap Unknown sampai varian manifest diperiksa.
+- Probe membawa codec string dari konfigurasi AVC/HEVC/AV1, profile/level, pixel format/bit depth, resolusi/FPS/bitrate, color transfer/primaries dan metadata audio. Attached-picture tidak dipilih sebagai video utama. Client mempertahankan fakta tersebut.
+- Penilaian per file dilakukan lokal, di luar cache fakta server: native canPlayType + MediaCapabilities bila konfigurasi lengkap, WebCodecs untuk video Movi. AAC profile, DTS profile, channel dan sample rate ikut diperiksa. Nilai supported/smooth/powerEfficient adalah prediksi, bukan hasil playback.
+- HDR dan jalur audio/container Movi belum terbukti oleh pemeriksaan SDR/video saja; keduanya tetap Unknown. FFprobe format_name gabungan matroska,webm belum membedakan DocType; hanya jawaban format webm yang tidak ambigu dipertahankan sebagai WebM. Perlu pekerjaan lanjutan bila ingin biaya minimum remux yang tepat untuk setiap WebM.
+- Audio pertama yang didukung dipertahankan. Track pengganti harus didukung perangkat. Audio index diteruskan ke fallback remux, status/preparation dan cache; ffmpeg memetakan track yang sama.
+- Nama file addon tidak lagi menolak probe atau langsung menghasilkan Unsupported sebelum fakta file ada.
+- Availability remux/audio diperiksa lewat health dan kebijakan akses; belum diperiksa disebut unverified. Admission URL, codec output aktual dan akses LAN tetap ditentukan request sebenarnya. Label merah tidak diubah menjadi unavailable.
+- Server eksperimen port4173 direstart hidden; probe aktif, remux/transcode tetap mati. Kebijakan terverifikasi tetap ttl86400000, maxEntries5000, maxConcurrent8, rateLimit0, dailyByteBudget0. Cache probe sebelumnya ikut kosong. Helper media tetap tersedia di2710.
+- Verifikasi: 1346 tes lulus, build61268d06f38a. ffprobe asli pada video uji H264/AAC lokal berhasil menghasilkan codecString avc1.64000a, profile High, 160x90/24fps, audio LC stereo48kHz. Fixture dihapus. Lint file helper baru/lapisan probe/badge lulus; file lama masih memiliki lint praeksisting (escape regex, helper/import tidak digunakan).
+- Smoke Chrome: build46d976c09828 (build antara) terkonfirmasi lewat URL log. Profil utama, addon AIOStreams/Torrentio enabled, tanpa mengubah setting. Project Hail Mary menampilkan No sources found; Spider-Man tertahan Checking streams. Statistik backend tetap requests0 saat diamati; ini belum membuktikan kegagalan classifier dan sebabnya belum dipastikan. Percobaan dibatalkan dengan Escape, kembali Home. Verifikasi label/pemutaran dari sumber nyata dan perangkat iOS/Android masih diperlukan; jangan menyatakan sudah teruji end-to-end. Build final tersedia setelah reload.
+
+## 24. Kartu stream hilang setelah probe — 2026-10-23
+
+Pengguna melaporkan AIOStreams tidak muncul walau ditunggu, lalu meminta memastikan
+Manual / Only Direct off / labels on untuk AIOStreams sebelum pengujian.
+
+- Bukti: probe backend selesai20/20 tanpa kegagalan, tetapi client-error berulang ReferenceError: o is not defined pada getDeviceCapabilities -> renderStreamCard (build61268d06f38a).
+- Penyebab terlokalisasi pada optional DOM method call di default parameter, globalThis.document?.createElement?.("video"), yang diturunkan esbuild untuk target Chromium63 menjadi call dengan receiver variabel di luar scope. Pola yang sama ada pada default mediaElement assessPlaybackCapabilities.
+- Tes baru deviceCapabilities.bundle.test.mjs membangun kedua modul dengan target/minify produksi dan menjalankannya dalam konteks DOM tiruan yang memeriksa receiver. Keduanya gagal ReferenceError sebelum patch dan lulus setelahnya. Pembuatan elemen dipindah ke badan fungsi dengan documentRef eksplisit; tidak mengubah klasifikasi/filter/sorting.
+- Pengaturan Chrome profil utama awalnya masih First Source bahkan setelah reload; diubah ke Manual sesuai konfigurasi pengujian yang diminta. Only Direct off diverifikasi lewat class toggle; labels on dan scope AIOStreams diverifikasi lewat tampilan. Setting lain tidak diubah.
+- Validasi Chrome build6fa82f1b8b0f: Project Hail Mary -> Resume langsung daftar manual.20 kartu AIOStreams selesai dilabeli (10 Direct,4 Remux unavailable,6 Unknown), tanpa Checking tersisa. Torrentio tetap terlihat tanpa playback label. Tidak ada error console dari build baru pada percobaan. Screenshot tampilan diperiksa. Tidak memulai video.
+- Semua1348 tes lulus; build sukses; lint kedua helper dan tes bundle lulus; diff whitespace bersih. Cache tidak dihapus lagi saat perbaikan ini. Belum commit.
+
+## 25. Label berdasarkan browser/container aktual dan Direct : HDR — 2026-10-23
+
+- Pengguna meminta Direct : HDR serta menolak aturan blanket MKV atau nama perangkat. Container kini diperiksa lewat MIME browser aktual; H264/HEVC/AV1 dan profil audio diperiksa bersama container sumber. Tidak lagi memaksa semua MKV ke Remux atau MPEG4/DTS unsupported tanpa jawaban API.
+- PQ/HLG pada colorTransfer menambahkan Direct : HDR bila video/container/audio didukung. HDR bukan lagi video-capability-unknown; penolakan audio tetap menghasilkan audio-transcode. Tooltip menjelaskan metadata HDR tidak membuktikan keluaran layar HDR/tone mapping.
+- Nama perangkat/iOS tidak menentukan label Remux. Retag hev1 hanya jika query tag sumber ditolak dan hvc1 diterima. Hint UA lama hanya tersisa untuk prioritas probe lama. Dukungan container yang belum diketahui tetap Unknown, bukan asumsi MP4/WebM-only.
+- Relay remux/audio menghasilkan MP4; codec video output juga diperiksa, termasuk saat memilih track audio sekunder. Penolakan output video memakai alasan relay-output-video-unsupported. Tiap keputusan tetap membawa reason; adaptive manifest belum diverifikasi dan jalur demux/audio Movi tetap Unknown bila belum terbukti.
+- Bukti Chrome aktual sebelum patch: keempat MKV berisi AV1/HEVC/H264 dan HE-AAC diterima canPlayType. MKV pertama dimainkan internal player dengan readyState4, waktu maju, errornull, tanpa endpoint remux/transcode. Audibilitas empat MKV berasal dari verifikasi pengguna, bukan metrik audio browser.
+- Enam Unknown sebelumnya semuanya PQ/H264: empat AAC didukung; dua AC3 ditolak Chrome. Setelah patch build8359366da93a, Project Hail Mary daftar manual berisi20 label AIOStreams:14 Direct,4 Direct : HDR,2 Transcode (unavailable). Tidak ada Unknown/Remux pada20 kandidat tersebut. Tidak ada error console yang berasal dari build baru. Screenshot direct-hdr-device-rules.png di folder visualizations thread.
+- Manual / Only Direct off / labels AIOStreams dipertahankan; Torrentio tetap terlihat tanpa label. Filter/sorting Connected Services tidak diubah. Cache probe tidak dikosongkan; fakta server dipakai ulang, keputusan browser dihitung lokal setelah reload.
+- Semua1353 tes lulus, build sukses, diff whitespace bersih. Tes mencakup browser MKV menerima/menolak, PQ/HLG+AAC vs AC3, API tidak tersedia, hev1 diterima meski hint iOS, output MP4 track sekunder, dan target/minify Chromium63. iOS/Android fisik belum diuji. Belum commit.
+
+## 26. Hapus pemaksaan remux MKV saat membuka player — 2026-10-23
+
+- Pemeriksaan sebelum commit menemukan aturan lama lain: Router memanggil applyRemuxSource untuk setiap player, dan helper memaksa URL .mkv ke relay jika REMUX_ENDPOINT tersedia. Ini bisa bertentangan dengan label Direct. Pengguna meminta perbaikan dan uji nyata dengan remux aktif.
+- Router kini mempertahankan sumber yang sudah dipersiapkan. applyRemuxSource/shouldRemuxSource dan aturan ekstensi MKV dihapus; remuxSource hanya membangun URL ketika verdict memang meminta remux. StreamScreen tetap menangani verdict remux/audio; komentar warisan diperjelas.
+- Regresi dibuktikan sebelum patch: dengan endpoint /api/remux, URL direct.mkv berubah menjadi /api/remux?u=... saat navigate player. Setelah patch URL Direct dan URL relay eksplisit dipertahankan. Tes source preparation membuktikan MKV didukung tidak memanggil relay, sedangkan MKV ditolak container tetap memanggil remux.
+- Uji Chrome build0f87944eed83, profil utama, Project Hail Mary kandidat AIOStreams1080p925.1MB (AV1/HE-AAC MKV): server/client remux diaktifkan (/api/remux/health oktrue, client endpoint /api/remux). File aktual Project Hail Mary (2026) AV1 1080p 7RIP.mkv diputar langsung dari torrentio.strem.fun lalu TorBoxCDN. Video1920x1080, readyState4, pausedfalse, errornull, waktu625.61 ->652.17 detik.
+- Pemantauan CDP sejak sebelum klik mencatat52 request selama playback, nol permintaan /api/remux. Health server saat bermain active0, usedBytesToday0, egressUsedThisMonth0; proses ffmpeg0. Tidak ada error console dari build baru. Tidak mengklaim pengukuran audibilitas. Screenshot mkv-direct-remux-enabled.png pada folder visualizations thread.
+- Remux dikembalikan nonaktif seusai uji, transcode tetap nonaktif, probe aktif dengan kebijakan sama. Restart server untuk perubahan env mereset cache probe memori; tidak menghapus preferensi/profil. Server sekarang PID12176, hidden; log movi-remux-restored.out.log/.err.log di Temp. Browser direload untuk konfigurasi semula dan video sudah dihentikan.
+- Semua1351 tes lulus (tes helper otomatis MKV lama diganti tes perilaku yang benar), build sukses, whitespace diff bersih. Filter/sorting Connected Services tidak diubah. Belum commit.

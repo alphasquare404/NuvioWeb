@@ -84,7 +84,10 @@ async function fetchSourceSize(url) {
 }
 
 /** Only what can actually be fetched, and nothing that pretends to be local. */
-export function parseRemuxSource(raw, { allowHosts = null } = {}) {
+export function parseRemuxSource(raw, { allowHosts = null, audioIndex = 0 } = {}) {
+  const track = Number(audioIndex);
+  if (!Number.isInteger(track) || track < 0 || track > 127)
+    return { ok: false, reason: "invalid-audio-index" };
   const value = String(raw || "").trim();
   if (!value) return { ok: false, reason: "missing-source" };
   let url;
@@ -103,7 +106,11 @@ export function parseRemuxSource(raw, { allowHosts = null } = {}) {
   return {
     ok: true,
     url: url.toString(),
-    key: createHash("sha256").update(url.toString()).digest("hex").slice(0, 32)
+    audioIndex: track,
+    key: createHash("sha256")
+      .update(url.toString() + (track > 0 ? `|audio:${track}` : ""))
+      .digest("hex")
+      .slice(0, 32)
   };
 }
 
@@ -255,7 +262,7 @@ export function createRemuxBridgeHandler({
   const sweeper = setInterval(sweep, sweepIntervalMs);
   sweeper.unref?.();
 
-  async function remux(source, key) {
+  async function remux(source, key, audioIndex = 0) {
     await mkdir(workDir, { recursive: true });
     const file = path.join(workDir, `${key}.mp4`);
     if (existsSync(file)) return file;
@@ -270,7 +277,7 @@ export function createRemuxBridgeHandler({
       "-map",
       "0:v:0",
       "-map",
-      "0:a:0?",
+      audioIndex > 0 ? `0:a:${audioIndex}` : "0:a:0?",
       "-c",
       "copy",
       "-movflags",
@@ -293,7 +300,7 @@ export function createRemuxBridgeHandler({
   function runFfmpeg(args, key = "") {
     return new Promise((resolve) => {
       let settled = false;
-      const child = spawnImpl(ffmpegPath, args, { stdio: "ignore" });
+      const child = spawnImpl(ffmpegPath, args, { stdio: "ignore", windowsHide: true });
       // Held on the job so an abandoned run can be killed from outside this promise.
       const job = jobs.get(key);
       if (job) job.child = child;
@@ -382,7 +389,7 @@ export function createRemuxBridgeHandler({
     log?.log?.(`[remux] abandoned ${key.slice(0, 8)}`);
   }
 
-  async function fileFor(source, key) {
+  async function fileFor(source, key, audioIndex = 0) {
     const existing = jobs.get(key);
     if (existing) {
       existing.lastUsed = now();
@@ -405,7 +412,7 @@ export function createRemuxBridgeHandler({
       jobs.delete(key);
     }
     const job = { lastUsed: now(), file: null, promise: null, child: null };
-    job.promise = remux(source, key).then((file) => {
+    job.promise = remux(source, key, audioIndex).then((file) => {
       job.file = file;
       return file;
     });
@@ -533,7 +540,10 @@ export function createRemuxBridgeHandler({
       return;
     }
     if (requestUrl.pathname === STATUS_PATH) {
-      const parsedStatus = parseRemuxSource(requestUrl.searchParams.get("u"), { allowHosts });
+      const parsedStatus = parseRemuxSource(requestUrl.searchParams.get("u"), {
+        allowHosts,
+        audioIndex: requestUrl.searchParams.get("ai") || 0
+      });
       if (!parsedStatus.ok) {
         json(response, 400, { ok: false, error: parsedStatus.reason });
         return;
@@ -548,11 +558,11 @@ export function createRemuxBridgeHandler({
         refusal = await admit(parsedStatus.url, address);
         if (!refusal) {
           const didWork = beginWork(parsedStatus.key, address);
-          const started = Promise.resolve(fileFor(parsedStatus.url, parsedStatus.key)).finally(
-            () => {
-              if (didWork) endWork(parsedStatus.key, address);
-            }
-          );
+          const started = Promise.resolve(
+            fileFor(parsedStatus.url, parsedStatus.key, parsedStatus.audioIndex)
+          ).finally(() => {
+            if (didWork) endWork(parsedStatus.key, address);
+          });
           void started.catch(() => {});
         }
       }
@@ -578,7 +588,10 @@ export function createRemuxBridgeHandler({
       return;
     }
 
-    const parsed = parseRemuxSource(requestUrl.searchParams.get("u"), { allowHosts });
+    const parsed = parseRemuxSource(requestUrl.searchParams.get("u"), {
+      allowHosts,
+      audioIndex: requestUrl.searchParams.get("ai") || 0
+    });
     if (!parsed.ok) {
       json(response, 400, { ok: false, error: parsed.reason });
       return;
@@ -606,7 +619,7 @@ export function createRemuxBridgeHandler({
 
     let file;
     try {
-      file = await fileFor(parsed.url, parsed.key);
+      file = await fileFor(parsed.url, parsed.key, parsed.audioIndex);
     } catch {
       json(response, 502, { ok: false, error: "remux-failed" });
       return;

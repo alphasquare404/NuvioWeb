@@ -130,7 +130,8 @@ export function streamProbeIdentity(stream = {}) {
 export function createStreamProber({
   endpoint = "",
   fetchImpl = globalThis.fetch,
-  timeoutMs = 8000
+  timeoutMs = 8000,
+  assess = null
 } = {}) {
   const cache = new Map();
   const pending = new Map();
@@ -157,7 +158,7 @@ export function createStreamProber({
       if (!response?.ok) return null;
       const data = await response.json();
       if (!data?.ok) return null;
-      return {
+      const result = {
         container: String(data.container || "unknown"),
         videoCodec: String(data.videoCodec || "unknown"),
         // The tag decides whether Apple will open an HEVC file at all, and it is the
@@ -174,6 +175,26 @@ export function createStreamProber({
             }))
           : []
       };
+      // Preserve file facts. Browser-specific predictions are added outside the cache.
+      for (const key of [
+        "codecString",
+        "videoProfile",
+        "videoLevel",
+        "pixelFormat",
+        "bitDepth",
+        "frameRate",
+        "videoBitrate",
+        "colorTransfer",
+        "colorPrimaries",
+        "hasAudio",
+        "width",
+        "height",
+        "durationSeconds"
+      ]) {
+        if (data[key] != null) result[key] = data[key];
+      }
+      if (Array.isArray(data.audioStreams)) result.audioStreams = data.audioStreams;
+      return result;
     } catch {
       return null;
     } finally {
@@ -190,15 +211,23 @@ export function createStreamProber({
     async probe(url, { reason = "", identity = "", timeoutMs: requestTimeoutMs = timeoutMs } = {}) {
       const key = String(url || "").trim();
       if (!base || !key) return null;
-      if (cache.has(key)) return cache.get(key);
-      if (pending.has(key)) return pending.get(key);
+      const assessResult = async (result) => {
+        if (!result || !assess) return result;
+        try {
+          return { ...result, playbackCapabilities: await assess(result) };
+        } catch {
+          return { ...result, playbackCapabilities: { video: null, audio: [], container: null } };
+        }
+      };
+      if (cache.has(key)) return assessResult(cache.get(key));
+      if (pending.has(key)) return assessResult(await pending.get(key));
       const promise = request(key, reason, identity, requestTimeoutMs).then((result) => {
         pending.delete(key);
         if (result) cache.set(key, result);
         return result;
       });
       pending.set(key, promise);
-      return promise;
+      return assessResult(await promise);
     },
 
     /** One batch, already filtered to the rows worth asking about. */

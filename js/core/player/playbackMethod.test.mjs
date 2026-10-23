@@ -11,6 +11,7 @@ import {
 } from "./playbackMethod.js";
 
 const capable = {
+  containers: { mp4: true, webm: true, mkv: false, ts: false, avi: false },
   h264: true,
   hevc: true,
   av1: true,
@@ -20,7 +21,16 @@ const capable = {
   ac3: true,
   dts: true
 };
-const weak = { h264: true, hevc: false, av1: false, aac: true, eac3: false, opus: false };
+const weak = {
+  containers: { mp4: true, webm: true, mkv: false, ts: false, avi: false },
+  h264: true,
+  hevc: false,
+  av1: false,
+  aac: true,
+  eac3: false,
+  opus: false,
+  dts: false
+};
 
 test("the container is read from the source, query strings included", () => {
   assert.equal(detectContainer("https://cdn/a.mkv?token=1"), "mkv");
@@ -143,7 +153,15 @@ test("HEVC tagged hev1 is a retag for a platform that only opens hvc1", () => {
   const result = classifyPlayback({
     url: "https://cdn/a.mp4",
     label: "1080p x265",
-    probe: hev1,
+    probe: {
+      ...hev1,
+      playbackCapabilities: {
+        video: true,
+        audio: [{ index: 0, supported: true }],
+        container: true,
+        needsRetag: true
+      }
+    },
     capabilities: apple
   });
   assert.equal(result.method, PLAYBACK_METHODS.REMUX);
@@ -177,11 +195,11 @@ test("HEVC tagged hev1 is a retag for a platform that only opens hvc1", () => {
   assert.equal(estimate.method, PLAYBACK_METHODS.DIRECT);
 });
 
-test("adaptive streams are left to the player, which negotiates", () => {
+test("adaptive variants are not promised Direct without manifest verification", () => {
   for (const url of ["https://cdn/a.m3u8", "https://cdn/a.mpd"]) {
     const result = classifyPlayback({ url, label: "1080p HEVC", capabilities: weak });
-    assert.equal(result.method, PLAYBACK_METHODS.DIRECT);
-    assert.equal(result.reason, "adaptive-stream");
+    assert.equal(result.method, PLAYBACK_METHODS.UNKNOWN);
+    assert.equal(result.reason, "adaptive-variants-unverified");
   }
 });
 
@@ -193,7 +211,7 @@ test("a probe turns an estimate into a decision", () => {
     capabilities: capable
   });
   assert.equal(result.method, PLAYBACK_METHODS.REMUX);
-  assert.equal(result.confidence, "exact");
+  assert.equal(result.confidence, "predicted");
   assert.equal(result.container, "mkv");
 });
 
@@ -266,7 +284,14 @@ test("an unresolved row is still estimated from its own label", () => {
   assert.equal(bare.method, PLAYBACK_METHODS.UNKNOWN);
 });
 test("an existing aac track is selected instead of converting anything", () => {
-  const apple = { h264: true, hevc: true, aac: true, eac3: false, hevcHvc1Required: true };
+  const apple = {
+    containers: { mp4: true, mkv: false },
+    h264: true,
+    hevc: true,
+    aac: true,
+    eac3: false,
+    hevcHvc1Required: true
+  };
   const probe = (tracks, extra = {}) => ({
     container: "mkv",
     videoCodec: "h264",
@@ -314,7 +339,14 @@ test("an existing aac track is selected instead of converting anything", () => {
 });
 
 test("a row without a named video stays Unknown until the probe decides", () => {
-  const apple = { h264: true, hevc: true, aac: true, eac3: false, av1: false };
+  const apple = {
+    containers: { mp4: true, mkv: false },
+    h264: true,
+    hevc: true,
+    aac: true,
+    eac3: false,
+    av1: false
+  };
   const label = "judul.1080p.WEB-DL.mkv";
   const row = { url: "https://cdn/judul.1080p.WEB-DL.mkv", label, capabilities: apple };
 
@@ -337,4 +369,68 @@ test("a row without a named video stays Unknown until the probe decides", () => 
   });
   assert.equal(encoded.method, PLAYBACK_METHODS.TRANSCODE);
   assert.equal(encoded.reason, "video-av1-unsupported");
+});
+
+test("unrecognised codec capabilities never default to Direct", () => {
+  for (const probe of [
+    { container: "mp4", videoCodec: "vc1", audioCodec: "aac" },
+    { container: "mp4", videoCodec: "h264", audioCodec: "truehd" },
+    { container: "mp4", videoCodec: "h264", audioCodec: "unknown" }
+  ])
+    assert.equal(classifyPlayback({ probe, capabilities: weak }).method, "unknown");
+});
+test("supported first audio is retained even when another AAC track exists", () => {
+  const result = classifyPlayback({
+    capabilities: capable,
+    probe: {
+      container: "mp4",
+      videoCodec: "h264",
+      audioCodec: "eac3",
+      audioStreams: [
+        { index: 0, codec: "eac3" },
+        { index: 1, codec: "aac" }
+      ]
+    }
+  });
+  assert.equal(result.method, "direct");
+});
+test("a fallback track must actually be supported on this device", () => {
+  const result = classifyPlayback({
+    capabilities: { ...weak, aac: false },
+    probe: {
+      container: "mkv",
+      videoCodec: "h264",
+      audioCodec: "eac3",
+      audioStreams: [
+        { index: 0, codec: "eac3" },
+        { index: 1, codec: "aac" }
+      ]
+    }
+  });
+  assert.equal(result.method, "audio-transcode");
+});
+test("local per-file assessment overrides a generic codec yes", () => {
+  const probe = {
+    container: "mp4",
+    videoCodec: "h264",
+    audioCodec: "aac",
+    playbackCapabilities: {
+      engine: "native",
+      video: false,
+      container: true,
+      audio: [{ index: 0, supported: true }]
+    }
+  };
+  assert.equal(classifyPlayback({ probe, capabilities: capable }).method, "transcode");
+  probe.playbackCapabilities.video = null;
+  assert.equal(classifyPlayback({ probe, capabilities: capable }).method, "unknown");
+});
+test("known video-only files are distinct from unknown audio metadata", () => {
+  assert.equal(
+    classifyPlayback({
+      capabilities: capable,
+      probe: { container: "mp4", videoCodec: "h264", audioCodec: "unknown", hasAudio: false }
+    }).method,
+    "direct"
+  );
 });

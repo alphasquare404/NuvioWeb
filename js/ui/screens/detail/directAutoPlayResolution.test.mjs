@@ -43,7 +43,7 @@ async function resolve(
     ...selector,
     StartupLoadingOverlay: { setStage() {} },
     withinStreamSelectionDeadline,
-    getDeviceCapabilities: () => ({ h264: true, aac: true }),
+    getDeviceCapabilities: () => ({ h264: true, aac: true, containers: { mp4: true, mkv: false } }),
     PROBE_ENDPOINT: "/api/probe",
     createStreamProber: () => ({
       enabled: true,

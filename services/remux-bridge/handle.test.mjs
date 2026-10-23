@@ -277,3 +277,22 @@ test("a viewer who leaves stops the work, and a reload does not", async () => {
     }
   );
 });
+
+test("fallback remux maps the selected audio and keeps preparation caches separate", async () => {
+  await withServer({}, async ({ url, calls }) => {
+    const chosen = new URL(url);
+    chosen.searchParams.set("ai", "1");
+    const status = new URL(chosen);
+    status.pathname = "/api/remux/status";
+    status.searchParams.set("start", "1");
+    assert.equal((await fetch(status)).status, 200);
+    const selected = await fetch(chosen);
+    await selected.arrayBuffer();
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].includes("0:a:1"));
+    const first = await fetch(url);
+    await first.arrayBuffer();
+    assert.equal(calls.length, 2);
+    assert.ok(calls[1].includes("0:a:0?"));
+  });
+});

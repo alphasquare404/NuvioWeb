@@ -111,9 +111,12 @@ Object.defineProperty(globalThis, "window", {
   value: testWindow
 });
 
+const originalRuntimeEnv = globalThis.__NUVIO_ENV__;
+globalThis.__NUVIO_ENV__ = { ...originalRuntimeEnv, REMUX_ENDPOINT: "/api/remux" };
 const { Platform } = await import("../../platform/index.js");
 Platform.current = null;
 const { Router } = await import("./router.js");
+globalThis.__NUVIO_ENV__ = originalRuntimeEnv;
 const { RouteStateStore } = await import("./routeStateStore.js");
 
 const originalRoutes = Router.routes;
@@ -2153,4 +2156,21 @@ test("keyboard Back preserves the player history traversal instead of suppressin
   await Router.back();
   await history.whenSettled();
   assert.equal(Router.getCurrent(), "home");
+});
+
+test("player navigation preserves the selected source even with remux configured", async () => {
+  const { REMUX_ENDPOINT } = await import("../../config.js");
+  assert.equal(REMUX_ENDPOINT, "/api/remux");
+  for (const streamUrl of [
+    "https://cdn.test/direct.mkv?token=test",
+    "https://cdn.test/direct.mp4",
+    "/api/remux?u=https%3A%2F%2Fcdn.test%2Fneeds-remux.mkv&ai=1"
+  ]) {
+    const player = makeScreen("player");
+    resetRouter({ player });
+    Router.init();
+    await Router.navigate("player", { itemId: "movie-1", streamUrl });
+    assert.equal(player.params.streamUrl, streamUrl);
+    assert.equal(Router.currentParams.streamUrl, streamUrl);
+  }
 });

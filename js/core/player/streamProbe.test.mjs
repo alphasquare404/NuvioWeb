@@ -8,7 +8,16 @@ import {
   streamProbeIdentity
 } from "./streamProbe.js";
 
-const CAPS = { h264: true, hevc: true, av1: true, aac: true, eac3: true, opus: true, ac3: true };
+const CAPS = {
+  containers: { mp4: true, webm: true, mkv: false, ts: false, avi: false },
+  h264: true,
+  hevc: true,
+  av1: true,
+  aac: true,
+  eac3: true,
+  opus: true,
+  ac3: true
+};
 
 test("a hevc mp4 that looks playable is probed for its tag where the tag matters", () => {
   // The card said Direct (mp4, HEVC, AAC -- all supported) and the iPhone refused
@@ -74,9 +83,9 @@ test("the probe decision is readable on its own", () => {
 
 test("rows the estimate cannot decide are probed, within a small cosmetic budget", () => {
   const rows = [
-    { url: "https://cdn/a.mkv", label: "1080p HEVC" }, // container known → no probe
+    { url: "https://cdn/a.mkv", label: "1080p HEVC AAC" }, // container known → no probe
     { url: "https://cdn/stream/abc", label: "" }, // nothing to go on → probe
-    { url: "https://cdn/b.mp4", label: "720p x264" }, // known → no probe
+    { url: "https://cdn/b.mp4", label: "720p x264 AAC" }, // known → no probe
     { url: "https://cdn/stream/def", label: "1080p" }, // still unknown → probe
     { url: "https://cdn/stream/ghi", label: "AV1" } // codec known, container not → probe
   ];
@@ -221,7 +230,7 @@ test("a probed row stops being Unknown when classified again", async () => {
     capabilities: CAPS
   });
   assert.equal(decided.method, PLAYBACK_METHODS.REMUX);
-  assert.equal(decided.confidence, "exact");
+  assert.equal(decided.confidence, "predicted");
 });
 
 test("a row without a resolved url is never selected", () => {
@@ -283,4 +292,36 @@ test("selection can shorten a probe request to the remaining overall budget", as
   });
   assert.equal(await prober.probe("https://media.test/cold.mp4", { timeoutMs: 20 }), null);
   assert.equal(aborted, true);
+});
+
+test("cache retains file facts and reassesses the current local engine", async () => {
+  let engine = "native";
+  let requests = 0;
+  const prober = createStreamProber({
+    endpoint: "/api/probe",
+    fetchImpl: async () => {
+      requests++;
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          container: "mp4",
+          videoCodec: "h264",
+          width: 3840,
+          height: 2160,
+          frameRate: 60,
+          bitDepth: 10
+        })
+      };
+    },
+    assess: async () => ({ engine })
+  });
+  const first = await prober.probe("https://cdn/a");
+  engine = "movi";
+  const second = await prober.probe("https://cdn/a");
+  assert.equal(requests, 1);
+  assert.equal(first.width, 3840);
+  assert.equal(first.bitDepth, 10);
+  assert.equal(first.playbackCapabilities.engine, "native");
+  assert.equal(second.playbackCapabilities.engine, "movi");
 });

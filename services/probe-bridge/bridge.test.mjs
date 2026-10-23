@@ -27,7 +27,27 @@ test("ffprobe output is reduced to the facts the decision needs", () => {
     videoTag: "",
     audioCodec: "eac3",
     audioChannels: 0,
-    audioStreams: [{ index: 0, codec: "eac3", channels: 0 }],
+    audioStreams: [
+      {
+        index: 0,
+        codec: "eac3",
+        channels: 0,
+        sampleRate: 0,
+        profile: "",
+        language: "",
+        default: false
+      }
+    ],
+    codecString: "",
+    videoProfile: "",
+    videoLevel: 0,
+    pixelFormat: "",
+    bitDepth: 0,
+    frameRate: 0,
+    videoBitrate: 0,
+    colorTransfer: "",
+    colorPrimaries: "",
+    hasAudio: true,
     width: 1920,
     height: 800,
     durationSeconds: 3120.4
@@ -133,4 +153,63 @@ test("the channel count travels with the answer, because no browser API can repo
     format: {}
   });
   assert.equal(silent.audioChannels, 0);
+});
+
+test("probe preserves decoder configuration and skips attached cover art", () => {
+  const result = normalizeProbe({
+    streams: [
+      { codec_type: "video", codec_name: "mjpeg", disposition: { attached_pic: 1 } },
+      {
+        codec_type: "video",
+        codec_name: "h264",
+        extradata: "\n00000000: 0164 0028 ffe1 0000  .d.(....",
+        profile: "High",
+        level: 40,
+        pix_fmt: "yuv420p10le",
+        avg_frame_rate: "24000/1001",
+        width: 1920,
+        height: 1080
+      },
+      {
+        codec_type: "audio",
+        codec_name: "aac",
+        profile: "LC",
+        channels: 6,
+        sample_rate: "48000",
+        tags: { language: "eng" },
+        disposition: { default: 1 }
+      }
+    ],
+    format: { format_name: "mov,mp4" }
+  });
+  assert.equal(result.videoCodec, "h264");
+  assert.equal(result.codecString, "avc1.640028");
+  assert.equal(result.bitDepth, 10);
+  assert.equal(result.frameRate, 24000 / 1001);
+  assert.equal(result.audioStreams[0].language, "eng");
+  assert.equal(result.audioStreams[0].sampleRate, 48000);
+});
+test("unambiguous WebM format is not rewritten as MKV", () => {
+  assert.equal(normalizeProbe({ format: { format_name: "webm" } }).container, "webm");
+});
+
+test("HEVC codec strings retain Main10 level and compatibility flags", () => {
+  const result = normalizeProbe({
+    streams: [
+      {
+        codec_type: "video",
+        codec_name: "hevc",
+        extradata: "00000000: 0102 2000 0000 b000 0000 0000 99  ............."
+      }
+    ],
+    format: { format_name: "mp4" }
+  });
+  assert.equal(result.codecString, "hvc1.2.4.L153.B0");
+});
+test("AV1 codec strings retain the actual level, tier and bit depth", () => {
+  const result = normalizeProbe({
+    streams: [{ codec_type: "video", codec_name: "av1", extradata: "00000000: 8108 4c00  ...." }],
+    format: { format_name: "mp4" }
+  });
+  assert.equal(result.codecString, "av01.0.08M.10");
 });

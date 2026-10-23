@@ -4,27 +4,38 @@
 // only knows codecs, not the file — but to combine it with the probe: the file says
 // what it contains, this says whether the picture can be handed to <video> as is.
 
+// MIME names identify formats; support is always asked of the current browser.
+export const CONTAINER_MIME_TYPES = Object.freeze({
+  mp4: { video: "video/mp4", audio: "audio/mp4" },
+  webm: { video: "video/webm", audio: "audio/webm" },
+  mkv: { video: "video/x-matroska", audio: "audio/x-matroska" },
+  ts: { video: "video/mp2t", audio: "audio/mp2t" },
+  mpegts: { video: "video/mp2t", audio: "audio/mp2t" },
+  avi: { video: "video/x-msvideo", audio: "audio/x-msvideo" }
+});
+
 const CODEC_PROBES = {
   h264: 'video/mp4; codecs="avc1.640028"',
   hevc: 'video/mp4; codecs="hvc1.1.6.L120.90"',
   av1: 'video/mp4; codecs="av01.0.08M.10"',
-  aac: 'video/mp4; codecs="mp4a.40.2"',
-  eac3: 'video/mp4; codecs="ec-3"',
-  ac3: 'video/mp4; codecs="ac-3"',
-  opus: 'video/mp4; codecs="opus"'
+  aac: 'audio/mp4; codecs="mp4a.40.2"',
+  eac3: 'audio/mp4; codecs="ec-3"',
+  ac3: 'audio/mp4; codecs="ac-3"',
+  opus: 'audio/mp4; codecs="opus"',
+  flac: 'audio/mp4; codecs="flac"',
+  vp8: 'video/webm; codecs="vp8"',
+  vp9: 'video/webm; codecs="vp09.00.10.08"',
+  vorbis: 'audio/webm; codecs="vorbis"',
+  truehd: 'audio/mp4; codecs="mlpa"',
+  vc1: 'video/mp4; codecs="vc-1"',
+  dts: 'audio/mp4; codecs="dtsc"',
+  mpeg4: 'video/mp4; codecs="mp4v.20.9"',
+  mp4v: 'video/mp4; codecs="mp4v.20.9"'
 };
 
 let cached = null;
 
-/**
- * Does this platform refuse HEVC that is tagged the other way?
- *
- * Apple's media stack opens HEVC only when the track says `hvc1`; a file tagged
- * `hev1` — which is how essentially every x265 webrip in an MP4 arrives — is
- * refused with no diagnosis at all (`networkState: 3`, "not supported"). There is
- * no API that answers this, so it is read from the platform: iPhone/iPad, and the
- * iPadOS build that reports itself as a Mac with a touch screen.
- */
+/** Historical probe-priority hint, never a playback support verdict. */
 export function requiresHvc1HevcTag(userAgent = "", maxTouchPoints = 0) {
   const agent = String(userAgent || "");
   if (/iP(hone|ad|od)/i.test(agent)) return true;
@@ -35,27 +46,47 @@ export function detectDeviceCapabilities(
   source = globalThis.MediaSource || globalThis.ManagedMediaSource,
   {
     userAgent = globalThis.navigator?.userAgent || "",
-    maxTouchPoints = globalThis.navigator?.maxTouchPoints || 0
+    maxTouchPoints = globalThis.navigator?.maxTouchPoints || 0,
+    mediaElement
   } = {}
 ) {
+  // Keep DOM calls out of default parameters: the legacy build transform can
+  // otherwise lose the receiver while lowering optional method calls.
+  if (mediaElement === undefined) {
+    const documentRef = globalThis.document;
+    mediaElement =
+      typeof documentRef?.createElement === "function" ? documentRef.createElement("video") : null;
+  }
   const capabilities = {};
   for (const [codec, type] of Object.entries(CODEC_PROBES)) {
     try {
-      capabilities[codec] = Boolean(source?.isTypeSupported?.(type));
+      // Native file playback does not require MSE. Missing APIs are unknown.
+      capabilities[codec] =
+        typeof mediaElement?.canPlayType === "function"
+          ? Boolean(mediaElement.canPlayType(type))
+          : typeof source?.isTypeSupported === "function"
+            ? Boolean(source.isTypeSupported(type))
+            : null;
     } catch {
-      capabilities[codec] = false;
+      capabilities[codec] = null;
     }
   }
-  // No platform exposes a DTS capability through isTypeSupported; the safe reading
-  // is "assume not", which only ever downgrades to an audio transcode.
-  capabilities.dts = false;
-  // A platform that only accepts hvc1 turns an `hev1` file into a relay job, not a
-  // direct play -- the label would otherwise promise something it cannot deliver.
+  capabilities.containers = Object.fromEntries(
+    Object.entries(CONTAINER_MIME_TYPES).map(([name, types]) => {
+      let supported = null;
+      try {
+        if (typeof mediaElement?.canPlayType === "function")
+          supported = Boolean(mediaElement.canPlayType(types.video));
+      } catch {
+        /* An unavailable query is unknown. */
+      }
+      return [name, supported];
+    })
+  );
+  // A legacy hint used only to prioritise probes. It must never override file queries.
   capabilities.hevcHvc1Required = requiresHvc1HevcTag(userAgent, maxTouchPoints);
-  // The same platforms that demand hvc1 play AAC only in stereo through <video>: a 5.1
-  // track yields a silent film, so the ladder must ask for the audio relay instead of
-  // promising a copy that cannot be heard.
-  capabilities.requiresStereoAac = capabilities.hevcHvc1Required === true;
+  // Channel support is assessed from the actual track, not inferred from iOS.
+  capabilities.requiresStereoAac = false;
   return capabilities;
 }
 

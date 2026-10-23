@@ -55,20 +55,63 @@ export function parseProbeSource(raw) {
 }
 
 /** ffprobe's JSON, reduced to the few facts the decision needs. */
+export function probeCodecString(video = {}) {
+  // ffprobe's hex dump has an offset and an ASCII column; only consume hex bytes.
+  const bytes = Buffer.from(
+    String(video.extradata || "")
+      .split("\n")
+      .flatMap((line) => {
+        const hex = /^\s*[0-9a-f]+:\s+([0-9a-f ]+?)(?:\s{2,}|$)/i.exec(line)?.[1] || "";
+        return hex.replace(/ /g, "").match(/../g) || [];
+      })
+      .join(""),
+    "hex"
+  );
+  if (video.codec_name === "h264" && bytes.length >= 4 && bytes[0] === 1) {
+    return `avc1.${bytes.subarray(1, 4).toString("hex")}`;
+  }
+  if (video.codec_name === "hevc" && bytes.length >= 13 && bytes[0] === 1) {
+    const space = ["", "A", "B", "C"][bytes[1] >> 6];
+    const profile = bytes[1] & 31;
+    let compatibility = bytes.readUInt32BE(2),
+      reversed = 0;
+    for (let i = 0; i < 32; i++) {
+      reversed = reversed * 2 + (compatibility & 1);
+      compatibility >>>= 1;
+    }
+    const constraints = [...bytes.subarray(6, 12)];
+    while (constraints.length && constraints.at(-1) === 0) constraints.pop();
+    const suffix = constraints
+      .map((value) => value.toString(16).toUpperCase().padStart(2, "0"))
+      .join(".");
+    return `hvc1.${space}${profile}.${reversed.toString(16).toUpperCase()}.${bytes[1] & 32 ? "H" : "L"}${bytes[12]}${suffix ? `.${suffix}` : ""}`;
+  }
+  if (video.codec_name === "av1" && bytes.length >= 3 && bytes[0] === 0x81) {
+    const depth = bytes[2] & 64 ? (bytes[2] & 32 ? 12 : 10) : 8;
+    return `av01.${bytes[1] >> 5}.${String(bytes[1] & 31).padStart(2, "0")}${bytes[2] & 128 ? "H" : "M"}.${String(depth).padStart(2, "0")}`;
+  }
+  return "";
+}
+
 export function normalizeProbe(probeJson) {
   const streams = Array.isArray(probeJson?.streams) ? probeJson.streams : [];
-  const video = streams.find((stream) => stream?.codec_type === "video") || null;
+  const video =
+    streams.find(
+      (stream) => stream?.codec_type === "video" && !stream?.disposition?.attached_pic
+    ) || null;
   const audio = streams.find((stream) => stream?.codec_type === "audio") || null;
   const formatName = String(probeJson?.format?.format_name || "");
 
-  const container = /matroska|webm/i.test(formatName)
-    ? "mkv"
-    : /mp4|mov/i.test(formatName)
-      ? "mp4"
-      : formatName
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter(Boolean)[0] || "unknown";
+  const container = /^webm$/i.test(formatName)
+    ? "webm"
+    : /matroska/i.test(formatName)
+      ? "mkv"
+      : /mp4|mov/i.test(formatName)
+        ? "mp4"
+        : formatName
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean)[0] || "unknown";
 
   return {
     container,
@@ -94,8 +137,28 @@ export function normalizeProbe(probeJson) {
       .map((entry, audioIndex) => ({
         index: audioIndex,
         codec: String(entry.stream?.codec_name || "unknown").toLowerCase(),
-        channels: Number(entry.stream?.channels) || 0
+        channels: Number(entry.stream?.channels) || 0,
+        sampleRate: Number(entry.stream?.sample_rate) || 0,
+        profile: String(entry.stream?.profile || ""),
+        language: String(entry.stream?.tags?.language || ""),
+        default: entry.stream?.disposition?.default === 1
       })),
+    codecString: probeCodecString(video || {}),
+    videoProfile: String(video?.profile || ""),
+    videoLevel: Number(video?.level) > 0 ? Number(video.level) : 0,
+    pixelFormat: String(video?.pix_fmt || ""),
+    bitDepth:
+      Number(video?.bits_per_raw_sample) || /p(10|12|16)/.exec(video?.pix_fmt || "")?.[1] * 1 || 0,
+    frameRate: (() => {
+      const [n, d = 1] = String(video?.avg_frame_rate || video?.r_frame_rate || "0")
+        .split("/")
+        .map(Number);
+      return d > 0 && Number.isFinite(n / d) ? n / d : 0;
+    })(),
+    videoBitrate: Number(video?.bit_rate) || 0,
+    colorTransfer: String(video?.color_transfer || ""),
+    colorPrimaries: String(video?.color_primaries || ""),
+    hasAudio: Boolean(audio),
     width: Number(video?.width) || 0,
     height: Number(video?.height) || 0,
     durationSeconds: Number(probeJson?.format?.duration) || 0
@@ -258,8 +321,9 @@ export function createProbeBridgeHandler({
         "error",
         "-user_agent",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        "-show_data",
         "-show_entries",
-        "stream=codec_type,codec_name,codec_tag_string,width,height,channels",
+        "stream=extradata,codec_type,codec_name,codec_tag_string,profile,level,pix_fmt,bits_per_raw_sample,width,height,avg_frame_rate,r_frame_rate,bit_rate,color_transfer,color_primaries,channels,sample_rate:stream_tags=language:stream_disposition=default,attached_pic",
         "-show_entries",
         "format=format_name,duration",
         "-of",

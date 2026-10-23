@@ -1,3 +1,5 @@
+import { resolveRelayAvailability } from "../../../core/player/relayAvailability.js";
+import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
 import {
   StartupLoadingOverlay,
   usesUnifiedStartup
@@ -25,11 +27,7 @@ import { buildPlayerSubtitle } from "../../../core/util/runtimeLabel.js";
 import { PROBE_ENDPOINT, REMUX_ENDPOINT, TRANSCODE_ENDPOINT } from "../../../config.js";
 import { buildRemuxUrl } from "../../../core/player/remuxSource.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
-import {
-  PLAYBACK_METHODS,
-  classifyPlayback,
-  detectContainer
-} from "../../../core/player/playbackMethod.js";
+import { PLAYBACK_METHODS, classifyPlayback } from "../../../core/player/playbackMethod.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
@@ -481,7 +479,14 @@ function isDirectPlayableStream(stream = {}, probe = null) {
 // batch was what turned a list into half a minute of yellow-label roulette.
 // A probe reads a remote header: measured 2.5-4 s on a good link, and the bridge itself
 // allows far longer. Aborting at three seconds is what turned answered rows into Unknown.
-const streamProber = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 15000 });
+const streamProber = createStreamProber({
+  endpoint: PROBE_ENDPOINT,
+  timeoutMs: 15000,
+  assess: (probe) =>
+    assessPlaybackCapabilities(probe, {
+      engine: shouldUseMovi(PlayerSettingsStore.get()) ? "movi" : "native"
+    })
+});
 // Asked once per session, because only the bridge knows whether it wants a secret:
 // `open` and `lan` do not, and `token` does. Asking first is what keeps the app
 // from calling an endpoint the deployment never authorised.
@@ -787,6 +792,23 @@ export const StreamScreen = {
     this.params = params || {};
     this.loadToken = (this.loadToken || 0) + 1;
     const token = this.loadToken;
+    this._relayAvailability = {
+      remux: REMUX_ENDPOINT ? null : false,
+      audio: TRANSCODE_ENDPOINT ? null : false
+    };
+    if (REMUX_ENDPOINT || TRANSCODE_ENDPOINT)
+      void Promise.all([
+        resolveRelayAvailability({ endpoint: REMUX_ENDPOINT }),
+        resolveRelayAvailability({
+          endpoint: TRANSCODE_ENDPOINT,
+          transcode: true,
+          token: String(TranscodeSettingsStore.get().token || "")
+        })
+      ]).then(([remux, audio]) => {
+        if (token !== this.loadToken || Router.getCurrent() !== "stream") return;
+        this._relayAvailability = { remux, audio };
+        this.requestRender();
+      });
     this.focusState = { zone: "filter", index: 0 };
     this.listScrollTop = 0;
     this.appliedFocusKey = null;
@@ -1499,11 +1521,7 @@ export const StreamScreen = {
       const addonName = String(stream?.addonName || stream?.addon || "").trim();
       if (labelAddons.length && !labelAddons.includes(addonName)) return false;
       const url = String(stream.url || stream.externalUrl || "").trim();
-      const container = detectContainer(
-        [url, stream.name, stream.title, stream.description].filter(Boolean).join(" ")
-      );
-      if (!REMUX_ENDPOINT && !TRANSCODE_ENDPOINT && ["mkv", "ts", "avi"].includes(container))
-        return false;
+      // The addon filename is not authoritative file metadata, even without a relay.
       const key = directDebridPreparationKey(stream) || url || stream.id;
       if (!key || seen.has(key)) return false;
       seen.add(key);
@@ -2693,8 +2711,9 @@ export const StreamScreen = {
             // Whether this deployment even offers the relay the label would name. An
             // empty endpoint means "not offered", and the card says so instead of
             // promising a relay that cannot happen.
-            transcodeAvailable: Boolean(TRANSCODE_ENDPOINT),
-            remuxAvailable: Boolean(REMUX_ENDPOINT),
+            transcodeAvailable:
+              this._relayAvailability?.audio ?? (TRANSCODE_ENDPOINT ? null : false),
+            remuxAvailable: this._relayAvailability?.remux ?? (REMUX_ENDPOINT ? null : false),
             probe: this._probeResults?.get(urlKey) || null,
             // While the answer is on its way the card says so, instead of looking unanswered.
             probing:
@@ -3615,11 +3634,8 @@ export const StreamScreen = {
     // run the container copy and not the audio one, and returning early here skipped
     // the remux path entirely for exactly that configuration.
     if (!url) return url;
-    // A row can arrive already wrapped for the file relay: the router does that for a
-    // `.mkv` before this function ever sees it. Classifying that URL asks what the
-    // bridge looks like, not what the film looks like -- so the remux branch never ran
-    // and every tap waited for a whole copy. Unwrap first, decide on the real source,
-    // then deliver it the fast way when the deployment offers it.
+    // Older history entries can already contain an explicit file-relay URL.
+    // Preserve that choice while preferring progressive delivery when available.
     if (url.includes("/api/remux?")) {
       let inner = "";
       try {
@@ -3646,10 +3662,8 @@ export const StreamScreen = {
       capabilities
     });
     if (!shouldTranscodeSource({ url, verdict, endpoint: TRANSCODE_ENDPOINT })) {
-      // A container fix, or the HEVC tag Apple refuses: both are a plain copy on the
-      // server, and both are the remux relay's job. Wrapping here rather than only
-      // in the router is what lets a `.mp4` that needs a retag be repaired -- the
-      // router only knows to wrap an `.mkv`.
+      // Only the playback verdict can request a container/tag or audio-track copy.
+      // A filename extension alone must not send a supported source to the relay.
       if (verdict.method === PLAYBACK_METHODS.REMUX && REMUX_ENDPOINT) {
         // The player is told how to wait for this source instead of being asked to sit
         // through the copy: a remux needs minutes before its first byte, and the
@@ -3666,7 +3680,7 @@ export const StreamScreen = {
           `[Playback] remux branch playlist=${playlistUrl ? "offered" : "none"} playable=${playable}`
         );
         if (playable) return playlistUrl;
-        return buildRemuxUrl(url, REMUX_ENDPOINT);
+        return buildRemuxUrl(url, REMUX_ENDPOINT, { audioIndex: Number(verdict.audioIndex) || 0 });
       }
       return url;
     }

@@ -3,8 +3,6 @@ import { HomeScreen } from "../screens/home/homeScreen.js";
 import { PlayerScreen } from "../screens/player/playerScreen.js";
 import { MoviPlayerScreen } from "../screens/player/movi/moviPlayerScreen.js";
 import { shouldRoutePlayerToMovi } from "../../core/player/movi/moviCapability.js";
-import { applyRemuxSource } from "../../core/player/remuxSource.js";
-import { REMUX_ENDPOINT } from "../../config.js";
 import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { AccountScreen } from "../screens/account/accountScreen.js";
 import { AuthQrSignInScreen } from "../screens/account/authQrSignInScreen.js";
@@ -889,13 +887,8 @@ export const Router = {
     // each caller to remember the choice means one of them forgets, so it is
     // answered here instead, once, for whoever asked. The rule itself lives in
     // moviCapability so it can be tested without a router.
-    // Safari cannot open an MKV because of the container, not the codec. When the
-    // deployment runs a remux relay, the source is rewritten to it here — the one
-    // place every player doorway passes through — and the existing player opens it.
-    if (routeName === "player") {
-      params = applyRemuxSource(params, REMUX_ENDPOINT);
-    }
-
+    // The source was prepared using the stream's playback verdict. Navigation must
+    // preserve it: a filename extension cannot override browser capability evidence.
     if (routeName === "player" && shouldRoutePlayerToMovi(params, PlayerSettingsStore.get())) {
       routeName = "moviPlayer";
     }
