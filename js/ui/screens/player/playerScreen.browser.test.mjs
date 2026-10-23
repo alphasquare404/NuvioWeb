@@ -138,11 +138,14 @@ test("Player external launches bind the optional Push return subscription unless
   assert.doesNotMatch(source, /disableBrowserPushReturn/);
 });
 
-
 test("audio boost does not capture native cross-origin media", async () => {
   const source = await readFile(playerScreenUrl, "utf8");
   const declaration = source.match(/function supportsWebAudioAmplification\(\) \{[\s\S]*?\n\}/)[0];
-  const context = { URL, location: { origin: "https://nuvio.example" }, PlayerController: { video: {} } };
+  const context = {
+    URL,
+    location: { origin: "https://nuvio.example" },
+    PlayerController: { video: {} }
+  };
   vm.runInNewContext(declaration, context);
   const video = context.PlayerController.video;
   video.currentSrc = "https://cdn.example/movie.mp4";
@@ -153,4 +156,132 @@ test("audio boost does not capture native cross-origin media", async () => {
   assert.equal(context.supportsWebAudioAmplification(), true);
   video.currentSrc = "";
   assert.equal(context.supportsWebAudioAmplification(), false);
+});
+
+test("next episode First Source uses HDR preference without weakening Only Direct", async () => {
+  const { selectAutoPlayStream } = await import("../../../core/streams/streamAutoPlaySelector.js");
+  const { resolveHdrPreference } = await import("../../../core/streams/streamHdrPreference.js");
+  const source = await readFile(playerScreenUrl, "utf8");
+  const method = source.match(
+    /async selectNextEpisodeStreamByAutoPlayPolicy\([\s\S]*?\n {2}\},/
+  )[0];
+  const run = new Function(
+    "selectAutoPlayStream",
+    "resolveHdrPreference",
+    `return ({${method}}).selectNextEpisodeStreamByAutoPlayPolicy;`
+  )(selectAutoPlayStream, resolveHdrPreference);
+  const rows = [
+    { id: "sdr", url: "https://cdn.test/sdr", addonName: "Chosen" },
+    { id: "hdr", url: "https://cdn.test/hdr", title: "HDR", addonName: "Chosen" }
+  ];
+  const screen = {
+    async selectDirectPlayableCandidates() {
+      return rows;
+    },
+    _nextEpisodeProbeResults: new Map()
+  };
+  const settings = { streamAutoPlayMode: "FIRST_STREAM", streamAutoPlayHdrPreference: "PREFER" };
+  const options = { installedAddonNames: new Set(["Chosen"]) };
+  assert.equal((await run.call(screen, rows, settings, options)).id, "hdr");
+  screen._nextEpisodeProbeResults = new Map([
+    [rows[0].url, { colorTransfer: "smpte2084" }],
+    [rows[1].url, { colorTransfer: "bt709" }]
+  ]);
+  assert.equal((await run.call(screen, rows, settings, options)).id, "sdr");
+  assert.equal(
+    (await run.call(screen, rows, { ...settings, showOnlyDirectStreams: true }, options)).id,
+    "sdr"
+  );
+  assert.equal(
+    (
+      await run.call(
+        screen,
+        rows,
+        { ...settings, streamAutoPlayHdrPreference: "AVOID", showOnlyDirectStreams: true },
+        options
+      )
+    ).id,
+    "hdr"
+  );
+});
+
+test("next episode probes an eligible HDR candidate before applying its cap", async () => {
+  const { filterAutoPlaySourceStreams } =
+    await import("../../../core/streams/streamAutoPlaySelector.js");
+  const { applyHdrPreference, resolveHdrPreference } =
+    await import("../../../core/streams/streamHdrPreference.js");
+  const { classifyPlayback } = await import("../../../core/player/playbackMethod.js");
+  const source = await readFile(playerScreenUrl, "utf8");
+  const method = source.match(/async selectDirectPlayableCandidates\([\s\S]*?\n {2}\},/)[0];
+  const probes = [];
+  let assessments = 0;
+  const dependencies = {
+    filterAutoPlaySourceStreams,
+    applyHdrPreference,
+    resolveHdrPreference,
+    classifyPlayback,
+    getDeviceCapabilities: () => ({ h264: true, aac: true, containers: { mkv: false } }),
+    PROBE_ENDPOINT: "/api/probe",
+    streamProbeIdentity: (s) => s.id,
+    assessPlaybackCapabilities: () => {
+      assessments++;
+      return {
+        engine: "native",
+        video: true,
+        container: true,
+        audio: [{ index: 0, supported: true }]
+      };
+    },
+    createStreamProber: (options) => ({
+      enabled: true,
+      async probe(url) {
+        probes.push(url);
+        const raw = {
+          container: "mkv",
+          videoCodec: "h264",
+          audioCodec: "aac",
+          colorTransfer: "smpte2084"
+        };
+        return { ...raw, playbackCapabilities: await options.assess(raw) };
+      }
+    })
+  };
+  const run = new Function(
+    "deps",
+    `const {${Object.keys(dependencies).join(",")}}=deps;return ({${method}}).selectDirectPlayableCandidates;`
+  )(dependencies);
+  const rows = Array.from({ length: 22 }, (_, i) => ({
+    id: String(i),
+    addonName: "Chosen",
+    url: "https://cdn.test/" + i
+  }));
+  rows[21].title = "HDR";
+  rows.unshift({
+    id: "forbidden",
+    addonName: "Other",
+    title: "HDR",
+    url: "https://other.test/HDR"
+  });
+  const savedEnv = globalThis.__NUVIO_ENV__;
+  globalThis.__NUVIO_ENV__ = { PROBE_PAGE_LIMIT: 1 };
+  try {
+    const result = await run.call(
+      {},
+      rows,
+      {
+        streamAutoPlayMode: "FIRST_STREAM",
+        streamAutoPlayHdrPreference: "PREFER",
+        streamAutoPlaySelectedAddons: ["Chosen"]
+      },
+      { installedAddonNames: new Set(["Chosen", "Other"]) }
+    );
+    assert.deepEqual(probes, ["https://cdn.test/21"]);
+    assert.deepEqual(
+      result.map((s) => s.id),
+      ["21"]
+    );
+    assert.equal(assessments, 1);
+  } finally {
+    globalThis.__NUVIO_ENV__ = savedEnv;
+  }
 });

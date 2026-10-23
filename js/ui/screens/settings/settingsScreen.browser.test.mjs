@@ -186,3 +186,60 @@ test("the gap before Advanced belongs to its group, not to the row inside the ca
   );
   assert.doesNotMatch(desktopCss, /\.settings-nav-item\[data-section="advanced"\] \{\s*margin-top/);
 });
+
+test("HDR card follows device capability and stores explicit toggle choices", async () => {
+  const { resolveHdrPreference } = await import("../../../core/streams/streamHdrPreference.js");
+  const source = await settingsScreenSource();
+  const start = source.indexOf('String(model.player.streamAutoPlayMode) === "FIRST_STREAM"');
+  const end = source.indexOf("${this.renderActionRow", start);
+  const expression = source
+    .slice(start, end)
+    .trim()
+    .replace(/\}\s*$/, "");
+  const render = new Function(
+    "model",
+    "hdrSupport",
+    "resolveHdrPreference",
+    `return (${expression});`
+  );
+  const callback = source.match(
+    /this\.actionMap\.set\("playback:autoStreamHdr", \(\) => \{([\s\S]*?)\n {4}\}\);/
+  )[1];
+  for (const [support, title, initiallyChecked] of [
+    [true, "Select HDR when available", true],
+    [false, "Don’t select HDR streams", true],
+    [null, "Prefer HDR streams", false]
+  ]) {
+    let player = { streamAutoPlayMode: "FIRST_STREAM", streamAutoPlayHdrPreference: "AUTO" };
+    const view = () =>
+      render.call({ renderToggleRow: (row) => row }, { player }, support, resolveHdrPreference);
+    assert.equal(view().title, title);
+    assert.equal(view().checked, initiallyChecked);
+    const toggle = new Function(
+      "PlayerSettingsStore",
+      "getHdrPlaybackSupport",
+      "resolveHdrPreference",
+      callback
+    );
+    toggle(
+      {
+        get: () => player,
+        set: (partial) => {
+          player = { ...player, ...partial };
+        }
+      },
+      () => support,
+      resolveHdrPreference
+    );
+    assert.equal(view().checked, !initiallyChecked);
+    assert.equal(
+      render.call(
+        { renderToggleRow: (row) => row },
+        { player: { ...player, streamAutoPlayMode: "MANUAL" } },
+        support,
+        resolveHdrPreference
+      ),
+      ""
+    );
+  }
+});

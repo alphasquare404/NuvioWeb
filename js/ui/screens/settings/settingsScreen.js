@@ -1,3 +1,5 @@
+import { getHdrPlaybackSupport } from "../../../core/player/hdrSupport.js";
+import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
 import { deferWhileReordering } from "../../components/listReorderDrag.js";
 import { Router } from "../../navigation/router.js";
 import { createScreenPrototype } from "../../navigation/routeLayerInstances.js";
@@ -7057,6 +7059,7 @@ export const SettingsScreen = {
   },
 
   renderPlaybackSection(model) {
+    const hdrSupport = getHdrPlaybackSupport();
     const isDesktopBrowser = isDesktopSettingsBrowser();
     this.ensureExpandedState("playback");
     const expanded = this.expandedSections.playback;
@@ -7449,6 +7452,17 @@ export const SettingsScreen = {
           PlayerSettingsStore.set({ streamAutoPlayMode: option.id });
         }
       });
+    });
+    this.actionMap.set("playback:autoStreamHdr", () => {
+      const settings = PlayerSettingsStore.get();
+      const support = getHdrPlaybackSupport();
+      const target = support === false ? "AVOID" : "PREFER";
+      const next = resolveHdrPreference(settings, support) === target ? "ANY" : target;
+      const automatic = resolveHdrPreference(
+        { ...settings, streamAutoPlayHdrPreference: "AUTO" },
+        support
+      );
+      PlayerSettingsStore.set({ streamAutoPlayHdrPreference: next === automatic ? "AUTO" : next });
     });
     this.actionMap.set("playback:autoStreamTimeout", () => {
       this.openOptionDialog({
@@ -8181,6 +8195,28 @@ export const SettingsScreen = {
             "Manual (choose stream)"
           )
         })}
+        ${
+          String(model.player.streamAutoPlayMode) === "FIRST_STREAM"
+            ? this.renderToggleRow({
+                focusKey: "playback:autoStreamHdr",
+                title:
+                  hdrSupport === false
+                    ? "Don’t select HDR streams"
+                    : hdrSupport === true
+                      ? "Select HDR when available"
+                      : "Prefer HDR streams",
+                subtitle:
+                  hdrSupport === true
+                    ? "Your device supports HDR playback."
+                    : hdrSupport === false
+                      ? "Your browser reports SDR video output."
+                      : "HDR support couldn’t be verified.",
+                checked:
+                  resolveHdrPreference(model.player, hdrSupport) ===
+                  (hdrSupport === false ? "AVOID" : "PREFER")
+              })
+            : ""
+        }
         ${this.renderActionRow({
           focusKey: "playback:autoStreamTimeout",
           title: t("autoplay_timeout_title", {}, "Stream Selection Timeout"),

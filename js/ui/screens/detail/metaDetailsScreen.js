@@ -1,3 +1,8 @@
+import {
+  applyHdrPreference,
+  resolveHdrPreference,
+  hdrFromProbe
+} from "../../../core/streams/streamHdrPreference.js";
 import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
 import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
 import {
@@ -3402,6 +3407,7 @@ export const MetaDetailsScreen = {
         autoResolvedStreamsComplete: resolution.complete !== false,
         autoSelectionFinished: !resolution.selected,
         autoSelectionTimedOut: resolution.timedOut === true,
+        autoSelectionHdrExcluded: resolution.hdrExcluded === true,
 
         autoSelectionTimeoutSeconds: settings.streamAutoPlayTimeoutSeconds
       },
@@ -3450,7 +3456,10 @@ export const MetaDetailsScreen = {
 
     // Apply autoplay source permissions before spending resolution and probe budgets.
     // The complete list stays available for a manual fallback and its labels.
-    const top = limit === 0 ? eligible : eligible.slice(0, limit);
+    const hdrPreference = resolveHdrPreference(settings);
+    const ranked =
+      hdrPreference === "PREFER" ? applyHdrPreference(eligible, { hdrPreference }) : eligible;
+    const top = limit === 0 ? ranked : ranked.slice(0, limit);
     const resolvedByKey = new Map();
     await withinStreamSelectionDeadline(
       () =>
@@ -3487,7 +3496,7 @@ export const MetaDetailsScreen = {
       return candidate?.url ? { ...stream, url: candidate.url } : stream;
     });
     const probes = new Map();
-    // First stream checks in source order and stops before probing any later row.
+    // Stable source order within HDR priority groups; stop once a preferred match is confirmed.
     const batchSize =
       String(settings.streamAutoPlayMode || "")
         .trim()
@@ -3495,7 +3504,8 @@ export const MetaDetailsScreen = {
         ? 1
         : 6;
     const directOf = () =>
-      candidates
+      [...candidates]
+        .sort((a, b) => eligible.indexOf(a.stream) - eligible.indexOf(b.stream))
         .filter((candidate) => {
           const probe = probes.get(candidate.url) || null;
           if (!probe) return false;
@@ -3542,7 +3552,20 @@ export const MetaDetailsScreen = {
         () => null
       );
       direct = directOf();
-      if (selectAutoPlayStream(direct, selectionOptions)) break;
+      const found = selectAutoPlayStream(direct, {
+        ...selectionOptions,
+        hdrPreference,
+        probeOnly: true,
+        probeForStream: (stream) =>
+          probes.get(candidates.find((entry) => entry.stream === stream)?.url)
+      });
+      if (
+        found &&
+        (hdrPreference !== "PREFER" ||
+          hdrFromProbe(probes.get(candidates.find((entry) => entry.stream === found)?.url)) ===
+            true)
+      )
+        break;
     }
 
     if (cancelled()) return resolution;
@@ -3559,27 +3582,21 @@ export const MetaDetailsScreen = {
         url: location.href
       })
     }).catch(() => {});
-    // The device log showed `direct: 5` and still no playback: the auto-play filters
-    // (source, chosen addons/plugins) dropped every one of them. A confirmed Direct row the
-    // filter cannot name is still the right thing to play, so the filter decides *which*
-    // one -- and an empty answer no longer cancels the choice outright.
-    const filteredChoice = selectAutoPlayStream(direct, selectionOptions);
-    const chosen = filteredChoice || direct[0] || null;
-    if (chosen && !filteredChoice) {
-      void fetch("/api/debug/log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: "autoplay-fallback",
-          message: "auto-play filters matched nothing; playing the first confirmed Direct row"
-        })
-      }).catch(() => {});
-    }
+    // HDR exclusions must not fall through to an excluded Direct source.
+    const filteredChoice = selectAutoPlayStream(direct, {
+      ...selectionOptions,
+      hdrPreference,
+      probeOnly: true,
+      probeForStream: (stream) =>
+        probes.get(candidates.find((entry) => entry.stream === stream)?.url)
+    });
+    const chosen = filteredChoice || null;
     return {
       ...resolution,
       streams: resolvedStreams,
       selected: chosen,
       timedOut: !chosen && expired(),
+      hdrExcluded: hdrPreference === "AVOID" && direct.length > 0 && !chosen,
       directStreams: direct,
       probes: [...probes]
     };

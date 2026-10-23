@@ -1,3 +1,7 @@
+import {
+  applyHdrPreference,
+  resolveHdrPreference
+} from "../../../core/streams/streamHdrPreference.js";
 import { resolveRelayAvailability } from "../../../core/player/relayAvailability.js";
 import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
 import {
@@ -836,6 +840,7 @@ export const StreamScreen = {
       !navigationContext?.isBackNavigation &&
       this.params?.continueWatchingBackHome &&
       !this.params?.manualSelection &&
+      resolveHdrPreference(playerSettings) === "ANY" &&
       reusableStream?.streamId &&
       (String(this.params?.resumeStreamIdentity || "").trim() ||
         String(this.params?.preferredStreamId || "").trim())
@@ -1420,6 +1425,7 @@ export const StreamScreen = {
       this.params?.manualSelection ||
       this.params?.autoSelectionFinished ||
       nothingToResume ||
+      resolveHdrPreference(PlayerSettingsStore.get()) !== "ANY" ||
       manualMode
     ) {
       this.autoResumeAttempted = true;
@@ -1527,7 +1533,11 @@ export const StreamScreen = {
       seen.add(key);
       return true;
     });
-    return limit === 0 ? candidates : candidates.slice(0, limit);
+    const ranked =
+      resolveHdrPreference(PlayerSettingsStore.get()) === "PREFER"
+        ? applyHdrPreference(candidates, { hdrPreference: "PREFER" })
+        : candidates;
+    return limit === 0 ? ranked : ranked.slice(0, limit);
   },
 
   probesSettled() {
@@ -1610,6 +1620,9 @@ export const StreamScreen = {
     }
 
     const selected = selectAutoPlayStream(this.getFilteredStreams(), {
+      hdrPreference: resolveHdrPreference(settings),
+      probeOnly: settings.showOnlyDirectStreams === true,
+      probeForStream: (stream) => this._probeResults?.get(stream.url || stream.externalUrl || ""),
       mode: settings.streamAutoPlayMode,
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
@@ -2932,6 +2945,7 @@ export const StreamScreen = {
             </div>
           </section>
           <section class="stream-route-right">
+            ${this.params?.autoSelectionHdrExcluded ? `<div class="stream-route-empty" role="status">No stream matches your HDR preference. Choose a stream manually.</div>` : ""}
             ${
               this.params?.autoSelectionTimedOut
                 ? `<div class="stream-route-empty" role="status">${escapeHtml(

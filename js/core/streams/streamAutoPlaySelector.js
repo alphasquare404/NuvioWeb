@@ -1,3 +1,6 @@
+import { streamHdrStatus } from "./streamHdrPreference.js";
+import { applyHdrPreference } from "./streamHdrPreference.js";
+
 // Auto stream selection uses the same preference model as the original app. Given the list of
 // streams shown in the picker and the user's auto-play settings, it returns the
 // stream that should play automatically, or null to leave the picker open.
@@ -188,8 +191,10 @@ export function filterAutoPlaySourceStreams(streams, options = {}) {
 }
 
 export function selectAutoPlayStream(streams, options = {}) {
-  const candidates = filterAutoPlaySourceStreams(streams, options);
   const mode = normalizeMode(options.mode);
+  const scoped = filterAutoPlaySourceStreams(streams, options);
+  const candidates =
+    mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM ? applyHdrPreference(scoped, options) : scoped;
   if (!candidates.length) {
     return null;
   }
@@ -198,7 +203,15 @@ export function selectAutoPlayStream(streams, options = {}) {
   // including MANUAL. In bingeGroupOnly mode, a miss must open the picker.
   const preferredBingeGroup = String(options.preferredBingeGroup || "").trim();
   if (options.preferBingeGroupInSelection && preferredBingeGroup) {
-    const bingeGroupMatch = candidates.find(
+    const preferredCandidates =
+      mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM &&
+      options.hdrPreference === "PREFER" &&
+      candidates.some(
+        (stream) => isPlayableStream(stream) && streamHdrStatus(stream, options) === true
+      )
+        ? candidates.filter((stream) => streamHdrStatus(stream, options) === true)
+        : candidates;
+    const bingeGroupMatch = preferredCandidates.find(
       (stream) => streamBingeGroup(stream) === preferredBingeGroup && isPlayableStream(stream)
     );
     if (bingeGroupMatch) {

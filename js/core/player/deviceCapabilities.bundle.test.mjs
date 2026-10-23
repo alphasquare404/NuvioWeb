@@ -49,3 +49,11 @@ test("production-target per-file assessment creates its default media element sa
   assert.equal(result.video, true);
   assert.equal(result.audio[0].supported, true);
 });
+
+test("production-target startup snapshot initializes safely before any profile exists", async () => {
+  const api = await bundledApi("./deviceCapabilitySession.js", mediaDocument());
+  const snapshot = api.initializeDeviceCapabilitySession();
+  assert.equal(snapshot.codecs.h264, true);
+  assert.equal(snapshot.hdr, null);
+  assert.strictEqual(api.initializeDeviceCapabilitySession().codecs, snapshot.codecs);
+});

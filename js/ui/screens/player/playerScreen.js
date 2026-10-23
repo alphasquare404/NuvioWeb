@@ -1,3 +1,13 @@
+import { PROBE_ENDPOINT } from "../../../config.js";
+import { createStreamProber, streamProbeIdentity } from "../../../core/player/streamProbe.js";
+import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
+import { classifyPlayback } from "../../../core/player/playbackMethod.js";
+import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
+import {
+  applyHdrPreference,
+  resolveHdrPreference
+} from "../../../core/streams/streamHdrPreference.js";
+import { filterAutoPlaySourceStreams } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   StartupLoadingOverlay,
   usesUnifiedStartup
@@ -7589,7 +7599,7 @@ export const PlayerScreen = {
     // autoplays a row the list was told to hide is the filter being bypassed.
     let candidates = streamItems;
     if (settings.showOnlyDirectStreams === true) {
-      candidates = await this.selectDirectPlayableCandidates(streamItems);
+      candidates = await this.selectDirectPlayableCandidates(streamItems, settings, options);
       if (!candidates.length) {
         // Nothing plays as it is. Returning null makes the caller open the next-episode
         // picker -- the same path as "autoplay next episode" being switched off -- instead
@@ -7616,6 +7626,10 @@ export const PlayerScreen = {
               .filter(Boolean)
           );
     return selectAutoPlayStream(candidates, {
+      hdrPreference: resolveHdrPreference(settings),
+      probeOnly: settings.showOnlyDirectStreams === true,
+      probeForStream: (stream) =>
+        this._nextEpisodeProbeResults?.get(stream.url || stream.externalUrl || ""),
       mode: shouldAutoSelectInManualMode ? "FIRST_STREAM" : mode,
       source: shouldAutoSelectInManualMode
         ? "ALL_SOURCES"
@@ -7630,10 +7644,34 @@ export const PlayerScreen = {
     });
   },
 
-  async selectDirectPlayableCandidates(streamItems = []) {
+  async selectDirectPlayableCandidates(
+    streamItems = [],
+    settings = PlayerSettingsStore.get(),
+    options = {}
+  ) {
     // The label comes from the probe, never from the text: this session proved the addon
     // text wrong about codecs twice. A row that cannot be probed is not counted as direct.
-    const rows = streamItems
+    const installedAddonNames =
+      options.installedAddonNames ||
+      new Set(
+        ((await addonRepository.getInstalledAddons().catch(() => [])) || []).map((addon) =>
+          String(addon.displayName || addon.name || "")
+        )
+      );
+    const scoped = filterAutoPlaySourceStreams(streamItems, {
+      source:
+        settings.streamAutoPlayMode === "MANUAL" ? "ALL_SOURCES" : settings.streamAutoPlaySource,
+      installedAddonNames,
+      selectedAddons:
+        settings.streamAutoPlayMode === "MANUAL" ? [] : settings.streamAutoPlaySelectedAddons,
+      selectedPlugins:
+        settings.streamAutoPlayMode === "MANUAL" ? [] : settings.streamAutoPlaySelectedPlugins
+    });
+    const ranked =
+      resolveHdrPreference(settings) === "PREFER"
+        ? applyHdrPreference(scoped, { hdrPreference: "PREFER" })
+        : scoped;
+    const rows = ranked
       .map((stream) => ({
         stream,
         url: String(stream.url || stream.externalUrl || "").trim()
@@ -7641,27 +7679,41 @@ export const PlayerScreen = {
       .filter((row) => row.url);
     if (!rows.length) return [];
 
-    const [{ classifyPlayback }, { getDeviceCapabilities }, probeModule] = await Promise.all([
-      import("../../../core/player/playbackMethod.js"),
-      import("../../../core/player/deviceCapabilities.js"),
-      import("../../../core/player/streamProbe.js")
-    ]);
     const capabilities = getDeviceCapabilities();
     const limitRaw = Number(globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20);
-    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 20;
-    const targets = rows.slice(0, limit).map((row) => ({
+    const limit = Number.isFinite(limitRaw) && limitRaw >= 0 ? limitRaw : 20;
+    const targets = (limit === 0 ? rows : rows.slice(0, limit)).map((row) => ({
       url: row.url,
       label: [row.stream.name, row.stream.title, row.stream.description].filter(Boolean).join(" ")
     }));
 
+    const prober =
+      this._nextEpisodeProber ||
+      (this._nextEpisodeProber = createStreamProber({
+        endpoint: PROBE_ENDPOINT,
+        timeoutMs: 15000,
+        assess: (probe) => assessPlaybackCapabilities(probe)
+      }));
     let probes = new Map();
-    if (probeModule.streamProber?.enabled) {
-      probes = await probeModule.streamProber
-        .probeUnknown(targets, { capabilities, limit })
-        .catch(() => new Map());
+    if (prober.enabled) {
+      probes = new Map(
+        await Promise.all(
+          targets.map(async (target) => [
+            target.url,
+            await prober
+              .probe(target.url, {
+                reason: "selection",
+                identity: streamProbeIdentity(rows.find((row) => row.url === target.url)?.stream)
+              })
+              .catch(() => null)
+          ])
+        )
+      );
     }
 
-    return rows
+    this._nextEpisodeProbeResults = probes;
+    return [...rows]
+      .sort((a, b) => streamItems.indexOf(a.stream) - streamItems.indexOf(b.stream))
       .filter((row) => {
         const probe = probes.get(row.url) || null;
         if (!probe) return false;

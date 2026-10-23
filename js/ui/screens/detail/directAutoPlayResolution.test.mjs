@@ -1,3 +1,4 @@
+import * as hdrPolicy from "../../../core/streams/streamHdrPreference.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -25,6 +26,8 @@ async function resolve(
     limit = 5,
     overrides = {},
     nonDirect = [],
+    hdr = [],
+    sdr = [],
     unresolved = [],
     deadlineAt = Infinity,
     probeDelayMs = 0,
@@ -41,6 +44,7 @@ async function resolve(
   const playerSettings = { ...settings, ...overrides };
   const dependencies = {
     ...selector,
+    ...hdrPolicy,
     StartupLoadingOverlay: { setStage() {} },
     withinStreamSelectionDeadline,
     getDeviceCapabilities: () => ({ h264: true, aac: true, containers: { mp4: true, mkv: false } }),
@@ -52,6 +56,11 @@ async function resolve(
         if (probeDelayMs) await new Promise((resolve) => setTimeout(resolve, probeDelayMs));
         return {
           ...directProbe,
+          colorTransfer: hdr.some((id) => url.endsWith("/" + id))
+            ? "smpte2084"
+            : sdr.some((id) => url.endsWith("/" + id))
+              ? "bt709"
+              : null,
           container: nonDirect.some((id) => url.endsWith("/" + id)) ? "mkv" : "mp4"
         };
       }
@@ -208,4 +217,83 @@ test("debrid preparation consumes the same budget as probing", async () => {
   assert.equal(result.timedOut, true);
   assert.equal(result.selected, null);
   assert.equal(probed.length, 0);
+});
+
+test("HDR text ranking happens over the full eligible list before the probe cap", async () => {
+  const streams = Array.from({ length: 22 }, (_, i) => row("aio-" + i));
+  streams[18].title = "HDR10";
+  const { result, prepared, probed } = await resolve(streams, {
+    limit: 1,
+    overrides: { streamAutoPlayHdrPreference: "PREFER" },
+    hdr: ["aio-18"]
+  });
+  assert.equal(result.selected?.id, "aio-18");
+  assert.deepEqual(
+    prepared.map((s) => s.id),
+    ["aio-18"]
+  );
+  assert.deepEqual(probed, [streams[18].url]);
+});
+
+test("a falsely advertised HDR and non-Direct HDR cannot beat a confirmed Direct HDR", async () => {
+  const streams = [row("sdr-first"), row("false-hdr"), row("hdr-remux"), row("hdr-direct")];
+  streams.slice(1).forEach((s) => {
+    s.title = "HDR";
+  });
+  const { result, probed } = await resolve(streams, {
+    overrides: { streamAutoPlayHdrPreference: "PREFER" },
+    hdr: ["hdr-remux", "hdr-direct"],
+    sdr: ["false-hdr"],
+    nonDirect: ["hdr-remux"]
+  });
+  assert.equal(result.selected?.id, "hdr-direct");
+  assert.deepEqual(
+    probed,
+    streams.slice(1).map((s) => s.url)
+  );
+});
+
+test("HDR preference falls back to the original first Direct source if probes find no HDR", async () => {
+  const streams = [row("first"), { ...row("false-hdr"), title: "HDR" }, row("last")];
+  const { result, probed } = await resolve(streams, {
+    overrides: { streamAutoPlayHdrPreference: "PREFER" },
+    sdr: streams.map((s) => s.id)
+  });
+  assert.equal(result.selected?.id, "first");
+  assert.equal(probed[0], streams[1].url);
+});
+
+test("Only Direct avoids HDR using probe evidence even when addon text is wrong or absent", async () => {
+  const streams = [row("hidden-hdr"), { ...row("false-hdr"), title: "HDR" }];
+  const { result } = await resolve(streams, {
+    overrides: { streamAutoPlayHdrPreference: "AVOID" },
+    hdr: ["hidden-hdr"],
+    sdr: ["false-hdr"]
+  });
+  assert.equal(result.selected?.id, "false-hdr");
+});
+
+test("avoiding HDR never falls through to an excluded Direct stream", async () => {
+  const streams = [row("hdr")];
+  const { result } = await resolve(streams, {
+    overrides: { streamAutoPlayHdrPreference: "AVOID" },
+    hdr: ["hdr"]
+  });
+  assert.equal(result.selected, null);
+  assert.equal(result.hdrExcluded, true);
+});
+
+test("HDR probing does not extend the original stream-selection deadline", async () => {
+  const streams = [{ ...row("hdr-slow"), title: "HDR" }, row("fallback")];
+  const start = Date.now();
+  const { result, probed } = await resolve(streams, {
+    overrides: { streamAutoPlayHdrPreference: "PREFER" },
+    hdr: ["hdr-slow"],
+    deadlineAt: start + 40,
+    probeDelayMs: 100
+  });
+  assert.equal(result.selected, null);
+  assert.equal(result.timedOut, true);
+  assert.deepEqual(probed, [streams[0].url]);
+  assert.ok(Date.now() - start < 90);
 });

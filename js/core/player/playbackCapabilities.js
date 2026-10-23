@@ -1,3 +1,4 @@
+import { getCapabilityRevision } from "./deviceCapabilitySession.js";
 import { CONTAINER_MIME_TYPES } from "./deviceCapabilities.js";
 
 // Local predictions about the selected engine. Never persist these on the server.
@@ -68,7 +69,7 @@ async function boundedQuery(callback) {
   }
 }
 
-export async function assessPlaybackCapabilities(
+async function assessUncachedPlaybackCapabilities(
   probe,
   { engine = "native", scope = globalThis, mediaElement } = {}
 ) {
@@ -221,4 +222,70 @@ export async function assessPlaybackCapabilities(
           ? "browser-container-supported"
           : "container-capability-unknown"
   };
+}
+
+// The same decoding configuration can be reused across links/files. Keep these
+// predictions local and separate from the server's immutable file facts.
+const assessmentCaches = new WeakMap();
+function assessmentKey(probe, engine) {
+  return JSON.stringify([
+    engine,
+    ...[
+      "container",
+      "videoCodec",
+      "codecString",
+      "videoProfile",
+      "videoLevel",
+      "bitDepth",
+      "videoTag",
+      "width",
+      "height",
+      "frameRate",
+      "videoBitrate",
+      "audioCodec",
+      "audioChannels",
+      "colorTransfer",
+      "hasAudio"
+    ].map((key) => probe[key] ?? null),
+    probe.audioStreams?.map((track) => [
+      track.index,
+      track.codec,
+      track.profile,
+      track.channels,
+      track.sampleRate
+    ])
+  ]);
+}
+
+export async function assessPlaybackCapabilities(probe, options = {}) {
+  const { engine = "native", scope = globalThis, mediaElement } = options;
+  let contexts = assessmentCaches.get(scope);
+  if (!contexts) assessmentCaches.set(scope, (contexts = new Map()));
+  let context = contexts.get(mediaElement);
+  const revision = getCapabilityRevision();
+  if (!context || context.revision !== revision) {
+    context = { revision, results: new Map() };
+    contexts.set(mediaElement, context);
+  }
+  const key = assessmentKey(probe, engine);
+  if (context.results.has(key)) return context.results.get(key);
+  const pending = assessUncachedPlaybackCapabilities(probe, options);
+  // Also share concurrent requests for an identical configuration.
+  context.results.set(key, pending);
+  if (context.results.size > 512) context.results.delete(context.results.keys().next().value);
+  try {
+    const result = await pending;
+    if (getCapabilityRevision() !== revision) return assessPlaybackCapabilities(probe, options);
+    // An API timeout/error is not a capability verdict; allow a later retry.
+    if (
+      result.video == null ||
+      result.container == null ||
+      (probe.hasAudio !== false && result.audio.some((track) => track.supported == null))
+    )
+      context.results.delete(key);
+    return result;
+  } catch (error) {
+    context.results.delete(key);
+    throw error;
+  }
 }

@@ -9,6 +9,8 @@ import {
   normalizeSubtitleVerticalOffset
 } from "../../core/player/subtitleVerticalOffset.js";
 
+import { normalizeHdrPreference } from "../../core/streams/streamHdrPreference.js";
+
 const KEY = "playerSettings";
 
 const DEFAULTS = {
@@ -56,6 +58,8 @@ const DEFAULTS = {
   // Auto stream selection (matches the Android TV app). When the mode is not
   // MANUAL, pressing play auto-selects a stream and plays it after a countdown.
   streamAutoPlayMode: "MANUAL",
+  // AUTO is evaluated on this device, never persisted as a device capability.
+  streamAutoPlayHdrPreference: "AUTO",
   streamAutoPlaySource: "ALL_SOURCES",
   streamAutoPlaySelectedAddons: [],
   streamAutoPlaySelectedPlugins: [],
@@ -348,6 +352,9 @@ export function normalizePlayerSettings(settings = {}) {
     ),
     streamAutoPlayMode: normalizeStreamAutoPlayMode(
       persistentSettings.streamAutoPlayMode ?? DEFAULTS.streamAutoPlayMode
+    ),
+    streamAutoPlayHdrPreference: normalizeHdrPreference(
+      persistentSettings.streamAutoPlayHdrPreference
     ),
     streamAutoPlaySource: normalizeStreamAutoPlaySource(
       persistentSettings.streamAutoPlaySource ?? DEFAULTS.streamAutoPlaySource

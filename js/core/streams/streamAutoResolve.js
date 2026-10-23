@@ -10,6 +10,9 @@
 // choice itself is still `selectAutoPlayStream`: nothing about which stream
 // wins is decided here.
 
+import { hdrFromText } from "./streamHdrPreference.js";
+import { filterAutoPlaySourceStreams } from "./streamAutoPlaySelector.js";
+import { resolveHdrPreference } from "./streamHdrPreference.js";
 import { streamRepository } from "../../data/repository/streamRepository.js";
 import { flattenStreams, mergeStreamItems } from "./streamList.js";
 import { isAutoPlayEffectivelyEnabled, selectAutoPlayStream } from "./streamAutoPlaySelector.js";
@@ -166,6 +169,7 @@ export async function resolveAutoPlayStream({
   const choose = () =>
     selectAutoPlayStream(streams, {
       mode: settings.streamAutoPlayMode,
+      hdrPreference: resolveHdrPreference(settings),
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
       installedAddonNames,
@@ -242,6 +246,15 @@ export async function resolveAutoPlayStream({
     selected: timedOut ? null : selected || null,
     cancelled: false,
     complete,
+    hdrExcluded:
+      !selected &&
+      resolveHdrPreference(settings) === "AVOID" &&
+      filterAutoPlaySourceStreams(streams, {
+        source: settings.streamAutoPlaySource,
+        installedAddonNames,
+        selectedAddons: settings.streamAutoPlaySelectedAddons,
+        selectedPlugins: settings.streamAutoPlaySelectedPlugins
+      }).some((stream) => hdrFromText(stream) === true),
     timedOut,
     deadlineAt,
     reason: timedOut ? "timeout" : selected ? "selected" : "no-match"

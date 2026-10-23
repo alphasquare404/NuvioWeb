@@ -1,3 +1,4 @@
+import { initializeDeviceCapabilitySession } from "./core/player/deviceCapabilitySession.js";
 import "./core/diagnostics/consoleDebugBuffer.js";
 import { detailWatchedEnrichmentService } from "./data/repository/detailWatchedEnrichmentService.js";
 import { Router } from "./ui/navigation/router.js";
@@ -294,6 +295,8 @@ async function bootstrapApp() {
   appShellRendered = true;
   markBootStage("Initializing platform");
   Platform.init();
+  markBootStage("Checking playback capabilities");
+  initializeDeviceCapabilitySession();
   const isDesktopBrowser = Platform.isBrowser();
   document.documentElement.classList.toggle("desktop-browser", isDesktopBrowser);
   document.body.classList.toggle("desktop-browser", isDesktopBrowser);

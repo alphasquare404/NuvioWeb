@@ -239,3 +239,102 @@ test("selecting a secondary audio track also checks the relay's MP4 video output
   assert.equal(result.method, "transcode");
   assert.equal(result.reason, "relay-output-video-unsupported");
 });
+
+test("identical file configurations share one assessment, including concurrent calls", async () => {
+  let queries = 0;
+  let supported = true;
+  const scope = {
+    navigator: {
+      mediaCapabilities: {
+        async decodingInfo() {
+          queries++;
+          return { supported, smooth: supported, powerEfficient: supported };
+        }
+      }
+    }
+  };
+  const options = { scope, mediaElement: { canPlayType: () => "probably" } };
+  const [first, second] = await Promise.all([
+    assessPlaybackCapabilities(probe, options),
+    assessPlaybackCapabilities({ ...probe }, options)
+  ]);
+  assert.strictEqual(first, second);
+  assert.equal(queries, 2, "one video and one audio query for the shared configuration");
+  await assessPlaybackCapabilities({ ...probe, playbackCapabilities: first }, options);
+  assert.equal(queries, 2, "prior local predictions do not alter the file-fact key");
+  await assessPlaybackCapabilities({ ...probe, width: 3840 }, options);
+  assert.equal(queries, 4, "a different decoding configuration needs its own answer");
+  const { refreshDeviceCapabilities } = await import("./deviceCapabilitySession.js");
+  supported = false;
+  refreshDeviceCapabilities();
+  const refreshed = await assessPlaybackCapabilities(probe, options);
+  assert.equal(refreshed.video, false);
+  assert.equal(queries, 6, "device changes invalidate old per-file predictions");
+});
+
+test("native and Movi predictions never share a cached verdict", async () => {
+  let webCodecsQueries = 0;
+  const scope = {
+    VideoDecoder: {
+      async isConfigSupported() {
+        webCodecsQueries++;
+        return { supported: false };
+      }
+    }
+  };
+  const mediaElement = { canPlayType: () => "probably" };
+  const native = await assessPlaybackCapabilities(probe, { scope, mediaElement });
+  const movi = await assessPlaybackCapabilities(probe, { scope, mediaElement, engine: "movi" });
+  assert.equal(native.video, true);
+  assert.equal(movi.video, false);
+  assert.equal(webCodecsQueries, 1);
+});
+
+test("an unavailable browser API can recover instead of caching Unknown for the session", async () => {
+  let unavailable = true;
+  let calls = 0;
+  const options = {
+    scope: {},
+    mediaElement: {
+      canPlayType() {
+        calls++;
+        if (unavailable) throw Error("not ready");
+        return "probably";
+      }
+    }
+  };
+  assert.equal((await assessPlaybackCapabilities(probe, options)).video, null);
+  unavailable = false;
+  assert.equal((await assessPlaybackCapabilities(probe, options)).video, true);
+  const afterRecovery = calls;
+  await assessPlaybackCapabilities(probe, options);
+  assert.equal(calls, afterRecovery);
+});
+
+test("a device change during an in-flight assessment cannot return an old prediction", async () => {
+  let release;
+  let videoQueries = 0;
+  const scope = {
+    navigator: {
+      mediaCapabilities: {
+        decodingInfo(config) {
+          if (config.video && ++videoQueries === 1)
+            return new Promise((resolve) => {
+              release = resolve;
+            });
+          return Promise.resolve({ supported: false });
+        }
+      }
+    }
+  };
+  const pending = assessPlaybackCapabilities(probe, {
+    scope,
+    mediaElement: { canPlayType: () => "probably" }
+  });
+  await Promise.resolve();
+  const { refreshDeviceCapabilities } = await import("./deviceCapabilitySession.js");
+  refreshDeviceCapabilities();
+  release({ supported: true });
+  assert.equal((await pending).video, false);
+  assert.equal(videoQueries, 2);
+});

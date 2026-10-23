@@ -99,3 +99,7 @@ export function getDeviceCapabilities() {
 export function setDeviceCapabilitiesForTests(capabilities) {
   cached = capabilities;
 }
+
+export function invalidateDeviceCapabilities() {
+  cached = null;
+}
