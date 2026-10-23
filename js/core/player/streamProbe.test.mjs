@@ -267,3 +267,20 @@ test("the identity names the file, never the link", () => {
   assert.equal(streamProbeIdentity({ name: "Some Release" }), "");
   assert.equal(streamProbeIdentity({}), "");
 });
+
+test("selection can shorten a probe request to the remaining overall budget", async () => {
+  let aborted = false;
+  const prober = createStreamProber({
+    endpoint: "/api/probe",
+    timeoutMs: 1000,
+    fetchImpl: async (url, { signal }) =>
+      new Promise((resolve, reject) => {
+        signal.addEventListener("abort", () => {
+          aborted = true;
+          reject(new Error("aborted"));
+        });
+      })
+  });
+  assert.equal(await prober.probe("https://media.test/cold.mp4", { timeoutMs: 20 }), null);
+  assert.equal(aborted, true);
+});

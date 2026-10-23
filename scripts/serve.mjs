@@ -281,6 +281,7 @@ async function ensureLocalMediaRuntime() {
     return existingPort;
   }
   mediaRuntimeProcess = spawn(process.execPath, [mediaRuntimePath], {
+    windowsHide: true,
     cwd: rootDir,
     stdio: ["ignore", "inherit", "inherit"]
   });

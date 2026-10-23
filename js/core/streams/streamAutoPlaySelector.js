@@ -160,12 +160,11 @@ function buildExcludeRegex(pattern) {
   }
 }
 
-export function selectAutoPlayStream(streams, options = {}) {
+export function filterAutoPlaySourceStreams(streams, options = {}) {
   const list = Array.isArray(streams) ? streams.filter(Boolean) : [];
   if (!list.length) {
-    return null;
+    return [];
   }
-  const mode = normalizeMode(options.mode);
   const source = normalizeSource(options.source);
   const installedAddonNames =
     options.installedAddonNames instanceof Set
@@ -179,13 +178,18 @@ export function selectAutoPlayStream(streams, options = {}) {
     options.selectedPlugins instanceof Set
       ? options.selectedPlugins
       : new Set(Array.isArray(options.selectedPlugins) ? options.selectedPlugins : []);
-  const candidates = scopeStreamsBySource(list, source, installedAddonNames).filter((stream) => {
+  return scopeStreamsBySource(list, source, installedAddonNames).filter((stream) => {
     const addonName = String(stream?.addonName || "");
     const isAddonStream = installedAddonNames.has(addonName);
     return isAddonStream
       ? !selectedAddons.size || selectedAddons.has(addonName)
       : !selectedPlugins.size || selectedPlugins.has(addonName);
   });
+}
+
+export function selectAutoPlayStream(streams, options = {}) {
+  const candidates = filterAutoPlaySourceStreams(streams, options);
+  const mode = normalizeMode(options.mode);
   if (!candidates.length) {
     return null;
   }

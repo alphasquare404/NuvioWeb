@@ -1,0 +1,320 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { build } from "esbuild";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+
+async function fixture(run) {
+  const saved = { document: globalThis.document, settings: globalThis.__STARTUP_SETTINGS__ };
+  globalThis.__STARTUP_SETTINGS__ = {
+    browserExternalPlayer: "disabled",
+    playerEngine: "native",
+    loadingOverlayEnabled: true,
+    showPlayerLoadingStatus: true
+  };
+  const nodes = [];
+  const child = () => {
+    const classes = new Set();
+    return {
+      textContent: "",
+      style: {},
+      naturalWidth: 0,
+      complete: false,
+      classList: {
+        toggle(name, enabled) {
+          if (enabled) classes.add(name);
+          else classes.delete(name);
+        },
+        contains(name) {
+          return classes.has(name);
+        }
+      }
+    };
+  };
+  const createNode = () => ({
+    textContent: "",
+    style: {},
+    hidden: false,
+    classList: { toggle() {} },
+    remove() {
+      nodes.splice(nodes.indexOf(this), 1);
+    },
+    querySelector(selector) {
+      return this.children[selector];
+    },
+    children: {
+      ".player-loading-status": child(),
+      ".player-loading-backdrop": child(),
+      ".player-loading-title": child(),
+      ".player-loading-subtitle": child(),
+      ".player-loading-identity": child(),
+      ".player-loading-logo": child()
+    }
+  });
+  globalThis.document = {
+    createElement: createNode,
+    body: {
+      appendChild(node) {
+        nodes.push(node);
+      }
+    }
+  };
+  const built = await build({
+    entryPoints: [fileURLToPath(new URL("./startupLoadingOverlay.js", import.meta.url))],
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    write: false,
+    plugins: [
+      {
+        name: "settings",
+        setup(api) {
+          api.onResolve({ filter: /playerSettingsStore\.js$/ }, () => ({
+            path: "settings",
+            namespace: "mock"
+          }));
+          api.onLoad({ filter: /.*/, namespace: "mock" }, () => ({
+            contents: "export const PlayerSettingsStore={get:()=>globalThis.__STARTUP_SETTINGS__}"
+          }));
+        }
+      }
+    ]
+  });
+  const { StartupLoadingOverlay: overlay, usesUnifiedStartup } = await import(
+    "data:text/javascript;base64," + Buffer.from(built.outputFiles[0].contents).toString("base64")
+  );
+  try {
+    await run({ overlay, nodes, settings: globalThis.__STARTUP_SETTINGS__, usesUnifiedStartup });
+  } finally {
+    overlay.finish();
+    globalThis.document = saved.document;
+    globalThis.__STARTUP_SETTINGS__ = saved.settings;
+  }
+}
+
+test("one overlay node survives search, stream checks, opening and video loading", async () => {
+  await fixture(({ overlay, nodes }) => {
+    overlay.begin(
+      { title: "Film <test>", backdropUrl: "https://image.test/backdrop.jpg" },
+      "finding"
+    );
+    const original = nodes[0];
+    assert.equal(original.children[".player-loading-title"].textContent, "Film <test>");
+    assert.doesNotMatch(original.innerHTML, /Film <test>/);
+    for (const stage of ["checking", "opening", "loading", "metadata", "frame", "restoring"]) {
+      overlay.begin({ title: "Other route" }, stage);
+      assert.equal(nodes.length, 1);
+      assert.equal(nodes[0], original, "route transition never remounts the overlay");
+    }
+    assert.equal(original.children[".player-loading-status"].textContent, "Resuming playback…");
+    overlay.finish();
+    assert.equal(nodes.length, 0);
+    assert.equal(overlay.active, false);
+  });
+});
+
+test("loading status toggle hides stage and relay text without hiding the overlay", async () => {
+  await fixture(({ overlay, nodes, settings }) => {
+    overlay.begin({ title: "Film" });
+    settings.showPlayerLoadingStatus = false;
+    overlay.setRelayText("Preparing remuxing");
+    overlay.setStage("checking");
+    assert.equal(nodes.length, 1);
+    assert.equal(nodes[0].children[".player-loading-status"].textContent, "");
+    settings.showPlayerLoadingStatus = true;
+    overlay.setRelayText("");
+    assert.equal(nodes[0].children[".player-loading-status"].textContent, "Checking streams…");
+  });
+});
+
+test("disabled overlay, external player and Movi do not start a unified overlay", async () => {
+  await fixture(({ overlay, nodes, settings, usesUnifiedStartup }) => {
+    settings.loadingOverlayEnabled = false;
+    assert.equal(overlay.begin({}), false);
+    assert.equal(nodes.length, 0);
+    settings.loadingOverlayEnabled = true;
+    settings.browserExternalPlayer = "lenna";
+    assert.equal(usesUnifiedStartup(), false);
+    assert.equal(overlay.begin({}), false);
+    settings.browserExternalPlayer = "disabled";
+    settings.playerEngine = "movi";
+    assert.equal(overlay.begin({}), false);
+    assert.equal(nodes.length, 0);
+  });
+});
+
+test("native video events update status without timers advancing through invented stages", async () => {
+  const source = await readFile(
+    new URL("../screens/player/playerScreen.js", import.meta.url),
+    "utf8"
+  );
+  const method = source.match(/  bindVideoEvents\(\) \{[\s\S]*?\n {2}\},/)?.[0];
+  assert.ok(method);
+  const handlers = new Map();
+  const stages = [];
+  const video = {
+    readyState: 0,
+    addEventListener(name, handler) {
+      handlers.set(name, [...(handlers.get(name) || []), handler]);
+    }
+  };
+  const bind = new Function(
+    "PlayerController",
+    "StartupLoadingOverlay",
+    "return ({" + method + "}).bindVideoEvents"
+  )(
+    { video },
+    {
+      setStage(stage) {
+        stages.push(stage);
+      }
+    }
+  );
+  const screen = new Proxy(
+    {
+      videoListeners: [],
+      hasPresentedPlaybackFrame: false,
+      pendingPlaybackRestore: null,
+      paused: false
+    },
+    {
+      get(target, key) {
+        return key in target ? target[key] : () => {};
+      }
+    }
+  );
+  bind.call(screen);
+  const emit = (name) => handlers.get(name).forEach((handler) => handler());
+  emit("loadstart");
+  emit("progress");
+  video.readyState = 1;
+  emit("loadedmetadata");
+  screen.pendingPlaybackRestore = { timeSeconds: 60 };
+  emit("loadeddata");
+  assert.deepEqual(stages, ["loading", "metadata", "frame", "restoring"]);
+  screen.hasPresentedPlaybackFrame = true;
+  emit("loadstart");
+  assert.equal(stages.length, 4, "normal playback does not restart startup captions");
+});
+
+test("manual selection releases the attempt overlay before opening the stream list", async () => {
+  const source = await readFile(
+    new URL("../screens/detail/metaDetailsScreen.js", import.meta.url),
+    "utf8"
+  );
+  const method = source.match(
+    /  async openStreamRoute\(params, options\) \{[\s\S]*?\n {2}\},/
+  )?.[0];
+  assert.ok(method);
+  for (const manualMode of [true, false]) {
+    let finished = 0;
+    let navigated = 0;
+    const open = new Function(
+      "PlayerSettingsStore",
+      "isAutoPlayEffectivelyEnabled",
+      "StartupLoadingOverlay",
+      "Router",
+      "return ({" + method + "}).openStreamRoute"
+    )(
+      { get: () => ({}) },
+      () => !manualMode,
+      {
+        finish() {
+          finished++;
+        }
+      },
+      {
+        navigate(route) {
+          assert.equal(route, "stream");
+          navigated++;
+        }
+      }
+    );
+    await open.call({}, { manualSelection: !manualMode });
+    assert.equal(finished, 1);
+    assert.equal(navigated, 1);
+  }
+});
+
+test("late logo metadata replaces text on the same overlay only after its image loads", async () => {
+  await fixture(({ overlay, nodes }) => {
+    overlay.begin({ itemKey: "moana", title: "Moana" });
+    const node = nodes[0];
+    const logo = node.children[".player-loading-logo"];
+    const identity = node.children[".player-loading-identity"];
+    overlay.setStage("checking");
+    overlay.updateMetadata({ itemKey: "moana", logoUrl: "https://image.test/moana.png" });
+    assert.equal(nodes[0], node);
+    assert.equal(logo.src, "https://image.test/moana.png");
+    assert.equal(identity.classList.contains("has-logo"), false, "text stays until image is ready");
+    logo.naturalWidth = 420;
+    logo.onload();
+    assert.equal(identity.classList.contains("has-logo"), true);
+    assert.equal(logo.classList.contains("hidden"), false);
+    assert.equal(node.children[".player-loading-status"].textContent, "Checking streams…");
+    logo.onerror();
+    assert.equal(
+      identity.classList.contains("has-logo"),
+      false,
+      "failed image falls back to current title"
+    );
+    assert.equal(node.children[".player-loading-title"].textContent, "Moana");
+  });
+});
+
+test("artwork and late image events from another title cannot leak into the new overlay", async () => {
+  await fixture(({ overlay, nodes }) => {
+    overlay.begin({
+      itemKey: "obsession",
+      title: "Obsession",
+      logoUrl: "https://image.test/obsession.png"
+    });
+    const oldImage = nodes[0].children[".player-loading-logo"];
+    const oldLoad = oldImage.onload;
+    overlay.begin({
+      itemKey: "moana",
+      title: "Moana",
+      backdropUrl: "https://image.test/moana.jpg"
+    });
+    assert.equal(nodes.length, 1);
+    const current = nodes[0];
+    overlay.updateMetadata({
+      itemKey: "obsession",
+      title: "Obsession",
+      logoUrl: "https://image.test/obsession.png"
+    });
+    oldImage.naturalWidth = 420;
+    oldLoad();
+    assert.equal(current.children[".player-loading-title"].textContent, "Moana");
+    assert.equal(current.children[".player-loading-logo"].src, undefined);
+    assert.equal(
+      current.children[".player-loading-identity"].classList.contains("has-logo"),
+      false
+    );
+  });
+});
+
+test("Detail trusts only metadata loaded for its current route parameters", async () => {
+  const source = await readFile(
+    new URL("../screens/detail/metaDetailsScreen.js", import.meta.url),
+    "utf8"
+  );
+  const method = source.match(/  getStartupOverlayMeta\(\) \{[\s\S]*?\n {2}\},/)?.[0];
+  const get = new Function("return ({" + method + "}).getStartupOverlayMeta")();
+  const previous = { itemId: "obsession" };
+  const current = { itemId: "moana", fallbackTitle: "Moana", backdrop: "moana.jpg" };
+  const screen = {
+    params: current,
+    overlayMetaParams: previous,
+    meta: { name: "Obsession", logo: "obsession.png", background: "obsession.jpg" }
+  };
+  assert.deepEqual(get.call(screen), {
+    itemKey: "moana",
+    title: "Moana",
+    logoUrl: "",
+    backdropUrl: "moana.jpg"
+  });
+  screen.overlayMetaParams = current;
+  screen.meta = { name: "Moana", logo: "moana.png" };
+  assert.equal(get.call(screen).logoUrl, "moana.png");
+});

@@ -6636,7 +6636,9 @@ export const SettingsScreen = {
     // that play as they are may appear at all.
     this.actionMap.set("streams:toggle:playbackLabels", () => {
       const current = StreamBadgeSettingsStore.snapshot();
-      StreamBadgeSettingsStore.setShowPlaybackLabels(current.showPlaybackLabels === false);
+      // `set({...})` rather than the named setter: the named one threw
+      // "setShowPlaybackLabels is not a function" on the device.
+      StreamBadgeSettingsStore.set({ showPlaybackLabels: current.showPlaybackLabels === false });
     });
 
     // The same picker the autoplay settings use: a list of what is installed, not a box
@@ -8182,7 +8184,11 @@ export const SettingsScreen = {
         ${this.renderActionRow({
           focusKey: "playback:autoStreamTimeout",
           title: t("autoplay_timeout_title", {}, "Stream Selection Timeout"),
-          subtitle: t("autoplay_timeout_sub", {}, "Wait time for addons before selecting."),
+          subtitle: t(
+            "autoplay_selection_deadline_sub",
+            {},
+            "Maximum time to find and check a stream before opening the stream list."
+          ),
           value: labelForOptionId(
             STREAM_AUTOPLAY_TIMEOUT_OPTIONS,
             model.player.streamAutoPlayTimeoutSeconds,

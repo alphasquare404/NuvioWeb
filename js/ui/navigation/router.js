@@ -1,3 +1,4 @@
+import { StartupLoadingOverlay } from "../components/startupLoadingOverlay.js";
 import { HomeScreen } from "../screens/home/homeScreen.js";
 import { PlayerScreen } from "../screens/player/playerScreen.js";
 import { MoviPlayerScreen } from "../screens/player/movi/moviPlayerScreen.js";
@@ -369,13 +370,22 @@ export const Router = {
       const departingBrowserHistoryIndex = this.browserHistoryIndex;
       this.browserHistoryIndex = getNuvioHistoryIndex(state);
       this.browserHistoryProvenance = getNuvioHistoryProvenance(state);
-      const shouldSkipConsume = Boolean(this.skipConsumeNextPopstate);
+      const completingRequestedBack = Boolean(
+        this.pendingPreviousRouteBack &&
+        state?.route === this.pendingPreviousRouteBack.expectedRoute &&
+        getNuvioHistoryIndex(state) === this.pendingPreviousRouteBack.expectedIndex
+      );
+      const shouldSkipConsume = Boolean(this.skipConsumeNextPopstate || completingRequestedBack);
       this.skipConsumeNextPopstate = false;
       const currentScreen = this.getCurrentScreen();
+      const playerReturnRoute =
+        currentScreen?.shouldReturnToStreamOnBack?.() !== false
+          ? "stream"
+          : currentScreen?.params?.handoffReturnRoute;
       const shouldLetPlayerReturnToStream =
         this.current === "player" &&
-        state?.route === "stream" &&
-        currentScreen?.shouldReturnToStreamOnBack?.() !== false &&
+        ["stream", "detail", "home"].includes(playerReturnRoute) &&
+        state?.route === playerReturnRoute &&
         !currentScreen?.hasBackDismissableOverlay?.();
       // Home uses Back to open/dismiss its sidebar, but that local behavior
       // must not consume a valid Forward traversal into another Nuvio route.
@@ -853,6 +863,25 @@ export const Router = {
   },
 
   async navigate(routeName, params = {}, options = {}) {
+    if (
+      options.isBackNavigation ||
+      !["stream", "player"].includes(routeName) ||
+      (routeName === "stream" && !params.autoResolvedStreamId)
+    ) {
+      StartupLoadingOverlay.finish();
+    }
+    if (routeName === "player" && Platform.isBrowser()) {
+      StartupLoadingOverlay.begin(
+        {
+          itemKey: String(params.itemId || ""),
+          title: params.playerTitle || params.itemTitle || "Nuvio",
+          subtitle: params.playerSubtitle || "",
+          logoUrl: params.playerLogoUrl || "",
+          backdropUrl: params.playerBackdropUrl || ""
+        },
+        "opening"
+      );
+    }
     const navigationStart = ROUTER_PERF_DEBUG ? routerPerfNow() : 0;
 
     // Which engine draws the picture is a route decision, and the player route

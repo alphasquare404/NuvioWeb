@@ -28,6 +28,29 @@ export function normalizeSelectionWaitSeconds(value) {
   return Math.max(0, Math.trunc(Number(value || 0)));
 }
 
+// One deadline belongs to the complete Finding stream attempt.
+export function streamSelectionDeadline(seconds, now = Date.now()) {
+  const wait = normalizeSelectionWaitSeconds(seconds);
+  return wait === WAIT_FOREVER_SECONDS ? Infinity : now + wait * 1000;
+}
+
+export async function withinStreamSelectionDeadline(task, deadlineAt, onTimeout) {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) return onTimeout();
+  if (!Number.isFinite(remaining)) return task();
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(onTimeout()), remaining);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Whether a partial list may be chosen from yet. Zero means the first matching
 // stream wins as soon as it arrives; the sentinel means only a complete list
 // counts; anything else is a grace period for better sources to turn up.
@@ -116,7 +139,9 @@ export async function resolveAutoPlayStream({
   shouldCancel = () => false,
   onProgress = null,
   repository = streamRepository,
-  now = () => Date.now()
+  now = () => Date.now(),
+  deadlineAt = streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds ?? 2147483647),
+  returnOnFirstMatch = false
 } = {}) {
   if (!isAutoPlayEffectivelyEnabled(settings)) {
     return { streams: [], selected: null, cancelled: false, reason: "disabled" };
@@ -130,6 +155,13 @@ export async function resolveAutoPlayStream({
   const waitSeconds = normalizeSelectionWaitSeconds(settings.streamAutoPlayTimeoutSeconds);
   let streams = [];
   let selected = null;
+  let finished = false;
+  let complete = false;
+  let timedOut = false;
+  let releaseCandidate;
+  const firstCandidate = new Promise((resolve) => {
+    releaseCandidate = resolve;
+  });
 
   const choose = () =>
     selectAutoPlayStream(streams, {
@@ -152,25 +184,48 @@ export async function resolveAutoPlayStream({
 
   const options = {
     onChunk: (chunkResult) => {
-      if (selected || shouldCancel() || chunkResult?.status !== "success") return;
+      if (finished || shouldCancel() || chunkResult?.status !== "success") return;
       absorb(Array.isArray(chunkResult.data) ? chunkResult.data : []);
       // A chunk is a partial list, so it only counts once the grace period for
       // better sources has passed.
-      if (!canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt })) return;
+      if (
+        !returnOnFirstMatch &&
+        !canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt })
+      )
+        return;
       const candidate = choose();
-      if (candidate?.id) selected = candidate;
+      if (candidate?.id) {
+        selected = candidate;
+        if (returnOnFirstMatch) releaseCandidate({ status: "success", data: [] });
+      }
     }
   };
 
   let result;
   try {
-    result = await repository.getStreamsFromAllAddons(type, videoId, options);
+    result = await withinStreamSelectionDeadline(
+      () => {
+        const all = Promise.resolve(
+          repository.getStreamsFromAllAddons(type, videoId, options)
+        ).then((value) => {
+          complete = true;
+          return value;
+        });
+        return returnOnFirstMatch ? Promise.race([all, firstCandidate]) : all;
+      },
+      deadlineAt,
+      () => {
+        timedOut = true;
+        return { status: "success", data: [] };
+      }
+    );
   } catch (error) {
     // A failed fetch is not a failed feature: the caller falls back to the
     // stream screen, which reports the error the way it always has.
     return { streams, selected: null, cancelled: false, reason: "error", error };
   }
 
+  finished = true;
   if (shouldCancel()) return { streams, selected: null, cancelled: true, reason: "cancelled" };
 
   streams = mergeStreamItems(streams, flattenStreams(result));
@@ -184,8 +239,11 @@ export async function resolveAutoPlayStream({
 
   return {
     streams,
-    selected: selected || null,
+    selected: timedOut ? null : selected || null,
     cancelled: false,
-    reason: selected ? "selected" : "no-match"
+    complete,
+    timedOut,
+    deadlineAt,
+    reason: timedOut ? "timeout" : selected ? "selected" : "no-match"
   };
 }

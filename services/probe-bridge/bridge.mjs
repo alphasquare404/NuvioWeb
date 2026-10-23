@@ -268,7 +268,10 @@ export function createProbeBridgeHandler({
       ];
       let output = "";
       let settled = false;
-      const child = spawnImpl(ffprobePath, args, { stdio: ["ignore", "pipe", "ignore"] });
+      const child = spawnImpl(ffprobePath, args, {
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "ignore"]
+      });
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;

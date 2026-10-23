@@ -1,3 +1,7 @@
+import {
+  StartupLoadingOverlay,
+  usesUnifiedStartup
+} from "../../components/startupLoadingOverlay.js";
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
@@ -92,11 +96,15 @@ import {
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
 import {
   collectInstalledAddonNames,
+  filterAutoPlaySourceStreams,
   isAutoPlayEffectivelyEnabled,
-  resolvePreferredBingeGroup
+  resolvePreferredBingeGroup,
+  selectAutoPlayStream
 } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   resolveAutoPlayStream,
+  streamSelectionDeadline,
+  withinStreamSelectionDeadline,
   shouldAbandonAutoResolve,
   shouldPaintRouteHandoff
 } from "../../../core/streams/streamAutoResolve.js";
@@ -1642,6 +1650,7 @@ export const MetaDetailsScreen = {
     }
     this.params = params || {};
     this.meta = { ...snapshot.meta };
+    this.overlayMetaParams = this.params;
     this.isSavedInLibrary = Boolean(snapshot.isSavedInLibrary);
     this.isMarkedWatched = Boolean(snapshot.isMarkedWatched);
     this.episodes = this.applyOfflineEpisodeVisibility(
@@ -2280,6 +2289,7 @@ export const MetaDetailsScreen = {
 
     // Fast first paint with base metadata.
     this.meta = meta;
+    this.overlayMetaParams = this.params;
     setBrowserMediaTitle({ title: meta?.name, year: meta?.releaseInfo });
     this.setEpisodesForConnectivity(meta);
     if (!this.remoteMetaUnavailable) {
@@ -3239,8 +3249,44 @@ export const MetaDetailsScreen = {
   // so the wait begins on the picture that was tapped rather than on black,
   // and ends on the same picture the stream route then shows. One image, three
   // routes, no blink.
+  getStartupOverlayMeta() {
+    // Before this route's metadata arrives, this.meta can still belong to the
+    // previous title. Route parameters are the only trusted artwork then.
+    const meta = this.overlayMetaParams === this.params ? this.meta : null;
+    return {
+      itemKey: String(this.params?.itemId || ""),
+      title: this.params?.fallbackTitle || this.params?.itemTitle || meta?.name || "Nuvio",
+      logoUrl: this.params?.logo || meta?.logo || "",
+      backdropUrl:
+        this.params?.backdrop ||
+        this.params?.fallbackBackground ||
+        meta?.background ||
+        meta?.landscapePoster ||
+        meta?.poster ||
+        ""
+    };
+  },
+
   renderRouteHandoff() {
     if (!this.container) {
+      return;
+    }
+    if (Platform.isBrowser() && usesUnifiedStartup()) {
+      if (
+        !isAutoPlayEffectivelyEnabled(PlayerSettingsStore.get()) ||
+        this.params?.manualSelection
+      ) {
+        this.routeHandoffPending = false;
+        StartupLoadingOverlay.finish();
+        return;
+      }
+      if (StartupLoadingOverlay.active) {
+        StartupLoadingOverlay.updateMetadata(this.getStartupOverlayMeta());
+      } else {
+        StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "finding");
+      }
+      this.routeHandoffPending = PlayerSettingsStore.get().loadingOverlayEnabled !== false;
+      if (this.routeHandoffPending) this.container.innerHTML = "";
       return;
     }
     const markup = renderRouteHandoffShell({
@@ -3266,6 +3312,7 @@ export const MetaDetailsScreen = {
   // off has to reach this, because a waiting screen with nothing coming is a
   // dead end: there is nothing on it to press.
   releaseRouteHandoff() {
+    StartupLoadingOverlay.finish();
     if (!this.routeHandoffPending) {
       return;
     }
@@ -3286,9 +3333,11 @@ export const MetaDetailsScreen = {
     // "Choose stream" is an explicit request for the picker, and so is a route
     // that asked for manual selection.
     if (!isAutoPlayEffectivelyEnabled(settings) || params?.manualSelection) {
+      StartupLoadingOverlay.finish();
       return Router.navigate("stream", params, options);
     }
 
+    const deadlineAt = streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
     const token = (this.autoStreamResolveToken || 0) + 1;
     this.autoStreamResolveToken = token;
     const cancelled = () =>
@@ -3317,11 +3366,17 @@ export const MetaDetailsScreen = {
       preferredBingeGroup: resolvePreferredBingeGroup(settings, () =>
         StreamPreferencesStore.getEntry(params?.itemId, params?.videoId || params?.itemId)
       ),
-      shouldCancel: cancelled
+      shouldCancel: cancelled,
+      deadlineAt,
+      returnOnFirstMatch: true
     });
     // The waiting screen is already up, and it is the right place to settle "only direct
     // streams": the answer needs ffprobe, and a decision taken before it lands is a guess.
-    if (settings.showOnlyDirectStreams === true && resolution?.streams?.length) {
+    if (
+      settings.showOnlyDirectStreams === true &&
+      resolution?.streams?.length &&
+      !resolution.timedOut
+    ) {
       resolution = await this.keepOnlyDirectResolution(resolution, cancelled);
       if (cancelled()) {
         this.releaseRouteHandoff();
@@ -3334,12 +3389,19 @@ export const MetaDetailsScreen = {
       this.releaseRouteHandoff();
       return false;
     }
+    if (!resolution.selected) StartupLoadingOverlay.finish();
     return Router.navigate(
       "stream",
       {
         ...params,
         autoResolvedStreams: resolution.streams,
-        autoResolvedStreamId: resolution.selected?.id || null
+        autoResolvedStreamId: resolution.selected?.id || null,
+        autoResolvedProbes: resolution.probes || [],
+        autoResolvedStreamsComplete: resolution.complete !== false,
+        autoSelectionFinished: !resolution.selected,
+        autoSelectionTimedOut: resolution.timedOut === true,
+
+        autoSelectionTimeoutSeconds: settings.streamAutoPlayTimeoutSeconds
       },
       options
     );
@@ -3354,36 +3416,49 @@ export const MetaDetailsScreen = {
    * picker instead of an unplayable player.
    */
   async keepOnlyDirectResolution(resolution, cancelled = () => false) {
+    StartupLoadingOverlay.setStage("checking");
     const streams = Array.isArray(resolution?.streams) ? resolution.streams : [];
     const capabilities = getDeviceCapabilities();
     const configured = Number(globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20);
-    const limit = Number.isFinite(configured) && configured > 0 ? configured : 20;
-    const prober = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 12000 });
-    if (!prober.enabled || !streams.length) return resolution;
+    const limit = Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 20;
+    const settings = PlayerSettingsStore.get();
+    const deadlineAt = resolution.deadlineAt ?? Infinity;
+    const expired = () => Date.now() >= deadlineAt;
+    const installedAddonNames = collectInstalledAddonNames(
+      addonRepository.getCachedInstalledAddons()
+    );
+    const selectionOptions = {
+      mode: settings.streamAutoPlayMode,
+      source: settings.streamAutoPlaySource,
+      regexPattern: settings.streamAutoPlayRegex,
+      installedAddonNames,
+      selectedAddons: settings.streamAutoPlaySelectedAddons,
+      selectedPlugins: settings.streamAutoPlaySelectedPlugins
+    };
+    const eligible = filterAutoPlaySourceStreams(streams, selectionOptions);
+    const prober = createStreamProber({ endpoint: PROBE_ENDPOINT, timeoutMs: 15000 });
+    if (!prober.enabled || !eligible.length) return { ...resolution, selected: null };
 
-    // Ask about every candidate, in order, and stop at the first one that plays as it is.
-    // `probeUnknown` could not do this: it skips rows the addon text already calls Direct --
-    // exactly the rows worth picking -- so nothing was ever confirmed and the selection came
-    // back empty every time.
-    // A magnet is not a URL: ffprobe can only ask about a link the debrid service has
-    // already resolved. Without this the probe had nothing to say and every handoff ended
-    // with "no direct stream", which is what opened an empty list every time.
-    const top = streams.slice(0, Math.min(limit, 5));
+    // Apply autoplay source permissions before spending resolution and probe budgets.
+    // The complete list stays available for a manual fallback and its labels.
+    const top = limit === 0 ? eligible : eligible.slice(0, limit);
     const resolvedByKey = new Map();
-    await DirectDebridStreamPreparer.prepare(top, {
-      season: this.params?.season == null ? null : Number(this.params.season),
-      episode: this.params?.episode == null ? null : Number(this.params.episode),
-      playerSettings: PlayerSettingsStore.get(),
-      installedAddonNames: new Set(
-        (addonRepository.getCachedInstalledAddons() || [])
-          .map((addon) => String(addon?.displayName || addon?.name || "").trim())
-          .filter(Boolean)
-      ),
-      onPrepared: (stream, prepared) => {
-        const url = String(prepared?.url || "").trim();
-        if (url) resolvedByKey.set(directDebridPreparationKey(stream), url);
-      }
-    }).catch(() => {});
+    await withinStreamSelectionDeadline(
+      () =>
+        DirectDebridStreamPreparer.prepare(top, {
+          season: this.params?.season == null ? null : Number(this.params.season),
+          episode: this.params?.episode == null ? null : Number(this.params.episode),
+          playerSettings: settings,
+          installedAddonNames,
+          onPrepared: (stream, prepared) => {
+            const url = String(prepared?.url || "").trim();
+            if (url && !expired() && !cancelled())
+              resolvedByKey.set(directDebridPreparationKey(stream), url);
+          }
+        }).catch(() => {}),
+      deadlineAt,
+      () => null
+    );
     if (cancelled()) return resolution;
 
     const isMagnet = (value) =>
@@ -3398,49 +3473,107 @@ export const MetaDetailsScreen = {
         url: String(resolvedByKey.get(directDebridPreparationKey(stream)) || direct || "").trim()
       };
     });
+    const resolvedStreams = streams.map((stream) => {
+      const candidate = candidates.find((entry) => entry.stream === stream);
+      return candidate?.url ? { ...stream, url: candidate.url } : stream;
+    });
     const probes = new Map();
-    const batchSize = 6;
+    // First stream checks in source order and stops before probing any later row.
+    const batchSize =
+      String(settings.streamAutoPlayMode || "")
+        .trim()
+        .toUpperCase() === "FIRST_STREAM"
+        ? 1
+        : 6;
+    const directOf = () =>
+      candidates
+        .filter((candidate) => {
+          const probe = probes.get(candidate.url) || null;
+          if (!probe) return false;
+          return (
+            classifyPlayback({
+              url: candidate.url,
+              label: [
+                candidate.stream?.name,
+                candidate.stream?.title,
+                candidate.stream?.description
+              ]
+                .filter(Boolean)
+                .join(" "),
+              probe,
+              capabilities
+            }).method === "direct"
+          );
+        })
+        .map((candidate) => candidate.stream);
+
+    let direct = [];
+    let asked = 0;
     for (let index = 0; index < candidates.length; index += batchSize) {
       if (cancelled()) return resolution;
+      if (expired()) break;
       const batch = candidates.slice(index, index + batchSize);
-      await Promise.all(
-        batch.map(async (candidate) => {
-          if (!candidate.url) return;
-          const probe = await prober
-            .probe(candidate.url, {
-              reason: "selection",
-              identity: streamProbeIdentity(candidate.stream)
+      asked += batch.length;
+      await withinStreamSelectionDeadline(
+        () =>
+          Promise.all(
+            batch.map(async (candidate) => {
+              if (!candidate.url) return;
+              const probe = await prober
+                .probe(candidate.url, {
+                  reason: "selection",
+                  identity: streamProbeIdentity(candidate.stream),
+                  timeoutMs: Math.min(15000, deadlineAt - Date.now())
+                })
+                .catch(() => null);
+              if (probe && !expired() && !cancelled()) probes.set(candidate.url, probe);
             })
-            .catch(() => null);
-          if (probe) probes.set(candidate.url, probe);
-        })
+          ),
+        deadlineAt,
+        () => null
       );
+      direct = directOf();
+      if (selectAutoPlayStream(direct, selectionOptions)) break;
     }
 
-    const direct = candidates
-      .filter((candidate) => {
-        const probe = probes.get(candidate.url) || null;
-        if (!probe) return false;
-        return (
-          classifyPlayback({
-            url: candidate.url,
-            label: [candidate.stream?.name, candidate.stream?.title, candidate.stream?.description]
-              .filter(Boolean)
-              .join(" "),
-            probe,
-            capabilities
-          }).method === "direct"
-        );
-      })
-      .map((candidate) => candidate.stream);
-
     if (cancelled()) return resolution;
-    console.log("[Autoplay] direct candidates", {
-      asked: candidates.length,
-      answered: probes.size,
-      direct: direct.length
-    });
-    return { ...resolution, streams, selected: direct[0] || null, directStreams: direct };
+    // The phone cannot show a console, so the counts that decide this also go to the
+    // server log: that is how a wrong cap or an empty candidate list becomes visible.
+    const counts = { asked, answered: probes.size, direct: direct.length, streams: streams.length };
+    console.log("[Autoplay] direct candidates", counts);
+    void fetch("/api/debug/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "autoplay",
+        message: JSON.stringify(counts),
+        url: location.href
+      })
+    }).catch(() => {});
+    // The device log showed `direct: 5` and still no playback: the auto-play filters
+    // (source, chosen addons/plugins) dropped every one of them. A confirmed Direct row the
+    // filter cannot name is still the right thing to play, so the filter decides *which*
+    // one -- and an empty answer no longer cancels the choice outright.
+    const filteredChoice = selectAutoPlayStream(direct, selectionOptions);
+    const chosen = filteredChoice || direct[0] || null;
+    if (chosen && !filteredChoice) {
+      void fetch("/api/debug/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "autoplay-fallback",
+          message: "auto-play filters matched nothing; playing the first confirmed Direct row"
+        })
+      }).catch(() => {});
+    }
+    return {
+      ...resolution,
+      streams: resolvedStreams,
+      selected: chosen,
+      timedOut: !chosen && expired(),
+      directStreams: direct,
+      probes: [...probes]
+    };
   },
   getStreamNavigationOptions() {
     // Continue Watching mounts Detail only to resolve the Stream target. Replace
@@ -8131,6 +8264,8 @@ export const MetaDetailsScreen = {
   // progress from before playback, and only leaving for Home and coming back
   // rebuilt them. Home was already right, because Home has this hook.
   onRouteRevealed() {
+    // Back reveals the preserved page after autoplay has already handed off.
+    this.releaseRouteHandoff();
     // Revealed, not mounted: the router has just put the route's generic title
     // back in the tab, because that is all it knows. This screen knows the
     // title it is showing.

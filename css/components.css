@@ -21646,3 +21646,24 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   outline: 2px solid rgba(255, 255, 255, 0.9);
   outline-offset: 2px;
 }
+
+
+.unified-startup-overlay.player-loading-overlay {
+  position: fixed;
+  z-index: 2000;
+  background: #080b10;
+}
+.unified-startup-overlay .unified-startup-spinner {
+  width: 32px;
+  height: 32px;
+  margin-top: 24px;
+}
+
+.unified-startup-overlay .player-loading-logo {
+  position: static;
+  transform: none;
+  width: auto;
+  height: auto;
+  max-width: min(64vw, 420px);
+  max-height: min(24vh, 170px);
+}

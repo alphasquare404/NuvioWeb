@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canSelectFromPartialList,
+  streamSelectionDeadline,
+  withinStreamSelectionDeadline,
   normalizeSelectionWaitSeconds,
   resolveAutoPlayStream,
   resolveHandoffReturnRoute,
@@ -9,7 +11,7 @@ import {
   shouldPaintRouteHandoff
 } from "./streamAutoResolve.js";
 
-const FIRST_STREAM = { streamAutoPlayMode: "FIRST_STREAM", streamAutoPlayTimeoutSeconds: 0 };
+const FIRST_STREAM = { streamAutoPlayMode: "FIRST_STREAM", streamAutoPlayTimeoutSeconds: 5 };
 
 function stream(name, url) {
   return { name, title: name, url, addonName: "Addon" };
@@ -258,4 +260,66 @@ test("a handoff from the detail page returns to the detail page", () => {
     resolveHandoffReturnRoute({ handedOff: true, continueWatchingBackHome: false }),
     "detail"
   );
+});
+
+test("a stalled addon cannot keep Finding stream beyond its deadline", async () => {
+  let sendChunk;
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "tt1",
+    settings: FIRST_STREAM,
+    deadlineAt: Date.now() + 35,
+    repository: {
+      getStreamsFromAllAddons(type, id, options) {
+        sendChunk = options.onChunk;
+        options.onChunk({
+          status: "success",
+          data: groupFor([stream("Early", "https://a.test/early")])
+        });
+        return new Promise(() => {});
+      }
+    }
+  });
+  assert.equal(result.timedOut, true);
+  assert.equal(result.selected, null);
+  assert.equal(result.streams.length, 1);
+  sendChunk({ status: "success", data: groupFor([stream("Late", "https://a.test/late")]) });
+  assert.equal(result.streams.length, 1, "late chunks cannot mutate a finished attempt");
+});
+
+test("an eligible addon can start selection without waiting for a stalled addon", async () => {
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "tt1",
+    settings: FIRST_STREAM,
+    returnOnFirstMatch: true,
+    deadlineAt: Date.now() + 1000,
+    repository: {
+      getStreamsFromAllAddons(type, id, options) {
+        options.onChunk({
+          status: "success",
+          data: groupFor([stream("First", "https://a.test/first")])
+        });
+        return new Promise(() => {});
+      }
+    }
+  });
+  assert.equal(result.selected.url, "https://a.test/first");
+  assert.equal(result.complete, false);
+});
+
+test("selection phases share the same deadline and zero starts no new work", async () => {
+  assert.equal(streamSelectionDeadline(20, 1000), 21000);
+  assert.equal(streamSelectionDeadline(0, 1000), 1000);
+  assert.equal(streamSelectionDeadline(2147483647, 1000), Infinity);
+  let called = false;
+  const value = await withinStreamSelectionDeadline(
+    () => {
+      called = true;
+    },
+    Date.now() - 1,
+    () => "timeout"
+  );
+  assert.equal(value, "timeout");
+  assert.equal(called, false);
 });

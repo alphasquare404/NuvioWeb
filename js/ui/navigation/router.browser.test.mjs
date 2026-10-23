@@ -1998,3 +1998,159 @@ test("an ordinary Player Back still lands on Stream", async () => {
   assert.equal(await pending.settled, true);
   assert.equal(Router.getCurrent(), "stream");
 });
+
+test("autoplay from Detail returns through Detail to Home without reopening Player", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ home, detail, stream, player });
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("stream", { itemId: "movie-1", autoResolvedStreamId: "first" });
+  await Router.navigate(
+    "player",
+    {
+      itemId: "movie-1",
+      itemType: "movie",
+      returnToStreamOnBack: false,
+      handoffReturnRoute: "detail",
+      fromDetailRoute: true,
+      streamRouteParams: { itemId: "movie-1", fromDetailRoute: true }
+    },
+    stream.getPlayerNavigationOptions("detail")
+  );
+  player.navigateBackToStreamScreen();
+  await history.whenSettled();
+  await Promise.resolve();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(history.state.route, "detail", "visible Detail and browser history must agree");
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+});
+
+for (const parentRoute of ["search", "library"]) {
+  test(`autoplay Back returns to existing Detail then ${parentRoute}`, async () => {
+    const home = makeScreen("home");
+    const parent = makeScreen(parentRoute);
+    const detail = makeDetailScreen();
+    const stream = makeStreamScreen();
+    const player = makePlayerBackScreen();
+    resetRouter({ home, [parentRoute]: parent, detail, stream, player });
+    Router.init();
+    await Router.navigate("home");
+    await Router.navigate(parentRoute);
+    await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+    await Router.navigate("stream", { itemId: "movie-1", autoResolvedStreamId: "first" });
+    await Router.navigate(
+      "player",
+      {
+        itemId: "movie-1",
+        itemType: "movie",
+        returnToStreamOnBack: false,
+        handoffReturnRoute: "detail",
+        fromDetailRoute: true
+      },
+      stream.getPlayerNavigationOptions("detail")
+    );
+    assert.deepEqual(historyRoutes(), ["home", parentRoute, "detail", "player"]);
+    player.navigateBackToStreamScreen();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), "detail");
+    await Router.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), parentRoute);
+  });
+}
+
+test("Continue Watching autoplay Back returns directly to its existing Home entry", async () => {
+  const home = makeScreen("home");
+  const detail = makeDeferredContinueWatchingDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ home, detail, stream, player });
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("detail", {
+    itemId: "movie-1",
+    itemType: "movie",
+    autoOpenContinueWatching: true
+  });
+  await Promise.resolve();
+  await Router.navigate(
+    "player",
+    { itemId: "movie-1", handoffReturnRoute: "home", returnToStreamOnBack: false },
+    stream.getPlayerNavigationOptions("home")
+  );
+  assert.deepEqual(historyRoutes(), ["home", "player"]);
+  player.navigateBackToStreamScreen();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(history.state.route, "home");
+});
+
+test("an accepted autoplay Back is not consumed again by a late player overlay", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ home, detail, stream, player });
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1" });
+  await Router.navigate("stream", { itemId: "movie-1" });
+  await Router.navigate(
+    "player",
+    { itemId: "movie-1", handoffReturnRoute: "detail", returnToStreamOnBack: false },
+    stream.getPlayerNavigationOptions("detail")
+  );
+  // A native pause/track event can change overlay state after the app has
+  // accepted Back and stopped playback, but before popstate is delivered.
+  player.hasBackDismissableOverlay = () => true;
+  player.consumeBackRequest = () => {
+    throw new Error("accepted Back must not be consumed twice");
+  };
+  player.navigateBackToStreamScreen();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(history.index, 1);
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+});
+
+test("keyboard Back preserves the player history traversal instead of suppressing its popstate", async () => {
+  const { FocusEngine } = await import("./focusEngine.js");
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ home, detail, stream, player });
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1" });
+  await Router.navigate("stream", { itemId: "movie-1" });
+  await Router.navigate(
+    "player",
+    { itemId: "movie-1", handoffReturnRoute: "detail", returnToStreamOnBack: false },
+    stream.getPlayerNavigationOptions("detail")
+  );
+  FocusEngine.lastBackHandledAt = 0;
+  FocusEngine.handleBack(
+    {},
+    { repeat: false, preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {} }
+  );
+  assert.equal(
+    Router.suppressPopstateUntil,
+    0,
+    "a requested history Back must not be suppressed by FocusEngine"
+  );
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(history.index, 1);
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+});

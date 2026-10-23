@@ -1,0 +1,211 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import * as selector from "../../../core/streams/streamAutoPlaySelector.js";
+import { classifyPlayback } from "../../../core/player/playbackMethod.js";
+
+import { withinStreamSelectionDeadline } from "../../../core/streams/streamAutoResolve.js";
+
+const directProbe = { container: "mp4", videoCodec: "h264", audioCodec: "aac", audioChannels: 2 };
+const settings = {
+  streamAutoPlayMode: "FIRST_STREAM",
+  streamAutoPlaySource: "INSTALLED_ADDONS_ONLY",
+  streamAutoPlaySelectedAddons: ["AIOStreams"]
+};
+const row = (id, addonName = "AIOStreams") => ({
+  id,
+  addonName,
+  name: id,
+  url: "https://media.test/" + id
+});
+
+async function resolve(
+  streams,
+  {
+    limit = 5,
+    overrides = {},
+    nonDirect = [],
+    unresolved = [],
+    deadlineAt = Infinity,
+    probeDelayMs = 0,
+    prepareDelayMs = 0
+  } = {}
+) {
+  const source = await readFile(new URL("./metaDetailsScreen.js", import.meta.url), "utf8");
+  const method = source.match(
+    /async keepOnlyDirectResolution\(resolution, cancelled = \(\) => false\) \{[\s\S]*?\n {2}\},/
+  )?.[0];
+  assert.ok(method);
+  const probed = [];
+  const prepared = [];
+  const playerSettings = { ...settings, ...overrides };
+  const dependencies = {
+    ...selector,
+    StartupLoadingOverlay: { setStage() {} },
+    withinStreamSelectionDeadline,
+    getDeviceCapabilities: () => ({ h264: true, aac: true }),
+    PROBE_ENDPOINT: "/api/probe",
+    createStreamProber: () => ({
+      enabled: true,
+      async probe(url) {
+        probed.push(url);
+        if (probeDelayMs) await new Promise((resolve) => setTimeout(resolve, probeDelayMs));
+        return {
+          ...directProbe,
+          container: nonDirect.some((id) => url.endsWith("/" + id)) ? "mkv" : "mp4"
+        };
+      }
+    }),
+    DirectDebridStreamPreparer: {
+      async prepare(candidates, options) {
+        prepared.push(...candidates);
+        if (prepareDelayMs) await new Promise((resolve) => setTimeout(resolve, prepareDelayMs));
+        for (const stream of candidates) {
+          if (unresolved.includes(stream.id))
+            options.onPrepared(stream, { url: "https://resolved.test/" + stream.id });
+        }
+      }
+    },
+    PlayerSettingsStore: { get: () => playerSettings },
+    addonRepository: {
+      getCachedInstalledAddons: () => [{ name: "AIOStreams" }, { name: "Torrentio" }]
+    },
+    StreamPreferencesStore: { getEntry: () => null },
+    directDebridPreparationKey: (stream) => stream.id,
+    streamProbeIdentity: (stream) => stream.id,
+    classifyPlayback,
+    fetch: async () => ({}),
+    location: { href: "https://app.test" },
+    console: { log() {} }
+  };
+  const body =
+    "const {" +
+    Object.keys(dependencies).join(",") +
+    "}=dependencies; return ({" +
+    method +
+    "}).keepOnlyDirectResolution;";
+  const run = new Function("dependencies", body)(dependencies);
+  const savedEnv = globalThis.__NUVIO_ENV__;
+  globalThis.__NUVIO_ENV__ = { PROBE_PAGE_LIMIT: limit };
+  try {
+    const result = await run.call({ params: {} }, { streams, selected: streams[0], deadlineAt });
+    return { result, probed, prepared };
+  } finally {
+    globalThis.__NUVIO_ENV__ = savedEnv;
+  }
+}
+
+test("Finding stream spends its probe cap only on selected autoplay addons", async () => {
+  const torrentio = Array.from({ length: 96 }, (_, i) => row("torrentio-" + i, "Torrentio"));
+  const aio = Array.from({ length: 5 }, (_, i) => row("aio-" + i));
+  const { result, probed, prepared } = await resolve([...torrentio, ...aio], {
+    nonDirect: aio.slice(0, 4).map((s) => s.id)
+  });
+  assert.deepEqual(
+    prepared.map((s) => s.addonName),
+    Array(5).fill("AIOStreams")
+  );
+  assert.deepEqual(
+    probed,
+    aio.map((s) => s.url)
+  );
+  assert.equal(result.selected?.id, "aio-4");
+  assert.equal(result.streams.length, 101, "manual fallback retains every addon");
+});
+
+test("zero probe limit reaches a selected-addon Direct candidate beyond row twenty", async () => {
+  const streams = Array.from({ length: 21 }, (_, i) => row("aio-" + i));
+  const { result, probed } = await resolve(streams, {
+    limit: 0,
+    nonDirect: streams.slice(0, 20).map((s) => s.id)
+  });
+  assert.equal(probed.length, 21);
+  assert.equal(result.selected?.id, "aio-20");
+});
+
+test("a positive cap still limits eligible candidates", async () => {
+  const streams = Array.from({ length: 6 }, (_, i) => row("aio-" + i));
+  const { result, probed } = await resolve(streams, {
+    limit: 5,
+    nonDirect: streams.slice(0, 5).map((s) => s.id)
+  });
+  assert.equal(probed.length, 5);
+  assert.equal(result.selected, null);
+});
+
+test("excluded addons do not consume debrid preparation or probe requests", async () => {
+  const { result, prepared, probed } = await resolve([row("other", "Torrentio")]);
+  assert.equal(prepared.length, 0);
+  assert.equal(probed.length, 0);
+  assert.equal(result.selected, null);
+});
+
+test("enabled-plugin scope uses the same source rules for probing and selection", async () => {
+  const { result, probed } = await resolve([row("addon"), row("plugin", "Plugin")], {
+    overrides: {
+      streamAutoPlaySource: "ENABLED_PLUGINS_ONLY",
+      streamAutoPlaySelectedPlugins: ["Plugin"]
+    }
+  });
+  assert.deepEqual(probed, ["https://media.test/plugin"]);
+  assert.equal(result.selected?.id, "plugin");
+});
+
+test("regex selection keeps probing when an earlier Direct candidate does not match", async () => {
+  const streams = Array.from({ length: 7 }, (_, i) => row("aio-" + i));
+  const { result } = await resolve(streams, {
+    limit: 0,
+    overrides: { streamAutoPlayMode: "REGEX_MATCH", streamAutoPlayRegex: "aio-6" }
+  });
+  assert.equal(result.selected?.id, "aio-6");
+});
+
+test("resolved URL and probe evidence survive the auto-resolved handoff", async () => {
+  const stream = { ...row("resolve-me"), url: null, infoHash: "test-hash" };
+  const { result } = await resolve([stream], { unresolved: [stream.id] });
+  assert.equal(result.selected?.id, stream.id);
+  assert.equal(result.streams[0].url, "https://resolved.test/resolve-me");
+  assert.equal(result.probes[0][0], "https://resolved.test/resolve-me");
+});
+
+test("First stream stops probing immediately when the top candidate is Direct", async () => {
+  const streams = Array.from({ length: 22 }, (_, i) => row("aio-" + i));
+  const { result, probed } = await resolve(streams, { limit: 0 });
+  assert.deepEqual(probed, [streams[0].url]);
+  assert.equal(result.selected?.id, streams[0].id);
+});
+
+test("First stream probes from the top and stops at the first Direct candidate", async () => {
+  const streams = Array.from({ length: 22 }, (_, i) => row("aio-" + i));
+  const { result, probed } = await resolve(streams, {
+    limit: 0,
+    nonDirect: streams.slice(0, 3).map((s) => s.id)
+  });
+  assert.deepEqual(
+    probed,
+    streams.slice(0, 4).map((s) => s.url)
+  );
+  assert.equal(result.selected?.id, streams[3].id);
+});
+
+test("a cold slow probe expires within the original budget and starts no later candidate", async () => {
+  const { result, probed } = await resolve([row("first"), row("second")], {
+    deadlineAt: Date.now() + 40,
+    probeDelayMs: 100
+  });
+  assert.equal(result.timedOut, true);
+  assert.equal(result.selected, null);
+  assert.equal(probed.length, 1);
+  await new Promise((resolve) => setTimeout(resolve, 110));
+  assert.deepEqual(result.probes, [], "late probe cannot change the handed-off result");
+});
+
+test("debrid preparation consumes the same budget as probing", async () => {
+  const { result, probed } = await resolve([row("first")], {
+    deadlineAt: Date.now() + 40,
+    prepareDelayMs: 100
+  });
+  assert.equal(result.timedOut, true);
+  assert.equal(result.selected, null);
+  assert.equal(probed.length, 0);
+});

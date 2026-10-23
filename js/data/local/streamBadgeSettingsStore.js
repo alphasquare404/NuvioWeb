@@ -200,6 +200,10 @@ export const StreamBadgeSettingsStore = {
     store.set({ rules: normalizeStreamBadgeRules(nextRules) });
   },
 
+  setShowPlaybackLabels(enabled) {
+    store.set({ showPlaybackLabels: Boolean(enabled) });
+  },
+
   setShowFileSizeBadges(enabled) {
     store.set({ showFileSizeBadges: Boolean(enabled) });
   },

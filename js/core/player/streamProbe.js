@@ -136,7 +136,7 @@ export function createStreamProber({
   const pending = new Map();
   const base = String(endpoint || "").trim();
 
-  async function request(url, reason = "", identity = "") {
+  async function request(url, reason = "", identity = "", requestTimeoutMs = timeoutMs) {
     const separator = base.includes("?") ? "&" : "?";
     // `why` is the client saying which budget this request came from. The server
     // cannot work that out by itself, and without it the two costs -- the check that
@@ -149,7 +149,9 @@ export function createStreamProber({
     const ref = identity ? `&id=${encodeURIComponent(identity)}` : "";
     const target = `${base}${separator}u=${encodeURIComponent(url)}${why}${ref}`;
     const controller = typeof AbortController === "function" ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(), Math.max(1, requestTimeoutMs))
+      : null;
     try {
       const response = await fetchImpl(target, { signal: controller?.signal });
       if (!response?.ok) return null;
@@ -185,12 +187,12 @@ export function createStreamProber({
     },
 
     /** Cached by URL; concurrent callers share one request. */
-    async probe(url, { reason = "", identity = "" } = {}) {
+    async probe(url, { reason = "", identity = "", timeoutMs: requestTimeoutMs = timeoutMs } = {}) {
       const key = String(url || "").trim();
       if (!base || !key) return null;
       if (cache.has(key)) return cache.get(key);
       if (pending.has(key)) return pending.get(key);
-      const promise = request(key, reason, identity).then((result) => {
+      const promise = request(key, reason, identity, requestTimeoutMs).then((result) => {
         pending.delete(key);
         if (result) cache.set(key, result);
         return result;

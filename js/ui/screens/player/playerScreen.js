@@ -1,3 +1,7 @@
+import {
+  StartupLoadingOverlay,
+  usesUnifiedStartup
+} from "../../components/startupLoadingOverlay.js";
 import { PlayerController } from "../../../core/player/playerController.js";
 import {
   audioTrackLabelConflictsWithCodec,
@@ -4359,6 +4363,7 @@ export const PlayerScreen = {
     root.tabIndex = -1;
 
     if (this.isExternalFrameMode()) {
+      StartupLoadingOverlay.finish();
       root.innerHTML = `
         <div class="player-external-frame-shell">
           <iframe
@@ -5995,6 +6000,7 @@ export const PlayerScreen = {
       details = null
     } = {}
   ) {
+    StartupLoadingOverlay.finish();
     this.startupErrorMessage =
       String(message || "").trim() || t("player_error_playback_fallback", {}, "Playback error");
     this.startupErrorMediaCode = Number(mediaErrorCode || 0);
@@ -7162,13 +7168,19 @@ export const PlayerScreen = {
       // Route cleanup will make a second best-effort stop if native teardown throws.
     }
     const shouldReturnToStream = !forceDetail && this.shouldReturnToStreamOnBack();
-    if (shouldReturnToStream) {
-      const historyBack = Router.backToPreviousNuvioRoute?.("stream");
+    const handoffReturn = String(this.params?.handoffReturnRoute || "").trim();
+    const historyReturnRoute = shouldReturnToStream
+      ? "stream"
+      : ["detail", "home"].includes(handoffReturn)
+        ? handoffReturn
+        : null;
+    if (historyReturnRoute) {
+      const historyBack = Router.backToPreviousNuvioRoute?.(historyReturnRoute);
       if (historyBack?.accepted) {
         void historyBack.settled.then((landed) => {
           this.playerBackNavigationInProgress = false;
           // Accepting the Back only means history.back() was issued. When the
-          // entry it lands on is not the Stream parent we expected, nothing
+          // entry it lands on is not the parent we expected, nothing
           // navigates -- and playback has already been stopped above, so the
           // user is left looking at a dead player waiting for a Back that was
           // never going to come. Recover onto the synthetic route instead of
@@ -7177,7 +7189,8 @@ export const PlayerScreen = {
             this.navigateToPlayerBackFallback({ shouldReturnToStream, streamParams });
           }
         });
-        return true;
+        // FocusEngine must preserve the popstate this Back just requested.
+        return "history";
       }
     }
 
@@ -8464,6 +8477,17 @@ export const PlayerScreen = {
       return;
     }
 
+    const setStartupStage = (stage) => {
+      if (this.hasPresentedPlaybackFrame) return;
+      this.startupLoadingStage = stage;
+      StartupLoadingOverlay.setStage(stage);
+    };
+    const onLoadStart = () => setStartupStage("loading");
+    const onMetadataProgress = () => {
+      if (!this.hasPresentedPlaybackFrame && Number(video.readyState || 0) === 0) {
+        setStartupStage("metadata");
+      }
+    };
     const onWaiting = () => {
       if (this.isStartupErrorVisible()) {
         return;
@@ -8581,6 +8605,8 @@ export const PlayerScreen = {
     };
 
     const onLoadedMetadata = () => {
+      setStartupStage(this.pendingPlaybackRestore ? "restoring" : "frame");
+      this.updateLoadingVisibility();
       if (this.isStartupErrorVisible()) {
         return;
       }
@@ -8605,6 +8631,7 @@ export const PlayerScreen = {
     };
 
     const onPlayable = () => {
+      setStartupStage(this.pendingPlaybackRestore ? "restoring" : "frame");
       if (this.isStartupErrorVisible()) {
         return;
       }
@@ -8760,6 +8787,8 @@ export const PlayerScreen = {
     };
 
     const bindings = [
+      ["loadstart", onLoadStart],
+      ["progress", onMetadataProgress],
       ["waiting", onWaiting],
       ["playing", onPlaying],
       ["error", onError],
@@ -9597,6 +9626,8 @@ export const PlayerScreen = {
   },
 
   presentStartedPlayback() {
+    StartupLoadingOverlay.finish();
+    this.startupLoadingStage = "loading";
     const overlay = this.uiRefs?.loadingOverlay;
     overlay?.classList.add("playback-ready");
     this.loadingVisible = false;
@@ -9912,6 +9943,15 @@ export const PlayerScreen = {
   },
 
   updateLoadingVisibility() {
+    const unified = Environment.isBrowser() && usesUnifiedStartup() && !this.isExternalFrameMode();
+    if (unified && this.isStartupLoadingVisible() && !this.isStartupErrorVisible()) {
+      StartupLoadingOverlay.begin(
+        { ...this.getLoadingOverlayMeta(), itemKey: String(this.params?.itemId || "") },
+        this.startupLoadingStage || "loading"
+      );
+    } else if (unified) {
+      StartupLoadingOverlay.finish();
+    }
     const overlay = this.uiRefs?.loadingOverlay;
     const bufferingSpinner = this.uiRefs?.bufferingSpinner;
     if (!overlay) {
@@ -9930,7 +9970,9 @@ export const PlayerScreen = {
       return;
     }
     const showStartupOverlay =
-      this.isStartupLoadingVisible() && PlayerSettingsStore.get().loadingOverlayEnabled !== false;
+      this.isStartupLoadingVisible() &&
+      PlayerSettingsStore.get().loadingOverlayEnabled !== false &&
+      !StartupLoadingOverlay.active;
     // Re-applied here because the overlay is re-shown after error and resume paths, and
     // the status text has to survive those.
     if (this.relayStatusText) this.setRelayStatusText(this.relayStatusText);
@@ -10990,7 +11032,11 @@ export const PlayerScreen = {
     const raw = String(streamUrl || "");
     if (raw.includes("/api/remux")) label = "remuxing";
     else if (raw.includes("/api/transcode")) label = "transcoding";
-    const message = this.relayStatusText ? `${this.relayStatusText.replace("{kind}", label)}` : "";
+    const message =
+      PlayerSettingsStore.get().showPlayerLoadingStatus !== false && this.relayStatusText
+        ? `${this.relayStatusText.replace("{kind}", label)}`
+        : "";
+    StartupLoadingOverlay.setRelayText(message);
     // The overlay lives under the screen's own root, which is not necessarily the
     // document: searching only `document` found nothing, so the message silently never
     // appeared. Every plausible root is tried, and the write is retried once in case
@@ -16786,9 +16832,8 @@ export const PlayerScreen = {
 
   consumeBackRequest() {
     if (this.isStartupErrorVisible()) {
-      if (this.navigateBackToStreamScreen()) {
-        return true;
-      }
+      const navigation = this.navigateBackToStreamScreen();
+      if (navigation) return navigation;
       Router.back();
       return true;
     }
@@ -17665,6 +17710,8 @@ export const PlayerScreen = {
   },
 
   cleanup() {
+    StartupLoadingOverlay.finish();
+    this.startupLoadingStage = "loading";
     try {
       this.playerRouteActive = false;
       this.externalPlayerChooserDialog?.destroy?.();

@@ -311,3 +311,135 @@ Berguna saat HP crash dan console tidak bisa dibuka.
 | Rate limit probe                                            | default 120/menit; `0` = tanpa batas (disarankan untuk self-host) |
 | Autoplay tanpa kandidat Direct                              | buka daftar stream (seperti autoplay mati)                        |
 | Pemilihan addon untuk label                                 | memakai daftar addon terpasang (bukan mengetik nama)              |
+
+## 13. Kelanjutan Codex — 2026-10-23
+
+Bukti baru dari Chrome pada profil utama, bukan dugaan penyebab reload HP:
+
+- Sebelum perbaikan, filter Direct menampilkan sumber Direct tetapi autoplay mencatat
+  `gave up waiting for probes`. Memilih sumber secara manual berhasil memutar video.
+- Antrean halaman sekarang memprobe semua kandidat yang memenuhi syarat sampai batas
+  deployment, termasuk sumber yang teksnya sudah tampak Direct. Batas berlaku lintas
+  pass; 0 tetap tanpa batas. Penantian autoplay memakai kandidat yang sama.
+- Bukti probe dan URL hasil resolusi diteruskan dari Detail ke Stream sebelum pemilihan.
+  Hasil async dari screen yang sudah ditinggalkan diabaikan lewat loadToken.
+- Saat deadline tercapai, autoplay masih memilih hasil Direct yang sudah tersedia.
+- Bug terpisah berhasil direproduksi: setelah autoplay lalu Back dari Stream ke Detail,
+  halaman Detail yang dipertahankan masih memiliki routeHandoffPending. Akibatnya layar
+  Finding a stream menutupi halaman dan navbar. onRouteRevealed sekarang melepas handoff.
+- Uji regresi Back gagal sebelum perbaikan dan lulus sesudahnya. Seluruh suite:
+  1286 lulus, 0 gagal. Build sukses: 60ca5cb303b8.
+- Verifikasi runtime pada build itu: Spider-Man: Brand New Day diputar otomatis,
+  readyState=4, paused=false, mediaError=null. Back player -> Stream -> Detail berhasil,
+  lalu navbar berhasil membuka Settings. Tidak ada Runtime.exceptionThrown atau navigasi
+  dokumen/reload selama alur yang direkam.
+- Pengaturan profil utama sesuai instruksi pemilik: FIRST_STREAM, Internal player,
+  Built-in player. Filter Direct aktif selama uji.
+
+Reload yang dilaporkan pemilik di HP **belum direproduksi**. Jangan menyebut service worker,
+codec, atau error JavaScript tertentu sebagai penyebabnya tanpa rekaman yang mendukung.
+Kode reload service worker tidak diubah. Relay tetap mati. Belum commit atau merge.
+
+## 14. Perbaikan scope probe autoplay — 2026-10-23
+
+Penyebab fallback kosong sudah dibuktikan melalui breakpoint Chrome: seleksi awal memilih
+AIOStreams, tetapi keepOnlyDirectResolution mengambil 20 baris pertama daftar gabungan,
+semuanya Torrentio. AIOStreams pertama berada di posisi 97 dan sama sekali tidak diprobe.
+PROBE_PAGE_LIMIT=0 juga salah dianggap 20 pada tahap tersebut.
+
+Perbaikan: filterAutoPlaySourceStreams dipakai bersama oleh selector dan pemeriksaan
+Direct, sehingga source scope serta allowed addons/plugins diterapkan sebelum batas
+kandidat, resolve debrid, dan probe. Nilai 0 sekarang tanpa batas. Batch hanya berhenti
+ketika selector benar-benar menemukan pilihan yang memenuhi aturan (termasuk regex).
+Daftar lengkap tetap dibawa untuk fallback manual; aturan label tidak diubah.
+
+Bukti pada build 2694697f7e2f: 118 sumber total, 22 kandidat eligible semuanya AIOStreams,
+6 diminta, 6 terjawab, 5 Direct. Pilihan AIOStreams sudah ada pada tahap Finding stream,
+lalu player terbuka dan berjalan dengan readyState=4, paused=false, mediaError=null.
+
+Verifikasi: 1293 test lulus, 0 gagal; lint pada berkas perbaikan bersih; build sukses.
+Tujuh uji regresi baru mencakup addon yang mendahului AIOStreams, batas 0/positif,
+addon dikecualikan, scope plugin, regex lintas batch, dan bukti probe/URL hasil resolve.
+Perubahan tetap pada experiment/movi-engine, belum commit atau merge.
+
+## 15. First stream memprobe satu per satu — 2026-10-23
+
+Sesuai permintaan pemilik, mode FIRST_STREAM sekarang memakai satu kandidat per batch,
+berurutan dari sumber teratas di addon autoplay yang diizinkan. Kandidat berikutnya
+baru diprobe setelah kandidat sebelumnya selesai. Probe berhenti pada pilihan Direct
+pertama yang memenuhi aturan. Mode regex tetap memakai batch sebelumnya.
+
+Dua uji regresi tambahan membuktikan: bila kandidat pertama Direct, hanya satu URL
+diprobe; bila tiga kandidat awal membutuhkan relay, urutan probe tepat empat URL dan
+berhenti pada kandidat keempat. Seluruh suite: 1295 lulus, 0 gagal; lint berkas perubahan bersih.
+
+## 16. Toggle label kartu stream — 2026-10-23
+
+Handler streams:toggle:playbackLabels memanggil setShowPlaybackLabels yang belum
+didefinisikan di StreamBadgeSettingsStore, sehingga klik melempar TypeError.
+Setter ditambahkan mengikuti pola setter store yang lain. Uji regresi menjalankan
+handler Settings sebenarnya dan memastikan off/on bertahan di snapshot dan storage,
+pilihan addon/logo/ukuran tetap sama, serta profil lain tidak berubah.
+
+1296 test lulus, 0 gagal; lint berkas perubahan bersih; build fde9c0f11c15 sukses.
+
+## 17. Pisahkan cakupan label dari visibilitas sumber — 2026-10-23
+
+Pilihan labelAddons sebelumnya selalu menyaring getFilteredStreams, sehingga addon
+lain hilang meskipun Only Direct mati, termasuk saat toggle label juga mati.
+
+Sekarang scope addon label hanya menyaring daftar saat Only Direct aktif. Saat mati,
+semua sumber tetap tersedia sesuai filter Source halaman; label hanya digambar pada
+addon yang dipilih. Antrean resolve/probe halaman Stream menerapkan scope addon label
+sebelum batas PROBE_PAGE_LIMIT. Cache daftar juga menyertakan Only Direct dan labelAddons
+agar perubahan pengaturan tidak memakai hasil lama. Pipeline Finding stream tetap
+menggunakan scope addon autoplay tersendiri.
+
+Tiga uji regresi mencakup visibilitas semua addon saat Only Direct mati (label on/off),
+filter Direct dari scope label dan perubahan cache, serta penerapan scope sebelum
+anggaran probe. Seluruh suite: 1299 lulus, 0 gagal. Build 6f41458b542a sukses.
+
+## 18. Proses latar Windows tanpa jendela — 2026-10-23
+
+Sesudah pengosongan cache lewat restart server latar, pemilik melihat jendela ffprobe
+serta node.exe. Ditemukan dua spawn anak tanpa windowsHide: proses ffprobe pada probe
+bridge dan helper services/webos/runtime/media-http.cjs pada server dev.
+Keduanya sekarang memakai windowsHide: true. Server dan helper lama direstart tepat
+sasaran; server baru sehat, runtime configuration dan kebijakan probe terverifikasi sama.
+1299 test lulus dan build 0f078db8d807 sukses.
+
+## 19. Satu deadline untuk Finding stream (2026-10-23)
+
+- Stream Selection Timeout membatasi percobaan sejak Detail mulai Finding stream: pengambilan addon, persiapan link, dan probe berbagi `deadlineAt`.
+- Hasil addon yang cocok dapat diperiksa tanpa menunggu addon lain yang lambat. FIRST_STREAM memprobe urutan atas dan berhenti pada Direct pertama.
+- Tiap probe memakai minimum 15 detik atau sisa deadline. Hasil persiapan/probe terlambat tidak mengubah percobaan selesai.
+- Jika tidak ada pilihan, `autoSelectionFinished` mencegah autoplay/resume lagi setelah daftar tampil; labeling tetap berjalan. Daftar memuat sumber lengkap bila prefetched masih parsial. Timeout menampilkan pesan Inggris/Indonesia.
+- 0 detik tidak memulai pencarian baru; Unlimited tanpa deadline keseluruhan. Timeout jaringan per request tetap berlaku.
+- Verifikasi: 1306 tes lulus, 0 gagal; build `95b47f892ab7`, terkonfirmasi dimuat Chrome. Cache probe direset setelah verifikasi untuk mencoba Project Hail Mary dari awal.
+
+## 20. Overlay terpadu untuk internal player (2026-10-23)
+
+- Pengguna menyetujui penggabungan Finding stream, Opening player, dan loading player. Izin ini mencakup perubahan tampilan loading terbatas pada playerScreen.js; controller tidak disentuh.
+- StartupLoadingOverlay memiliki satu node fixed di body; Detail -> Stream -> Player hanya mengubah status. Settings Loading Overlay berlaku dari pencarian hingga frame pertama; Show loading status sekarang benar-benar menyembunyikan/menampilkan teks, termasuk teks relay.
+- Status mengikuti pekerjaan nyata: finding/checking/opening, loadstart -> loading, progress tanpa metadata -> metadata, loadedmetadata/loadeddata/canplay -> frame atau restoring. Tahap yang sangat singkat dapat dilewati.
+- Back, timeout/tidak ada pilihan, Manual, error startup, dan cleanup menutup overlay. External player/iframe dan engine Movi mempertahankan alur sebelumnya.
+- Chrome profil utama semula Manual. Uji sementara First Stream membuktikan node yang sama dipakai dari finding sampai frame, lalu hilang; video readyState 4, paused false, error null. Mode uji dikembalikan Manual setelah pemeriksaan.
+- Verifikasi: 1311 tes lulus, 0 gagal. Tambahan tes menutup kesinambungan node, toggle status, guard external/Movi, event video nyata, dan fallback Manual.
+
+Validasi akhir overlay: build 521ff82bba7c; 1311 tes lulus. CSS lama dipertahankan, hanya 21 baris aturan overlay ditambahkan. Chrome: satu node bertahan melalui finding/checking/opening/loading/restoring/frame, lalu dihapus; video readyState 4 dan error null. Mode profil telah diverifikasi kembali Manual, simulasi latensi jaringan dimatikan.
+
+## 21. Back autoplay dari Detail (2026-10-23)
+
+- Pengguna melaporkan Player -> Detail -> Back membuka Player lagi. Pengguna memberi izin eksplisit mengubah playerScreen.js untuk perbaikan Back.
+- Penyebab: Stream perantara masih masuk history walau autoplay melewati daftar; Back sintetis mengganti entri Player dengan Detail, dan popstate Back dapat dikonsumsi ulang. FocusEngine juga menekan popstate bila handler mengembalikan true meskipun telah meminta history Back.
+- Stream mengganti entri perantara ketika returnRoute detail/home; pilihan manual tetap menyimpan entri Stream. Player mencoba history Back ke parent detail/home yang terbukti dari provenance, dan mengembalikan kontrak "history" agar FocusEngine tidak menelan popstate. Router menyelesaikan Back yang sudah diminta tanpa memanggil consumeBackRequest lagi pada event yang cocok.
+- Patch tambahan FocusEngine telah dibatalkan; player memakai kontrak yang sudah ada. Controller tidak diubah.
+- Verifikasi: 1317 tes lulus, 0 gagal; build 918d010b2930. Chrome profil utama, Project Hail Mary melalui tombol judul Detail -> Resume autoplay: Player history index2/previous detail -> Escape Detail index1 -> tombol Back Detail Home index0; tanpa error console. Pengaturan tidak diubah selama verifikasi Back.
+
+## 22. Logo overlay bocor antarjudul / hanya teks (2026-10-23)
+
+- Screenshot pengguna: latar Moana menampilkan logo Obsession. renderRouteHandoff memakai this.meta sebelum metadata route baru selesai, sementara helper overlay hanya mengisi artwork saat node pertama dibuat.
+- Detail sekarang menandai params pemilik metadata pada load/restore dan hanya memakai meta yang cocok. Item key diteruskan Detail/Stream/Router/Player.
+- Overlay memperbarui title/subtitle/backdrop/logo pada node yang sama; metadata item lain ditolak. Logo ditampilkan setelah onload berhasil; onerror tetap menampilkan judul yang benar. Callback gambar milik overlay lama diabaikan. Pembaruan metadata tidak memundurkan tahap Checking ke Finding.
+- Verifikasi: 1320 tes lulus, 0 gagal; build ee7a101882ac. Tes khusus mencakup stale meta, logo terlambat, error gambar, dan callback judul lama.
+- Chrome profil utama saat uji memakai Manual (pengaturan tidak diubah): Obsession Detail -> Home -> Moana manual -> pilih Direct. Semua jejak overlay bertitle Moana, tidak memakai logo Obsession; screenshot moana-overlay-logo-fixed.png menunjukkan logo dan latar Moana yang sesuai. Simulasi latensi sementara dikembalikan nol.
