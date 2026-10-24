@@ -5327,6 +5327,7 @@ export const PlayerScreen = {
       "[data-player-desktop-back]",
       ".player-controls-top",
       ".player-controls-bottom",
+      ".player-mobile-more-panel",
       ".player-modal",
       ".player-modal-backdrop",
       ".player-sources-panel",

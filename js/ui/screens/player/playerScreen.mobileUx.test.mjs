@@ -311,3 +311,31 @@ test("movie drawer subtitle uses genre and year rather than episode or runtime",
   }).getPlayerDrawerIdentity;
   assert.equal(run.call(ctx).subtitle, "Drama, Adventure • 2026");
 });
+
+test("More Actions buttons, icons and panel padding bypass video gestures above the timeline", () => {
+  const run = method("isDesktopVideoAreaClick(target, event = null)", {
+    Environment: { isBrowser: () => true }
+  }).isDesktopVideoAreaClick;
+  const panel = {};
+  const ctx = {
+    container: { contains: () => true },
+    isExternalFrameMode: () => false,
+    controlsVisible: true,
+    uiRefs: { progressShell: { getBoundingClientRect: () => ({ top: 726 }) } }
+  };
+  for (const kind of ["mute button", "speed text", "aspect icon", "empty panel padding"]) {
+    const target = {
+      closest: (selector) =>
+        selector.split(", ").includes(".player-mobile-more-panel") ? panel : null
+    };
+    assert.equal(run.call(ctx, target, { clientY: 670 }), false, kind);
+    ctx.controlsVisible = false;
+    assert.equal(run.call(ctx, target, { clientY: 670 }), false, kind + " after controls hide");
+    ctx.controlsVisible = true;
+  }
+  assert.equal(
+    run.call(ctx, { closest: () => null }, { clientY: 400 }),
+    true,
+    "video still accepts gestures"
+  );
+});
