@@ -55,7 +55,6 @@ export const StartupLoadingOverlay = {
             <img class="player-loading-logo hidden" alt="" />
             <div class="player-loading-title"></div>
           </div>
-          <div class="player-loading-subtitle"></div>
           ${renderLoadingIndicator({ className: "unified-startup-spinner" })}
           <div class="player-loading-status" role="status" aria-live="polite"></div>
         </div>`;
@@ -73,11 +72,9 @@ export const StartupLoadingOverlay = {
     }
     const owner = host;
     const title = host.querySelector(".player-loading-title");
-    const subtitle = host.querySelector(".player-loading-subtitle");
     const identity = host.querySelector(".player-loading-identity");
     const logo = host.querySelector(".player-loading-logo");
     title.textContent = presentation.title || "Nuvio";
-    subtitle.textContent = presentation.subtitle || "";
     const backdrop = presentation.backdropUrl || "";
     if (backdrop)
       host.querySelector(".player-loading-backdrop").style.backgroundImage =

@@ -215,7 +215,10 @@ test("next episode probes an eligible HDR candidate before applying its cap", as
   const method = source.match(/async selectDirectPlayableCandidates\([\s\S]*?\n {2}\},/)[0];
   const probes = [];
   let assessments = 0;
+  const { allowsPlayerStreamLabel } = await import("../../../core/streams/playerStreamPolicy.js");
   const dependencies = {
+    allowsPlayerStreamLabel,
+    StreamBadgeSettingsStore: { snapshot: () => ({ labelAddons: ["Chosen"] }) },
     filterAutoPlaySourceStreams,
     applyHdrPreference,
     resolveHdrPreference,
@@ -281,6 +284,19 @@ test("next episode probes an eligible HDR candidate before applying its cap", as
       ["21"]
     );
     assert.equal(assessments, 1);
+    // Manual auto-next searches all source addons, but Only Direct still owns label scope.
+    probes.length = 0;
+    const manual = await run.call(
+      {},
+      rows,
+      { streamAutoPlayMode: "MANUAL" },
+      { installedAddonNames: new Set(["Chosen", "Other"]) }
+    );
+    assert.deepEqual(probes, ["https://cdn.test/0"]);
+    assert.deepEqual(
+      manual.map((s) => s.id),
+      ["0"]
+    );
   } finally {
     globalThis.__NUVIO_ENV__ = savedEnv;
   }

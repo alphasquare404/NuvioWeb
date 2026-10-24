@@ -3895,9 +3895,11 @@ export const StreamScreen = {
         minutes: this.params?.runtime || this.params?.runtimeMinutes || 0
       }),
       playerEpisodeTitle: this.params?.episodeTitle || "",
+      playerGenres: this.params?.genres || [],
       playerReleaseYear: this.params?.year || "",
       playerBackdropUrl: this.getBackdropUrl() || null,
       playerLogoUrl: this.params?.logo || null,
+      castItems: this.params?.castItems || [],
       parentalWarnings: this.params?.parentalWarnings || null,
       parentalGuide: this.params?.parentalGuide || null,
       season: this.params?.season == null ? null : Number(this.params.season),

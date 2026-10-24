@@ -8014,7 +8014,7 @@ export const SettingsScreen = {
           focusKey: "playback:showOnlyDirectStreams",
           title: "Show only direct streams",
           subtitle:
-            "Hide streams that would need a remux or a transcode. Estimated from the stream card; if nothing is left, the full list is shown instead.",
+            "Show only streams verified as Direct by probing, from the addons selected for playback labels. Pending or unverified streams stay hidden.",
           checked: Boolean(model.player.showOnlyDirectStreams)
         })}
         ${

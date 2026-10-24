@@ -3336,6 +3336,7 @@ export const MetaDetailsScreen = {
   // the answer already in hand -- or, when nothing matched, with the streams it
   // found, so the screen it falls back to does not fetch them a second time.
   async openStreamRoute(params, options) {
+    params = { ...params, castItems: this.castItems || [] };
     const settings = PlayerSettingsStore.get();
     // "Choose stream" is an explicit request for the picker, and so is a route
     // that asked for manual selection.
@@ -4242,6 +4243,7 @@ export const MetaDetailsScreen = {
           ? `S${episode.season}E${episode.episode} - ${episode.title || ""}`
           : "",
         playerEpisodeTitle: episode?.title || "",
+        playerGenres: this.meta?.genres || [],
         playerReleaseYear: playback.download.year || "",
         playerBackdropUrl:
           this.meta?.background ||
@@ -4250,6 +4252,7 @@ export const MetaDetailsScreen = {
           playback.download.poster ||
           null,
         playerLogoUrl: this.meta?.logo || null,
+        castItems: this.castItems || [],
         episodes: this.episodes || [],
         streamCandidates: [source],
         preferredStreamId: source.id,
@@ -10989,6 +10992,7 @@ export const MetaDetailsScreen = {
         : null,
       playerTitle:
         this.meta?.name || this.params?.fallbackTitle || this.params?.itemId || "Untitled",
+      playerGenres: this.meta?.genres || [],
       playerReleaseYear: String(this.meta?.releaseInfo || "").match(/\b(19|20)\d{2}\b/)?.[0] || "",
       playerSubtitle: pending.episode
         ? `S${pending.episode.season}E${pending.episode.episode} - ${pending.episode.title || ""}`.replace(
@@ -10999,6 +11003,7 @@ export const MetaDetailsScreen = {
       playerEpisodeTitle: pending.episode?.title || "",
       playerBackdropUrl: this.meta?.background || this.meta?.poster || null,
       playerLogoUrl: this.meta?.logo || null,
+      castItems: this.castItems || [],
       parentalWarnings: this.meta?.parentalWarnings || null,
       parentalGuide: this.meta?.parentalGuide || null,
       episodes: this.episodes || [],
@@ -11170,9 +11175,11 @@ export const MetaDetailsScreen = {
       playerTitle:
         this.meta?.name || this.params?.fallbackTitle || this.params?.itemId || "Untitled",
       playerSubtitle: "",
+      playerGenres: this.meta?.genres || [],
       playerReleaseYear: String(this.meta?.releaseInfo || "").match(/\b(19|20)\d{2}\b/)?.[0] || "",
       playerBackdropUrl: this.meta?.background || this.meta?.poster || null,
       playerLogoUrl: this.meta?.logo || null,
+      castItems: this.castItems || [],
       parentalWarnings: this.meta?.parentalWarnings || null,
       parentalGuide: this.meta?.parentalGuide || null,
       episodes: [],
@@ -12847,6 +12854,7 @@ export const MetaDetailsScreen = {
         playerEpisodeTitle: this.nextEpisodeToWatch?.title || "",
         playerBackdropUrl: this.meta?.background || this.meta?.poster || null,
         playerLogoUrl: this.meta?.logo || null,
+        castItems: this.castItems || [],
         episodes: this.episodes || [],
         streamCandidates: this.streamItems || [],
         preferredStreamId: selectedStream?.id || null,

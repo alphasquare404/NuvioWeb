@@ -2935,11 +2935,13 @@ html.desktop-browser {
   scrollbar-color: rgba(255, 255, 255, 0.32) transparent;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-row,
 .desktop-browser #stream .stream-route-card-row {
   gap: 0;
   margin-bottom: 10px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card,
 .desktop-browser #stream .stream-route-card {
   min-height: 100px;
   padding: 15px 18px;
@@ -3011,6 +3013,8 @@ html.desktop-browser {
   outline-offset: 2px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card.focused,
+.desktop-browser #player #episodeSidePanel .stream-route-card:focus-visible,
 .desktop-browser #stream .stream-route-card.focused,
 .desktop-browser #stream .stream-route-card:focus-visible {
   border-color: var(--secondary-color);
@@ -3020,23 +3024,28 @@ html.desktop-browser {
   transform: none;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-heading,
 .desktop-browser #stream .stream-route-card-heading {
   font-size: 17px;
   line-height: 1.28;
   font-weight: 600;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-quality,
 .desktop-browser #stream .stream-route-card-quality {
   margin-top: 5px;
   font-size: 15px;
   line-height: 1.3;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-badges,
 .desktop-browser #stream .stream-route-card-badges {
   gap: 5px;
   margin: 7px 0 6px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-stream-badge,
+.desktop-browser #player #episodeSidePanel .stream-route-stream-badge.size,
 .desktop-browser #stream .stream-route-stream-badge,
 .desktop-browser #stream .stream-route-stream-badge.size {
   min-height: 24px;
@@ -3045,43 +3054,51 @@ html.desktop-browser {
   font-size: 12px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-stream-badge.image,
 .desktop-browser #stream .stream-route-stream-badge.image {
   min-width: 40px;
   max-width: 104px;
   padding: 3px 6px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-stream-badge.image img,
 .desktop-browser #stream .stream-route-stream-badge.image img {
   max-width: 92px;
   max-height: 18px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-line,
 .desktop-browser #stream .stream-route-card-line {
   margin-top: 4px;
   font-size: 13px;
   line-height: 1.35;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-line.secondary,
 .desktop-browser #stream .stream-route-card-line.secondary {
   margin-top: 2px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-side,
 .desktop-browser #stream .stream-route-card-side {
   width: 108px;
   flex-basis: 108px;
   gap: 7px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-addon-badge,
 .desktop-browser #stream .stream-route-addon-badge {
   width: 44px;
   height: 44px;
   border-width: 1px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-addon-badge span,
 .desktop-browser #stream .stream-route-addon-badge span {
   font-size: 20px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-addon-name,
 .desktop-browser #stream .stream-route-addon-name {
   max-width: 108px;
   overflow: hidden;
@@ -3181,6 +3198,7 @@ html.desktop-browser {
    the column beside it. It is a pseudo-element because the whole card is
    already the button -- a second focusable target would be one more stop for
    keyboard and remote navigation to pass through for no gain. */
+.desktop-browser #player #episodeSidePanel .stream-route-card-action,
 .desktop-browser #stream .stream-route-card-action {
   position: relative;
   display: flex;
@@ -3194,6 +3212,7 @@ html.desktop-browser {
   padding: 16px 18px 16px 70px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-action::before,
 .desktop-browser #stream .stream-route-card-action::before {
   content: "";
   position: absolute;
@@ -3223,6 +3242,7 @@ html.desktop-browser {
    can be done about it. Ordering here rather than moving the markup keeps the
    same card builder serving the detail screen.s season downloads, which have
    no download row and no play affordance. */
+.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-copy,
 .desktop-browser #stream .stream-route-card-action > .stream-route-card-copy {
   order: 1;
   flex: 0 0 100%;
@@ -3233,6 +3253,7 @@ html.desktop-browser {
    the play affordance keeps a column to itself and the card reads as one block
    of text rather than three indents. Padding rather than margin: these are
    full-width flex items and a margin would push them past the card. */
+.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-status,
 .desktop-browser #stream .stream-route-card-action > .stream-route-card-status {
   order: 2;
   flex: 0 0 100%;
@@ -3246,6 +3267,7 @@ html.desktop-browser {
   line-height: 1.3;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-status-text,
 .desktop-browser #stream .stream-route-card-status-text {
   min-width: 0;
   overflow: hidden;
@@ -3253,21 +3275,26 @@ html.desktop-browser {
   white-space: nowrap;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-status.downloading,
 .desktop-browser #stream .stream-route-card-status.downloading {
   color: var(--secondary-color);
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-status.queued,
+.desktop-browser #player #episodeSidePanel .stream-route-card-status.paused,
 .desktop-browser #stream .stream-route-card-status.queued,
 .desktop-browser #stream .stream-route-card-status.paused {
   color: rgba(255, 196, 92, 0.95);
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-status.offline,
 .desktop-browser #stream .stream-route-card-status.offline {
   color: rgba(126, 211, 148, 0.95);
 }
 
 /* The source and its controls share the card's last line: where this came from
    on the left, what can be done with it on the right. */
+.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-side,
 .desktop-browser #stream .stream-route-card-action > .stream-route-card-side {
   /* The television lays the source out as a 108px column with the name under
      its badge. On one line it is a badge and a name side by side, and the name
@@ -3286,12 +3313,14 @@ html.desktop-browser {
 
 /* The source badge and the download control are the two round things on the
    last line, so they are the same round thing: one size, one centre line. */
+.desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-addon-badge,
 .desktop-browser #stream .stream-route-card-action .stream-route-addon-badge {
   width: 32px;
   height: 32px;
   flex: 0 0 auto;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-offline-action,
 .desktop-browser #stream .stream-route-card-action .stream-route-offline-action {
   display: inline-flex;
   align-items: center;
@@ -3305,6 +3334,8 @@ html.desktop-browser {
   line-height: 1;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-side,
+.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-offline-actions,
 .desktop-browser #stream .stream-route-card-action > .stream-route-card-side,
 .desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
   align-items: center;
@@ -3317,6 +3348,9 @@ html.desktop-browser {
    when there is a last line to divide: a card with no source badge and no
    download control would otherwise end on a hairline under nothing. */
 .desktop-browser
+  #player #episodeSidePanel
+  .stream-route-card-action:has(> .stream-route-card-side, > .stream-route-offline-actions)::after,
+.desktop-browser
   #stream
   .stream-route-card-action:has(> .stream-route-card-side, > .stream-route-offline-actions)::after {
   content: "";
@@ -3327,16 +3361,19 @@ html.desktop-browser {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-addon-badge span,
 .desktop-browser #stream .stream-route-card-action .stream-route-addon-badge span {
   font-size: 11px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-addon-name,
 .desktop-browser #stream .stream-route-card-action .stream-route-addon-name {
   max-width: min(260px, 40vw);
   color: var(--text-secondary);
   font-size: 12.5px;
 }
 
+.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-offline-actions,
 .desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
   order: 5;
   flex: 0 0 auto;
@@ -3393,7 +3430,8 @@ html.desktop-browser {
     color: var(--text-color);
   }
 
-  .desktop-browser #stream .stream-route-card:hover {
+  .desktop-browser #player #episodeSidePanel .stream-route-card:hover,
+.desktop-browser #stream .stream-route-card:hover {
     border-color: rgba(255, 255, 255, 0.28);
     background: rgba(34, 34, 40, 0.94);
     box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
@@ -3478,19 +3516,22 @@ html.desktop-browser {
     padding-left: 20px;
   }
 
-  .desktop-browser #stream .stream-route-card {
+  .desktop-browser #player #episodeSidePanel .stream-route-card,
+.desktop-browser #stream .stream-route-card {
     align-items: flex-start;
     flex-wrap: wrap;
   }
 
-  .desktop-browser #stream .stream-route-card-side {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-side,
+.desktop-browser #stream .stream-route-card-side {
     width: 100%;
     flex-basis: 100%;
     flex-direction: row;
     justify-content: flex-start;
   }
 
-  .desktop-browser #stream .stream-route-addon-name {
+  .desktop-browser #player #episodeSidePanel .stream-route-addon-name,
+.desktop-browser #stream .stream-route-addon-name {
     max-width: none;
   }
 }
@@ -13249,7 +13290,10 @@ body.desktop-browser {
     padding-top: 0;
   }
 
-  .desktop-browser #stream .stream-route-title,
+  .desktop-browser #player #episodeSidePanel .stream-route-card-heading,
+.desktop-browser #player #episodeSidePanel .stream-route-card-line,
+.desktop-browser #player #episodeSidePanel .stream-route-addon-name,
+.desktop-browser #stream .stream-route-title,
   .desktop-browser #stream .stream-route-subtitle,
   .desktop-browser #stream .stream-route-detail-line,
   .desktop-browser #stream .stream-route-card-heading,
@@ -13258,7 +13302,8 @@ body.desktop-browser {
     overflow-wrap: anywhere;
   }
 
-  .desktop-browser #stream .stream-route-card-copy {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-copy,
+.desktop-browser #stream .stream-route-card-copy {
     min-width: 0;
   }
 
@@ -13344,18 +13389,21 @@ body.desktop-browser {
     padding-inline: 14px;
   }
 
-  .desktop-browser #stream .stream-route-card-row {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-row,
+.desktop-browser #stream .stream-route-card-row {
     margin-bottom: 12px;
   }
 
-  .desktop-browser #stream .stream-route-card {
+  .desktop-browser #player #episodeSidePanel .stream-route-card,
+.desktop-browser #stream .stream-route-card {
     min-height: 0;
     padding: 14px;
     gap: 12px;
     touch-action: pan-y;
   }
 
-  .desktop-browser #stream .stream-route-card-heading {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-heading,
+.desktop-browser #stream .stream-route-card-heading {
     display: -webkit-box;
     font-size: 16px;
     line-height: 1.3;
@@ -13365,22 +13413,26 @@ body.desktop-browser {
     line-clamp: 2;
   }
 
-  .desktop-browser #stream .stream-route-card-quality {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-quality,
+.desktop-browser #stream .stream-route-card-quality {
     margin-top: 4px;
     font-size: 14px;
   }
 
-  .desktop-browser #stream .stream-route-card-line {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-line,
+.desktop-browser #stream .stream-route-card-line {
     font-size: 12px;
     overflow-wrap: anywhere;
   }
 
-  .desktop-browser #stream .stream-route-card-side {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-side,
+.desktop-browser #stream .stream-route-card-side {
     min-height: 44px;
     gap: 8px;
   }
 
-  .desktop-browser #stream .stream-route-addon-badge {
+  .desktop-browser #player #episodeSidePanel .stream-route-addon-badge,
+.desktop-browser #stream .stream-route-addon-badge {
     width: 42px;
     height: 42px;
   }
@@ -16228,13 +16280,15 @@ html:not([data-nav-placement="top"])
     padding: 10px 10px 12px;
   }
 
-  .desktop-browser #stream .stream-route-card-action {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-action,
+.desktop-browser #stream .stream-route-card-action {
     padding: 14px 14px 14px 56px;
     column-gap: 10px;
     row-gap: 8px;
   }
 
-  .desktop-browser #stream .stream-route-card-action::before {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-action::before,
+.desktop-browser #stream .stream-route-card-action::before {
     top: 14px;
     left: 14px;
     width: 32px;
@@ -16246,23 +16300,27 @@ html:not([data-nav-placement="top"])
   /* The earlier phone rules make the source a full-width row of its own, which
      would push the controls onto a fourth line. It shares the last line here,
      the same as everywhere else. */
-  .desktop-browser #stream .stream-route-card-action > .stream-route-card-side {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-side,
+.desktop-browser #stream .stream-route-card-action > .stream-route-card-side {
     width: auto;
     flex: 0 1 auto;
     flex-basis: auto;
     justify-content: flex-start;
   }
 
-  .desktop-browser #stream .stream-route-card-action .stream-route-addon-name {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-addon-name,
+.desktop-browser #stream .stream-route-card-action .stream-route-addon-name {
     max-width: min(150px, 42vw);
   }
 
-  .desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-offline-actions,
+.desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
     flex: 0 0 auto;
     margin: 0 0 0 auto;
   }
 
-  .desktop-browser #stream .stream-route-card-status {
+  .desktop-browser #player #episodeSidePanel .stream-route-card-status,
+.desktop-browser #stream .stream-route-card-status {
     font-size: 12px;
   }
 }
@@ -20358,3 +20416,404 @@ html[data-layout="mobile"]
     margin-bottom: 12px;
   }
 }
+
+/* Browser player: preserve Nuvio's control placement while adapting to touch. */
+.desktop-browser #player #playerUiRoot,
+.desktop-browser #player video {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.desktop-browser #player { touch-action: pan-y; }
+.desktop-browser #player #playerUiRoot img { -webkit-user-drag: none; }
+.desktop-browser #player .player-progress-shell { position: relative; }
+.desktop-browser #player .player-progress-hover {
+  position: absolute;
+  bottom: calc(100% - 3px);
+  transform: translateX(-50%);
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(15, 15, 18, .94);
+  color: #fff;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.desktop-browser #player .player-progress-hover.hidden,
+.desktop-browser #player .player-desktop-tool-button[hidden] { display: none; }
+.desktop-browser #player .player-gesture-feedback { white-space: pre-line; text-align: center; }
+.desktop-browser #player .player-pause-overlay {
+  --pause-meta-size: clamp(12px, 1.05vw, 20px);
+  padding-top: calc(84px + var(--browser-safe-area-top));
+  padding-bottom: max(12px, var(--browser-safe-area-bottom));
+}
+.desktop-browser #player .player-pause-overlay-content:not(.player-still-watching-content) {
+  top: 0;
+  left: max(4vw, calc(var(--browser-safe-area-left) + 16px));
+  right: max(4vw, calc(var(--browser-safe-area-right) + 16px));
+  gap: clamp(6px, 1.2dvh, 14px);
+  transform: none;
+}
+.desktop-browser #player .player-pause-logo { max-height: clamp(36px, 9dvh, 112px); max-width: 45vw; }
+.desktop-browser #player .player-pause-title { font-size: clamp(24px, 2.6vw, 56px); }
+.desktop-browser #player .player-pause-kicker,
+.desktop-browser #player .player-pause-cast-label { font-size: clamp(10px, .8vw, 16px); }
+.desktop-browser #player .player-pause-meta-line { font-size: var(--pause-meta-size); line-height: 1.3; }
+.desktop-browser #player .player-pause-description {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+  font-size: clamp(12px, 1.05vw, 20px);
+  line-height: 1.35;
+}
+.desktop-browser #player .player-pause-cast-section { margin-top: 4px; }
+.desktop-browser #player .player-pause-cast-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: clamp(8px, .9vw, 18px);
+  margin-top: 6px;
+  overflow: visible;
+}
+.desktop-browser #player .player-pause-cast-chip {
+  flex: 0 0 clamp(72px, 6.5vw, 128px);
+  min-width: 0;
+  max-width: none;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 5px;
+}
+.desktop-browser #player .player-pause-cast-portrait {
+  position: relative;
+  width: clamp(44px, 5vw, 96px);
+  aspect-ratio: 4 / 5;
+  flex: none;
+  border-radius: 8px;
+  background: rgb(var(--secondary-color-rgb) / .18);
+  overflow: hidden;
+}
+.desktop-browser #player .player-pause-cast-portrait > span { display: grid; place-items: center; height: 100%; font-size: 24px; }
+.desktop-browser #player .player-pause-cast-portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.desktop-browser #player .player-pause-cast-copy { min-width: 0; }
+.desktop-browser #player .player-pause-cast-copy span {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  font-size: clamp(11px, .85vw, 17px);
+  line-height: 1.25;
+}
+.desktop-browser #player .player-pause-cast-role { margin-top: 2px; color: rgba(255,255,255,.65); }
+.desktop-browser #player .player-pause-badges { font-size: var(--pause-meta-size); }
+.desktop-browser #player .player-pause-badges .player-source-badges { display: flex; flex-wrap: wrap; gap: .4em; margin: 0; }
+.desktop-browser #player .player-pause-badges .stream-route-stream-badge {
+  font-size: inherit;
+  height: 1.5em;
+  min-height: 0;
+  padding: .15em .4em;
+  border-radius: .3em;
+  box-sizing: border-box;
+}
+.desktop-browser #player .player-pause-badges .stream-route-stream-badge img { height: 1em; max-height: 1em; width: auto; max-width: 7em; }
+.desktop-browser #player .player-pause-overlay-top { top: calc(26px + var(--browser-safe-area-top)); right: max(16px, calc(var(--browser-safe-area-right) + 16px)); }
+.desktop-browser #player .player-pause-overlay-clock { font-size: clamp(16px, 1.5vw, 30px); }
+/* Popovers open above the toolbar, leaving their trigger buttons accessible. */
+.desktop-browser #player .track-popover-open .player-modal-backdrop { bottom: var(--player-popover-bottom, 96px); }
+.desktop-browser #player .track-popover-open .player-controls-overlay.modal-blocked .player-controls-bottom { pointer-events: auto; }
+.desktop-browser #player .player-speed-modal .player-dialog-list { min-height: 0; overflow-y: auto; }
+.desktop-browser #player .player-episode-panel { display: flex; flex-direction: column; gap: 12px; }
+.desktop-browser #player .player-episode-panel-header,
+.desktop-browser #player .player-episode-stream-actions,
+.desktop-browser #player .player-episode-stream-filters { flex: 0 0 auto; min-width: 0; margin-top: 0; }
+.desktop-browser #player .player-episode-season-select {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 10px;
+  background: var(--bg-elevated, #242428);
+  color: var(--text-color, #fff);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  color-scheme: dark;
+}
+.desktop-browser #player .player-episode-close-btn { width: 40px; min-width: 40px; padding: 0; font-size: 0; cursor: pointer; }
+.desktop-browser #player .player-episode-close-btn::after { content: "×"; font-size: 24px; }
+.desktop-browser #player .player-episode-list,
+.desktop-browser #player .player-episode-stream-list { position: relative; flex: 1 1 auto; min-height: 0; margin-top: 0; overflow-y: auto; }
+.desktop-browser #player .player-episode-stream-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; position: relative; }
+.desktop-browser #player .player-episode-stream-card.no-side { grid-template-columns: minmax(0, 1fr); }
+.desktop-browser #player .player-episode-stream-card .player-source-main { min-width: 0; }
+.desktop-browser #player .player-episode-stream-card .player-source-title,
+.desktop-browser #player .player-episode-stream-card .player-source-desc { overflow-wrap: anywhere; }
+@media (hover: hover) {
+  .desktop-browser #player .player-episode-panel button:hover,
+  .desktop-browser #player .player-episode-item:hover,
+  .desktop-browser #player .player-episode-stream-card:hover,
+  .desktop-browser #player .player-episode-season-select:hover {
+    border-color: var(--secondary-color);
+    background: rgb(var(--secondary-color-rgb) / .14);
+    cursor: pointer;
+  }
+}
+.desktop-browser #player .player-episode-panel button:focus-visible,
+.desktop-browser #player .player-episode-item:focus-visible,
+.desktop-browser #player .player-episode-stream-card:focus-visible,
+.desktop-browser #player .player-episode-season-select:focus-visible { outline: 2px solid var(--secondary-color); outline-offset: -2px; }
+@media (max-width: 900px), (pointer: coarse) {
+  .desktop-browser #player .player-control-btn.is-primary { background: rgb(var(--secondary-color-rgb) / .35); border-color: var(--secondary-color); }
+  .desktop-browser #player .player-subtitle-modal .player-dialog-title,
+  .desktop-browser #player .player-audio-modal .player-dialog-title { font-size: 18px; }
+  .desktop-browser #player .player-modal .player-dialog-empty,
+  .desktop-browser #player .player-modal .player-dialog-item-main,
+  .desktop-browser #player .player-modal .player-audio-control-title,
+  .desktop-browser #player .player-modal .player-audio-control-value { font-size: 14px; line-height: 1.3; }
+  .desktop-browser #player .player-modal .player-dialog-item-sub { font-size: 12px; line-height: 1.3; }
+  .desktop-browser #player .player-modal.is-empty { height: auto; }
+  .desktop-browser #player .player-subtitle-modal.is-empty .player-subtitle-overlay-grid { display: block; flex: none; }
+  .desktop-browser #player .player-desktop-back-button { left: max(12px, calc(var(--browser-safe-area-left) + 12px)); }
+}
+.desktop-browser #player .player-modal.is-empty { height: auto; }
+.desktop-browser #player .player-subtitle-modal.is-empty .player-subtitle-overlay-grid { display: block; flex: none; }
+.desktop-browser #player .player-modal .player-dialog-empty { font-size: clamp(14px, 1.1vw, 18px); }
+.desktop-browser #player .player-pause-cast-portrait { height: clamp(55px, 6.25vw, 120px); }
+/* Keep the main play/pause theme consistent across desktop and touch layouts. */
+.desktop-browser #player .player-control-btn.is-primary {
+  background: rgb(var(--secondary-color-rgb) / .35);
+  border-color: var(--secondary-color);
+}
+.desktop-browser #player .player-controls-overlay {
+  padding-top: max(var(--player-controls-y), calc(var(--browser-safe-area-top) + 12px));
+  padding-right: max(var(--player-controls-x), calc(var(--browser-safe-area-right) + 12px));
+  padding-bottom: max(var(--player-controls-y), calc(var(--browser-safe-area-bottom) + 12px));
+  padding-left: max(var(--player-controls-x), calc(var(--browser-safe-area-left) + 12px));
+}
+.desktop-browser #player .player-parental-guide {
+  top: calc(var(--browser-safe-area-top) + 72px);
+  left: max(16px, calc(var(--browser-safe-area-left) + 16px));
+  max-width: min(320px, calc(100% - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 32px));
+}
+.desktop-browser #player .player-source-card { position: relative; }
+.desktop-browser #player .player-source-card .stream-playback-badge {
+  position: static !important;
+  display: inline-flex;
+  max-width: 100%;
+  margin-top: 8px;
+  white-space: normal;
+}
+.desktop-browser #player .player-sources-panel { display: flex; flex-direction: column; min-height: 0; }
+.desktop-browser #player .player-sources-header,
+.desktop-browser #player .player-source-current-meta,
+.desktop-browser #player .player-sources-filters { flex: 0 0 auto; }
+.desktop-browser #player .player-sources-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+@media (max-width: 900px), (pointer: coarse) {
+  .desktop-browser #player .player-sources-panel,
+  .desktop-browser #player .player-episode-panel {
+    box-sizing: border-box;
+    top: 0; bottom: 0;
+    width: min(100%, 480px);
+    max-width: 100%;
+    height: 100%; max-height: 100%;
+    padding: calc(var(--browser-safe-area-top) + 12px) calc(var(--browser-safe-area-right) + 12px) calc(var(--browser-safe-area-bottom) + 12px) calc(var(--browser-safe-area-left) + 12px);
+    gap: clamp(8px, 1.5vh, 12px);
+  }
+  .desktop-browser #player .player-sources-title,
+  .desktop-browser #player .player-episode-panel-title { font-size: clamp(17px, 4vw, 21px); line-height: 1.25; }
+  .desktop-browser #player .player-episode-item { gap: clamp(8px, 2vw, 12px); padding: 8px; margin-bottom: 8px; border-radius: 10px; }
+  .desktop-browser #player .player-episode-thumb-wrap { width: clamp(80px, 24vw, 120px); min-width: 0; flex: 0 0 clamp(80px, 24vw, 120px); height: auto; aspect-ratio: 16 / 9; border-radius: 8px; }
+  .desktop-browser #player .player-episode-copy { flex: 1 1 0; min-width: 0; }
+  .desktop-browser #player .player-episode-item-title,
+  .desktop-browser #player .player-source-title { font-size: clamp(13px, 3.5vw, 16px); line-height: 1.3; }
+  .desktop-browser #player .player-episode-item-subtitle,
+  .desktop-browser #player .player-episode-date,
+  .desktop-browser #player .player-source-desc,
+  .desktop-browser #player .player-source-addon { font-size: clamp(11px, 3vw, 13px); line-height: 1.35; }
+  .desktop-browser #player .player-episode-code { font-size: 10px; line-height: 1.2; left: 4px; bottom: 4px; padding: 3px 5px; }
+  .desktop-browser #player .player-source-card { padding: clamp(8px, 2.5vw, 12px); gap: 8px; }
+  .desktop-browser #player .player-source-logo { width: clamp(24px, 8vw, 36px); height: clamp(24px, 8vw, 36px); }
+  .desktop-browser #player .player-source-side { width: clamp(52px, 16vw, 72px); min-width: 0; }
+  .desktop-browser #player .player-episode-stream-filter,
+  .desktop-browser #player .player-sources-filter { height: 36px; padding: 0 10px; font-size: 12px; flex-shrink: 0; }
+  .desktop-browser #player .player-episode-stream-filters,
+  .desktop-browser #player .player-sources-filters { overflow-x: auto; min-width: 0; }
+}
+@media (max-width: 1023px) and (max-height: 500px) and (orientation: landscape) {
+  .desktop-browser #player .player-sources-panel,
+  .desktop-browser #player .player-episode-panel { width: min(100%, 480px); }
+  .desktop-browser #player .player-meta .player-title { font-size: 20px; }
+  .desktop-browser #player .player-meta .player-subtitle,
+  .desktop-browser #player .player-meta-tertiary { font-size: 12px; }
+}
+
+/* Side panels own their Close button when covering the player Back button. */
+.desktop-browser #player .player-sources-panel,
+.desktop-browser #player .player-episode-panel { z-index: 52; }
+/* Keep Back outside display cutouts in portrait and landscape. */
+.desktop-browser #player .player-desktop-back-button {
+  top: max(clamp(12px, 2.5vh, 26px), calc(var(--browser-safe-area-top) + 12px));
+  left: max(clamp(12px, 2.5vw, 48px), calc(var(--browser-safe-area-left) + 12px));
+}
+@media (max-width: 900px), (pointer: coarse) {
+  .desktop-browser #player .player-source-side { width: clamp(64px, 19vw, 80px); }
+  .desktop-browser #player .player-source-addon { font-size: clamp(11px, 2.8vw, 12px); }
+}
+/* Player episode drawer shares the detail screen's quiet black surface. */
+.desktop-browser #player #episodeSidePanel {
+  background: #000;
+  border-left: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: -20px 0 64px rgba(0, 0, 0, .55);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  gap: 16px;
+}
+.desktop-browser #player #episodeSidePanel .player-episode-panel-header { align-items: center; gap: 16px; }
+.desktop-browser #player #episodeSidePanel .player-episode-panel-title { font-size: clamp(18px, 1.5vw, 22px); line-height: 1.25; font-weight: 650; }
+.desktop-browser #player #episodeSidePanel .player-episode-close-btn,
+.desktop-browser #player #episodeSidePanel .player-episode-stream-action {
+  display: inline-flex;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 50%;
+  background: rgba(18, 18, 20, .46);
+  color: #fff;
+  box-shadow: none;
+  backdrop-filter: blur(2px) saturate(150%);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  cursor: pointer;
+}
+.desktop-browser #player #episodeSidePanel .player-episode-close-btn::after { content: none; }
+.desktop-browser #player #episodeSidePanel .player-episode-close-btn svg,
+.desktop-browser #player #episodeSidePanel .player-episode-stream-action svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.desktop-browser #player #episodeSidePanel .player-episode-season-select { min-height: 44px; background: #111; border-color: rgba(255,255,255,.16); border-radius: 12px; }
+.desktop-browser #player #episodeSidePanel .player-episode-item { border: 1px solid rgba(255,255,255,.08); background: #101010; border-radius: 12px; transform: none; }
+.desktop-browser #player #episodeSidePanel .player-episode-item.selected,
+.desktop-browser #player #episodeSidePanel .player-episode-item.focused { background: rgb(var(--secondary-color-rgb) / .1); border-color: rgb(var(--secondary-color-rgb) / .65); box-shadow: none; transform: none; }
+.desktop-browser #player #episodeSidePanel .player-episode-item-title { color: #f5f5f5; font-weight: 600; }
+.desktop-browser #player #episodeSidePanel .player-episode-date { color: rgba(255,255,255,.5); }
+.desktop-browser #player #episodeSidePanel .player-episode-item-subtitle { color: rgba(255,255,255,.65); }
+.desktop-browser #player #episodeSidePanel .player-episode-stream-actions { gap: 12px; align-items: center; }
+.desktop-browser #player #episodeSidePanel .player-episode-stream-meta { min-width: 0; flex: 1; margin: 0; color: rgba(255,255,255,.78); font-size: 14px; line-height: 1.4; }
+.desktop-browser #player #episodeSidePanel .player-episode-stream-filters { display: flex; align-items: center; gap: 12px; padding: 0; overflow: visible; }
+.desktop-browser #player #episodeSidePanel .player-episode-source-picker { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; padding: 7px 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; background: #111; }
+.desktop-browser #player #episodeSidePanel .player-episode-source-picker > span { color: rgba(255,255,255,.55); font-size: 10px; line-height: 1.2; letter-spacing: .06em; text-transform: uppercase; }
+.desktop-browser #player #episodeSidePanel [data-player-episode-source] { min-width: 0; width: 100%; height: 24px; padding: 0; border: 0; background: transparent; color: #f5f5f5; font: inherit; font-size: 14px; color-scheme: dark; cursor: pointer; }
+.desktop-browser #player #episodeSidePanel .player-episode-stream-list { padding: 3px; scroll-padding-block: 4px; }
+.desktop-browser #player #episodeSidePanel .stream-route-card-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-height: 0;
+  margin-bottom: 12px;
+  padding: 16px 14px 16px 58px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 14px;
+  background: #111;
+  transform: none;
+  box-shadow: none;
+}
+.desktop-browser #player #episodeSidePanel .stream-route-card-action::before { top: 16px; left: 14px; width: 32px; height: 32px; background-size: 19px 19px; }
+.desktop-browser #player #episodeSidePanel .stream-route-card-heading { font-size: clamp(14px, 3.7vw, 16px); line-height: 1.3; overflow-wrap: anywhere; }
+.desktop-browser #player #episodeSidePanel .stream-route-card-line { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.desktop-browser #player #episodeSidePanel .stream-route-addon-name { max-width: 100%; font-size: 12px; }
+.desktop-browser #player #episodeSidePanel .stream-route-card-side { max-width: 100%; }
+.desktop-browser #player #episodeSidePanel .stream-playback-badge { position: static !important; order: 2; display: inline-flex; max-width: 100%; margin: 0; white-space: normal; }
+.desktop-browser #player #episodeSidePanel .stream-route-card-action.focused { background: #191919; border-color: var(--secondary-color); box-shadow: none; }
+.desktop-browser #player #episodeSidePanel .player-episode-stream-empty { padding: 28px 12px; color: rgba(255,255,255,.6); font-size: 14px; text-align: center; }
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #player #episodeSidePanel .player-episode-close-btn:hover,
+  .desktop-browser #player #episodeSidePanel .player-episode-stream-action:hover { border-color: rgba(255,255,255,.38); background: rgba(255,255,255,.12); }
+  .desktop-browser #player #episodeSidePanel .stream-route-card-action:hover,
+  .desktop-browser #player #episodeSidePanel .player-episode-item:hover { background: #191919; border-color: var(--secondary-color); }
+}
+.desktop-browser #player #episodeSidePanel .player-episode-source-picker:focus-within { border-color: var(--secondary-color); }
+@media (max-width: 900px), (pointer: coarse) {
+  .desktop-browser #player #episodeSidePanel { gap: 12px; }
+}
+/* Drawer headers stay above their independently scrolling lists. */
+.desktop-browser #player #episodeSidePanel,
+.desktop-browser #player #playerSourcesPanel {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  background: #000;
+}
+.desktop-browser #player .player-drawer-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex: 0 0 auto;
+  min-width: 0;
+  background: #0a0a0a;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.desktop-browser #player .player-drawer-heading {
+  display: grid;
+  grid-template-columns: 44px minmax(0,1fr) 44px;
+  align-items: start;
+  gap: 4px;
+  padding: calc(var(--browser-safe-area-top) + 16px) calc(var(--browser-safe-area-right) + 12px) 12px calc(var(--browser-safe-area-left) + 12px);
+}
+.desktop-browser #player .player-drawer-back-slot,
+.desktop-browser #player .player-drawer-close-slot { display: flex; justify-content: center; }
+.desktop-browser #player .player-drawer-identity { min-width: 0; text-align: center; }
+.desktop-browser #player .player-drawer-brand { display: flex; align-items: center; justify-content: center; height: 44px; min-width: 0; }
+.desktop-browser #player .player-drawer-brand img { width: auto; height: 20px; max-width: 100%; object-fit: contain; }
+.desktop-browser #player .player-drawer-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(18px, 5vw, 24px); line-height: 1.1; font-weight: 650; letter-spacing: -.03em; }
+.desktop-browser #player .player-drawer-brand [hidden] { display: none; }
+.desktop-browser #player .player-drawer-subtitle { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: rgba(255,255,255,.65); font-size: 12px; line-height: 1.3; }
+.desktop-browser #player #episodeSidePanel .player-drawer-icon,
+.desktop-browser #player #playerSourcesPanel .player-drawer-icon {
+  display: inline-flex;
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  cursor: pointer;
+}
+.desktop-browser #player .player-drawer-icon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.desktop-browser #player .player-drawer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 8px calc(var(--browser-safe-area-right) + 12px) 12px calc(var(--browser-safe-area-left) + 12px); }
+.desktop-browser #player .player-drawer-section-title { flex: 0 0 auto; font-size: 15px; line-height: 1.3; font-weight: 650; }
+.desktop-browser #player .player-drawer-filter-slot { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 72%; }
+.desktop-browser #player #episodeSidePanel .player-drawer-picker,
+.desktop-browser #player #playerSourcesPanel .player-drawer-picker { display: flex; flex: 1 1 auto; flex-direction: column; gap: 1px; min-width: 0; width: 170px; padding: 6px 10px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; background: #111; }
+.desktop-browser #player .player-drawer-picker > span { font-size: 10px; line-height: 1.2; letter-spacing: .06em; color: rgba(255,255,255,.55); }
+.desktop-browser #player #episodeSidePanel .player-drawer-picker select,
+.desktop-browser #player #playerSourcesPanel .player-drawer-picker select { width: 100%; min-width: 0; min-height: 24px; height: 24px; padding: 0; border: 0; border-radius: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; line-height: 1.3; color-scheme: dark; cursor: pointer; }
+.desktop-browser #player #episodeSidePanel .player-drawer-picker.season { padding: 9px 10px; }
+.desktop-browser #player #episodeSidePanel .player-episode-list,
+.desktop-browser #player #episodeSidePanel .player-episode-stream-list,
+.desktop-browser #player #playerSourcesPanel .player-sources-list { flex: 1 1 auto; min-height: 0; margin: 0; padding: 12px calc(var(--browser-safe-area-right) + 12px) calc(var(--browser-safe-area-bottom) + 12px) calc(var(--browser-safe-area-left) + 12px); overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 12px; }
+.desktop-browser #player .player-drawer-picker:focus-within { border-color: var(--secondary-color); }
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser #player #episodeSidePanel .player-drawer-icon:hover,
+  .desktop-browser #player #playerSourcesPanel .player-drawer-icon:hover { background: rgba(255,255,255,.08); border-color: transparent; }
+}
+.desktop-browser #player #episodeSidePanel .player-drawer-icon svg,
+.desktop-browser #player #playerSourcesPanel .player-drawer-icon svg { width: 24px; height: 24px; }

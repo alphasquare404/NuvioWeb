@@ -1,4 +1,18 @@
-import { PROBE_ENDPOINT } from "../../../config.js";
+import { resolveRelayAvailability } from "../../../core/player/relayAvailability.js";
+import { TranscodeSettingsStore } from "../../../data/local/transcodeSettingsStore.js";
+import { renderStreamPlaybackBadge } from "../../components/streamPlaybackBadge.js";
+import {
+  allowsPlayerStreamLabel,
+  playerStreamProbeKey,
+  filterPlayerStreams,
+  playerStreamProbeCandidates
+} from "../../../core/streams/playerStreamPolicy.js";
+import {
+  normalizeSourceForDisplay,
+  renderBrowserSourceCardContent
+} from "../../components/browserStreamSourceCard.js";
+import { formatRuntimeLabel } from "../../../core/util/runtimeLabel.js";
+import { REMUX_ENDPOINT, TRANSCODE_ENDPOINT, PROBE_ENDPOINT } from "../../../config.js";
 import { createStreamProber, streamProbeIdentity } from "../../../core/player/streamProbe.js";
 import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
 import { classifyPlayback } from "../../../core/player/playbackMethod.js";
@@ -432,7 +446,7 @@ function normalizeComparableText(value) {
 
 function extractPauseOverlayCast(data = {}) {
   const result = [];
-  const seen = new Set();
+  const seen = new Map();
   const collections = [data?.castItems, data?.castMembers, data?.cast, data?.credits?.cast];
 
   const pushEntry = (entry) => {
@@ -448,12 +462,32 @@ function extractPauseOverlayCast(data = {}) {
     }
     const character =
       typeof entry === "string" ? "" : cleanDisplayText(entry?.character || entry?.role || "");
-    const key = normalizeComparableText(`${name}|${character}`);
-    if (seen.has(key)) {
+    const key = normalizeComparableText(name);
+    const rawPhoto =
+      typeof entry === "string"
+        ? ""
+        : String(
+            entry.photo ||
+              entry.profilePath ||
+              entry.profile_path ||
+              entry.avatar ||
+              entry.image ||
+              ""
+          );
+    const photo = normalizeImageUrl(
+      rawPhoto.startsWith("/") && !entry.photo
+        ? "https://image.tmdb.org/t/p/w185" + rawPhoto
+        : rawPhoto
+    );
+    const previous = seen.get(key);
+    if (previous) {
+      if (!previous.photo && photo) previous.photo = photo;
+      if (!previous.character && character) previous.character = character;
       return;
     }
-    seen.add(key);
-    result.push({ name, character });
+    const person = { name, character, photo };
+    seen.set(key, person);
+    result.push(person);
   };
 
   collections.forEach((collection) => {
@@ -1463,7 +1497,8 @@ function getPlayerSourceLogoDisplayUrl(value = "", onSettled = null) {
 
 function renderPlayerSourceBadges(
   stream = {},
-  badgeSettings = StreamBadgeSettingsStore.snapshot()
+  badgeSettings = StreamBadgeSettingsStore.snapshot(),
+  { sizeLast = false } = {}
 ) {
   const matchedBadges = matchStreamBadges(stream, badgeSettings.rules);
   const chips = [];
@@ -1476,12 +1511,14 @@ function renderPlayerSourceBadges(
       );
     }
   }
+  const sizeChips = sizeLast ? chips.splice(0) : [];
   matchedBadges.slice(0, 8).forEach((badge) => {
     const chip = renderPlayerImageBadgeChip(badge);
     if (chip) {
       chips.push(chip);
     }
   });
+  chips.push(...sizeChips);
   return chips.length
     ? `<div class="stream-route-card-badges player-source-badges" aria-label="${escapeHtml(t("settings_stream_badges_section", {}, "Fusion Style"))}">${chips.join("")}</div>`
     : "";
@@ -2055,6 +2092,13 @@ export const PlayerScreen = {
     this.container.style.display = "block";
     const mountToken = Number(this.playerMountToken || 0) + 1;
     this.playerMountToken = mountToken;
+    this._nextEpisodeProbeResults = new Map();
+    this._playerListProbeResults = new Map();
+    this._playerListProbePending = new Set();
+    this._playerListProbeFailed = new Set();
+    this._playerListProber = null;
+    this._playerRelayAvailability = null;
+    this.desktopLastAudibleVolume = null;
     this.playerRouteActive = true;
     this.params = params;
     this.offlineObjectUrl = Environment.isBrowser() ? String(params.offlineObjectUrl || "") : "";
@@ -4476,6 +4520,7 @@ export const PlayerScreen = {
 
             <div class="player-controls-bar">
               <div id="playerProgressShell" class="player-progress-shell focusable" tabindex="-1" data-player-pointer-action="progress">
+                <div id="playerProgressHover" class="player-progress-hover hidden" aria-hidden="true"></div>
                 <div class="player-progress-track">
                   <div id="playerProgressBuffered" class="player-progress-buffered"></div>
                   <div id="playerProgressFill" class="player-progress-fill"></div>
@@ -4533,7 +4578,7 @@ export const PlayerScreen = {
       return "";
     }
     const { volume, muted } = this.getDesktopVolumeState();
-    const volumePercent = Math.round(volume * 100);
+    const volumePercent = muted ? 0 : Math.round(volume * 100);
     const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
     // On a compact toolbar this button lives in More Actions, and rendering it
     // here as well put two of them on screen at once.
@@ -4563,7 +4608,7 @@ export const PlayerScreen = {
               </button>`
             : ""
         }
-        <button class="player-desktop-tool-button" type="button" tabindex="-1" data-player-desktop-action="fullscreen"
+        <button class="player-desktop-tool-button" type="button" tabindex="-1" data-player-desktop-action="fullscreen" ${this.getDesktopFullscreenCapability() ? "" : "hidden disabled"}
                 title="Enter fullscreen" aria-label="Enter fullscreen">
           <img class="player-desktop-tool-icon player-desktop-fullscreen-icon" data-player-desktop-fullscreen-icon src="assets/icons/ic_player_fullscreen.svg" alt="" aria-hidden="true" />
         </button>
@@ -4940,6 +4985,8 @@ export const PlayerScreen = {
     const syncLayout = () => {
       this.applyAspectMode({ showToast: false });
       this.syncDesktopPlaybackTools();
+      this.fitPauseOverlay();
+      this.positionTrackDialogs();
     };
     this.desktopPlayerViewportSyncFrame = requestAnimationFrame(() => {
       this.desktopPlayerViewportSyncFrame = null;
@@ -4957,6 +5004,7 @@ export const PlayerScreen = {
     }
 
     this.boundDesktopPlayerPointerMoveHandler = (event) => {
+      this.updateProgressHover(event);
       const activePointer = this.desktopProgressPointer;
       if (activePointer && Number(event.pointerId) === Number(activePointer.pointerId)) {
         const deltaX = Number(event.clientX || 0) - activePointer.startX;
@@ -5084,6 +5132,8 @@ export const PlayerScreen = {
       }
     };
 
+    this.boundDesktopPlayerPointerLeaveHandler = () => this.updateProgressHover(null);
+    this.container.addEventListener("pointerleave", this.boundDesktopPlayerPointerLeaveHandler);
     this.container.addEventListener("pointermove", this.boundDesktopPlayerPointerMoveHandler);
     this.container.addEventListener("pointerdown", this.boundDesktopPlayerPointerDownHandler);
     this.container.addEventListener("pointerup", this.boundDesktopPlayerPointerUpHandler);
@@ -5098,6 +5148,22 @@ export const PlayerScreen = {
       this.revealDesktopPlayerControls();
     };
     this.container.addEventListener("input", this.boundDesktopPlayerInputHandler);
+    this.boundDesktopPlayerChangeHandler = (event) => {
+      const select = event.target?.closest?.("[data-player-episode-season]");
+      if (select && this.container.contains(select))
+        this.selectEpisodePanelSeason(Number(select.value));
+      const source = event.target?.closest?.("[data-player-episode-source]");
+      if (source && this.container.contains(source)) this.selectEpisodePanelSource(source.value);
+      const currentSource = event.target?.closest?.("[data-player-source-filter]");
+      if (currentSource && this.container.contains(currentSource)) {
+        this.setSourceFilter(currentSource.value);
+        this.renderSourcesPanel();
+        this.uiRefs?.sourcesPanel
+          ?.querySelector("[data-player-source-filter]")
+          ?.focus({ preventScroll: true });
+      }
+    };
+    this.container.addEventListener("change", this.boundDesktopPlayerChangeHandler);
 
     this.boundDesktopFullscreenChangeHandler = () => this.scheduleDesktopPlayerViewportSync();
     document.addEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
@@ -5115,6 +5181,9 @@ export const PlayerScreen = {
     );
     const video = this.getDesktopPlaybackVideo();
     if (video) {
+      ["loadedmetadata", "webkitbeginfullscreen", "webkitendfullscreen"].forEach((name) =>
+        video.addEventListener(name, this.boundDesktopFullscreenChangeHandler)
+      );
       this.boundDesktopVolumeChangeHandler = () => this.syncDesktopPlaybackTools();
       video.addEventListener("volumechange", this.boundDesktopVolumeChangeHandler);
       this.boundDesktopPictureInPictureChangeHandler = () => this.syncDesktopPlaybackTools();
@@ -5133,8 +5202,11 @@ export const PlayerScreen = {
     }
     this.browserPlayerGestureCleanup?.();
     this.browserPlayerGestureCleanup = bindBrowserPlayerGestures(this.container, {
-      isInteractiveTarget: (target) => !this.isDesktopVideoAreaClick(target),
+      isInteractiveTarget: (target, event) => !this.isDesktopVideoAreaClick(target, event),
       onSeek: (zone) => this.seekBrowserPlayerGesture(zone),
+      onSwipeStart: () => this.beginBrowserSwipeSeek(),
+      onSwipeMove: (movement) => this.updateBrowserSwipeSeek(movement),
+      onSwipeEnd: (result) => this.finishBrowserSwipeSeek(result),
       onHoldChange: (active) => this.setBrowserPlayerGestureHold(active),
       getSingleTapContext: () => ({ controlsWereVisible: this.controlsVisible }),
       onSingleTap: ({ controlsWereVisible } = {}) =>
@@ -5146,6 +5218,7 @@ export const PlayerScreen = {
     if (!this.container || !this.boundDesktopPlayerClickHandler) {
       return;
     }
+    this.container.removeEventListener("pointerleave", this.boundDesktopPlayerPointerLeaveHandler);
     this.container.removeEventListener("pointermove", this.boundDesktopPlayerPointerMoveHandler);
     this.container.removeEventListener("pointerdown", this.boundDesktopPlayerPointerDownHandler);
     this.container.removeEventListener("pointerup", this.boundDesktopPlayerPointerUpHandler);
@@ -5155,6 +5228,7 @@ export const PlayerScreen = {
     );
     this.container.removeEventListener("click", this.boundDesktopPlayerClickHandler);
     this.container.removeEventListener("input", this.boundDesktopPlayerInputHandler);
+    this.container.removeEventListener("change", this.boundDesktopPlayerChangeHandler);
     document.removeEventListener("fullscreenchange", this.boundDesktopFullscreenChangeHandler);
     window.removeEventListener("resize", this.boundDesktopPlayerResizeHandler);
     window.removeEventListener(
@@ -5181,14 +5255,22 @@ export const PlayerScreen = {
       "webkitpresentationmodechanged",
       this.boundDesktopPictureInPictureChangeHandler
     );
+    ["loadedmetadata", "webkitbeginfullscreen", "webkitendfullscreen"].forEach((name) =>
+      this.getDesktopPlaybackVideo()?.removeEventListener(
+        name,
+        this.boundDesktopFullscreenChangeHandler
+      )
+    );
     this.browserPlayerGestureCleanup?.();
     this.browserPlayerGestureCleanup = null;
     this.boundDesktopPlayerPointerMoveHandler = null;
+    this.boundDesktopPlayerPointerLeaveHandler = null;
     this.boundDesktopPlayerPointerDownHandler = null;
     this.boundDesktopPlayerPointerUpHandler = null;
     this.boundDesktopPlayerPointerCancelHandler = null;
     this.boundDesktopPlayerClickHandler = null;
     this.boundDesktopPlayerInputHandler = null;
+    this.boundDesktopPlayerChangeHandler = null;
     this.boundDesktopFullscreenChangeHandler = null;
     this.boundDesktopPlayerResizeHandler = null;
     this.boundDesktopPlayerOrientationChangeHandler = null;
@@ -5233,7 +5315,7 @@ export const PlayerScreen = {
     return true;
   },
 
-  isDesktopVideoAreaClick(target) {
+  isDesktopVideoAreaClick(target, event = null) {
     if (
       !Environment.isBrowser() ||
       this.isExternalFrameMode() ||
@@ -5257,7 +5339,50 @@ export const PlayerScreen = {
       ".player-startup-error-overlay",
       ".player-torrent-overlay"
     ].join(", ");
-    return !target.closest(blockedSelector);
+    if (target.closest(blockedSelector)) return false;
+    // A miss beside a toolbar button must not toggle playback through the video.
+    const progressRect = this.uiRefs?.progressShell?.getBoundingClientRect?.();
+    if (this.controlsVisible && event && progressRect && Number(event.clientY) >= progressRect.top)
+      return false;
+    return true;
+  },
+
+  beginBrowserSwipeSeek() {
+    const duration = this.getPlaybackDurationSeconds();
+    if (!Number.isFinite(duration) || duration <= 0) return false;
+    const start = this.getPlaybackCurrentSeconds();
+    this.browserSwipeSeek = { start, target: start, duration };
+    return true;
+  },
+
+  updateBrowserSwipeSeek({ deltaX, width }) {
+    const state = this.browserSwipeSeek;
+    if (!state || width <= 0) return;
+    state.target = clamp(
+      state.start + (deltaX / width) * Math.min(120, state.duration),
+      0,
+      state.duration
+    );
+    const delta = state.target - state.start;
+    this.showBrowserPlayerGestureFeedback(
+      formatTime(state.target) +
+        " / " +
+        formatTime(state.duration) +
+        "\n" +
+        (delta < 0 ? "−" : "+") +
+        formatTime(Math.abs(delta)),
+      "center",
+      { persistent: true }
+    );
+    this.resetControlsAutoHide();
+  },
+
+  finishBrowserSwipeSeek({ cancelled = false } = {}) {
+    const state = this.browserSwipeSeek;
+    this.browserSwipeSeek = null;
+    this.hideBrowserPlayerGestureFeedback();
+    if (!state || cancelled) return false;
+    return this.seekPlaybackSeconds(state.target);
   },
 
   seekBrowserPlayerGesture(zone) {
@@ -5344,7 +5469,7 @@ export const PlayerScreen = {
     const currentlyMuted = Boolean(video.muted) || currentVolume <= 0;
     if (currentlyMuted) {
       const restoredVolume = clamp(
-        Number(this.desktopLastAudibleVolume || currentVolume || 1),
+        Number(currentVolume || this.desktopLastAudibleVolume || 1),
         0,
         1
       );
@@ -5360,8 +5485,46 @@ export const PlayerScreen = {
     return true;
   },
 
+  getDesktopFullscreenCapability() {
+    if (!Environment.isBrowser() || !this.container) return null;
+    if (
+      document.fullscreenEnabled !== false &&
+      typeof this.container.requestFullscreen === "function"
+    )
+      return "element";
+    const video = this.getDesktopPlaybackVideo();
+    if (
+      video?.webkitSupportsFullscreen !== false &&
+      typeof video?.webkitEnterFullscreen === "function"
+    )
+      return "video";
+    return null;
+  },
+
   isDesktopPlayerFullscreen() {
-    return Boolean(Environment.isBrowser() && document.fullscreenElement === this.container);
+    const video = this.getDesktopPlaybackVideo();
+    return Boolean(
+      Environment.isBrowser() &&
+      (document.fullscreenElement === this.container ||
+        video?.webkitDisplayingFullscreen === true ||
+        video?.webkitPresentationMode === "fullscreen")
+    );
+  },
+
+  async exitDesktopFullscreen() {
+    if (
+      document.fullscreenElement === this.container &&
+      typeof document.exitFullscreen === "function"
+    ) {
+      await document.exitFullscreen();
+      return true;
+    }
+    const video = this.getDesktopPlaybackVideo();
+    if (typeof video?.webkitExitFullscreen === "function") {
+      video.webkitExitFullscreen();
+      return true;
+    }
+    return false;
   },
 
   resetPictureInPictureAvailability() {
@@ -5474,17 +5637,19 @@ export const PlayerScreen = {
   },
 
   async toggleDesktopFullscreen() {
-    if (!Environment.isBrowser() || !this.container) {
-      return false;
-    }
+    if (!Environment.isBrowser() || !this.container) return false;
     try {
       if (this.isDesktopPlayerFullscreen()) {
-        await document.exitFullscreen?.();
+        if (!(await this.exitDesktopFullscreen())) return false;
       } else {
-        if (this.isDesktopPlayerPictureInPicture()) {
-          await this.exitDesktopPictureInPicture();
+        const capability = this.getDesktopFullscreenCapability();
+        if (!capability) return false;
+        if (capability === "video") {
+          this.getDesktopPlaybackVideo().webkitEnterFullscreen();
+        } else {
+          if (this.isDesktopPlayerPictureInPicture()) await this.exitDesktopPictureInPicture();
+          await this.container.requestFullscreen();
         }
-        await this.container.requestFullscreen?.();
       }
       this.revealDesktopPlayerControls();
       this.syncDesktopPlaybackTools();
@@ -5498,7 +5663,7 @@ export const PlayerScreen = {
   async navigateDesktopPlayerBack() {
     if (this.isDesktopPlayerFullscreen()) {
       try {
-        await document.exitFullscreen?.();
+        await this.exitDesktopFullscreen();
       } catch (_) {
         // Browser fullscreen exit is best effort before using the existing back path.
       }
@@ -5520,6 +5685,7 @@ export const PlayerScreen = {
     }
     const { volume, muted } = this.getDesktopVolumeState();
     const fullscreen = this.isDesktopPlayerFullscreen();
+    const fullscreenAvailable = Boolean(fullscreen || this.getDesktopFullscreenCapability());
     const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
     const pictureInPictureActive = this.isDesktopPlayerPictureInPicture();
     const muteLabel = muted ? "Unmute" : "Mute";
@@ -5541,8 +5707,12 @@ export const PlayerScreen = {
       if (muteIcon) {
         muteIcon.src = `assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}`;
       }
-      if (volumeInput && document.activeElement !== volumeInput) {
-        volumeInput.value = String(Math.round(volume * 100));
+      if (volumeInput) {
+        volumeInput.value = String(muted ? 0 : Math.round(volume * 100));
+      }
+      if (fullscreenButton) {
+        fullscreenButton.hidden = !fullscreenAvailable;
+        fullscreenButton.disabled = !fullscreenAvailable;
       }
       fullscreenButton?.setAttribute("aria-label", fullscreenLabel);
       fullscreenButton?.setAttribute("title", fullscreenLabel);
@@ -5601,6 +5771,12 @@ export const PlayerScreen = {
     ];
 
     const activePanel = panels.find(({ visible, node }) => visible && node instanceof Element);
+    const trackPanel =
+      activePanel &&
+      [this.uiRefs?.subtitleDialog, this.uiRefs?.audioDialog, this.uiRefs?.speedDialog].includes(
+        activePanel.node
+      );
+    if (trackPanel && target.closest(".player-controls-bottom")) return false;
     if (!activePanel || activePanel.node.contains(target)) {
       return false;
     }
@@ -5722,7 +5898,7 @@ export const PlayerScreen = {
           this.params?.itemId ||
           "Nuvio"
       ).trim(),
-      subtitle: String(transition?.subtitle || this.params?.playerSubtitle || "").trim(),
+      subtitle: "",
       logoUrl: String(transition?.logoUrl || this.params?.playerLogoUrl || "").trim(),
       backdropUrl: String(transition?.backdropUrl || this.params?.playerBackdropUrl || "").trim()
     };
@@ -6527,11 +6703,18 @@ export const PlayerScreen = {
     return {
       title,
       releaseYear,
+      genres: resolvedMeta.genres || this.params?.playerGenres || this.params?.genres || "",
       episodeCode,
       episodeTitle,
       description,
       backdropUrl,
       logoUrl,
+      runtime: formatRuntimeLabel(
+        episodeEntry?.runtimeMinutes ||
+          Number.parseFloat(resolvedMeta?.runtime) ||
+          this.params?.runtimeMinutes ||
+          0
+      ),
       cast: extractPauseOverlayCast({
         castItems: this.params?.castItems,
         castMembers: this.params?.castMembers || resolvedMeta?.castMembers,
@@ -6734,6 +6917,11 @@ export const PlayerScreen = {
 
     const meta = this.pauseOverlayMeta || this.buildPauseOverlayMeta();
     const castItems = Array.isArray(meta.cast) ? meta.cast.slice(0, MAX_PAUSE_OVERLAY_CAST) : [];
+    const sourceBadges = renderPlayerSourceBadges(
+      this.getCurrentStreamCandidate() || {},
+      StreamBadgeSettingsStore.snapshot(),
+      { sizeLast: true }
+    );
     overlay.innerHTML = `
       <div class="player-pause-overlay-top">
         <div class="player-pause-overlay-clock">${escapeHtml(clockText)}</div>
@@ -6742,8 +6930,8 @@ export const PlayerScreen = {
       <div class="player-pause-overlay-content">
         <div class="player-pause-kicker">${escapeHtml(t("pause_you_are_watching", {}, "You're watching"))}</div>
         ${meta.logoUrl ? `<img class="player-pause-logo" src="${escapeAttribute(meta.logoUrl)}" alt="${escapeAttribute(meta.title)}" />` : `<div class="player-pause-title">${escapeHtml(meta.title)}</div>`}
-        ${meta.releaseYear || meta.episodeCode ? `<div class="player-pause-meta-line">${escapeHtml([meta.releaseYear, meta.episodeCode].filter(Boolean).join(" • "))}</div>` : ""}
-        ${meta.episodeTitle ? `<div class="player-pause-episode-title">${escapeHtml(meta.episodeTitle)}</div>` : ""}
+        <div class="player-pause-meta-line">${escapeHtml([meta.releaseYear, meta.episodeCode, formatRuntimeLabel(this.getPlaybackDurationSeconds() / 60) || meta.runtime, meta.episodeTitle].filter(Boolean).join(" · "))}</div>
+        ${sourceBadges ? `<div class="player-pause-badges">${sourceBadges}</div>` : ""}
         ${meta.description ? `<div class="player-pause-description">${escapeHtml(meta.description)}</div>` : ""}
         ${
           castItems.length
@@ -6755,7 +6943,14 @@ export const PlayerScreen = {
                 .map(
                   (member) => `
                 <div class="player-pause-cast-chip">
-                  <span>${escapeHtml(member.name || "")}</span>
+                  <div class="player-pause-cast-portrait">
+                    <span aria-hidden="true">${escapeHtml(String(member.name || "").slice(0, 1))}</span>
+                    ${member.photo ? `<img src="${escapeAttribute(member.photo)}" alt="" loading="eager" decoding="async" />` : ""}
+                  </div>
+                  <div class="player-pause-cast-copy">
+                    <span class="player-pause-cast-name">${escapeHtml(member.name || "")}</span>
+                    ${member.character ? `<span class="player-pause-cast-role">${escapeHtml(member.character)}</span>` : ""}
+                  </div>
                 </div>
               `
                 )
@@ -6767,6 +6962,18 @@ export const PlayerScreen = {
         }
       </div>
     `;
+    overlay.querySelectorAll("img").forEach((image) => {
+      image.addEventListener("load", () => this.fitPauseOverlay(), { once: true });
+      image.addEventListener(
+        "error",
+        () => {
+          if (image.closest(".player-pause-cast-portrait")) image.hidden = true;
+          this.fitPauseOverlay();
+        },
+        { once: true }
+      );
+    });
+    this.fitPauseOverlay();
   },
 
   clearStillWatchingPromptTimer() {
@@ -7667,17 +7874,23 @@ export const PlayerScreen = {
       selectedPlugins:
         settings.streamAutoPlayMode === "MANUAL" ? [] : settings.streamAutoPlaySelectedPlugins
     });
+    const labelScoped = scoped.filter((stream) =>
+      allowsPlayerStreamLabel(stream, StreamBadgeSettingsStore.snapshot())
+    );
     const ranked =
       resolveHdrPreference(settings) === "PREFER"
-        ? applyHdrPreference(scoped, { hdrPreference: "PREFER" })
-        : scoped;
+        ? applyHdrPreference(labelScoped, { hdrPreference: "PREFER" })
+        : labelScoped;
     const rows = ranked
       .map((stream) => ({
         stream,
         url: String(stream.url || stream.externalUrl || "").trim()
       }))
       .filter((row) => row.url);
-    if (!rows.length) return [];
+    if (!rows.length) {
+      this._nextEpisodeProbeResults = new Map();
+      return [];
+    }
 
     const capabilities = getDeviceCapabilities();
     const limitRaw = Number(globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20);
@@ -8506,6 +8719,32 @@ export const PlayerScreen = {
     });
   },
 
+  positionTrackDialogs() {
+    if (!Environment.isBrowser() || !this.uiRefs?.root) return;
+    const root = this.uiRefs.root;
+    const row = root.querySelector(".player-controls-row");
+    if (!row) return;
+    const bounds = root.getBoundingClientRect();
+    const toolbar = row.getBoundingClientRect();
+    const bottom = Math.max(12, bounds.bottom - toolbar.top + 10);
+    root.style.setProperty("--player-popover-bottom", bottom + "px");
+    [
+      [this.subtitleDialogVisible, this.uiRefs.subtitleDialog, "subtitleDialog"],
+      [this.audioDialogVisible, this.uiRefs.audioDialog, "audioTrack"],
+      [this.speedDialogVisible, this.uiRefs.speedDialog, "speed"]
+    ].forEach(([visible, dialog, action]) => {
+      if (!visible || !dialog) return;
+      const anchor =
+        root.querySelector('[data-action="' + action + '"]') ||
+        root.querySelector('[data-action="more"]');
+      const x = anchor ? anchor.getBoundingClientRect().left - bounds.left : 12;
+      dialog.style.bottom = bottom + "px";
+      dialog.style.maxHeight = Math.max(80, toolbar.top - bounds.top - 84) + "px";
+      const width = dialog.getBoundingClientRect().width;
+      dialog.style.left = clamp(x, 12, Math.max(12, bounds.width - width - 12)) + "px";
+    });
+  },
+
   updateModalBackdrop() {
     const modalBackdrop = this.uiRefs?.modalBackdrop;
     const controlsOverlay = this.uiRefs?.controlsOverlay;
@@ -8518,9 +8757,16 @@ export const PlayerScreen = {
       this.sourcesPanelVisible ||
       this.episodePanelVisible ||
       this.speedDialogVisible;
+    if (hasModal && (this.pauseOverlayVisible || this.pauseOverlayTimer))
+      this.dismissPauseOverlay();
     modalBackdrop.classList.toggle("hidden", !hasModal);
     modalBackdrop.classList.toggle("episodes-open", Boolean(this.episodePanelVisible));
     controlsOverlay?.classList.toggle("modal-blocked", hasModal);
+    this.uiRefs?.root?.classList.toggle(
+      "track-popover-open",
+      Boolean(this.subtitleDialogVisible || this.audioDialogVisible || this.speedDialogVisible)
+    );
+    this.positionTrackDialogs();
   },
 
   bindVideoEvents() {
@@ -13896,6 +14142,7 @@ export const PlayerScreen = {
       this.subtitleLoading || this.manifestLoading || this.trackDiscoveryInProgress
     );
     const showOptionsRail = activeLanguage !== SUBTITLE_LANGUAGE_OFF_KEY || subtitleLoadingVisible;
+    dialog.classList.toggle("is-empty", languages.length <= 1 && !subtitleLoadingVisible);
     const focusedStyleSide =
       this.subtitleStyleControlSide === "plus"
         ? "plus"
@@ -14318,6 +14565,7 @@ export const PlayerScreen = {
     }
 
     const entries = this.getAudioEntries();
+    dialog.classList.toggle("is-empty", !entries.length);
     const hasSupportedEntries = entries.some((entry) => entry?.supported !== false);
     const audioControls = [
       {
@@ -14627,6 +14875,122 @@ export const PlayerScreen = {
     );
   },
 
+  getPlayerStreamProbe(stream) {
+    return (
+      this._playerListProbeResults?.get(playerStreamProbeKey(stream)) ||
+      this._nextEpisodeProbeResults?.get(stream.url || stream.externalUrl || "") ||
+      null
+    );
+  },
+
+  filterPlayerStreamList(streams) {
+    if (!Environment.isBrowser()) return streams;
+    return filterPlayerStreams(streams, {
+      settings: PlayerSettingsStore.get(),
+      labels: StreamBadgeSettingsStore.snapshot(),
+      capabilities: getDeviceCapabilities(),
+      probeForStream: (stream) => this.getPlayerStreamProbe(stream)
+    });
+  },
+
+  renderPlayerStreamLabel(stream) {
+    const labels = StreamBadgeSettingsStore.snapshot();
+    if (
+      !Environment.isBrowser() ||
+      labels.showPlaybackLabels === false ||
+      !allowsPlayerStreamLabel(stream, labels)
+    )
+      return "";
+    return renderStreamPlaybackBadge({
+      url: stream.url || stream.externalUrl || "",
+      probe: this.getPlayerStreamProbe(stream),
+      capabilities: getDeviceCapabilities(),
+      probing: this._playerListProbePending?.has(playerStreamProbeKey(stream)) === true,
+      remuxAvailable: this._playerRelayAvailability?.remux ?? (REMUX_ENDPOINT ? null : false),
+      transcodeAvailable:
+        this._playerRelayAvailability?.audio ?? (TRANSCODE_ENDPOINT ? null : false)
+    });
+  },
+
+  schedulePlayerStreamProbes(streams) {
+    if (!Environment.isBrowser()) return;
+    const settings = PlayerSettingsStore.get();
+    const targets = playerStreamProbeCandidates(streams, {
+      settings,
+      labels: StreamBadgeSettingsStore.snapshot(),
+      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
+    });
+    if (!targets.length || !PROBE_ENDPOINT) return;
+    const token = this.playerMountToken;
+    const results = (this._playerListProbeResults ||= new Map());
+    const pending = (this._playerListProbePending ||= new Set());
+    const failed = (this._playerListProbeFailed ||= new Set());
+    const prober = (this._playerListProber ||= createStreamProber({
+      endpoint: PROBE_ENDPOINT,
+      timeoutMs: 15000,
+      assess: (probe) => assessPlaybackCapabilities(probe)
+    }));
+    const refresh = () => {
+      if (!this.isActiveMountToken(token)) return;
+      if (this.sourcesPanelVisible) this.renderSourcesPanel();
+      if (this.episodePanelVisible && this.episodePanelMode === "streams")
+        this.renderEpisodePanel();
+    };
+    if (!this._playerRelayAvailability) {
+      this._playerRelayAvailability = {
+        remux: REMUX_ENDPOINT ? null : false,
+        audio: TRANSCODE_ENDPOINT ? null : false
+      };
+      void Promise.all([
+        resolveRelayAvailability({ endpoint: REMUX_ENDPOINT }),
+        resolveRelayAvailability({
+          endpoint: TRANSCODE_ENDPOINT,
+          transcode: true,
+          token: String(TranscodeSettingsStore.get().token || "")
+        })
+      ]).then(([remux, audio]) => {
+        if (!this.isActiveMountToken(token)) return;
+        this._playerRelayAvailability = { remux, audio };
+        refresh();
+      });
+    }
+    const remaining = targets
+      .filter((stream) => {
+        const key = playerStreamProbeKey(stream);
+        return !results.has(key) && !pending.has(key) && !failed.has(key);
+      })
+      .slice(0, Math.max(0, 5 - pending.size));
+    for (const stream of remaining) {
+      const key = playerStreamProbeKey(stream);
+      pending.add(key);
+      void Promise.resolve()
+        .then(async () => {
+          let url = stream.url || stream.externalUrl || "";
+          if (!url && DirectDebridResolver.canResolveStream(stream)) {
+            const episode =
+              this.episodePanelVisible && this.episodePanelMode === "streams"
+                ? this.episodes?.[this.episodePanelIndex]
+                : null;
+            const resolved = await DirectDebridResolver.resolve(stream, {
+              season: episode?.season ?? this.params?.season ?? null,
+              episode: episode?.episode ?? this.params?.episode ?? null
+            });
+            if (resolved?.status === "success") url = resolved.stream?.url || "";
+          }
+          if (!this.isActiveMountToken(token) || !/^https?:/i.test(url)) return null;
+          return prober.probe(url, { reason: "selection", identity: streamProbeIdentity(stream) });
+        })
+        .catch(() => null)
+        .then((probe) => {
+          if (!this.isActiveMountToken(token)) return;
+          pending.delete(key);
+          if (probe) results.set(key, probe);
+          else failed.add(key);
+          refresh();
+        });
+    }
+  },
+
   getSourceFilters(orderedStreams = this.getOrderedStreamCandidates()) {
     const addons = [];
     orderedStreams.forEach((stream) => {
@@ -14653,10 +15017,10 @@ export const PlayerScreen = {
   },
 
   getFilteredSources(orderedStreams = this.getOrderedStreamCandidates()) {
-    if (this.sourceFilter === "all") {
-      return orderedStreams;
-    }
-    return orderedStreams.filter((stream) => stream.addonName === this.sourceFilter);
+    const visible = this.filterPlayerStreamList(orderedStreams);
+    return this.sourceFilter === "all"
+      ? visible
+      : visible.filter((stream) => stream.addonName === this.sourceFilter);
   },
 
   ensureSourcesFocus(filters = null, list = null) {
@@ -14880,6 +15244,124 @@ export const PlayerScreen = {
     }, 120);
   },
 
+  getPlayerDrawerIdentity(episode = null) {
+    const meta = this.pauseOverlayMeta || this.buildPauseOverlayMeta();
+    const title = meta.title || this.params?.playerTitle || this.params?.itemTitle || "Untitled";
+    const isSeries = normalizeItemType(this.params?.itemType || "movie") === "series";
+    let subtitle = "";
+    if (isSeries) {
+      const current = episode || this.resolvePauseOverlayEpisodeEntry(this.episodes || []);
+      const season = current?.season ?? this.params?.season;
+      const number = current?.episode ?? this.params?.episode;
+      const code = season != null && number != null ? `S${season} E${number}` : meta.episodeCode;
+      subtitle = [code, current?.title || current?.name || meta.episodeTitle]
+        .filter(Boolean)
+        .join(" • ");
+    } else {
+      const genres = this.params?.playerGenres || this.params?.genres || meta.genres || "";
+      const genreText = Array.isArray(genres) ? genres.join(", ") : String(genres);
+      subtitle =
+        [genreText, meta.releaseYear].filter(Boolean).join(" • ") ||
+        this.params?.itemSubtitle ||
+        "";
+    }
+    return {
+      title,
+      subtitle,
+      logo: meta.logoUrl || this.params?.playerLogoUrl || this.params?.logo || ""
+    };
+  },
+
+  applyPlayerDrawerHeader(panel, { sources = false, streams = false } = {}) {
+    if (!Environment.isBrowser() || !panel) return;
+    const nested = streams && !sources;
+    const identity = this.getPlayerDrawerIdentity(
+      nested ? this.episodes?.[this.episodePanelIndex] : null
+    );
+    const close = panel.querySelector(
+      sources ? '[data-top-action="close"]' : '[data-episode-action="close"]'
+    );
+    const back = nested ? panel.querySelector('[data-episode-stream-action="back"]') : null;
+    const refresh = panel.querySelector(
+      sources ? '[data-top-action="reload"]' : '[data-episode-stream-action="reload"]'
+    );
+    const header = document.createElement("header");
+    header.className = "player-drawer-header";
+    header.innerHTML = `<div class="player-drawer-heading">
+      <div class="player-drawer-back-slot"></div>
+      <div class="player-drawer-identity">
+        <div class="player-drawer-brand">${identity.logo ? `<img src="${escapeAttribute(identity.logo)}" alt="${escapeAttribute(identity.title)}" hidden />` : ""}<span class="player-drawer-title">${escapeHtml(identity.title)}</span></div>
+        ${identity.subtitle ? `<div class="player-drawer-subtitle">${escapeHtml(identity.subtitle)}</div>` : ""}
+      </div><div class="player-drawer-close-slot"></div>
+    </div><div class="player-drawer-toolbar"><div class="player-drawer-section-title">${escapeHtml(streams ? t("stream_panel_title", {}, "Streams") : t("episodes_panel_title", {}, "Episodes"))}</div><div class="player-drawer-filter-slot"></div></div>`;
+    const icons = {
+      close: '<path d="m6 6 12 12M18 6 6 18" />',
+      back: '<path d="m14 6-6 6 6 6" />',
+      refresh: '<path d="M20 7v5h-5M20 12a8 8 0 1 0-2.3 5.7" />'
+    };
+    const prepareIcon = (button, icon, label) => {
+      if (!button) return;
+      button.classList.add("player-drawer-icon");
+      button.setAttribute("aria-label", label);
+      button.setAttribute("title", label);
+      button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[icon]}</svg>`;
+    };
+    prepareIcon(close, "close", t("sources_close", {}, "Close"));
+    prepareIcon(back, "back", t("episodes_panel_back", {}, "Back"));
+    if (close) header.querySelector(".player-drawer-close-slot").append(close);
+    if (back) header.querySelector(".player-drawer-back-slot").append(back);
+    const slot = header.querySelector(".player-drawer-filter-slot");
+    if (sources) {
+      const filters = this.getSourceFilters();
+      slot.innerHTML = `<label class="player-drawer-picker"><span>${escapeHtml(t("stream_filter_source", {}, "Source"))}</span><select data-player-source-filter aria-label="${escapeAttribute(t("stream_filter_source", {}, "Source"))}">${filters.map((filter) => `<option value="${escapeAttribute(filter)}"${filter === this.sourceFilter ? " selected" : ""}>${escapeHtml(filter === "all" ? t("subtitle_all", {}, "All") : filter)}</option>`).join("")}</select></label>`;
+    } else if (streams) {
+      const picker = panel.querySelector(".player-episode-source-picker");
+      if (picker) {
+        picker.classList.add("player-drawer-picker");
+        slot.append(picker);
+      }
+    } else {
+      const select = panel.querySelector("[data-player-episode-season]");
+      if (select) {
+        const picker = document.createElement("label");
+        picker.className = "player-drawer-picker season";
+        picker.append(select);
+        slot.append(picker);
+      }
+    }
+    if (streams && refresh) {
+      prepareIcon(refresh, "refresh", t("stream_refresh_sources", {}, "Refresh sources"));
+      refresh.classList.add("player-drawer-refresh");
+      slot.append(refresh);
+    }
+    panel
+      .querySelectorAll(
+        ".player-episode-panel-header, .player-episode-stream-actions, .player-episode-stream-filters, .player-sources-header, .player-source-current-meta, .player-sources-filters"
+      )
+      .forEach((node) => node.remove());
+    panel.prepend(header);
+    const image = header.querySelector(".player-drawer-brand img");
+    const fallback = header.querySelector(".player-drawer-title");
+    if (image) {
+      const showLogo = () => {
+        if (image.naturalWidth > 0) {
+          image.hidden = false;
+          fallback.hidden = true;
+        }
+      };
+      image.addEventListener("load", showLogo, { once: true });
+      image.addEventListener(
+        "error",
+        () => {
+          image.hidden = true;
+          fallback.hidden = false;
+        },
+        { once: true }
+      );
+      if (image.complete) showLogo();
+    }
+  },
+
   renderSourcesPanel() {
     const panel = this.uiRefs?.sourcesPanel;
     if (!panel) {
@@ -14893,6 +15375,7 @@ export const PlayerScreen = {
     }
 
     const orderedSources = this.getOrderedStreamCandidates();
+    this.schedulePlayerStreamProbes(orderedSources);
     const filters = this.getSourceFilters(orderedSources);
     const filtered = this.getFilteredSources(orderedSources);
     const badgeSettings = StreamBadgeSettingsStore.snapshot();
@@ -14937,7 +15420,7 @@ export const PlayerScreen = {
         ${this.sourcesError ? `<div class="player-sources-empty">${escapeHtml(this.sourcesError)}</div>` : ""}
         ${
           !this.sourcesLoading && !filtered.length
-            ? `<div class="player-sources-empty">${escapeHtml(t("sources_no_streams", {}, "No streams found"))}</div>`
+            ? `<div class="player-sources-empty">${escapeHtml(this._playerListProbePending?.size ? t("stream_finding_source", {}, "Finding stream source") : t("sources_no_streams", {}, "No streams found"))}</div>`
             : filtered
                 .map((stream, index) => {
                   const focused =
@@ -14949,6 +15432,7 @@ export const PlayerScreen = {
                     ? Boolean(currentStream) &&
                       streamMergeKey(currentStream) === streamMergeKey(stream)
                     : this.streamCandidates[this.currentStreamIndex]?.url === stream.url;
+                  const playbackLabel = this.renderPlayerStreamLabel(stream);
                   const badges = renderPlayerSourceBadges(stream, badgeSettings);
                   const topBadges = badgePlacement === "TOP" ? badges : "";
                   const bottomBadges = badgePlacement === "BOTTOM" ? badges : "";
@@ -14979,6 +15463,7 @@ export const PlayerScreen = {
                   ${mainTitle}
                   <div class="player-source-desc">${escapeHtml(stream.description || stream.addonName || "")}</div>
                   ${bottomBadges}
+                  ${playbackLabel}
                 </div>
                 ${sourceSide}
               </article>
@@ -14989,6 +15474,7 @@ export const PlayerScreen = {
       </div>
     `;
 
+    this.applyPlayerDrawerHeader(panel, { sources: true, streams: true });
     const focusedCard = panel.querySelector(".player-source-card.focused");
     if (focusedCard) {
       focusedCard.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -15591,6 +16077,38 @@ export const PlayerScreen = {
     this.renderEpisodePanel();
   },
 
+  renderEpisodeSeasonSelect(seasons) {
+    return (
+      '<select class="player-episode-season-select" data-player-episode-season aria-label="Season">' +
+      seasons
+        .map(
+          (season) =>
+            '<option value="' +
+            season +
+            '"' +
+            (Number(season) === Number(this.episodePanelSeason) ? " selected" : "") +
+            ">" +
+            escapeHtml(this.getEpisodePanelSeasonLabel(season)) +
+            "</option>"
+        )
+        .join("") +
+      "</select>"
+    );
+  },
+
+  selectEpisodePanelSeason(season) {
+    const seasons = this.getEpisodePanelSeasons();
+    const index = seasons.indexOf(Number(season));
+    if (index < 0) return false;
+    this.episodePanelSeasonIndex = index;
+    this.episodePanelSeason = seasons[index];
+    const first = this.getEpisodePanelEntries()[0];
+    if (first) this.episodePanelIndex = first.index;
+    this.episodePanelFocusZone = "episodes";
+    this.renderEpisodePanel();
+    return true;
+  },
+
   moveEpisodePanelSeason(delta) {
     const seasons = this.getEpisodePanelSeasons();
     if (seasons.length <= 1) {
@@ -15623,12 +16141,25 @@ export const PlayerScreen = {
     return ["all", ...addons];
   },
 
+  selectEpisodePanelSource(source) {
+    const filters = this.getEpisodePanelStreamFilters();
+    if (!filters.includes(source)) return false;
+    this.episodePanelStreamFilter = source;
+    this.episodePanelStreamFocus = { zone: "filters", index: filters.indexOf(source) };
+    this.renderEpisodePanel();
+    this.uiRefs?.root
+      ?.querySelector("[data-player-episode-source]")
+      ?.focus({ preventScroll: true });
+    return true;
+  },
+
   getFilteredEpisodePanelStreams() {
     const streams = Array.isArray(this.episodePanelStreams) ? this.episodePanelStreams : [];
+    const visible = this.filterPlayerStreamList(streams);
     if (this.episodePanelStreamFilter === "all") {
-      return streams;
+      return visible;
     }
-    return streams.filter(
+    return visible.filter(
       (stream) => String(stream?.addonName || "") === this.episodePanelStreamFilter
     );
   },
@@ -15944,6 +16475,7 @@ export const PlayerScreen = {
   },
 
   renderEpisodeStreamsView() {
+    this.schedulePlayerStreamProbes(this.episodePanelStreams || []);
     const selectedEpisode = this.episodes[this.episodePanelIndex] || null;
     const filters = this.getEpisodePanelStreamFilters();
     const streams = this.getFilteredEpisodePanelStreams();
@@ -15960,22 +16492,28 @@ export const PlayerScreen = {
       <div class="player-episode-stream-actions">
         <button type="button"
                 class="player-episode-stream-action focusable${focus.zone === "actions" && focus.index === 0 ? " focused" : ""}"
-                data-episode-stream-action="back">
-          ${escapeHtml(t("episodes_panel_back", {}, "Back"))}
+                data-episode-stream-action="back" aria-label="${escapeAttribute(t("episodes_panel_back", {}, "Back"))}">
+          ${Environment.isBrowser() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>' : escapeHtml(t("episodes_panel_back", {}, "Back"))}
         </button>
-        <button type="button"
-                class="player-episode-stream-action focusable${focus.zone === "actions" && focus.index === 1 ? " focused" : ""}"
-                data-episode-stream-action="reload">
-          ${escapeHtml(t("episodes_panel_reload", {}, "Reload"))}
-        </button>
+${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream-action focusable${focus.zone === "actions" && focus.index === 1 ? " focused" : ""}" data-episode-stream-action="reload">${escapeHtml(t("episodes_panel_reload", {}, "Reload"))}</button>` : ""}
         <div class="player-episode-stream-meta">
           ${escapeHtml([episodeCode, episodeTitle].filter(Boolean).join(" • "))}
         </div>
       </div>
 
       ${
-        !this.episodePanelStreamsLoading && filters.length > 1
-          ? `<div class="player-episode-stream-filters">
+        Environment.isBrowser() || (!this.episodePanelStreamsLoading && filters.length > 1)
+          ? Environment.isBrowser()
+            ? `<div class="player-episode-stream-filters">
+              <label class="player-episode-source-picker">
+                <span>${escapeHtml(t("stream_filter_source", {}, "Source"))}</span>
+                <select data-player-episode-source aria-label="${escapeAttribute(t("stream_filter_source", {}, "Source"))}">
+                  ${filters.map((filter) => `<option value="${escapeAttribute(filter)}"${this.episodePanelStreamFilter === filter ? " selected" : ""}>${escapeHtml(filter === "all" ? t("subtitle_all", {}, "All") : filter)}</option>`).join("")}
+                </select>
+              </label>
+              <button type="button" class="player-episode-stream-action player-episode-stream-refresh focusable${focus.zone === "actions" && focus.index === 1 ? " focused" : ""}" data-episode-stream-action="reload" aria-label="${escapeAttribute(t("episodes_panel_reload", {}, "Reload"))}" title="${escapeAttribute(t("episodes_panel_reload", {}, "Reload"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2.3 5.7" /></svg></button>
+            </div>`
+            : `<div class="player-episode-stream-filters">
               ${filters
                 .map((filter, index) => {
                   const selected = this.episodePanelStreamFilter === filter;
@@ -16006,10 +16544,32 @@ export const PlayerScreen = {
         }
         ${
           !this.episodePanelStreamsLoading && !this.episodePanelStreamsError && !streams.length
-            ? `<div class="player-episode-stream-empty">${escapeHtml(t("episodes_panel_no_streams", {}, "No streams found"))}</div>`
+            ? `<div class="player-episode-stream-empty">${escapeHtml(this._playerListProbePending?.size ? t("stream_finding_source", {}, "Finding stream source") : t("episodes_panel_no_streams", {}, "No streams found"))}</div>`
             : streams
                 .map((stream, index) => {
                   const focused = focus.zone === "streams" && focus.index === index;
+                  if (Environment.isBrowser()) {
+                    const model = normalizeSourceForDisplay(
+                      {
+                        ...stream,
+                        name: stream.raw?.name || stream.name || stream.label,
+                        description:
+                          stream.raw?.description || stream.raw?.title || stream.description
+                      },
+                      { badgeSettings }
+                    );
+                    if (model.showAddonLogo && stream.addonLogo) {
+                      model.addonLogoUrl = getPlayerSourceLogoDisplayUrl(stream.addonLogo, () =>
+                        this.scheduleSourceLogoRender()
+                      );
+                    }
+                    return `<article class="stream-route-card stream-route-card-action player-episode-stream-card focusable${focused ? " focused" : ""}"
+                      data-episode-stream-index="${index}" aria-label="${escapeAttribute(model.accessibleLabel)}">
+                      ${renderBrowserSourceCardContent(model)}
+                      ${this.renderPlayerStreamLabel(stream)}
+                    </article>`;
+                  }
+                  const playbackLabel = this.renderPlayerStreamLabel(stream);
                   const badges = renderPlayerSourceBadges(stream, badgeSettings);
                   const topBadges = badgePlacement === "TOP" ? badges : "";
                   const bottomBadges = badgePlacement === "BOTTOM" ? badges : "";
@@ -16032,6 +16592,7 @@ export const PlayerScreen = {
                         <div class="player-source-title">${escapeHtml(stream.label || "Stream")}</div>
                         <div class="player-source-desc">${escapeHtml(stream.description || stream.addonName || "")}</div>
                         ${bottomBadges}
+                        ${playbackLabel}
                       </div>
                       ${sourceSide}
                     </article>
@@ -16067,8 +16628,11 @@ export const PlayerScreen = {
     const hasSeasonTabs = seasons.length > 1;
     panel.classList.toggle("has-season-tabs", hasSeasonTabs);
     const focusedZone = this.episodePanelFocusZone || "episodes";
-    const seasonTabs = hasSeasonTabs
-      ? `<div class="player-episode-season-tabs">
+    const seasonTabs =
+      Environment.isBrowser() && seasons.length > 0
+        ? this.renderEpisodeSeasonSelect(seasons)
+        : hasSeasonTabs
+          ? `<div class="player-episode-season-tabs">
           ${seasons
             .map((season, index) => {
               const selected = Number(season) === Number(this.episodePanelSeason);
@@ -16085,7 +16649,7 @@ export const PlayerScreen = {
             })
             .join("")}
         </div>`
-      : "";
+          : "";
     const entries = this.getEpisodePanelEntries();
     const cards = entries
       .map(({ episode, index }) => {
@@ -16117,12 +16681,13 @@ export const PlayerScreen = {
       .join("");
 
     const isStreamsView = this.episodePanelMode === "streams";
+    panel.classList.toggle("streams-view", isStreamsView);
     const streamFocus = this.episodePanelStreamFocus || { zone: "actions", index: 0 };
     panel.innerHTML = `
       <div class="player-episode-panel-header">
         <div class="player-episode-panel-title">${escapeHtml(isStreamsView ? t("episodes_panel_streams_title", {}, "Streams") : t("episodes_panel_title", {}, "Episodes"))}</div>
-        <button type="button" class="player-episode-close-btn focusable${isStreamsView ? (streamFocus.zone === "close" ? " focused" : "") : focusedZone === "close" ? " focused" : ""}" tabindex="-1" data-episode-action="close">
-          ${escapeHtml(t("episodes_panel_close", {}, "Close"))}
+        <button type="button" class="player-episode-close-btn focusable${isStreamsView ? (streamFocus.zone === "close" ? " focused" : "") : focusedZone === "close" ? " focused" : ""}" tabindex="-1" data-episode-action="close" aria-label="${escapeAttribute(t("episodes_panel_close", {}, "Close"))}">
+          ${Environment.isBrowser() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>' : escapeHtml(t("episodes_panel_close", {}, "Close"))}
         </button>
       </div>
       ${
@@ -16132,6 +16697,7 @@ export const PlayerScreen = {
              <div class="player-episode-list">${cards}</div>`
       }
     `;
+    this.applyPlayerDrawerHeader(panel, { streams: isStreamsView });
     panelHost.appendChild(panel);
     if (shouldAnimateEntry) {
       panel.classList.add("is-entering");
@@ -16478,6 +17044,10 @@ export const PlayerScreen = {
     }
 
     if (action === "speed") {
+      if (Environment.isBrowser() && this.speedDialogVisible) {
+        this.closeSpeedDialog();
+        return;
+      }
       if (this.isCompactBrowserPlayerToolbar()) {
         this.moreActionsVisible = false;
         this.renderControlButtons();
@@ -16634,6 +17204,56 @@ export const PlayerScreen = {
       this.episodePanelIndex = Number(episodeNode.dataset.episodeIndex || 0);
       this.episodePanelFocusZone = "episodes";
     }
+  },
+
+  fitPauseOverlay() {
+    const overlay = this.uiRefs?.pauseOverlay;
+    const content = overlay?.querySelector(".player-pause-overlay-content");
+    if (
+      !Environment.isBrowser() ||
+      !content ||
+      !this.pauseOverlayVisible ||
+      this.stillWatchingPromptVisible
+    )
+      return;
+    content.style.transform = "none";
+    const rect = overlay.getBoundingClientRect();
+    const style = getComputedStyle(overlay);
+    const top = Number.parseFloat(style.paddingTop) || 84;
+    const bottom = Number.parseFloat(style.paddingBottom) || 12;
+    const available = Math.max(1, rect.height - top - bottom);
+    const height = Math.max(1, content.scrollHeight);
+    const scale = Math.min(1, available / height);
+    const y = clamp(
+      (rect.height - height * scale) / 2,
+      top,
+      Math.max(top, rect.height - bottom - height * scale)
+    );
+    content.style.top = y + "px";
+    content.style.transformOrigin = "left top";
+    content.style.transform = scale < 1 ? "scale(" + scale + ")" : "none";
+  },
+
+  updateProgressHover(event) {
+    const preview = this.container?.querySelector("#playerProgressHover");
+    if (!preview) return;
+    const shell = event?.target?.closest?.(".player-progress-shell");
+    const duration = this.getPlaybackDurationSeconds();
+    const rect = shell?.getBoundingClientRect?.();
+    const visible = Boolean(
+      event &&
+      (!event.pointerType || event.pointerType === "mouse") &&
+      shell &&
+      this.container.contains(shell) &&
+      rect?.width > 0 &&
+      Number.isFinite(duration) &&
+      duration > 0
+    );
+    preview.classList.toggle("hidden", !visible);
+    if (!visible) return;
+    const ratio = clamp((Number(event.clientX) - rect.left) / rect.width, 0, 1);
+    preview.textContent = formatTime(duration * ratio);
+    preview.style.left = clamp(ratio * rect.width, 28, Math.max(28, rect.width - 28)) + "px";
   },
 
   seekProgressFromPointer(event, target) {

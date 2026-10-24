@@ -318,3 +318,12 @@ test("Detail trusts only metadata loaded for its current route parameters", asyn
   screen.meta = { name: "Moana", logo: "moana.png" };
   assert.equal(get.call(screen).logoUrl, "moana.png");
 });
+
+test("unified startup omits the runtime subtitle while retaining logo and loading status", async () => {
+  await fixture(({ overlay, nodes }) => {
+    overlay.begin({ title: "Film", subtitle: "2h 37m" });
+    assert.doesNotMatch(nodes[0].innerHTML, /player-loading-subtitle/);
+    assert.match(nodes[0].innerHTML, /player-loading-logo/);
+    assert.match(nodes[0].innerHTML, /player-loading-status/);
+  });
+});
