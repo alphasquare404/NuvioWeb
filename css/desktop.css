@@ -20769,6 +20769,37 @@ html[data-layout="desktop"][data-nav-placement="top"]
   margin-right: 0;
 }
 
+/* The side-rail Search kept the old 48px header padding and the 1440px child
+   cap while every other desktop page frame used the shared gutter. Put Search
+   on the same frame without moving the rail itself. This is also the live
+   sidebar layout used by a desktop width. */
+html[data-nav-placement="sidebar"] .desktop-browser #search .search-content {
+  padding-left: clamp(24px, 2vw, 40px);
+  padding-right: clamp(24px, 2vw, 40px);
+}
+
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  #search
+  .search-content
+  > * {
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  #search
+  .search-header,
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  #search
+  .search-page-header {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 html[data-layout="desktop"][data-nav-placement="top"]
   .desktop-browser
   #library
