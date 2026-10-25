@@ -656,6 +656,7 @@ export const ProfileSelectionScreen = {
             }
           </div>
           ${profile.isPrimary ? `<span class="profile-primary-dot" aria-hidden="true">&#9733;</span>` : ""}
+          ${this.isProfilePinEnabled(profile.id) ? `<span class="profile-pin-indicator" role="img" aria-label="${escapeHtml(t("profile_pin_badge", {}, "PIN protected"))}" title="${escapeHtml(t("profile_pin_badge", {}, "PIN protected"))}"><span class="material-icons" aria-hidden="true">lock</span></span>` : ""}
           ${isDesktopActive ? `<span class="profile-active-indicator" aria-label="${escapeHtml(t("profile_active", {}, "Active profile"))}">&#10003;</span>` : ""}
         </div>
         <div class="profile-name">${escapeHtml(profile.name)}</div>

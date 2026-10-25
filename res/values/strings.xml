@@ -1367,6 +1367,7 @@
     <string name="profile_cancel">Cancel</string>
     <string name="profile_save">Save</string>
     <string name="profile_pin_title">Profile PIN lock</string>
+    <string name="profile_pin_badge">PIN protected</string>
     <string name="profile_pin_enabled_subtitle">This profile requires a 4-digit PIN before switching.</string>
     <string name="profile_pin_disabled_subtitle">Set a 4-digit PIN to lock this profile.</string>
     <string name="profile_pin_set">Set PIN</string>
