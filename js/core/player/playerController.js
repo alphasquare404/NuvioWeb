@@ -1518,6 +1518,7 @@ export const PlayerController = {
     }
 
     tracks.forEach((track, trackIndex) => {
+      if (track.kind && !["subtitles", "captions", "forced"].includes(track.kind)) return;
       try {
         track.mode = targetIndex >= 0 && trackIndex === targetIndex ? "showing" : "disabled";
       } catch (_) {

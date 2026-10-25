@@ -11451,7 +11451,11 @@ button:focus-visible {
   font-size: var(--player-subtitle-font-size);
   font-weight: var(--player-subtitle-font-weight);
   text-shadow: var(--player-subtitle-shadow);
-  transform: translateY(var(--player-subtitle-offset));
+}
+
+/* Offset the native container without replacing the cue positioning transform. */
+#videoPlayer::-webkit-media-text-track-container {
+  translate: 0 var(--player-native-subtitle-offset, var(--player-subtitle-offset));
 }
 
 .player-html-subtitles {
@@ -21666,4 +21670,26 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   height: auto;
   max-width: min(64vw, 420px);
   max-height: min(24vh, 170px);
+}
+
+/* Keep browser-native subtitle text inside the rotated player canvas. */
+#videoPlayer.player-native-subtitles-mirrored::cue {
+  color: transparent !important;
+  background: transparent !important;
+  text-shadow: none !important;
+}
+#videoPlayer.player-native-subtitles-mirrored::-webkit-media-text-track-container {
+  opacity: 0 !important;
+}
+.player-native-subtitle-lines {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  width: fit-content;
+  max-width: 90%;
+  margin-inline: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0.06em 0.28em;
+  background: var(--player-subtitle-background);
 }

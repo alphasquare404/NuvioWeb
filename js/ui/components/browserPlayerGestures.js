@@ -19,27 +19,41 @@ export function isBrowserPlayerGesturePointer(event) {
   return pointerType === "touch" || pointerType === "pen";
 }
 
-export function isWithinGestureTolerance(start, end, tolerance = PLAYER_GESTURE_SPATIAL_TOLERANCE_PX) {
-  return Math.hypot(Number(end?.x || 0) - Number(start?.x || 0), Number(end?.y || 0) - Number(start?.y || 0)) <= tolerance;
+export function isWithinGestureTolerance(
+  start,
+  end,
+  tolerance = PLAYER_GESTURE_SPATIAL_TOLERANCE_PX
+) {
+  return (
+    Math.hypot(
+      Number(end?.x || 0) - Number(start?.x || 0),
+      Number(end?.y || 0) - Number(start?.y || 0)
+    ) <= tolerance
+  );
 }
 
 export function getBrowserPlayerVideoTapAction(controlsVisible) {
   return controlsVisible ? "toggle-playback" : "reveal-controls";
 }
 
-export function bindBrowserPlayerGestures(surface, {
-  isInteractiveTarget = () => false,
-  onSeek = () => {},
-  onHoldChange = () => {},
-  onSwipeStart = () => false,
-  onSwipeMove = () => {},
-  onSwipeEnd = () => {},
-  getSingleTapContext = () => null,
-  onSingleTap = () => {},
-  schedule = setTimeout,
-  cancelScheduled = clearTimeout,
-  getNow = Date.now
-} = {}) {
+export function bindBrowserPlayerGestures(
+  surface,
+  {
+    isInteractiveTarget = () => false,
+    onSeek = () => {},
+    onHoldChange = () => {},
+    onSwipeStart = () => false,
+    onSwipeMove = () => {},
+    onSwipeEnd = () => {},
+    getSingleTapContext = () => null,
+    onSingleTap = () => {},
+    schedule = setTimeout,
+    cancelScheduled = clearTimeout,
+    getPoint = (event) => ({ x: Number(event?.clientX || 0), y: Number(event?.clientY || 0) }),
+    getSurfaceRect = () => surface.getBoundingClientRect(),
+    getNow = Date.now
+  } = {}
+) {
   if (!(surface instanceof HTMLElement)) return () => {};
 
   let active = null;
@@ -75,8 +89,9 @@ export function bindBrowserPlayerGestures(surface, {
     if (current?.swiping) onSwipeEnd({ cancelled: true });
     clearPendingTap();
   };
-  const targetIsValid = (target, event) => target instanceof Element && surface.contains(target) && !isInteractiveTarget(target, event);
-  const pointFor = (event) => ({ x: Number(event?.clientX || 0), y: Number(event?.clientY || 0) });
+  const targetIsValid = (target, event) =>
+    target instanceof Element && surface.contains(target) && !isInteractiveTarget(target, event);
+  const pointFor = getPoint;
 
   const onPointerDown = (event) => {
     if (!isBrowserPlayerGesturePointer(event)) return;
@@ -91,11 +106,11 @@ export function bindBrowserPlayerGestures(surface, {
       pointerId: event.pointerId,
       pointerType: String(event.pointerType || ""),
       point,
-      zone: getBrowserPlayerGestureZone(surface.getBoundingClientRect(), point.x),
+      zone: getBrowserPlayerGestureZone(getSurfaceRect(), point.x),
       moved: false,
       swiping: false,
       axis: null,
-      width: surface.getBoundingClientRect().width,
+      width: getSurfaceRect().width,
       holdActive: false,
       holdTimer: null,
       singleTapContext: getSingleTapContext()
@@ -194,8 +209,13 @@ export function bindBrowserPlayerGestures(surface, {
   };
 
   const onDoubleClick = (event) => {
-    if (getNow() < ignoreDoubleClickUntil || event.button !== 0 || !targetIsValid(event.target, event)) return;
-    const zone = getBrowserPlayerGestureZone(surface.getBoundingClientRect(), Number(event.clientX || 0));
+    if (
+      getNow() < ignoreDoubleClickUntil ||
+      event.button !== 0 ||
+      !targetIsValid(event.target, event)
+    )
+      return;
+    const zone = getBrowserPlayerGestureZone(getSurfaceRect(), pointFor(event).x);
     if (zone === "center") return;
     clearPendingTap();
     onSeek(zone);
@@ -210,7 +230,9 @@ export function bindBrowserPlayerGestures(surface, {
     event.stopPropagation();
   };
   const onContextMenu = (event) => {
-    const touchMenu = event.pointerType === "touch" || event.pointerType === "pen" ||
+    const touchMenu =
+      event.pointerType === "touch" ||
+      event.pointerType === "pen" ||
       (!event.pointerType && window.matchMedia?.("(pointer: coarse)").matches);
     if (touchMenu && targetIsValid(event.target, event)) event.preventDefault();
   };

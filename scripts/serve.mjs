@@ -414,7 +414,14 @@ const server = http.createServer(async (request, response) => {
         "Cache-Control": "no-store",
         "Content-Type": "application/javascript; charset=utf-8"
       });
-      response.end(buildRuntimeEnvScript(resolved));
+      response.end(
+        buildRuntimeEnvScript(resolved) +
+          "\nglobalThis.__NUVIO_SUBTITLE_DEBUG__ = " +
+          (process.env.NUVIO_SUBTITLE_DEBUG === "1" ? "true" : "false") +
+          ";\nglobalThis.__NUVIO_PLAYBACK_STARTUP_DEBUG__ = " +
+          (process.env.NUVIO_PLAYBACK_STARTUP_DEBUG === "1" ? "true" : "false") +
+          ";\n"
+      );
       return;
     }
 

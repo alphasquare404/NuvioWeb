@@ -143,7 +143,11 @@ test("browser native-file play rejections use the normal rejection path", async 
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       assert.equal(PlayerController.isPlaying, false);
-      assert.ok(warnings.some(([label, error]) => label === "Playback start rejected" && error === rejection));
+      assert.ok(
+        warnings.some(
+          ([label, error]) => label === "Playback start rejected" && error === rejection
+        )
+      );
     });
   } finally {
     console.warn = originalWarn;
@@ -167,15 +171,24 @@ test("browser engine selection preserves direct, HLS, DASH, and local playback p
     ["native-file"]
   );
   assert.deepEqual(
-    PlayerController.getPlaybackEngineCandidates("https://media.example/stream.m3u8", "application/vnd.apple.mpegurl"),
+    PlayerController.getPlaybackEngineCandidates(
+      "https://media.example/stream.m3u8",
+      "application/vnd.apple.mpegurl"
+    ),
     ["hls.js", "native-hls"]
   );
   assert.deepEqual(
-    PlayerController.getPlaybackEngineCandidates("https://media.example/stream.mpd", "application/dash+xml"),
+    PlayerController.getPlaybackEngineCandidates(
+      "https://media.example/stream.mpd",
+      "application/dash+xml"
+    ),
     ["native-dash", "dash.js"]
   );
   assert.deepEqual(
-    PlayerController.getPlaybackEngineCandidates("blob:https://nuvio.example/offline-copy", "video/mp4"),
+    PlayerController.getPlaybackEngineCandidates(
+      "blob:https://nuvio.example/offline-copy",
+      "video/mp4"
+    ),
     ["native-file"]
   );
 });
@@ -191,7 +204,10 @@ test("native-TV engines are absent from the browser PlayerController", () => {
   assert.equal("canUseAvPlay" in PlayerController, false);
   assert.equal("getPlatformAvplayEngineName" in PlayerController, false);
   assert.equal("shouldPreferTvNativePipeline" in PlayerController, false);
-  assert.equal(candidates.some((candidate) => candidate.includes("avplay")), false);
+  assert.equal(
+    candidates.some((candidate) => candidate.includes("avplay")),
+    false
+  );
 });
 
 test("browser HLS audio tracks are discovered and switched through hls.js", () => {
@@ -301,4 +317,39 @@ test("changing the adaptive playback source clears browser audio tracks", () => 
   assert.equal(PlayerController.getBrowserAudioTracks().length, 1);
   PlayerController.teardownAdaptiveInstances();
   assert.deepEqual(PlayerController.getBrowserAudioTracks(), []);
+});
+
+test("native subtitle switching leaves timed metadata enabled and uses original indices", () => {
+  const oldVideo = PlayerController.video;
+  const metadata = { kind: "metadata", mode: "hidden" };
+  const english = { kind: "subtitles", mode: "disabled" };
+  const french = { kind: "captions", mode: "showing" };
+  PlayerController.video = { textTracks: [metadata, english, french] };
+  try {
+    assert.equal(PlayerController.setNativeTextTrack(1), true);
+    assert.equal(metadata.mode, "hidden");
+    assert.equal(english.mode, "showing");
+    assert.equal(french.mode, "disabled");
+    PlayerController.setNativeTextTrack(-1);
+    assert.equal(metadata.mode, "hidden");
+    assert.equal(english.mode, "disabled");
+  } finally {
+    PlayerController.video = oldVideo;
+  }
+});
+
+test("Safari forced-kind subtitle is selectable without disabling metadata", () => {
+  const old = PlayerController.video;
+  const metadata = { kind: "metadata", mode: "hidden" },
+    standard = { kind: "subtitles", mode: "showing" },
+    forced = { kind: "forced", mode: "disabled" };
+  PlayerController.video = { textTracks: [metadata, standard, forced] };
+  try {
+    assert.equal(PlayerController.setNativeTextTrack(2), true);
+    assert.equal(forced.mode, "showing");
+    assert.equal(standard.mode, "disabled");
+    assert.equal(metadata.mode, "hidden");
+  } finally {
+    PlayerController.video = old;
+  }
 });

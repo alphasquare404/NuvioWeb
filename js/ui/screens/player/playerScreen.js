@@ -11,7 +11,15 @@ import {
   normalizeSourceForDisplay,
   renderBrowserSourceCardContent
 } from "../../components/browserStreamSourceCard.js";
+import {
+  createPlayerOrientation,
+  playerLocalPoint,
+  playerLocalRect
+} from "./browserPlayerOrientation.js";
+import { paginateBrowserToolbar } from "./browserToolbar.js";
+import { isAppInstalled } from "../../components/browserInstallPrompt.js";
 import { formatRuntimeLabel } from "../../../core/util/runtimeLabel.js";
+import { traceHost } from "../../../core/util/playbackTrace.js";
 import { REMUX_ENDPOINT, TRANSCODE_ENDPOINT, PROBE_ENDPOINT } from "../../../config.js";
 import { createStreamProber, streamProbeIdentity } from "../../../core/player/streamProbe.js";
 import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
@@ -979,6 +987,7 @@ function getTrackDescriptorLabels(track = {}) {
 }
 
 function isForcedSubtitleTrack(track = {}) {
+  if (String(track.kind || "").toLowerCase() === "forced") return true;
   if (
     hasTruthyTrackFlag(track, [
       "forced",
@@ -2099,8 +2108,14 @@ export const PlayerScreen = {
     this._playerListProber = null;
     this._playerRelayAvailability = null;
     this.desktopLastAudibleVolume = null;
+    this.desktopMuteRestoreVolume = null;
     this.playerRouteActive = true;
     this.params = params;
+    this.browserToolbarPage = 0;
+    this.desktopVolumeReadOnly = false;
+    this.desktopVolumeCapabilityVideo = null;
+    this.desktopVolumeWriteRevision = Number(this.desktopVolumeWriteRevision || 0) + 1;
+    this.subtitleKeyboardNavigation = false;
     this.offlineObjectUrl = Environment.isBrowser() ? String(params.offlineObjectUrl || "") : "";
     this.offlineDownloadId = Environment.isBrowser() ? String(params.offlineDownloadId || "") : "";
     this.trackPreferenceContentId = this.getTrackPreferenceContentId();
@@ -2193,6 +2208,7 @@ export const PlayerScreen = {
     this.subtitlePointerScrollTransaction = null;
     this.selectedSubtitleTrackIndex = -1;
     this.selectedAddonSubtitleId = null;
+    this.subtitleLayoutDiagnosticKeys = new Set();
     this.startupSubtitlePreferenceApplied = false;
     this.startupSubtitlePreferenceApplying = false;
     this.startupAudioPreferenceApplied = false;
@@ -2358,6 +2374,7 @@ export const PlayerScreen = {
     this.failedPlaybackUrls = new Set();
     this.failedPlaybackStreamIds = new Set();
     this.playbackStallTimer = null;
+    this.startupReadiness = null;
     this.lastPlaybackProgressAt = Date.now();
     this.hasPresentedPlaybackFrame = false;
     this.startupErrorMessage = "";
@@ -3139,7 +3156,11 @@ export const PlayerScreen = {
       rootStyle.getPropertyValue("--player-focus-background").trim() || "#303030";
     const focusContent = rootStyle.getPropertyValue("--player-text-primary").trim() || "#ffffff";
     const focusRing = rootStyle.getPropertyValue("--player-focus-ring").trim() || "#ffffff";
-    const isFocused = document.activeElement === target || target.classList.contains("focused");
+    const pointerBrowser =
+      Environment.isBrowser() && !document.documentElement.classList.contains("nuvio-keyboard-nav");
+    const isFocused =
+      !pointerBrowser &&
+      (document.activeElement === target || target.classList.contains("focused"));
     const background = isFocused ? focusBackground : "rgba(30, 30, 30, 0.85)";
     const color = isFocused ? focusContent : "#fff";
     const boxShadow = isFocused ? `0 0 0 4px ${focusRing}` : "none";
@@ -4482,6 +4503,7 @@ export const PlayerScreen = {
         <div id="playerGestureFeedback" class="player-gesture-feedback hidden" aria-live="polite"></div>
 
         <div id="playerHtmlSubtitles" class="player-html-subtitles hidden" aria-hidden="true"></div>
+        <div id="playerNativeSubtitles" class="player-html-subtitles player-native-subtitles hidden" aria-hidden="true"><div class="player-native-subtitle-lines"></div></div>
 
         <div id="playerSeekOverlay" class="player-seek-overlay hidden">
           <div class="player-seek-overlay-track"><div id="playerSeekFill" class="player-seek-fill"></div></div>
@@ -4529,8 +4551,10 @@ export const PlayerScreen = {
 
               <div class="player-controls-row">
                 <div id="playerControlButtons" class="player-control-buttons"></div>
-                <div id="playerTimeLabel" class="player-time-label">0:00 / 0:00</div>
-                ${this.renderDesktopPlaybackTools()}
+                ${Environment.isBrowser() ? '<div class="player-controls-right">' : ""}
+                  <div id="playerTimeLabel" class="player-time-label">0:00 / 0:00</div>
+                  ${this.renderDesktopPlaybackTools()}
+                ${Environment.isBrowser() ? "</div>" : ""}
               </div>
             </div>
           </div>
@@ -4544,6 +4568,16 @@ export const PlayerScreen = {
     }
 
     this.container.appendChild(root);
+    if (Environment.isBrowser() && !this.isExternalFrameMode()) {
+      this.browserOrientation?.destroy();
+      this.browserOrientation = createPlayerOrientation(this.container, {
+        preference: this.params?.playerOrientationPreference || "landscape",
+        onChange: (state) => {
+          this.params.playerOrientationPreference = state.preference;
+          this.scheduleDesktopPlayerViewportSync();
+        }
+      });
+    }
     this.cachePlayerUiRefs(root);
     this.syncPlayerOverlayLayoutState();
     this.bindLoadingLogoFallback();
@@ -4566,7 +4600,7 @@ export const PlayerScreen = {
       return "";
     }
     return `
-      <button class="player-desktop-back-button" type="button" tabindex="-1" data-player-desktop-back
+      <button class="player-desktop-back-button" type="button" tabindex="-1" data-player-desktop-back data-back-style="${this.shouldReturnToStreamOnBack() ? "stream" : "detail"}"
               aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
         <img class="player-desktop-back-icon" src="assets/icons/ic_player_back.svg" alt="" aria-hidden="true" />
       </button>
@@ -4577,13 +4611,10 @@ export const PlayerScreen = {
     if (!Environment.isBrowser()) {
       return "";
     }
+    this.detectDesktopSoftwareVolume?.();
     const { volume, muted } = this.getDesktopVolumeState();
     const volumePercent = muted ? 0 : Math.round(volume * 100);
     const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
-    // On a compact toolbar this button lives in More Actions, and rendering it
-    // here as well put two of them on screen at once.
-    const externalPlayerAvailable =
-      this.canOpenInExternalPlayer() && !this.isCompactBrowserPlayerToolbar();
     return `
       <div class="player-desktop-playback-tools" aria-label="Playback controls">
         <button class="player-desktop-tool-button" type="button" tabindex="-1" data-player-desktop-action="mute"
@@ -4597,14 +4628,6 @@ export const PlayerScreen = {
             ? `<button class="player-desktop-tool-button" type="button" tabindex="-1" data-player-desktop-action="picture-in-picture"
                   title="Enter Picture-in-Picture" aria-label="Enter Picture-in-Picture">
                 <img class="player-desktop-tool-icon" src="assets/icons/ic_player_picture_in_picture.svg" alt="" aria-hidden="true" />
-              </button>`
-            : ""
-        }
-        ${
-          externalPlayerAvailable
-            ? `<button class="player-desktop-tool-button" type="button" tabindex="-1" data-player-desktop-action="external-player"
-                  title="Play with external player" aria-label="Play with external player">
-                <img class="player-desktop-tool-icon" src="assets/icons/ic_player_external.svg" alt="" aria-hidden="true" />
               </button>`
             : ""
         }
@@ -4984,9 +5007,11 @@ export const PlayerScreen = {
     // paint without changing playback state or writing a separate layout model.
     const syncLayout = () => {
       this.applyAspectMode({ showToast: false });
+      this.updateBrowserNativeSubtitleOffset();
       this.syncDesktopPlaybackTools();
       this.fitPauseOverlay();
       this.positionTrackDialogs();
+      this.renderControlButtons();
     };
     this.desktopPlayerViewportSyncFrame = requestAnimationFrame(() => {
       this.desktopPlayerViewportSyncFrame = null;
@@ -5007,8 +5032,8 @@ export const PlayerScreen = {
       this.updateProgressHover(event);
       const activePointer = this.desktopProgressPointer;
       if (activePointer && Number(event.pointerId) === Number(activePointer.pointerId)) {
-        const deltaX = Number(event.clientX || 0) - activePointer.startX;
-        const deltaY = Number(event.clientY || 0) - activePointer.startY;
+        const deltaX = playerLocalPoint(event, this.browserOrientation).x - activePointer.startX;
+        const deltaY = playerLocalPoint(event, this.browserOrientation).y - activePointer.startY;
         if (!activePointer.dragging && Math.hypot(deltaX, deltaY) > 2) {
           activePointer.dragging = true;
         }
@@ -5036,8 +5061,8 @@ export const PlayerScreen = {
       }
       this.desktopProgressPointer = {
         pointerId: event.pointerId,
-        startX: Number(event.clientX || 0),
-        startY: Number(event.clientY || 0),
+        startX: playerLocalPoint(event, this.browserOrientation).x,
+        startY: playerLocalPoint(event, this.browserOrientation).y,
         shell,
         dragging: false
       };
@@ -5202,6 +5227,8 @@ export const PlayerScreen = {
     }
     this.browserPlayerGestureCleanup?.();
     this.browserPlayerGestureCleanup = bindBrowserPlayerGestures(this.container, {
+      getPoint: (event) => playerLocalPoint(event, this.browserOrientation),
+      getSurfaceRect: () => playerLocalRect(this.container, this.browserOrientation),
       isInteractiveTarget: (target, event) => !this.isDesktopVideoAreaClick(target, event),
       onSeek: (zone) => this.seekBrowserPlayerGesture(zone),
       onSwipeStart: () => this.beginBrowserSwipeSeek(),
@@ -5319,6 +5346,7 @@ export const PlayerScreen = {
     if (
       !Environment.isBrowser() ||
       this.isExternalFrameMode() ||
+      (this.moreActionsVisible && this.isCompactBrowserPlayerToolbar()) ||
       !this.container?.contains(target)
     ) {
       return false;
@@ -5342,8 +5370,13 @@ export const PlayerScreen = {
     ].join(", ");
     if (target.closest(blockedSelector)) return false;
     // A miss beside a toolbar button must not toggle playback through the video.
-    const progressRect = this.uiRefs?.progressShell?.getBoundingClientRect?.();
-    if (this.controlsVisible && event && progressRect && Number(event.clientY) >= progressRect.top)
+    const progressRect = playerLocalRect(this.uiRefs?.progressShell, this.browserOrientation);
+    if (
+      this.controlsVisible &&
+      event &&
+      progressRect &&
+      playerLocalPoint(event, this.browserOrientation).y >= progressRect.top
+    )
       return false;
     return true;
   },
@@ -5446,17 +5479,60 @@ export const PlayerScreen = {
     return { volume, muted };
   },
 
+  detectDesktopSoftwareVolume() {
+    const video = this.getDesktopPlaybackVideo();
+    if (!video || this.desktopVolumeCapabilityVideo === video || (!video.paused && !video.muted))
+      return;
+    this.desktopVolumeCapabilityVideo = video;
+    const original = Number(video.volume);
+    const probe = original > 0.5 ? 0.25 : 0.75;
+    try {
+      video.volume = probe;
+      this.desktopVolumeReadOnly = Math.abs(Number(video.volume) - probe) > 0.01;
+    } catch (_) {
+      this.desktopVolumeReadOnly = true;
+    } finally {
+      try {
+        video.volume = original;
+      } catch (_) {
+        /* The volume may be readonly. */
+      }
+    }
+  },
+
+  confirmDesktopVolumeWrite(video, volume) {
+    const revision = (this.desktopVolumeWriteRevision =
+      Number(this.desktopVolumeWriteRevision || 0) + 1);
+    if (typeof requestAnimationFrame !== "function") return;
+    requestAnimationFrame(() => {
+      if (revision !== this.desktopVolumeWriteRevision || this.getDesktopPlaybackVideo() !== video)
+        return;
+      if (Math.abs(Number(video.volume) - volume) > 0.01) {
+        this.desktopVolumeReadOnly = true;
+        this.showAspectToast("Use your device volume buttons");
+        this.syncDesktopPlaybackTools();
+      }
+    });
+  },
+
   setDesktopVolume(value) {
     const video = this.getDesktopPlaybackVideo();
     if (!video) {
       return false;
     }
     const volume = clamp(Number(value), 0, 1);
-    if (volume > 0) {
-      this.desktopLastAudibleVolume = volume;
-    }
     video.volume = volume;
+    if (Math.abs(Number(video.volume) - volume) > 0.01) {
+      this.desktopVolumeReadOnly = true;
+      this.showAspectToast("Use your device volume buttons");
+      this.syncDesktopPlaybackTools();
+      return false;
+    }
+    this.desktopVolumeReadOnly = false;
+    this.desktopMuteRestoreVolume = null;
+    if (volume > 0) this.desktopLastAudibleVolume = volume;
     video.muted = volume <= 0;
+    this.confirmDesktopVolumeWrite?.(video, volume);
     this.syncDesktopPlaybackTools();
     return true;
   },
@@ -5470,16 +5546,22 @@ export const PlayerScreen = {
     const currentlyMuted = Boolean(video.muted) || currentVolume <= 0;
     if (currentlyMuted) {
       const restoredVolume = clamp(
-        Number(currentVolume || this.desktopLastAudibleVolume || 1),
+        Number(
+          this.desktopMuteRestoreVolume ?? (currentVolume || this.desktopLastAudibleVolume || 1)
+        ),
         0,
         1
       );
-      video.volume = restoredVolume > 0 ? restoredVolume : 1;
       video.muted = false;
+      video.volume = restoredVolume > 0 ? restoredVolume : 1;
+      this.confirmDesktopVolumeWrite?.(video, restoredVolume > 0 ? restoredVolume : 1);
+      this.desktopMuteRestoreVolume = null;
     } else {
       if (currentVolume > 0) {
         this.desktopLastAudibleVolume = currentVolume;
       }
+      this.desktopMuteRestoreVolume = currentVolume;
+      this.desktopVolumeWriteRevision = Number(this.desktopVolumeWriteRevision || 0) + 1;
       video.muted = true;
     }
     this.syncDesktopPlaybackTools();
@@ -5487,7 +5569,7 @@ export const PlayerScreen = {
   },
 
   getDesktopFullscreenCapability() {
-    if (!Environment.isBrowser() || !this.container) return null;
+    if (!Environment.isBrowser() || !this.container || isAppInstalled()) return null;
     if (
       document.fullscreenEnabled !== false &&
       typeof this.container.requestFullscreen === "function"
@@ -5686,7 +5768,8 @@ export const PlayerScreen = {
     }
     const { volume, muted } = this.getDesktopVolumeState();
     const fullscreen = this.isDesktopPlayerFullscreen();
-    const fullscreenAvailable = Boolean(fullscreen || this.getDesktopFullscreenCapability());
+    const fullscreenAvailable =
+      !isAppInstalled() && Boolean(fullscreen || this.getDesktopFullscreenCapability());
     const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
     const pictureInPictureActive = this.isDesktopPlayerPictureInPicture();
     const muteLabel = muted ? "Unmute" : "Mute";
@@ -5709,7 +5792,13 @@ export const PlayerScreen = {
         muteIcon.src = `assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}`;
       }
       if (volumeInput) {
+        volumeInput.hidden = Boolean(this.desktopVolumeReadOnly);
+        volumeInput.disabled = Boolean(this.desktopVolumeReadOnly);
+        volumeInput.title = this.desktopVolumeReadOnly
+          ? "Use your device volume buttons"
+          : "Volume";
         volumeInput.value = String(muted ? 0 : Math.round(volume * 100));
+        volumeInput.style?.setProperty("--player-volume-progress", volumeInput.value + "%");
       }
       if (fullscreenButton) {
         fullscreenButton.hidden = !fullscreenAvailable;
@@ -5735,6 +5824,15 @@ export const PlayerScreen = {
   dismissDesktopPlayerPanelFromPointer(target) {
     if (!Environment.isBrowser() || !(target instanceof Element)) {
       return false;
+    }
+
+    if (this.moreActionsVisible && this.isCompactBrowserPlayerToolbar()) {
+      const panel = this.uiRefs?.root?.querySelector("#playerMobileMorePanel");
+      if (panel?.contains(target)) return false;
+      this.moreActionsVisible = false;
+      this.renderControlButtons();
+      this.revealDesktopPlayerControls();
+      return true;
     }
 
     const panels = [
@@ -5845,6 +5943,7 @@ export const PlayerScreen = {
           aspectToast: uiRoot.querySelector("#playerAspectToast"),
           gestureFeedback: uiRoot.querySelector("#playerGestureFeedback"),
           htmlSubtitles: uiRoot.querySelector("#playerHtmlSubtitles"),
+          nativeSubtitles: uiRoot.querySelector("#playerNativeSubtitles"),
           seekOverlay: uiRoot.querySelector("#playerSeekOverlay"),
           seekDirection: uiRoot.querySelector("#playerSeekDirection"),
           seekPreview: uiRoot.querySelector("#playerSeekPreview"),
@@ -6187,6 +6286,10 @@ export const PlayerScreen = {
       details = null
     } = {}
   ) {
+    if (this.startupReadiness) {
+      this.startupReadiness.timeoutError = reason === "startup-stall" && !mediaErrorCode;
+    }
+    this.reportPlaybackStartupDiagnostics?.(reason || "startup-error");
     StartupLoadingOverlay.finish();
     this.startupErrorMessage =
       String(message || "").trim() || t("player_error_playback_fallback", {}, "Playback error");
@@ -6237,6 +6340,92 @@ export const PlayerScreen = {
     this.focusStartupErrorButton();
   },
 
+  startPlaybackStartupDiagnostics(url) {
+    this.playbackStartupDiagnosticCleanup?.();
+    this.playbackStartupDiagnosticCleanup = null;
+    this.playbackStartupDiagnostic = null;
+    if (globalThis.__NUVIO_PLAYBACK_STARTUP_DEBUG__ !== true) return;
+    const video = this.getDesktopPlaybackVideo();
+    if (!video?.addEventListener) return;
+    const state = {
+      startedAt: Date.now(),
+      host: traceHost(url),
+      events: [],
+      reported: new Set(),
+      standalone: isAppInstalled()
+    };
+    this.playbackStartupDiagnostic = state;
+    const names = [
+      "loadstart",
+      "progress",
+      "stalled",
+      "waiting",
+      "loadedmetadata",
+      "loadeddata",
+      "canplay",
+      "playing",
+      "error"
+    ];
+    const record = (event) => {
+      if (this.playbackStartupDiagnostic !== state) return;
+      const ms = Date.now() - state.startedAt;
+      if (ms > 90000) {
+        this.playbackStartupDiagnosticCleanup?.();
+        return;
+      }
+      if (
+        state.events.length < 24 &&
+        (event.type !== "progress" || !state.events.some((entry) => entry.event === "progress"))
+      ) {
+        state.events.push({
+          event: event.type,
+          ms,
+          ready: video.readyState,
+          network: video.networkState
+        });
+      }
+      if (["loadedmetadata", "canplay", "error"].includes(event.type))
+        this.reportPlaybackStartupDiagnostics(event.type);
+    };
+    names.forEach((name) => video.addEventListener(name, record));
+    this.playbackStartupDiagnosticCleanup = () =>
+      names.forEach((name) => video.removeEventListener(name, record));
+  },
+
+  reportPlaybackStartupDiagnostics(reason) {
+    const state = this.playbackStartupDiagnostic;
+    if (
+      !state ||
+      globalThis.__NUVIO_PLAYBACK_STARTUP_DEBUG__ !== true ||
+      state.reported.has(reason) ||
+      state.reported.size >= 5
+    )
+      return;
+    state.reported.add(reason);
+    const video = this.getDesktopPlaybackVideo();
+    const detail = {
+      reason,
+      host: state.host,
+      startedAt: state.startedAt,
+      elapsedMs: Date.now() - state.startedAt,
+      standalone: state.standalone,
+      ready: video?.readyState,
+      network: video?.networkState,
+      mediaErrorCode: video?.error?.code || 0,
+      events: state.events
+    };
+    void fetch("/api/debug/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "playback-startup",
+        message: "Playback startup timing",
+        stack: JSON.stringify(detail),
+        at: new Date().toISOString()
+      })
+    }).catch(() => {});
+  },
+
   startPlayerControllerPlayback(
     url,
     context = {},
@@ -6250,6 +6439,17 @@ export const PlayerScreen = {
       });
       return;
     }
+    this.startupReadiness = Environment.isBrowser()
+      ? {
+          url: playbackUrl,
+          video: PlayerController.video,
+          startedAt: Date.now(),
+          metadataAt: null,
+          timeoutError: false,
+          allowPlayback: Boolean(this.startupAudioGateAllowsPlayback)
+        }
+      : null;
+    this.startPlaybackStartupDiagnostics?.(playbackUrl);
     PlayerController.setStartupPresentationAudioMuted?.(true);
     return Promise.resolve(PlayerController.play(playbackUrl, context)).catch((error) => {
       if (!this.isActiveMountToken(mountToken) || this.isExternalFrameMode()) {
@@ -6926,12 +7126,13 @@ export const PlayerScreen = {
     overlay.innerHTML = `
       <div class="player-pause-overlay-top">
         <div class="player-pause-overlay-clock">${escapeHtml(clockText)}</div>
+        <div class="player-pause-overlay-ends-at">${escapeHtml(this.getPlayerUiState().endsAtText || t("player_ends_at", ["--:--"], "Ends at %1$s"))}</div>
       </div>
       <div class="player-pause-overlay-shade"></div>
       <div class="player-pause-overlay-content">
         <div class="player-pause-kicker">${escapeHtml(t("pause_you_are_watching", {}, "You're watching"))}</div>
         ${meta.logoUrl ? `<img class="player-pause-logo" src="${escapeAttribute(meta.logoUrl)}" alt="${escapeAttribute(meta.title)}" />` : `<div class="player-pause-title">${escapeHtml(meta.title)}</div>`}
-        <div class="player-pause-meta-line">${escapeHtml([meta.releaseYear, meta.episodeCode, formatRuntimeLabel(this.getPlaybackDurationSeconds() / 60) || meta.runtime, meta.episodeTitle].filter(Boolean).join(" · "))}</div>
+        <div class="player-pause-meta-line">${escapeHtml([meta.episodeCode, meta.episodeTitle, meta.releaseYear, formatRuntimeLabel(this.getPlaybackDurationSeconds() / 60) || meta.runtime].filter(Boolean).join(" · "))}</div>
         ${sourceBadges ? `<div class="player-pause-badges">${sourceBadges}</div>` : ""}
         ${meta.description ? `<div class="player-pause-description">${escapeHtml(meta.description)}</div>` : ""}
         ${
@@ -8211,7 +8412,12 @@ export const PlayerScreen = {
           streamCandidates: streamItems,
           preferredStreamId: bestStreamCandidate.id || null,
           playbackSourceContext: this.getPlaybackSourceContext(bestStreamCandidate),
-          returnToStreamOnBack: false,
+          returnToStreamOnBack: this.shouldReturnToStreamOnBack(),
+          handoffReturnRoute:
+            this.params?.handoffReturnRoute ||
+            (this.shouldReturnToStreamOnBack() ? "stream" : "detail"),
+          streamRouteParams: this.params?.streamRouteParams || null,
+          fromDetailRoute: this.params?.fromDetailRoute || false,
           nextEpisodeVideoId: followingEpisode?.id || null,
           nextEpisodeLabel: followingEpisode
             ? `S${followingEpisode.season}E${followingEpisode.episode}`
@@ -8362,13 +8568,16 @@ export const PlayerScreen = {
       return [];
     }
     try {
-      return Array.from(trackList).filter(Boolean);
+      return Array.from(trackList).filter(
+        (track) =>
+          track && (!track.kind || ["subtitles", "captions", "forced"].includes(track.kind))
+      );
     } catch (_) {
       const tracks = [];
       const length = Number(trackList.length || 0);
       for (let index = 0; index < length; index += 1) {
         const track = trackList[index] || trackList.item?.(index) || null;
-        if (track) {
+        if (track && (!track.kind || ["subtitles", "captions", "forced"].includes(track.kind))) {
           tracks.push(track);
         }
       }
@@ -8407,7 +8616,9 @@ export const PlayerScreen = {
         lineAlign: cue.lineAlign,
         position: cue.position,
         positionAlign: cue.positionAlign,
-        snapToLines: cue.snapToLines
+        snapToLines: cue.snapToLines,
+        appliedStartTime: cue.startTime,
+        appliedEndTime: cue.endTime
       };
       this.subtitleCueOriginalState.set(cue, snapshot);
     }
@@ -8418,6 +8629,8 @@ export const PlayerScreen = {
     if (!cue || !snapshot) {
       return;
     }
+    if (cue.startTime !== snapshot.appliedStartTime) snapshot.startTime = cue.startTime;
+    if (cue.endTime !== snapshot.appliedEndTime) snapshot.endTime = cue.endTime;
     const offsetSeconds = Number(delayMs || 0) / 1000;
     const startTime = Number(snapshot.startTime);
     const endTime = Number(snapshot.endTime);
@@ -8427,8 +8640,10 @@ export const PlayerScreen = {
     const nextStart = Math.max(0, startTime + offsetSeconds);
     const nextEnd = Math.max(nextStart + 0.001, endTime + offsetSeconds);
     try {
-      cue.startTime = nextStart;
-      cue.endTime = nextEnd;
+      if (cue.startTime !== nextStart) cue.startTime = nextStart;
+      if (cue.endTime !== nextEnd) cue.endTime = nextEnd;
+      snapshot.appliedStartTime = cue.startTime;
+      snapshot.appliedEndTime = cue.endTime;
     } catch (_) {
       // Some native text tracks expose readonly cue timing.
     }
@@ -8439,41 +8654,67 @@ export const PlayerScreen = {
       return;
     }
     try {
-      cue.line = snapshot.line;
+      if (cue.line !== snapshot.line) cue.line = snapshot.line;
     } catch (_) {
       // Ignore cue restore failures.
     }
     try {
       if ("lineAlign" in cue) {
-        cue.lineAlign = snapshot.lineAlign;
+        if (cue.lineAlign !== snapshot.lineAlign) cue.lineAlign = snapshot.lineAlign;
       }
     } catch (_) {
       // Ignore cue restore failures.
     }
     try {
       if ("position" in cue) {
-        cue.position = snapshot.position;
+        if (cue.position !== snapshot.position) cue.position = snapshot.position;
       }
     } catch (_) {
       // Ignore cue restore failures.
     }
     try {
       if ("positionAlign" in cue) {
-        cue.positionAlign = snapshot.positionAlign;
+        if (cue.positionAlign !== snapshot.positionAlign)
+          cue.positionAlign = snapshot.positionAlign;
       }
     } catch (_) {
       // Ignore cue restore failures.
     }
     try {
       if ("snapToLines" in cue) {
-        cue.snapToLines = snapshot.snapToLines;
+        if (cue.snapToLines !== snapshot.snapToLines) cue.snapToLines = snapshot.snapToLines;
       }
     } catch (_) {
       // Ignore cue restore failures.
     }
   },
 
+  updateBrowserNativeSubtitleOffset() {
+    if (!Environment.isBrowser()) return;
+    const video = this.getDesktopPlaybackVideo();
+    if (!video?.style) return;
+    const rect = playerLocalRect(video, this.browserOrientation);
+    const progress = this.uiRefs?.progressShell;
+    const lift =
+      this.controlsVisible && progress
+        ? Math.max(0, rect.bottom - playerLocalRect(progress, this.browserOrientation).top + 12)
+        : 0;
+    const offset = splitSubtitleVerticalOffset(this.subtitleStyleSettings?.verticalOffset);
+    const fontPx = Math.max(
+      16,
+      rect.height * 0.045 * (Number(this.subtitleStyleSettings?.fontSize || 100) / 100)
+    );
+    const canvasHeight =
+      this.browserOrientation?.height ||
+      (typeof window !== "undefined" ? window.innerHeight : rect.height);
+    const pixels =
+      offset.lineOffset * fontPx * 1.28 + offset.residualOffset * 0.02 * canvasHeight + lift;
+    video.style.setProperty("--player-native-subtitle-offset", -pixels + "px");
+    this.syncRotatedNativeSubtitles?.();
+  },
+
   applySubtitleCueVerticalOffset(cue, snapshot, offset) {
+    if (Environment.isBrowser()) return;
     if (!cue || !snapshot) {
       return;
     }
@@ -8483,20 +8724,22 @@ export const PlayerScreen = {
       return;
     }
 
+    const extraLines = 0;
+    const baseLine = Number.isFinite(Number(snapshot.line)) ? Number(snapshot.line) : -1;
     try {
-      if ("snapToLines" in cue) {
+      if (snapshot.snapToLines === false && Number.isFinite(Number(snapshot.line))) {
+        // Preserve file-authored percentage positioning and horizontal alignment.
+        const linePercent =
+          100 * 0.045 * (Number(this.subtitleStyleSettings?.fontSize || 100) / 100) * 1.28;
+        cue.snapToLines = false;
+        cue.line = clamp(baseLine - (lineOffset + extraLines) * linePercent, 0, 100);
+      } else {
         cue.snapToLines = true;
+        const adjustedLine = clamp(baseLine - lineOffset - extraLines, -100, 100);
+        if (cue.line !== adjustedLine) cue.line = adjustedLine;
       }
     } catch (_) {
-      // Ignore cue styling failures.
-    }
-
-    const baseLine = Number.isFinite(Number(snapshot.line)) ? Number(snapshot.line) : -1;
-    const adjustedLine = clamp(baseLine - lineOffset, -100, 100);
-    try {
-      cue.line = adjustedLine;
-    } catch (_) {
-      // Ignore cue styling failures.
+      // Some native cues do not expose writable layout properties.
     }
   },
 
@@ -8644,10 +8887,152 @@ export const PlayerScreen = {
     return changed;
   },
 
+  isBrowserNativeSubtitleTrack(track) {
+    return (
+      Environment.isBrowser() &&
+      ["subtitles", "captions", "forced"].includes(track?.kind) &&
+      !(this.externalTrackNodes || []).some((node) => node.track === track)
+    );
+  },
+
+  syncRotatedNativeSubtitles() {
+    if (!Environment.isBrowser()) return;
+    const video = this.getDesktopPlaybackVideo();
+    const node = this.uiRefs?.nativeSubtitles;
+    if (!video || !node) return;
+    const lines = node.firstElementChild;
+    const track =
+      this.browserOrientation?.rotated &&
+      !video.webkitDisplayingFullscreen &&
+      !this.selectedAddonSubtitleId &&
+      this.getTextTracks().find(
+        (entry) => entry.mode === "showing" && this.isBrowserNativeSubtitleTrack(entry)
+      );
+    const rect = track ? playerLocalRect(video, this.browserOrientation) : null;
+    const useOverlay = Boolean(track && lines && rect?.width > 0 && rect?.height > 0);
+    video.classList.toggle("player-native-subtitles-mirrored", useOverlay);
+    node.classList.toggle("hidden", !useOverlay);
+    node.setAttribute("aria-hidden", String(!useOverlay));
+    if (!useOverlay) {
+      if (lines) lines.textContent = "";
+      return;
+    }
+    // Read the current native cues only: no copied timeline and no cue timing writes.
+    const text = this.getSubtitleCueArray(track.activeCues)
+      .map((cue) => this.parseSubtitleCueText(cue.text || ""))
+      .filter(Boolean)
+      .join("\n");
+    if (lines.textContent !== text) lines.textContent = text;
+    const offset = parseFloat(video.style.getPropertyValue("--player-native-subtitle-offset")) || 0;
+    Object.assign(node.style, {
+      left: rect.left + "px",
+      top: rect.top + "px",
+      width: rect.width + "px",
+      height: rect.height + "px",
+      right: "auto",
+      bottom: "auto",
+      fontSize:
+        Math.max(
+          16,
+          rect.height * 0.045 * (Number(this.subtitleStyleSettings?.fontSize || 100) / 100)
+        ) + "px"
+    });
+    lines.style.bottom = Math.max(0, rect.height * 0.05 - offset) + "px";
+  },
+
+  applyBrowserNativeSubtitleLayout(track) {
+    if (!this.isBrowserNativeSubtitleTrack(track)) return false;
+    // Browser native subtitles use a stable default layout; keep native timing owned by the demuxer.
+    const layout = {
+      snapToLines: false,
+      line: 95,
+      lineAlign: "end",
+      position: 50,
+      positionAlign: "center",
+      align: "center"
+    };
+    this.getSubtitleCueArray(track.activeCues).forEach((cue) => {
+      Object.entries(layout).forEach(([key, value]) => {
+        try {
+          if (key in cue && cue[key] !== value) cue[key] = value;
+        } catch (_) {
+          // Native cues may expose only part of the writable WebVTT layout API.
+        }
+      });
+    });
+    return true;
+  },
+
+  reportNativeSubtitleLayout(track) {
+    if (!Environment.isBrowser() || globalThis.__NUVIO_SUBTITLE_DEBUG__ !== true) return;
+    const active = this.getSubtitleCueArray(track?.activeCues);
+    if (!active.length || (this.externalTrackNodes || []).some((node) => node.track === track))
+      return;
+    const video = this.getDesktopPlaybackVideo();
+    if (!video) return;
+    const key = [
+      this.subtitleSelectionToken || 0,
+      this.controlsVisible,
+      Boolean(video.webkitDisplayingFullscreen),
+      track.language || "",
+      this.browserOrientation?.preference || "desktop",
+      this.browserOrientation?.rotation || 0
+    ].join(":");
+    const seen = (this.subtitleLayoutDiagnosticKeys ||= new Set());
+    if (seen.has(key) || seen.size >= 6) return;
+    seen.add(key);
+    const r = playerLocalRect(video, this.browserOrientation);
+    const fields = [
+      "startTime",
+      "endTime",
+      "line",
+      "lineAlign",
+      "position",
+      "positionAlign",
+      "align",
+      "size",
+      "snapToLines",
+      "vertical"
+    ];
+    const detail = {
+      controls: Boolean(this.controlsVisible),
+      nativeFullscreen: Boolean(video.webkitDisplayingFullscreen),
+      orientation: this.browserOrientation?.preference || "desktop",
+      video: { width: r.width, height: r.height, x: r.x, y: r.y },
+      userOffset: this.subtitleStyleSettings?.verticalOffset,
+      nativeOffset: video.style?.getPropertyValue?.("--player-native-subtitle-offset") || "",
+      rotation: this.browserOrientation?.rotation || 0,
+      cues: active
+        .slice(0, 2)
+        .map((cue) => Object.fromEntries(fields.map((name) => [name, cue[name]]))),
+      tracks: this.getTextTracks()
+        .slice(0, 12)
+        .map((item) => ({
+          kind: item.kind,
+          language: item.language,
+          mode: item.mode,
+          addon: (this.externalTrackNodes || []).some((node) => node.track === item)
+        }))
+    };
+    void fetch("/api/debug/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "subtitle-layout",
+        message: "Native subtitle layout",
+        stack: JSON.stringify(detail),
+        at: new Date().toISOString()
+      })
+    }).catch(() => {});
+  },
+
   syncSubtitleCueStylesForTrack(track) {
     if (!track) {
       return false;
     }
+    const nativePresentation = this.applyBrowserNativeSubtitleLayout?.(track) === true;
+    this.reportNativeSubtitleLayout?.(track);
+    this.updateBrowserNativeSubtitleOffset?.();
     const subtitleTextChanged = this.sanitizeSubtitleCuesForTrack(track);
     const style = this.subtitleStyleSettings || {};
     const verticalOffset = normalizeSubtitleVerticalOffset(style.verticalOffset);
@@ -8660,7 +9045,14 @@ export const PlayerScreen = {
       }
       seen.add(cue);
       const snapshot = this.getSubtitleCueSnapshot(cue);
-      this.applySubtitleCueDelay(cue, snapshot, this.subtitleDelayMs);
+      if (
+        !nativePresentation ||
+        Number(this.subtitleDelayMs || 0) !== 0 ||
+        cue.startTime !== snapshot.startTime ||
+        cue.endTime !== snapshot.endTime
+      ) {
+        this.applySubtitleCueDelay(cue, snapshot, this.subtitleDelayMs);
+      }
       this.applySubtitleCueVerticalOffset(cue, snapshot, verticalOffset);
     });
     return subtitleTextChanged;
@@ -8672,6 +9064,7 @@ export const PlayerScreen = {
       return false;
     }
 
+    this.syncRotatedNativeSubtitles?.();
     let subtitleTextChanged = false;
     tracks.forEach((track) => {
       if (!track) {
@@ -8701,6 +9094,7 @@ export const PlayerScreen = {
       typeof requestAnimationFrame === "function"
         ? requestAnimationFrame
         : (callback) => setTimeout(callback, 16);
+    const selectionToken = this.subtitleSelectionToken;
     this.getSubtitleCueTrackList().forEach((track) => {
       if (!track || track.mode !== "showing") {
         return;
@@ -8711,6 +9105,7 @@ export const PlayerScreen = {
         return;
       }
       restoreTrackMode(() => {
+        if (selectionToken !== this.subtitleSelectionToken || track.mode !== "hidden") return;
         try {
           track.mode = "showing";
         } catch (_) {
@@ -8725,8 +9120,18 @@ export const PlayerScreen = {
     const root = this.uiRefs.root;
     const row = root.querySelector(".player-controls-row");
     if (!row) return;
-    const bounds = root.getBoundingClientRect();
-    const toolbar = row.getBoundingClientRect();
+    const bounds = playerLocalRect(root, this.browserOrientation);
+    const toolbar = playerLocalRect(row, this.browserOrientation);
+    const style = typeof getComputedStyle === "function" ? getComputedStyle(root) : null;
+    const leftInset =
+      12 + (Number.parseFloat(style?.getPropertyValue("--browser-safe-area-left")) || 0);
+    const rightInset =
+      12 + (Number.parseFloat(style?.getPropertyValue("--browser-safe-area-right")) || 0);
+    const back = playerLocalRect(
+      root.querySelector("[data-player-desktop-back]"),
+      this.browserOrientation
+    );
+    const top = back ? Math.max(12, back.bottom - bounds.top + 10) : 84;
     const bottom = Math.max(12, bounds.bottom - toolbar.top + 10);
     root.style.setProperty("--player-popover-bottom", bottom + "px");
     [
@@ -8738,11 +9143,12 @@ export const PlayerScreen = {
       const anchor =
         root.querySelector('[data-action="' + action + '"]') ||
         root.querySelector('[data-action="more"]');
-      const x = anchor ? anchor.getBoundingClientRect().left - bounds.left : 12;
+      const x = anchor ? playerLocalRect(anchor, this.browserOrientation).left - bounds.left : 12;
       dialog.style.bottom = bottom + "px";
-      dialog.style.maxHeight = Math.max(80, toolbar.top - bounds.top - 84) + "px";
-      const width = dialog.getBoundingClientRect().width;
-      dialog.style.left = clamp(x, 12, Math.max(12, bounds.width - width - 12)) + "px";
+      dialog.style.maxHeight = Math.max(0, toolbar.top - bounds.top - top - 10) + "px";
+      const width = playerLocalRect(dialog, this.browserOrientation).width;
+      dialog.style.left =
+        clamp(x, leftInset, Math.max(leftInset, bounds.width - width - rightInset)) + "px";
     });
   },
 
@@ -8801,6 +9207,7 @@ export const PlayerScreen = {
     };
 
     const onPlaying = () => {
+      this.noteStartupReadiness(video);
       if (this.isStartupErrorVisible()) {
         return;
       }
@@ -8896,6 +9303,7 @@ export const PlayerScreen = {
       this.markPlaybackProgress();
       this.attemptPendingPlaybackRestore();
       this.renderHtmlSubtitleOverlayAtCurrentTime();
+      this.syncRotatedNativeSubtitles?.();
       this.updateUiTick();
     };
 
@@ -8904,6 +9312,7 @@ export const PlayerScreen = {
     };
 
     const onLoadedMetadata = () => {
+      this.noteStartupReadiness(video);
       setStartupStage(this.pendingPlaybackRestore ? "restoring" : "frame");
       this.updateLoadingVisibility();
       if (this.isStartupErrorVisible()) {
@@ -8930,6 +9339,7 @@ export const PlayerScreen = {
     };
 
     const onPlayable = () => {
+      this.noteStartupReadiness(video);
       setStartupStage(this.pendingPlaybackRestore ? "restoring" : "frame");
       if (this.isStartupErrorVisible()) {
         return;
@@ -9123,6 +9533,10 @@ export const PlayerScreen = {
   },
 
   unbindVideoEvents() {
+    this.startupReadiness = null;
+    this.playbackStartupDiagnosticCleanup?.();
+    this.playbackStartupDiagnosticCleanup = null;
+    this.playbackStartupDiagnostic = null;
     this.videoListeners.forEach(({ target, eventName, handler }) => {
       target?.removeEventListener?.(eventName, handler);
     });
@@ -9237,6 +9651,8 @@ export const PlayerScreen = {
       });
     }
 
+    if (Environment.isBrowser()) return this.getBrowserToolbarControls(base);
+
     base.push({
       action: "more",
       icon: "assets/icons/ic_player_more.svg",
@@ -9276,56 +9692,72 @@ export const PlayerScreen = {
     ];
   },
 
-  renderCompactBrowserMorePanel() {
-    const panel = this.uiRefs?.mobileMorePanel;
-    if (!panel) {
-      return;
-    }
-    const visible = this.isCompactBrowserPlayerToolbar() && this.moreActionsVisible;
-    panel.classList.toggle("hidden", !visible);
-    if (!visible) {
-      panel.innerHTML = "";
-      return;
-    }
+  getBrowserToolbarControls(base) {
+    const middle = base.slice(1);
+    if (this.browserOrientation?.mobile)
+      middle.push({
+        action: "rotate",
+        icon: "assets/icons/ic_player_rotate.svg",
+        title: "Rotate"
+      });
+    if (this.getPlaybackSpeedOptions().length > 1)
+      middle.push({
+        action: "speed",
+        label: this.getPlaybackSpeed() + "x",
+        title: "Playback speed"
+      });
+    middle.push({
+      action: "aspect",
+      icon: "assets/icons/ic_player_aspect_ratio.svg",
+      title: "Aspect Ratio"
+    });
+    if (this.canOpenInExternalPlayer())
+      middle.push({
+        action: "externalPlayer",
+        icon: "assets/icons/ic_player_external.svg",
+        title: "Play with external player"
+      });
+    const row = this.uiRefs?.root?.querySelector(".player-controls-row");
+    const right = this.uiRefs?.root?.querySelector(".player-controls-right");
+    const primary = this.uiRefs?.controlButtons?.querySelector(".is-primary");
+    const step =
+      typeof getComputedStyle === "function" && row
+        ? Number.parseFloat(getComputedStyle(row).getPropertyValue("--player-toolbar-step")) || 40
+        : 40;
+    const width = Math.max(
+      step * 3,
+      Number(row?.clientWidth || 400) -
+        Number(right?.offsetWidth || 220) -
+        Number(primary?.offsetWidth || 42) -
+        16
+    );
+    const result = paginateBrowserToolbar(middle, { width, step, page: this.browserToolbarPage });
+    this.browserToolbarPage = result.page;
+    return [
+      base[0],
+      ...(result.page > 0
+        ? [
+            {
+              action: "backFromMore",
+              icon: "assets/icons/ic_player_back.svg",
+              title: "Previous controls"
+            }
+          ]
+        : []),
+      ...result.actions,
+      ...(result.page < result.pages - 1
+        ? [{ action: "more", icon: "assets/icons/ic_player_more.svg", title: "Next controls" }]
+        : [])
+    ];
+  },
 
-    const { muted } = this.getDesktopVolumeState();
-    const speedAvailable = this.getPlaybackSpeedOptions().length > 1;
-    const pictureInPictureAvailable = this.isDesktopPictureInPictureSupported();
-    panel.innerHTML = `
-      <div class="player-mobile-more-title">${escapeHtml(t("player_more_actions_title", {}, "More Actions"))}</div>
-      <div class="player-mobile-more-actions" role="group" aria-label="${escapeHtml(t("player_more_actions_title", {}, "More Actions"))}">
-        <button class="player-mobile-more-action player-mobile-more-icon-action" type="button" tabindex="-1" data-player-desktop-action="mute"
-                title="${escapeHtml(muted ? "Unmute" : "Mute")}" aria-label="${escapeHtml(muted ? "Unmute" : "Mute")}">
-          <img class="player-desktop-tool-icon" data-player-desktop-mute-icon src="assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}" alt="" aria-hidden="true" />
-        </button>
-        ${
-          pictureInPictureAvailable
-            ? `<button class="player-mobile-more-action player-mobile-more-icon-action" type="button" tabindex="-1" data-player-desktop-action="picture-in-picture"
-                  title="Enter Picture-in-Picture" aria-label="Enter Picture-in-Picture">
-                <img class="player-desktop-tool-icon" src="assets/icons/ic_player_picture_in_picture.svg" alt="" aria-hidden="true" />
-              </button>`
-            : ""
-        }
-        ${
-          this.canOpenInExternalPlayer()
-            ? `<button class="player-mobile-more-action player-mobile-more-icon-action" type="button" tabindex="-1" data-player-desktop-action="external-player"
-                  title="Play with external player" aria-label="Play with external player">
-                <img class="player-desktop-tool-icon" src="assets/icons/ic_player_external.svg" alt="" aria-hidden="true" />
-              </button>`
-            : ""
-        }
-        ${
-          speedAvailable
-            ? `<button class="player-mobile-more-action player-control-btn" type="button" tabindex="-1" data-action="speed" title="${escapeHtml(t("player_playback_speed", {}, "Playback speed"))}">
-                <span>${escapeHtml(`${this.getPlaybackSpeed().toFixed(this.getPlaybackSpeed() % 1 ? 2 : 0)}x`)}</span>
-              </button>`
-            : ""
-        }
-        <button class="player-mobile-more-action player-mobile-more-icon-action player-control-btn" type="button" tabindex="-1" data-action="aspect" title="${escapeHtml(t("player_more_aspect_ratio", {}, "Aspect Ratio"))}" aria-label="${escapeHtml(t("player_more_aspect_ratio", {}, "Aspect Ratio"))}">
-          <span class="player-control-icon player-control-icon-mask" style="-webkit-mask-image:url('assets/icons/ic_player_aspect_ratio.svg');mask-image:url('assets/icons/ic_player_aspect_ratio.svg');" aria-hidden="true"></span>
-        </button>
-      </div>
-    `;
+  renderCompactBrowserMorePanel() {
+    // Browser actions now page inline; never leave an old floating panel open.
+    const panel = this.uiRefs?.mobileMorePanel;
+    if (panel) {
+      panel.classList.add("hidden");
+      panel.innerHTML = "";
+    }
   },
 
   getControlRenderSignature(controls = this.getControlDefinitions()) {
@@ -9557,6 +9989,7 @@ export const PlayerScreen = {
     }
     const controlsVisible = Boolean(this.controlsVisible) && !this.isExternalFrameMode();
     root.classList.toggle("controls-visible", controlsVisible);
+    this.updateBrowserNativeSubtitleOffset();
     const backButton = root.querySelector("[data-player-desktop-back]");
     if (backButton) {
       backButton.toggleAttribute("inert", !controlsVisible);
@@ -9572,8 +10005,8 @@ export const PlayerScreen = {
       return null;
     }
 
-    const rootRect = root.getBoundingClientRect?.();
-    const controlsRect = controlsBottom.getBoundingClientRect?.();
+    const rootRect = playerLocalRect(root, this.browserOrientation);
+    const controlsRect = playerLocalRect(controlsBottom, this.browserOrientation);
     if (!rootRect || !controlsRect) {
       return null;
     }
@@ -11463,8 +11896,45 @@ export const PlayerScreen = {
     // more truthful than waiting for ever.
     return true;
   },
+  noteStartupReadiness(video) {
+    const state = this.startupReadiness;
+    if (
+      !state ||
+      state.video !== video ||
+      video !== PlayerController.video ||
+      state.url !== this.activePlaybackUrl ||
+      this.hasPresentedPlaybackFrame ||
+      Number(video?.readyState || 0) < 1
+    )
+      return;
+    const errorCode = Number(
+      video?.error?.code || PlayerController.getLastPlaybackErrorCode?.() || 0
+    );
+    if (errorCode) return;
+    if (state.metadataAt == null) state.metadataAt = Date.now();
+    if (this.isStartupErrorVisible()) {
+      if (!state.timeoutError) return;
+      state.timeoutError = false;
+      state.metadataAt = Date.now();
+      this.clearStartupError();
+      this.failedPlaybackUrls?.delete(state.url);
+      const id = String(this.getCurrentStreamCandidate?.()?.id || "").trim();
+      if (id) this.failedPlaybackStreamIds?.delete(id);
+      this.loadingVisible = true;
+      this.enableStartupAudioGate({ allowPlayback: state.allowPlayback });
+      this.updateLoadingVisibility();
+    }
+    this.schedulePlaybackStallGuard();
+  },
+
   getPlaybackStallTimeoutMs({ startup = false } = {}) {
-    return startup ? 18000 : 9000;
+    if (!startup) return 9000;
+    const state = this?.startupReadiness;
+    if (!state) return 18000;
+    const metadataPending = state.metadataAt == null;
+    const budget = metadataPending ? 60000 : 18000;
+    const startedAt = metadataPending ? state.startedAt : state.metadataAt;
+    return Math.max(1, budget - Math.max(0, Date.now() - startedAt));
   },
 
   schedulePlaybackStallGuard({ timeoutMs: timeoutOverrideMs = null } = {}) {
@@ -11474,12 +11944,15 @@ export const PlayerScreen = {
     }
 
     const startup = !this.hasPresentedPlaybackFrame;
+    const sourceUrl = this.activePlaybackUrl;
+    const readiness = this.startupReadiness;
     const timeoutMs =
       Number.isFinite(Number(timeoutOverrideMs)) && Number(timeoutOverrideMs) > 0
         ? Number(timeoutOverrideMs)
         : this.getPlaybackStallTimeoutMs({ startup });
     this.playbackStallTimer = setTimeout(() => {
       this.playbackStallTimer = null;
+      if (sourceUrl !== this.activePlaybackUrl || readiness !== this.startupReadiness) return;
       if (this.isExternalFrameMode() || !this.loadingVisible || !this.activePlaybackUrl) {
         return;
       }
@@ -11509,6 +11982,10 @@ export const PlayerScreen = {
         typeof PlayerController.getPlaybackReadyState === "function"
           ? Number(PlayerController.getPlaybackReadyState() || 0)
           : Number(PlayerController.video?.readyState || 0);
+      if (startup && readiness && readiness.metadataAt == null && readyState > 0) {
+        this.noteStartupReadiness(PlayerController.video);
+        return;
+      }
       if (startup && this.markPlaybackPresentedAfterAdvance()) {
         this.loadingVisible = false;
         this.updateLoadingVisibility();
@@ -12212,6 +12689,7 @@ export const PlayerScreen = {
 
     let activatedIndex = -1;
     textTracks.forEach((textTrack, index) => {
+      if (textTrack.kind && !["subtitles", "captions", "forced"].includes(textTrack.kind)) return;
       const shouldShow = targetTrack ? textTrack === targetTrack : index === textTracks.length - 1;
       try {
         textTrack.mode = shouldShow ? "showing" : "disabled";
@@ -12246,6 +12724,12 @@ export const PlayerScreen = {
     if (!trackCount) {
       return 0;
     }
+
+    const mounted = new Set(
+      (this.externalTrackNodes || []).map((node) => node.track).filter(Boolean)
+    );
+    const firstAddon = textTracks.findIndex((track) => mounted.has(track));
+    if (firstAddon >= 0) return firstAddon;
 
     if (Number.isFinite(this.builtInSubtitleCount) && this.builtInSubtitleCount > 0) {
       return clamp(this.builtInSubtitleCount, 0, trackCount);
@@ -12301,9 +12785,19 @@ export const PlayerScreen = {
         : -1;
       this.selectedManifestSubtitleTrackId = null;
     } else {
-      this.selectedSubtitleTrackIndex = textTracks.findIndex(
-        (track) => track?.mode && track.mode !== "disabled"
+      const showingIndex = textTracks.findIndex(
+        (track) =>
+          track?.mode === "showing" &&
+          (!track.kind || ["subtitles", "captions", "forced"].includes(track.kind))
       );
+      const previous = textTracks[this.selectedSubtitleTrackIndex];
+      this.selectedSubtitleTrackIndex =
+        showingIndex >= 0
+          ? showingIndex
+          : previous?.mode === "hidden" &&
+              (!previous.kind || ["subtitles", "captions", "forced"].includes(previous.kind))
+            ? this.selectedSubtitleTrackIndex
+            : -1;
     }
 
     this.selectedAudioTrackIndex =
@@ -12323,7 +12817,6 @@ export const PlayerScreen = {
 
   getSubtitleEntries(tab = this.subtitleDialogTab) {
     const textTracks = this.getTextTracks();
-    const builtInBoundary = this.resolveBuiltInSubtitleBoundary(textTracks);
     const dashSubtitleTracks =
       typeof PlayerController.getDashTextTracks === "function"
         ? PlayerController.getDashTextTracks()
@@ -12340,8 +12833,13 @@ export const PlayerScreen = {
       typeof PlayerController.getSelectedHlsSubtitleTrackIndex === "function"
         ? PlayerController.getSelectedHlsSubtitleTrackIndex()
         : -1;
-    const builtInTracks = textTracks.filter((_, index) => index < builtInBoundary);
-    const addonTracks = textTracks.filter((_, index) => index >= builtInBoundary);
+    const addonTextTracks = new Set(
+      (this.externalTrackNodes || []).map((node) => node.track).filter(Boolean)
+    );
+    const nativeSelectionActive =
+      !this.selectedAddonSubtitleId && !this.selectedManifestSubtitleTrackId;
+    const builtInTracks = textTracks.filter((track) => !addonTextTracks.has(track));
+    const addonTracks = textTracks.filter((track) => addonTextTracks.has(track));
     const trackDiscoveryPending =
       this.isCurrentSourceAdaptiveManifest() &&
       (this.trackDiscoveryInProgress || this.subtitleLoading || this.manifestLoading);
@@ -12368,7 +12866,7 @@ export const PlayerScreen = {
               languageLabel: display.languageLabel,
               track,
               isForced: isForcedSubtitleTrack(track),
-              selected: index === selectedDashSubtitleTrack,
+              selected: nativeSelectionActive && index === selectedDashSubtitleTrack,
               trackIndex: null,
               dashSubtitleTrackIndex: index
             };
@@ -12397,7 +12895,7 @@ export const PlayerScreen = {
               languageLabel: display.languageLabel,
               track,
               isForced: isForcedSubtitleTrack(track),
-              selected: index === selectedHlsSubtitleTrack,
+              selected: nativeSelectionActive && index === selectedHlsSubtitleTrack,
               trackIndex: null,
               hlsSubtitleTrackIndex: index
             };
@@ -12413,21 +12911,27 @@ export const PlayerScreen = {
           selected: this.isSubtitleOffEntrySelected(this.selectedSubtitleTrackIndex),
           trackIndex: -1
         },
-        ...builtInTracks.map((track, index) => {
-          const display = formatSubtitleTrackDisplay(track, index);
-          return {
-            id: `subtitle-built-${index}`,
-            label: display.label,
-            language: display.language,
-            secondary: display.secondary,
-            languageKey: display.languageKey,
-            languageLabel: display.languageLabel,
-            track,
-            isForced: isForcedSubtitleTrack(track),
-            selected: index === this.selectedSubtitleTrackIndex,
-            trackIndex: index
-          };
-        }),
+        ...builtInTracks
+          .map((track) => {
+            const index = textTracks.indexOf(track);
+            const display = formatSubtitleTrackDisplay(track, index);
+            return {
+              id: `subtitle-built-${index}`,
+              label: display.label,
+              language: display.language,
+              secondary: display.secondary,
+              languageKey: display.languageKey,
+              languageLabel: display.languageLabel,
+              track,
+              isForced: isForcedSubtitleTrack(track),
+              selected: nativeSelectionActive && index === this.selectedSubtitleTrackIndex,
+              trackIndex: index
+            };
+          })
+          .filter(
+            (entry) =>
+              !entry.track?.kind || ["subtitles", "captions", "forced"].includes(entry.track.kind)
+          ),
         ...this.manifestSubtitleTracks.map((track, index) => {
           const display = formatSubtitleTrackDisplay(track, index);
           return {
@@ -12439,7 +12943,8 @@ export const PlayerScreen = {
             languageLabel: display.languageLabel,
             track,
             isForced: isForcedSubtitleTrack(track),
-            selected: this.selectedManifestSubtitleTrackId === track.id,
+            selected:
+              !this.selectedAddonSubtitleId && this.selectedManifestSubtitleTrackId === track.id,
             trackIndex: null,
             manifestSubtitleTrackId: track.id
           };
@@ -12486,7 +12991,7 @@ export const PlayerScreen = {
       }
       if (addonTracks.length) {
         return addonTracks.map((track, relativeIndex) => {
-          const absoluteIndex = builtInBoundary + relativeIndex;
+          const absoluteIndex = textTracks.indexOf(track);
           const display = formatSubtitleTrackDisplay(track, relativeIndex);
           return {
             id: `subtitle-addon-${absoluteIndex}`,
@@ -12644,6 +13149,36 @@ export const PlayerScreen = {
     return options;
   },
 
+  getSubtitleMenuOptionItems() {
+    const options = this.collectSubtitleOptionItems();
+    if (!Environment.isBrowser()) return options;
+    // AVFoundation exposes full and forced-only playback options separately.
+    // WebKit's caption menu omits forced-only system choices from normal selection:
+    // Source/WebCore/page/CaptionUserPreferencesMediaAF.cpp sortedTrackListForMenu.
+    // Keep the raw collection intact for startup forced selection and native indices.
+    const completeLanguages = new Set(
+      options
+        .filter(
+          (option) =>
+            option.sourceType === "internal" &&
+            !option.isForced &&
+            ["subtitles", "captions"].includes(option.entry?.track?.kind)
+        )
+        .map((option) => normalizeTrackLanguageCode(option.entry.track.language))
+        .filter(Boolean)
+    );
+    return options.filter((option) => {
+      if (
+        option.selected ||
+        option.sourceType !== "internal" ||
+        option.entry?.track?.kind !== "forced"
+      )
+        return true;
+      const language = normalizeTrackLanguageCode(option.entry.track.language);
+      return !language || !completeLanguages.has(language);
+    });
+  },
+
   getSelectedSubtitleLanguageKey() {
     const selected = this.collectSubtitleOptionItems().find((entry) => entry.selected);
     return selected?.languageKey || SUBTITLE_LANGUAGE_OFF_KEY;
@@ -12654,7 +13189,7 @@ export const PlayerScreen = {
     if (cachedLanguageRail) {
       return cachedLanguageRail;
     }
-    const options = this.collectSubtitleOptionItems();
+    const options = this.getSubtitleMenuOptionItems?.() || this.collectSubtitleOptionItems();
     const selectedLanguageKey = this.getSelectedSubtitleLanguageKey();
     const groups = new Map();
     options.forEach((option) => {
@@ -12810,9 +13345,13 @@ export const PlayerScreen = {
     let nextScrollTop = viewTop;
 
     const railRect =
-      typeof rail.getBoundingClientRect === "function" ? rail.getBoundingClientRect() : null;
+      typeof rail.getBoundingClientRect === "function"
+        ? playerLocalRect(rail, this.browserOrientation)
+        : null;
     const nodeRect =
-      typeof node.getBoundingClientRect === "function" ? node.getBoundingClientRect() : null;
+      typeof node.getBoundingClientRect === "function"
+        ? playerLocalRect(node, this.browserOrientation)
+        : null;
     if (railRect && nodeRect && Number.isFinite(railRect.top) && Number.isFinite(nodeRect.top)) {
       if (center) {
         nextScrollTop =
@@ -12858,6 +13397,7 @@ export const PlayerScreen = {
   },
 
   scrollSubtitleDialogIntoView() {
+    if (Environment.isBrowser() && !this.subtitleKeyboardNavigation) return;
     const dialog = this.uiRefs?.subtitleDialog;
     if (!dialog || !this.subtitleDialogVisible) {
       return;
@@ -12956,7 +13496,9 @@ export const PlayerScreen = {
     }
     const sourceRank = { internal: 0, addon: 1, off: 2 };
     const locale = typeof I18n.getLocale === "function" ? I18n.getLocale() : undefined;
-    const filteredOptions = this.collectSubtitleOptionItems()
+    const filteredOptions = (
+      this.getSubtitleMenuOptionItems?.() || this.collectSubtitleOptionItems()
+    )
       .filter(
         (entry) =>
           entry.languageKey === normalizedLanguageKey &&
@@ -13738,6 +14280,7 @@ export const PlayerScreen = {
     return String(side || "").toLowerCase() === "plus" ? 1 : -1;
   },
   openSubtitleDialog() {
+    this.subtitleKeyboardNavigation = false;
     this.cancelSeekPreview({ commit: false });
     this.syncTrackState();
     this.subtitleDialogVisible = true;
@@ -14005,8 +14548,8 @@ export const PlayerScreen = {
     track.src = resolvedSubtitleUrl;
     track.default = true;
     track.setAttribute("data-addon-subtitle-id", subtitleId);
-    video.appendChild(track);
     this.externalTrackNodes.push(track);
+    video.appendChild(track);
 
     const failOfflineSubtitleLoad = () => {
       if (!subtitle.isOffline || !isCurrentSelection()) {
@@ -14118,6 +14661,10 @@ export const PlayerScreen = {
     const pointerScrollTransaction = this.hasActiveSubtitlePointerScrollTransaction()
       ? this.subtitlePointerScrollTransaction
       : null;
+    const pointerMode = Environment.isBrowser() && !this.subtitleKeyboardNavigation;
+    const railScroll = pointerMode
+      ? Array.from(dialog.querySelectorAll(".player-subtitle-rail"), (rail) => rail.scrollTop)
+      : [];
 
     const languages = this.getSubtitleLanguageRailItems();
     this.subtitleLanguageRailIndex = clamp(
@@ -14166,7 +14713,7 @@ export const PlayerScreen = {
           ${languages
             .map(
               (item, index) => `
-          <div class="player-dialog-item focusable${item.selected ? " selected" : ""}${this.subtitleFocusedRail === "language" && index === this.subtitleLanguageRailIndex ? " focused" : ""}" data-subtitle-rail="language" data-subtitle-index="${index}">
+          <div class="player-dialog-item focusable${item.selected ? " selected" : ""}${!pointerMode && this.subtitleFocusedRail === "language" && index === this.subtitleLanguageRailIndex ? " focused" : ""}" data-subtitle-rail="language" data-subtitle-index="${index}">
               <div class="player-dialog-item-main">${escapeHtml(item.label)}${item.count > 0 ? `<span class="player-subtitle-language-count">${item.count}</span>` : ""}</div>
               <div class="player-dialog-item-sub">${item.key === SUBTITLE_LANGUAGE_OFF_KEY && subtitleLoadingVisible ? escapeHtml(t("subtitle_loading_builtin", {}, "Loading subtitle tracks...")) : ""}</div>
             </div>
@@ -14180,7 +14727,7 @@ export const PlayerScreen = {
               ? options
                   .map(
                     (item, index) => `
-            <div class="player-dialog-item focusable${item.selected ? " selected" : ""}${this.subtitleFocusedRail === "options" && index === this.subtitleOptionRailIndex ? " focused" : ""}" data-subtitle-rail="options" data-subtitle-index="${index}">
+            <div class="player-dialog-item focusable${item.selected ? " selected" : ""}${!pointerMode && this.subtitleFocusedRail === "options" && index === this.subtitleOptionRailIndex ? " focused" : ""}" data-subtitle-rail="options" data-subtitle-index="${index}">
               <div class="player-subtitle-option-copy">
                 <span class="player-subtitle-source-chip">${escapeHtml(item.sourceLabel || "")}</span>
                 <div class="player-dialog-item-main">${escapeHtml(item.title || "")}</div>
@@ -14198,22 +14745,22 @@ export const PlayerScreen = {
           ${styleItems
             .map(
               (item, index) => `
-            <div class="player-dialog-item player-dialog-style-item${item.id === "reset" ? " player-dialog-style-reset" : ""}${item.disabled ? " disabled" : ""}${this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex ? " focused" : ""}" data-subtitle-rail="style" data-subtitle-index="${index}" aria-disabled="${item.disabled ? "true" : "false"}">
+            <div class="player-dialog-item player-dialog-style-item${item.id === "reset" ? " player-dialog-style-reset" : ""}${item.disabled ? " disabled" : ""}${!pointerMode && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex ? " focused" : ""}" data-subtitle-rail="style" data-subtitle-index="${index}" aria-disabled="${item.disabled ? "true" : "false"}">
               ${
                 item.id === "reset"
                   ? `
                     <div class="player-dialog-item-center">
                       <div class="player-dialog-item-main">${escapeHtml(item.label)}</div>
                     </div>
-                    <button class="${Environment.isBrowser() ? "player-dialog-reset-button" : "player-dialog-step player-dialog-step-plus player-dialog-reset"}${item.disabled ? "" : " focusable"}${!item.disabled && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "reset" ? " focused" : ""}" type="button" data-subtitle-style-action="reset" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("subtitle_style_reset_action", {}, "Reset Defaults"))}"${item.disabled ? " disabled" : ""}>${escapeHtml(t("subtitle_style_reset_action", {}, "Reset Defaults"))}</button>
+                    <button class="${Environment.isBrowser() ? "player-dialog-reset-button" : "player-dialog-step player-dialog-step-plus player-dialog-reset"}${item.disabled ? "" : " focusable"}${!item.disabled && !pointerMode && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "reset" ? " focused" : ""}" type="button" data-subtitle-style-action="reset" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("subtitle_style_reset_action", {}, "Reset Defaults"))}"${item.disabled ? " disabled" : ""}>${escapeHtml(t("subtitle_style_reset_action", {}, "Reset Defaults"))}</button>
                   `
                   : `
-                    <button class="player-dialog-step player-dialog-step-minus${item.disabled ? "" : " focusable"}${!item.disabled && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "minus" ? " focused" : ""}" type="button" data-subtitle-style-action="decrease" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(`${item.label} -`)}"${item.disabled ? " disabled" : ""}>&#8722;</button>
+                    <button class="player-dialog-step player-dialog-step-minus${item.disabled ? "" : " focusable"}${!item.disabled && !pointerMode && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "minus" ? " focused" : ""}" type="button" data-subtitle-style-action="decrease" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(`${item.label} -`)}"${item.disabled ? " disabled" : ""}>&#8722;</button>
                     <div class="player-dialog-item-center">
                       <div class="player-dialog-item-main">${escapeHtml(item.label)}</div>
                       <div class="player-dialog-item-sub">${escapeHtml(item.value || "")}</div>
                     </div>
-                    <button class="player-dialog-step player-dialog-step-plus${item.disabled ? "" : " focusable"}${!item.disabled && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "plus" ? " focused" : ""}" type="button" data-subtitle-style-action="increase" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(`${item.label} +`)}"${item.disabled ? " disabled" : ""}>&#43;</button>
+                    <button class="player-dialog-step player-dialog-step-plus${item.disabled ? "" : " focusable"}${!item.disabled && !pointerMode && this.subtitleFocusedRail === "style" && index === this.subtitleStyleRailIndex && focusedStyleSide === "plus" ? " focused" : ""}" type="button" data-subtitle-style-action="increase" data-subtitle-rail="style" data-subtitle-index="${index}" data-style-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(`${item.label} +`)}"${item.disabled ? " disabled" : ""}>&#43;</button>
                   `
               }
             </div>
@@ -14235,11 +14782,18 @@ export const PlayerScreen = {
       }
       return;
     }
+    if (pointerMode) {
+      dialog.querySelectorAll(".player-subtitle-rail").forEach((rail, index) => {
+        rail.scrollTop = railScroll[index] || 0;
+      });
+      return;
+    }
     this.scrollSubtitleDialogIntoView();
     this.scheduleSubtitleDialogScrollIntoView();
   },
 
   handleSubtitleDialogKey(event) {
+    this.subtitleKeyboardNavigation = !event?.fromPointer;
     const keyCode = Number(event?.keyCode || 0);
     const languages = this.getSubtitleLanguageRailItems();
     const activeLanguage =
@@ -15717,8 +16271,12 @@ export const PlayerScreen = {
               )
             )
           };
-    const viewportWidth = viewport.width;
-    const viewportHeight = viewport.height;
+    const viewportWidth = this.browserOrientation?.mobile
+      ? this.browserOrientation.width
+      : viewport.width;
+    const viewportHeight = this.browserOrientation?.mobile
+      ? this.browserOrientation.height
+      : viewport.height;
     if (objectFit === "fill") {
       return {
         x: 0,
@@ -16431,8 +16989,8 @@ export const PlayerScreen = {
       if (!container || !target) {
         return;
       }
-      const containerRect = container.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
+      const containerRect = playerLocalRect(container, this.browserOrientation);
+      const targetRect = playerLocalRect(target, this.browserOrientation);
       if (targetRect.top < containerRect.top + padding) {
         container.scrollTop -= containerRect.top + padding - targetRect.top;
       } else if (targetRect.bottom > containerRect.bottom - padding) {
@@ -16444,8 +17002,8 @@ export const PlayerScreen = {
       if (!container || !target) {
         return;
       }
-      const containerRect = container.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
+      const containerRect = playerLocalRect(container, this.browserOrientation);
+      const targetRect = playerLocalRect(target, this.browserOrientation);
       if (targetRect.left < containerRect.left + padding) {
         container.scrollLeft -= containerRect.left + padding - targetRect.left;
       } else if (targetRect.right > containerRect.right - padding) {
@@ -16786,7 +17344,12 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
           streamCandidates: streamItems,
           preferredStreamId: bestStreamCandidate.id || null,
           playbackSourceContext: this.getPlaybackSourceContext(bestStreamCandidate),
-          returnToStreamOnBack: false,
+          returnToStreamOnBack: this.shouldReturnToStreamOnBack(),
+          handoffReturnRoute:
+            this.params?.handoffReturnRoute ||
+            (this.shouldReturnToStreamOnBack() ? "stream" : "detail"),
+          streamRouteParams: this.params?.streamRouteParams || null,
+          fromDetailRoute: this.params?.fromDetailRoute || false,
           nextEpisodeVideoId: nextEpisode?.id || null,
           nextEpisodeLabel: nextEpisode ? `S${nextEpisode.season}E${nextEpisode.episode}` : null,
           nextEpisodeSeason: nextEpisode?.season ?? null,
@@ -16920,8 +17483,8 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       track.src = subtitle.url;
       track.default = false;
       track.setAttribute("data-addon-subtitle-id", subtitleId);
-      video.appendChild(track);
       this.externalTrackNodes.push(track);
+      video.appendChild(track);
     });
   },
   moveControlFocus(delta) {
@@ -17017,6 +17580,25 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       return;
     }
 
+    if (Environment.isBrowser() && (action === "more" || action === "backFromMore")) {
+      this.browserToolbarPage = Math.max(
+        0,
+        Number(this.browserToolbarPage || 0) + (action === "more" ? 1 : -1)
+      );
+      this.renderControlButtons();
+      this.resetControlsAutoHide();
+      return;
+    }
+    if (action === "rotate") {
+      this.browserOrientation?.toggle();
+      this.params.playerOrientationPreference = this.browserOrientation?.preference || "landscape";
+      this.renderControlButtons();
+      return;
+    }
+    if (action === "externalPlayer") {
+      void this.openExternalPlayerChooser();
+      return;
+    }
     if (action === "more") {
       this.stickyProgressFocus = false;
       const compactBrowserToolbar = this.isCompactBrowserPlayerToolbar();
@@ -17058,10 +17640,6 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     }
 
     if (action === "aspect") {
-      if (this.isCompactBrowserPlayerToolbar()) {
-        this.moreActionsVisible = false;
-        this.renderControlButtons();
-      }
       this.cycleAspectMode();
       return;
     }
@@ -17114,6 +17692,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     }
 
     const subtitleNode = target?.closest?.("[data-subtitle-rail]");
+    if (subtitleNode && Environment.isBrowser()) this.subtitleKeyboardNavigation = false;
     if (subtitleNode && this.subtitleDialogVisible) {
       this.subtitleFocusedRail = subtitleNode.dataset.subtitleRail || "language";
       const index = Number(subtitleNode.dataset.subtitleIndex || 0);
@@ -17218,7 +17797,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     )
       return;
     content.style.transform = "none";
-    const rect = overlay.getBoundingClientRect();
+    const rect = playerLocalRect(overlay, this.browserOrientation);
     const style = getComputedStyle(overlay);
     const top = Number.parseFloat(style.paddingTop) || 84;
     const bottom = Number.parseFloat(style.paddingBottom) || 12;
@@ -17240,7 +17819,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     if (!preview) return;
     const shell = event?.target?.closest?.(".player-progress-shell");
     const duration = this.getPlaybackDurationSeconds();
-    const rect = shell?.getBoundingClientRect?.();
+    const rect = playerLocalRect(shell, this.browserOrientation);
     const visible = Boolean(
       event &&
       (!event.pointerType || event.pointerType === "mouse") &&
@@ -17252,19 +17831,23 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     );
     preview.classList.toggle("hidden", !visible);
     if (!visible) return;
-    const ratio = clamp((Number(event.clientX) - rect.left) / rect.width, 0, 1);
+    const ratio = clamp(
+      (playerLocalPoint(event, this.browserOrientation).x - rect.left) / rect.width,
+      0,
+      1
+    );
     preview.textContent = formatTime(duration * ratio);
     preview.style.left = clamp(ratio * rect.width, 28, Math.max(28, rect.width - 28)) + "px";
   },
 
   seekProgressFromPointer(event, target) {
     const shell = target?.closest?.(".player-progress-shell") || this.uiRefs?.progressShell;
-    const rect = shell?.getBoundingClientRect?.();
+    const rect = playerLocalRect(shell, this.browserOrientation);
     const duration = this.getPlaybackDurationSeconds();
     if (!rect || rect.width <= 0 || !Number.isFinite(duration) || duration <= 0) {
       return false;
     }
-    const x = Number(event?.clientX ?? rect.left);
+    const x = playerLocalPoint(event, this.browserOrientation).x;
     const ratio = clamp((x - rect.left) / rect.width, 0, 1);
     this.seekPreviewSeconds = null;
     this.seekRepeatCount = 0;
@@ -17399,7 +17982,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       if (!isOptionSelection) {
         this.cancelSubtitlePointerScrollTransaction();
       }
-      const handled = this.handleSubtitleDialogKey({ keyCode: 13 });
+      const handled = this.handleSubtitleDialogKey({ keyCode: 13, fromPointer: true });
       if (isOptionSelection && !this.subtitlePointerScrollTransaction?.selectionToken) {
         this.cancelSubtitlePointerScrollTransaction();
       }
@@ -18395,6 +18978,8 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
         void this.exitDesktopPictureInPicture().catch(() => {});
       }
       this.unbindDesktopPlayerPointerBridge();
+      this.browserOrientation?.destroy();
+      this.browserOrientation = null;
       this.playerMountToken = Number(this.playerMountToken || 0) + 1;
       this.nextEpisodeLaunchToken = Number(this.nextEpisodeLaunchToken || 0) + 1;
       this.nextEpisodeLaunching = false;

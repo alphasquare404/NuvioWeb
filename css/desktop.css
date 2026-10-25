@@ -20767,7 +20767,7 @@ html[data-layout="mobile"]
   grid-template-columns: 44px minmax(0,1fr) 44px;
   align-items: start;
   gap: 4px;
-  padding: calc(var(--browser-safe-area-top) + 16px) calc(var(--browser-safe-area-right) + 12px) 12px calc(var(--browser-safe-area-left) + 12px);
+  padding: calc(var(--browser-safe-area-top) + 16px) calc(var(--player-drawer-safe-right, var(--browser-safe-area-right)) + var(--player-drawer-content-padding-right, var(--player-drawer-content-padding, 12px))) 12px calc(var(--player-drawer-safe-left, var(--browser-safe-area-left)) + var(--player-drawer-content-padding, 12px));
 }
 .desktop-browser #player .player-drawer-back-slot,
 .desktop-browser #player .player-drawer-close-slot { display: flex; justify-content: center; }
@@ -20798,7 +20798,7 @@ html[data-layout="mobile"]
   cursor: pointer;
 }
 .desktop-browser #player .player-drawer-icon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.desktop-browser #player .player-drawer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 8px calc(var(--browser-safe-area-right) + 12px) 12px calc(var(--browser-safe-area-left) + 12px); }
+.desktop-browser #player .player-drawer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 8px calc(var(--player-drawer-safe-right, var(--browser-safe-area-right)) + var(--player-drawer-content-padding-right, var(--player-drawer-content-padding, 12px))) 12px calc(var(--player-drawer-safe-left, var(--browser-safe-area-left)) + var(--player-drawer-content-padding, 12px)); }
 .desktop-browser #player .player-drawer-section-title { flex: 0 0 auto; font-size: 15px; line-height: 1.3; font-weight: 650; }
 .desktop-browser #player .player-drawer-filter-slot { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 72%; }
 .desktop-browser #player #episodeSidePanel .player-drawer-picker,
@@ -20809,7 +20809,7 @@ html[data-layout="mobile"]
 .desktop-browser #player #episodeSidePanel .player-drawer-picker.season { padding: 9px 10px; }
 .desktop-browser #player #episodeSidePanel .player-episode-list,
 .desktop-browser #player #episodeSidePanel .player-episode-stream-list,
-.desktop-browser #player #playerSourcesPanel .player-sources-list { flex: 1 1 auto; min-height: 0; margin: 0; padding: 12px calc(var(--browser-safe-area-right) + 12px) calc(var(--browser-safe-area-bottom) + 12px) calc(var(--browser-safe-area-left) + 12px); overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 12px; }
+.desktop-browser #player #playerSourcesPanel .player-sources-list { flex: 1 1 auto; min-height: 0; margin: 0; padding: 12px calc(var(--player-drawer-safe-right, var(--browser-safe-area-right)) + var(--player-drawer-content-padding-right, var(--player-drawer-content-padding, 12px))) calc(var(--browser-safe-area-bottom) + 12px) calc(var(--player-drawer-safe-left, var(--browser-safe-area-left)) + var(--player-drawer-content-padding, 12px)); overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 12px; }
 .desktop-browser #player .player-drawer-picker:focus-within { border-color: var(--secondary-color); }
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser #player #episodeSidePanel .player-drawer-icon:hover,
@@ -20817,3 +20817,298 @@ html[data-layout="mobile"]
 }
 .desktop-browser #player #episodeSidePanel .player-drawer-icon svg,
 .desktop-browser #player #playerSourcesPanel .player-drawer-icon svg { width: 24px; height: 24px; }
+
+/* Browser player notices share the pull-to-refresh capsule scale. */
+.desktop-browser #player .player-aspect-toast {
+  top: max(10px, var(--browser-safe-area-top));
+  z-index: 60;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(420px, calc(100% - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 999px;
+  background: rgba(25, 25, 29, .94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+  color: rgba(255, 255, 255, .94);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Track sections retain their own scroll area, with visible separators. */
+.desktop-browser #player .player-subtitle-modal,
+.desktop-browser #player .player-audio-modal,
+.desktop-browser #player .player-speed-modal { box-sizing: border-box; }
+.desktop-browser #player .player-subtitle-overlay-grid {
+  grid-template-columns: minmax(100px, .7fr) minmax(0, 1.2fr) minmax(150px, .95fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.desktop-browser #player .player-subtitle-rail + .player-subtitle-rail,
+.desktop-browser #player .player-audio-controls-list {
+  border-left: 1px solid rgba(255, 255, 255, .14);
+  padding-left: 12px;
+}
+@media (max-width: 640px) and (orientation: portrait) {
+  .desktop-browser #player .player-subtitle-overlay-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, auto) minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .desktop-browser #player .player-subtitle-language-rail {
+    max-height: 100px;
+    align-self: start;
+  }
+  .desktop-browser #player .player-subtitle-rail + .player-subtitle-rail,
+  .desktop-browser #player .player-audio-controls-list {
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, .14);
+    padding-left: 3px;
+    padding-top: 10px;
+  }
+}
+@media (orientation: landscape) and (max-height: 600px) and (pointer: coarse),
+       (orientation: landscape) and (max-height: 500px) and (max-width: 1023px) {
+  .desktop-browser #player #episodeSidePanel,
+  .desktop-browser #player #playerSourcesPanel {
+    right: 0;
+    width: min(480px, 100%);
+    --player-drawer-safe-left: 0px;
+    --player-drawer-safe-right: var(--browser-safe-area-right);
+  }
+  .desktop-browser #player .player-audio-overlay-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(130px, .65fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+.desktop-browser #player .player-subtitle-modal,
+.desktop-browser #player .player-audio-modal,
+.desktop-browser #player .player-speed-modal {
+  max-width: calc(100% - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px);
+}
+@media (orientation: landscape) {
+  .desktop-browser #player .player-subtitle-language-rail { display: flex; }
+  .desktop-browser #player .player-audio-controls-list { max-height: none; }
+}
+
+/* One playback row: fixed play button and device tools, paged middle actions. */
+.player-controls-right { display: contents; }
+.desktop-browser #player .player-control-icon,
+.desktop-browser #player .player-control-btn.is-primary .player-control-icon,
+.desktop-browser #player img.player-desktop-tool-icon { width: var(--player-toolbar-icon-size); height: var(--player-toolbar-icon-size); }
+.desktop-browser #player .player-controls-row {
+  --player-toolbar-button-size: 36px; --player-toolbar-icon-size: 24px; --player-toolbar-step: 40px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.desktop-browser #player .player-control-buttons {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+.desktop-browser #player .player-control-btn { flex: 0 0 var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+.desktop-browser #player .player-control-btn.is-primary { flex: 0 0 var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); margin-right: 4px; }
+.desktop-browser #player .player-controls-right { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.desktop-browser #player .player-time-label { order: 0; margin: 0; white-space: nowrap; font-size: 12px; line-height: 1.2; }
+.desktop-browser #player .player-desktop-playback-tools { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px; margin: 0; }
+.desktop-browser #player .player-desktop-volume { display: block; width: 64px; min-width: 0; }
+.desktop-browser #player .player-desktop-playback-tools .player-desktop-tool-button { display: inline-flex; width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+.desktop-browser #player .player-desktop-playback-tools .player-desktop-tool-button[hidden] { display: none; }
+.desktop-browser #player .player-desktop-volume[hidden] { display: none; }
+.desktop-browser #player .player-desktop-volume:disabled { opacity: .35; cursor: not-allowed; }
+.desktop-browser #player .player-pause-overlay-ends-at { font-size: clamp(12px, 1vw, 16px); line-height: 1.3; color: rgba(255,255,255,.65); margin-top: 3px; }
+.desktop-browser #player .player-desktop-back-button {
+  top: calc(var(--browser-floating-nav-top) + (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2);
+  left: clamp(20px, 3.4vw, 64px);
+}
+.desktop-browser #player .controls-visible .player-html-subtitle-default { bottom: max(8vh, var(--player-action-controls-open-bottom)); }
+.desktop-browser .nuvio-dialog-actions.desktop-external-player-actions { flex-wrap: nowrap; overflow-x: hidden; overflow-y: auto; min-height: 0; align-items: stretch; }
+.desktop-browser .desktop-external-player-dialog { box-sizing: border-box; overflow-x: hidden; max-width: calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px) !important; }
+.desktop-browser .desktop-external-player-actions .nuvio-dialog-button { flex-shrink: 0; overflow-wrap: anywhere; }
+@media (max-width: 960px) {
+  html[data-layout="mobile"] .desktop-browser #player .player-desktop-back-button { left: calc(8px + var(--browser-safe-area-left)); width: var(--browser-mobile-control-size); height: var(--browser-mobile-control-size); }
+  html[data-layout="mobile"] .desktop-browser #player .player-desktop-back-button[data-back-style="stream"] { top: calc(var(--browser-safe-area-top) + 17px); left: calc(var(--browser-safe-area-left) + 12px); width: 44px; height: 44px; border: 0; border-radius: 0; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (max-width: 600px) {
+  .desktop-browser #player .player-controls-row { --player-toolbar-button-size: 26px; --player-toolbar-icon-size: 20px; --player-toolbar-step: 28px; gap: 4px; }
+  .desktop-browser #player .player-control-buttons { gap: 2px; }
+  .desktop-browser #player .player-control-btn { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+  .desktop-browser #player .player-control-btn.is-primary { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); margin-right: 0; }
+  .desktop-browser #player .player-control-icon { width: var(--player-toolbar-icon-size); height: var(--player-toolbar-icon-size); }
+  .desktop-browser #player .player-controls-right { gap: 3px; }
+  .desktop-browser #player .player-time-label { font-size: 10px; }
+  .desktop-browser #player .player-desktop-playback-tools { gap: 2px; }
+  .desktop-browser #player .player-desktop-playback-tools .player-desktop-tool-button { width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+  .desktop-browser #player .player-desktop-tool-icon { width: var(--player-toolbar-icon-size); height: var(--player-toolbar-icon-size); }
+  .desktop-browser #player .player-desktop-volume { width: 26px; }
+}
+@media (max-width: 360px) {
+  .desktop-browser #player .player-controls-row { --player-toolbar-button-size: 24px; --player-toolbar-icon-size: 18px; --player-toolbar-step: 26px; }
+  .desktop-browser #player .player-control-btn { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+  .desktop-browser #player .player-control-btn.is-primary { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+  .desktop-browser #player .player-desktop-playback-tools .player-desktop-tool-button { width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+  .desktop-browser #player .player-desktop-volume { width: 24px; }
+  .desktop-browser #player .player-time-label { font-size: 9px; }
+}
+
+/* A local canvas keeps playback in the chosen orientation when OS locking is denied. */
+.desktop-browser #player.browser-player-rotated {
+  position: fixed !important;
+  top: var(--player-canvas-top, 0px) !important;
+  left: var(--player-canvas-left) !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: var(--player-canvas-width) !important;
+  height: var(--player-canvas-height) !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  max-width: none;
+  max-height: none;
+  transform: rotate(var(--player-canvas-rotation, 90deg));
+  transform-origin: 0 0;
+}
+.desktop-browser #player.browser-player-rotated #playerUiRoot { width: 100%; height: 100%; min-height: 0; max-height: none; }
+.browser-player-stage-rotated > .nuvio-dialog-backdrop {
+  position: fixed;
+  inset: auto;
+  top: var(--player-canvas-top, 0px);
+  left: var(--player-canvas-left);
+  width: var(--player-canvas-width);
+  height: var(--player-canvas-height);
+  box-sizing: border-box;
+  transform: rotate(var(--player-canvas-rotation, 90deg));
+  transform-origin: 0 0;
+}
+.desktop-browser .desktop-external-player-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(480px, calc(var(--player-canvas-width, 100vw) - 24px)) !important;
+  max-width: calc(var(--player-canvas-width, 100vw) - 24px) !important;
+  max-height: calc(var(--player-canvas-height, 100dvh) - 24px) !important;
+}
+.desktop-browser .desktop-external-player-dialog > :not(.desktop-external-player-actions) { flex-shrink: 0; }
+.desktop-browser .desktop-external-player-actions { flex: 1 1 auto; }
+.desktop-browser #player[data-player-orientation="landscape"] .player-subtitle-modal { width: min(760px, calc(100% - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)); }
+.desktop-browser #player[data-player-orientation="landscape"] .player-audio-modal { width: min(540px, calc(100% - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)); }
+.desktop-browser #player[data-player-orientation="landscape"] .player-subtitle-overlay-grid { display: grid; grid-template-columns: minmax(100px, .7fr) minmax(0, 1.2fr) minmax(150px, .95fr); grid-template-rows: minmax(0, 1fr); }
+.desktop-browser #player[data-player-orientation="landscape"] .player-subtitle-language-rail { display: flex; max-height: none; align-self: stretch; }
+.desktop-browser #player[data-player-orientation="landscape"] .player-subtitle-rail + .player-subtitle-rail,
+.desktop-browser #player[data-player-orientation="landscape"] .player-audio-controls-list { border-top: 0; border-left: 1px solid rgba(255,255,255,.14); padding-top: 0; padding-left: 12px; max-height: none; }
+.desktop-browser #player[data-player-orientation="landscape"] .player-audio-overlay-grid { grid-template-columns: minmax(0, 1fr) minmax(130px, .65fr); grid-template-rows: minmax(0, 1fr); }
+.desktop-browser #player[data-player-orientation="landscape"] #episodeSidePanel,
+.desktop-browser #player[data-player-orientation="landscape"] #playerSourcesPanel { right: 0; width: min(480px, 100%); height: 100%; max-height: 100%; --player-drawer-content-padding: 12px; --player-drawer-content-padding-right: 0px; --player-drawer-safe-left: 0px; --player-drawer-safe-right: var(--browser-safe-area-right); }
+
+/* The video owns swipe seeking; panels keep their native scroll gestures. */
+.desktop-browser #player video { touch-action: none; }
+.desktop-browser #player.browser-player-rotated { touch-action: auto; }
+
+/* Rotated panels scroll along their local vertical axis, not the screen axis. */
+.browser-player-rotated .player-subtitle-rail,
+.browser-player-rotated .player-audio-track-list,
+.browser-player-rotated .player-audio-controls-list,
+.browser-player-rotated .player-dialog-list,
+.browser-player-rotated .player-sources-list,
+.browser-player-rotated .player-episode-list,
+.browser-player-rotated .player-episode-stream-list,
+.browser-player-stage-rotated .desktop-external-player-actions { touch-action: none; }
+
+/* Toolbar sizing follows the local canvas, including a manually rotated portrait. */
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-controls-row { --player-toolbar-button-size: 36px; --player-toolbar-icon-size: 24px; --player-toolbar-step: 40px; gap: 8px; }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-control-buttons { gap: 4px; }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-control-btn { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-control-btn.is-primary { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); margin-right: 4px; }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-control-icon { width: var(--player-toolbar-icon-size); height: var(--player-toolbar-icon-size); }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-controls-right { gap: 8px; }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-time-label { font-size: 12px; }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-desktop-playback-tools { gap: 4px; }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-desktop-playback-tools .player-desktop-tool-button { width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-desktop-tool-icon { width: var(--player-toolbar-icon-size); height: var(--player-toolbar-icon-size); }
+.desktop-browser #player[data-player-toolbar-size="regular"] .player-desktop-volume { width: 64px; }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-controls-row,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-controls-row { --player-toolbar-button-size: 26px; --player-toolbar-icon-size: 20px; --player-toolbar-step: 28px; gap: 4px; }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-control-buttons,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-control-buttons { gap: 2px; }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-control-btn,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-control-btn { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-control-btn.is-primary,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-control-btn.is-primary { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); margin-right: 0; }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-control-icon,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-control-icon { width: var(--player-toolbar-icon-size); height: var(--player-toolbar-icon-size); }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-controls-right,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-controls-right { gap: 3px; }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-time-label,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-time-label { font-size: 10px; }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-desktop-playback-tools,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-desktop-playback-tools { gap: 2px; }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-desktop-playback-tools .player-desktop-tool-button,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-desktop-playback-tools .player-desktop-tool-button { width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-desktop-tool-icon,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-desktop-tool-icon { width: var(--player-toolbar-icon-size); height: var(--player-toolbar-icon-size); }
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-desktop-volume,
+.desktop-browser #player[data-player-toolbar-size="small"] .player-desktop-volume { width: 26px; }
+.desktop-browser #player[data-player-toolbar-size="small"] .player-controls-row { --player-toolbar-button-size: 24px; --player-toolbar-icon-size: 18px; --player-toolbar-step: 26px; }
+.desktop-browser #player[data-player-toolbar-size="small"] .player-control-btn { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+.desktop-browser #player[data-player-toolbar-size="small"] .player-control-btn.is-primary { flex-basis: var(--player-toolbar-button-size); width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+.desktop-browser #player[data-player-toolbar-size="small"] .player-desktop-playback-tools .player-desktop-tool-button { width: var(--player-toolbar-button-size); min-width: var(--player-toolbar-button-size); height: var(--player-toolbar-button-size); }
+.desktop-browser #player[data-player-toolbar-size="small"] .player-desktop-volume { width: 24px; }
+.desktop-browser #player[data-player-toolbar-size="small"] .player-time-label { font-size: 9px; }
+
+.desktop-browser #player[data-player-orientation="portrait"] .player-subtitle-overlay-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, auto) minmax(0, 1fr) minmax(0, 1fr); }
+.desktop-browser #player[data-player-orientation="portrait"] .player-subtitle-language-rail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 100px; align-self: start; }
+.desktop-browser #player[data-player-orientation="portrait"] .player-subtitle-rail + .player-subtitle-rail,
+.desktop-browser #player[data-player-orientation="portrait"] .player-audio-controls-list { border-left: 0; border-top: 1px solid rgba(255,255,255,.14); padding-left: 3px; padding-top: 10px; }
+.desktop-browser #player[data-player-orientation="portrait"] .player-audio-overlay-grid { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,1fr) auto; }
+.desktop-browser #player[data-player-orientation="portrait"] .player-audio-controls-list { max-height: 150px; }
+
+/* Mobile Back follows local canvas safe areas in both native and CSS orientation. */
+.desktop-browser #player[data-player-orientation] .player-desktop-back-button { top: calc(var(--browser-safe-area-top) + 17px); left: calc(var(--browser-safe-area-left) + 12px); width: 44px; height: 44px; }
+
+/* Player Back is an icon only; keep its existing hit target. */
+.desktop-browser #player .player-desktop-back-button,
+.desktop-browser #player .player-desktop-back-button:hover { border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* Landscape drawer lists keep the left gutter, with no right gutter. */
+.desktop-browser #player[data-player-orientation="landscape"] #episodeSidePanel .player-episode-list,
+.desktop-browser #player[data-player-orientation="landscape"] #episodeSidePanel .player-episode-stream-list,
+.desktop-browser #player[data-player-orientation="landscape"] #playerSourcesPanel .player-sources-list { padding-left: calc(var(--player-drawer-safe-left, var(--browser-safe-area-left)) + 12px); padding-right: 0; }
+/* Keep a usable thumb travel on mobile instead of the native thumb filling the slider. */
+.desktop-browser #player[data-player-toolbar-size="compact"] .player-desktop-volume { width: 48px; }
+.desktop-browser #player[data-player-toolbar-size="small"] .player-desktop-volume { width: 44px; }
+
+.desktop-browser #player .player-desktop-volume { appearance: none; -webkit-appearance: none; background: transparent; }
+.desktop-browser #player .player-desktop-volume::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--secondary-color) 0 var(--player-volume-progress, 100%), rgba(255,255,255,.3) var(--player-volume-progress, 100%) 100%); }
+.desktop-browser #player .player-desktop-volume::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border: 0; border-radius: 50%; background: var(--secondary-color); }
+.desktop-browser #player .player-desktop-volume::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,.3); }
+.desktop-browser #player .player-desktop-volume::-moz-range-progress { height: 4px; background: var(--secondary-color); }
+.desktop-browser #player .player-desktop-volume::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--secondary-color); }
+
+/* Skip intro/outro use one touch appearance and the local canvas safe areas. */
+.desktop-browser #player .player-skip-intro {
+  left: calc(var(--browser-safe-area-left) + 12px);
+  right: auto;
+  max-width: calc(100% - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px);
+  bottom: calc(var(--browser-safe-area-bottom) + 20px);
+}
+.desktop-browser #player .player-skip-intro.is-raised { bottom: max(calc(var(--browser-safe-area-bottom) + 20px), var(--player-action-controls-open-bottom)); }
+.desktop-browser #player .player-skip-intro-btn { border-radius: 12px; max-width: 100%; }
+.desktop-browser #player .player-skip-intro-content { gap: 8px; padding: 10px 16px; }
+.desktop-browser #player .player-skip-intro-icon { width: 20px; height: 20px; }
+.desktop-browser #player .player-skip-intro-label { font-size: 14px; line-height: 1.2; }
+.desktop-browser #player .player-skip-intro-progress { display: none; }
+/* Local landscape gets the same compact up-next card regardless of phone orientation. */
+.desktop-browser #player[data-player-orientation="landscape"] .player-next-episode-card {
+  left: auto;
+  right: calc(var(--browser-safe-area-right) + 16px);
+  bottom: calc(var(--browser-safe-area-bottom) + 20px);
+  width: min(340px, calc(100% - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 32px));
+}
+
+.desktop-browser #player[data-player-orientation="landscape"] #playerUiRoot.controls-visible .player-next-episode-card { bottom: max(var(--player-action-controls-open-bottom), calc(var(--browser-safe-area-bottom) + 20px)); }
