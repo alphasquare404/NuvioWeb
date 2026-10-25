@@ -21888,3 +21888,30 @@ html.desktop-browser:not(.nuvio-keyboard-nav)
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* Poster focus mirrors Continue Watching: one 2px outer ring, no colored
+   inner border. This applies across Home, Discover, Library, Search, See All,
+   Folder Detail, and the Detail rails. */
+html.desktop-browser .home-screen-shell .home-poster-card.focused .home-poster-frame,
+html.desktop-browser .home-screen-shell .home-poster-card:focus-visible .home-poster-frame,
+html.desktop-browser .home-screen-shell .home-seeall-card.focused .home-seeall-card-inner,
+html.desktop-browser .home-screen-shell .home-seeall-card:focus-visible .home-seeall-card-inner,
+html.desktop-browser .discover-shell .discover-card.focused .discover-card-poster,
+html.desktop-browser .discover-shell .discover-card:focus-visible .discover-card-poster,
+html.desktop-browser .library-shell .library-grid-card.focused .library-grid-poster,
+html.desktop-browser .library-shell .library-grid-card:focus-visible .library-grid-poster,
+html.desktop-browser .search-screen-shell .search-result-card.focused .search-result-poster-wrap,
+html.desktop-browser .search-screen-shell .search-result-card:focus-visible .search-result-poster-wrap,
+html.desktop-browser .search-screen-shell .search-seeall-card.focused .search-seeall-inner,
+html.desktop-browser .search-screen-shell .search-seeall-card:focus-visible .search-seeall-inner,
+html.desktop-browser .seeall-card.focused .seeall-card-poster-wrap,
+html.desktop-browser .seeall-card:focus-visible .seeall-card-poster-wrap {
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px var(--secondary-color) !important;
+}
+
+html.desktop-browser #detail .detail-morelike-card.focused .detail-morelike-poster-wrap,
+html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelike-poster-wrap {
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px var(--detail-focus-ring) !important;
+}
