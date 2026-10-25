@@ -17579,9 +17579,19 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
    what it looked like: credits and ratings reading out from under it.
    --------------------------------------------------------------------------- */
 html[data-nav-placement="bottom"].desktop-browser #detail .series-detail-content,
-html[data-nav-placement="bottom"].desktop-browser #castDetail .browser-person-detail,
+html[data-nav-placement="bottom"].desktop-browser #castDetail .browser-person-detail-shell,
 html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-detail-shell {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+}
+
+/* Settings now carries `.desktop-navigation-enabled`, so the shared clearance
+   above follows the bar's collapsed/expanded height. Its workspace already had
+   its own 56px tail; use the same 40px content tail as Search and Library
+   instead of stacking both. */
+html[data-nav-placement="bottom"].desktop-browser
+  .settings-shell
+  .settings-workspace {
+  padding-bottom: 40px;
 }
 
 /* ---------------------------------------------------------------------------
