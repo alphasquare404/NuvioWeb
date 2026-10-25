@@ -4453,12 +4453,13 @@ export const MetaDetailsScreen = {
     // It moves below the artwork instead. A mouse keeps the cinema framing, and
     // TV keeps the single collapsible body its trailer transition animates.
     const heroMetaBelowArtwork = detailUsesTouchLayout();
+    const heroDescriptionHasToggle = heroMetaBelowArtwork || Platform.isBrowser();
     const heroMeta = `
       ${this.renderResumeIndicator()}
       ${creditLine ? `<p class="series-detail-support">${escapeHtml(creditPrefix)}: ${escapeHtml(creditLine)}</p>` : ""}
       ${externalRatings}
       ${
-        heroMetaBelowArtwork
+        heroDescriptionHasToggle
           ? `<p class="series-detail-description">${escapeHtml(
               meta.description || t("detail.noDescription", {}, "No description.")
             )}<button class="detail-description-toggle focusable" type="button"
@@ -8601,6 +8602,11 @@ export const MetaDetailsScreen = {
     }
     const useTmdbRecommendationPoster =
       String(railKey || "").startsWith("morelike:") && this.moreLikeThisSource === "tmdb";
+    // Collection cards are poster cards too. Their TMDB payload also contains
+    // a backdrop, and preferring it made the collection rail look like a set
+    // of stills rather than the films' posters.
+    const usePosterFirst =
+      useTmdbRecommendationPoster || String(railKey || "").startsWith("collection:");
     const cards = items
       .map((rawItem) => {
         const item = normalizePreviewItem(rawItem, fallbackType);
@@ -8608,13 +8614,11 @@ export const MetaDetailsScreen = {
         // TMDB recommendations provide distinct portrait and backdrop paths. The
         // desktop recommendation rail is a poster rail, so never substitute a
         // backdrop for a missing TMDB poster.
-        const primaryImage = useTmdbRecommendationPoster
-          ? item.poster || ""
+        const primaryImage = usePosterFirst
+          ? item.poster || item.landscapePoster || ""
           : item.landscapePoster || item.poster || "";
         const fallbackImage =
-          !useTmdbRecommendationPoster && item.poster && item.poster !== primaryImage
-            ? item.poster
-            : "";
+          !usePosterFirst && item.poster && item.poster !== primaryImage ? item.poster : "";
         return `
       <article class="detail-morelike-card focusable"${Platform.isBrowser() ? ' role="button"' : ""}
            data-action="openMoreLikeDetail"
