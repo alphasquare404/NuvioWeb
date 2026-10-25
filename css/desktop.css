@@ -6757,6 +6757,12 @@ html.is-hero-stream-hold * {
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
+.desktop-browser
+  .profile-card:not(.profile-card-add):not(.focused):not(:focus-visible)
+  .profile-avatar-ring {
+  border-color: transparent;
+}
+
 .desktop-browser .profile-avatar,
 .desktop-browser .profile-grid-compact .profile-avatar,
 .desktop-browser .profile-card.focused .profile-avatar,
@@ -6791,20 +6797,15 @@ html.is-hero-stream-hold * {
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.2);
 }
 
-.desktop-browser .profile-card.is-active-profile .profile-avatar-ring {
-  border-color: var(--secondary-color);
-  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.28);
-}
-
 .desktop-browser .profile-active-indicator {
   position: absolute;
   top: -4px;
   right: -4px;
   width: 22px;
   height: 22px;
-  border: 2px solid var(--bg-color);
+  border: 0;
   border-radius: 50%;
-  background: var(--secondary-color);
+  background: var(--profile-accent, var(--secondary-color));
   color: #fff;
   display: inline-flex;
   align-items: center;

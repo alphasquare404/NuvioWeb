@@ -765,7 +765,7 @@ button:focus-visible {
   background: #ffb300;
   color: #ffffff;
   font-size: 28px;
-  border: 4px solid var(--bg-color);
+  border: 0;
 }
 
 .profile-grid-compact .profile-primary-dot {
