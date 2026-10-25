@@ -621,13 +621,19 @@ html.desktop-browser {
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card {
-  min-height: clamp(520px, 70vh, 780px);
-  height: clamp(520px, 70vh, 780px);
+  min-height: 85vh;
+  height: 85vh;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-backdrop {
   object-position: center center;
   opacity: 1;
+}
+
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled
+  .home-hero-logo {
+  object-position: left 75%;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::before {
@@ -2219,7 +2225,16 @@ html.desktop-browser {
 .desktop-browser #detail .series-detail-backdrop,
 .desktop-browser #detail .series-detail-vignette {
   bottom: auto;
-  height: clamp(600px, 72vh, 840px);
+  height: 85vh;
+}
+
+.desktop-browser #detail .series-detail-backdrop {
+  background-position: center center;
+  background-size: cover;
+}
+
+.desktop-browser #detail .series-detail-logo {
+  object-position: left 75%;
 }
 
 .desktop-browser #detail .series-detail-vignette {
@@ -2229,7 +2244,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #detail .detail-bottom-shadow {
-  top: clamp(440px, 54vh, 660px);
+  top: calc(85vh - clamp(160px, 24vh, 260px));
   bottom: auto;
   height: clamp(160px, 24vh, 260px);
   opacity: 1;
@@ -2247,7 +2262,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #detail .detail-hero-section {
-  min-height: clamp(600px, 72vh, 840px);
+  min-height: 85vh;
   height: auto;
   padding: 0 clamp(20px, 3.4vw, 64px) clamp(48px, 5vh, 72px);
 }
