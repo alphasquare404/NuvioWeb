@@ -1,11 +1,18 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import path from "node:path";
+import {
+  normalizeProbeMode,
+  normalizeClientProbeConcurrency
+} from "../js/core/player/probeMode.js";
 
 export const ENV_PROPERTY_KEYS = [
   // How many rows one page open may probe. Reaches the app as a number; 0 means unlimited,
   // which is what a self-hoster with a handful of users wants.
   "PROBE_PAGE_LIMIT",
+  "PROBE_MODE",
+  "PROBE_CLIENT_CONCURRENCY",
+  "MEDIA_URL_HOST_RESOLVE_ENABLED",
   "NUVIO_SUPABASE_URL",
   "NUVIO_SUPABASE_ANON_KEY",
   "NUVIO_SUPABASE_FALLBACK_URL",
@@ -155,10 +162,16 @@ export function normalizeEnvProperties(properties = {}) {
   // there would silently erase the endpoint the server had just decided to offer.
   Object.entries(FEATURE_SWITCHES).forEach(([switchKey, endpointKey]) => {
     if (!Object.prototype.hasOwnProperty.call(properties, switchKey)) return;
+    if (switchKey === "PROBE_ENABLED" && String(properties.PROBE_MODE || "").trim()) return;
     if (!isFeatureEnabled(properties[switchKey], FEATURE_DEFAULTS[switchKey])) {
       env[endpointKey] = "";
     }
   });
+  env.PROBE_MODE = normalizeProbeMode(properties.PROBE_MODE, properties.PROBE_ENABLED);
+  env.PROBE_CLIENT_CONCURRENCY = String(
+    normalizeClientProbeConcurrency(properties.PROBE_CLIENT_CONCURRENCY)
+  );
+  if (env.PROBE_MODE !== "server") env.PROBE_ENDPOINT = "";
   return env;
 }
 

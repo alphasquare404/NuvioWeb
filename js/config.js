@@ -1,3 +1,5 @@
+import { normalizeProbeMode, normalizeClientProbeConcurrency } from "./core/player/probeMode.js";
+
 // What the bundle was built with. nuvio.env.js is a separate request, served
 // no-store, and it can simply not execute -- offline at the wrong moment, a
 // cache miss, or an insecure origin where no service worker can stand in for
@@ -36,7 +38,12 @@ export const INTRODB_API_URL = String(
 // What this deployment can afford to do with a stream it cannot hand straight to
 // the player. Empty means "not offered": the app then labels streams by estimate
 // and never calls anyone.
-export const PROBE_ENDPOINT = String(runtimeEnv.PROBE_ENDPOINT || "").trim();
+export const PROBE_MODE = normalizeProbeMode(runtimeEnv.PROBE_MODE, runtimeEnv.PROBE_ENABLED);
+export const PROBE_CLIENT_CONCURRENCY = normalizeClientProbeConcurrency(
+  runtimeEnv.PROBE_CLIENT_CONCURRENCY
+);
+export const PROBE_ENDPOINT =
+  PROBE_MODE === "server" ? String(runtimeEnv.PROBE_ENDPOINT || "").trim() : "";
 export const REMUX_ENDPOINT = String(runtimeEnv.REMUX_ENDPOINT || "").trim();
 // Audio-only transcode. Its own switch, not a part of remux: it costs minutes of
 // CPU on the machine that runs ffmpeg, so a deployment says whether it may be

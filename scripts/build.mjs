@@ -491,7 +491,7 @@ async function collectLocaleAssets(directory, relativeDirectory = "") {
     const relativePath = path.posix.join(relativeDirectory, entry.name);
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      assets.push(...await collectLocaleAssets(absolutePath, relativePath));
+      assets.push(...(await collectLocaleAssets(absolutePath, relativePath)));
     } else if (entry.isFile() && /^(?:strings|string)\.xml$/i.test(entry.name)) {
       assets.push(`./res/${relativePath}`);
     }
@@ -529,7 +529,10 @@ async function runBuild() {
       cp(path.join(rootDir, "assets"), path.join(distDir, "assets"), { recursive: true }),
       cp(path.join(rootDir, "res"), path.join(distDir, "res"), { recursive: true }),
       cp(path.join(rootDir, "boot-guard.js"), path.join(distDir, "boot-guard.js")),
-      cp(path.join(rootDir, "docs", "youtube-proxy.html"), path.join(distDir, "youtube-proxy.html")),
+      cp(
+        path.join(rootDir, "docs", "youtube-proxy.html"),
+        path.join(distDir, "youtube-proxy.html")
+      ),
       cp(path.join(rootDir, "manifest.webmanifest"), path.join(distDir, "manifest.webmanifest"))
     ]);
     await buildCoreJsBundle();
@@ -560,6 +563,36 @@ async function runBuild() {
       path.join(distDir, "assets", "libs", "libbitsub.LICENSE")
     );
 
+    // Lazy client probe assets: never add the 31 MiB core to app-shell precache.
+    const probeAssetDir = path.join(distDir, "assets", "libs", "ffprobe");
+    await mkdir(probeAssetDir, { recursive: true });
+    await Promise.all([
+      cp(
+        path.join(rootDir, "node_modules", "@ffmpeg", "core", "dist", "umd", "ffmpeg-core.js"),
+        path.join(probeAssetDir, "ffmpeg-core.js")
+      ),
+      cp(
+        path.join(rootDir, "node_modules", "@ffmpeg", "core", "dist", "umd", "ffmpeg-core.wasm"),
+        path.join(probeAssetDir, "ffmpeg-core.wasm")
+      ),
+      cp(
+        path.join(rootDir, "docs", "ffprobe-wasm-NOTICE.txt"),
+        path.join(probeAssetDir, "NOTICE.txt")
+      ),
+      cp(
+        path.join(rootDir, "docs", "ffprobe-wasm-COPYING.txt"),
+        path.join(probeAssetDir, "COPYING.txt")
+      ),
+      build({
+        entryPoints: [path.join(rootDir, "js", "core", "player", "ffprobeClientWorker.js")],
+        outfile: path.join(probeAssetDir, "ffprobe-worker.js"),
+        bundle: true,
+        format: "iife",
+        minify: true,
+        target: ["safari15", "chrome80"]
+      })
+    ]);
+
     // js bundle processing (final step to ensure all transformations are applied correctly and we end up with a single, minified bundle file)
     await buildBundle();
 
@@ -568,10 +601,7 @@ async function runBuild() {
     // files only this build has, and a frozen query can no longer hand a browser
     // the bundle it cached a week ago.
     const buildId = assetBuildId(await readFile(path.join(distDir, "app.bundle.js")));
-    await writeFile(
-      path.join(distDir, "index.html"),
-      versionAssetUrls(sourceIndex, buildId)
-    );
+    await writeFile(path.join(distDir, "index.html"), versionAssetUrls(sourceIndex, buildId));
     console.log(`asset build id: ${buildId}`);
 
     // After the shell it caches exists: the cache name is a hash of those files.

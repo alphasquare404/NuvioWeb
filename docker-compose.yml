@@ -24,6 +24,10 @@ services:
       AUTOMATION_SHORTCUT_URL: ${AUTOMATION_SHORTCUT_URL:-}
       # Relays the browser cannot reach by itself. Empty means the deployment
       # does not offer one, and the app then never calls it.
+      PROBE_MODE: ${PROBE_MODE:-}
+      PROBE_CLIENT_CONCURRENCY: ${PROBE_CLIENT_CONCURRENCY:-1}
+      MEDIA_URL_HOST_RESOLVE_ENABLED: ${MEDIA_URL_HOST_RESOLVE_ENABLED:-false}
+      PROBE_ENABLED: ${PROBE_ENABLED:-true}
       PROBE_ENDPOINT: ${PROBE_ENDPOINT:-}
       REMUX_ENDPOINT: ${REMUX_ENDPOINT:-}
       TRANSCODE_ENDPOINT: ${TRANSCODE_ENDPOINT:-}
@@ -43,6 +47,8 @@ services:
   debrid-api-bridge:
     container_name: nuvioweb-debrid-api-bridge
     image: ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:stable
+    environment:
+      MEDIA_URL_HOST_RESOLVE_ENABLED: ${MEDIA_URL_HOST_RESOLVE_ENABLED:-false}
     restart: unless-stopped
 
   external-return-bridge:

@@ -1,4 +1,5 @@
 import { DirectDebridResolver } from "../debrid/directDebridResolver.js";
+import { clientMediaUrlResolver } from "../streams/clientMediaUrlResolver.js";
 import { subtitleReleaseName } from "../../domain/model/subtitle.js";
 import {
   createOfflineMediaId,
@@ -1098,9 +1099,12 @@ export async function startBrowserOfflineDownload(input = {}) {
 
       const fetchResponse = async (source, rangeOffset) => {
         const requestInit = createBrowserOfflineDownloadRequestInit(controller.signal, rangeOffset);
+        const link = await clientMediaUrlResolver.resolve(source.url, { signal: controller.signal });
+        const response = await globalThis.fetch(link.ok ? link.url : source.url, requestInit);
+        if ([401, 403, 410].includes(response.status)) clientMediaUrlResolver.invalidate(source.url);
         return {
           rangeHeaderPresent: Boolean(requestInit.headers?.Range),
-          response: await globalThis.fetch(source.url, requestInit)
+          response
         };
       };
       let fetchResult = await fetchResponse(resolved, offset);

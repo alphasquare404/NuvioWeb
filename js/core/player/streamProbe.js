@@ -1,3 +1,5 @@
+import { probeInBrowser, isBrowserProbeParallelReady } from "./ffprobeClient.js";
+import { normalizeProbeMode } from "./probeMode.js";
 // Probing the gaps, not the whole list.
 //
 // The estimate from the addon's own text is good when the text says something: an
@@ -129,6 +131,9 @@ export function streamProbeIdentity(stream = {}) {
  */
 export function createStreamProber({
   endpoint = "",
+  mode = "server",
+  clientConcurrency = 1,
+  clientProbe = probeInBrowser,
   fetchImpl = globalThis.fetch,
   timeoutMs = 8000,
   assess = null
@@ -136,8 +141,27 @@ export function createStreamProber({
   const cache = new Map();
   const pending = new Map();
   const base = String(endpoint || "").trim();
+  const selectedMode = normalizeProbeMode(mode);
+  const enabled = selectedMode === "client" || (selectedMode === "server" && base.length > 0);
 
-  async function request(url, reason = "", identity = "", requestTimeoutMs = timeoutMs) {
+  async function request(
+    url,
+    reason = "",
+    identity = "",
+    requestTimeoutMs = timeoutMs,
+    resolveTimeoutMs = 0
+  ) {
+    if (selectedMode === "client") {
+      try {
+        return await clientProbe(url, {
+          timeoutMs: requestTimeoutMs,
+          resolveTimeoutMs,
+          concurrency: clientConcurrency
+        });
+      } catch {
+        return null;
+      }
+    }
     const separator = base.includes("?") ? "&" : "?";
     // `why` is the client saying which budget this request came from. The server
     // cannot work that out by itself, and without it the two costs -- the check that
@@ -204,13 +228,24 @@ export function createStreamProber({
 
   return {
     get enabled() {
-      return base.length > 0;
+      return enabled;
+    },
+    get clientParallelReady() {
+      return selectedMode === "client" && isBrowserProbeParallelReady();
     },
 
     /** Cached by URL; concurrent callers share one request. */
-    async probe(url, { reason = "", identity = "", timeoutMs: requestTimeoutMs = timeoutMs } = {}) {
+    async probe(
+      url,
+      {
+        reason = "",
+        identity = "",
+        timeoutMs: requestTimeoutMs = timeoutMs,
+        resolveTimeoutMs = 0
+      } = {}
+    ) {
       const key = String(url || "").trim();
-      if (!base || !key) return null;
+      if (!enabled || !key) return null;
       const assessResult = async (result) => {
         if (!result || !assess) return result;
         try {
@@ -221,11 +256,13 @@ export function createStreamProber({
       };
       if (cache.has(key)) return assessResult(cache.get(key));
       if (pending.has(key)) return assessResult(await pending.get(key));
-      const promise = request(key, reason, identity, requestTimeoutMs).then((result) => {
-        pending.delete(key);
-        if (result) cache.set(key, result);
-        return result;
-      });
+      const promise = request(key, reason, identity, requestTimeoutMs, resolveTimeoutMs).then(
+        (result) => {
+          pending.delete(key);
+          if (result) cache.set(key, result);
+          return result;
+        }
+      );
       pending.set(key, promise);
       return assessResult(await promise);
     },

@@ -10,7 +10,9 @@ async function withBridge(options, run) {
   try {
     await run(`http://127.0.0.1:${port}`);
   } finally {
-    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    );
   }
 }
 
@@ -74,7 +76,9 @@ test("TorBox bridge preserves the documented HTTP 400 success:false pending poll
       }
     },
     async (baseUrl) => {
-      const failedStart = await fetch(`${baseUrl}/api/debrid/torbox/device/start`, { method: "POST" });
+      const failedStart = await fetch(`${baseUrl}/api/debrid/torbox/device/start`, {
+        method: "POST"
+      });
       assert.deepEqual(await failedStart.json(), {
         ok: false,
         error: "provider_request_failed",
@@ -105,8 +109,14 @@ test("TorBox redeem reports expiry and keeps unexpected failures fatal", async (
       fetchImpl: async () => {
         call += 1;
         return call === 1
-          ? upstream({ success: false, error: "expired_device_code", detail: "Device code expired" }, 400)
-          : upstream({ success: false, error: "invalid_request", detail: "Malformed request" }, 400);
+          ? upstream(
+              { success: false, error: "expired_device_code", detail: "Device code expired" },
+              400
+            )
+          : upstream(
+              { success: false, error: "invalid_request", detail: "Malformed request" },
+              400
+            );
       }
     },
     async (baseUrl) => {
@@ -140,7 +150,10 @@ test("TorBox redeem returns the existing token envelope without logging credenti
     {
       fetchImpl: async (url, options) => {
         calls.push({ url, options });
-        return upstream({ success: true, data: { access_token: "provider-token", other: "hidden" } });
+        return upstream({
+          success: true,
+          data: { access_token: "provider-token", other: "hidden" }
+        });
       }
     },
     async (baseUrl) => {
@@ -202,7 +215,11 @@ test("bridge rejects unknown, arbitrary, invalid-method, oversized, redirect, an
       requestTimeoutMs: 10,
       fetchImpl: async (_url, options) => {
         fetchCalls += 1;
-        if (fetchCalls === 1) return new Response(null, { status: 302, headers: { Location: "https://example.invalid" } });
+        if (fetchCalls === 1)
+          return new Response(null, {
+            status: 302,
+            headers: { Location: "https://example.invalid" }
+          });
         return new Promise((_resolve, reject) => {
           options.signal.addEventListener("abort", () => reject(new Error("aborted")));
         });
@@ -242,7 +259,11 @@ test("Premiumize uses fixed device and account endpoints when supplied with a pu
       fetchImpl: async (url, options) => {
         calls.push({ url, options });
         if (url.endsWith("/token")) {
-          return upstream({ device_code: "device", user_code: "CODE", verification_uri: "https://premiumize.me/device" });
+          return upstream({
+            device_code: "device",
+            user_code: "CODE",
+            verification_uri: "https://premiumize.me/device"
+          });
         }
         return upstream({ status: "success" });
       }
@@ -334,7 +355,10 @@ test("TorBox lookup and link resolution keep credentials out of same-origin URLs
       }
     },
     async (baseUrl) => {
-      const headers = { "Content-Type": "application/json", Authorization: "Bearer credential-value" };
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: "Bearer credential-value"
+      };
       const lookup = await fetch(`${baseUrl}/api/debrid/torbox/torrent/lookup`, {
         method: "POST",
         headers,
@@ -358,6 +382,156 @@ test("TorBox lookup and link resolution keep credentials out of same-origin URLs
   assert.match(calls[1].url, /torrent_id=torrent-id/);
 });
 
+test("host URL assistance is disabled by default and makes no provider request", async () => {
+  await withBridge(
+    { addonResolveEnabled: false, fetchImpl: () => assert.fail("must not contact provider") },
+    async (baseUrl) => {
+      assert.equal(
+        (await fetch(`${baseUrl}/api/debrid/torbox/link/from-addon`, { method: "POST" })).status,
+        404
+      );
+    }
+  );
+});
+
+test("addon URL resolution reads two trusted redirect headers, never the media CDN", async () => {
+  const calls = [];
+  await withBridge(
+    {
+      addonResolveEnabled: true,
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        if (url.startsWith("https://torrentio.strem.fun/"))
+          return new Response(null, {
+            status: 302,
+            headers: {
+              Location:
+                "https://api.torbox.app/v1/api/torrents/requestdl?token=credential-value&torrent_id=12&file_id=7&redirect=true"
+            }
+          });
+        assert.equal(new URL(url).host, "api.torbox.app");
+        assert.equal(new URL(url).searchParams.get("redirect"), "true");
+        return new Response(null, {
+          status: 307,
+          headers: { Location: "https://cdn.test/signed" }
+        });
+      }
+    },
+    async (baseUrl) => {
+      const reply = await fetch(`${baseUrl}/api/debrid/torbox/link/from-addon`, {
+        method: "POST",
+        headers: { Authorization: "Bearer credential-value", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          infoHash: "a".repeat(40),
+          fileIdx: 0,
+          entry: "video.mp4",
+          filename: "video.mp4",
+          url: "https://evil.test/ignored"
+        })
+      });
+      assert.equal(reply.status, 200);
+      assert.equal(reply.headers.get("cache-control"), "no-store");
+      const text = await reply.text();
+      assert.equal(text.includes("credential-value"), false);
+      assert.equal(JSON.parse(text).data, "https://cdn.test/signed");
+    }
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].options.redirect, "manual");
+  assert.equal(calls[1].options.redirect, "manual");
+});
+
+test("addon resolution refuses a full media response at the provider without reading its body", async () => {
+  let calls = 0,
+    cancelled = 0;
+  await withBridge(
+    {
+      addonResolveEnabled: true,
+      fetchImpl: async () => {
+        if (++calls === 1)
+          return new Response(null, {
+            status: 302,
+            headers: {
+              Location:
+                "https://api.torbox.app/v1/api/torrents/requestdl?token=credential-value&torrent_id=12&file_id=7&redirect=true"
+            }
+          });
+        return {
+          status: 200,
+          headers: new Headers(),
+          body: {
+            cancel: async () => {
+              cancelled++;
+            },
+            getReader: () => assert.fail("must not read video on the host")
+          }
+        };
+      }
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/debrid/torbox/link/from-addon`, {
+        method: "POST",
+        headers: { Authorization: "Bearer credential-value", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          infoHash: "a".repeat(40),
+          fileIdx: 0,
+          entry: "video.mp4",
+          filename: "video.mp4"
+        })
+      });
+      assert.equal(response.status, 502);
+    }
+  );
+  assert.equal(calls, 2);
+  assert.equal(cancelled, 1);
+});
+
+test("addon resolution rejects untrusted redirects, account mismatches and invalid descriptors", async () => {
+  for (const location of [
+    "https://evil.test/file",
+    "https://api.torbox.app/v1/api/torrents/requestdl?token=wrong&torrent_id=12&file_id=7",
+    "https://api.torbox.app/v1/api/user/me?token=credential-value"
+  ]) {
+    let calls = 0;
+    await withBridge(
+      {
+        addonResolveEnabled: true,
+        fetchImpl: async () => {
+          calls++;
+          return new Response(null, { status: 302, headers: { Location: location } });
+        }
+      },
+      async (baseUrl) => {
+        const options = {
+          method: "POST",
+          headers: { Authorization: "Bearer credential-value", "Content-Type": "application/json" },
+          body: JSON.stringify({
+            infoHash: "a".repeat(40),
+            fileIdx: 0,
+            entry: "video.mp4",
+            filename: "video.mp4"
+          })
+        };
+        assert.equal(
+          (await fetch(`${baseUrl}/api/debrid/torbox/link/from-addon`, options)).status,
+          502
+        );
+        assert.equal(calls, 1);
+        assert.equal(
+          (
+            await fetch(`${baseUrl}/api/debrid/torbox/link/from-addon`, {
+              ...options,
+              body: JSON.stringify({ url: "https://evil.test/" })
+            })
+          ).status,
+          502
+        );
+        assert.equal(calls, 1);
+      }
+    );
+  }
+});
+
 test("TorBox playback bridge sanitizes uncached, missing, and malformed provider responses", async () => {
   let call = 0;
   await withBridge(
@@ -370,19 +544,82 @@ test("TorBox playback bridge sanitizes uncached, missing, and malformed provider
       }
     },
     async (baseUrl) => {
-      const headers = { "Content-Type": "application/json", Authorization: "Bearer credential-value" };
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: "Bearer credential-value"
+      };
       const create = await fetch(`${baseUrl}/api/debrid/torbox/torrent/create`, {
-        method: "POST", headers, body: JSON.stringify({ magnet: "magnet:?xt=urn:btih:hash" })
+        method: "POST",
+        headers,
+        body: JSON.stringify({ magnet: "magnet:?xt=urn:btih:hash" })
       });
-      assert.deepEqual(await create.json(), { ok: false, error: "provider_request_failed", status: 409 });
+      assert.deepEqual(await create.json(), {
+        ok: false,
+        error: "provider_request_failed",
+        status: 409
+      });
       const lookup = await fetch(`${baseUrl}/api/debrid/torbox/torrent/lookup`, {
-        method: "POST", headers, body: JSON.stringify({ torrentId: "torrent-id" })
+        method: "POST",
+        headers,
+        body: JSON.stringify({ torrentId: "torrent-id" })
       });
-      assert.deepEqual(await lookup.json(), { ok: false, error: "provider_request_failed", status: 404 });
+      assert.deepEqual(await lookup.json(), {
+        ok: false,
+        error: "provider_request_failed",
+        status: 404
+      });
       const link = await fetch(`${baseUrl}/api/debrid/torbox/link/resolve`, {
-        method: "POST", headers, body: JSON.stringify({ torrentId: "torrent-id" })
+        method: "POST",
+        headers,
+        body: JSON.stringify({ torrentId: "torrent-id" })
       });
-      assert.deepEqual(await link.json(), { ok: false, error: "provider_request_failed", status: 500 });
+      assert.deepEqual(await link.json(), {
+        ok: false,
+        error: "provider_request_failed",
+        status: 500
+      });
+    }
+  );
+});
+
+test("host resolution failures identify the failing hop without exposing credentials", async () => {
+  await withBridge(
+    {
+      addonResolveEnabled: true,
+      fetchImpl: async (url) => {
+        if (new URL(url).host === "torrentio.strem.fun")
+          return new Response(null, {
+            status: 302,
+            headers: {
+              Location:
+                "https://api.torbox.app/v1/api/torrents/requestdl?token=credential-value&torrent_id=12&file_id=7&redirect=true"
+            }
+          });
+        return new Response("private provider error", { status: 429 });
+      }
+    },
+    async (baseUrl) => {
+      const r = await fetch(`${baseUrl}/api/debrid/torbox/link/from-addon`, {
+        method: "POST",
+        headers: { Authorization: "Bearer credential-value", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          infoHash: "a".repeat(40),
+          fileIdx: 0,
+          entry: "video.mp4",
+          filename: "video.mp4"
+        })
+      });
+      const text = await r.text();
+      assert.equal(r.status, 502);
+      assert.deepEqual(JSON.parse(text), {
+        ok: false,
+        error: "addon_resolve_failed",
+        resolveStage: "provider",
+        upstreamStatus: 429,
+        resolveReason: "missing-redirect"
+      });
+      assert.equal(text.includes("credential-value"), false);
+      assert.equal(text.includes("private provider"), false);
     }
   );
 });

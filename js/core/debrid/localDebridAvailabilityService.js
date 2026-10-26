@@ -60,7 +60,20 @@ async function checkCached(account, hashes = []) {
     return {};
   }
   if (account.provider.id === DEBRID_PROVIDER_IDS.TORBOX) {
+    const started = Date.now();
     const response = await DebridApi.torboxCheckCached(account.apiKey, normalized);
+    if (globalThis.__NUVIO_CLIENT_PROBE_DEBUG__ === true) {
+      console.warn(
+        "[DebridCache] " +
+          JSON.stringify({
+            provider: "torbox",
+            elapsedMs: Date.now() - started,
+            hashes: normalized.length,
+            status: response.status,
+            success: response.ok && response.data?.success === true
+          })
+      );
+    }
     if (!response.ok || response.data?.success === false) {
       return null;
     }

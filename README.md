@@ -130,6 +130,12 @@ value is written to `nuvio.env.js`, bundled, or exposed on a host port. Never
 place Supabase service-role keys, access tokens, provider credentials, or other
 private values in browser runtime configuration.
 
+### Probe location
+
+Hosters can set `PROBE_MODE=server`, `client` (browser ffprobe WASM), or `off`.
+The default remains server probing. See [probe configuration](docs/probing.md)
+for Docker/static hosting, CORS/Range requirements, and client resource limits.
+
 ### Release Channels
 
 Use the default `:stable` tag for normal self-hosting. To switch channels, edit

@@ -325,3 +325,60 @@ test("cache retains file facts and reassesses the current local engine", async (
   assert.equal(first.playbackCapabilities.engine, "native");
   assert.equal(second.playbackCapabilities.engine, "movi");
 });
+
+test("client mode uses WASM instead of the server, retains assessment, cache and in-flight deduplication", async () => {
+  let clients = 0,
+    servers = 0;
+  const facts = { container: "mp4", videoCodec: "h264", audioCodec: "aac", hasAudio: true };
+  const prober = createStreamProber({
+    mode: "client",
+    endpoint: "/api/probe",
+    fetchImpl: () => {
+      servers++;
+      throw Error("must not call server");
+    },
+    clientProbe: async () => {
+      clients++;
+      return facts;
+    },
+    assess: async () => ({ video: true })
+  });
+  assert.equal(prober.enabled, true);
+  const results = await Promise.all([
+    prober.probe("https://cdn.test/1"),
+    prober.probe("https://cdn.test/1")
+  ]);
+  assert.equal(clients, 1);
+  assert.equal(servers, 0);
+  assert.equal(results[0].hasAudio, true);
+  assert.deepEqual(results[0].playbackCapabilities, { video: true });
+  await prober.probe("https://cdn.test/1");
+  assert.equal(clients, 1);
+});
+test("off mode performs no client or server probe even when an endpoint is configured", async () => {
+  let calls = 0;
+  for (const mode of ["off", "invalid-mode"]) {
+    const p = createStreamProber({
+      mode,
+      endpoint: "/api/probe",
+      fetchImpl: () => calls++,
+      clientProbe: () => calls++
+    });
+    assert.equal(p.enabled, false);
+    assert.equal(await p.probe("https://cdn.test/1"), null);
+  }
+  assert.equal(calls, 0);
+});
+test("client failure or CORS refusal never falls back to server", async () => {
+  let servers = 0;
+  const p = createStreamProber({
+    mode: "client",
+    endpoint: "/api/probe",
+    clientProbe: async () => {
+      throw Error("CORS");
+    },
+    fetchImpl: () => servers++
+  });
+  assert.equal(await p.probe("https://cdn.test/1"), null);
+  assert.equal(servers, 0);
+});

@@ -121,3 +121,33 @@ test("the runtime file still overrides what was built in", async () => {
   // redeployed container keeps overriding the built-in values.
   assert.match(config, /globalThis\.__NUVIO_ENV__\s*\|\|\s*buildEnv/);
 });
+
+test("hoster probe mode travels in public config and non-server modes clear the endpoint", () => {
+  assert.equal(normalizeEnvProperties({}).PROBE_CLIENT_CONCURRENCY, "1");
+  assert.equal(
+    normalizeEnvProperties({ PROBE_CLIENT_CONCURRENCY: "2" }).PROBE_CLIENT_CONCURRENCY,
+    "2"
+  );
+  assert.equal(
+    normalizeEnvProperties({ PROBE_CLIENT_CONCURRENCY: "3" }).PROBE_CLIENT_CONCURRENCY,
+    "1"
+  );
+  for (const mode of ["client", "off"]) {
+    const env = normalizeEnvProperties({
+      PROBE_MODE: mode,
+      PROBE_ENDPOINT: "https://probe.test/api"
+    });
+    assert.equal(env.PROBE_MODE, mode);
+    assert.equal(env.PROBE_ENDPOINT, "");
+    assert.match(buildRuntimeEnvScript(env), new RegExp('"PROBE_MODE": "' + mode + '"'));
+  }
+  assert.equal(normalizeEnvProperties({ PROBE_ENABLED: "false" }).PROBE_MODE, "off");
+  assert.equal(
+    normalizeEnvProperties({ PROBE_MODE: "client", PROBE_ENABLED: "false" }).PROBE_MODE,
+    "client"
+  );
+  assert.equal(
+    normalizeEnvProperties({ PROBE_MODE: "server", PROBE_ENDPOINT: "/api/probe" }).PROBE_ENDPOINT,
+    "/api/probe"
+  );
+});

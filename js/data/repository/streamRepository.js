@@ -1,3 +1,4 @@
+import { secureMediaUrl } from "../../core/streams/secureMediaUrl.js";
 import { safeApiCall } from "../../core/network/safeApiCall.js";
 import { addonRepository } from "./addonRepository.js";
 import { StreamApi } from "../remote/api/streamApi.js";
@@ -268,7 +269,7 @@ class StreamRepository {
       name: stream.name || null,
       title: stream.title || null,
       description: stream.description || null,
-      url: stream.url || null,
+      url: stream.url ? secureMediaUrl(stream.url) : null,
       ytId: stream.ytId || null,
       infoHash: stream.infoHash || null,
       fileIdx: stream.fileIdx ?? null,

@@ -1,5 +1,9 @@
 import http from "node:http";
 import os from "node:os";
+import {
+  normalizeProbeMode,
+  normalizeClientProbeConcurrency
+} from "../js/core/player/probeMode.js";
 import path from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -35,8 +39,13 @@ const envFlag = (name, fallback = true) => {
   if (!raw) return fallback;
   return !["0", "false", "no", "off", "disabled"].includes(raw);
 };
+const { env: deploymentEnv } = await readEnvProperties({ rootDir });
+const probeMode = normalizeProbeMode(
+  process.env.PROBE_MODE ?? (process.env.PROBE_ENABLED == null ? deploymentEnv.PROBE_MODE : ""),
+  process.env.PROBE_ENABLED
+);
 const featureEnabled = {
-  probe: envFlag("PROBE_ENABLED", FEATURE_DEFAULTS.PROBE_ENABLED),
+  probe: probeMode === "server",
   remux: envFlag("REMUX_ENABLED", FEATURE_DEFAULTS.REMUX_ENABLED),
   transcode: envFlag("TRANSCODE_ENABLED", FEATURE_DEFAULTS.TRANSCODE_ENABLED)
 };
@@ -133,6 +142,7 @@ const mimeTypes = {
   ".json": "application/json; charset=utf-8",
   ".m3u8": "application/vnd.apple.mpegurl",
   ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".wasm": "application/wasm",
   ".mp4": "video/mp4",
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -395,7 +405,21 @@ const server = http.createServer(async (request, response) => {
       // stops calling it -- no rebuild, and the badge says "unavailable" rather than
       // naming a relay that is switched off. A feature that is on but has no explicit
       // endpoint gets the path this server actually mounts.
-      const resolved = { ...env };
+      const resolved = { ...env, PROBE_MODE: probeMode };
+      resolved.MEDIA_URL_HOST_RESOLVE_ENABLED = ["1", "true"].includes(
+        String(
+          process.env.MEDIA_URL_HOST_RESOLVE_ENABLED ?? env.MEDIA_URL_HOST_RESOLVE_ENABLED ?? ""
+        )
+          .trim()
+          .toLowerCase()
+      )
+        ? "true"
+        : "false";
+      resolved.PROBE_CLIENT_CONCURRENCY = String(
+        normalizeClientProbeConcurrency(
+          process.env.PROBE_CLIENT_CONCURRENCY ?? env.PROBE_CLIENT_CONCURRENCY
+        )
+      );
       // How many rows one page open may probe. A deployment used by a few people does not
       // need a budget at all, so 0 means unlimited; a public one sets it to keep the probe
       // load (and its downloads) predictable.
@@ -405,7 +429,10 @@ const server = http.createServer(async (request, response) => {
       resolved.PROBE_PAGE_LIMIT = pageLimit || "20";
       Object.entries(FEATURE_SWITCHES).forEach(([switchKey, endpointKey]) => {
         const raw = String(process.env[switchKey] ?? "").trim();
-        const on = isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey]);
+        const on =
+          switchKey === "PROBE_ENABLED"
+            ? probeMode === "server"
+            : isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey]);
         resolved[endpointKey] = on
           ? String(env[endpointKey] || "").trim() || FEATURE_PATHS[endpointKey]
           : "";
@@ -420,6 +447,8 @@ const server = http.createServer(async (request, response) => {
           (process.env.NUVIO_SUBTITLE_DEBUG === "1" ? "true" : "false") +
           ";\nglobalThis.__NUVIO_PLAYBACK_STARTUP_DEBUG__ = " +
           (process.env.NUVIO_PLAYBACK_STARTUP_DEBUG === "1" ? "true" : "false") +
+          ";\nglobalThis.__NUVIO_CLIENT_PROBE_DEBUG__ = " +
+          (process.env.NUVIO_CLIENT_PROBE_DEBUG === "1" ? "true" : "false") +
           ";\n"
       );
       return;
