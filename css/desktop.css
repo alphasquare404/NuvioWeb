@@ -640,14 +640,7 @@ html.desktop-browser {
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::before {
-  background: linear-gradient(
-    90deg,
-    rgba(5, 5, 6, 0.96) 0%,
-    rgba(5, 5, 6, 0.88) 26%,
-    rgba(5, 5, 6, 0.55) 48%,
-    rgba(5, 5, 6, 0.16) 72%,
-    rgba(5, 5, 6, 0) 100%
-  );
+  background: none;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::after {
@@ -739,14 +732,7 @@ html.desktop-browser {
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::before {
   width: 100%;
-  background: linear-gradient(
-    90deg,
-    rgba(5, 5, 6, 0.96) 0%,
-    rgba(5, 5, 6, 0.88) 26%,
-    rgba(5, 5, 6, 0.55) 48%,
-    rgba(5, 5, 6, 0.16) 72%,
-    rgba(5, 5, 6, 0) 100%
-  );
+  background: none;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::after {
@@ -2238,9 +2224,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #detail .series-detail-vignette {
-  background:
-    linear-gradient(90deg, rgba(4, 7, 11, 0.94) 0%, rgba(8, 12, 17, 0.72) 42%, rgba(8, 12, 17, 0.25) 72%, rgba(8, 12, 17, 0.08) 100%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.08) 42%, var(--detail-bg) 100%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.08) 42%, var(--detail-bg) 100%);
 }
 
 .desktop-browser #detail .detail-bottom-shadow {
