@@ -648,7 +648,7 @@ export const ProfileSelectionScreen = {
            style="--profile-accent: ${escapeHtml(profileColor)}"
            tabindex="0">
         <div class="profile-avatar-ring">
-          <div class="profile-avatar" style="background:${escapeHtml(profileColor)}">
+          <div class="profile-avatar">
             ${
               avatarUrl
                 ? `<img class="profile-avatar-image" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(profile.name)}"/>`
@@ -816,7 +816,7 @@ export const ProfileSelectionScreen = {
 
           <div class="profile-editor-body">
             <div class="profile-editor-preview">
-              <div class="profile-editor-preview-avatar" style="background:${escapeHtml(this.editorState.selectedColorHex || getDefaultProfileColor())}">
+              <div class="profile-editor-preview-avatar">
                 ${
                   previewAvatarUrl
                     ? `<img class="profile-editor-preview-image" src="${escapeHtml(previewAvatarUrl)}" alt="${escapeHtml(previewName)}"/>`
