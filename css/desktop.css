@@ -5803,6 +5803,10 @@ html.is-hero-stream-hold * {
   font-size: 13px;
   font-weight: 650;
   cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .desktop-browser #detail .series-season-download-action .material-icons {
@@ -5845,6 +5849,10 @@ html.is-hero-stream-hold * {
   font-size: 15px;
   font-weight: 600;
   line-height: 1;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .desktop-browser #detail .series-season-select-shell:focus-within {
@@ -6485,6 +6493,19 @@ html.is-hero-stream-hold * {
     border-color: rgba(255, 255, 255, 0.34);
     background: rgba(255, 255, 255, 0.12);
     color: var(--detail-text-primary);
+  }
+
+  .desktop-browser #detail .series-season-select-shell:hover {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--detail-text-primary);
+  }
+
+  /* Download Season keeps its Appearance accent tint; hover simply
+     strengthens the same palette instead of turning the capsule neutral. */
+  .desktop-browser #detail .series-season-download-action:hover {
+    border-color: rgb(var(--secondary-color-rgb) / 0.64);
+    background: rgb(var(--secondary-color-rgb) / 0.2);
   }
 
   .desktop-browser #detail .series-episode-card:hover {

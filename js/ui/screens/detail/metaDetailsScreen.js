@@ -6114,6 +6114,9 @@ export const MetaDetailsScreen = {
       episode.offlineDownloadId ||
       (offlineEpisodeMediaId && this.offlineEpisodeMediaIds?.has(offlineEpisodeMediaId))
     );
+    const episodeWatchLabel = isWatched
+      ? t("episodes_mark_unwatched", {}, "Mark as unwatched")
+      : t("episodes_mark_watched", {}, "Mark as watched");
     const metaParts = [
       episode.runtimeMinutes > 0 ? renderEpisodeRuntimeLabel(episode.runtimeMinutes) : "",
       rating != null
@@ -6132,7 +6135,21 @@ export const MetaDetailsScreen = {
         <div class="series-episode-thumb">
           <div class="series-episode-image${shouldBlur ? " is-blurred" : ""}"${episode.thumbnail ? ` data-thumb="${escapeHtml(episode.thumbnail)}"` : ""}></div>
           <div class="series-episode-overlay"></div>
-          ${isWatched ? `<div class="series-episode-status complete">${renderWatchedBadgeGlyph()}</div>` : progressRatio < 0.02 ? `<div class="series-episode-status idle"></div>` : ""}
+          ${
+            Platform.isBrowser()
+              ? `<button type="button"
+                         class="series-episode-status series-episode-watch-toggle ${isWatched ? "complete" : "idle"}"
+                         data-action="toggleEpisodeWatched"
+                         data-video-id="${escapeAttribute(episode.id)}"
+                         aria-label="${escapeAttribute(episodeWatchLabel)}"
+                         aria-pressed="${isWatched ? "true" : "false"}"
+                         title="${escapeAttribute(episodeWatchLabel)}">${isWatched ? renderWatchedBadgeGlyph() : ""}</button>`
+              : isWatched
+                ? `<div class="series-episode-status complete">${renderWatchedBadgeGlyph()}</div>`
+                : progressRatio < 0.02
+                  ? `<div class="series-episode-status idle"></div>`
+                  : ""
+          }
           ${Platform.isBrowser() && isDownloaded ? `<span class="series-episode-offline-status" role="img" aria-label="${escapeAttribute(t("offline.downloaded", {}, "Downloaded"))}"><span class="material-icons" aria-hidden="true">download</span></span>` : ""}
           ${canOfferOfflineSubtitleHandoff(this.getOfflineSubtitlesForEpisode(episode)) ? `<button type="button" class="series-episode-subtitle-action" data-episode-subtitle="${escapeAttribute(episode.id)}" aria-label="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}" title="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}"><span class="material-icons" aria-hidden="true">closed_caption</span></button>` : ""}
           ${isUnavailable ? `<div class="series-episode-unavailable">${escapeHtml(t("episodes_unavailable", {}, "Unavailable").toUpperCase())}</div>` : ""}
@@ -6433,8 +6450,33 @@ export const MetaDetailsScreen = {
       Boolean(LayoutPreferences.get().blurUnwatchedEpisodes) && !isWatched
     );
 
+    const watchLabel = isWatched
+      ? t("episodes_mark_unwatched", {}, "Mark as unwatched")
+      : t("episodes_mark_watched", {}, "Mark as watched");
     let statusNode = thumb.querySelector(".series-episode-status");
-    if (isWatched) {
+    if (Platform.isBrowser()) {
+      if (
+        !(statusNode instanceof HTMLButtonElement) ||
+        !statusNode.classList.contains("series-episode-watch-toggle")
+      ) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "series-episode-status series-episode-watch-toggle";
+        if (statusNode instanceof HTMLElement) {
+          statusNode.replaceWith(button);
+        } else {
+          thumb.appendChild(button);
+        }
+        statusNode = button;
+      }
+      statusNode.className = `series-episode-status series-episode-watch-toggle ${isWatched ? "complete" : "idle"}`;
+      statusNode.dataset.action = "toggleEpisodeWatched";
+      statusNode.dataset.videoId = videoId;
+      statusNode.setAttribute("aria-label", watchLabel);
+      statusNode.setAttribute("aria-pressed", isWatched ? "true" : "false");
+      statusNode.title = watchLabel;
+      statusNode.innerHTML = isWatched ? renderWatchedBadgeGlyph() : "";
+    } else if (isWatched) {
       if (!(statusNode instanceof HTMLElement)) {
         statusNode = document.createElement("div");
         thumb.appendChild(statusNode);
@@ -9253,6 +9295,25 @@ export const MetaDetailsScreen = {
           void this.sendOfflineSubtitleForEpisode(episode);
         };
         this.container.addEventListener("click", this.boundEpisodeSubtitleActionHandler, true);
+      }
+      if (Platform.isBrowser() && !this.boundEpisodeWatchActionHandler) {
+        this.boundEpisodeWatchActionHandler = (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          const button = target?.closest?.(
+            "button[data-action='toggleEpisodeWatched'].series-episode-watch-toggle"
+          );
+          if (!button || !this.container?.contains(button)) return;
+          // The card itself opens the stream picker. Claim the circle before
+          // the rail's card click sees it.
+          event.preventDefault();
+          event.stopPropagation();
+          const episode = this.getEpisodeByVideoId(button.dataset.videoId);
+          if (!episode) return;
+          void this.setEpisodeWatchedState(episode, !this.isEpisodeMarkedWatched(episode)).catch(
+            (error) => console.warn("Failed to toggle episode watched state", error)
+          );
+        };
+        this.container.addEventListener("click", this.boundEpisodeWatchActionHandler, true);
       }
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -13040,6 +13101,10 @@ export const MetaDetailsScreen = {
     if (this.boundEpisodeSubtitleActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundEpisodeSubtitleActionHandler, true);
       this.boundEpisodeSubtitleActionHandler = null;
+    }
+    if (this.boundEpisodeWatchActionHandler && this.container) {
+      this.container.removeEventListener("click", this.boundEpisodeWatchActionHandler, true);
+      this.boundEpisodeWatchActionHandler = null;
     }
     if (this.boundDesktopInsightTabActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopInsightTabActionHandler);

@@ -16722,6 +16722,55 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   box-sizing: border-box;
 }
 
+/* The status circle is also the direct watched/unwatched control on browser
+   episode cards. It keeps the existing badge geometry and check glyph. */
+.series-episode-watch-toggle {
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease,
+    filter 140ms ease;
+}
+
+.series-episode-watch-toggle.complete {
+  border-color: transparent;
+  background: var(--secondary-color);
+  color: var(--on-secondary);
+}
+
+.series-episode-watch-toggle.idle {
+  border: 2px dashed rgba(179, 179, 179, 0.9);
+  background: transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .series-episode-watch-toggle:hover {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.14);
+    color: var(--detail-text-primary);
+  }
+
+  /* Watched keeps its Appearance accent fill on hover. Brightness plus the
+     same pale rim makes it interactive without looking unwatched. */
+  .series-episode-watch-toggle.complete:hover {
+    background: var(--secondary-color);
+    color: var(--on-secondary);
+    filter: brightness(1.14);
+  }
+}
+
+.series-episode-watch-toggle:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+}
+
 .series-episode-unavailable {
   position: absolute;
   top: 24px;
