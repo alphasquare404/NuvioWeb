@@ -10,6 +10,7 @@ import {
 } from "../../core/player/subtitleVerticalOffset.js";
 
 import { normalizeHdrPreference } from "../../core/streams/streamHdrPreference.js";
+import { normalizeStreamCompatibilityFilter } from "../../core/streams/streamCompatibilityFilter.js";
 
 const KEY = "playerSettings";
 
@@ -87,6 +88,7 @@ const DEFAULTS = {
   syncOfflineProgress: false,
   // Hide every stream that would need a relay or a re-encode.
   showOnlyDirectStreams: false,
+  streamCompatibilityFilter: "OFF",
   // Which assisted way back from an external player the person set up. Empty
   // until they choose: an existing profile may already have a Push
   // subscription, and that subscription is the only record the notification
@@ -394,6 +396,9 @@ export function normalizePlayerSettings(settings = {}) {
     ),
     syncOfflineProgress: persistentSettings.syncOfflineProgress === true,
     showOnlyDirectStreams: persistentSettings.showOnlyDirectStreams === true,
+    streamCompatibilityFilter: normalizeStreamCompatibilityFilter(
+      persistentSettings.streamCompatibilityFilter
+    ),
     externalReturnMethod: normalizeExternalReturnMethod(
       persistentSettings.externalReturnMethod ?? DEFAULTS.externalReturnMethod
     ),

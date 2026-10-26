@@ -209,17 +209,33 @@ test("no eligible auto stream keeps shared Stream Selection behavior for Continu
   }
 });
 
-const directProbe = { container: "mp4", videoCodec: "h264", audioCodec: "aac", audioChannels: 2 };
-async function probeTestScreen(name, limit, run) {
+const directProbe = {
+  container: "mp4",
+  videoCodec: "h264",
+  codecString: "avc1.640028",
+  audioCodec: "aac",
+  audioChannels: 2,
+  audioStreams: [{ index: 0, codec: "aac", profile: "LC", channels: 2, sampleRate: 48000 }]
+};
+async function probeTestScreen(name, limit, run, mode = "server", concurrency = 1) {
   const saved = {
     env: globalThis.__NUVIO_ENV__,
+    badgeSettings: globalThis.__NUVIO_TEST_BADGE_SETTINGS__,
+    playerSettings: globalThis.__NUVIO_TEST_PLAYER_SETTINGS__,
     fetch: globalThis.fetch,
     media: globalThis.MediaSource,
     document: globalThis.document
   };
   const requests = [];
+  globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = {
+    showPlaybackLabels: true,
+    labelAddons: ["TestAddon"],
+    clientLabelLimit: 10
+  };
   globalThis.__NUVIO_ENV__ = {
     PROBE_ENDPOINT: "https://probe.test/probe",
+    PROBE_MODE: mode,
+    PROBE_CLIENT_CONCURRENCY: concurrency,
     PROBE_PAGE_LIMIT: limit,
     REMUX_ENDPOINT: "/api/remux"
   };
@@ -237,7 +253,8 @@ async function probeTestScreen(name, limit, run) {
       streams: Array.from({ length: 8 }, (_, i) => ({
         id: String(i),
         url: "https://video.test/" + i + ".mp4",
-        name: "H264 AAC"
+        name: "H264 AAC",
+        addonName: "TestAddon"
       })),
       sourceChips: [],
       addonFilter: "all",
@@ -277,6 +294,109 @@ test("zero page limit probes all eligible rows", async () => {
     assert.equal(requests.length, 8);
     assert.equal(screen.probesSettled(), true);
   });
+});
+
+test("client stream labels submit one row at a time in source order", async () => {
+  const originalWorker = globalThis.Worker;
+  const visited = [];
+  let peakPending = 0;
+  try {
+    globalThis.Worker = class {
+      terminate() {}
+      postMessage(message) {
+        queueMicrotask(() =>
+          this.onmessage({
+            data: { id: message.id, type: "result", result: directProbe }
+          })
+        );
+      }
+    };
+    await probeTestScreen(
+      "client-serial",
+      0,
+      async (screen) => {
+        globalThis.document.baseURI = "https://app.test/";
+        globalThis.fetch = async (url, options) => {
+          visited.push(url);
+          assert.equal(options.credentials, "omit");
+          return new Response(new Uint8Array(262144), {
+            status: 206,
+            headers: { "Content-Range": "bytes 0-262143/2097152" }
+          });
+        };
+        screen.requestRender = () => {
+          peakPending = Math.max(peakPending, screen._probePending.size);
+        };
+        assert.equal(await screen.resolveUnknownRows(), 0);
+        await screen.runUnknownProbes();
+        assert.deepEqual(
+          visited,
+          screen.streams.map((stream) => stream.url)
+        );
+        assert.equal(peakPending, 1, "no queued row should spend its timeout waiting for another");
+        assert.equal(screen._probeResults.size, 8);
+      },
+      "client"
+    );
+  } finally {
+    if (originalWorker === undefined) delete globalThis.Worker;
+    else globalThis.Worker = originalWorker;
+  }
+});
+
+test("client startup publishes one result before two workers start further rows in order", async () => {
+  const originalWorker = globalThis.Worker;
+  const finishes = [],
+    visited = [];
+  try {
+    globalThis.Worker = class {
+      terminate() {}
+      postMessage(message) {
+        finishes.push(() =>
+          this.onmessage({ data: { id: message.id, type: "result", result: directProbe } })
+        );
+      }
+    };
+    await probeTestScreen(
+      "client-two",
+      0,
+      async (screen) => {
+        screen.streams = screen.streams.slice(0, 3);
+        globalThis.document.baseURI = "https://app.test/";
+        globalThis.fetch = async (url) => {
+          visited.push(url);
+          return new Response(new Uint8Array(262144), {
+            status: 206,
+            headers: { "Content-Range": "bytes 0-262143/2097152" }
+          });
+        };
+        const running = screen.runUnknownProbes();
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.deepEqual(visited, [screen.streams[0].url]);
+        assert.equal(finishes.length, 1);
+        finishes[0]();
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(screen._probeResults.has(screen.streams[0].url), true);
+        assert.deepEqual(
+          visited,
+          screen.streams.map((stream) => stream.url)
+        );
+        assert.equal(finishes.length, 3, "two jobs may run once the first label is ready");
+        finishes[2]();
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(screen._probeResults.has(screen.streams[2].url), true);
+        assert.equal(screen._probePending.has(screen.streams[1].url), true);
+        finishes[1]();
+        await running;
+        assert.equal(screen._probeResults.size, 3);
+      },
+      "client",
+      2
+    );
+  } finally {
+    if (originalWorker === undefined) delete globalThis.Worker;
+    else globalThis.Worker = originalWorker;
+  }
 });
 
 test("auto-resolved handoff adopts probe evidence before selecting playback", async () => {
@@ -385,15 +505,9 @@ test("Only Direct scopes results to label addons and updates an existing filter 
       ["aio-direct"]
     );
     globalThis.__NUVIO_TEST_BADGE_SETTINGS__.showPlaybackLabels = false;
-    assert.deepEqual(
-      screen.getFilteredStreams().map((s) => s.id),
-      ["aio-direct"]
-    );
+    assert.equal(screen.getFilteredStreams().length, 4);
     globalThis.__NUVIO_TEST_BADGE_SETTINGS__.labelAddons = [];
-    assert.deepEqual(
-      screen.getFilteredStreams().map((s) => s.id),
-      ["aio-direct", "other-direct"]
-    );
+    assert.equal(screen.getFilteredStreams().length, 4);
     globalThis.__NUVIO_TEST_PLAYER_SETTINGS__.showOnlyDirectStreams = false;
     assert.equal(screen.getFilteredStreams().length, 4);
   });
@@ -454,6 +568,20 @@ test("filename container hints do not exclude an otherwise eligible probe", asyn
   });
 });
 
+test("an unprobed source cannot request remux from the filename or addon codec text", async () => {
+  await probeTestScreen("unprobed-remux", 0, async (screen) => {
+    const source = { url: "https://media.test/unknown.mkv", name: "H264 AAC" };
+    let conversions = 0;
+    screen.remuxPlaylistUrl = async () => {
+      conversions++;
+      return "/api/remux/hls/guess/index.m3u8";
+    };
+    screen.isPlayableHlsPlaylist = async () => true;
+    assert.equal(await screen.resolvePlayerSource(source), source.url);
+    assert.equal(conversions, 0);
+  });
+});
+
 test("source preparation uses the MKV capability verdict even when remux is configured", async () => {
   await probeTestScreen("remux-verdict", 0, async (screen) => {
     const source = { url: "https://media.test/source.mkv", name: "H264 AAC" };
@@ -480,4 +608,205 @@ test("source preparation uses the MKV capability verdict even when remux is conf
       assert.equal(relayCalls.length, containerSupported ? 0 : 1);
     }
   });
+});
+
+test("client background labels wait until addon/cache loading completes", async () => {
+  await probeTestScreen(
+    "source-load-priority",
+    1,
+    async (screen) => {
+      let preparations = 0,
+        probes = 0;
+      screen.loading = true;
+      screen.resolveUnknownRows = async () => {
+        preparations++;
+      };
+      screen.runUnknownProbes = async () => {
+        probes++;
+      };
+      screen.maybeAutoPlayStream = () => {};
+      screen.scheduleUnknownProbes();
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(preparations, 0);
+      assert.equal(probes, 0);
+      assert.equal(
+        screen.getFilteredStreams().length,
+        8,
+        "cards stay visible without probe results"
+      );
+      screen.loading = false;
+      screen.scheduleUnknownProbes();
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(preparations, 1);
+      assert.equal(probes, 1);
+    },
+    "client"
+  );
+});
+
+test("Direct-only and auto-selection can still probe while addon loading continues", async () => {
+  await probeTestScreen(
+    "selection-load-priority",
+    1,
+    async (screen) => {
+      let probes = 0;
+      screen.loading = true;
+      screen.resolveUnknownRows = async () => {};
+      screen.runUnknownProbes = async () => {
+        probes++;
+      };
+      screen.maybeAutoPlayStream = () => {};
+      for (const settings of [
+        { showOnlyDirectStreams: true },
+        { streamAutoPlayMode: "FIRST_STREAM" }
+      ]) {
+        globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = settings;
+        screen.scheduleUnknownProbes();
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      assert.equal(probes, 2);
+    },
+    "client"
+  );
+});
+
+test("Choose addon state does not submit probe work even with Only Direct enabled", async () => {
+  await probeTestScreen("choose-no-labels", 0, async (screen, requests) => {
+    globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = { showPlaybackLabels: true, labelAddons: [] };
+    globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = { showOnlyDirectStreams: true };
+    await screen.runUnknownProbes();
+    assert.deepEqual(screen.getProbeCandidates(), []);
+    assert.deepEqual(requests, []);
+    assert.equal(screen.probesSettled(), true);
+  });
+});
+
+test("client candidate count is bounded by its selected limit with no unlimited fallback", async () => {
+  await probeTestScreen(
+    "client-label-limits",
+    0,
+    async (screen) => {
+      for (const count of [3, 5, 8, 10]) {
+        screen.streams = Array.from({ length: 15 }, (_, i) => ({
+          id: String(i),
+          addonName: "TestAddon",
+          url: "https://video.test/" + i
+        }));
+        globalThis.__NUVIO_TEST_BADGE_SETTINGS__.clientLabelLimit = count;
+        assert.equal(screen.getProbeCandidates().length, count);
+        assert.deepEqual(screen.getProbeCandidates(), screen.streams.slice(0, count));
+      }
+      globalThis.__NUVIO_TEST_BADGE_SETTINGS__.labelAddons = [];
+      assert.equal(screen.getProbeCandidates().length, 0);
+    },
+    "client"
+  );
+});
+
+test("text filtering is independent of labels and rejects candidates before the probe cap", async () => {
+  await probeTestScreen("text-before-probe", 1, async (screen, requests) => {
+    screen.streams = screen.streams.map((s, i) => ({
+      ...s,
+      name: i === 5 ? "Film.H264.AAC.mp4" : "1080p"
+    }));
+    globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = {
+      streamCompatibilityFilter: "LIKELY_DIRECT",
+      showOnlyDirectStreams: false
+    };
+    assert.deepEqual(
+      screen.getProbeCandidates().map((s) => s.id),
+      ["5"]
+    );
+    await screen.runUnknownProbes();
+    assert.deepEqual(requests, [screen.streams[5].url]);
+    globalThis.__NUVIO_TEST_BADGE_SETTINGS__.showPlaybackLabels = false;
+    assert.deepEqual(
+      screen.getFilteredStreams().map((s) => s.id),
+      ["5"]
+    );
+    assert.deepEqual(screen.getProbeCandidates(), []);
+    globalThis.__NUVIO_TEST_PLAYER_SETTINGS__.streamCompatibilityFilter = "OFF";
+    assert.equal(
+      screen.getFilteredStreams().length,
+      8,
+      "changing filter invalidates the list cache"
+    );
+  });
+});
+
+test("stream page and player spend their cap on the same unique files, sharing duplicate labels", async () => {
+  const { playerStreamProbeCandidates } =
+    await import("../../../core/streams/playerStreamPolicy.js");
+  await probeTestScreen("unique-file-budget", 3, async (screen, requests) => {
+    const make = (id, hash, addon) => ({
+      id,
+      infoHash: hash.repeat(40),
+      fileIdx: 0,
+      addonName: addon,
+      url: "https://video.test/" + id + ".mp4",
+      name: "Film.H264.AAC.mp4"
+    });
+    screen.streams = [
+      make("a-first", "a", "TestAddon"),
+      make("a-copy", "a", "Other"),
+      make("b", "b", "TestAddon"),
+      make("c", "c", "TestAddon")
+    ];
+    const labels = {
+      showPlaybackLabels: true,
+      labelAddons: ["TestAddon", "Other"],
+      clientLabelLimit: 3
+    };
+    globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = labels;
+    globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = { showOnlyDirectStreams: true };
+    const expected = playerStreamProbeCandidates(screen.streams, {
+      settings: globalThis.__NUVIO_TEST_PLAYER_SETTINGS__,
+      labels,
+      mode: "client",
+      limit: 3
+    }).map((s) => s.id);
+    assert.deepEqual(
+      screen.getProbeCandidates().map((s) => s.id),
+      expected
+    );
+    assert.deepEqual(expected, ["a-first", "b", "c"]);
+    await screen.runUnknownProbes();
+    assert.equal(requests.length, 3);
+    assert.equal(
+      screen.getStreamProbe(screen.streams[0]),
+      screen.getStreamProbe(screen.streams[1])
+    );
+    assert.equal(
+      screen.getFilteredStreams().length,
+      4,
+      "both addon cards can share one verified file result"
+    );
+    assert.equal(screen.probesSettled(), true);
+  });
+});
+
+test("filename mode labels without submitting any probe and Only Direct follows the estimate", async () => {
+  await probeTestScreen(
+    "filename-no-probe",
+    3,
+    async (screen, requests) => {
+      screen.streams = screen.streams.map((s, i) => ({
+        ...s,
+        name: i < 2 ? "Film.H264.AAC.mp4" : "Film.HEVC.AC3.mkv"
+      }));
+      globalThis.__NUVIO_TEST_BADGE_SETTINGS__.playbackLabelSource = "FILE_NAME";
+      globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = { showOnlyDirectStreams: true };
+      assert.deepEqual(screen.getProbeCandidates(), []);
+      await screen.runUnknownProbes();
+      assert.deepEqual(requests, []);
+      // This fixture's browser supports HEVC/AC3 but not MKV, so those rows estimate Remux.
+      assert.deepEqual(
+        screen.getFilteredStreams().map((s) => s.id),
+        ["0", "1"]
+      );
+      globalThis.__NUVIO_TEST_BADGE_SETTINGS__.showPlaybackLabels = false;
+      assert.equal(screen.getFilteredStreams().length, 8);
+    },
+    "client"
+  );
 });

@@ -1,3 +1,4 @@
+import { secureMediaUrl } from "../../../core/streams/secureMediaUrl.js";
 import { resolveRelayAvailability } from "../../../core/player/relayAvailability.js";
 import { TranscodeSettingsStore } from "../../../data/local/transcodeSettingsStore.js";
 import { renderStreamPlaybackBadge } from "../../components/streamPlaybackBadge.js";
@@ -5,7 +6,8 @@ import {
   allowsPlayerStreamLabel,
   playerStreamProbeKey,
   filterPlayerStreams,
-  playerStreamProbeCandidates
+  playerStreamProbeCandidates,
+  nextEpisodeSelectionOptions
 } from "../../../core/streams/playerStreamPolicy.js";
 import {
   normalizeSourceForDisplay,
@@ -20,15 +22,17 @@ import { paginateBrowserToolbar } from "./browserToolbar.js";
 import { isAppInstalled } from "../../components/browserInstallPrompt.js";
 import { formatRuntimeLabel } from "../../../core/util/runtimeLabel.js";
 import { traceHost } from "../../../core/util/playbackTrace.js";
-import { REMUX_ENDPOINT, TRANSCODE_ENDPOINT, PROBE_ENDPOINT } from "../../../config.js";
+import {
+  REMUX_ENDPOINT,
+  TRANSCODE_ENDPOINT,
+  PROBE_ENDPOINT,
+  PROBE_MODE,
+  PROBE_CLIENT_CONCURRENCY
+} from "../../../config.js";
 import { createStreamProber, streamProbeIdentity } from "../../../core/player/streamProbe.js";
 import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
 import { classifyPlayback } from "../../../core/player/playbackMethod.js";
 import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
-import {
-  applyHdrPreference,
-  resolveHdrPreference
-} from "../../../core/streams/streamHdrPreference.js";
 import { filterAutoPlaySourceStreams } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   StartupLoadingOverlay,
@@ -65,6 +69,11 @@ import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSetting
 import { matchStreamBadges } from "../../../core/streams/streamBadgeRules.js";
 import { hasReleaseToken } from "../../../core/streams/releaseToken.js";
 import { selectAutoPlayStream } from "../../../core/streams/streamAutoPlaySelector.js";
+import { withinStreamSelectionDeadline } from "../../../core/streams/streamAutoResolve.js";
+import {
+  isOnlyDirectEnabled,
+  usesMetadataLabels
+} from "../../../core/streams/streamLabelPolicy.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { I18n } from "../../../i18n/index.js";
 import { Environment } from "../../../platform/environment.js";
@@ -1731,7 +1740,7 @@ function isMagnetUrl(value = "") {
 
 function directPlaybackUrl(value = "") {
   const url = String(value || "").trim();
-  return url && !isMagnetUrl(url) ? url : "";
+  return url && !isMagnetUrl(url) ? secureMediaUrl(url) : "";
 }
 
 function streamDirectPlaybackUrl(stream = {}) {
@@ -7998,17 +8007,20 @@ export const PlayerScreen = {
     settings = PlayerSettingsStore.get(),
     options = {}
   ) {
+    if (options.cancelled?.() === true || Date.now() >= (options.deadlineAt ?? Infinity))
+      return null;
     if (!Array.isArray(streamItems) || !streamItems.length) {
       return null;
     }
 
-    const mode = String(settings.streamAutoPlayMode || "MANUAL").toUpperCase();
     // The list these candidates came from is the same one the stream screen shows, so the
     // owner's "only show direct streams" choice has to hold here too: an episode that
     // autoplays a row the list was told to hide is the filter being bypassed.
     let candidates = streamItems;
-    if (settings.showOnlyDirectStreams === true) {
+    if (isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot())) {
       candidates = await this.selectDirectPlayableCandidates(streamItems, settings, options);
+      if (options.cancelled?.() === true || Date.now() >= (options.deadlineAt ?? Infinity))
+        return null;
       if (!candidates.length) {
         // Nothing plays as it is. Returning null makes the caller open the next-episode
         // picker -- the same path as "autoplay next episode" being switched off -- instead
@@ -8018,14 +8030,6 @@ export const PlayerScreen = {
       }
     }
 
-    const preferBingeGroup = Boolean(settings.streamAutoPlayPreferBingeGroupForNextEpisode);
-    const shouldAutoSelectInManualMode =
-      mode === "MANUAL" && (Boolean(settings.autoplayNextEpisode) || preferBingeGroup);
-    const preferredBingeGroup = preferBingeGroup ? this.getCurrentStreamBingeGroup() : "";
-    const bingeGroupOnlyManualMode = shouldAutoSelectInManualMode && preferBingeGroup;
-    if (bingeGroupOnlyManualMode && !preferredBingeGroup) {
-      return null;
-    }
     const installedAddonNames =
       options.installedAddonNames instanceof Set
         ? options.installedAddonNames
@@ -8034,23 +8038,19 @@ export const PlayerScreen = {
               .map((addon) => String(addon?.displayName || addon?.name || "").trim())
               .filter(Boolean)
           );
-    return selectAutoPlayStream(candidates, {
-      hdrPreference: resolveHdrPreference(settings),
-      probeOnly: settings.showOnlyDirectStreams === true,
-      probeForStream: (stream) =>
-        this._nextEpisodeProbeResults?.get(stream.url || stream.externalUrl || ""),
-      mode: shouldAutoSelectInManualMode ? "FIRST_STREAM" : mode,
-      source: shouldAutoSelectInManualMode
-        ? "ALL_SOURCES"
-        : String(settings.streamAutoPlaySource || "ALL_SOURCES"),
-      regexPattern: shouldAutoSelectInManualMode ? "" : String(settings.streamAutoPlayRegex || ""),
-      installedAddonNames,
-      selectedAddons: shouldAutoSelectInManualMode ? [] : settings.streamAutoPlaySelectedAddons,
-      selectedPlugins: shouldAutoSelectInManualMode ? [] : settings.streamAutoPlaySelectedPlugins,
-      preferredBingeGroup,
-      preferBingeGroupInSelection: preferBingeGroup,
-      bingeGroupOnly: Boolean(options.bingeGroupOnly || bingeGroupOnlyManualMode)
-    });
+    return selectAutoPlayStream(
+      candidates,
+      nextEpisodeSelectionOptions(settings, {
+        labels: StreamBadgeSettingsStore.snapshot(),
+        installedAddonNames,
+        preferredBingeGroup: settings.streamAutoPlayPreferBingeGroupForNextEpisode
+          ? this.getCurrentStreamBingeGroup()
+          : "",
+        bingeGroupOnly: options.bingeGroupOnly,
+        probeForStream: (stream) =>
+          this._nextEpisodeProbeResults?.get(stream.url || stream.externalUrl || "")
+      })
+    );
   },
 
   async selectDirectPlayableCandidates(
@@ -8076,14 +8076,24 @@ export const PlayerScreen = {
       selectedPlugins:
         settings.streamAutoPlayMode === "MANUAL" ? [] : settings.streamAutoPlaySelectedPlugins
     });
-    const labelScoped = scoped.filter((stream) =>
-      allowsPlayerStreamLabel(stream, StreamBadgeSettingsStore.snapshot())
-    );
-    const ranked =
-      resolveHdrPreference(settings) === "PREFER"
-        ? applyHdrPreference(labelScoped, { hdrPreference: "PREFER" })
-        : labelScoped;
-    const rows = ranked
+    const capabilities = getDeviceCapabilities();
+    const labels = StreamBadgeSettingsStore.snapshot();
+    if (!usesMetadataLabels(labels)) {
+      this._nextEpisodeProbeResults = new Map();
+      return filterPlayerStreams(scoped, {
+        settings: { ...settings, showOnlyDirectStreams: true },
+        labels,
+        capabilities
+      });
+    }
+    const targets = playerStreamProbeCandidates(scoped, {
+      settings: { ...settings, showOnlyDirectStreams: true },
+      labels: StreamBadgeSettingsStore.snapshot(),
+      capabilities,
+      mode: PROBE_MODE,
+      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
+    });
+    const rows = targets
       .map((stream) => ({
         stream,
         url: String(stream.url || stream.externalUrl || "").trim()
@@ -8094,133 +8104,173 @@ export const PlayerScreen = {
       return [];
     }
 
-    const capabilities = getDeviceCapabilities();
-    const limitRaw = Number(globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20);
-    const limit = Number.isFinite(limitRaw) && limitRaw >= 0 ? limitRaw : 20;
-    const targets = (limit === 0 ? rows : rows.slice(0, limit)).map((row) => ({
-      url: row.url,
-      label: [row.stream.name, row.stream.title, row.stream.description].filter(Boolean).join(" ")
-    }));
-
     const prober =
       this._nextEpisodeProber ||
       (this._nextEpisodeProber = createStreamProber({
         endpoint: PROBE_ENDPOINT,
+        mode: PROBE_MODE,
+        clientConcurrency: PROBE_CLIENT_CONCURRENCY,
         timeoutMs: 15000,
         assess: (probe) => assessPlaybackCapabilities(probe)
       }));
-    let probes = new Map();
-    if (prober.enabled) {
-      probes = new Map(
-        await Promise.all(
-          targets.map(async (target) => [
-            target.url,
-            await prober
-              .probe(target.url, {
-                reason: "selection",
-                identity: streamProbeIdentity(rows.find((row) => row.url === target.url)?.stream)
-              })
-              .catch(() => null)
-          ])
+    const probes = new Map();
+    const deadlineAt = options.deadlineAt ?? Infinity;
+    const stopped = () => options.cancelled?.() === true || Date.now() >= deadlineAt;
+    const directRows = () =>
+      [...rows]
+        .sort((a, b) => streamItems.indexOf(a.stream) - streamItems.indexOf(b.stream))
+        .filter(
+          (row) =>
+            probes.has(row.url) &&
+            classifyPlayback({
+              url: row.url,
+              label: [row.stream.name, row.stream.title, row.stream.description]
+                .filter(Boolean)
+                .join(" "),
+              probe: probes.get(row.url),
+              capabilities
+            }).method === "direct"
         )
-      );
+        .map((row) => row.stream);
+    if (prober.enabled) {
+      // Start the next candidate only after its predecessor has answered. A
+      // cold worker must not spend later candidates' entire budget in its queue.
+      for (const row of rows) {
+        if (stopped()) break;
+        const probe = await withinStreamSelectionDeadline(
+          () =>
+            prober
+              .probe(row.url, {
+                reason: "selection",
+                identity: streamProbeIdentity(row.stream),
+                timeoutMs: Math.min(15000, deadlineAt - Date.now())
+              })
+              .catch(() => null),
+          deadlineAt,
+          () => null
+        );
+        if (stopped()) break;
+        if (probe) {
+          probes.set(row.url, probe);
+          options.onDirectCandidates?.(directRows(), probes);
+        }
+      }
     }
-
+    if (options.cancelled?.() === true) return [];
     this._nextEpisodeProbeResults = probes;
-    return [...rows]
-      .sort((a, b) => streamItems.indexOf(a.stream) - streamItems.indexOf(b.stream))
-      .filter((row) => {
-        const probe = probes.get(row.url) || null;
-        if (!probe) return false;
-        const verdict = classifyPlayback({
-          url: row.url,
-          label: [row.stream.name, row.stream.title, row.stream.description]
-            .filter(Boolean)
-            .join(" "),
-          probe,
-          capabilities
-        });
-        return verdict.method === "direct";
-      })
-      .map((row) => row.stream);
+    return directRows();
   },
 
   async resolveNextEpisodeStreamByAutoPlayPolicy(nextEpisode, itemType, settings) {
+    const timeoutSeconds = Math.max(
+      0,
+      Math.trunc(Number(settings.streamAutoPlayTimeoutSeconds || 0))
+    );
+    const instant = timeoutSeconds === 0;
+    // Instant selects the first eligible arrival; Unlimited waits for addon
+    // completion. A positive duration bounds lookup, retrieval and probing.
+    const deadlineAt =
+      timeoutSeconds === 2147483647
+        ? Infinity
+        : Date.now() + (instant ? NEXT_EPISODE_SOURCE_RESOLVE_TIMEOUT_MS : timeoutSeconds * 1000);
     const installedAddonNames = new Set(
-      ((await addonRepository.getInstalledAddons().catch(() => [])) || [])
+      (
+        (await withinStreamSelectionDeadline(
+          () => addonRepository.getInstalledAddons().catch(() => []),
+          deadlineAt,
+          () => []
+        )) || []
+      )
         .map((addon) => String(addon?.displayName || addon?.name || "").trim())
         .filter(Boolean)
     );
     let latestStreams = [];
-    let timeoutElapsed = Number(settings.streamAutoPlayTimeoutSeconds || 0) === 0;
     const hasPreferredBingeGroup = Boolean(
       settings.streamAutoPlayPreferBingeGroupForNextEpisode && this.getCurrentStreamBingeGroup()
     );
     let settled = false;
     let resolveSelection;
     let selectionTimer = null;
-    let hardTimeout = null;
+    let complete = false;
+    let selecting = false;
+    let revision = 0;
+    let bestConfirmed = null;
 
     const selection = new Promise((resolve) => {
       resolveSelection = resolve;
     });
-    const finish = (selectedStream, error = null) => {
+    const finish = (selectedStream, error = null, timedOut = false) => {
       if (settled) {
         return;
       }
       settled = true;
       clearTimeout(selectionTimer);
-      clearTimeout(hardTimeout);
       resolveSelection({
         selectedStream: selectedStream || null,
         streamItems: latestStreams,
-        error
+        error,
+        timedOut
       });
     };
-    const trySelect = async (bingeGroupOnly) => {
-      const selected = await this.selectNextEpisodeStreamByAutoPlayPolicy(latestStreams, settings, {
-        bingeGroupOnly,
-        installedAddonNames
-      });
-      if (selected) {
-        finish(selected);
+    const trySelect = async () => {
+      if (settled || selecting || (!complete && !instant && !hasPreferredBingeGroup)) return;
+      selecting = true;
+      const startedRevision = revision;
+      try {
+        const selected = await withinStreamSelectionDeadline(
+          () =>
+            this.selectNextEpisodeStreamByAutoPlayPolicy(latestStreams, settings, {
+              bingeGroupOnly: !complete && !instant,
+              installedAddonNames,
+              deadlineAt,
+              onDirectCandidates: (candidates, probes) => {
+                if (settled || Date.now() >= deadlineAt) return;
+                bestConfirmed = selectAutoPlayStream(
+                  candidates,
+                  nextEpisodeSelectionOptions(settings, {
+                    labels: StreamBadgeSettingsStore.snapshot(),
+                    installedAddonNames,
+                    preferredBingeGroup: hasPreferredBingeGroup
+                      ? this.getCurrentStreamBingeGroup()
+                      : "",
+                    probeForStream: (stream) => probes.get(stream.url || stream.externalUrl || "")
+                  })
+                );
+                this._nextEpisodeProbeResults = new Map(probes);
+                if (instant && bestConfirmed) finish(bestConfirmed);
+              },
+              cancelled: () => settled || Date.now() >= deadlineAt
+            }),
+          deadlineAt,
+          () => null
+        );
+        if (settled) return;
+        if (Date.now() >= deadlineAt) finish(bestConfirmed, null, !bestConfirmed);
+        else if (selected) finish(selected);
+        else if (complete && startedRevision === revision) finish(null);
+      } catch (error) {
+        finish(null, error);
+      } finally {
+        selecting = false;
+        if (!settled && startedRevision !== revision) void trySelect();
       }
-      return selected;
     };
     const onChunk = (streams) => {
+      if (settled) return;
       latestStreams = Array.isArray(streams) ? streams : latestStreams;
-      void (async () => {
-        if (hasPreferredBingeGroup && (await trySelect(true))) {
-          return;
-        }
-        if (timeoutElapsed) {
-          finish(
-            await this.selectNextEpisodeStreamByAutoPlayPolicy(latestStreams, settings, {
-              installedAddonNames
-            })
-          );
-        }
-      })();
+      revision++;
+      void trySelect();
     };
 
-    const timeoutSeconds = Math.max(
-      0,
-      Math.trunc(Number(settings.streamAutoPlayTimeoutSeconds || 0))
-    );
-    if (timeoutSeconds > 0 && timeoutSeconds !== 2147483647) {
-      selectionTimer = setTimeout(() => {
-        timeoutElapsed = true;
-        if (latestStreams.length) {
-          void this.selectNextEpisodeStreamByAutoPlayPolicy(latestStreams, settings, {
-            installedAddonNames
-          }).then((selected) => finish(selected));
-        }
-      }, timeoutSeconds * 1000);
+    if (Date.now() >= deadlineAt) {
+      finish(null, null, true);
+      return selection;
     }
-    hardTimeout = setTimeout(
-      () => finish(null, new Error("Next episode stream selection timed out")),
-      NEXT_EPISODE_SOURCE_RESOLVE_TIMEOUT_MS
-    );
+    if (Number.isFinite(deadlineAt))
+      selectionTimer = setTimeout(
+        () => finish(bestConfirmed, null, !bestConfirmed),
+        Math.max(1, deadlineAt - Date.now())
+      );
 
     void this.getPlayableStreamsForVideo(nextEpisode.videoId, itemType, {
       season: nextEpisode.season,
@@ -8228,12 +8278,11 @@ export const PlayerScreen = {
       onChunk
     })
       .then(async (streams) => {
+        if (settled) return;
         latestStreams = Array.isArray(streams) ? streams : latestStreams;
-        finish(
-          await this.selectNextEpisodeStreamByAutoPlayPolicy(latestStreams, settings, {
-            installedAddonNames
-          })
-        );
+        complete = true;
+        revision++;
+        await trySelect();
       })
       .catch((error) => finish(null, error));
 
@@ -15441,6 +15490,8 @@ export const PlayerScreen = {
   filterPlayerStreamList(streams) {
     if (!Environment.isBrowser()) return streams;
     return filterPlayerStreams(streams, {
+      mode: PROBE_MODE,
+      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
       settings: PlayerSettingsStore.get(),
       labels: StreamBadgeSettingsStore.snapshot(),
       capabilities: getDeviceCapabilities(),
@@ -15453,10 +15504,15 @@ export const PlayerScreen = {
     if (
       !Environment.isBrowser() ||
       labels.showPlaybackLabels === false ||
-      !allowsPlayerStreamLabel(stream, labels)
+      !allowsPlayerStreamLabel(stream, labels) ||
+      (usesMetadataLabels(labels) &&
+        PROBE_MODE === "client" &&
+        !this._playerLabelCandidateKeys?.has(playerStreamProbeKey(stream)))
     )
       return "";
     return renderStreamPlaybackBadge({
+      labelSource: labels.playbackLabelSource,
+      stream,
       url: stream.url || stream.externalUrl || "",
       probe: this.getPlayerStreamProbe(stream),
       capabilities: getDeviceCapabilities(),
@@ -15473,18 +15529,24 @@ export const PlayerScreen = {
     const targets = playerStreamProbeCandidates(streams, {
       settings,
       labels: StreamBadgeSettingsStore.snapshot(),
+      mode: PROBE_MODE,
       limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
     });
-    if (!targets.length || !PROBE_ENDPOINT) return;
+    this._playerLabelCandidateKeys = new Set(targets.map(playerStreamProbeKey));
+    if (!targets.length) return;
     const token = this.playerMountToken;
     const results = (this._playerListProbeResults ||= new Map());
     const pending = (this._playerListProbePending ||= new Set());
     const failed = (this._playerListProbeFailed ||= new Set());
     const prober = (this._playerListProber ||= createStreamProber({
       endpoint: PROBE_ENDPOINT,
+      mode: PROBE_MODE,
+      clientConcurrency: PROBE_CLIENT_CONCURRENCY,
       timeoutMs: 15000,
       assess: (probe) => assessPlaybackCapabilities(probe)
     }));
+
+    if (!prober.enabled) return;
     const refresh = () => {
       if (!this.isActiveMountToken(token)) return;
       if (this.sourcesPanelVisible) this.renderSourcesPanel();
@@ -15514,14 +15576,24 @@ export const PlayerScreen = {
         const key = playerStreamProbeKey(stream);
         return !results.has(key) && !pending.has(key) && !failed.has(key);
       })
-      .slice(0, Math.max(0, 5 - pending.size));
+      .slice(
+        0,
+        Math.max(
+          0,
+          (PROBE_MODE === "client"
+            ? prober.clientParallelReady
+              ? PROBE_CLIENT_CONCURRENCY
+              : 1
+            : 5) - pending.size
+        )
+      );
     for (const stream of remaining) {
       const key = playerStreamProbeKey(stream);
       pending.add(key);
       void Promise.resolve()
         .then(async () => {
           let url = stream.url || stream.externalUrl || "";
-          if (!url && DirectDebridResolver.canResolveStream(stream)) {
+          if (!url && PROBE_MODE !== "client" && DirectDebridResolver.canResolveStream(stream)) {
             const episode =
               this.episodePanelVisible && this.episodePanelMode === "streams"
                 ? this.episodes?.[this.episodePanelIndex]
@@ -15533,7 +15605,11 @@ export const PlayerScreen = {
             if (resolved?.status === "success") url = resolved.stream?.url || "";
           }
           if (!this.isActiveMountToken(token) || !/^https?:/i.test(url)) return null;
-          return prober.probe(url, { reason: "selection", identity: streamProbeIdentity(stream) });
+          return prober.probe(url, {
+            reason: "selection",
+            identity: streamProbeIdentity(stream),
+            resolveTimeoutMs: 15000
+          });
         })
         .catch(() => null)
         .then((probe) => {

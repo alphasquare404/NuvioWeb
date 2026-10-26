@@ -170,7 +170,70 @@ of the error body. Raw response text is discarded. These facts distinguish a CDN
 HTTP rejection from a browser CORS failure; they do not treat Unknown as a request
 to transcode.
 
-### Persistent client metadata cache
+### Client probe result reuse
+
+An independent Playback > General setting, Filter streams by device compatibility,
+offers Off (default), Likely Direct, and Likely Direct + Remux. It estimates from
+addon names/descriptions/filenames and the current browser's native codec and
+container capability snapshot, without resolving a URL or reading media. Query
+tokens are excluded from text inspection. Enabled filters omit incomplete,
+unverified text and conversion candidates from manual lists, automatic selection
+and probe candidates before their limit. Disabling labels does not disable this
+filter. Addon label scope, metadata candidate limits, HDR preference and the chosen
+label source's Only Direct checks still apply afterward. This text estimate is not a verified label;
+Off restores all text-filtered sources. No Movi-specific behavior is introduced.
+The setting is saved per local player profile. Playback group reorganization is
+still a separate design discussion.
+
+Next Episode treats Binge Group as a preference: missing hints or an unavailable
+matching group fall back to the ordinary auto-next selection policy. A provisional
+preferred-only lookup can wait while addons are still loading, but it does not
+make the final fallback require a group. Source permissions, compatibility/HDR
+filters and verified Direct requirements still apply.
+
+For Next Episode, a positive Stream Selection Timeout bounds addon lookup, source
+retrieval and probing together. Only one selection runs at a time; each probe
+receives the remaining budget. At expiry, an already verified eligible Direct
+candidate can be used, otherwise the stream picker opens. Late results cannot
+restart selection or replace its result. Instant chooses the first eligible
+arrival (with the existing 45-second retrieval safety bound); Unlimited waits for
+addon completion without that 45-second overall cap. Individual probe requests
+remain bounded. File facts obtained late may still be reusable in the probe cache.
+
+The stream page, detail auto-selection, player panels and Next Episode share the
+same candidate policy. A complete torrent hash plus file index counts as one
+file across addons; incomplete identities fall back to exact source URLs. The
+first eligible occurrence represents the file, preserving ordering and HDR
+priority. Duplicate cards may share verified facts without spending another
+candidate slot. Names or file sizes are not sufficient to merge candidates.
+
+Settings > Streams offers Label based on: File metadata (Accurate, Slow), the
+default, or File name (Inaccurate, Fast). Metadata labels use the existing probe
+pipeline and cache. Filename labels use local addon text/filenames and current
+native browser capabilities, with no probe, worker, URL resolution or metadata
+cache lookup; badges explicitly say estimate. Incomplete text remains Unknown.
+Filename mode ignores prior probe facts for label decisions and uses text for HDR.
+
+Labeling requires its toggle enabled and an explicit addon selection in Settings
+
+> Streams; an empty selection displays `Choose` and performs no label probing.
+> Only Direct is hidden and inactive unless both requirements are met. Turning
+> labels off or clearing selected addons in Settings also saves Only Direct off;
+> runtime guards ignore old stale Only Direct flags. When enabled, Only Direct uses
+> the chosen label source: probe verification for metadata, estimates for filename.
+> With Only Direct off, sources from all addons remain visible, subject to the
+> independent text compatibility filter.
+
+In client metadata mode, a profile may label at most 3, 5, 8 or 10 candidates per source
+list (default 5), combined across selected addons. The host's nonzero
+`PROBE_PAGE_LIMIT` may lower this cap; a zero host limit cannot remove the client
+cap. Addon scope and existing HDR priority apply before the cap, and First Stream
+retains source order. Detail startup, stream page, player source panels and
+Direct-only next-episode selection use the same cap. This setting limits candidate
+count; it does not change the deployment's Worker concurrency. Unselected addons
+and candidates beyond the client metadata cap do not draw playback labels. The
+limit is hidden and unused in filename mode. The label source, limit and addon
+choices are saved in the local profile's stream badge settings.
 
 Client result metadata is cached in RAM by each `createStreamProber` instance.
 Successful file facts with a full torrent hash and file index are also stored

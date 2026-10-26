@@ -1,7 +1,14 @@
 import {
-  applyHdrPreference,
-  resolveHdrPreference
-} from "../../../core/streams/streamHdrPreference.js";
+  playerStreamProbeCandidates,
+  playerStreamProbeKey
+} from "../../../core/streams/playerStreamPolicy.js";
+import { filterStreamsByCompatibility } from "../../../core/streams/streamCompatibilityFilter.js";
+import { classifyStreamFilename } from "../../../core/streams/streamCompatibilityFilter.js";
+import {
+  isOnlyDirectEnabled,
+  usesMetadataLabels
+} from "../../../core/streams/streamLabelPolicy.js";
+import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
 import { resolveRelayAvailability } from "../../../core/player/relayAvailability.js";
 import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
 import {
@@ -28,7 +35,13 @@ import {
   shouldTranscodeSource
 } from "../../../core/player/transcodeSource.js";
 import { buildPlayerSubtitle } from "../../../core/util/runtimeLabel.js";
-import { PROBE_ENDPOINT, REMUX_ENDPOINT, TRANSCODE_ENDPOINT } from "../../../config.js";
+import {
+  PROBE_ENDPOINT,
+  PROBE_MODE,
+  PROBE_CLIENT_CONCURRENCY,
+  REMUX_ENDPOINT,
+  TRANSCODE_ENDPOINT
+} from "../../../config.js";
 import { buildRemuxUrl } from "../../../core/player/remuxSource.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { PLAYBACK_METHODS, classifyPlayback } from "../../../core/player/playbackMethod.js";
@@ -485,6 +498,8 @@ function isDirectPlayableStream(stream = {}, probe = null) {
 // allows far longer. Aborting at three seconds is what turned answered rows into Unknown.
 const streamProber = createStreamProber({
   endpoint: PROBE_ENDPOINT,
+  mode: PROBE_MODE,
+  clientConcurrency: PROBE_CLIENT_CONCURRENCY,
   timeoutMs: 15000,
   assess: (probe) =>
     assessPlaybackCapabilities(probe, {
@@ -984,6 +999,8 @@ export const StreamScreen = {
     for (const [url, probe] of this.params?.autoResolvedProbes || []) {
       if (probe && this.streams.some((stream) => (stream.url || stream.externalUrl) === url)) {
         this._probeResults.set(url, probe);
+        const stream = this.streams.find((entry) => (entry.url || entry.externalUrl) === url);
+        this._probeResults.set(playerStreamProbeKey(stream), probe);
         this._probeSent.add(url);
       }
     }
@@ -1518,26 +1535,21 @@ export const StreamScreen = {
   },
 
   getProbeCandidates() {
-    const labelSettings = StreamBadgeSettingsStore.snapshot();
-    const labelAddons = Array.isArray(labelSettings.labelAddons) ? labelSettings.labelAddons : [];
-    const configured = Number(globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20);
-    const limit = Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 20;
-    const seen = new Set();
-    const candidates = this.streams.filter((stream) => {
-      const addonName = String(stream?.addonName || stream?.addon || "").trim();
-      if (labelAddons.length && !labelAddons.includes(addonName)) return false;
-      const url = String(stream.url || stream.externalUrl || "").trim();
-      // The addon filename is not authoritative file metadata, even without a relay.
-      const key = directDebridPreparationKey(stream) || url || stream.id;
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
+    return playerStreamProbeCandidates(this.streams, {
+      labels: StreamBadgeSettingsStore.snapshot(),
+      settings: PlayerSettingsStore.get(),
+      capabilities: getDeviceCapabilities(),
+      mode: PROBE_MODE,
+      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
     });
-    const ranked =
-      resolveHdrPreference(PlayerSettingsStore.get()) === "PREFER"
-        ? applyHdrPreference(candidates, { hdrPreference: "PREFER" })
-        : candidates;
-    return limit === 0 ? ranked : ranked.slice(0, limit);
+  },
+
+  getStreamProbe(stream) {
+    return (
+      this._probeResults?.get(stream.url || stream.externalUrl || "") ||
+      this._probeResults?.get(playerStreamProbeKey(stream)) ||
+      null
+    );
   },
 
   probesSettled() {
@@ -1546,7 +1558,7 @@ export const StreamScreen = {
     if (!streamProber.enabled) return true;
     return !this.getProbeCandidates().some((stream) => {
       const url = String(stream.url || stream.externalUrl || "").trim();
-      return url && !this._probeResults?.has(url) && !this._probeFailed?.has(url);
+      return url && !this.getStreamProbe(stream) && !this._probeFailed?.has(url);
     });
   },
 
@@ -1584,11 +1596,14 @@ export const StreamScreen = {
     );
     // With the direct filter on, an empty list is usually "not answered yet", not "nothing
     // to play". Concluding now would make auto-play look broken, so wait for the probes.
-    if (PlayerSettingsStore.get().showOnlyDirectStreams === true) {
+    if (
+      isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot()) &&
+      usesMetadataLabels(StreamBadgeSettingsStore.snapshot())
+    ) {
       const unanswered = streamProber.enabled
         ? this.getProbeCandidates().filter((stream) => {
             const url = String(stream.url || stream.externalUrl || "").trim();
-            return url && !this._probeResults?.has(url) && !this._probeFailed?.has(url);
+            return url && !this.getStreamProbe(stream) && !this._probeFailed?.has(url);
           })
         : [];
       // The pipeline, not just the row list: some rows already have answers while others
@@ -1620,9 +1635,12 @@ export const StreamScreen = {
     }
 
     const selected = selectAutoPlayStream(this.getFilteredStreams(), {
+      streamCompatibilityFilter: settings.streamCompatibilityFilter,
       hdrPreference: resolveHdrPreference(settings),
-      probeOnly: settings.showOnlyDirectStreams === true,
-      probeForStream: (stream) => this._probeResults?.get(stream.url || stream.externalUrl || ""),
+      probeOnly:
+        isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot()) &&
+        usesMetadataLabels(StreamBadgeSettingsStore.snapshot()),
+      probeForStream: (stream) => this.getStreamProbe(stream),
       mode: settings.streamAutoPlayMode,
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
@@ -1752,8 +1770,14 @@ export const StreamScreen = {
   getFilteredStreams(filter = this.addonFilter) {
     const labelSettings = StreamBadgeSettingsStore.snapshot();
     const labelAddons = Array.isArray(labelSettings.labelAddons) ? labelSettings.labelAddons : [];
-    const labelAddonsKey = JSON.stringify(labelAddons);
-    const showOnlyDirectStreams = PlayerSettingsStore.get().showOnlyDirectStreams === true;
+    const labelAddonsKey = JSON.stringify([
+      labelAddons,
+      labelSettings.clientLabelLimit,
+      labelSettings.showPlaybackLabels,
+      labelSettings.playbackLabelSource,
+      PlayerSettingsStore.get().streamCompatibilityFilter
+    ]);
+    const showOnlyDirectStreams = isOnlyDirectEnabled(PlayerSettingsStore.get(), labelSettings);
     // Cache the sorted/filtered result so focus navigation (which re-requests
     // this on every move via badge hydration) does not re-sort and re-parse
     // the whole source list each keypress. The cache is keyed on the inputs
@@ -1773,7 +1797,11 @@ export const StreamScreen = {
     ) {
       return cache.result;
     }
-    const orderedStreams = sortStreamsByAddonOrder(this.streams, this.sourceChips);
+    const orderedStreams = filterStreamsByCompatibility(
+      sortStreamsByAddonOrder(this.streams, this.sourceChips),
+      PlayerSettingsStore.get(),
+      getDeviceCapabilities()
+    );
     let result =
       filter === "all"
         ? orderedStreams
@@ -1785,17 +1813,20 @@ export const StreamScreen = {
     if (showOnlyDirectStreams) {
       // Label scope restricts the list only when verified Direct results are required.
       // Otherwise every source stays visible and labels are drawn independently.
-      if (labelAddons.length) {
-        result = result.filter((stream) =>
-          labelAddons.includes(String(stream?.addonName || stream?.addon || "").trim())
-        );
+      result = result.filter((stream) =>
+        labelAddons.includes(String(stream?.addonName || stream?.addon || "").trim())
+      );
+      if (PROBE_MODE === "client" && usesMetadataLabels(labelSettings)) {
+        const candidates = new Set(this.getProbeCandidates().map(playerStreamProbeKey));
+        result = result.filter((stream) => candidates.has(playerStreamProbeKey(stream)));
       }
       // Only an answered "direct" survives: a row still being checked has not earned its
       // place yet, and showing it would put unverified streams behind a filter that
       // promises the opposite.
       const direct = result.filter((stream) => {
-        const url = String(stream.url || stream.externalUrl || "").trim();
-        const probe = this._probeResults?.get(url) || null;
+        if (!usesMetadataLabels(labelSettings))
+          return classifyStreamFilename(stream, getDeviceCapabilities()).method === "direct";
+        const probe = this.getStreamProbe(stream);
         if (!probe) return false;
         return isDirectPlayableStream(stream, probe);
       });
@@ -2563,6 +2594,9 @@ export const StreamScreen = {
    * for it.
    */
   async resolveUnknownRows({ limit = Infinity } = {}) {
+    // TB Instant preparation already runs independently of probing. Do not
+    // bulk-resolve every raw row here before any client label can progress.
+    if (PROBE_MODE === "client") return 0;
     const token = this.loadToken;
     const context = { season: this.params?.season ?? null, episode: this.params?.episode ?? null };
     const capabilities = getDeviceCapabilities();
@@ -2633,8 +2667,25 @@ export const StreamScreen = {
   },
 
   scheduleUnknownProbes() {
+    const labelSettings = StreamBadgeSettingsStore.snapshot();
+    if (
+      !usesMetadataLabels(labelSettings) ||
+      labelSettings.showPlaybackLabels === false ||
+      !labelSettings.labelAddons?.length
+    )
+      return;
     if (!streamProber.enabled || !this.streams.length) return;
     if (this._probeOutstanding) return;
+    // Do not add background provider traffic while addon/cache requests are
+    // still obtaining the stream list. Rendering never waits for this queue.
+    const settings = PlayerSettingsStore.get();
+    if (
+      this.loading &&
+      PROBE_MODE === "client" &&
+      settings.showOnlyDirectStreams !== true &&
+      String(settings.streamAutoPlayMode || "MANUAL").toUpperCase() === "MANUAL"
+    )
+      return;
     this._probeOutstanding = true;
     const token = this.loadToken;
     void this.resolveUnknownRows()
@@ -2650,48 +2701,72 @@ export const StreamScreen = {
   async runUnknownProbes({ maxBatches = Infinity } = {}) {
     const token = this.loadToken;
     const sent = this._probeSent || (this._probeSent = new Set());
-    for (let batch = 0; batch < maxBatches; batch += 1) {
-      if (token !== this.loadToken) return;
-      const targets = this.getProbeCandidates()
+    const nextTargets = (count) =>
+      this.getProbeCandidates()
         .map((stream) => ({
           url: String(stream.url || stream.externalUrl || "").trim(),
-          identity: streamProbeIdentity(stream)
+          identity: streamProbeIdentity(stream),
+          key: playerStreamProbeKey(stream)
         }))
         .filter(
           (row) =>
             /^https?:/i.test(row.url) &&
             !sent.has(row.url) &&
             !this._probeResults.has(row.url) &&
+            !this._probeResults.has(row.key) &&
             this.canProbeRow(row.url)
         )
         .filter((row, index, rows) => rows.findIndex((other) => other.url === row.url) === index)
-        .slice(0, 5);
-      if (!targets.length) return;
-      for (const row of targets) {
-        sent.add(row.url);
-        this._probePending.add(row.url);
-      }
+        .slice(0, count);
+    const probeRow = async ({ url, identity, key }) => {
+      sent.add(url);
+      this._probePending.add(url);
       this.requestRender({ delayMs: 0 });
-      const results = await Promise.all(
-        targets.map(async (row) => [
-          row.url,
-          await streamProber.probe(row.url, { reason: "selection", identity: row.identity })
-        ])
-      );
+      const probe = await streamProber.probe(url, {
+        reason: "selection",
+        identity,
+        resolveTimeoutMs: 15000
+      });
       if (token !== this.loadToken) return;
-      for (const [url, probe] of results) {
-        this._probePending.delete(url);
-        if (probe) {
-          this._probeResults.set(url, probe);
-          this.markProbeSuccess(url);
-        } else {
-          sent.delete(url);
-          this.markProbeFailure(url);
-        }
+      this._probePending.delete(url);
+      if (probe) {
+        this._probeResults.set(url, probe);
+        this._probeResults.set(key, probe);
+        this.markProbeSuccess(url);
+      } else {
+        sent.delete(url);
+        this.markProbeFailure(url);
       }
       this._probeRevision = (this._probeRevision || 0) + 1;
       this._filteredStreamsCache = null;
       this.requestRender({ delayMs: 0 });
+    };
+    if (PROBE_MODE === "client" && PROBE_CLIENT_CONCURRENCY === 2) {
+      let remaining = maxBatches * 2;
+      while (token === this.loadToken && remaining > 0 && !streamProber.clientParallelReady) {
+        const row = nextTargets(1)[0];
+        if (!row) return;
+        remaining--;
+        await probeRow(row);
+      }
+      const lane = async () => {
+        while (token === this.loadToken && remaining > 0) {
+          const row = nextTargets(1)[0];
+          if (!row) return;
+          remaining--;
+          await probeRow(row);
+        }
+      };
+      // A fast lane takes the next candidate without waiting for its slower peer.
+      await Promise.all([lane(), lane()]);
+      return;
+    }
+    for (let batch = 0; batch < maxBatches; batch += 1) {
+      if (token !== this.loadToken) return;
+      const targets = nextTargets(PROBE_MODE === "client" ? 1 : 5);
+      if (!targets.length) return;
+      await Promise.all(targets.map(probeRow));
+      if (token !== this.loadToken) return;
     }
   },
 
@@ -2713,9 +2788,16 @@ export const StreamScreen = {
       // The owner decides whether a label is drawn, and which addons may draw one.
       const labelAllowed =
         labelSettings.showPlaybackLabels !== false &&
-        (allowedLabelAddons.length === 0 || allowedLabelAddons.includes(addonName));
+        allowedLabelAddons.includes(addonName) &&
+        (!usesMetadataLabels(labelSettings) ||
+          PROBE_MODE !== "client" ||
+          this.getProbeCandidates().some(
+            (candidate) => playerStreamProbeKey(candidate) === playerStreamProbeKey(stream)
+          ));
       const badge = labelAllowed
         ? renderStreamPlaybackBadge({
+            labelSource: labelSettings.playbackLabelSource,
+            stream,
             url: urlKey,
             label: `${sourceModel?.title || stream.title || stream.name || ""} ${
               sourceModel?.description || stream.description || ""
@@ -2727,10 +2809,10 @@ export const StreamScreen = {
             transcodeAvailable:
               this._relayAvailability?.audio ?? (TRANSCODE_ENDPOINT ? null : false),
             remuxAvailable: this._relayAvailability?.remux ?? (REMUX_ENDPOINT ? null : false),
-            probe: this._probeResults?.get(urlKey) || null,
+            probe: this.getStreamProbe(stream),
             // While the answer is on its way the card says so, instead of looking unanswered.
             probing:
-              !this._probeResults?.get(urlKey) &&
+              !this.getStreamProbe(stream) &&
               !this._probeFailed?.has(urlKey) &&
               (this._probePending?.has(urlKey) === true || streamProber.enabled)
           })
@@ -2792,10 +2874,12 @@ export const StreamScreen = {
           <div class="stream-route-card-copy">
             <div class="stream-route-card-heading">${escapeHtml(headline)}</div>
             ${renderStreamPlaybackBadge({
+              labelSource: StreamBadgeSettingsStore.snapshot().playbackLabelSource,
+              stream,
               url: stream.url || stream.externalUrl || "",
               label: `${headline} ${quality} ${stream.description || stream.title || ""}`,
               capabilities: getDeviceCapabilities(),
-              probe: this._probeResults?.get(stream.url || stream.externalUrl || "") || null
+              probe: this.getStreamProbe(stream)
             })}
             ${topBadges || ""}
             ${!badges ? `<div class="stream-route-card-quality">${escapeHtml(quality)}</div>` : ""}
@@ -2950,11 +3034,17 @@ export const StreamScreen = {
               this.params?.autoSelectionTimedOut
                 ? `<div class="stream-route-empty" role="status">${escapeHtml(
                     t(
-                      PlayerSettingsStore.get().showOnlyDirectStreams
+                      isOnlyDirectEnabled(
+                        PlayerSettingsStore.get(),
+                        StreamBadgeSettingsStore.snapshot()
+                      )
                         ? "stream_selection_direct_timeout_notice"
                         : "stream_selection_timeout_notice",
                       { seconds: this.params.autoSelectionTimeoutSeconds },
-                      PlayerSettingsStore.get().showOnlyDirectStreams
+                      isOnlyDirectEnabled(
+                        PlayerSettingsStore.get(),
+                        StreamBadgeSettingsStore.snapshot()
+                      )
                         ? `No Direct stream found within ${this.params.autoSelectionTimeoutSeconds} seconds. Choose a stream below.`
                         : `No stream selected within ${this.params.autoSelectionTimeoutSeconds} seconds. Choose a stream below.`
                     )
@@ -3668,11 +3758,15 @@ export const StreamScreen = {
       }
       return url;
     }
+    // Unknown on the card must not silently become a conversion request based
+    // on addon text. Preserve native playback until file facts are available.
+    const probe = this.getStreamProbe(stream);
+    if (!probe) return url;
     const capabilities = getDeviceCapabilities();
     const verdict = classifyPlayback({
       url,
       label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
-      probe: this._probeResults?.get(url) || null,
+      probe,
       capabilities
     });
     if (!shouldTranscodeSource({ url, verdict, endpoint: TRANSCODE_ENDPOINT })) {

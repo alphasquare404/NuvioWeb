@@ -1,5 +1,14 @@
-import { probeMetadataCache } from "../../../core/player/probeMetadataCache.js";
 import { getHdrPlaybackSupport } from "../../../core/player/hdrSupport.js";
+import { probeMetadataCache } from "../../../core/player/probeMetadataCache.js";
+import { normalizeStreamCompatibilityFilter } from "../../../core/streams/streamCompatibilityFilter.js";
+import {
+  CLIENT_LABEL_LIMITS,
+  normalizeClientLabelLimit,
+  normalizePlaybackLabelSource,
+  isStreamLabelingEnabled,
+  usesMetadataLabels,
+  isOnlyDirectEnabled
+} from "../../../core/streams/streamLabelPolicy.js";
 import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
 import { deferWhileReordering } from "../../components/listReorderDrag.js";
 import { Router } from "../../navigation/router.js";
@@ -147,6 +156,7 @@ import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
 import {
   DONATIONS_BASE_URL,
+  PROBE_MODE,
   TRANSCODE_ENDPOINT,
   UNIQUE_CONTRIBUTIONS_BASE_URL
 } from "../../../config.js";
@@ -6663,6 +6673,8 @@ export const SettingsScreen = {
       // `set({...})` rather than the named setter: the named one threw
       // "setShowPlaybackLabels is not a function" on the device.
       StreamBadgeSettingsStore.set({ showPlaybackLabels: current.showPlaybackLabels === false });
+      if (current.showPlaybackLabels !== false)
+        PlayerSettingsStore.set({ showOnlyDirectStreams: false });
     });
 
     // The same picker the autoplay settings use: a list of what is installed, not a box
@@ -6679,7 +6691,41 @@ export const SettingsScreen = {
         options,
         selectedIds: Array.isArray(current.labelAddons) ? current.labelAddons : [],
         returnFocusKey: "streams:edit:labelAddons",
-        onToggle: (selectedIds) => StreamBadgeSettingsStore.set({ labelAddons: selectedIds })
+        onToggle: (selectedIds) => {
+          StreamBadgeSettingsStore.set({ labelAddons: selectedIds });
+          if (!selectedIds.length) PlayerSettingsStore.set({ showOnlyDirectStreams: false });
+        }
+      });
+    });
+    this.actionMap.set("streams:edit:labelSource", () => {
+      this.openOptionDialog({
+        title: t("settings_stream_label_based_on", {}, "Label based on"),
+        options: [
+          {
+            id: "FILE_METADATA",
+            label: t("settings_stream_label_metadata", {}, "File metadata (Accurate, Slow)")
+          },
+          {
+            id: "FILE_NAME",
+            label: t("settings_stream_label_filename", {}, "File name (Inaccurate, Fast)")
+          }
+        ],
+        selectedId: normalizePlaybackLabelSource(
+          StreamBadgeSettingsStore.snapshot().playbackLabelSource
+        ),
+        returnFocusKey: "streams:edit:labelSource",
+        onSelect: (option) => StreamBadgeSettingsStore.set({ playbackLabelSource: option.id })
+      });
+    });
+    this.actionMap.set("streams:edit:clientLabelLimit", () => {
+      this.openOptionDialog({
+        title: t("settings_stream_client_label_limit", {}, "Client labeling limit"),
+        options: CLIENT_LABEL_LIMITS.map((count) => ({ id: String(count), label: String(count) })),
+        selectedId: String(
+          normalizeClientLabelLimit(StreamBadgeSettingsStore.snapshot().clientLabelLimit)
+        ),
+        returnFocusKey: "streams:edit:clientLabelLimit",
+        onSelect: (option) => StreamBadgeSettingsStore.set({ clientLabelLimit: Number(option.id) })
       });
     });
 
@@ -6936,18 +6982,49 @@ export const SettingsScreen = {
             ),
             checked: badgeSettings.showPlaybackLabels !== false
           })}
-        ${this.renderActionRow({
-          focusKey: "streams:edit:labelAddons",
-          title: t("settings_stream_label_addons", {}, "Addons that may draw the label"),
-          subtitle: t(
-            "settings_stream_label_addons_description",
-            {},
-            "Empty means every addon. Names separated by commas."
-          ),
-          value: labelAddons.length
-            ? labelAddons.join(", ")
-            : t("settings_stream_label_addons_all", {}, "All addons")
-        })}
+        ${
+          badgeSettings.showPlaybackLabels !== false
+            ? this.renderActionRow({
+                focusKey: "streams:edit:labelAddons",
+                title: t("settings_stream_label_addons", {}, "Addons that may draw the label"),
+                subtitle: t(
+                  "settings_stream_label_addons_required_description",
+                  {},
+                  "Choose the addons to label. Labeling stays off until an addon is selected."
+                ),
+                value: labelAddons.length
+                  ? labelAddons.join(", ")
+                  : t("settings_stream_label_addons_choose", {}, "Choose")
+              })
+            : ""
+        }
+        ${
+          badgeSettings.showPlaybackLabels !== false
+            ? this.renderActionRow({
+                focusKey: "streams:edit:labelSource",
+                title: t("settings_stream_label_based_on", {}, "Label based on"),
+                value: usesMetadataLabels(badgeSettings)
+                  ? t("settings_stream_label_metadata", {}, "File metadata (Accurate, Slow)")
+                  : t("settings_stream_label_filename", {}, "File name (Inaccurate, Fast)")
+              })
+            : ""
+        }
+        ${
+          badgeSettings.showPlaybackLabels !== false &&
+          usesMetadataLabels(badgeSettings) &&
+          PROBE_MODE === "client"
+            ? this.renderActionRow({
+                focusKey: "streams:edit:clientLabelLimit",
+                title: t("settings_stream_client_label_limit", {}, "Client labeling limit"),
+                subtitle: t(
+                  "settings_stream_client_label_limit_description",
+                  {},
+                  "Maximum streams checked per source list across the selected addons"
+                ),
+                value: String(normalizeClientLabelLimit(badgeSettings.clientLabelLimit))
+              })
+            : ""
+        }
         ${this.renderToggleRow({
           focusKey: "streams:toggle:sizeBadges",
           title: t("settings_stream_size_badges_title", {}, "Size badges"),
@@ -7099,6 +7176,27 @@ export const SettingsScreen = {
     this.actionMap.set("playback:toggle:p2p", () => {
       this.toggleExpandedSection("playback", "p2p");
     });
+    this.actionMap.set("playback:streamCompatibilityFilter", () => {
+      this.openOptionDialog({
+        title: t("stream_compatibility_filter_title", {}, "Filter streams by device compatibility"),
+        options: [
+          { id: "OFF", label: t("stream_compatibility_filter_off", {}, "Off") },
+          {
+            id: "LIKELY_DIRECT",
+            label: t("stream_compatibility_filter_direct", {}, "Likely Direct")
+          },
+          {
+            id: "LIKELY_DIRECT_REMUX",
+            label: t("stream_compatibility_filter_remux", {}, "Likely Direct + Remux")
+          }
+        ],
+        selectedId: normalizeStreamCompatibilityFilter(
+          PlayerSettingsStore.get().streamCompatibilityFilter
+        ),
+        returnFocusKey: "playback:streamCompatibilityFilter",
+        onSelect: (option) => PlayerSettingsStore.set({ streamCompatibilityFilter: option.id })
+      });
+    });
 
     this.actionMap.set("playback:autoplay", () => {
       PlayerSettingsStore.set({
@@ -7161,7 +7259,13 @@ export const SettingsScreen = {
     togglePlayerSetting("playback:loadingStatus", "showPlayerLoadingStatus");
     togglePlayerSetting("playback:pauseOverlay", "pauseOverlayEnabled");
     togglePlayerSetting("playback:parentalGuide", "parentalGuideEnabled");
-    togglePlayerSetting("playback:showOnlyDirectStreams", "showOnlyDirectStreams");
+    this.actionMap.set("playback:showOnlyDirectStreams", () => {
+      const labels = StreamBadgeSettingsStore.snapshot();
+      PlayerSettingsStore.set({
+        showOnlyDirectStreams:
+          isStreamLabelingEnabled(labels) && !PlayerSettingsStore.get().showOnlyDirectStreams
+      });
+    });
     // The one relay that spends the deployment's CPU rather than its bandwidth, so
     // a deployment in `token` mode asks for its secret before anything may call it.
     // Per profile, and never synced: it unlocks a server, not an account.
@@ -8032,13 +8136,43 @@ export const SettingsScreen = {
               })
             : ""
         }
-        ${this.renderToggleRow({
-          focusKey: "playback:showOnlyDirectStreams",
-          title: "Show only direct streams",
-          subtitle:
-            "Show only streams verified as Direct by probing, from the addons selected for playback labels. Pending or unverified streams stay hidden.",
-          checked: Boolean(model.player.showOnlyDirectStreams)
+        ${this.renderActionRow({
+          focusKey: "playback:streamCompatibilityFilter",
+          title: t(
+            "stream_compatibility_filter_title",
+            {},
+            "Filter streams by device compatibility"
+          ),
+          subtitle: t(
+            "stream_compatibility_filter_description",
+            {},
+            "Filter addon text before probing. Incomplete or incompatible descriptions are hidden. Turn off to see all sources."
+          ),
+          value:
+            normalizeStreamCompatibilityFilter(model.player.streamCompatibilityFilter) ===
+            "LIKELY_DIRECT"
+              ? t("stream_compatibility_filter_direct", {}, "Likely Direct")
+              : normalizeStreamCompatibilityFilter(model.player.streamCompatibilityFilter) ===
+                  "LIKELY_DIRECT_REMUX"
+                ? t("stream_compatibility_filter_remux", {}, "Likely Direct + Remux")
+                : t("stream_compatibility_filter_off", {}, "Off")
         })}
+        ${
+          isStreamLabelingEnabled(StreamBadgeSettingsStore.snapshot())
+            ? this.renderToggleRow({
+                focusKey: "playback:showOnlyDirectStreams",
+                title: "Show only direct streams",
+                subtitle: usesMetadataLabels(StreamBadgeSettingsStore.snapshot())
+                  ? "Show only streams verified as Direct by probing, from the addons selected for playback labels. Pending or unverified streams stay hidden."
+                  : t(
+                      "settings_stream_only_direct_filename_description",
+                      {},
+                      "Show streams estimated as Direct from file names in the selected addons. Playback is not verified."
+                    ),
+                checked: isOnlyDirectEnabled(model.player, StreamBadgeSettingsStore.snapshot())
+              })
+            : ""
+        }
         ${
           // Only offered where the deployment runs the endpoint: a field that
           // cannot do anything is worse than no field.

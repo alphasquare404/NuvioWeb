@@ -1,4 +1,8 @@
+import { reportPlaybackLabel } from "../../core/player/probeDiagnostics.js";
 import { classifyPlayback, playbackMethodTone } from "../../core/player/playbackMethod.js";
+import { classifyStreamFilename } from "../../core/streams/streamCompatibilityFilter.js";
+import { normalizePlaybackLabelSource } from "../../core/streams/streamLabelPolicy.js";
+import { hdrFromText } from "../../core/streams/streamHdrPreference.js";
 
 // The label that answers "how will this stream be played?" before anyone presses
 // play. Three costs, three colours: green for direct, yellow for remux,
@@ -72,12 +76,15 @@ export function renderStreamPlaybackBadge({
   capabilities = {},
   transcodeAvailable = true,
   remuxAvailable = true,
-  probing = false
+  probing = false,
+  labelSource = "FILE_METADATA",
+  stream = null
 } = {}) {
+  const filenameMode = normalizePlaybackLabelSource(labelSource) === "FILE_NAME";
   // The addon text is a description, and this session proved it wrong twice: `8bit` was
   // read as h264, `AAC5.1` was really E-AC-3. So the text may only *exclude* a row that
   // nothing can open; every other label waits for the probe.
-  if (!probe) {
+  if (!probe && !filenameMode) {
     if (probing) {
       const palette = COLORS.neutral;
       return `<span class="stream-playback-badge" title="asking the server what this file really is" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(PROBING_LABEL)}</span>`;
@@ -85,7 +92,11 @@ export function renderStreamPlaybackBadge({
     const palette = COLORS.neutral;
     return `<span class="stream-playback-badge" title="waiting for the probe: the text cannot be trusted with codecs" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(UNPROBED_LABEL)}</span>`;
   }
-  const result = describePlaybackMethod({ url, label, probe, capabilities });
+  const filenameStream = stream || { url, description: label };
+  const result = filenameMode
+    ? classifyStreamFilename(filenameStream, capabilities)
+    : describePlaybackMethod({ url, label, probe, capabilities });
+  if (!filenameMode) reportPlaybackLabel(url, probe, result);
   const unavailable =
     (transcodeAvailable === false && result.method === "audio-transcode") ||
     (remuxAvailable === false && result.method === "remux");
@@ -110,14 +121,20 @@ export function renderStreamPlaybackBadge({
       : result.method === "audio-transcode"
         ? `${LABELS[result.method]} ${audioConversion}`
         : LABELS[result.method] || "Direct";
-  const hdr = ["smpte2084", "arib-std-b67"].includes(probe?.colorTransfer);
-  const displayText = result.method === "direct" && hdr ? "Direct : HDR" : text;
+  const hdr = filenameMode
+    ? hdrFromText(filenameStream) === true
+    : ["smpte2084", "arib-std-b67"].includes(probe?.colorTransfer);
+  const baseText = result.method === "direct" && hdr ? "Direct : HDR" : text;
+  const displayText =
+    filenameMode && result.method !== "unknown" ? `${baseText} (estimate)` : baseText;
   const detail = unverified
     ? "relay availability has not been verified"
     : unavailable
       ? result.method === "remux"
         ? "the remux service is unavailable"
         : "the audio transcode service is unavailable or access is missing"
-      : `${result.reason} (${result.confidence === "predicted" ? "device prediction; playback not verified" : "perkiraan"})`;
+      : filenameMode
+        ? `filename estimate; playback not verified (${result.reason})`
+        : `${result.reason} (${result.confidence === "predicted" ? "device prediction; playback not verified" : "perkiraan"})`;
   return `<span class="stream-playback-badge" title="${escapeHtml(`${detail}${hdr ? "; HDR source metadata; HDR display/tone mapping not verified" : ""}`)}" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(displayText)}</span>`;
 }

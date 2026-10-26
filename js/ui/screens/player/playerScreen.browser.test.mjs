@@ -168,8 +168,17 @@ test("next episode First Source uses HDR preference without weakening Only Direc
   const run = new Function(
     "selectAutoPlayStream",
     "resolveHdrPreference",
+    "nextEpisodeSelectionOptions",
+    "isOnlyDirectEnabled",
+    "StreamBadgeSettingsStore",
     `return ({${method}}).selectNextEpisodeStreamByAutoPlayPolicy;`
-  )(selectAutoPlayStream, resolveHdrPreference);
+  )(
+    selectAutoPlayStream,
+    resolveHdrPreference,
+    (await import("../../../core/streams/playerStreamPolicy.js")).nextEpisodeSelectionOptions,
+    (await import("../../../core/streams/streamLabelPolicy.js")).isOnlyDirectEnabled,
+    { snapshot: () => ({ labelAddons: ["Chosen"] }) }
+  );
   const rows = [
     { id: "sdr", url: "https://cdn.test/sdr", addonName: "Chosen" },
     { id: "hdr", url: "https://cdn.test/hdr", title: "HDR", addonName: "Chosen" }
@@ -218,6 +227,18 @@ test("next episode probes an eligible HDR candidate before applying its cap", as
   const { allowsPlayerStreamLabel } = await import("../../../core/streams/playerStreamPolicy.js");
   const dependencies = {
     allowsPlayerStreamLabel,
+    ...(await import("../../../core/streams/streamLabelPolicy.js")),
+    filterPlayerStreams: (await import("../../../core/streams/playerStreamPolicy.js"))
+      .filterPlayerStreams,
+    playerStreamProbeCandidates: (await import("../../../core/streams/playerStreamPolicy.js"))
+      .playerStreamProbeCandidates,
+    withinStreamSelectionDeadline: (await import("../../../core/streams/streamAutoResolve.js"))
+      .withinStreamSelectionDeadline,
+    filterStreamsByCompatibility: (
+      await import("../../../core/streams/streamCompatibilityFilter.js")
+    ).filterStreamsByCompatibility,
+    streamLabelProbeLimit: (await import("../../../core/streams/streamLabelPolicy.js"))
+      .streamLabelProbeLimit,
     StreamBadgeSettingsStore: { snapshot: () => ({ labelAddons: ["Chosen"] }) },
     filterAutoPlaySourceStreams,
     applyHdrPreference,
@@ -225,6 +246,8 @@ test("next episode probes an eligible HDR candidate before applying its cap", as
     classifyPlayback,
     getDeviceCapabilities: () => ({ h264: true, aac: true, containers: { mkv: false } }),
     PROBE_ENDPOINT: "/api/probe",
+    PROBE_MODE: "server",
+    PROBE_CLIENT_CONCURRENCY: 1,
     streamProbeIdentity: (s) => s.id,
     assessPlaybackCapabilities: () => {
       assessments++;

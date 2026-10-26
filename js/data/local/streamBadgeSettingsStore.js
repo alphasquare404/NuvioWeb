@@ -1,5 +1,9 @@
 import { createProfileScopedStore } from "./profileScopedStore.js";
 import {
+  normalizeClientLabelLimit,
+  normalizePlaybackLabelSource
+} from "../../core/streams/streamLabelPolicy.js";
+import {
   normalizeStreamBadgeRules,
   parseStreamBadgeRulesFromPayload,
   STREAM_BADGE_IMPORT_LIMIT
@@ -10,6 +14,10 @@ const LEGACY_DEBRID_KEY = "debridSettings";
 
 const DEFAULT_STREAM_BADGE_SETTINGS = {
   rules: { imports: [] },
+  showPlaybackLabels: true,
+  labelAddons: [],
+  clientLabelLimit: 5,
+  playbackLabelSource: "FILE_METADATA",
   showFileSizeBadges: true,
   showAddonLogo: true,
   badgePlacement: "BOTTOM"
@@ -48,6 +56,8 @@ function normalizeStreamBadgeSettings(value = {}) {
     // dropped on the way back out -- which is exactly why a chosen addon list kept reading
     // as "All addons".
     showPlaybackLabels: (source.showPlaybackLabels ?? source.show_playback_labels) !== false,
+    clientLabelLimit: normalizeClientLabelLimit(source.clientLabelLimit),
+    playbackLabelSource: normalizePlaybackLabelSource(source.playbackLabelSource),
     labelAddons: Array.isArray(labelAddonsSource)
       ? labelAddonsSource.map((name) => String(name || "").trim()).filter(Boolean)
       : []

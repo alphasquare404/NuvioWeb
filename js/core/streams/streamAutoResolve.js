@@ -14,6 +14,8 @@ import { hdrFromText } from "./streamHdrPreference.js";
 import { filterAutoPlaySourceStreams } from "./streamAutoPlaySelector.js";
 import { resolveHdrPreference } from "./streamHdrPreference.js";
 import { streamRepository } from "../../data/repository/streamRepository.js";
+import { filterPlayerStreams } from "./playerStreamPolicy.js";
+import { isOnlyDirectEnabled, usesMetadataLabels } from "./streamLabelPolicy.js";
 import { flattenStreams, mergeStreamItems } from "./streamList.js";
 import { isAutoPlayEffectivelyEnabled, selectAutoPlayStream } from "./streamAutoPlaySelector.js";
 
@@ -137,6 +139,7 @@ export async function resolveAutoPlayStream({
   itemType,
   videoId,
   settings = {},
+  labelSettings = {},
   installedAddonNames = new Set(),
   preferredBingeGroup = "",
   shouldCancel = () => false,
@@ -167,17 +170,23 @@ export async function resolveAutoPlayStream({
   });
 
   const choose = () =>
-    selectAutoPlayStream(streams, {
-      mode: settings.streamAutoPlayMode,
-      hdrPreference: resolveHdrPreference(settings),
-      source: settings.streamAutoPlaySource,
-      regexPattern: settings.streamAutoPlayRegex,
-      installedAddonNames,
-      selectedAddons: settings.streamAutoPlaySelectedAddons,
-      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
-      preferredBingeGroup,
-      preferBingeGroupInSelection: Boolean(preferredBingeGroup)
-    });
+    selectAutoPlayStream(
+      isOnlyDirectEnabled(settings, labelSettings) && !usesMetadataLabels(labelSettings)
+        ? filterPlayerStreams(streams, { settings, labels: labelSettings })
+        : streams,
+      {
+        streamCompatibilityFilter: settings.streamCompatibilityFilter,
+        mode: settings.streamAutoPlayMode,
+        hdrPreference: resolveHdrPreference(settings),
+        source: settings.streamAutoPlaySource,
+        regexPattern: settings.streamAutoPlayRegex,
+        installedAddonNames,
+        selectedAddons: settings.streamAutoPlaySelectedAddons,
+        selectedPlugins: settings.streamAutoPlaySelectedPlugins,
+        preferredBingeGroup,
+        preferBingeGroupInSelection: Boolean(preferredBingeGroup)
+      }
+    );
 
   const absorb = (groups) => {
     const incoming = flattenStreams({ status: "success", data: groups });

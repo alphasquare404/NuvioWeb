@@ -1,9 +1,17 @@
 import * as hdrPolicy from "../../../core/streams/streamHdrPreference.js";
+import * as labelPolicy from "../../../core/streams/streamLabelPolicy.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import * as selector from "../../../core/streams/streamAutoPlaySelector.js";
 import { classifyPlayback } from "../../../core/player/playbackMethod.js";
+import { streamLabelProbeLimit } from "../../../core/streams/streamLabelPolicy.js";
+import {
+  allowsPlayerStreamLabel,
+  playerStreamProbeCandidates,
+  filterPlayerStreams
+} from "../../../core/streams/playerStreamPolicy.js";
+import { filterStreamsByCompatibility } from "../../../core/streams/streamCompatibilityFilter.js";
 
 import { withinStreamSelectionDeadline } from "../../../core/streams/streamAutoResolve.js";
 
@@ -31,7 +39,11 @@ async function resolve(
     unresolved = [],
     deadlineAt = Infinity,
     probeDelayMs = 0,
-    prepareDelayMs = 0
+    prepareDelayMs = 0,
+    labelAddons = ["AIOStreams", "Torrentio", "Plugin"],
+    clientLabelLimit = 5,
+    playbackLabelSource = "FILE_METADATA",
+    mode = "server"
   } = {}
 ) {
   const source = await readFile(new URL("./metaDetailsScreen.js", import.meta.url), "utf8");
@@ -43,12 +55,23 @@ async function resolve(
   const prepared = [];
   const playerSettings = { ...settings, ...overrides };
   const dependencies = {
+    ...labelPolicy,
+    filterPlayerStreams,
+    filterStreamsByCompatibility,
+    playerStreamProbeCandidates,
+    streamLabelProbeLimit,
+    allowsPlayerStreamLabel,
+    StreamBadgeSettingsStore: {
+      snapshot: () => ({ labelAddons, clientLabelLimit, playbackLabelSource })
+    },
     ...selector,
     ...hdrPolicy,
     StartupLoadingOverlay: { setStage() {} },
     withinStreamSelectionDeadline,
     getDeviceCapabilities: () => ({ h264: true, aac: true, containers: { mp4: true, mkv: false } }),
     PROBE_ENDPOINT: "/api/probe",
+    PROBE_MODE: mode,
+    PROBE_CLIENT_CONCURRENCY: 1,
     createStreamProber: () => ({
       enabled: true,
       async probe(url) {
@@ -296,4 +319,71 @@ test("HDR probing does not extend the original stream-selection deadline", async
   assert.equal(result.timedOut, true);
   assert.deepEqual(probed, [streams[0].url]);
   assert.ok(Date.now() - start < 90);
+});
+
+test("Direct auto selection does not resolve or probe until label addons are chosen", async () => {
+  const { result, prepared, probed } = await resolve([row("aio")], { labelAddons: [] });
+  assert.deepEqual(prepared, []);
+  assert.deepEqual(probed, []);
+  assert.equal(result.selected, null);
+});
+
+test("client Direct auto selection respects the labeling limit", async () => {
+  const streams = Array.from({ length: 10 }, (_, i) => row("cap-" + i));
+  const { result, probed } = await resolve(streams, {
+    mode: "client",
+    limit: 0,
+    clientLabelLimit: 3,
+    nonDirect: streams.map((s) => s.id)
+  });
+  assert.equal(probed.length, 3);
+  assert.equal(result.selected, null);
+});
+
+test("Direct startup filters addon text before preparing or probing capped candidates", async () => {
+  const sources = [row("unknown"), { ...row("clear"), name: "Film.H264.AAC.mp4" }];
+  const { result, probed } = await resolve(sources, {
+    limit: 1,
+    overrides: { streamCompatibilityFilter: "LIKELY_DIRECT" }
+  });
+  assert.deepEqual(probed, ["https://media.test/clear"]);
+  assert.equal(result.selected.id, "clear");
+});
+
+test("Direct startup counts identical files from two addons as one candidate", async () => {
+  const make = (id, hash, addon = "AIOStreams") => ({
+    ...row(id, addon),
+    infoHash: hash.repeat(40),
+    fileIdx: 0
+  });
+  const sources = [
+    make("a-first", "a"),
+    make("a-copy", "a", "Torrentio"),
+    make("b", "b"),
+    make("c", "c")
+  ];
+  const { result, probed } = await resolve(sources, {
+    mode: "client",
+    limit: 0,
+    clientLabelLimit: 3,
+    overrides: { streamAutoPlaySource: "ALL_SOURCES", streamAutoPlaySelectedAddons: [] },
+    nonDirect: ["a-first", "a-copy", "b"]
+  });
+  assert.deepEqual(
+    probed,
+    sources.filter((s) => s.id !== "a-copy").map((s) => s.url)
+  );
+  assert.equal(result.selected.id, "c");
+});
+
+test("filename Only Direct chooses locally and bypasses server preparation and probing", async () => {
+  const sources = [
+    { ...row("incompatible"), name: "Film.HEVC.AAC.mp4" },
+    { ...row("direct"), name: "Film.H264.AAC.mp4" }
+  ];
+  const { result, probed, prepared } = await resolve(sources, { playbackLabelSource: "FILE_NAME" });
+  assert.equal(result.selected.id, "direct");
+  assert.deepEqual(result.probes, []);
+  assert.deepEqual(probed, []);
+  assert.deepEqual(prepared, []);
 });

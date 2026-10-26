@@ -204,3 +204,22 @@ test("the red full-transcode label stays diagnostic even without a service", () 
   assert.match(html, />Transcode</);
   assert.match(html, /rgba\(163,42,42/);
 });
+
+test("filename labels are immediate estimates and ignore cached metadata", () => {
+  const stream = { url: "https://cdn.test/video", name: "Film.H264.AAC.mp4", title: "HDR" };
+  const html = renderStreamPlaybackBadge({
+    stream,
+    labelSource: "FILE_NAME",
+    capabilities: ALL,
+    probe: { container: "mkv", videoCodec: "hevc", audioCodec: "dts" }
+  });
+  assert.match(html, />Direct : HDR \(estimate\)</);
+  assert.match(html, /filename estimate; playback not verified/);
+  assert.doesNotMatch(html, /Checking|waiting for the probe/);
+  const unknown = renderStreamPlaybackBadge({
+    stream: { name: "1080p" },
+    labelSource: "FILE_NAME",
+    capabilities: ALL
+  });
+  assert.match(unknown, />Unknown</);
+});

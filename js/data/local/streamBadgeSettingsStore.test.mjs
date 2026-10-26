@@ -35,7 +35,12 @@ test("the stream-card label toggle persists off and on without changing other pr
   )?.[0];
   assert.ok(registration, "the actual Settings action is registered");
   const screen = { actionMap: new Map() };
-  new Function("StreamBadgeSettingsStore", registration).call(screen, StreamBadgeSettingsStore);
+  const updates = [];
+  new Function("StreamBadgeSettingsStore", "PlayerSettingsStore", registration).call(
+    screen,
+    StreamBadgeSettingsStore,
+    { set: (value) => updates.push(value) }
+  );
   const toggle = screen.actionMap.get("streams:toggle:playbackLabels");
   for (const enabled of [false, true]) {
     toggle();
@@ -47,4 +52,45 @@ test("the stream-card label toggle persists off and on without changing other pr
     assert.equal(saved["1"].showAddonLogo, false);
     assert.equal(saved["1"].showFileSizeBadges, false);
   }
+  assert.deepEqual(updates, [{ showOnlyDirectStreams: false }]);
+});
+
+test("client labeling limit is profile scoped and accepts only the offered values", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const count of [3, 5, 8, 10]) {
+    StreamBadgeSettingsStore.setForProfile(
+      "limit-a",
+      { clientLabelLimit: count, labelAddons: ["AIOStreams"] },
+      { silentSync: true }
+    );
+    assert.equal(StreamBadgeSettingsStore.getForProfile("limit-a").clientLabelLimit, count);
+    assert.deepEqual(StreamBadgeSettingsStore.getForProfile("limit-a").labelAddons, ["AIOStreams"]);
+  }
+  StreamBadgeSettingsStore.setForProfile(
+    "limit-b",
+    { clientLabelLimit: 99, labelAddons: [] },
+    { silentSync: true }
+  );
+  assert.equal(StreamBadgeSettingsStore.getForProfile("limit-b").clientLabelLimit, 5);
+  assert.deepEqual(StreamBadgeSettingsStore.getForProfile("limit-b").labelAddons, []);
+  assert.equal(StreamBadgeSettingsStore.getForProfile("limit-a").clientLabelLimit, 10);
+});
+
+test("label source defaults to metadata and is saved per profile", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  StreamBadgeSettingsStore.setForProfile(
+    "source-a",
+    { playbackLabelSource: "FILE_NAME" },
+    { silentSync: true }
+  );
+  StreamBadgeSettingsStore.setForProfile(
+    "source-b",
+    { playbackLabelSource: "invalid" },
+    { silentSync: true }
+  );
+  assert.equal(StreamBadgeSettingsStore.getForProfile("source-a").playbackLabelSource, "FILE_NAME");
+  assert.equal(
+    StreamBadgeSettingsStore.getForProfile("source-b").playbackLabelSource,
+    "FILE_METADATA"
+  );
 });

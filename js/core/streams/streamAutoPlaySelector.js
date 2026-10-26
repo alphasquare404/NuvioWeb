@@ -1,5 +1,6 @@
 import { streamHdrStatus } from "./streamHdrPreference.js";
 import { applyHdrPreference } from "./streamHdrPreference.js";
+import { filterStreamsByCompatibility } from "./streamCompatibilityFilter.js";
 
 // Auto stream selection uses the same preference model as the original app. Given the list of
 // streams shown in the picker and the user's auto-play settings, it returns the
@@ -192,7 +193,9 @@ export function filterAutoPlaySourceStreams(streams, options = {}) {
 
 export function selectAutoPlayStream(streams, options = {}) {
   const mode = normalizeMode(options.mode);
-  const scoped = filterAutoPlaySourceStreams(streams, options);
+  const scoped = filterStreamsByCompatibility(filterAutoPlaySourceStreams(streams, options), {
+    streamCompatibilityFilter: options.streamCompatibilityFilter
+  });
   const candidates =
     mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM ? applyHdrPreference(scoped, options) : scoped;
   if (!candidates.length) {

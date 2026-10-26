@@ -26,10 +26,10 @@ test("label addon choice does not hide other addon streams while Only Direct is 
   assert.equal(allowsPlayerStreamLabel(rows[0], labels), false);
   assert.equal(allowsPlayerStreamLabel(rows[1], labels), true);
 });
-test("Only Direct requires a verified Direct result in label addon scope even with labels hidden", () => {
+test("Only Direct requires metadata when labeling is enabled, and is inactive otherwise", () => {
   const options = {
     settings: { showOnlyDirectStreams: true },
-    labels: { ...labels, showPlaybackLabels: false },
+    labels,
     capabilities,
     probeForStream: (s) => probes[s.id]
   };
@@ -39,7 +39,11 @@ test("Only Direct requires a verified Direct result in label addon scope even wi
   );
   assert.deepEqual(
     filterPlayerStreams(rows, { ...options, labels: { labelAddons: [] } }).map((s) => s.id),
-    ["other", "direct"]
+    rows.map((s) => s.id)
+  );
+  assert.deepEqual(
+    filterPlayerStreams(rows, { ...options, labels: { ...labels, showPlaybackLabels: false } }),
+    rows
   );
 });
 test("player probe scope applies before cap, disables cosmetic probing, and preserves source order", () => {
@@ -57,7 +61,7 @@ test("player probe scope applies before cap, disables cosmetic probing, and pres
       labels: { ...labels, showPlaybackLabels: false },
       limit: 0
     }).length,
-    3
+    0
   );
 });
 test("HDR candidate priority uses allowed addons before the player probe cap", () => {
@@ -74,4 +78,106 @@ test("HDR candidate priority uses allowed addons before the player probe cap", (
     }).map((s) => s.id),
     ["hdr"]
   );
+});
+
+test("no selected label addons means no probes, including Only Direct", () => {
+  for (const settings of [{}, { showOnlyDirectStreams: true }]) {
+    assert.deepEqual(
+      playerStreamProbeCandidates(rows, { labels: { labelAddons: [] }, settings }),
+      []
+    );
+  }
+  assert.equal(allowsPlayerStreamLabel(rows[0], {}), false);
+});
+
+test("client cap applies after addon scope and combines selected addons within one limit", () => {
+  const streams = Array.from({ length: 15 }, (_, i) => ({
+    id: String(i),
+    addonName: i % 2 ? "AIOStreams" : "Other",
+    url: "https://cdn/" + i
+  }));
+  for (const count of [3, 5, 8, 10]) {
+    const candidates = playerStreamProbeCandidates(streams, {
+      mode: "client",
+      limit: 0,
+      labels: { labelAddons: ["AIOStreams", "Other"], clientLabelLimit: count }
+    });
+    assert.equal(candidates.length, count);
+    assert.deepEqual(candidates, streams.slice(0, count));
+  }
+  assert.equal(
+    playerStreamProbeCandidates(streams, {
+      mode: "client",
+      limit: 2,
+      labels: { labelAddons: ["Other"], clientLabelLimit: 10 }
+    }).length,
+    2
+  );
+  assert.equal(
+    playerStreamProbeCandidates(streams, {
+      mode: "server",
+      limit: 0,
+      labels: { labelAddons: ["Other"], clientLabelLimit: 3 }
+    }).length,
+    8
+  );
+});
+
+test("incomplete torrent identity cannot merge different file URLs", () => {
+  const hash = "a".repeat(40);
+  const streams = [
+    { addonName: "A", infoHash: hash, name: "same release", url: "https://cdn.test/one.mp4" },
+    { addonName: "A", infoHash: hash, name: "same release", url: "https://cdn.test/two.mp4" }
+  ];
+  assert.equal(
+    playerStreamProbeCandidates(streams, { labels: { labelAddons: ["A"] }, limit: 3 }).length,
+    2
+  );
+});
+
+test("filename Only Direct uses text without probes or the metadata candidate cap", () => {
+  const streams = Array.from({ length: 8 }, (_, i) => ({
+    id: String(i),
+    addonName: "AIOStreams",
+    url: "https://cdn/" + i,
+    name: "Film.H264.AAC.mp4"
+  }));
+  const filenameLabels = { ...labels, playbackLabelSource: "FILE_NAME", clientLabelLimit: 3 };
+  const shown = filterPlayerStreams(streams, {
+    settings: { showOnlyDirectStreams: true },
+    labels: filenameLabels,
+    capabilities,
+    mode: "client",
+    probeForStream: () => {
+      throw Error("must not consult metadata");
+    }
+  });
+  assert.equal(shown.length, 8);
+  assert.deepEqual(
+    playerStreamProbeCandidates(streams, {
+      labels: filenameLabels,
+      settings: { showOnlyDirectStreams: true },
+      mode: "client"
+    }),
+    []
+  );
+});
+
+test("a stale Only Direct value cannot filter when labeling is disabled or addons are unchosen", () => {
+  for (const disabled of [
+    { ...labels, showPlaybackLabels: false },
+    { ...labels, labelAddons: [] }
+  ]) {
+    assert.equal(
+      filterPlayerStreams(rows, { settings: { showOnlyDirectStreams: true }, labels: disabled }),
+      rows
+    );
+    assert.deepEqual(
+      playerStreamProbeCandidates(rows, {
+        settings: { showOnlyDirectStreams: true },
+        labels: disabled
+      }),
+      []
+    );
+  }
 });
