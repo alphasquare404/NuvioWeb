@@ -382,3 +382,163 @@ test("client failure or CORS refusal never falls back to server", async () => {
   assert.equal(await p.probe("https://cdn.test/1"), null);
   assert.equal(servers, 0);
 });
+
+test("client deduplicates Torrentio, Torz and structured identities but keeps distinct files", async () => {
+  const hash = "a".repeat(40);
+  const torrentio = (index) =>
+    "https://torrentio.strem.fun/resolve/torbox/test-key/" + hash + "/film/" + index + "/film.mp4";
+  const torz = "https://addon.test/stremio/torz/config/_/strem/tt123/tb/" + hash + "/0/film.mp4";
+  let calls = 0;
+  let assessments = 0;
+  const p = createStreamProber({
+    mode: "client",
+    clientProbe: async () => {
+      calls++;
+      await new Promise((r) => setTimeout(r, 10));
+      return { videoCodec: "h264" };
+    },
+    assess: async () => ({ revision: ++assessments })
+  });
+  const results = await Promise.all([p.probe(torrentio(0)), p.probe(torz)]);
+  assert.equal(calls, 1);
+  assert.notEqual(
+    results[0].playbackCapabilities.revision,
+    results[1].playbackCapabilities.revision
+  );
+  await p.probe("https://cdn.test/signed", {
+    identity: streamProbeIdentity({ infoHash: hash, fileIdx: 0 })
+  });
+  assert.equal(calls, 1);
+  await p.probe(torrentio(1));
+  assert.equal(calls, 2);
+  await p.probe("https://cdn.test/unidentified-a", { identity: "same-name|0" });
+  await p.probe("https://cdn.test/unidentified-b", { identity: "same-name|0" });
+  assert.equal(calls, 4, "weak identity must not merge files");
+});
+
+test("failed shared source allows the alternative URL to probe", async () => {
+  let calls = 0;
+  const p = createStreamProber({
+    mode: "client",
+    clientProbe: async () => {
+      calls++;
+      await new Promise((r) => setTimeout(r, 5));
+      return calls === 1 ? null : { videoCodec: "hevc" };
+    }
+  });
+  const identity = streamProbeIdentity({ infoHash: "b".repeat(40), fileIdx: 0 });
+  const [first, second] = await Promise.all([
+    p.probe("https://cdn.test/broken", { identity }),
+    p.probe("https://cdn.test/working", { identity })
+  ]);
+  assert.equal(first, null);
+  assert.equal(second.videoCodec, "hevc");
+  assert.equal(calls, 2);
+});
+
+test("joining a background probe respects the selection caller deadline", async () => {
+  let finish;
+  const p = createStreamProber({
+    mode: "client",
+    clientProbe: () =>
+      new Promise((r) => {
+        finish = r;
+      })
+  });
+  const background = p.probe("https://cdn.test/slow", { resolveTimeoutMs: 15000 });
+  assert.equal(await p.probe("https://cdn.test/slow", { timeoutMs: 10 }), null);
+  finish({ videoCodec: "h264" });
+  assert.equal((await background).videoCodec, "h264");
+});
+
+test("client reload reuses stored facts while reassessing the browser", async () => {
+  const disk = new Map();
+  const metadataCache = {
+    get: async (key) => disk.get(key),
+    set: async (key, facts) => {
+      disk.set(key, facts);
+    }
+  };
+  let probes = 0;
+  let engine = "native";
+  const options = {
+    mode: "client",
+    metadataCache,
+    clientProbe: async () => {
+      probes++;
+      return { container: "mp4", videoCodec: "h264" };
+    },
+    assess: async () => ({ engine })
+  };
+  const url =
+    "https://torrentio.strem.fun/resolve/torbox/test/" + "c".repeat(40) + "/film/0/film.mp4";
+  await createStreamProber(options).probe(url);
+  engine = "movi";
+  const result = await createStreamProber(options).probe(url);
+  assert.equal(probes, 1);
+  assert.equal(result.playbackCapabilities.engine, "movi");
+});
+
+test("unavailable or slow persistent cache cannot prevent a live probe or extend selection", async () => {
+  const url =
+    "https://torrentio.strem.fun/resolve/torbox/test/" + "d".repeat(40) + "/film/0/film.mp4";
+  let probes = 0;
+  const failed = createStreamProber({
+    mode: "client",
+    metadataCache: {
+      get: async () => {
+        throw Error("blocked");
+      },
+      set: async () => {
+        throw Error("quota");
+      }
+    },
+    clientProbe: async () => {
+      probes++;
+      return { container: "mp4", videoCodec: "h264" };
+    }
+  });
+  assert.equal((await failed.probe(url)).videoCodec, "h264");
+  const slow = createStreamProber({
+    mode: "client",
+    metadataCache: { get: () => new Promise(() => {}) },
+    clientProbe: () => {
+      probes++;
+    }
+  });
+  assert.equal(await slow.probe(url, { timeoutMs: 10 }), null);
+  assert.equal(probes, 1);
+});
+
+test("clearing metadata prevents a pre-clear probe from repopulating RAM or disk", async () => {
+  const { probeMetadataCache } = await import("./probeMetadataCache.js");
+  let finish;
+  let writes = 0;
+  let calls = 0;
+  const p = createStreamProber({
+    mode: "client",
+    metadataCache: {
+      get: async () => null,
+      set: async () => {
+        writes++;
+      }
+    },
+    clientProbe: async () => {
+      calls++;
+      if (calls === 1)
+        return new Promise((r) => {
+          finish = r;
+        });
+      return { container: "mp4", videoCodec: "h264" };
+    }
+  });
+  const identity = streamProbeIdentity({ infoHash: "e".repeat(40), fileIdx: 0 });
+  const ongoing = p.probe("https://cdn.test/cleared", { identity });
+  await new Promise((r) => setTimeout(r, 0));
+  await probeMetadataCache.clear();
+  finish({ container: "mp4", videoCodec: "hevc" });
+  await ongoing;
+  assert.equal(writes, 0);
+  assert.equal((await p.probe("https://cdn.test/cleared", { identity })).videoCodec, "h264");
+  assert.equal(calls, 2);
+});

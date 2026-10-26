@@ -169,3 +169,27 @@ retain only status, content-type category, and an error category from at most 4 
 of the error body. Raw response text is discarded. These facts distinguish a CDN
 HTTP rejection from a browser CORS failure; they do not treat Unknown as a request
 to transcode.
+
+### Persistent client metadata cache
+
+Client result metadata is cached in RAM by each `createStreamProber` instance.
+Successful file facts with a full torrent hash and file index are also stored
+locally in IndexedDB (`nuvio-probe-metadata`, schema 1), for 30 days and at most
+1,000 files. Only normalized metadata fields are stored: no source/CDN URLs,
+credentials, raw ffprobe output, diagnostics or browser compatibility decisions.
+Successful results and in-flight jobs share a key for a full torrent info hash plus file
+index. Supported Torrentio/TorBox and StremThru Torz URLs expose those fields;
+structured stream descriptors (including TB Instant) can supply them too.
+Unknown URL shapes retain exact-URL keys. Names, sizes and incomplete identities
+are never sufficient. Distinct files remain distinct, and failed URLs do not
+prevent an alternative URL from being tried. Each caller reassesses browser
+capabilities, and a selection caller retains its own wait deadline. Reloading
+clears RAM but retains IndexedDB results on the same browser/origin. Independent
+prober instances can reuse those persisted facts. Sources without a strong file
+identity remain RAM-only. A failed/blocked/quota-limited database does not prevent
+live probing; cache lookup waits at most 150 ms within the caller's budget.
+Settings > Advanced > Cache > Clear Probe Cache empties IndexedDB and invalidates
+RAM results in the current page; reopen the stream list to refresh its labels.
+Other open tabs should be reloaded after clearing. Pending pre-clear probes
+cannot repopulate the cleared cache. CDN URL resolution has its separate
+60-second memory cache described above.

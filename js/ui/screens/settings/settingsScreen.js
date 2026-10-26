@@ -1,3 +1,4 @@
+import { probeMetadataCache } from "../../../core/player/probeMetadataCache.js";
 import { getHdrPlaybackSupport } from "../../../core/player/hdrSupport.js";
 import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
 import { deferWhileReordering } from "../../components/listReorderDrag.js";
@@ -4236,6 +4237,10 @@ export const SettingsScreen = {
       clearHeroArtworkCache();
       this.advancedHeroArtworkCacheCleared = true;
     });
+    this.actionMap.set("advanced:clearProbeCache", async () => {
+      const cleared = await probeMetadataCache.clear();
+      this.advancedProbeCacheCleared = cleared === true;
+    });
 
     if (isEssential) {
       return `
@@ -4313,6 +4318,23 @@ export const SettingsScreen = {
             disabled: Boolean(this.advancedCacheCleared)
           })}
           ${this.renderHeroArtworkCacheRow()}
+          ${this.renderActionRow({
+            focusKey: "advanced:clearProbeCache",
+            title: t("advanced_clear_probe_cache", {}, "Clear Probe Cache"),
+            subtitle: this.advancedProbeCacheCleared
+              ? t(
+                  "advanced_clear_probe_cache_done",
+                  {},
+                  "Cache cleared. Reopen the stream list to check sources again."
+                )
+              : t(
+                  "advanced_clear_probe_cache_subtitle",
+                  {},
+                  "Remove locally saved video metadata used for stream labels"
+                ),
+            icon: null,
+            disabled: Boolean(this.advancedProbeCacheCleared)
+          })}
         </div>
       </div>
     `;

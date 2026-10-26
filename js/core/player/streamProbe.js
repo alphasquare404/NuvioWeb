@@ -1,5 +1,11 @@
 import { probeInBrowser, isBrowserProbeParallelReady } from "./ffprobeClient.js";
 import { normalizeProbeMode } from "./probeMode.js";
+import {
+  probeMetadataCache,
+  probeMetadataCacheGeneration,
+  PROBE_METADATA_TTL_MS,
+  PROBE_METADATA_MAX_ENTRIES
+} from "./probeMetadataCache.js";
 // Probing the gaps, not the whole list.
 //
 // The estimate from the addon's own text is good when the text says something: an
@@ -105,8 +111,44 @@ export function shouldProbeVerdict(verdict, capabilities = {}) {
  *
  * Empty when nothing identifies the file, which leaves the bridge on its URL key.
  */
+function torrentFileIdentity(hash, index) {
+  const h = String(hash || "").toLowerCase();
+  const i = String(index ?? "");
+  if (!/^[a-f0-9]{40}$/.test(h) || !/^\d+$/.test(i) || !Number.isSafeInteger(Number(i))) return "";
+  return `torrent-file:${h}:${Number(i)}`;
+}
+
+function probeUrlIdentity(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password) return "";
+    const parts = url.pathname.split("/");
+    if (
+      url.host === "torrentio.strem.fun" &&
+      parts[1] === "resolve" &&
+      parts[2] === "torbox" &&
+      [7, 8].includes(parts.length)
+    ) {
+      return torrentFileIdentity(parts[4], parts[6]);
+    }
+    // Torz exposes torrent hash/index; Store links use different identifiers.
+    const match = url.pathname.match(
+      /^\/stremio\/torz\/[^/]+\/_\/strem\/[^/]+\/tb\/([a-f0-9]{40})\/(\d+)\/[^/]+$/i
+    );
+    return match ? torrentFileIdentity(match[1], match[2]) : "";
+  } catch {
+    return "";
+  }
+}
+
 export function streamProbeIdentity(stream = {}) {
   const resolve = stream?.clientResolve || stream?.raw?.clientResolve || null;
+  const stable =
+    torrentFileIdentity(
+      resolve?.infoHash ?? stream?.infoHash,
+      resolve?.fileIdx ?? stream?.fileIdx
+    ) || probeUrlIdentity(stream?.url);
+  if (stable) return stable;
   const parts = resolve
     ? [resolve.service, resolve.infoHash, resolve.fileIdx, resolve.filename]
     : [stream?.addonName, stream?.infoHash, stream?.fileIdx, stream?.name || stream?.title];
@@ -136,10 +178,12 @@ export function createStreamProber({
   clientProbe = probeInBrowser,
   fetchImpl = globalThis.fetch,
   timeoutMs = 8000,
-  assess = null
+  assess = null,
+  metadataCache = probeMetadataCache
 } = {}) {
   const cache = new Map();
   const pending = new Map();
+  let cacheGeneration = probeMetadataCacheGeneration();
   const base = String(endpoint || "").trim();
   const selectedMode = normalizeProbeMode(mode);
   const enabled = selectedMode === "client" || (selectedMode === "server" && base.length > 0);
@@ -244,8 +288,11 @@ export function createStreamProber({
         resolveTimeoutMs = 0
       } = {}
     ) {
-      const key = String(url || "").trim();
-      if (!enabled || !key) return null;
+      const source = String(url || "").trim();
+      if (!enabled || !source) return null;
+      const strongIdentity = /^torrent-file:[a-f0-9]{40}:\d+$/.test(identity) ? identity : "";
+      const key =
+        selectedMode === "client" ? probeUrlIdentity(source) || strongIdentity || source : source;
       const assessResult = async (result) => {
         if (!result || !assess) return result;
         try {
@@ -254,16 +301,84 @@ export function createStreamProber({
           return { ...result, playbackCapabilities: { video: null, audio: [], container: null } };
         }
       };
-      if (cache.has(key)) return assessResult(cache.get(key));
-      if (pending.has(key)) return assessResult(await pending.get(key));
-      const promise = request(key, reason, identity, requestTimeoutMs, resolveTimeoutMs).then(
-        (result) => {
-          pending.delete(key);
-          if (result) cache.set(key, result);
-          return result;
+      if (cacheGeneration !== probeMetadataCacheGeneration()) {
+        cache.clear();
+        cacheGeneration = probeMetadataCacheGeneration();
+      }
+      const remembered = cache.get(key);
+      if (remembered?.expiresAt > Date.now()) return assessResult(remembered.facts);
+      cache.delete(key);
+      if (pending.has(key)) {
+        const shared = pending.get(key);
+        let timer;
+        const started = Date.now();
+        const budget = Math.max(
+          1,
+          requestTimeoutMs + resolveTimeoutMs + (resolveTimeoutMs ? 20000 : 0)
+        );
+        const timedOut = Symbol("timeout");
+        const result = await Promise.race([
+          shared.promise,
+          new Promise((resolve) => {
+            timer = setTimeout(() => resolve(timedOut), budget);
+          })
+        ]);
+        clearTimeout(timer);
+        if (result === timedOut) return null;
+        if (result || shared.source === source) return assessResult(result);
+        // A failed URL does not invalidate the file's alternative source.
+        requestTimeoutMs = Math.max(0, requestTimeoutMs - (Date.now() - started));
+        if (!requestTimeoutMs) return null;
+        return this.probe(source, {
+          reason,
+          identity,
+          timeoutMs: requestTimeoutMs,
+          resolveTimeoutMs
+        });
+      }
+      const jobGeneration = probeMetadataCacheGeneration();
+      const promise = (async () => {
+        if (selectedMode === "client" && key.startsWith("torrent-file:")) {
+          const started = Date.now();
+          let timer;
+          let saved = null;
+          try {
+            saved = await Promise.race([
+              metadataCache.get(key),
+              new Promise((resolve) => {
+                timer = setTimeout(
+                  () => resolve(null),
+                  Math.min(150, Math.max(1, requestTimeoutMs))
+                );
+              })
+            ]);
+          } catch {
+            /* Storage failure must not prevent a live probe. */
+          } finally {
+            clearTimeout(timer);
+          }
+          requestTimeoutMs = Math.max(0, requestTimeoutMs - (Date.now() - started));
+          if (saved && jobGeneration === probeMetadataCacheGeneration()) return saved;
+          if (!requestTimeoutMs) return null;
         }
-      );
-      pending.set(key, promise);
+        const result = await request(source, reason, identity, requestTimeoutMs, resolveTimeoutMs);
+        if (
+          result &&
+          selectedMode === "client" &&
+          jobGeneration === probeMetadataCacheGeneration()
+        ) {
+          void Promise.resolve(metadataCache.set(key, result, jobGeneration)).catch(() => {});
+        }
+        return result;
+      })().then((result) => {
+        pending.delete(key);
+        if (result && jobGeneration === probeMetadataCacheGeneration()) {
+          cache.set(key, { facts: result, expiresAt: Date.now() + PROBE_METADATA_TTL_MS });
+          if (cache.size > PROBE_METADATA_MAX_ENTRIES) cache.delete(cache.keys().next().value);
+        }
+        return result;
+      });
+      pending.set(key, { source, promise });
       return assessResult(await promise);
     },
 

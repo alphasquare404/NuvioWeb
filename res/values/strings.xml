@@ -578,6 +578,9 @@
     <string name="advanced_memory_only_vertical_scroll_subtitle">Skip disk and network image requests while vertically scrolling home rows.</string>
     <string name="advanced_compose_highlighter">Compose Highlighter</string>
     <string name="advanced_compose_highlighter_subtitle">Flash borders around recomposing UI elements for performance debugging.</string>
+    <string name="advanced_clear_probe_cache">Clear Probe Cache</string>
+    <string name="advanced_clear_probe_cache_subtitle">Remove locally saved video metadata used for stream labels</string>
+    <string name="advanced_clear_probe_cache_done">Cache cleared. Reopen the stream list to check sources again.</string>
     <string name="advanced_clear_cw_cache">Clear Continue Watching Cache</string>
     <string name="advanced_clear_cw_cache_subtitle">Remove cached thumbnails, titles, and enrichment data for Continue Watching</string>
     <string name="advanced_clear_cw_cache_done">Cache cleared</string>
