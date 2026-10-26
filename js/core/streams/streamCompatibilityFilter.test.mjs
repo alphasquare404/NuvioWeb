@@ -36,9 +36,8 @@ test("text compatibility filtering is opt-in and normalizes persisted settings",
   assert.equal(normalizeStreamCompatibilityFilter("invalid"), "OFF");
   assert.equal(normalizePlayerSettings({}).streamCompatibilityFilter, "OFF");
   assert.equal(
-    normalizePlayerSettings({ streamCompatibilityFilter: "LIKELY_DIRECT_REMUX" })
-      .streamCompatibilityFilter,
-    "LIKELY_DIRECT_REMUX"
+    normalizePlayerSettings({ streamCompatibilityFilter: "LIKELY_DIRECT_REMUX" }).streamDisplayMode,
+    "DIRECT_REMUX"
   );
 });
 

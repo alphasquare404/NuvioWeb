@@ -10,7 +10,7 @@ import {
 } from "../../core/player/subtitleVerticalOffset.js";
 
 import { normalizeHdrPreference } from "../../core/streams/streamHdrPreference.js";
-import { normalizeStreamCompatibilityFilter } from "../../core/streams/streamCompatibilityFilter.js";
+import { streamDisplayMode } from "../../core/streams/streamLabelPolicy.js";
 
 const KEY = "playerSettings";
 
@@ -396,9 +396,8 @@ export function normalizePlayerSettings(settings = {}) {
     ),
     syncOfflineProgress: persistentSettings.syncOfflineProgress === true,
     showOnlyDirectStreams: persistentSettings.showOnlyDirectStreams === true,
-    streamCompatibilityFilter: normalizeStreamCompatibilityFilter(
-      persistentSettings.streamCompatibilityFilter
-    ),
+    streamDisplayMode: streamDisplayMode(persistentSettings),
+    streamCompatibilityFilter: "OFF",
     externalReturnMethod: normalizeExternalReturnMethod(
       persistentSettings.externalReturnMethod ?? DEFAULTS.externalReturnMethod
     ),

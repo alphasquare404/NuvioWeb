@@ -7,6 +7,7 @@ import {
   playerStreamProbeKey,
   filterPlayerStreams,
   playerStreamProbeCandidates,
+  playerStreamCheckCandidates,
   nextEpisodeSelectionOptions
 } from "../../../core/streams/playerStreamPolicy.js";
 import {
@@ -72,6 +73,7 @@ import { selectAutoPlayStream } from "../../../core/streams/streamAutoPlaySelect
 import { withinStreamSelectionDeadline } from "../../../core/streams/streamAutoResolve.js";
 import {
   isOnlyDirectEnabled,
+  allowsPlaybackMethod,
   usesMetadataLabels
 } from "../../../core/streams/streamLabelPolicy.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
@@ -8122,14 +8124,17 @@ export const PlayerScreen = {
         .filter(
           (row) =>
             probes.has(row.url) &&
-            classifyPlayback({
-              url: row.url,
-              label: [row.stream.name, row.stream.title, row.stream.description]
-                .filter(Boolean)
-                .join(" "),
-              probe: probes.get(row.url),
-              capabilities
-            }).method === "direct"
+            allowsPlaybackMethod(
+              classifyPlayback({
+                url: row.url,
+                label: [row.stream.name, row.stream.title, row.stream.description]
+                  .filter(Boolean)
+                  .join(" "),
+                probe: probes.get(row.url),
+                capabilities
+              }).method,
+              settings
+            )
         )
         .map((row) => row.stream);
     if (prober.enabled) {
@@ -15505,9 +15510,7 @@ export const PlayerScreen = {
       !Environment.isBrowser() ||
       labels.showPlaybackLabels === false ||
       !allowsPlayerStreamLabel(stream, labels) ||
-      (usesMetadataLabels(labels) &&
-        PROBE_MODE === "client" &&
-        !this._playerLabelCandidateKeys?.has(playerStreamProbeKey(stream)))
+      !this._playerLabelCandidateKeys?.has(playerStreamProbeKey(stream))
     )
       return "";
     return renderStreamPlaybackBadge({
@@ -15532,7 +15535,14 @@ export const PlayerScreen = {
       mode: PROBE_MODE,
       limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
     });
-    this._playerLabelCandidateKeys = new Set(targets.map(playerStreamProbeKey));
+    this._playerLabelCandidateKeys = new Set(
+      playerStreamCheckCandidates(streams, {
+        settings,
+        labels: StreamBadgeSettingsStore.snapshot(),
+        mode: PROBE_MODE,
+        limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
+      }).map(playerStreamProbeKey)
+    );
     if (!targets.length) return;
     const token = this.playerMountToken;
     const results = (this._playerListProbeResults ||= new Map());

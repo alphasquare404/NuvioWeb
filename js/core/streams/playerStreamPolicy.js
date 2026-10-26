@@ -6,7 +6,8 @@ import {
   streamLabelProbeLimit,
   isOnlyDirectEnabled,
   isStreamLabelingEnabled,
-  usesMetadataLabels
+  usesMetadataLabels,
+  allowsPlaybackMethod
 } from "./streamLabelPolicy.js";
 import {
   filterStreamsByCompatibility,
@@ -14,6 +15,7 @@ import {
 } from "./streamCompatibilityFilter.js";
 
 export function allowsPlayerStreamLabel(stream, settings = {}) {
+  if (!usesMetadataLabels(settings) && settings.filenameAllAddons === true) return true;
   const addons = Array.isArray(settings.labelAddons) ? settings.labelAddons : [];
   return addons.includes(String(stream?.addonName || stream?.addon || "").trim());
 }
@@ -68,11 +70,17 @@ export function filterPlayerStreams(
 ) {
   streams = filterStreamsByCompatibility(streams, settings, capabilities);
   if (!isOnlyDirectEnabled(settings, labels)) return streams;
+  const checked = new Set(
+    playerStreamCheckCandidates(streams, { settings, labels, mode, limit, capabilities }).map(
+      playerStreamProbeKey
+    )
+  );
   if (!usesMetadataLabels(labels))
     return streams.filter(
       (stream) =>
+        checked.has(playerStreamProbeKey(stream)) &&
         allowsPlayerStreamLabel(stream, labels) &&
-        classifyStreamFilename(stream, capabilities).method === "direct"
+        allowsPlaybackMethod(classifyStreamFilename(stream, capabilities).method, settings)
     );
   capabilities ||= getDeviceCapabilities();
   const candidates =
@@ -89,17 +97,20 @@ export function filterPlayerStreams(
     const probe = probeForStream(stream);
     return (
       Boolean(probe) &&
-      classifyPlayback({ url: stream.url || stream.externalUrl || "", probe, capabilities })
-        .method === "direct"
+      allowsPlaybackMethod(
+        classifyPlayback({ url: stream.url || stream.externalUrl || "", probe, capabilities })
+          .method,
+        settings
+      )
     );
   });
 }
 
-export function playerStreamProbeCandidates(
+export function playerStreamCheckCandidates(
   streams,
   { settings = {}, labels = {}, limit = 20, mode = "server", capabilities = null } = {}
 ) {
-  if (!isStreamLabelingEnabled(labels) || !usesMetadataLabels(labels)) return [];
+  if (!isStreamLabelingEnabled(labels)) return [];
   streams = filterStreamsByCompatibility(streams, settings, capabilities);
   const seen = new Set();
   const scoped = streams.filter((stream) => {
@@ -114,4 +125,9 @@ export function playerStreamProbeCandidates(
       : scoped;
   const cap = streamLabelProbeLimit(labels, mode, limit);
   return cap === 0 ? ranked : ranked.slice(0, cap);
+}
+
+export function playerStreamProbeCandidates(streams, options = {}) {
+  if (!usesMetadataLabels(options.labels || {})) return [];
+  return playerStreamCheckCandidates(streams, options);
 }

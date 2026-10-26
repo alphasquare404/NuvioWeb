@@ -2988,4 +2988,24 @@
     <string name="startup_loading_metadata">Reading video information…</string>
     <string name="startup_loading_frame">Waiting for the first frame…</string>
     <string name="startup_loading_restoring">Resuming playback…</string>
+    <string name="settings_stream_check_all_addons">All addons</string>
+    <string name="settings_stream_check_addons">Addons to check</string>
+    <string name="settings_stream_check_method">Check using</string>
+    <string name="settings_stream_check_limit">Check limit</string>
+    <string name="settings_stream_check_all_streams">All streams</string>
+    <string name="settings_stream_display_mode">Streams to show</string>
+    <string name="settings_stream_display_all">All streams</string>
+    <string name="settings_stream_display_direct">Direct only</string>
+    <string name="settings_stream_display_remux">Direct + Remux</string>
+    <string name="settings_stream_check_group">Compatibility checks</string>
+    <string name="settings_stream_check_enabled">Check stream compatibility</string>
+    <string name="settings_stream_check_enabled_description">Choose what to check independently of which streams and badges are shown.</string>
+    <string name="settings_stream_check_addons_description">Metadata checks require selected addons. All addons is available only for file names.</string>
+    <string name="settings_stream_check_limit_description">Maximum candidates per list across selected addons, not the number of matching results.</string>
+    <string name="settings_stream_filter_group">Filtering</string>
+    <string name="settings_stream_display_metadata_description">Direct filters show only checked matches from the selected addons. Pending and Unknown stay hidden.</string>
+    <string name="settings_stream_display_filename_description">Filters use file name estimates. Playback is not verified.</string>
+    <string name="settings_stream_display_inactive">All streams are shown. Enable checks and choose addons to use a compatibility filter.</string>
+    <string name="settings_stream_appearance_group">Card appearance</string>
+    <string name="settings_stream_badges_independent">Show compatibility badges for checked streams. Hiding badges does not stop checks or change filtering.</string>
 </resources>

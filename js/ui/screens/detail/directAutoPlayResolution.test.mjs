@@ -387,3 +387,12 @@ test("filename Only Direct chooses locally and bypasses server preparation and p
   assert.deepEqual(probed, []);
   assert.deepEqual(prepared, []);
 });
+
+test("metadata Direct + Remux startup accepts a verified Remux candidate without requiring a Direct result", async () => {
+  const streams = [row("remux-first"), row("direct-next")];
+  const { result } = await resolve(streams, {
+    overrides: { streamDisplayMode: "DIRECT_REMUX" },
+    nonDirect: ["remux-first"]
+  });
+  assert.equal(result.selected?.id, "remux-first");
+});

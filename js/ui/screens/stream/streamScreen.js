@@ -1,11 +1,13 @@
 import {
   playerStreamProbeCandidates,
+  playerStreamCheckCandidates,
+  filterPlayerStreams,
   playerStreamProbeKey
 } from "../../../core/streams/playerStreamPolicy.js";
 import { filterStreamsByCompatibility } from "../../../core/streams/streamCompatibilityFilter.js";
-import { classifyStreamFilename } from "../../../core/streams/streamCompatibilityFilter.js";
 import {
   isOnlyDirectEnabled,
+  isStreamLabelingEnabled,
   usesMetadataLabels
 } from "../../../core/streams/streamLabelPolicy.js";
 import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
@@ -480,15 +482,6 @@ function sortStreamsByAddonOrder(streams = [], sourceChips = []) {
  * never disagree about a particular row. Without the probe the filter kept calling
  * an `hev1` HEVC file direct while its own badge had already turned yellow.
  */
-function isDirectPlayableStream(stream = {}, probe = null) {
-  const result = classifyPlayback({
-    url: stream.url || stream.externalUrl || "",
-    label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
-    probe,
-    capabilities: getDeviceCapabilities()
-  });
-  return result.method === PLAYBACK_METHODS.DIRECT;
-}
 
 // Three seconds, not eight. A probe that has not answered by then is not lost: the
 // server keeps working and caches the result, and the next pass collects it instantly
@@ -1535,7 +1528,7 @@ export const StreamScreen = {
   },
 
   getProbeCandidates() {
-    return playerStreamProbeCandidates(this.streams, {
+    return playerStreamProbeCandidates(sortStreamsByAddonOrder(this.streams, this.sourceChips), {
       labels: StreamBadgeSettingsStore.snapshot(),
       settings: PlayerSettingsStore.get(),
       capabilities: getDeviceCapabilities(),
@@ -1769,15 +1762,14 @@ export const StreamScreen = {
 
   getFilteredStreams(filter = this.addonFilter) {
     const labelSettings = StreamBadgeSettingsStore.snapshot();
-    const labelAddons = Array.isArray(labelSettings.labelAddons) ? labelSettings.labelAddons : [];
+    const settings = PlayerSettingsStore.get();
     const labelAddonsKey = JSON.stringify([
-      labelAddons,
-      labelSettings.clientLabelLimit,
-      labelSettings.showPlaybackLabels,
-      labelSettings.playbackLabelSource,
-      PlayerSettingsStore.get().streamCompatibilityFilter
+      labelSettings,
+      settings.streamDisplayMode,
+      settings.showOnlyDirectStreams,
+      settings.streamCompatibilityFilter
     ]);
-    const showOnlyDirectStreams = isOnlyDirectEnabled(PlayerSettingsStore.get(), labelSettings);
+    const showOnlyDirectStreams = isOnlyDirectEnabled(settings, labelSettings);
     // Cache the sorted/filtered result so focus navigation (which re-requests
     // this on every move via badge hydration) does not re-sort and re-parse
     // the whole source list each keypress. The cache is keyed on the inputs
@@ -1802,39 +1794,17 @@ export const StreamScreen = {
       PlayerSettingsStore.get(),
       getDeviceCapabilities()
     );
-    let result =
-      filter === "all"
-        ? orderedStreams
-        : orderedStreams.filter((stream) => stream.addonName === filter);
-    // "Show only direct streams" means exactly that. An empty list is the honest
-    // answer when nothing qualifies — falling back to the full list would quietly
-    // play the very streams the filter was asked to hide, and auto-select reads this
-    // same list, so it must see the strict one too.
-    if (showOnlyDirectStreams) {
-      // Label scope restricts the list only when verified Direct results are required.
-      // Otherwise every source stays visible and labels are drawn independently.
-      result = result.filter((stream) =>
-        labelAddons.includes(String(stream?.addonName || stream?.addon || "").trim())
-      );
-      if (PROBE_MODE === "client" && usesMetadataLabels(labelSettings)) {
-        const candidates = new Set(this.getProbeCandidates().map(playerStreamProbeKey));
-        result = result.filter((stream) => candidates.has(playerStreamProbeKey(stream)));
-      }
-      // Only an answered "direct" survives: a row still being checked has not earned its
-      // place yet, and showing it would put unverified streams behind a filter that
-      // promises the opposite.
-      const direct = result.filter((stream) => {
-        if (!usesMetadataLabels(labelSettings))
-          return classifyStreamFilename(stream, getDeviceCapabilities()).method === "direct";
-        const probe = this.getStreamProbe(stream);
-        if (!probe) return false;
-        return isDirectPlayableStream(stream, probe);
-      });
-      this._directFilterHidden = result.length - direct.length;
-      result = direct;
-    } else {
-      this._directFilterHidden = 0;
-    }
+    const visible = filterPlayerStreams(orderedStreams, {
+      settings,
+      labels: labelSettings,
+      mode: PROBE_MODE,
+      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
+      capabilities: getDeviceCapabilities(),
+      probeForStream: (stream) => this.getStreamProbe(stream)
+    });
+    const result =
+      filter === "all" ? visible : visible.filter((stream) => stream.addonName === filter);
+    this._directFilterHidden = showOnlyDirectStreams ? orderedStreams.length - visible.length : 0;
     this._filteredStreamsCache = {
       streams: this.streams,
       chips: this.sourceChips,
@@ -2668,12 +2638,7 @@ export const StreamScreen = {
 
   scheduleUnknownProbes() {
     const labelSettings = StreamBadgeSettingsStore.snapshot();
-    if (
-      !usesMetadataLabels(labelSettings) ||
-      labelSettings.showPlaybackLabels === false ||
-      !labelSettings.labelAddons?.length
-    )
-      return;
+    if (!usesMetadataLabels(labelSettings) || !isStreamLabelingEnabled(labelSettings)) return;
     if (!streamProber.enabled || !this.streams.length) return;
     if (this._probeOutstanding) return;
     // Do not add background provider traffic while addon/cache requests are
@@ -2682,7 +2647,7 @@ export const StreamScreen = {
     if (
       this.loading &&
       PROBE_MODE === "client" &&
-      settings.showOnlyDirectStreams !== true &&
+      !isOnlyDirectEnabled(settings, labelSettings) &&
       String(settings.streamAutoPlayMode || "MANUAL").toUpperCase() === "MANUAL"
     )
       return;
@@ -2780,20 +2745,15 @@ export const StreamScreen = {
       });
       const urlKey = stream.url || stream.externalUrl || "";
       const labelSettings = StreamBadgeSettingsStore.snapshot();
-      // A profile saved before this field existed has no `labelAddons` at all.
-      const allowedLabelAddons = Array.isArray(labelSettings.labelAddons)
-        ? labelSettings.labelAddons
-        : [];
-      const addonName = String(stream?.addonName || stream?.addon || "").trim();
-      // The owner decides whether a label is drawn, and which addons may draw one.
       const labelAllowed =
         labelSettings.showPlaybackLabels !== false &&
-        allowedLabelAddons.includes(addonName) &&
-        (!usesMetadataLabels(labelSettings) ||
-          PROBE_MODE !== "client" ||
-          this.getProbeCandidates().some(
-            (candidate) => playerStreamProbeKey(candidate) === playerStreamProbeKey(stream)
-          ));
+        playerStreamCheckCandidates(sortStreamsByAddonOrder(this.streams, this.sourceChips), {
+          settings: PlayerSettingsStore.get(),
+          labels: labelSettings,
+          mode: PROBE_MODE,
+          limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
+          capabilities: getDeviceCapabilities()
+        }).some((candidate) => playerStreamProbeKey(candidate) === playerStreamProbeKey(stream));
       const badge = labelAllowed
         ? renderStreamPlaybackBadge({
             labelSource: labelSettings.playbackLabelSource,
@@ -3034,19 +2994,9 @@ export const StreamScreen = {
               this.params?.autoSelectionTimedOut
                 ? `<div class="stream-route-empty" role="status">${escapeHtml(
                     t(
-                      isOnlyDirectEnabled(
-                        PlayerSettingsStore.get(),
-                        StreamBadgeSettingsStore.snapshot()
-                      )
-                        ? "stream_selection_direct_timeout_notice"
-                        : "stream_selection_timeout_notice",
+                      "stream_selection_timeout_notice",
                       { seconds: this.params.autoSelectionTimeoutSeconds },
-                      isOnlyDirectEnabled(
-                        PlayerSettingsStore.get(),
-                        StreamBadgeSettingsStore.snapshot()
-                      )
-                        ? `No Direct stream found within ${this.params.autoSelectionTimeoutSeconds} seconds. Choose a stream below.`
-                        : `No stream selected within ${this.params.autoSelectionTimeoutSeconds} seconds. Choose a stream below.`
+                      `No stream selected within ${this.params.autoSelectionTimeoutSeconds} seconds. Choose a stream below.`
                     )
                   )}</div>`
                 : ""

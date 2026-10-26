@@ -334,3 +334,37 @@ test("Next Episode ignores a stale Only Direct flag when labels are disabled", a
     "first"
   );
 });
+
+test("auto next honors Direct + Remux and the independent check toggle with badges hidden", async () => {
+  const s = screen({
+    dependencies: {
+      getDeviceCapabilities: () => ({
+        h264: true,
+        aac: true,
+        containers: { mp4: true, mkv: false }
+      }),
+      StreamBadgeSettingsStore: {
+        snapshot: () => ({
+          compatibilityCheckEnabled: true,
+          showPlaybackLabels: false,
+          labelAddons: ["A"],
+          clientLabelLimit: 3
+        })
+      },
+      createStreamProber: () => ({
+        enabled: true,
+        probe: async () => ({ ...facts, container: "mkv" })
+      })
+    }
+  });
+  const remux = await s.selectNextEpisodeStreamByAutoPlayPolicy(fixtures, {
+    ...base,
+    streamDisplayMode: "DIRECT_REMUX"
+  });
+  assert.equal(remux?.id, "first");
+  const direct = await s.selectNextEpisodeStreamByAutoPlayPolicy(fixtures, {
+    ...base,
+    streamDisplayMode: "DIRECT"
+  });
+  assert.equal(direct, null);
+});

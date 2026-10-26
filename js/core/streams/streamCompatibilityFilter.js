@@ -11,6 +11,7 @@ export function normalizeStreamCompatibilityFilter(value) {
 // This is a local text estimate, never a verified playback label. Do not resolve
 // URLs, fetch media, or spend a probe slot to decide which candidates to inspect.
 export function filterStreamsByCompatibility(streams = [], settings = {}, capabilities = null) {
+  if (settings.streamDisplayMode != null) return streams;
   const mode = normalizeStreamCompatibilityFilter(settings.streamCompatibilityFilter);
   if (mode === "OFF") return streams;
   const device = capabilities || getDeviceCapabilities();

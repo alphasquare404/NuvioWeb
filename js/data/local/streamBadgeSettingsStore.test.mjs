@@ -52,7 +52,8 @@ test("the stream-card label toggle persists off and on without changing other pr
     assert.equal(saved["1"].showAddonLogo, false);
     assert.equal(saved["1"].showFileSizeBadges, false);
   }
-  assert.deepEqual(updates, [{ showOnlyDirectStreams: false }]);
+  assert.deepEqual(updates, [], "badge visibility does not change filtering");
+  assert.equal(StreamBadgeSettingsStore.snapshot().compatibilityCheckEnabled, true);
 });
 
 test("client labeling limit is profile scoped and accepts only the offered values", (t) => {

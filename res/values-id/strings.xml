@@ -2375,4 +2375,24 @@
     <string name="startup_loading_metadata">Membaca informasi video…</string>
     <string name="startup_loading_frame">Menunggu gambar pertama…</string>
     <string name="startup_loading_restoring">Melanjutkan pemutaran…</string>
+    <string name="settings_stream_check_group">Pemeriksaan kompatibilitas</string>
+    <string name="settings_stream_check_enabled">Periksa kompatibilitas stream</string>
+    <string name="settings_stream_check_enabled_description">Pilih stream yang diperiksa secara terpisah dari filter dan tampilan badge.</string>
+    <string name="settings_stream_check_addons">Addon yang diperiksa</string>
+    <string name="settings_stream_check_addons_description">Pemeriksaan metadata memerlukan addon terpilih. Semua addon hanya tersedia untuk nama file.</string>
+    <string name="settings_stream_check_all_addons">Semua addon</string>
+    <string name="settings_stream_check_method">Cara pemeriksaan</string>
+    <string name="settings_stream_check_limit">Batas pemeriksaan</string>
+    <string name="settings_stream_check_all_streams">Semua stream</string>
+    <string name="settings_stream_check_limit_description">Maksimum kandidat per daftar dari seluruh addon terpilih, bukan jumlah hasil yang cocok.</string>
+    <string name="settings_stream_filter_group">Penyaringan</string>
+    <string name="settings_stream_display_mode">Stream yang ditampilkan</string>
+    <string name="settings_stream_display_all">Semua stream</string>
+    <string name="settings_stream_display_direct">Hanya Direct</string>
+    <string name="settings_stream_display_remux">Direct + Remux</string>
+    <string name="settings_stream_display_metadata_description">Filter Direct hanya menampilkan hasil pemeriksaan yang sesuai dari addon terpilih. Hasil yang belum diperiksa dan Unknown disembunyikan.</string>
+    <string name="settings_stream_display_filename_description">Filter menggunakan perkiraan nama file. Pemutaran belum diverifikasi.</string>
+    <string name="settings_stream_display_inactive">Semua stream ditampilkan. Aktifkan pemeriksaan dan pilih addon untuk menggunakan filter kompatibilitas.</string>
+    <string name="settings_stream_appearance_group">Tampilan kartu</string>
+    <string name="settings_stream_badges_independent">Tampilkan badge kompatibilitas pada stream yang diperiksa. Menyembunyikan badge tidak menghentikan pemeriksaan atau mengubah filter.</string>
 </resources>

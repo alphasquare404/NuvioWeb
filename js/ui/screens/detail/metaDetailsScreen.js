@@ -19,6 +19,7 @@ import { PROBE_ENDPOINT, PROBE_MODE, PROBE_CLIENT_CONCURRENCY } from "../../../c
 import { streamLabelProbeLimit } from "../../../core/streams/streamLabelPolicy.js";
 import {
   isOnlyDirectEnabled,
+  allowsPlaybackMethod,
   usesMetadataLabels,
   isStreamLabelingEnabled
 } from "../../../core/streams/streamLabelPolicy.js";
@@ -3550,7 +3551,7 @@ export const MetaDetailsScreen = {
         .filter((candidate) => {
           const probe = probes.get(candidate.url) || null;
           if (!probe) return false;
-          return (
+          return allowsPlaybackMethod(
             classifyPlayback({
               url: candidate.url,
               label: [
@@ -3562,7 +3563,8 @@ export const MetaDetailsScreen = {
                 .join(" "),
               probe,
               capabilities
-            }).method === "direct"
+            }).method,
+            settings
           );
         })
         .map((candidate) => candidate.stream);
