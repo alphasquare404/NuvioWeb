@@ -6835,9 +6835,9 @@ html.is-hero-stream-hold * {
 .desktop-browser .profile-grid-compact .profile-avatar,
 .desktop-browser .profile-card.focused .profile-avatar,
 .desktop-browser .profile-grid-compact .profile-card.focused .profile-avatar {
-  width: 92px;
-  height: 92px;
-  font-size: 36px;
+  width: 100%;
+  height: 100%;
+  font-size: 40px;
   transition: none;
 }
 
@@ -6867,8 +6867,8 @@ html.is-hero-stream-hold * {
 
 .desktop-browser .profile-active-indicator {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: -8px;
+  right: -8px;
   width: 22px;
   height: 22px;
   border: 0;
@@ -6885,8 +6885,8 @@ html.is-hero-stream-hold * {
 
 .desktop-browser .profile-pin-indicator {
   position: absolute;
-  top: -4px;
-  left: -4px;
+  top: -8px;
+  left: -8px;
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -6934,8 +6934,8 @@ html.is-hero-stream-hold * {
 
 .desktop-browser .profile-primary-dot,
 .desktop-browser .profile-grid-compact .profile-primary-dot {
-  right: -5px;
-  bottom: -5px;
+  right: -10px;
+  bottom: -10px;
   width: 24px;
   height: 24px;
   border-width: 2px;
@@ -14827,8 +14827,8 @@ html:not([data-nav-placement="top"])
   .desktop-browser .profile-grid-compact .profile-avatar,
   .desktop-browser .profile-card.focused .profile-avatar,
   .desktop-browser .profile-grid-compact .profile-card.focused .profile-avatar {
-    width: 120px;
-    height: 120px;
+    width: 100%;
+    height: 100%;
     font-size: 40px;
   }
 
