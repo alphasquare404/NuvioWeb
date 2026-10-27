@@ -2098,16 +2098,33 @@ export const ProfileSelectionScreen = {
         "This will permanently delete this profile and all its data including library, watch history, and addon settings. This cannot be undone."
       ),
       widthVw: 43.75, // 420dp / 960dp screen = 43.75vw
+      panelClassName: "profile-delete-dialog",
+      actionsClassName: "profile-delete-actions",
       buttons: [
+        {
+          label: t("profile_cancel", {}, "Cancel"),
+          key: "cancel",
+          className: "profile-delete-cancel",
+          onAction: () => {
+            this.closeDeleteDialog();
+          }
+        },
         {
           label: t("profile_delete_btn", {}, "Delete Profile"),
           key: "confirm",
           danger: true,
+          className: "profile-delete-confirm",
           onAction: () => {
             const id = this.deleteProfileId;
+            const dialog = this._deleteDialog;
             this._deleteDialog = null;
             this.deleteProfileId = null;
-            this.deleteProfile(id);
+            // The delete confirmation was opened from the edit dialog. Close
+            // that editor before the profile row is removed, otherwise its
+            // overlay survives the deletion.
+            this.editorState = null;
+            dialog?.destroy();
+            void this.deleteProfile(id);
           }
         }
       ],

@@ -14943,6 +14943,10 @@ html:not([data-nav-placement="top"])
   font: inherit;
   font-size: 15px;
   text-align: left;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .desktop-browser .profile-editor-action[disabled] {
@@ -14967,6 +14971,46 @@ html:not([data-nav-placement="top"])
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   font-size: 12px;
   line-height: 1.35;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .profile-editor-panel .profile-overlay-button-quiet:hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-overlay-button-primary:not(.is-disabled):hover {
+    filter: brightness(1.08);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-editor-action:not([disabled]):not(.profile-editor-action-danger):hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-editor-action-danger:not([disabled]):hover {
+    border-color: rgba(229, 57, 53, 0.7);
+    background: rgba(229, 57, 53, 0.1);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-avatar-category:not(.is-selected):hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-avatar-tile:not(.is-selected):hover {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.24);
+  }
 }
 
 /* Library filters: one row out, the rest behind a button.
@@ -21929,4 +21973,109 @@ html.desktop-browser #detail .detail-morelike-card.focused .detail-morelike-post
 html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelike-poster-wrap {
   border-color: transparent !important;
   box-shadow: 0 0 0 2px var(--detail-focus-ring) !important;
+}
+
+/* The delete confirmation came from the TV dialog and kept its 48px padding,
+   40px title and stacked 80px buttons. On the web it is a normal small
+   confirmation card: readable title, quiet Cancel and a red Delete side by
+   side, stacking only on a narrow phone. */
+.desktop-browser .nuvio-dialog-panel.profile-delete-dialog {
+  width: min(420px, calc(100vw - 32px)) !important;
+  max-width: min(420px, calc(100vw - 32px)) !important;
+  padding: 22px;
+  border-radius: 16px;
+  gap: 10px;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-title {
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-subtitle {
+  margin-top: 0;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.62));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.desktop-browser .profile-delete-dialog .profile-delete-actions {
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-button {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-color);
+  font-size: 14px;
+  line-height: 1.2;
+  text-align: center;
+  transform: none;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-button.profile-delete-confirm {
+  border-color: rgba(229, 57, 53, 0.48);
+  background: rgba(229, 57, 53, 0.16);
+  color: #ffb3b0;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-button.focused,
+.desktop-browser .profile-delete-dialog .nuvio-dialog-button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-color);
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+  transform: none;
+}
+
+.desktop-browser
+  .profile-delete-dialog
+  .nuvio-dialog-button.profile-delete-confirm.focused,
+.desktop-browser
+  .profile-delete-dialog
+  .nuvio-dialog-button.profile-delete-confirm:focus-visible {
+  border-color: rgba(229, 57, 53, 0.8);
+  background: rgba(229, 57, 53, 0.24);
+  color: #fff;
+  outline-color: rgba(229, 57, 53, 0.85);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser
+    .profile-delete-dialog
+    .nuvio-dialog-button:not(.profile-delete-confirm):hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .desktop-browser
+    .profile-delete-dialog
+    .nuvio-dialog-button.profile-delete-confirm:hover {
+    border-color: rgba(229, 57, 53, 0.8);
+    background: rgba(229, 57, 53, 0.24);
+    color: #fff;
+  }
+}
+
+@media (max-width: 480px) {
+  .desktop-browser .profile-delete-dialog {
+    padding: 18px;
+  }
+
+  .desktop-browser .profile-delete-dialog .profile-delete-actions {
+    flex-direction: column;
+  }
+
+  .desktop-browser .profile-delete-dialog .nuvio-dialog-button {
+    width: 100%;
+    flex: none;
+  }
 }
