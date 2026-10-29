@@ -324,3 +324,58 @@ test("next episode probes an eligible HDR candidate before applying its cap", as
     globalThis.__NUVIO_ENV__ = savedEnv;
   }
 });
+
+test("manual client startup retry is synchronous and restricted to live startup timeouts", async () => {
+  const source = await readFile(playerScreenUrl, "utf8"),
+    names = ["canManuallyStartClientRemux", "retryClientRemuxFromGesture"];
+  const methods = names.map((name) => {
+    const match = source.match(new RegExp("  " + name + "\\(\\) \\{[\\s\\S]*?\\n {2}\\},"));
+    assert.ok(match, name);
+    return match[0];
+  });
+  const calls = [],
+    runtime = { snapshot: () => ({ state: "backpressure" }) },
+    controller = {
+      clientRemux: runtime,
+      video: { readyState: 2 },
+      getLastPlaybackErrorCode: () => 0,
+      setStartupPresentationAudioMuted: () => calls.push("unmute"),
+      resume: () => calls.push("play")
+    };
+  const methodsObject = vm.runInNewContext("({" + methods.join("") + "})", {
+    PlayerController: controller,
+    console: { warn() {} },
+    Date
+  });
+  const screen = {
+    ...methodsObject,
+    startupReadiness: { timeoutError: true },
+    startupErrorMediaCode: 0,
+    clearStartupError() {
+      calls.push("clear");
+    },
+    getPlaybackCurrentSeconds: () => 91,
+    releaseStartupAudioGate() {
+      calls.push("gate");
+    },
+    applyAudioAmplification() {
+      calls.push("audio-context");
+    },
+    schedulePlaybackStallGuard() {
+      calls.push("timer");
+    },
+    updateLoadingVisibility() {}
+  };
+  assert.equal(screen.canManuallyStartClientRemux(), true);
+  assert.equal(screen.retryClientRemuxFromGesture(), true);
+  assert.ok(calls.indexOf("play") < calls.indexOf("timer"));
+  assert.equal(controller.clientRemux, runtime);
+  assert.equal(screen.startupReadiness.manualPlayAttempts, 1);
+  assert.equal(screen.retryClientRemuxFromGesture(), false);
+  screen.startupReadiness.timeoutError = true;
+  screen.startupErrorMediaCode = 4;
+  assert.equal(screen.canManuallyStartClientRemux(), false);
+  screen.startupErrorMediaCode = 0;
+  controller.clientRemux = null;
+  assert.equal(screen.canManuallyStartClientRemux(), false);
+});

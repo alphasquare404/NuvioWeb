@@ -13,8 +13,12 @@ export function canReleasePlayingStartupAudioGate({
   );
 }
 
-export function shouldAllowPlaybackDuringStartupAudioGate({ isHlsPlayback = false } = {}) {
-  return Boolean(isHlsPlayback);
+export function shouldAllowPlaybackDuringStartupAudioGate({
+  isHlsPlayback = false,
+  isClientRemuxPlayback = false
+} = {}) {
+  // Streaming pipelines must advance while the presentation gate keeps audio muted.
+  return Boolean(isHlsPlayback || isClientRemuxPlayback);
 }
 
 export function selectStartupAudioFallbackOption(options = []) {

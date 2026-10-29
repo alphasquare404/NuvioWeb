@@ -42,8 +42,14 @@ import {
   PROBE_MODE,
   PROBE_CLIENT_CONCURRENCY,
   REMUX_ENDPOINT,
+  REMUX_POLICY,
   TRANSCODE_ENDPOINT
 } from "../../../config.js";
+import {
+  assertConfiguredRemuxRoute,
+  isConfiguredCopyRelayUrl
+} from "../../../core/player/remuxPolicy.js";
+import { clientRemuxPlan } from "../../../core/player/remuxClient.js";
 import { buildRemuxUrl } from "../../../core/player/remuxSource.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { PLAYBACK_METHODS, classifyPlayback } from "../../../core/player/playbackMethod.js";
@@ -3585,6 +3591,11 @@ export const StreamScreen = {
       console.warn(`[Playback] hls skipped: ${reason}`);
       return "";
     };
+    try {
+      assertConfiguredRemuxRoute(REMUX_POLICY, audioIndex);
+    } catch (error) {
+      return why(error.reason);
+    }
     if (!TRANSCODE_ENDPOINT) return why("no-endpoint");
     const access = await transcodeAccess.resolve();
     if (!access?.hls) return why(`no-hls(mode=${access?.mode || "?"})`);
@@ -3688,9 +3699,19 @@ export const StreamScreen = {
     // run the container copy and not the audio one, and returning early here skipped
     // the remux path entirely for exactly that configuration.
     if (!url) return url;
+    const clientPlan = clientRemuxPlan(stream, this.getStreamProbe(stream));
+    if (clientPlan) return clientPlan.sourceUrl;
+    if (
+      isConfiguredCopyRelayUrl(url, {
+        endpoint: TRANSCODE_ENDPOINT,
+        baseUrl: globalThis.location?.href || "http://localhost/"
+      })
+    )
+      assertConfiguredRemuxRoute(REMUX_POLICY);
     // Older history entries can already contain an explicit file-relay URL.
     // Preserve that choice while preferring progressive delivery when available.
     if (url.includes("/api/remux?")) {
+      assertConfiguredRemuxRoute(REMUX_POLICY);
       let inner = "";
       try {
         inner = new URL(url, location.href).searchParams.get("u") || "";
@@ -3719,6 +3740,8 @@ export const StreamScreen = {
       probe,
       capabilities
     });
+    if (verdict.method === PLAYBACK_METHODS.REMUX)
+      assertConfiguredRemuxRoute(REMUX_POLICY, Number(verdict.audioIndex) || 0);
     if (!shouldTranscodeSource({ url, verdict, endpoint: TRANSCODE_ENDPOINT })) {
       // Only the playback verdict can request a container/tag or audio-track copy.
       // A filename extension alone must not send a supported source to the relay.
@@ -3871,7 +3894,20 @@ export const StreamScreen = {
     }
 
     // A downloaded file is already on this device; it is never relayed.
-    const playerSource = offlineObjectUrl || (await this.resolvePlayerSource(selected));
+    let playerSource = offlineObjectUrl;
+    if (!playerSource) {
+      try {
+        playerSource = await this.resolvePlayerSource(selected);
+      } catch (error) {
+        if (error?.code !== "REMUX_ROUTE_UNAVAILABLE") throw error;
+        this.showStreamToast(error.message);
+        return;
+      }
+    }
+
+    const playbackPlan = offlineObjectUrl
+      ? null
+      : clientRemuxPlan(selected, this.getStreamProbe(selected));
 
     // One line, so a tap that goes wrong can be explained from the phone instead of
     // guessed at: which delivery the app chose, where it points, and with what plan.
@@ -3879,15 +3915,18 @@ export const StreamScreen = {
     // that was never asked -- and the server log showed it was never asked.
     if (Platform.isBrowser()) {
       const source = String(playerSource || "");
-      const kind = !source
-        ? "none"
-        : source.includes("/hls/index.m3u8")
-          ? "hls-playlist"
-          : source.includes("/api/transcode")
-            ? "transcode-file"
-            : source.includes("/api/remux")
-              ? "remux-file"
-              : "direct";
+      const kind =
+        playbackPlan?.route === "client"
+          ? "client-remux"
+          : !source
+            ? "none"
+            : source.includes("/hls/index.m3u8")
+              ? "hls-playlist"
+              : source.includes("/api/transcode")
+                ? "transcode-file"
+                : source.includes("/api/remux")
+                  ? "remux-file"
+                  : "direct";
       let host = "";
       try {
         host = new URL(source, location.href).host;
@@ -3910,6 +3949,7 @@ export const StreamScreen = {
     void this.traceTapDecision?.(selected, playerSource);
     const playbackParams = {
       streamUrl: playerSource || null,
+      playbackPlan,
       itemId: this.params?.itemId || null,
       itemType: itemType || "movie",
       imdbId: this.params?.imdbId || null,

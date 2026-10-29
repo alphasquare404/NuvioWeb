@@ -2479,7 +2479,10 @@ export const PlayerScreen = {
       this.activePlaybackUrl = initialStreamUrl;
       this.resetPictureInPictureAvailability();
       const allowPlaybackDuringStartupAudioGate = shouldAllowPlaybackDuringStartupAudioGate({
-        isHlsPlayback: this.isCurrentSourceLikelyHls(initialStreamUrl, sourceCandidate)
+        isHlsPlayback: this.isCurrentSourceLikelyHls(initialStreamUrl, sourceCandidate),
+        isClientRemuxPlayback:
+          this.params?.playbackPlan?.route === "client" &&
+          this.params.playbackPlan.sourceUrl === initialStreamUrl
       });
       this.enableStartupAudioGate({
         allowPlayback: allowPlaybackDuringStartupAudioGate
@@ -2615,6 +2618,10 @@ export const PlayerScreen = {
       streamIdentity: streamCandidate
         ? buildStreamResumeIdentity(streamCandidate) || streamMergeKey(streamCandidate) || null
         : null,
+      playbackPlan:
+        this.params?.playbackPlan?.sourceUrl === (streamCandidate?.url || this.activePlaybackUrl)
+          ? this.params.playbackPlan
+          : null,
       offlinePlayback: Boolean(this.offlineDownloadId)
     };
   },
@@ -6264,6 +6271,12 @@ export const PlayerScreen = {
       "Playback engine",
       PlayerController.playbackEngine || "unknown"
     );
+    pushPlaybackDiagnosticLine(
+      lines,
+      "Client remux",
+      PlayerController.getClientRemuxStartupDiagnostic?.(),
+      640
+    );
     pushPlaybackDiagnosticLine(lines, "Source", sourceLabel);
     pushPlaybackDiagnosticLine(lines, "Source type", sourceType);
     pushPlaybackDiagnosticLine(lines, "Source endpoint", describeSafePlaybackEndpoint(activeUrl));
@@ -6301,6 +6314,17 @@ export const PlayerScreen = {
       this.startupReadiness.timeoutError = reason === "startup-stall" && !mediaErrorCode;
     }
     this.reportPlaybackStartupDiagnostics?.(reason || "startup-error");
+    const clientRemuxDiagnostic = PlayerController.getClientRemuxStartupDiagnostic?.();
+    if (clientRemuxDiagnostic) {
+      console.warn("[ClientRemux] startup " + clientRemuxDiagnostic);
+      console.warn(
+        "[ClientRemux] audio-context " +
+          JSON.stringify({
+            boostDb: Number(this.audioAmplificationDb || 0),
+            state: this.audioContext?.state || "none"
+          })
+      );
+    }
     StartupLoadingOverlay.finish();
     this.startupErrorMessage =
       String(message || "").trim() || t("player_error_playback_fallback", {}, "Playback error");
@@ -6443,6 +6467,8 @@ export const PlayerScreen = {
     { mountToken = null, sourceCandidate = null } = {}
   ) {
     const playbackUrl = String(url || "").trim();
+    if (this.params?.playbackPlan?.sourceUrl === playbackUrl)
+      context = { ...context, playbackPlan: this.params.playbackPlan };
     if (!playbackUrl) {
       this.showStartupError(t("player_error_no_stream_url", {}, "No stream URL provided"), {
         streamCandidate: sourceCandidate,
@@ -6450,6 +6476,14 @@ export const PlayerScreen = {
       });
       return;
     }
+    if (context.playbackPlan?.route === "client")
+      context = {
+        ...context,
+        playbackPlan: {
+          ...context.playbackPlan,
+          startSeconds: Number(this.pendingPlaybackRestore?.timeSeconds) || 0
+        }
+      };
     this.startupReadiness = Environment.isBrowser()
       ? {
           url: playbackUrl,
@@ -6548,6 +6582,47 @@ export const PlayerScreen = {
     button?.classList?.add("focused");
   },
 
+  canManuallyStartClientRemux() {
+    const runtime = PlayerController.clientRemux;
+    return Boolean(
+      runtime &&
+      this.startupReadiness?.timeoutError &&
+      !this.startupErrorMediaCode &&
+      !PlayerController.video?.error &&
+      !PlayerController.getLastPlaybackErrorCode?.() &&
+      runtime.snapshot().state !== "error" &&
+      Number(PlayerController.video?.readyState || 0) >= 2
+    );
+  },
+
+  retryClientRemuxFromGesture() {
+    if (!this.canManuallyStartClientRemux()) return false;
+    const state = this.startupReadiness;
+    state.timeoutError = false;
+    state.metadataAt = Date.now();
+    state.manualPlayAttempts = Number(state.manualPlayAttempts || 0) + 1;
+    this.clearStartupError();
+    this.loadingVisible = true;
+    this.startupPlaybackBaselineSeconds = this.getPlaybackCurrentSeconds();
+    this.startupPlaybackHasAdvanced = false;
+    this.releaseStartupAudioGate({ resume: false });
+    PlayerController.setStartupPresentationAudioMuted(false);
+    // Deliberately synchronous: preserve the user's activation through play()/AudioContext.resume().
+    this.applyAudioAmplification();
+    PlayerController.resume();
+    console.warn(
+      "[ClientRemux] manual-play " +
+        JSON.stringify({
+          attempt: state.manualPlayAttempts,
+          audioBoostDb: Number(this.audioAmplificationDb || 0),
+          audioContextState: this.audioContext?.state || "none"
+        })
+    );
+    this.schedulePlaybackStallGuard();
+    this.updateLoadingVisibility();
+    return true;
+  },
+
   renderStartupErrorOverlay() {
     const overlay = this.uiRefs?.startupErrorOverlay;
     if (!overlay) {
@@ -6579,6 +6654,7 @@ export const PlayerScreen = {
         `
             : ""
         }
+        ${this.canManuallyStartClientRemux() ? `<button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="play">${escapeHtml(t("detail_btn_play", {}, "Play"))}</button>` : ""}
         <button class="player-startup-error-button focusable focused" type="button" tabindex="-1" data-player-error-action="back">
           ${escapeHtml(t("player_go_back", {}, "Go Back"))}
         </button>
@@ -6586,7 +6662,7 @@ export const PlayerScreen = {
     `;
     this.uiRefs = {
       ...(this.uiRefs || {}),
-      startupErrorButton: overlay.querySelector(".player-startup-error-button")
+      startupErrorButton: overlay.querySelector('[data-player-error-action="back"]')
     };
   },
 
@@ -8569,6 +8645,7 @@ export const PlayerScreen = {
     if (!uiRoot || !video) {
       return;
     }
+    PlayerController.clientRemux?.setSubtitleDelay(Number(this.subtitleDelayMs || 0) / 1000);
     const style = this.subtitleStyleSettings || {};
     const verticalOffset = splitSubtitleVerticalOffset(style.verticalOffset);
     const subtitleColor = String(style.textColor || "#FFFFFF");
@@ -9317,6 +9394,7 @@ export const PlayerScreen = {
     };
 
     const onPause = () => {
+      if (PlayerController.isClientRemuxRestoring()) return;
       if (this.startupAudioGateActive) {
         this.paused = false;
         this.updateMediaSessionPlaybackState();
@@ -9564,7 +9642,22 @@ export const PlayerScreen = {
       ["seeked", onSeeked],
       ["hlstrackschanged", onTrackListChanged],
       ["dashtrackschanged", onTrackListChanged],
-      ["audiotrackschanged", onTrackListChanged]
+      ["audiotrackschanged", onTrackListChanged],
+      ["remuxsubtitlecues", () => this.refreshSubtitleCueStyles()],
+      [
+        "remuxstatus",
+        () => {
+          this.updateUiTick();
+          this.updateLoadingVisibility();
+          const status = PlayerController.clientRemux?.snapshot().subtitle;
+          const key = [status?.state, status?.selectedTrack, status?.reason].join(":");
+          if (this.clientSubtitleStatusKey !== key) {
+            this.clientSubtitleStatusKey = key;
+            this.invalidateTrackDialogCaches();
+            if (this.subtitleDialogVisible) this.renderSubtitleDialog();
+          }
+        }
+      ]
     ];
 
     bindings.forEach(([eventName, handler]) => {
@@ -9606,6 +9699,7 @@ export const PlayerScreen = {
       video.removeEventListener("ended", this.endedHandler);
     }
     this.endedHandler = () => {
+      if (PlayerController.isClientRemuxRestoring()) return;
       this.handlePlaybackEnded();
     };
     video.addEventListener("ended", this.endedHandler);
@@ -10666,6 +10760,7 @@ export const PlayerScreen = {
 
   attemptPendingPlaybackRestore({ force = false } = {}) {
     const restore = this.pendingPlaybackRestore;
+    if (PlayerController.isClientRemuxRestoring()) return;
     if (!restore) {
       return;
     }
@@ -11429,7 +11524,10 @@ export const PlayerScreen = {
       this.activePlaybackSourceContext = sourceContext;
     }
     const allowPlaybackDuringStartupAudioGate = shouldAllowPlaybackDuringStartupAudioGate({
-      isHlsPlayback: this.isCurrentSourceLikelyHls(streamUrl, sourceCandidate)
+      isHlsPlayback: this.isCurrentSourceLikelyHls(streamUrl, sourceCandidate),
+      isClientRemuxPlayback:
+        this.params?.playbackPlan?.route === "client" &&
+        this.params.playbackPlan.sourceUrl === streamUrl
     });
 
     this.hasPresentedPlaybackFrame = false;
@@ -12899,6 +12997,45 @@ export const PlayerScreen = {
       (this.trackDiscoveryInProgress || this.subtitleLoading || this.manifestLoading);
 
     if (tab === "builtIn") {
+      if (PlayerController.clientRemux) {
+        const embedded = PlayerController.getClientSubtitleTracks();
+        const status = PlayerController.clientRemux.snapshot().subtitle;
+        return [
+          {
+            id: "subtitle-off",
+            label: t("subtitle_none", {}, "None"),
+            selected: !embedded.some((t) => t.selected),
+            trackIndex: -1,
+            clientSubtitleId: null
+          },
+          ...embedded.map((track, index) => {
+            const display = formatSubtitleTrackDisplay(track, index);
+            return {
+              id: "subtitle-client-" + track.id,
+              label: display.label,
+              language: track.language,
+              languageKey: display.languageKey,
+              languageLabel: display.languageLabel,
+              secondary: [
+                track.codec,
+                track.selected && status.state === "loading"
+                  ? t("player_loading_subtitles", {}, "Fetching subtitles…")
+                  : track.selected && status.state === "error"
+                    ? t("subtitle_timing_load_lines_failed", {}, "Failed to load subtitle lines.")
+                    : ""
+              ]
+                .filter(Boolean)
+                .join(" · "),
+              track,
+              isForced: track.forced,
+              selected: track.selected,
+              disabled: !track.supported,
+              clientSubtitleId: track.id,
+              trackIndex: null
+            };
+          })
+        ];
+      }
       if (dashSubtitleTracks.length) {
         return [
           {
@@ -14390,6 +14527,8 @@ export const PlayerScreen = {
     if (this.selectedManifestSubtitleTrackId) {
       return `manifest:${String(this.selectedManifestSubtitleTrackId)}`;
     }
+    const embedded = PlayerController.getClientSubtitleTracks().find((track) => track.selected);
+    if (embedded) return `embedded:${embedded.id}`;
     if (Number(this.selectedSubtitleTrackIndex) >= 0) {
       return `native:${Number(this.selectedSubtitleTrackIndex)}`;
     }
@@ -14427,6 +14566,24 @@ export const PlayerScreen = {
       this.clearHtmlSubtitleOverlay();
     }
 
+    if (PlayerController.clientRemux) {
+      const id = Object.prototype.hasOwnProperty.call(entry, "clientSubtitleId")
+        ? entry.clientSubtitleId
+        : null;
+      PlayerController.selectClientSubtitle(id);
+      if (Object.prototype.hasOwnProperty.call(entry, "clientSubtitleId")) {
+        this.selectedSubtitleTrackIndex = -1;
+        this.selectedAddonSubtitleId = null;
+        this.selectedManifestSubtitleTrackId = null;
+        this.resetSubtitleDelayAfterSelectionChange(previousSubtitleSelectionKey);
+        this.invalidateTrackDialogCaches();
+        this.refreshSubtitleCueStyles();
+        this.renderControlButtons();
+        this.renderSubtitleDialog();
+        this.settleSubtitlePointerScrollTransaction(selectionToken);
+        return;
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(entry, "dashSubtitleTrackIndex")) {
       const targetTrackIndex = Number(entry.dashSubtitleTrackIndex);
       const applied =
@@ -15021,7 +15178,10 @@ export const PlayerScreen = {
         : this.getAudioTracks();
     const entries = browserTracks.map((track, index) => {
       const display = formatAudioTrackDisplay(track, index);
-      const support = getAudioTrackSupportState(track);
+      const support =
+        track.supported === false
+          ? { supported: false, unsupportedReason: "Not supported by client remux" }
+          : getAudioTrackSupportState(track);
       return {
         id: `audio-${track.engine || "native"}-${track.id || index}`,
         label: display.label,
@@ -17994,6 +18154,8 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
 
     const errorAction = target.closest?.("[data-player-error-action]");
     if (errorAction && this.isStartupErrorVisible()) {
+      if (errorAction.dataset.playerErrorAction === "play")
+        return this.retryClientRemuxFromGesture();
       if (String(errorAction.dataset.playerErrorAction || "") === "back") {
         this.navigateBackToStreamScreen();
         return true;
@@ -18303,6 +18465,13 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     if (this.isStartupErrorVisible()) {
       event?.preventDefault?.();
       event?.stopPropagation?.();
+      if (
+        isSelectKeyCode(keyCode) &&
+        document.activeElement?.dataset?.playerErrorAction === "play"
+      ) {
+        this.retryClientRemuxFromGesture();
+        return true;
+      }
       if (isBackKey || isSelectKeyCode(keyCode) || keyCode === 66) {
         if (!this.navigateBackToStreamScreen()) {
           Router.back();
@@ -18479,6 +18648,13 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     if (this.isStartupErrorVisible()) {
       event?.preventDefault?.();
       event?.stopPropagation?.();
+      if (
+        isSelectKeyCode(keyCode) &&
+        document.activeElement?.dataset?.playerErrorAction === "play"
+      ) {
+        this.retryClientRemuxFromGesture();
+        return true;
+      }
       if (isBackKey || isSelectKeyCode(keyCode) || keyCode === 66) {
         if (!this.navigateBackToStreamScreen()) {
           Router.back();
@@ -18997,6 +19173,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   },
 
   async handlePlaybackEnded() {
+    if (PlayerController.isClientRemuxRestoring()) return;
     // Immediate scrobble stop (may trigger mark-as-watched)
     if (TrackingScrobbleService.isEnabled() && !PlayerController.shouldSuppressOfflineProgress()) {
       TrackingScrobbleService.stop(this.buildScrobbleContext());

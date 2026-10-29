@@ -810,3 +810,109 @@ test("filename mode labels without submitting any probe and Only Direct follows 
     "client"
   );
 });
+
+test("explicit remux policies block copy relays including saved relay URLs, while device-supported direct remains unchanged", async () => {
+  const saved = { env: globalThis.__NUVIO_ENV__, fetch: globalThis.fetch };
+  try {
+    for (const mode of ["client", "off", "server", "invalid"]) {
+      globalThis.__NUVIO_ENV__ = {
+        REMUX_MODE: mode,
+        REMUX_ENDPOINT: "/api/remux",
+        TRANSCODE_ENDPOINT: "/api/transcode"
+      };
+      const { StreamScreen: screen } = await loadStreamScreen("remux-policy-" + mode);
+      let requests = 0,
+        copyCalls = 0;
+      globalThis.fetch = async () => {
+        requests++;
+        throw Error("unexpected media request");
+      };
+      screen.getStreamProbe = () => ({
+        ...directProbe,
+        container: "mkv",
+        playbackCapabilities: {
+          video: true,
+          container: false,
+          audio: [{ index: 0, supported: true }],
+          relayVideo: true
+        }
+      });
+      const original = screen.remuxPlaylistUrl;
+      assert.equal(await original.call(screen, "https://media.test/private.mkv"), "");
+      screen.remuxPlaylistUrl = async () => {
+        copyCalls++;
+        return "/api/transcode/hls/test/index.m3u8";
+      };
+      for (const url of [
+        "https://media.test/private.mkv",
+        "/api/remux?u=https%3A%2F%2Fmedia.test%2Fprivate.mkv",
+        "/api/transcode/hls/index.m3u8?u=https%3A%2F%2Fmedia.test%2Fprivate.mkv&v=copy&a=copy"
+      ]) {
+        if (mode === "client")
+          assert.equal(await screen.resolvePlayerSource({ url }), "https://media.test/private.mkv");
+        else
+          await assert.rejects(screen.resolvePlayerSource({ url }), {
+            code: "REMUX_ROUTE_UNAVAILABLE"
+          });
+      }
+      screen.getStreamProbe = () => ({
+        ...directProbe,
+        container: "mkv",
+        playbackCapabilities: {
+          video: true,
+          container: true,
+          audio: [{ index: 0, supported: true }],
+          relayVideo: true
+        }
+      });
+      assert.equal(
+        await screen.resolvePlayerSource({ url: "https://media.test/direct.mkv" }),
+        "https://media.test/direct.mkv"
+      );
+      screen.getStreamProbe = () => null;
+      const audioUrl =
+        "/api/transcode/hls/index.m3u8?u=https%3A%2F%2Fmedia.test%2Fmovie.mkv&v=copy&a=aac";
+      assert.equal(await screen.resolvePlayerSource({ url: audioUrl }), audioUrl);
+      assert.equal(copyCalls, 0);
+      assert.equal(requests, 0);
+    }
+  } finally {
+    globalThis.__NUVIO_ENV__ = saved.env;
+    globalThis.fetch = saved.fetch;
+  }
+});
+
+test("unavailable remux is reported on stream selection before player navigation", async () => {
+  const saved = globalThis.__NUVIO_ENV__;
+  try {
+    globalThis.__NUVIO_ENV__ = { REMUX_MODE: "server" };
+    const { StreamScreen: screen } = await loadStreamScreen("remux-policy-toast"),
+      source = { id: "selected", url: "https://media.test/movie.mkv" },
+      messages = [];
+    Object.assign(screen, {
+      params: { startFromBeginning: true },
+      streams: [source],
+      getFilteredStreams: () => [source],
+      cancelAutoPlayCountdown() {},
+      cancelAutoPlaySelectionWait() {},
+      showStreamToast(message) {
+        messages.push(message);
+      },
+      getStreamProbe: () => ({
+        ...directProbe,
+        container: "mkv",
+        playbackCapabilities: {
+          video: true,
+          container: false,
+          audio: [{ index: 0, supported: true }],
+          relayVideo: true
+        }
+      })
+    });
+    await screen.playStream("selected", { skipExternalRoute: true });
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /Independent server HLS remux is not installed/);
+  } finally {
+    globalThis.__NUVIO_ENV__ = saved;
+  }
+});

@@ -353,3 +353,133 @@ test("Safari forced-kind subtitle is selectable without disabling metadata", () 
     PlayerController.video = old;
   }
 });
+
+test("client controller seeks through adapter, preserves logical timeline and suppresses restore completion", async () => {
+  const old = { video: PlayerController.video, clientRemux: PlayerController.clientRemux };
+  let seeks = [],
+    state = {
+      position: 45,
+      duration: 600,
+      restoring: true,
+      audioIndex: 1,
+      audioTracks: [{ supported: false }, { supported: true }]
+    };
+  try {
+    PlayerController.video = { currentTime: 0, duration: NaN, ended: true };
+    PlayerController.clientRemux = {
+      snapshot: () => state,
+      seek: async (t) => seeks.push(t),
+      selectAudio: async () => true
+    };
+    assert.equal(PlayerController.getCurrentTimeSeconds(), 45);
+    assert.equal(PlayerController.getDurationSeconds(), 600);
+    assert.equal(PlayerController.isPlaybackEnded(), false);
+    assert.equal(PlayerController.seekToSeconds(300), true);
+    assert.deepEqual(seeks, [300]);
+    assert.equal(PlayerController.video.currentTime, 0);
+    assert.equal(PlayerController.setBrowserAudioTrack(0), false);
+    assert.equal(PlayerController.getBrowserAudioTracks()[1].selected, true);
+    assert.equal(
+      await PlayerController.flushProgress(445000, 600000, false, { itemId: "restore-test" }),
+      false
+    );
+    state.restoring = false;
+    assert.equal(PlayerController.isPlaybackEnded(), true);
+  } finally {
+    Object.assign(PlayerController, old);
+  }
+});
+test("controller disposal awaits worker/cache cleanup without retaining the adapter", async () => {
+  const old = PlayerController.clientRemux;
+  let release,
+    finished = false;
+  const deferred = new Promise((r) => (release = r));
+  PlayerController.clientRemux = {
+    dispose: async () => {
+      await deferred;
+      finished = true;
+    }
+  };
+  try {
+    const cleanup = PlayerController.disposeClientRemux();
+    assert.equal(PlayerController.clientRemux, null);
+    assert.equal(finished, false);
+    release();
+    await cleanup;
+    assert.equal(finished, true);
+  } finally {
+    PlayerController.clientRemux = old;
+  }
+});
+
+test("client route offers no native/adaptive engine fallback", () => {
+  const old = PlayerController.clientRemux;
+  try {
+    PlayerController.clientRemux = {};
+    assert.equal(PlayerController.getAlternativePlaybackEngine("https://cdn.test/file.mkv"), null);
+    assert.ok(
+      PlayerController.getAttemptedPlaybackEngines("https://cdn.test/file.mkv") instanceof Set
+    );
+  } finally {
+    PlayerController.clientRemux = old;
+  }
+});
+
+test("client startup diagnostics retain bounded playback facts and exclude source data", () => {
+  const previous = { clientRemux: PlayerController.clientRemux, video: PlayerController.video };
+  try {
+    PlayerController.video = { paused: true, readyState: 2 };
+    PlayerController.clientRemux = {
+      snapshot: () => ({
+        state: "backpressure",
+        backpressureReason: "managed",
+        restoring: false,
+        position: 0,
+        duration: 120,
+        targetSourceBytes: 1024,
+        sourceUrl: "https://private.test/token",
+        reason: "https://private.test/token",
+        audioTracks: [{ label: "private" }]
+      })
+    };
+    const text = PlayerController.getClientRemuxStartupDiagnostic(),
+      facts = JSON.parse(text);
+    assert.equal(facts.state, "backpressure");
+    assert.equal(facts.readyState, 2);
+    assert.equal(facts.paused, true);
+    assert.equal(text.includes("private"), false);
+    assert.equal("sourceUrl" in facts, false);
+  } finally {
+    Object.assign(PlayerController, previous);
+  }
+});
+
+test("client remux diagnostics use the available Safari frame counter and report startup coverage", () => {
+  const video = PlayerController.video,
+    runtime = PlayerController.clientRemux;
+  try {
+    PlayerController.clientRemux = {
+      snapshot: () => ({
+        startupPhase: "buffering-startup",
+        startupBufferedAheadSeconds: 0.35,
+        startupRequiredAheadSeconds: 4
+      })
+    };
+    PlayerController.video = { getVideoPlaybackQuality: () => ({ totalVideoFrames: 92 }) };
+    const facts = JSON.parse(PlayerController.getClientRemuxStartupDiagnostic());
+    assert.equal(facts.decodedFrames, 92);
+    assert.equal(facts.startupRequiredAheadSeconds, 4);
+    assert.equal(facts.startupBufferedAheadSeconds, 0.35);
+    assert.equal(facts.startupPhase, "buffering-startup");
+    PlayerController.video = {};
+    assert.equal(
+      JSON.parse(PlayerController.getClientRemuxStartupDiagnostic()).decodedFrames,
+      null
+    );
+    PlayerController.video = { webkitDecodedFrameCount: 8 };
+    assert.equal(JSON.parse(PlayerController.getClientRemuxStartupDiagnostic()).decodedFrames, 8);
+  } finally {
+    PlayerController.video = video;
+    PlayerController.clientRemux = runtime;
+  }
+});

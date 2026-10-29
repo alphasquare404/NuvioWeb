@@ -965,3 +965,17 @@ Manual / Only Direct off / labels on untuk AIOStreams sebelum pengujian.
 - Removed Playback engine / Movi picker and its action from General. No changes to the existing engine implementation.
 - Relocation verified with real Chrome rendering/actions: compatibility and filter rows belong to Audio & Video, absent from Fusion Style and General; badge toggle remains in Fusion Style.
 - Remux implementation remains deferred. Connected-server filtering/sorting unchanged.
+
+## Remux: batas uji startup terakhir yang disepakati
+
+- Pengguna menetapkan maksimal satu uji iPhone lagi pada pengendali remux lama. Jika gagal, hentikan tambalan startup dan beralih membangun ulang pengendali remux; pertahankan tampilan, subtitle, pilihan audio, dan progres. Jangan mengulang matriks diagnostik.
+- Inspeksi USB Inspect CLI pada Safari iPhone berhasil. Buffer32detik, native errornull, audio/videoaktif. Penghitung standar frame92, webkitDecodedFrameCount tidak tersedia; log0 sebelumnya bukan bukti tidak ada decoding. EOS sesudah macet sudah diizinkan pengguna dan dicoba; tidak memulihkan. Hook sementara sudah dilepas; renderer eksperimen berdurasi124 sampai stream dibuka ulang.
+- Percobaan terakhir menunggu4detik buffer AV kontigu di depan target sebelum initial seek/Play (lebih pendek dekat akhir film). Anggaran byte tidak naik; jika startup tidak muat, gagal dengan startup-window-exceeds-buffer-budget. Fragment awal88–~~91.968 hanya menyisakan~~0.35detik di depan target91.617, kandidat race, belum akar masalah terbukti.
+- Build2026-10-28T18:28:30.303Z; assetremuxbf35f7fffb0e;1600tes lulus. Public bundle cocok hash hasil lokal pada https://plane-alex-lead-direction.trycloudflare.com/. Hasil fisik iPhone masih menunggu. Catatan rinci di folder lab remux-prototype/STARTUP-WARMUP-LAST-TRIAL.md.
+
+## Remux checkpoint — 2026-10-29
+
+- Tahap 1 konfigurasi hoster dan tahap 2 client remux/player disimpan bersama. OPFS, selected AAC stereo/AVC MKV, subtitle teks, seek/progress/cleanup dan diagnostik startup tercakup; bukan klaim siap produksi.
+- Uji terakhir build 2026-10-28T18:28:30.303Z awalnya masih gagal. Pengguna kemudian melaporkan iPhone bisa memutar; tidak ada perubahan kode dalam investigasi terakhir. Penyebab macet/pulih belum terbukti, jangan menyalahkan RAM atau mengklaim perbaikan iOS sebagai sebab.
+- Pengendali pengganti belum dibuat. Autoplay elemen utama berbeda dari harness tanpa autoplay; celah verifikasi, bukan akar penyebab terbukti. Tahap 3 server HLS dan tahap 4 UI/penerimaan belum selesai.
+- Build lama 2026-10-28T12:36:58.882Z tidak ditemukan sebagai artefak/snapshot; rollback tersebut tidak dilakukan. Source dan dist sebelum commit dicadangkan di folder lab saved-current-2026-10-29 dengan manifest SHA-256. Jangan menjalankan ulang skrip patch lab yang hanya untuk sekali pakai.

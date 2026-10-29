@@ -1,5 +1,7 @@
 import { normalizeProbeMode, normalizeClientProbeConcurrency } from "./core/player/probeMode.js";
 
+import { normalizeRemuxPolicy, normalizeRemuxCacheMiB } from "./core/player/remuxPolicy.js";
+
 // What the bundle was built with. nuvio.env.js is a separate request, served
 // no-store, and it can simply not execute -- offline at the wrong moment, a
 // cache miss, or an insecure origin where no service worker can stand in for
@@ -44,7 +46,16 @@ export const PROBE_CLIENT_CONCURRENCY = normalizeClientProbeConcurrency(
 );
 export const PROBE_ENDPOINT =
   PROBE_MODE === "server" ? String(runtimeEnv.PROBE_ENDPOINT || "").trim() : "";
-export const REMUX_ENDPOINT = String(runtimeEnv.REMUX_ENDPOINT || "").trim();
+export const REMUX_POLICY = normalizeRemuxPolicy({
+  mode: runtimeEnv.REMUX_MODE,
+  endpoint: runtimeEnv.REMUX_ENDPOINT
+});
+export const REMUX_MODE = REMUX_POLICY.mode;
+export const REMUX_CLIENT_CACHE_MAX_MIB = normalizeRemuxCacheMiB(
+  runtimeEnv.REMUX_CLIENT_CACHE_MAX_MIB
+);
+export const REMUX_ENDPOINT =
+  REMUX_MODE === "server" ? String(runtimeEnv.REMUX_ENDPOINT || "").trim() : "";
 // Audio-only transcode. Its own switch, not a part of remux: it costs minutes of
 // CPU on the machine that runs ffmpeg, so a deployment says whether it may be
 // asked at all. Empty means the app never calls it.

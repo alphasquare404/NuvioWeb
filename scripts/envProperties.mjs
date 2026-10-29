@@ -6,6 +6,8 @@ import {
   normalizeClientProbeConcurrency
 } from "../js/core/player/probeMode.js";
 
+import { normalizeRemuxPolicy, normalizeRemuxCacheMiB } from "../js/core/player/remuxPolicy.js";
+
 export const ENV_PROPERTY_KEYS = [
   // How many rows one page open may probe. Reaches the app as a number; 0 means unlimited,
   // which is what a self-hoster with a handful of users wants.
@@ -20,6 +22,8 @@ export const ENV_PROPERTY_KEYS = [
   "YOUTUBE_PROXY_URL",
   "INTRODB_API_URL",
   "PROBE_ENDPOINT",
+  "REMUX_MODE",
+  "REMUX_CLIENT_CACHE_MAX_MIB",
   "REMUX_ENDPOINT",
   "TRANSCODE_ENDPOINT",
   "IMDB_RATINGS_API_BASE_URL",
@@ -45,6 +49,8 @@ const DEFAULT_ENV_VALUES = {
   YOUTUBE_PROXY_URL: "youtube-proxy.html",
   INTRODB_API_URL: "https://api.introdb.app/",
   PROBE_ENDPOINT: "",
+  REMUX_MODE: "",
+  REMUX_CLIENT_CACHE_MAX_MIB: "512",
   REMUX_ENDPOINT: "",
   TRANSCODE_ENDPOINT: "",
   IMDB_RATINGS_API_BASE_URL: "",
@@ -162,11 +168,24 @@ export function normalizeEnvProperties(properties = {}) {
   // there would silently erase the endpoint the server had just decided to offer.
   Object.entries(FEATURE_SWITCHES).forEach(([switchKey, endpointKey]) => {
     if (!Object.prototype.hasOwnProperty.call(properties, switchKey)) return;
+    if (switchKey === "REMUX_ENABLED" && String(properties.REMUX_MODE || "").trim()) return;
     if (switchKey === "PROBE_ENABLED" && String(properties.PROBE_MODE || "").trim()) return;
     if (!isFeatureEnabled(properties[switchKey], FEATURE_DEFAULTS[switchKey])) {
       env[endpointKey] = "";
     }
   });
+  // Keep an absent mode absent: materializing inferred "server" would turn
+  // legacy delivery into explicit new-service policy on the second normalization.
+  env.REMUX_MODE = String(properties.REMUX_MODE ?? "")
+    .trim()
+    .toLowerCase();
+  env.REMUX_CLIENT_CACHE_MAX_MIB = String(
+    normalizeRemuxCacheMiB(properties.REMUX_CLIENT_CACHE_MAX_MIB)
+  );
+  if (
+    normalizeRemuxPolicy({ mode: env.REMUX_MODE, endpoint: env.REMUX_ENDPOINT }).mode !== "server"
+  )
+    env.REMUX_ENDPOINT = "";
   env.PROBE_MODE = normalizeProbeMode(properties.PROBE_MODE, properties.PROBE_ENABLED);
   env.PROBE_CLIENT_CONCURRENCY = String(
     normalizeClientProbeConcurrency(properties.PROBE_CLIENT_CONCURRENCY)

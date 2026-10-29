@@ -23,6 +23,8 @@ import { createRemuxBridgeHandler } from "../services/remux-bridge/bridge.mjs";
 import { createProbeBridgeHandler } from "../services/probe-bridge/bridge.mjs";
 import { createTranscodeBridgeHandler } from "../services/transcode-bridge/bridge.mjs";
 
+import { normalizeRemuxPolicy, normalizeRemuxCacheMiB } from "../js/core/player/remuxPolicy.js";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
@@ -44,9 +46,14 @@ const probeMode = normalizeProbeMode(
   process.env.PROBE_MODE ?? (process.env.PROBE_ENABLED == null ? deploymentEnv.PROBE_MODE : ""),
   process.env.PROBE_ENABLED
 );
+const rawRemuxMode = process.env.REMUX_MODE ?? deploymentEnv.REMUX_MODE ?? "";
+const remuxPolicy = normalizeRemuxPolicy({
+  mode: rawRemuxMode,
+  endpoint: envFlag("REMUX_ENABLED", FEATURE_DEFAULTS.REMUX_ENABLED) ? "/api/remux" : ""
+});
 const featureEnabled = {
   probe: probeMode === "server",
-  remux: envFlag("REMUX_ENABLED", FEATURE_DEFAULTS.REMUX_ENABLED),
+  remux: remuxPolicy.mode === "server",
   transcode: envFlag("TRANSCODE_ENABLED", FEATURE_DEFAULTS.TRANSCODE_ENABLED)
 };
 // The paths this server mounts. A feature that is on and not given an endpoint gets
@@ -405,7 +412,16 @@ const server = http.createServer(async (request, response) => {
       // stops calling it -- no rebuild, and the badge says "unavailable" rather than
       // naming a relay that is switched off. A feature that is on but has no explicit
       // endpoint gets the path this server actually mounts.
-      const resolved = { ...env, PROBE_MODE: probeMode };
+      const resolved = {
+        ...env,
+        PROBE_MODE: probeMode,
+        REMUX_MODE: String(rawRemuxMode).trim().toLowerCase(),
+        REMUX_CLIENT_CACHE_MAX_MIB: String(
+          normalizeRemuxCacheMiB(
+            process.env.REMUX_CLIENT_CACHE_MAX_MIB ?? env.REMUX_CLIENT_CACHE_MAX_MIB
+          )
+        )
+      };
       resolved.MEDIA_URL_HOST_RESOLVE_ENABLED = ["1", "true"].includes(
         String(
           process.env.MEDIA_URL_HOST_RESOLVE_ENABLED ?? env.MEDIA_URL_HOST_RESOLVE_ENABLED ?? ""
@@ -432,7 +448,9 @@ const server = http.createServer(async (request, response) => {
         const on =
           switchKey === "PROBE_ENABLED"
             ? probeMode === "server"
-            : isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey]);
+            : switchKey === "REMUX_ENABLED"
+              ? featureEnabled.remux
+              : isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey]);
         resolved[endpointKey] = on
           ? String(env[endpointKey] || "").trim() || FEATURE_PATHS[endpointKey]
           : "";

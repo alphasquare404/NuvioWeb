@@ -151,3 +151,91 @@ test("hoster probe mode travels in public config and non-server modes clear the 
     "/api/probe"
   );
 });
+
+test("remux normalization preserves legacy origin through build/runtime round trips", () => {
+  for (const props of [
+    {},
+    { REMUX_ENDPOINT: "/api/remux" },
+    { REMUX_ENABLED: "false", REMUX_ENDPOINT: "/api/remux" },
+    { REMUX_MODE: " CLIENT ", REMUX_ENABLED: "false", REMUX_ENDPOINT: "/api/remux" },
+    { REMUX_MODE: "server", REMUX_ENABLED: "false", REMUX_ENDPOINT: "/api/remux" },
+    { REMUX_MODE: "off", REMUX_ENABLED: "true", REMUX_ENDPOINT: "/api/remux" },
+    { REMUX_MODE: "bad", REMUX_ENDPOINT: "/api/remux" }
+  ]) {
+    const once = normalizeEnvProperties(props);
+    assert.deepEqual(normalizeEnvProperties(once), once);
+    assert.equal(
+      once.REMUX_MODE,
+      String(props.REMUX_MODE || "")
+        .trim()
+        .toLowerCase()
+    );
+    if (["client", "off", "bad"].includes(once.REMUX_MODE)) assert.equal(once.REMUX_ENDPOINT, "");
+    if (once.REMUX_MODE === "server") assert.equal(once.REMUX_ENDPOINT, "/api/remux");
+  }
+  assert.equal(
+    normalizeEnvProperties({ REMUX_ENABLED: "false", REMUX_ENDPOINT: "/api/remux" }).REMUX_ENDPOINT,
+    ""
+  );
+  const env = normalizeEnvProperties({
+    REMUX_MODE: "client",
+    TRANSCODE_ENDPOINT: "/api/transcode",
+    REMUX_TOKEN: "never-public"
+  });
+  assert.equal(env.TRANSCODE_ENDPOINT, "/api/transcode");
+  assert.equal(env.REMUX_CLIENT_CACHE_MAX_MIB, "512");
+  assert.doesNotMatch(
+    buildRuntimeEnvScript({ ...env, REMUX_TOKEN: "never-public" }),
+    /never-public|REMUX_TOKEN/
+  );
+});
+
+test("Docker remux normalization matches JavaScript for explicit, legacy and bounded cache cases", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const source = await readFile(
+    new URL("../docker/nginx-entrypoint.d/40-nuvio-env.sh", import.meta.url),
+    "utf8"
+  );
+  const fragment = source
+    .slice(
+      source.indexOf("# Preserve absent mode"),
+      source.indexOf('if [ -z "' + "$" + '{NUVIO_SUPABASE_URL:-}" ]')
+    )
+    .replace(/\r\n/g, "\n");
+  const shell = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "sh";
+  const cases = [
+    {},
+    { REMUX_MODE: "CLIENT", REMUX_ENDPOINT: "/api/remux", REMUX_ENABLED: "false" },
+    { REMUX_MODE: "server", REMUX_ENDPOINT: "/api/remux", REMUX_ENABLED: "false" },
+    { REMUX_MODE: "bad", REMUX_ENDPOINT: "/api/remux" },
+    { REMUX_ENABLED: "false", REMUX_ENDPOINT: "/api/remux" },
+    { REMUX_ENDPOINT: "/api/remux" }
+  ];
+  for (const props of [
+    ...cases,
+    ...["000128", "64", "999", "1000000000000000", "9007199254740992", "-1"].map((value) => ({
+      REMUX_CLIENT_CACHE_MAX_MIB: value
+    }))
+  ]) {
+    const child = spawnSync(shell, [], {
+      input: fragment + '\nprintf \'%s\\n\' "$remux_mode" "$remux_endpoint" "$remux_cache"\n',
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        REMUX_MODE: "",
+        REMUX_ENDPOINT: "",
+        REMUX_ENABLED: "",
+        REMUX_CLIENT_CACHE_MAX_MIB: "",
+        ...props
+      }
+    });
+    assert.equal(child.status, 0, child.stderr);
+    const actual = child.stdout.replace(/\r/g, "").split("\n");
+    const expected = normalizeEnvProperties(props);
+    assert.deepEqual(actual.slice(0, 3), [
+      expected.REMUX_MODE,
+      expected.REMUX_ENDPOINT,
+      expected.REMUX_CLIENT_CACHE_MAX_MIB
+    ]);
+  }
+});
