@@ -295,3 +295,19 @@ test("with no endpoint configured the bridge is never asked", async () => {
   await access.resolve();
   assert.equal(asked, 0);
 });
+
+test("alternate audio is requested only after the existing bridge advertises it", async () => {
+  const access = createTranscodeAccess({
+    endpoint: "/api/transcode",
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ ok: true, access: "token", hls: true, alternateAudio: true })
+    })
+  });
+  assert.equal((await access.resolve()).alternateAudio, true);
+  const url = buildTranscodePlaylistUrl("https://source.test/film.mkv", {
+    endpoint: ENDPOINT,
+    plan: { video: "copy", audio: "copy", audioIndex: 1, audioIndices: [0, 1] }
+  });
+  assert.equal(new URL(url, "https://app.test").searchParams.get("audios"), "0,1");
+});

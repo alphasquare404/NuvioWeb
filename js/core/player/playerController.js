@@ -40,6 +40,7 @@ export const PlayerController = {
   currentPlaybackMediaSourceType: null,
   lastProgressSnapshot: null,
   lastKnownDurationSeconds: 0,
+  sourceDurationHint: null,
   playbackEngineAttempts: new Map(),
   playRequestToken: 0,
   playbackSessionActive: false,
@@ -202,7 +203,7 @@ export const PlayerController = {
     };
 
     try {
-      const parsed = new URL(raw);
+      const parsed = new URL(raw, globalThis.location?.href || "http://localhost/");
       return inferByPath(parsed.pathname, parsed.searchParams);
     } catch (_) {
       return inferByPath(raw, null);
@@ -491,6 +492,13 @@ export const PlayerController = {
     return Math.max(0, Number(this.video?.currentTime || 0));
   },
 
+  setSourceDurationHint(url, duration) {
+    const seconds = Number(duration);
+    if (!String(url || "").trim() || !Number.isFinite(seconds) || seconds <= 0) return false;
+    this.sourceDurationHint = { url: String(url).trim(), seconds };
+    return true;
+  },
+
   getDurationSeconds() {
     if (this.clientRemux) return this.clientRemux.snapshot().duration;
     const durationSeconds = Number(this.video?.duration || 0);
@@ -500,7 +508,13 @@ export const PlayerController = {
     ) {
       this.lastKnownDurationSeconds = durationSeconds;
     }
-    return Math.max(0, Number(this.lastKnownDurationSeconds || 0));
+    // An EVENT playlist can remain live/Infinity until production finishes.
+    // Source metadata supplies total duration only for the URL it describes.
+    const sourceSeconds =
+      this.sourceDurationHint?.url === this.currentPlaybackUrl
+        ? this.sourceDurationHint.seconds
+        : 0;
+    return Math.max(0, Number(this.lastKnownDurationSeconds || 0), Number(sourceSeconds || 0));
   },
 
   getBufferedTimeSeconds() {
@@ -2091,6 +2105,7 @@ export const PlayerController = {
     this.currentEpisodeTitle = null;
     this.currentStreamIdentity = null;
     this.currentPlaybackUrl = "";
+    this.sourceDurationHint = null;
     this.currentPlaybackHeaders = {};
     this.currentPlaybackMediaSourceType = null;
     this.lastKnownDurationSeconds = 0;

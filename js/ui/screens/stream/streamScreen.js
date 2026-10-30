@@ -1,4 +1,8 @@
 import {
+  chooseHlsAudioIndices,
+  canSwitchHlsAudioCodecs
+} from "../../../core/player/relayTracks.js";
+import {
   playerStreamProbeCandidates,
   playerStreamCheckCandidates,
   filterPlayerStreams,
@@ -1512,7 +1516,7 @@ export const StreamScreen = {
   },
 
   /** True when no probe is running, queued, or still unanswered. */
-  /** May this url be asked again yet? Two attempts, a minute apart. */
+  /** May this url be asked again yet? Two attempts, at least fifteen seconds apart. */
   canProbeRow(url) {
     if (!url) return false;
     if ((this._probeCooldownUntil?.get(url) || 0) > Date.now()) return false;
@@ -1523,7 +1527,7 @@ export const StreamScreen = {
     if (!url) return;
     this._probeFailed.add(url);
     this._probeAttempts.set(url, (this._probeAttempts.get(url) || 0) + 1);
-    this._probeCooldownUntil.set(url, Date.now() + 60 * 1000);
+    this._probeCooldownUntil.set(url, Date.now() + 15 * 1000);
   },
 
   markProbeSuccess(url) {
@@ -3586,7 +3590,10 @@ export const StreamScreen = {
    * being made. Empty string means "use the file", which is the honest answer on a
    * deployment without a transcode endpoint, without HLS, or without a token.
    */
-  async remuxPlaylistUrl(url, { audioIndex = 0 } = {}) {
+  async remuxPlaylistUrl(
+    url,
+    { audioIndex = 0, audioStreams = null, playbackCapabilities = null } = {}
+  ) {
     const why = (reason) => {
       console.warn(`[Playback] hls skipped: ${reason}`);
       return "";
@@ -3601,11 +3608,30 @@ export const StreamScreen = {
     if (!access?.hls) return why(`no-hls(mode=${access?.mode || "?"})`);
     const token = String(TranscodeSettingsStore.get().token || "").trim();
     if (!isTranscodeAccessGranted({ mode: access?.mode, token })) return why("token-not-granted");
+    const audioIndices = access.alternateAudio
+      ? chooseHlsAudioIndices({ audioStreams, playbackCapabilities }, audioIndex)
+      : null;
     const playlistUrl = buildTranscodePlaylistUrl(url, {
       endpoint: TRANSCODE_ENDPOINT,
       token,
-      plan: { video: "copy", audio: "copy", height: 0, channels: 2, audioIndex }
+      plan: {
+        video: "copy",
+        audio: "copy",
+        height: 0,
+        channels: 2,
+        audioIndex,
+        audioIndices
+      }
     });
+    if (playlistUrl && Array.isArray(audioStreams) && audioStreams.length > 1)
+      tracePlayback("audio-renditions", {
+        tracks: audioIndices?.length || 0,
+        sourceTracks: audioStreams.length,
+        codecs: [...new Set(audioStreams.map((track) => track.codec))].join(","),
+        codecSwitch: canSwitchHlsAudioCodecs(),
+        kind: traceUrlKind(playlistUrl),
+        host: traceHost(playlistUrl)
+      });
     if (!playlistUrl) why("built-nothing");
     return playlistUrl;
   },
@@ -3637,7 +3663,7 @@ export const StreamScreen = {
    * A busy server (429) is not a refusal of this source, only of its turn, so it is
    * retried a few times before the slow whole-file relay is chosen.
    */
-  async isPlayableHlsPlaylist(playlistUrl) {
+  async isPlayableHlsPlaylist(playlistUrl, depth = 0) {
     for (let attempt = 0; attempt < 4; attempt += 1) {
       let response;
       try {
@@ -3663,6 +3689,15 @@ export const StreamScreen = {
       } catch (error) {
         console.warn(`[Playback] hls playlist unreadable: ${error?.message || error}`);
         return false;
+      }
+      if (depth === 0 && text.includes("#EXT-X-STREAM-INF")) {
+        const child = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find((line) => line && !line.startsWith("#"));
+        if (!child) return false;
+        const base = typeof location !== "undefined" ? location.href : "http://localhost/";
+        return this.isPlayableHlsPlaylist(new URL(child, new URL(playlistUrl, base)).href, 1);
       }
       if (!text.includes("#EXTINF")) {
         console.warn(`[Playback] hls playlist without segments (${text.length} bytes)`);
@@ -3753,7 +3788,9 @@ export const StreamScreen = {
         // finished first -- but only a playlist that already holds a segment may be
         // handed over, or the player sees a zero-length video and calls it finished.
         const playlistUrl = await this.remuxPlaylistUrl(url, {
-          audioIndex: Number(verdict.audioIndex) || 0
+          audioIndex: Number(verdict.audioIndex) || 0,
+          audioStreams: probe.audioStreams,
+          playbackCapabilities: probe.playbackCapabilities
         });
         const playable = playlistUrl ? await this.isPlayableHlsPlaylist(playlistUrl) : false;
         // Cannot be skipped if this branch runs: says whether a playlist was offered at all.

@@ -117,6 +117,8 @@ export function transcodePlanQuery(plan) {
   // copy of the first, so it belongs in the request and in the cache key.
   const audioIndex = Number(plan.audioIndex || 0);
   if (Number.isInteger(audioIndex) && audioIndex > 0) parts.push(`ai=${audioIndex}`);
+  if (Array.isArray(plan.audioIndices) && plan.audioIndices.length > 1)
+    parts.push("audios=" + encodeURIComponent(plan.audioIndices.join(",")));
   return parts;
 }
 
@@ -206,7 +208,12 @@ export function createTranscodeAccess({
       const data = await response.json();
       mode = normalizeTranscodeAccessMode(data?.access);
       hls = data?.hls === true;
-      return { mode, reachable: true, hls };
+      return {
+        mode,
+        reachable: true,
+        hls,
+        ...(data?.alternateAudio === true ? { alternateAudio: true } : {})
+      };
     } catch {
       mode = normalizeTranscodeAccessMode("");
       hls = false;

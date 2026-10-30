@@ -425,3 +425,163 @@ test("the hls playlist obeys the same plan gate as the file delivery", async () 
     await invalid.arrayBuffer();
   });
 });
+
+test("embedded text shares HLS access and cannot start or replace a video producer", async () => {
+  const calls = [],
+    textCalls = [];
+  await withServer(
+    {
+      access: "token",
+      token: "secret",
+      spawnImpl: fakeHlsFfmpeg(calls),
+      readTextTracks: async (url, params) => {
+        textCalls.push({ url, action: params.get("text") });
+        return { tracks: [{ id: 4, supported: true }] };
+      }
+    },
+    async ({ base }) => {
+      const params = new URLSearchParams({
+        u: "https://cdn.test/a.mkv",
+        v: "copy",
+        a: "copy",
+        ai: "1",
+        token: "secret"
+      });
+      const text = new URL(base + "/api/transcode?" + params);
+      text.searchParams.set("text", "tracks");
+      const unauthorized = new URL(text);
+      unauthorized.searchParams.delete("token");
+      assert.equal((await fetch(unauthorized)).status, 401);
+      assert.equal((await fetch(text)).status, 409);
+      assert.equal(textCalls.length, 0);
+      assert.equal(calls.length, 0);
+      const playlist = await fetch(base + "/api/transcode/hls/index.m3u8?" + params);
+      assert.equal(playlist.status, 200);
+      assert.match(await playlist.text(), /#EXTINF/);
+      const before = calls.length;
+      const response = await fetch(text);
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).tracks[0].id, 4);
+      assert.equal(textCalls.length, 1);
+      assert.equal(calls.length, before);
+      assert.equal(calls[0].args[calls[0].args.indexOf("-c:a") + 1], "copy");
+      assert.equal(
+        calls[0].args[calls[0].args.indexOf("-map", calls[0].args.indexOf("-map") + 1) + 1],
+        "0:a:1"
+      );
+    }
+  );
+});
+
+test("overlapping HLS manifest requests join one slow producer under the one-job limit", async () => {
+  let release, started;
+  const registered = new Promise((resolve) => {
+    started = resolve;
+  });
+  const calls = [];
+  const fake = (_binary, args, options) => {
+    calls.push(args);
+    const handlers = new Map();
+    release = () => {
+      writeFileSync(path.join(options.cwd, "init.mp4"), Buffer.alloc(128));
+      writeFileSync(path.join(options.cwd, "seg00000.m4s"), Buffer.alloc(256));
+      writeFileSync(
+        path.join(options.cwd, "index.m3u8"),
+        "#EXTM3U\n#EXTINF:4,\nseg00000.m4s\n#EXT-X-ENDLIST\n"
+      );
+      handlers.get("close")?.(0);
+    };
+    started();
+    return {
+      on(event, handler) {
+        handlers.set(event, handler);
+        return this;
+      },
+      kill() {
+        handlers.get("close")?.(1);
+      }
+    };
+  };
+  await withServer({ maxConcurrent: 1, perIpConcurrent: 1, spawnImpl: fake }, async ({ base }) => {
+    const url =
+      base + "/api/transcode/hls/index.m3u8?u=https%3A%2F%2Fcdn.test%2Fa.mkv&v=copy&a=copy&ai=1";
+    const first = fetch(url);
+    await registered;
+    const other = await fetch(url.replace("ai=1", "ai=2"));
+    assert.equal(other.status, 429, "different work still respects the host limit");
+    const second = fetch(url);
+    const timer = setTimeout(() => release(), 200);
+    try {
+      const [a, b] = await Promise.all([first, second]);
+      assert.equal(a.status, 200);
+      assert.equal(b.status, 200);
+      assert.match(await a.text(), /#EXTINF/);
+      assert.match(await b.text(), /#EXTINF/);
+      assert.equal(calls.length, 1);
+    } finally {
+      clearTimeout(timer);
+      release();
+    }
+  });
+});
+
+test("alternate audio master and nested playlists share one producer, video, access and default selection", async () => {
+  const calls = [];
+  const fake = (_binary, args, options) => {
+    calls.push(args);
+    for (let i = 0; i < 3; i++) {
+      writeFileSync(path.join(options.cwd, `init${i}.mp4`), Buffer.alloc(64));
+      writeFileSync(path.join(options.cwd, `seg${i}_00000.m4s`), Buffer.alloc(128));
+      writeFileSync(
+        path.join(options.cwd, `v${i}.m3u8`),
+        `#EXTM3U\n#EXT-X-MAP:URI="init${i}.mp4"\n#EXTINF:4,\nseg${i}_00000.m4s\n#EXT-X-ENDLIST\n`
+      );
+    }
+    writeFileSync(
+      path.join(options.cwd, "index.m3u8"),
+      '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="audio_1",DEFAULT=YES,URI="v1.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="audio_2",DEFAULT=NO,URI="v2.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=100,AVERAGE-BANDWIDTH=-983301119,AUDIO="audio"\nv0.m3u8\n'
+    );
+    const handlers = new Map();
+    setTimeout(() => handlers.get("close")?.(0), 0);
+    return {
+      on(event, handler) {
+        handlers.set(event, handler);
+        return this;
+      },
+      kill() {}
+    };
+  };
+  await withServer(
+    { access: "token", token: "secret", spawnImpl: fake, maxConcurrent: 1 },
+    async ({ base }) => {
+      const params = new URLSearchParams({
+        u: "https://cdn.test/a.mkv",
+        v: "copy",
+        a: "copy",
+        audios: "0,1",
+        ai: "0",
+        token: "secret"
+      });
+      let response = await fetch(base + "/api/transcode/hls/index.m3u8?" + params);
+      assert.equal(response.status, 200);
+      let master = await response.text();
+      assert.match(master, /#EXT-X-STREAM-INF/);
+      assert.doesNotMatch(master, /AVERAGE-BANDWIDTH/);
+      assert.ok(Number(/BANDWIDTH=(\d+)/.exec(master)[1]) > 0);
+      const video = master.split("\n").find((line) => line && !line.startsWith("#"));
+      const nested = await fetch(new URL(video, base + "/api/transcode/hls/index.m3u8"));
+      assert.equal(nested.status, 200);
+      assert.match(nested.headers.get("content-type"), /mpegurl/);
+      const body = await nested.text();
+      const segment = body.split("\n").find((line) => line && !line.startsWith("#"));
+      assert.match(segment, /^\/api\/transcode\/hls\/[a-f0-9]{32}\/seg0_00000.m4s\?token=secret$/);
+      assert.equal((await fetch(base + segment)).status, 200);
+      assert.equal((await fetch(base + segment.replace("?token=secret", ""))).status, 401);
+      params.set("ai", "1");
+      response = await fetch(base + "/api/transcode/hls/index.m3u8?" + params);
+      master = await response.text();
+      assert.match(master, /audio_2",DEFAULT=YES/);
+      assert.equal(calls.length, 1);
+    }
+  );
+});

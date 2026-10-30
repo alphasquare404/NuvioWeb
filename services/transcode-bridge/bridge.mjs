@@ -6,6 +6,13 @@ import { mkdir, readdir, readFile, rm, rename, stat, utimes } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { createEgressBudget } from "../shared/egressBudget.mjs";
 import path from "node:path";
+import {
+  parseAudioIndices,
+  multiAudioHlsArgs,
+  selectDefaultRendition,
+  publishEarlyMaster
+} from "./multiAudio.mjs";
+import { createRelayTextReader } from "./textTracks.mjs";
 import { parseByteRange } from "../remux-bridge/bridge.mjs";
 
 // Audio-only transcode bridge.
@@ -196,11 +203,28 @@ export function parseTranscodePlan(searchParams) {
     }
   }
 
-  const plan = { video, audio, height, channels, audioIndex };
+  let audioIndices;
+  try {
+    audioIndices = parseAudioIndices(read("audios"), audioIndex);
+  } catch {
+    return { ok: false, reason: "invalid-audio-renditions" };
+  }
+  if (audioIndices && (video !== "copy" || audio !== "copy"))
+    return { ok: false, reason: "audio-renditions-copy-only" };
+  const plan = {
+    video,
+    audio,
+    height,
+    channels,
+    audioIndex,
+    ...(audioIndices ? { audioIndices } : {})
+  };
   return {
     ok: true,
     plan,
-    signature: `v${video}-a${audio}-h${height}-c${channels}-i${audioIndex}`
+    signature: audioIndices
+      ? `v${video}-a${audio}-h${height}-c${channels}-multi${audioIndices.join("_")}`
+      : `v${video}-a${audio}-h${height}-c${channels}-i${audioIndex}`
   };
 }
 
@@ -292,6 +316,7 @@ export const HLS_MEDIA_ROUTE = /^\/api\/transcode\/hls\/([a-f0-9]{32})\/([A-Za-z
  * still working on the rest of the film.
  */
 export function hlsArgs(source, dir, { bitrate = "192k", videoTag = "", plan = null } = {}) {
+  if (plan?.audioIndices) return multiAudioHlsArgs(source, plan.audioIndices, { videoTag });
   const chosen = plan || { video: "copy", audio: "aac", height: 0, channels: 2 };
   const args = ["-hide_banner", "-loglevel", "error", "-y", "-i", source];
   args.push(...codecArgs(chosen, { bitrate, videoTag }));
@@ -359,7 +384,7 @@ export function rewriteHlsPlaylist(text, { key = "", token = "", base = "" } = {
     .map((line) => {
       const trimmed = line.trim();
       if (!trimmed) return line;
-      if (trimmed.startsWith("#EXT-X-MAP:")) {
+      if (trimmed.startsWith("#EXT-X-MAP:") || trimmed.startsWith("#EXT-X-MEDIA:")) {
         return trimmed.replace(/URI="([^"]+)"/, (_match, uri) => `URI="${hoist(uri)}"`);
       }
       if (trimmed.startsWith("#")) return line;
@@ -409,6 +434,7 @@ export function createTranscodeBridgeHandler({
   monthlyEgressBytes = Number(process.env.RELAY_MONTHLY_EGRESS_BYTES ?? 0) || 0,
   sourceSize = null,
   spawnImpl = spawn,
+  readTextTracks = createRelayTextReader(),
   log = console,
   now = () => Date.now()
 } = {}) {
@@ -714,7 +740,8 @@ export function createTranscodeBridgeHandler({
       lastRequestAt: now(),
       done: false,
       failed: false,
-      child: null
+      child: null,
+      audioIndices: plan.audioIndices || null
     };
     job.promise = mkdir(dir, { recursive: true })
       .then(async () => {
@@ -758,7 +785,17 @@ export function createTranscodeBridgeHandler({
     for (let attempt = 0; attempt < 100; attempt += 1) {
       try {
         const text = await readFile(playlistPath, "utf8");
-        if (/#EXTINF/.test(text) || job.done) return text;
+        if (job.audioIndices) {
+          const ready = await Promise.all(
+            Array.from({ length: job.audioIndices.length + 1 }, (_, i) =>
+              readFile(path.join(job.dir, "v" + i + ".m3u8"), "utf8")
+                .then((body) => /#EXTINF/.test(body))
+                .catch(() => false)
+            )
+          );
+          if (/#EXT-X-STREAM-INF/.test(text) && ready.every(Boolean))
+            return await publishEarlyMaster(text, job);
+        } else if (/#EXTINF/.test(text) || job.done) return text;
       } catch {
         // not written yet
       }
@@ -950,7 +987,7 @@ export function createTranscodeBridgeHandler({
     return { plan: planResult.plan, parsed };
   }
 
-  function serveHlsMedia(key, name, request, response) {
+  async function serveHlsMedia(key, name, request, response, presented = "") {
     const dir = path.join(workDir, key);
     const full = path.join(dir, name);
     // A segment request is a viewer still watching. Without this the idle timer would
@@ -964,6 +1001,20 @@ export function createTranscodeBridgeHandler({
       // The playlist only lists finished segments, so this is a request that came
       // too early or a key nobody started. Either way there is nothing to send.
       json(response, 404, { ok: false, error: "segment-not-ready" });
+      return;
+    }
+    if (name.endsWith(".m3u8")) {
+      const body = rewriteHlsPlaylist(await readFile(full, "utf8"), {
+        key,
+        token: presented,
+        base: "/api/transcode/hls/"
+      });
+      response.writeHead(200, {
+        "Content-Type": "application/vnd.apple.mpegurl",
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*"
+      });
+      response.end(request.method === "HEAD" ? undefined : body);
       return;
     }
     serveFile(full, request, response);
@@ -1050,6 +1101,8 @@ export function createTranscodeBridgeHandler({
         ok: true,
         access: normalizeAccess(access),
         hls: true,
+        embeddedText: true,
+        alternateAudio: true,
         offered: { video: "copy", audio: "aac", audioModes: ["aac", "copy"] },
         maxConcurrent,
         active: running.size,
@@ -1083,13 +1136,42 @@ export function createTranscodeBridgeHandler({
     }
 
     if (hlsMedia) {
-      serveHlsMedia(hlsMedia[1], hlsMedia[2], request, response);
+      await serveHlsMedia(hlsMedia[1], hlsMedia[2], request, response, auth.presented);
       return;
     }
 
     const resolved = resolvePlanAndSource(requestUrl, response);
     if (!resolved) return;
     const { plan, parsed } = resolved;
+    if (plan.audioIndices && !isPlaylist && !requestUrl.searchParams.has("text"))
+      return json(response, 400, { ok: false, error: "audio-renditions-hls-only" });
+
+    if (requestUrl.pathname === STREAM_PATH && requestUrl.searchParams.has("text")) {
+      // Read text only for a source/plan already admitted to the existing HLS path.
+      if (!hlsJobs.has(parsed.key))
+        return json(response, 409, { ok: false, error: "subtitle-hls-not-ready" });
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 15000);
+      const cancel = () => abort.abort();
+      response.once("close", cancel);
+      try {
+        const result = await readTextTracks(parsed.url, requestUrl.searchParams, abort.signal);
+        if (!response.destroyed) json(response, 200, { ok: true, ...result });
+      } catch (error) {
+        const reason = /^[a-z0-9-]+$/.test(error.message) ? error.message : "subtitle-read-failed";
+        const status =
+          reason === "subtitle-reader-busy"
+            ? 503
+            : reason === "subtitle-request-invalid"
+              ? 400
+              : 422;
+        if (!response.destroyed) json(response, status, { ok: false, error: reason });
+      } finally {
+        clearTimeout(timer);
+        response.off("close", cancel);
+      }
+      return;
+    }
 
     void sweep();
 
@@ -1109,7 +1191,8 @@ export function createTranscodeBridgeHandler({
     // it is still being made. The playlist is the answer; the segments are its own
     // requests, rewritten to carry the key and the token this caller presented.
     if (isPlaylist) {
-      const known = hlsJobs.has(parsed.key) && jobs.has(parsed.key);
+      // HLS jobs live in hlsJobs; jobs belongs to whole-file delivery.
+      const known = hlsJobs.has(parsed.key);
       const address = clientAddress(request.headers, request.socket?.remoteAddress);
       if (!known) {
         const refusal = await admit(parsed.url, address);
@@ -1129,14 +1212,21 @@ export function createTranscodeBridgeHandler({
           return;
         }
         log.log(
-          `[transcode] hls ${parsed.key.slice(0, 8)} segments=${(text.match(/#EXTINF/g) || []).length} ${host}`
+          `[transcode] hls ${parsed.key.slice(0, 8)} video=${plan.video} audio=${plan.audio} ai=${plan.audioIndex} segments=${(text.match(/#EXTINF/g) || []).length} ${host}`
         );
         response.writeHead(200, {
           "Content-Type": "application/vnd.apple.mpegurl",
           "Cache-Control": "no-store",
           "Access-Control-Allow-Origin": "*"
         });
-        response.end(rewriteHlsPlaylist(text, { key: parsed.key, token: auth.presented }));
+        response.end(
+          rewriteHlsPlaylist(
+            plan.audioIndices
+              ? selectDefaultRendition(text, plan.audioIndices, plan.audioIndex)
+              : text,
+            { key: parsed.key, token: auth.presented }
+          )
+        );
       } finally {
         if (didWork) endWork(parsed.key, address);
       }

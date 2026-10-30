@@ -14,7 +14,8 @@ export function createEmbeddedSubtitles({
   getTime,
   onTracks,
   onCues,
-  onStatus
+  onStatus,
+  makeTransport = null
 }) {
   let worker = null,
     sourceId = null,
@@ -107,7 +108,7 @@ export function createEmbeddedSubtitles({
     dispose();
     sourceId = crypto.randomUUID();
     state = "opening";
-    worker = new Worker(new URL("subtitle-worker.js", assetBase));
+    worker = makeTransport ? makeTransport() : new Worker(new URL("subtitle-worker.js", assetBase));
     worker.onmessage = ({ data }) => {
       if (data.sourceId !== sourceId) return;
       if (data.type === "tracks") {

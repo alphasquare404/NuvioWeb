@@ -1,3 +1,10 @@
+import {
+  relayTrackContext,
+  relayAudioUrl,
+  createRelaySubtitleTransport,
+  mergeRelayRenditionTracks
+} from "../../../core/player/relayTracks.js";
+import { createEmbeddedSubtitles } from "../../../core/player/clientRemux/embeddedSubtitles.mjs";
 import { secureMediaUrl } from "../../../core/streams/secureMediaUrl.js";
 import { resolveRelayAvailability } from "../../../core/player/relayAvailability.js";
 import { TranscodeSettingsStore } from "../../../data/local/transcodeSettingsStore.js";
@@ -4071,7 +4078,74 @@ export const PlayerScreen = {
     return { audioTracks: [], subtitleTracks: [], variants: [] };
   },
 
+  clearRelayTrackData() {
+    this.relayTrackToken = Number(this.relayTrackToken || 0) + 1;
+    this.relayTextSubtitles?.destroy();
+    this.relayTextSubtitles = null;
+    this.relayAudioTracks = [];
+    this.relayTrackContext = null;
+    this.relayTrackPlaybackUrl = null;
+    this.relayTrackVideo = null;
+  },
+
+  async loadRelayTrackData(playbackUrl) {
+    if (
+      this.relayTrackPlaybackUrl === playbackUrl &&
+      this.relayTrackVideo === PlayerController.video
+    )
+      return;
+    this.clearRelayTrackData();
+    const token = this.relayTrackToken;
+    const context = relayTrackContext(playbackUrl, TRANSCODE_ENDPOINT);
+    if (!context || !PlayerController.video) return;
+    this.relayTrackContext = context;
+    this.relayTrackPlaybackUrl = playbackUrl;
+    this.relayTrackVideo = PlayerController.video;
+    const active = () => token === this.relayTrackToken;
+    const refresh = () => {
+      if (active()) this.refreshTrackDialogs();
+    };
+    const prober = (this._relayTrackProber ||= createStreamProber({
+      endpoint: PROBE_ENDPOINT,
+      mode: PROBE_MODE,
+      clientConcurrency: PROBE_CLIENT_CONCURRENCY,
+      timeoutMs: 15000,
+      assess: (probe) => assessPlaybackCapabilities(probe)
+    }));
+    const probe = await prober.probe(context.source, { reason: "tracks" });
+    if (!active()) return;
+    PlayerController.setSourceDurationHint?.(playbackUrl, probe?.durationSeconds);
+    this.relayAudioTracks = (probe?.audioStreams || []).map((track) => ({
+      ...track,
+      id: "relay-audio-" + track.index,
+      engine: "relay",
+      selected: track.index === context.audioIndex,
+      supported:
+        track.index <= 7 &&
+        ((context.url.searchParams.get("a") || "aac") === "aac" ||
+          probe.playbackCapabilities?.audio?.find((t) => t.index === track.index)?.supported !==
+            false)
+    }));
+    refresh();
+    if (probe?.container !== "mkv") return;
+    this.relayTextSubtitles = createEmbeddedSubtitles({
+      video: PlayerController.video,
+      assetBase: document.baseURI,
+      version: "relay",
+      getTime: () => this.getPlaybackCurrentSeconds(),
+      onTracks: refresh,
+      onStatus: refresh,
+      onCues: () => {
+        if (active()) this.refreshSubtitleCueStyles();
+      },
+      makeTransport: () => createRelaySubtitleTransport(context)
+    });
+    this.relayTextSubtitles.setDelay(Number(this.subtitleDelayMs || 0) / 1000);
+    this.relayTextSubtitles.setSource(context.source);
+  },
+
   async loadManifestTrackDataForCurrentStream(playbackUrl = this.activePlaybackUrl) {
+    void this.loadRelayTrackData(playbackUrl).catch(() => {});
     const currentCandidate = this.getCurrentStreamCandidate();
     const masterUrl = playbackUrl || currentCandidate?.url || "";
     const runtimeUrl = String(PlayerController.video?.currentSrc || "").trim();
@@ -8646,6 +8720,7 @@ export const PlayerScreen = {
       return;
     }
     PlayerController.clientRemux?.setSubtitleDelay(Number(this.subtitleDelayMs || 0) / 1000);
+    this.relayTextSubtitles?.setDelay(Number(this.subtitleDelayMs || 0) / 1000);
     const style = this.subtitleStyleSettings || {};
     const verticalOffset = splitSubtitleVerticalOffset(style.verticalOffset);
     const subtitleColor = String(style.textColor || "#FFFFFF");
@@ -9487,6 +9562,7 @@ export const PlayerScreen = {
     };
 
     const onSeeked = () => {
+      this.relayTextSubtitles?.seek(this.getPlaybackCurrentSeconds());
       if (this.isStartupErrorVisible()) {
         return;
       }
@@ -12997,9 +13073,11 @@ export const PlayerScreen = {
       (this.trackDiscoveryInProgress || this.subtitleLoading || this.manifestLoading);
 
     if (tab === "builtIn") {
-      if (PlayerController.clientRemux) {
-        const embedded = PlayerController.getClientSubtitleTracks();
-        const status = PlayerController.clientRemux.snapshot().subtitle;
+      if (PlayerController.clientRemux || this.relayTextSubtitles) {
+        const embedded =
+          this.relayTextSubtitles?.tracks() || PlayerController.getClientSubtitleTracks();
+        const status =
+          this.relayTextSubtitles?.snapshot() || PlayerController.clientRemux.snapshot().subtitle;
         return [
           {
             id: "subtitle-off",
@@ -14527,7 +14605,9 @@ export const PlayerScreen = {
     if (this.selectedManifestSubtitleTrackId) {
       return `manifest:${String(this.selectedManifestSubtitleTrackId)}`;
     }
-    const embedded = PlayerController.getClientSubtitleTracks().find((track) => track.selected);
+    const embedded = (
+      this.relayTextSubtitles?.tracks() || PlayerController.getClientSubtitleTracks()
+    ).find((track) => track.selected);
     if (embedded) return `embedded:${embedded.id}`;
     if (Number(this.selectedSubtitleTrackIndex) >= 0) {
       return `native:${Number(this.selectedSubtitleTrackIndex)}`;
@@ -14566,11 +14646,12 @@ export const PlayerScreen = {
       this.clearHtmlSubtitleOverlay();
     }
 
-    if (PlayerController.clientRemux) {
+    if (PlayerController.clientRemux || this.relayTextSubtitles) {
       const id = Object.prototype.hasOwnProperty.call(entry, "clientSubtitleId")
         ? entry.clientSubtitleId
         : null;
-      PlayerController.selectClientSubtitle(id);
+      if (this.relayTextSubtitles) this.relayTextSubtitles.select(id);
+      else PlayerController.selectClientSubtitle(id);
       if (Object.prototype.hasOwnProperty.call(entry, "clientSubtitleId")) {
         this.selectedSubtitleTrackIndex = -1;
         this.selectedAddonSubtitleId = null;
@@ -15172,15 +15253,25 @@ export const PlayerScreen = {
     if (cachedEntries) {
       return cachedEntries;
     }
-    const browserTracks =
-      typeof PlayerController.getBrowserAudioTracks === "function"
-        ? PlayerController.getBrowserAudioTracks()
-        : this.getAudioTracks();
+    const browserTracks = this.relayTrackContext?.audioIndices
+      ? mergeRelayRenditionTracks(
+          this.relayTrackContext,
+          this.relayAudioTracks || [],
+          PlayerController.getBrowserAudioTracks()
+        )
+      : this.relayAudioTracks?.length
+        ? this.relayAudioTracks
+        : typeof PlayerController.getBrowserAudioTracks === "function"
+          ? PlayerController.getBrowserAudioTracks()
+          : this.getAudioTracks();
     const entries = browserTracks.map((track, index) => {
       const display = formatAudioTrackDisplay(track, index);
       const support =
         track.supported === false
-          ? { supported: false, unsupportedReason: "Not supported by client remux" }
+          ? {
+              supported: false,
+              unsupportedReason: t("player.audio.unsupported", {}, "Unsupported")
+            }
           : getAudioTrackSupportState(track);
       return {
         id: `audio-${track.engine || "native"}-${track.id || index}`,
@@ -15299,6 +15390,26 @@ export const PlayerScreen = {
 
     const browserAudioTrackIndex = Number(selectedEntry.browserAudioTrackIndex);
     if (!Number.isFinite(browserAudioTrackIndex)) {
+      return;
+    }
+
+    if (selectedEntry.track?.engine === "relay") {
+      const target = relayAudioUrl(this.relayTrackContext, selectedEntry.track.index);
+      if (!target || selectedEntry.selected || this.relayAudioSwitching) return;
+      this.relayAudioSwitching = true;
+      if (rememberSelection)
+        this.rememberAudioTrackSelection(this.getAudioTrackPreference(selectedEntry));
+      void this.playStreamByUrl(target, {
+        preservePanel: true,
+        preservePlaybackState: true,
+        resetSilentAudioState: false
+      })
+        .catch(() => {
+          console.warn("[Playback] relay audio switch failed");
+        })
+        .finally(() => {
+          this.relayAudioSwitching = false;
+        });
       return;
     }
 
@@ -19229,6 +19340,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   },
 
   cleanup() {
+    this.clearRelayTrackData();
     StartupLoadingOverlay.finish();
     this.startupLoadingStage = "loading";
     try {

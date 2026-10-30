@@ -483,3 +483,33 @@ test("client remux diagnostics use the available Safari frame counter and report
     PlayerController.clientRemux = runtime;
   }
 });
+
+test("server HLS duration uses source facts before ENDLIST and cannot leak into another URL", () => {
+  const controller = {
+    clientRemux: null,
+    currentPlaybackUrl: "/relay-a",
+    video: { duration: Infinity },
+    lastKnownDurationSeconds: 0
+  };
+  const setHint = PlayerController.setSourceDurationHint;
+  assert.equal(typeof setHint, "function");
+  setHint.call(controller, "/relay-a", 3119.104);
+  assert.equal(PlayerController.getDurationSeconds.call(controller), 3119.104);
+  controller.video.duration = 12;
+  assert.equal(PlayerController.getDurationSeconds.call(controller), 3119.104);
+  setHint.call(controller, "/relay-a", NaN);
+  assert.equal(PlayerController.getDurationSeconds.call(controller), 3119.104);
+  controller.currentPlaybackUrl = "/relay-b";
+  controller.video.duration = Infinity;
+  controller.lastKnownDurationSeconds = 0;
+  assert.equal(PlayerController.getDurationSeconds.call(controller), 0);
+});
+
+test("relative HLS with a nested MKV source loads the HLS engine libraries", () => {
+  assert.equal(
+    PlayerController.guessMediaMimeType(
+      "/api/transcode/hls/index.m3u8?u=https%3A%2F%2Fcdn.test%2Fmovie.mkv&v=copy&a=copy&audios=0%2C1"
+    ),
+    "application/vnd.apple.mpegurl"
+  );
+});
