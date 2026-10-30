@@ -569,3 +569,16 @@ test("cancelAll aborts active requests, retains completed facts and allows a new
   assert.deepEqual(await prober.probe("https://media.test/cached"), saved);
   assert.equal((await prober.probe("https://media.test/selected")).videoCodec, "hevc");
 });
+
+test("server probe errors preserve known metadata reasons instead of presenting 502 as source failure", async () => {
+  const prober = createStreamProber({
+    endpoint: "/probe",
+    fetchImpl: async () => ({
+      ok: false,
+      status: 502,
+      json: async () => ({ error: "probe-output-limit" })
+    })
+  });
+  assert.equal(await prober.probe("https://media.test/movie"), null);
+  assert.equal(prober.failureReason("https://media.test/movie"), "probe-output-limit");
+});

@@ -96,6 +96,54 @@ export function probeCacheKey({ host = "", identity = "", urlKey = "" } = {}) {
   return createHash("sha256").update(`id|${cleanHost}|${cleanIdentity}`).digest("hex").slice(0, 32);
 }
 
+// ffprobe JSON can contain megabytes of font/attachment hex dumps. Only video
+// extradata feeds codec identification. Strip the other strings while streaming,
+// preserving valid JSON and keeping the retained metadata under the original cap.
+export function createProbeOutputCollector(maxChars = 256 * 1024) {
+  const parts = [];
+  let line = "",
+    retained = 0,
+    codecType = "",
+    skipping = false,
+    escaped = false;
+  const flush = () => {
+    const type = /^\s*"codec_type"\s*:\s*"([^"\n]+)"/.exec(line);
+    if (type) codecType = type[1];
+    retained += line.length;
+    if (retained > maxChars) throw Error("probe-output-limit");
+    parts.push(line);
+    line = "";
+  };
+  return {
+    write(chunk) {
+      for (const char of String(chunk)) {
+        if (skipping) {
+          if (escaped) escaped = false;
+          else if (char === "\\") escaped = true;
+          else if (char === '"') {
+            skipping = false;
+            line += char;
+          }
+          continue;
+        }
+        line += char;
+        if (line.length + retained > maxChars) throw Error("probe-output-limit");
+        if (char === '"' && codecType !== "video" && /^\s*"extradata"\s*:\s*"$/.test(line))
+          skipping = true;
+        if (char === "\n") flush();
+      }
+    },
+    finish() {
+      if (skipping) throw Error("probe-unreadable");
+      if (line) flush();
+      return parts.join("");
+    },
+    get retainedChars() {
+      return retained + line.length;
+    }
+  };
+}
+
 export function createProbeBridgeHandler({
   ffprobePath = process.env.FFPROBE_PATH || "ffprobe",
   ttlMs = Number(process.env.PROBE_TTL_MS) || DEFAULT_TTL_MS,
@@ -128,7 +176,7 @@ export function createProbeBridgeHandler({
   // cost a fresh timeout on every visit to the list. Short on purpose: a link that
   // expired a minute ago deserves another chance, not a permanent verdict.
   const failed = new Map();
-  const FAILURE_TTL_MS = 2 * 60 * 1000;
+  const FAILURE_TTL_MS = 15 * 1000;
   // What this bridge costs, countable: one request per row the screen decided to ask
   // about, and a hit whenever the same URL is asked twice inside the TTL.
   const stats = { requests: 0, hits: 0, hitsByIdentity: 0, joined: 0, misses: 0, failures: 0 };
@@ -222,7 +270,7 @@ export function createProbeBridgeHandler({
         "json",
         source
       ];
-      let output = "";
+      const output = createProbeOutputCollector();
       let settled = false;
       const child = spawnImpl(ffprobePath, args, {
         windowsHide: true,
@@ -239,7 +287,15 @@ export function createProbeBridgeHandler({
         reject(new Error("probe-timeout"));
       }, timeoutMs);
       child.stdout?.on?.("data", (chunk) => {
-        if (output.length < 256 * 1024) output += String(chunk);
+        if (settled) return;
+        try {
+          output.write(chunk);
+        } catch (error) {
+          settled = true;
+          clearTimeout(timer);
+          child.kill("SIGKILL");
+          reject(error);
+        }
       });
       child.on("error", () => {
         if (settled) return;
@@ -256,7 +312,7 @@ export function createProbeBridgeHandler({
           return;
         }
         try {
-          resolve(normalizeProbe(JSON.parse(output)));
+          resolve(normalizeProbe(JSON.parse(output.finish())));
         } catch {
           reject(new Error("probe-unreadable"));
         }
@@ -347,9 +403,9 @@ export function createProbeBridgeHandler({
       return;
     }
     const knownFailure = failed.get(key);
-    if (knownFailure && knownFailure > now()) {
+    if (knownFailure && knownFailure.expiresAt > now()) {
       stats.failures += 1;
-      json(response, 502, { ok: false, error: "probe-failed", cached: true });
+      json(response, 502, { ok: false, error: knownFailure.reason, cached: true });
       return;
     }
     const alreadyRunning = pending.get(key);
@@ -358,8 +414,8 @@ export function createProbeBridgeHandler({
       try {
         const value = await alreadyRunning;
         json(response, 200, { ok: true, cached: true, joined: true, ...value });
-      } catch {
-        json(response, 502, { ok: false, error: "probe-failed", joined: true });
+      } catch (error) {
+        json(response, 502, { ok: false, error: error?.message || "probe-failed", joined: true });
       }
       return;
     }
@@ -400,7 +456,10 @@ export function createProbeBridgeHandler({
         return value;
       })
       .catch((error) => {
-        failed.set(key, now() + FAILURE_TTL_MS);
+        failed.set(key, {
+          expiresAt: now() + FAILURE_TTL_MS,
+          reason: error?.message || "probe-failed"
+        });
         throw error;
       })
       .finally(() => pending.delete(key));

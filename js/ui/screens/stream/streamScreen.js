@@ -666,6 +666,15 @@ export const StreamScreen = {
     }, 0);
   },
 
+  getStartupOverlayMeta() {
+    return {
+      itemKey: String(this.params?.itemId || ""),
+      title: this.params?.playerTitle || this.params?.itemTitle || "Nuvio",
+      logoUrl: this.params?.playerLogoUrl || this.params?.logo || "",
+      backdropUrl: this.getBackdropUrl()
+    };
+  },
+
   getBackdropUrl() {
     return this.params?.backdrop || this.params?.landscapePoster || this.params?.poster || "";
   },
@@ -4169,7 +4178,7 @@ export const StreamScreen = {
       !this.getStreamProbe(selected) &&
       streamProber.enabled
     ) {
-      StartupLoadingOverlay.begin({ itemKey: this.params?.itemId }, "checking");
+      StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "checking");
       const source = String(selected.url || selected.externalUrl || "").trim();
       const probe = await streamProber.probe(source, {
         reason: "playback",

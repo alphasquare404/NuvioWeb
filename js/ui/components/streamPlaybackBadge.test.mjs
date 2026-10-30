@@ -249,3 +249,18 @@ test("metadata fallback is opt-in, waits for failure and includes an escaped tap
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /estimate/);
 });
+
+test("fallback marker replaces the visible estimate suffix; ordinary filename labels retain it", () => {
+  const options = {
+    stream: { url: "https://media.test/movie.mkv", name: "Movie.H264.AAC.mkv" },
+    capabilities: ALL
+  };
+  const fallback = renderStreamPlaybackBadge({
+    ...options,
+    filenameFallback: true,
+    probeFailed: true
+  });
+  assert.match(fallback, /labelFallbackReason/);
+  assert.doesNotMatch(fallback, /\(estimate\)/);
+  assert.match(renderStreamPlaybackBadge({ ...options, labelSource: "FILE_NAME" }), /\(estimate\)/);
+});

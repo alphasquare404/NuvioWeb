@@ -135,7 +135,7 @@ export function renderStreamPlaybackBadge({
     : ["smpte2084", "arib-std-b67"].includes(probe?.colorTransfer);
   const baseText = result.method === "direct" && hdr ? "Direct : HDR" : text;
   const displayText =
-    filenameMode && result.method !== "unknown" ? `${baseText} (estimate)` : baseText;
+    filenameMode && !fallback && result.method !== "unknown" ? `${baseText} (estimate)` : baseText;
   const detail = unverified
     ? "relay availability has not been verified"
     : unavailable
@@ -147,6 +147,11 @@ export function renderStreamPlaybackBadge({
         : `${result.reason} (${result.confidence === "predicted" ? "device prediction; playback not verified" : "perkiraan"})`;
   const reasonText =
     {
+      "probe-unreadable": "the server could not read the metadata response",
+      "probe-failed": "the server metadata reader failed (this is not the source HTTP status)",
+      "probe-timeout": "the server metadata check timed out",
+      "probe-output-limit": "the metadata exceeded the server reading limit",
+      "rate-limited": "the server metadata check limit was reached",
       "network-or-cors": "the source could not be accessed (network or CORS)",
       timeout: "the metadata check timed out",
       "probe-byte-budget": "the metadata exceeded the reading limit",

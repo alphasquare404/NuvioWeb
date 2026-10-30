@@ -1062,3 +1062,19 @@ test("ready HLS delivery skips file probing on selection", async () => {
     globalThis.fetch = saved.fetch;
   }
 });
+
+test("checking and player handoff share movie identity and backdrop", async () => {
+  const { StreamScreen: screen } = await loadStreamScreen("checking-presentation");
+  screen.params = {
+    itemId: 42,
+    itemTitle: "Movie",
+    logo: "https://image.test/logo.png",
+    backdrop: "https://image.test/background.jpg"
+  };
+  assert.deepEqual(screen.getStartupOverlayMeta(), {
+    itemKey: "42",
+    title: "Movie",
+    logoUrl: "https://image.test/logo.png",
+    backdropUrl: "https://image.test/background.jpg"
+  });
+});

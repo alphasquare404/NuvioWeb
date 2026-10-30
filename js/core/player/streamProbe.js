@@ -232,7 +232,23 @@ export function createStreamProber({
     try {
       const response = await fetchImpl(target, { signal: controller?.signal });
       if (!response?.ok) {
-        failures.set(url, `HTTP ${response?.status || "error"}`);
+        let reason = `HTTP ${response?.status || "error"}`;
+        try {
+          const data = await response.json();
+          if (
+            [
+              "probe-failed",
+              "probe-unreadable",
+              "probe-timeout",
+              "probe-output-limit",
+              "rate-limited"
+            ].includes(data?.error)
+          )
+            reason = data.error;
+        } catch {
+          /* Only fixed, known server error categories reach the UI. */
+        }
+        failures.set(url, reason);
         return null;
       }
       const data = await response.json();

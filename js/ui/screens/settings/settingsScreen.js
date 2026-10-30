@@ -8486,7 +8486,8 @@ export const SettingsScreen = {
           // Only offered where the deployment runs the endpoint: a field that
           // cannot do anything is worse than no field.
           TRANSCODE_ENDPOINT
-            ? this.renderActionRow({
+            ? `<div class="settings-group-heading"><div class="settings-group-title">Server access</div></div>
+              <div class="settings-group-card settings-subsection-card">${this.renderActionRow({
                 focusKey: "playback:transcodeToken",
                 title: t("playback_transcode_token", {}, "Transcode token"),
                 subtitle: t(
@@ -8502,7 +8503,7 @@ export const SettingsScreen = {
                       "Not configured - every relay request will be refused until a token is set"
                     ),
                 icon: "vpn_key"
-              })
+              })}</div>`
             : ""
         }
         ${

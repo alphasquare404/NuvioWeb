@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeProbe, parseProbeSource, probeCacheKey, pruneProbeCache } from "./bridge.mjs";
+import {
+  normalizeProbe,
+  parseProbeSource,
+  probeCacheKey,
+  pruneProbeCache,
+  createProbeOutputCollector
+} from "./bridge.mjs";
 
 test("only http(s) sources without credentials are probed", () => {
   assert.equal(parseProbeSource("https://cdn/a.mkv").ok, true);
@@ -212,4 +218,29 @@ test("AV1 codec strings retain the actual level, tier and bit depth", () => {
     format: { format_name: "mp4" }
   });
   assert.equal(result.codecString, "av01.0.08M.10");
+});
+
+test("large attachment extradata is discarded incrementally without truncating codec JSON", () => {
+  const collector = createProbeOutputCollector();
+  collector.write(
+    '{\n"streams": [\n{\n"codec_type": "video",\n"codec_name": "h264",\n"extradata": "video-config"\n},\n{\n"codec_type": "attachment",\n"extradata": "'
+  );
+  for (let i = 0; i < 512; i++) collector.write("a".repeat(65536));
+  collector.write("\\");
+  collector.write('"still attachment');
+  assert.ok(collector.retainedChars < 512);
+  collector.write('"\n}\n],\n"format": {"format_name":"matroska,webm","duration":"1544.62"}\n}');
+  const result = JSON.parse(collector.finish());
+  assert.equal(result.streams[0].extradata, "video-config");
+  assert.equal(result.streams[1].extradata, "");
+  assert.equal(normalizeProbe(result).videoCodec, "h264");
+  assert.equal(normalizeProbe(result).durationSeconds, 1544.62);
+});
+
+test("retained metadata remains bounded and incomplete attachment JSON fails explicitly", () => {
+  const huge = createProbeOutputCollector(32);
+  assert.throws(() => huge.write("a".repeat(33)), /probe-output-limit/);
+  const broken = createProbeOutputCollector();
+  broken.write('"codec_type": "attachment"\n"extradata": "unfinished');
+  assert.throws(() => broken.finish(), /probe-unreadable/);
 });
