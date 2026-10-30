@@ -46,8 +46,7 @@ export function resolveRemuxRoute({
     return clientAvailable
       ? { ...plan, route: "client", state: "ready" }
       : unavailable("client-remux-not-installed");
-  // Legacy file/HLS delivery remains on its existing preparation path. Explicit
-  // server mode requires the independent copy/HLS service, not the audio relay.
+  // Explicit and legacy server modes share the existing copy/HLS relay.
   if (policy.mode === "server" && !policy.explicit) return { ...plan, route: "server" };
   if (policy.mode === "server")
     return serverAvailable
@@ -56,15 +55,18 @@ export function resolveRemuxRoute({
   return unavailable("invalid-remux-mode");
 }
 
-export function assertConfiguredRemuxRoute(policy, audioIndex = 0) {
+export function assertConfiguredRemuxRoute(
+  policy,
+  audioIndex = 0,
+  { serverAvailable = false } = {}
+) {
   // Unset mode preserves legacy playback, including saved explicit relay URLs.
   if (!policy.explicit) return;
-  const plan = resolveRemuxRoute({ policy, method: "remux", audioIndex });
+  const plan = resolveRemuxRoute({ policy, method: "remux", audioIndex, serverAvailable });
   if (plan.state !== "unavailable") return;
   const messages = {
     "client-remux-not-installed": "Client remux is not installed yet on this deployment.",
-    "server-remux-not-installed":
-      "Independent server HLS remux is not installed yet on this deployment.",
+    "server-remux-not-installed": "Server remux is unavailable on this deployment.",
     "remux-disabled": "Remux is disabled by this host.",
     "invalid-remux-mode": "The host remux configuration is invalid."
   };

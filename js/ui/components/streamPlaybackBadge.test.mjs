@@ -75,7 +75,7 @@ test("each cost has its own colour: green, yellow, orange, red", () => {
     probe: { container: "mp4", videoCodec: "h264", audioCodec: "eac3", audioChannels: 6 },
     capabilities: { ...ALL, eac3: false }
   });
-  assert.match(audio, />Transcode [A-Z0-9.]+.AAC</);
+  assert.match(audio, />Transcoding [A-Z0-9.]+.AAC</);
   assert.match(audio, /rgba\(190,94,20/); // orange
 
   const full = renderStreamPlaybackBadge({
@@ -138,7 +138,7 @@ test("a deployment without a transcode endpoint says so instead of promising one
     probe: { container: "mp4", videoCodec: "h264", audioCodec: "eac3", audioChannels: 6 },
     transcodeAvailable: true
   });
-  assert.match(promised, />Transcode [A-Z0-9.]+→AAC</);
+  assert.match(promised, />Transcoding [A-Z0-9.]+→AAC</);
   assert.match(promised, /rgba\(190,94,20/);
 
   const unavailable = renderStreamPlaybackBadge({
@@ -222,4 +222,30 @@ test("filename labels are immediate estimates and ignore cached metadata", () =>
     capabilities: ALL
   });
   assert.match(unknown, />Unknown</);
+});
+
+test("metadata fallback is opt-in, waits for failure and includes an escaped tappable reason", () => {
+  const options = {
+    stream: { url: "https://media.test/movie.mkv", name: "Movie.1080p.H264.AAC.mkv" },
+    capabilities: ALL
+  };
+  assert.doesNotMatch(
+    renderStreamPlaybackBadge({ ...options, filenameFallback: true, probing: true }),
+    /labelFallbackReason/
+  );
+  assert.doesNotMatch(
+    renderStreamPlaybackBadge({ ...options, probeFailed: true }),
+    /labelFallbackReason/
+  );
+  const html = renderStreamPlaybackBadge({
+    ...options,
+    filenameFallback: true,
+    probeFailed: true,
+    fallbackReason: "timeout <script>"
+  });
+  assert.match(html, /data-action="labelFallbackReason"/);
+  assert.match(html, /border-radius:50%/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /estimate/);
 });

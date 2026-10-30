@@ -1,3 +1,4 @@
+import { clientRemuxAvailable } from "../../../core/player/remuxClient.js";
 import {
   relayTrackContext,
   relayAudioUrl,
@@ -32,6 +33,7 @@ import { formatRuntimeLabel } from "../../../core/util/runtimeLabel.js";
 import { traceHost } from "../../../core/util/playbackTrace.js";
 import {
   REMUX_ENDPOINT,
+  REMUX_POLICY,
   TRANSCODE_ENDPOINT,
   PROBE_ENDPOINT,
   PROBE_MODE,
@@ -5209,6 +5211,13 @@ export const PlayerScreen = {
         return;
       }
 
+      const fallback = target.closest("[data-action='labelFallbackReason']");
+      if (fallback && this.container.contains(fallback)) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.showAspectToast(fallback.dataset.reason, { durationMs: 10000 });
+        return;
+      }
       const backButton = target.closest("[data-player-desktop-back]");
       if (backButton && this.container.contains(backButton)) {
         void this.navigateDesktopPlayerBack();
@@ -15786,12 +15795,17 @@ export const PlayerScreen = {
       return "";
     return renderStreamPlaybackBadge({
       labelSource: labels.playbackLabelSource,
+      filenameFallback: labels.metadataFilenameFallback === true,
+      probeFailed: this._playerListProbeFailed?.has(playerStreamProbeKey(stream)) === true,
+      fallbackReason: this._playerListProber?.failureReason(stream.url || stream.externalUrl || ""),
       stream,
       url: stream.url || stream.externalUrl || "",
       probe: this.getPlayerStreamProbe(stream),
       capabilities: getDeviceCapabilities(),
       probing: this._playerListProbePending?.has(playerStreamProbeKey(stream)) === true,
-      remuxAvailable: this._playerRelayAvailability?.remux ?? (REMUX_ENDPOINT ? null : false),
+      remuxAvailable:
+        this._playerRelayAvailability?.remux ??
+        (REMUX_POLICY.mode === "client" ? clientRemuxAvailable() : REMUX_ENDPOINT ? null : false),
       transcodeAvailable:
         this._playerRelayAvailability?.audio ?? (TRANSCODE_ENDPOINT ? null : false)
     });
@@ -15836,11 +15850,14 @@ export const PlayerScreen = {
     };
     if (!this._playerRelayAvailability) {
       this._playerRelayAvailability = {
-        remux: REMUX_ENDPOINT ? null : false,
+        remux:
+          REMUX_POLICY.mode === "client" ? clientRemuxAvailable() : REMUX_ENDPOINT ? null : false,
         audio: TRANSCODE_ENDPOINT ? null : false
       };
       void Promise.all([
-        resolveRelayAvailability({ endpoint: REMUX_ENDPOINT }),
+        REMUX_POLICY.mode === "client"
+          ? Promise.resolve(clientRemuxAvailable())
+          : resolveRelayAvailability({ endpoint: REMUX_ENDPOINT }),
         resolveRelayAvailability({
           endpoint: TRANSCODE_ENDPOINT,
           transcode: true,
@@ -16566,7 +16583,7 @@ export const PlayerScreen = {
     return false;
   },
 
-  showAspectToast(label) {
+  showAspectToast(label, { durationMs = 1400 } = {}) {
     const toast = this.uiRefs?.aspectToast;
     if (!toast) {
       return;
@@ -16581,7 +16598,7 @@ export const PlayerScreen = {
 
     this.aspectToastTimer = setTimeout(() => {
       toast.classList.add("hidden");
-    }, 1400);
+    }, durationMs);
   },
 
   applyAspectMode({ showToast = false } = {}) {
@@ -18745,6 +18762,13 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   },
 
   async onKeyDown(event) {
+    const fallback = event.target?.closest?.("[data-action='labelFallbackReason']");
+    if (fallback && ["Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.showAspectToast(fallback.dataset.reason, { durationMs: 10000 });
+      return;
+    }
     if (Environment.isBrowser()) {
       return this.handleBrowserKeyDown(event);
     }

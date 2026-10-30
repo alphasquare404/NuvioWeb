@@ -7103,6 +7103,12 @@ export const SettingsScreen = {
         }
       });
     });
+    this.actionMap.set("streams:toggle:filenameFallback", () => {
+      StreamBadgeSettingsStore.set({
+        metadataFilenameFallback: !StreamBadgeSettingsStore.snapshot().metadataFilenameFallback
+      });
+      this.render();
+    });
     this.actionMap.set("streams:edit:labelSource", () => {
       this.openOptionDialog({
         title: t("settings_stream_check_method", {}, "Check using"),
@@ -7190,6 +7196,17 @@ export const SettingsScreen = {
                 ? t("settings_stream_label_metadata", {}, "File metadata (Accurate, Slow)")
                 : t("settings_stream_label_filename", {}, "File name (Inaccurate, Fast)")
             })}
+            ${
+              usesMetadataLabels(badgeSettings)
+                ? this.renderToggleRow({
+                    focusKey: "streams:toggle:filenameFallback",
+                    title: "Fallback to filename",
+                    subtitle:
+                      "Estimate labels from filenames when metadata checks fail or remain Unknown.",
+                    checked: badgeSettings.metadataFilenameFallback === true
+                  })
+                : ""
+            }
             ${this.renderActionRow({
               focusKey: "streams:edit:labelAddons",
               title: t("settings_stream_check_addons", {}, "Addons to check"),
@@ -8173,29 +8190,6 @@ export const SettingsScreen = {
             : ""
         }
 
-        ${
-          // Only offered where the deployment runs the endpoint: a field that
-          // cannot do anything is worse than no field.
-          TRANSCODE_ENDPOINT
-            ? this.renderActionRow({
-                focusKey: "playback:transcodeToken",
-                title: t("playback_transcode_token", {}, "Transcode token"),
-                subtitle: t(
-                  "playback_transcode_token_sub",
-                  {},
-                  "The secret this deployment's audio transcode endpoint asks for. Without it, a stream whose audio track cannot be decoded is not transcoded."
-                ),
-                value: TranscodeSettingsStore.get().token
-                  ? t("playback_transcode_token_set", {}, "Configured")
-                  : t(
-                      "playback_transcode_token_unset",
-                      {},
-                      "Not configured - every relay request will be refused until a token is set"
-                    ),
-                icon: "vpn_key"
-              })
-            : ""
-        }
         ${this.renderToggleRow({
           focusKey: "playback:skipIntro",
           title: t("settings.playback.skipIntro.title", {}, "Skip Intro"),
@@ -8460,6 +8454,29 @@ export const SettingsScreen = {
 
     const audioBody = `
       <div class="settings-stack">
+        ${
+          // Only offered where the deployment runs the endpoint: a field that
+          // cannot do anything is worse than no field.
+          TRANSCODE_ENDPOINT
+            ? this.renderActionRow({
+                focusKey: "playback:transcodeToken",
+                title: t("playback_transcode_token", {}, "Transcode token"),
+                subtitle: t(
+                  "playback_transcode_token_sub",
+                  {},
+                  "The secret this deployment's audio transcode endpoint asks for. Without it, a stream whose audio track cannot be decoded is not transcoded."
+                ),
+                value: TranscodeSettingsStore.get().token
+                  ? t("playback_transcode_token_set", {}, "Configured")
+                  : t(
+                      "playback_transcode_token_unset",
+                      {},
+                      "Not configured - every relay request will be refused until a token is set"
+                    ),
+                icon: "vpn_key"
+              })
+            : ""
+        }
         ${
           !isDesktopBrowser
             ? this.renderToggleRow({

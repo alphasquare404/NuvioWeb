@@ -334,7 +334,10 @@ export function createClientRemux({
     if (!Source.isTypeSupported(info.mime)) throw Error("output-codecs-unsupported");
     latest = { ...latest, ...info, requested: s.target, state: "remuxing" };
     if (film) {
-      film.audioTracks = info.audioTracks || [];
+      film.audioTracks = (info.audioTracks || []).map((track) => ({
+        ...track,
+        supported: track.supported && Boolean(track.mime && Source.isTypeSupported(track.mime))
+      }));
       onTracks();
     }
     s.sb = s.media.addSourceBuffer(info.mime);

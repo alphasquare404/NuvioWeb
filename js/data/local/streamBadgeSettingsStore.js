@@ -18,6 +18,7 @@ const DEFAULT_STREAM_BADGE_SETTINGS = {
   showPlaybackLabels: true,
   compatibilityCheckEnabled: true,
   filenameAllAddons: false,
+  metadataFilenameFallback: false,
   filenameCheckLimit: 0,
   labelAddons: [],
   clientLabelLimit: 5,
@@ -65,6 +66,7 @@ function normalizeStreamBadgeSettings(value = {}) {
         source.showPlaybackLabels ??
         source.show_playback_labels) !== false,
     filenameAllAddons: source.filenameAllAddons === true,
+    metadataFilenameFallback: source.metadataFilenameFallback === true,
     filenameCheckLimit: normalizeFilenameCheckLimit(source.filenameCheckLimit ?? 0),
     clientLabelLimit: normalizeClientLabelLimit(source.clientLabelLimit),
     playbackLabelSource: normalizePlaybackLabelSource(source.playbackLabelSource),

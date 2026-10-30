@@ -52,8 +52,8 @@ backend.
 | `NUVIO_SUPABASE_FALLBACK_URL` | Optional | Browser-public            | `https://api-two.nuvioapp.space`                    | Fallback hosted backend URL. For full self-hosting, leave empty unless you run a fallback.                                                                                                                           |
 | `NUVIO_PORT`                  | Optional | Host-only Compose setting | `4173`                                              | Host port mapped to Nginx. Change it when `4173` is unavailable.                                                                                                                                                     |
 | `YOUTUBE_PROXY_URL`           | Optional | Browser-public            | `youtube-proxy.html`                                | Browser proxy helper path for YouTube-related playback. Empty disables that override.                                                                                                                                |
-| `TV_LOGIN_WEB_BASE_URL`       | Optional | Browser-public            | Empty                                               | Address the television sign-in QR code points at. Empty uses the address the app is served from, which is correct unless the television build is served from somewhere the phone scanning the code cannot reach.      |
-| `TMDB_API_KEY`                | Optional | Browser-public            | Empty                                               | Built-in TMDB key used as a fallback. A key entered in Settings by the person using the app always takes precedence, so this only covers anyone who has not set one. Empty means every user supplies their own.       |
+| `TV_LOGIN_WEB_BASE_URL`       | Optional | Browser-public            | Empty                                               | Address the television sign-in QR code points at. Empty uses the address the app is served from, which is correct unless the television build is served from somewhere the phone scanning the code cannot reach.     |
+| `TMDB_API_KEY`                | Optional | Browser-public            | Empty                                               | Built-in TMDB key used as a fallback. A key entered in Settings by the person using the app always takes precedence, so this only covers anyone who has not set one. Empty means every user supplies their own.      |
 
 ### Return-to-NuvioWeb notifications (optional)
 
@@ -63,11 +63,11 @@ NuvioWeb PWA. It is a convenience only: external playback and external-return
 progress/completion reporting continue to work when notifications are not
 available.
 
-| Variable | Required | Visibility | Purpose and empty behavior |
-| --- | --- | --- | --- |
-| `NUVIO_WEB_PUSH_PUBLIC_KEY` | Optional | Browser-public | Public VAPID key used when a user enables return notifications. Empty leaves the feature unavailable. |
+| Variable                     | Required | Visibility      | Purpose and empty behavior                                                                                                                                                     |
+| ---------------------------- | -------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NUVIO_WEB_PUSH_PUBLIC_KEY`  | Optional | Browser-public  | Public VAPID key used when a user enables return notifications. Empty leaves the feature unavailable.                                                                          |
 | `NUVIO_WEB_PUSH_PRIVATE_KEY` | Optional | **Server-only** | Private VAPID key used only by `external-return-bridge` to send notifications. Never expose it to browser runtime configuration or logs. Empty leaves the feature unavailable. |
-| `NUVIO_WEB_PUSH_SUBJECT` | Optional | Server-only | VAPID contact URI, such as `mailto:admin@example.com` or a suitable HTTPS URI. Empty leaves the feature unavailable. |
+| `NUVIO_WEB_PUSH_SUBJECT`     | Optional | Server-only     | VAPID contact URI, such as `mailto:admin@example.com` or a suitable HTTPS URI. Empty leaves the feature unavailable.                                                           |
 
 Generate a matching key pair on the self-host server:
 
@@ -110,9 +110,9 @@ Home Screen on iOS 16.4 and later. **A Shortcut therefore carries the address
 it opens**, so a Shortcut published for one deployment opens that deployment
 on anyone's phone.
 
-| Variable | Required | Visibility | Default | Purpose and empty behavior |
-| --- | --- | --- | --- | --- |
-| `AUTOMATION_SHORTCUT_URL` | Optional | Browser-public | Empty | An iCloud link to a Shortcut you published **for your own domain**. When set, iPhone users get a one-tap Add the Shortcut button. Empty shows them the address for this deployment and how to paste it into a new Shortcut, which always works. |
+| Variable                  | Required | Visibility     | Default | Purpose and empty behavior                                                                                                                                                                                                                      |
+| ------------------------- | -------- | -------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTOMATION_SHORTCUT_URL` | Optional | Browser-public | Empty   | An iCloud link to a Shortcut you published **for your own domain**. When set, iPhone users get a one-tap Add the Shortcut button. Empty shows them the address for this deployment and how to paste it into a new Shortcut, which always works. |
 
 Leave it empty unless you published your own. Never copy another deployment's
 link: your users would install a Shortcut that opens someone else's instance.
@@ -125,14 +125,14 @@ Home Screen — the Shortcut has nothing to open until then.
 
 ### Optional integrations
 
-| Variable               | Required | Visibility      | Default                     | Purpose and empty behavior                                                                                                                                                                    |
-| ---------------------- | -------- | --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SIMKL_CLIENT_ID`      | Optional | Browser-public  | Empty                       | Enables Simkl integration when configured. Obtain the public client identifier from [Simkl API documentation](https://api.simkl.com/). Empty leaves Simkl unavailable.                        |
-| `SIMKL_APP_NAME`       | Optional | Browser-public  | `nuvio`                     | Display/application name passed to Simkl. Leave the default unless your Simkl registration requires another value.                                                                            |
-| `PREMIUMIZE_CLIENT_ID` | Optional | Browser-public  | Empty                       | Enables Premiumize Device Code authentication. Register an OAuth client through [Premiumize API documentation](https://www.premiumize.me/api). Empty keeps Premiumize connection unavailable. |
-| `TRAKT_CLIENT_ID`      | Optional | Browser-public  | Empty                       | Public Trakt application identifier for browser sign-in. Obtain it from the [Trakt application settings](https://app.trakt.tv/settings/apps). Empty keeps Trakt sign-in unavailable; it is the only value the bridge now requires.          |
+| Variable               | Required | Visibility      | Default                     | Purpose and empty behavior                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | -------- | --------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SIMKL_CLIENT_ID`      | Optional | Browser-public  | Empty                       | Enables Simkl integration when configured. Obtain the public client identifier from [Simkl API documentation](https://api.simkl.com/). Empty leaves Simkl unavailable.                                                                                                                                                                                                                |
+| `SIMKL_APP_NAME`       | Optional | Browser-public  | `nuvio`                     | Display/application name passed to Simkl. Leave the default unless your Simkl registration requires another value.                                                                                                                                                                                                                                                                    |
+| `PREMIUMIZE_CLIENT_ID` | Optional | Browser-public  | Empty                       | Enables Premiumize Device Code authentication. Register an OAuth client through [Premiumize API documentation](https://www.premiumize.me/api). Empty keeps Premiumize connection unavailable.                                                                                                                                                                                         |
+| `TRAKT_CLIENT_ID`      | Optional | Browser-public  | Empty                       | Public Trakt application identifier for browser sign-in. Obtain it from the [Trakt application settings](https://app.trakt.tv/settings/apps). Empty keeps Trakt sign-in unavailable; it is the only value the bridge now requires.                                                                                                                                                    |
 | `TRAKT_CLIENT_SECRET`  | Optional | **Server-only** | Empty                       | Private Trakt application credential, for applications that were issued one. It is passed only to `trakt-auth-bridge`, never written to `nuvio.env.js` or exposed to browser JavaScript. Trakt no longer issues a secret to applications that sign users in and treats it as deprecated for that purpose, so leaving it empty is now normal: the bridge sends it only when it exists. |
-| `TRAKT_REDIRECT_URI`   | Optional | **Server-only** | `urn:ietf:wg:oauth:2.0:oob` | Redirect URI registered with Trakt; it must match the application configuration. Empty uses the Compose default. See [Trakt authentication](https://docs.trakt.tv/reference/auth).            |
+| `TRAKT_REDIRECT_URI`   | Optional | **Server-only** | `urn:ietf:wg:oauth:2.0:oob` | Redirect URI registered with Trakt; it must match the application configuration. Empty uses the Compose default. See [Trakt authentication](https://docs.trakt.tv/reference/auth).                                                                                                                                                                                                    |
 
 In general, a `CLIENT_ID` is a public application identifier, while a
 `CLIENT_SECRET` is private and belongs only on a server. Do not put access
@@ -166,3 +166,17 @@ docker compose up -d --force-recreate
 
 Keep all four Docker `image:` tags in `docker-compose.yml` aligned when
 switching between `stable`, `nightly`, `latest`, or a pinned `X.Y.Z` release.
+
+### Remux client/server and audio conversion
+
+`REMUX_MODE=off|client|server` selects container-copy delivery. An empty value retains legacy endpoint-based selection. Node deployments also enable the existing relay with `REMUX_ENABLED=true`; Docker deployments set the public endpoint URLs explicitly. Server mode uses the existing copy/HLS relay; it does not require a separate remux-session service.
+
+- Client: MediaBunny reads its supported source formats and copies encoded packets into fragmented MP4. The output format and the browser's actual MediaSource/ManagedMediaSource codec support decide eligibility. There is no client encoder. HTTPS, workers, byte-range/CORS access and OPFS are required. Unsupported source/output combinations fail explicitly.
+- Server: FFmpeg copies video and audio on the existing HLS path. No codec-family whitelist is imposed on alternate audio; device refusals and actual codec-transition support still govern selection. A format unsupported by the HLS/MP4 muxer can still fail; FFmpeg recognition alone does not guarantee browser playback.
+- Audio conversion: the separate `TRANSCODE_ENDPOINT` path may copy video and encode audio to AAC. Its label is orange Transcoding. Video encoding/full transcoding is not offered.
+
+`REMUX_CLIENT_CACHE_MAX_MIB` controls the bounded OPFS disk cache (128–512 MiB), independently of the compressed RAM buffer limits. Neither path loads an entire movie into browser RAM. Server segments use the existing bounded disk-cache lifecycle.
+
+Client remux does not send media to the remux server. `PROBE_MODE=server` independently permits server metadata probing; optional host URL resolution also sends the required source credentials/descriptor to that instance. Use `PROBE_MODE=client` and disable host URL assistance when all source processing must remain on-device; source CORS/range restrictions then apply without a server fallback.
+
+The shared relay token is entered at Settings → Playback → Audio & Video → Transcode token. Moving this field preserves the stored token. Metadata labeling has an opt-in filename fallback; an exclamation in a circle explains why the estimate was used. Filename estimates never authorize conversion. Failed background checks retry once after at least 15 seconds; selecting a stream cancels active and queued labeling and checks the selected stream first.

@@ -183,6 +183,8 @@ export function createStreamProber({
 } = {}) {
   const cache = new Map();
   const pending = new Map();
+  const controllers = new Set();
+  const failures = new Map();
   let cacheGeneration = probeMetadataCacheGeneration();
   const base = String(endpoint || "").trim();
   const selectedMode = normalizeProbeMode(mode);
@@ -193,14 +195,17 @@ export function createStreamProber({
     reason = "",
     identity = "",
     requestTimeoutMs = timeoutMs,
-    resolveTimeoutMs = 0
+    resolveTimeoutMs = 0,
+    signal
   ) {
     if (selectedMode === "client") {
       try {
         return await clientProbe(url, {
           timeoutMs: requestTimeoutMs,
           resolveTimeoutMs,
-          concurrency: clientConcurrency
+          concurrency: clientConcurrency,
+          signal,
+          onFailure: (reason) => failures.set(url, reason)
         });
       } catch {
         return null;
@@ -218,12 +223,18 @@ export function createStreamProber({
     const ref = identity ? `&id=${encodeURIComponent(identity)}` : "";
     const target = `${base}${separator}u=${encodeURIComponent(url)}${why}${ref}`;
     const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const abort = () => controller?.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     const timer = controller
       ? setTimeout(() => controller.abort(), Math.max(1, requestTimeoutMs))
       : null;
     try {
       const response = await fetchImpl(target, { signal: controller?.signal });
-      if (!response?.ok) return null;
+      if (!response?.ok) {
+        failures.set(url, `HTTP ${response?.status || "error"}`);
+        return null;
+      }
       const data = await response.json();
       if (!data?.ok) return null;
       const result = {
@@ -264,13 +275,26 @@ export function createStreamProber({
       if (Array.isArray(data.audioStreams)) result.audioStreams = data.audioStreams;
       return result;
     } catch {
+      failures.set(
+        url,
+        signal?.aborted ? "cancelled" : controller?.signal.aborted ? "timeout" : "network-or-cors"
+      );
       return null;
     } finally {
+      signal?.removeEventListener("abort", abort);
       if (timer) clearTimeout(timer);
     }
   }
 
   return {
+    cancelAll() {
+      for (const controller of controllers) controller.abort();
+      controllers.clear();
+      pending.clear();
+    },
+    failureReason(url) {
+      return failures.get(String(url)) || "metadata-unavailable";
+    },
     get enabled() {
       return enabled;
     },
@@ -336,7 +360,11 @@ export function createStreamProber({
           resolveTimeoutMs
         });
       }
+      failures.delete(source);
+      if (failures.size > PROBE_METADATA_MAX_ENTRIES) failures.delete(failures.keys().next().value);
       const jobGeneration = probeMetadataCacheGeneration();
+      const controller = new AbortController();
+      controllers.add(controller);
       const promise = (async () => {
         if (selectedMode === "client" && key.startsWith("torrent-file:")) {
           const started = Date.now();
@@ -358,10 +386,21 @@ export function createStreamProber({
             clearTimeout(timer);
           }
           requestTimeoutMs = Math.max(0, requestTimeoutMs - (Date.now() - started));
+          if (controller.signal.aborted) return null;
           if (saved && jobGeneration === probeMetadataCacheGeneration()) return saved;
           if (!requestTimeoutMs) return null;
         }
-        const result = await request(source, reason, identity, requestTimeoutMs, resolveTimeoutMs);
+        if (controller.signal.aborted) return null;
+        const result = await request(
+          source,
+          reason,
+          identity,
+          requestTimeoutMs,
+          resolveTimeoutMs,
+          controller.signal
+        );
+        if (controller.signal.aborted) return null;
+        if (!result && !failures.has(source)) failures.set(source, "metadata-unavailable");
         if (
           result &&
           selectedMode === "client" &&
@@ -371,7 +410,8 @@ export function createStreamProber({
         }
         return result;
       })().then((result) => {
-        pending.delete(key);
+        controllers.delete(controller);
+        if (pending.get(key)?.promise === promise) pending.delete(key);
         if (result && jobGeneration === probeMetadataCacheGeneration()) {
           cache.set(key, { facts: result, expiresAt: Date.now() + PROBE_METADATA_TTL_MS });
           if (cache.size > PROBE_METADATA_MAX_ENTRIES) cache.delete(cache.keys().next().value);

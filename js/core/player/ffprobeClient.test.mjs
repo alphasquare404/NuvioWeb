@@ -551,3 +551,35 @@ test("a slow second WASM core initializes once and remains reusable", async () =
   assert.equal(created, 2);
   assert.equal(terminated, 0);
 });
+
+test("aborting active browser probing terminates its worker and skips cancelled queued jobs", async () => {
+  let stopped = 0,
+    created = 0;
+  const runner = createBrowserProbeRunner({
+    onEvent() {},
+    fetchImpl: async (_url, options) => {
+      const [, a, b] = /bytes=(\d+)-(\d+)/.exec(options.headers.Range);
+      return new Response(new Uint8Array(+b - +a + 1), {
+        status: 206,
+        headers: { "Content-Range": `bytes ${a}-${b}/2097152` }
+      });
+    },
+    makeWorker: () => {
+      created++;
+      return {
+        postMessage() {},
+        terminate() {
+          stopped++;
+        }
+      };
+    }
+  });
+  const controller = new AbortController();
+  const first = runner.probe("https://media.test/first", { signal: controller.signal });
+  const second = runner.probe("https://media.test/second", { signal: controller.signal });
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+  assert.deepEqual(await Promise.all([first, second]), [null, null]);
+  assert.equal(stopped, 1);
+  assert.equal(created, 1);
+});

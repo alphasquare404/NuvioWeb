@@ -542,3 +542,30 @@ test("clearing metadata prevents a pre-clear probe from repopulating RAM or disk
   assert.equal((await p.probe("https://cdn.test/cleared", { identity })).videoCodec, "h264");
   assert.equal(calls, 2);
 });
+
+test("cancelAll aborts active requests, retains completed facts and allows a new selection", async () => {
+  let activeSignal;
+  const prober = createStreamProber({
+    endpoint: "/probe",
+    fetchImpl: async (url, { signal }) => {
+      if (url.includes("blocked")) {
+        activeSignal = signal;
+        return new Promise((_, reject) =>
+          signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })
+        );
+      }
+      return {
+        ok: true,
+        json: async () => ({ ok: true, container: "mkv", videoCodec: "hevc", audioCodec: "aac" })
+      };
+    }
+  });
+  const saved = await prober.probe("https://media.test/cached");
+  const blocked = prober.probe("https://media.test/blocked");
+  await new Promise((resolve) => setImmediate(resolve));
+  prober.cancelAll();
+  assert.equal(activeSignal.aborted, true);
+  assert.equal(await blocked, null);
+  assert.deepEqual(await prober.probe("https://media.test/cached"), saved);
+  assert.equal((await prober.probe("https://media.test/selected")).videoCodec, "hevc");
+});

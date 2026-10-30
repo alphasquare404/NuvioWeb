@@ -814,7 +814,7 @@ test("filename mode labels without submitting any probe and Only Direct follows 
 test("explicit remux policies block copy relays including saved relay URLs, while device-supported direct remains unchanged", async () => {
   const saved = { env: globalThis.__NUVIO_ENV__, fetch: globalThis.fetch };
   try {
-    for (const mode of ["client", "off", "server", "invalid"]) {
+    for (const mode of ["client", "off", "invalid"]) {
       globalThis.__NUVIO_ENV__ = {
         REMUX_MODE: mode,
         REMUX_ENDPOINT: "/api/remux",
@@ -911,8 +911,154 @@ test("unavailable remux is reported on stream selection before player navigation
     });
     await screen.playStream("selected", { skipExternalRoute: true });
     assert.equal(messages.length, 1);
-    assert.match(messages[0], /Independent server HLS remux is not installed/);
+    assert.match(messages[0], /Server remux is unavailable/);
   } finally {
     globalThis.__NUVIO_ENV__ = saved;
+  }
+});
+
+test("explicit server mode uses the existing HLS copy relay", async () => {
+  const saved = globalThis.__NUVIO_ENV__;
+  try {
+    globalThis.__NUVIO_ENV__ = {
+      REMUX_MODE: "server",
+      REMUX_ENDPOINT: "/api/remux",
+      TRANSCODE_ENDPOINT: "/api/transcode"
+    };
+    const { StreamScreen: screen } = await loadStreamScreen("explicit-server-existing-relay");
+    screen.getStreamProbe = () => ({
+      ...directProbe,
+      container: "mkv",
+      playbackCapabilities: {
+        video: true,
+        container: false,
+        audio: [{ index: 0, supported: true }],
+        relayVideo: true
+      }
+    });
+    screen.remuxPlaylistUrl = async () => "/api/transcode/hls/index.m3u8?u=fixture&v=copy&a=copy";
+    screen.isPlayableHlsPlaylist = async () => true;
+    assert.match(
+      await screen.resolvePlayerSource({ url: "https://media.test/movie.mkv" }),
+      /^\/api\/transcode\/hls\//
+    );
+  } finally {
+    globalThis.__NUVIO_ENV__ = saved;
+  }
+});
+
+test("selecting a stream cancels background probes before checking only that selection", async () => {
+  const saved = { env: globalThis.__NUVIO_ENV__, fetch: globalThis.fetch };
+  let backgroundSignal,
+    selectedRequests = 0;
+  try {
+    globalThis.__NUVIO_ENV__ = { PROBE_MODE: "server", PROBE_ENDPOINT: "https://probe.test/probe" };
+    const background = {
+      id: "a",
+      url: "https://media.test/background.mp4",
+      addonName: "TestAddon"
+    };
+    const selected = { id: "b", url: "https://media.test/selected.mp4", addonName: "TestAddon" };
+    globalThis.fetch = async (url, { signal }) => {
+      if (new URL(url).searchParams.get("u") === background.url) {
+        backgroundSignal = signal;
+        return new Promise((_, reject) =>
+          signal.addEventListener("abort", () => reject(Error("aborted")), { once: true })
+        );
+      }
+      selectedRequests++;
+      return { ok: true, json: async () => ({ ok: true, ...directProbe }) };
+    };
+    const { StreamScreen: base } = await loadStreamScreen("selection-cancels-background");
+    let resolved = false;
+    const screen = Object.assign(Object.create(base), {
+      streams: [background, selected],
+      params: { startFromBeginning: true },
+      loadToken: 1,
+      _probeResults: new Map(),
+      _probeSent: new Set(),
+      _probePending: new Set(),
+      _probeFailed: new Set(),
+      _probeAttempts: new Map(),
+      _probeCooldownUntil: new Map(),
+      getProbeCandidates: () => [background, selected],
+      getFilteredStreams: () => [background, selected],
+      requestRender() {},
+      cancelAutoPlayCountdown() {},
+      cancelAutoPlaySelectionWait() {},
+      getStreamProbe(stream) {
+        return this._probeResults.get(stream.url);
+      },
+      resolvePlayerSource() {
+        resolved = true;
+        throw Error("selection-proved");
+      }
+    });
+    const work = screen.runUnknownProbes();
+    await new Promise((resolve) => setImmediate(resolve));
+    await assert.rejects(screen.playStream("b", { skipExternalRoute: true }), /selection-proved/);
+    await work;
+    assert.equal(backgroundSignal.aborted, true);
+    assert.equal(selectedRequests, 1);
+    assert.equal(resolved, true);
+    assert.equal(screen._probeAttempts.size, 0, "cancellation is not a labeling failure");
+  } finally {
+    globalThis.__NUVIO_ENV__ = saved.env;
+    globalThis.fetch = saved.fetch;
+  }
+});
+
+test("failed labeling retries after fifteen seconds and stops after the second failure", async (t) => {
+  const { StreamScreen: base } = await loadStreamScreen("fifteen-second-retry");
+  let retries = 0;
+  const screen = Object.assign(Object.create(base), {
+    _probeFailed: new Set(),
+    _probeAttempts: new Map(),
+    _probeCooldownUntil: new Map(),
+    scheduleUnknownProbes() {
+      retries++;
+    }
+  });
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+  screen.markProbeFailure("fixture");
+  assert.equal(screen.canProbeRow("fixture"), false);
+  t.mock.timers.tick(14999);
+  assert.equal(retries, 0);
+  t.mock.timers.tick(1);
+  assert.equal(retries, 1);
+  assert.equal(screen.canProbeRow("fixture"), true);
+  screen.markProbeFailure("fixture");
+  t.mock.timers.tick(15000);
+  assert.equal(screen.canProbeRow("fixture"), false);
+  assert.equal(retries, 1);
+});
+
+test("ready HLS delivery skips file probing on selection", async () => {
+  const saved = { env: globalThis.__NUVIO_ENV__, fetch: globalThis.fetch };
+  try {
+    globalThis.__NUVIO_ENV__ = { PROBE_MODE: "server", PROBE_ENDPOINT: "https://probe.test/probe" };
+    globalThis.fetch = () => {
+      throw Error("HLS must not be file-probed");
+    };
+    const { StreamScreen: base } = await loadStreamScreen("ready-hls-no-file-probe");
+    const stream = { id: "hls", url: "https://media.test/movie.m3u8" };
+    const screen = Object.assign(Object.create(base), {
+      streams: [stream],
+      params: { startFromBeginning: true },
+      getFilteredStreams: () => [stream],
+      getStreamProbe: () => null,
+      cancelAutoPlayCountdown() {},
+      cancelAutoPlaySelectionWait() {},
+      resolvePlayerSource() {
+        throw Error("ready-delivery-proved");
+      }
+    });
+    await assert.rejects(
+      screen.playStream("hls", { skipExternalRoute: true }),
+      /ready-delivery-proved/
+    );
+  } finally {
+    globalThis.__NUVIO_ENV__ = saved.env;
+    globalThis.fetch = saved.fetch;
   }
 });

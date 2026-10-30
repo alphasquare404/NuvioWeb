@@ -204,17 +204,23 @@ test("AC3 and EAC3 alternate audio follow the same-codec device assessment witho
     ),
     null
   );
-  assert.equal(
+  assert.deepEqual(
     chooseHlsAudioIndices(
       {
         audioStreams: [
           { index: 0, codec: "dts" },
           { index: 1, codec: "dts" }
-        ]
+        ],
+        playbackCapabilities: {
+          audio: [
+            { index: 0, supported: true },
+            { index: 1, supported: true }
+          ]
+        }
       },
       0
     ),
-    null
+    [0, 1]
   );
 });
 

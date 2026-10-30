@@ -5,6 +5,16 @@ import { REMUX_POLICY, PROBE_MODE, TRANSCODE_ENDPOINT } from "../../config.js";
 import { getDeviceCapabilities } from "./deviceCapabilities.js";
 import { isConfiguredCopyRelayUrl } from "./remuxPolicy.js";
 
+export function clientRemuxAvailable(scope = globalThis) {
+  const source = scope.ManagedMediaSource || scope.MediaSource;
+  return Boolean(
+    scope.isSecureContext &&
+    source?.isTypeSupported &&
+    scope.navigator?.storage?.getDirectory &&
+    typeof scope.Worker === "function"
+  );
+}
+
 export function clientRemuxPlan(
   stream,
   probe,

@@ -12,7 +12,7 @@ const LABELS = {
   unknown: "Unknown",
   direct: "Direct",
   remux: "Remux",
-  "audio-transcode": "Transcode",
+  "audio-transcode": "Transcoding",
   transcode: "Transcode"
 };
 
@@ -78,9 +78,18 @@ export function renderStreamPlaybackBadge({
   remuxAvailable = true,
   probing = false,
   labelSource = "FILE_METADATA",
-  stream = null
+  stream = null,
+  filenameFallback = false,
+  fallbackReason = "",
+  probeFailed = false
 } = {}) {
-  const filenameMode = normalizePlaybackLabelSource(labelSource) === "FILE_NAME";
+  const metadataUnknown =
+    probe && describePlaybackMethod({ url, label, probe, capabilities }).method === "unknown";
+  const fallback =
+    normalizePlaybackLabelSource(labelSource) !== "FILE_NAME" &&
+    filenameFallback &&
+    (probeFailed || metadataUnknown);
+  const filenameMode = normalizePlaybackLabelSource(labelSource) === "FILE_NAME" || fallback;
   // The addon text is a description, and this session proved it wrong twice: `8bit` was
   // read as h264, `AAC5.1` was really E-AC-3. So the text may only *exclude* a row that
   // nothing can open; every other label waits for the probe.
@@ -136,5 +145,19 @@ export function renderStreamPlaybackBadge({
       : filenameMode
         ? `filename estimate; playback not verified (${result.reason})`
         : `${result.reason} (${result.confidence === "predicted" ? "device prediction; playback not verified" : "perkiraan"})`;
-  return `<span class="stream-playback-badge" title="${escapeHtml(`${detail}${hdr ? "; HDR source metadata; HDR display/tone mapping not verified" : ""}`)}" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(displayText)}</span>`;
+  const reasonText =
+    {
+      "network-or-cors": "the source could not be accessed (network or CORS)",
+      timeout: "the metadata check timed out",
+      "probe-byte-budget": "the metadata exceeded the reading limit",
+      "metadata-unavailable": "metadata was unavailable or incomplete",
+      cancelled: "the metadata check was cancelled"
+    }[fallbackReason] ||
+    fallbackReason ||
+    "metadata could not determine playback compatibility";
+  const explanation = `Label estimated from filename because ${reasonText}. Playback is not verified.`;
+  const marker = fallback
+    ? `<button type="button" data-action="labelFallbackReason" data-reason="${escapeHtml(explanation)}" aria-label="${escapeHtml(explanation)}" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:5px;padding:0;border:1px solid currentColor;border-radius:50%;background:transparent;color:inherit;font:inherit;pointer-events:auto;cursor:pointer">!</button>`
+    : "";
+  return `<span class="stream-playback-badge" title="${escapeHtml(`${detail}${hdr ? "; HDR source metadata; HDR display/tone mapping not verified" : ""}`)}" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(displayText)}${marker}</span>`;
 }

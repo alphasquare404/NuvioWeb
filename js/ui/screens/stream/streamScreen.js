@@ -53,7 +53,7 @@ import {
   assertConfiguredRemuxRoute,
   isConfiguredCopyRelayUrl
 } from "../../../core/player/remuxPolicy.js";
-import { clientRemuxPlan } from "../../../core/player/remuxClient.js";
+import { clientRemuxPlan, clientRemuxAvailable } from "../../../core/player/remuxClient.js";
 import { buildRemuxUrl } from "../../../core/player/remuxSource.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { PLAYBACK_METHODS, classifyPlayback } from "../../../core/player/playbackMethod.js";
@@ -786,6 +786,8 @@ export const StreamScreen = {
     ScreenUtils.show(this.container);
     // Answers from the probe endpoint, keyed by source URL, plus the one-shot guard
     // that stops the screen asking for the same batch on every render.
+    this._labelProbePaused = false;
+    this._labelProbeGeneration = (this._labelProbeGeneration || 0) + 1;
     this._probeResults = new Map();
     this._probeSent = new Set();
     this._probeOutstanding = false;
@@ -815,12 +817,15 @@ export const StreamScreen = {
     this.loadToken = (this.loadToken || 0) + 1;
     const token = this.loadToken;
     this._relayAvailability = {
-      remux: REMUX_ENDPOINT ? null : false,
+      remux:
+        REMUX_POLICY.mode === "client" ? clientRemuxAvailable() : REMUX_ENDPOINT ? null : false,
       audio: TRANSCODE_ENDPOINT ? null : false
     };
     if (REMUX_ENDPOINT || TRANSCODE_ENDPOINT)
       void Promise.all([
-        resolveRelayAvailability({ endpoint: REMUX_ENDPOINT }),
+        REMUX_POLICY.mode === "client"
+          ? Promise.resolve(clientRemuxAvailable())
+          : resolveRelayAvailability({ endpoint: REMUX_ENDPOINT }),
         resolveRelayAvailability({
           endpoint: TRANSCODE_ENDPOINT,
           transcode: true,
@@ -1528,6 +1533,15 @@ export const StreamScreen = {
     this._probeFailed.add(url);
     this._probeAttempts.set(url, (this._probeAttempts.get(url) || 0) + 1);
     this._probeCooldownUntil.set(url, Date.now() + 15 * 1000);
+    if ((this._probeAttempts.get(url) || 0) < 2) {
+      const timers = (this._probeRetryTimers ||= new Set());
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        this.scheduleUnknownProbes();
+      }, 15000);
+      timers.add(timer);
+      timer.unref?.();
+    }
   },
 
   markProbeSuccess(url) {
@@ -2095,7 +2109,7 @@ export const StreamScreen = {
     return { isSeries, title, subtitle, episodeLabel, detailLine };
   },
 
-  showStreamToast(message) {
+  showStreamToast(message, { durationMs = 2600 } = {}) {
     if (!this.container) {
       return;
     }
@@ -2116,7 +2130,7 @@ export const StreamScreen = {
     }
     this.streamToastTimer = setTimeout(() => {
       toast?.classList.remove("visible");
-    }, 2600);
+    }, durationMs);
   },
 
   getStreamRequestHeaders(stream = {}) {
@@ -2647,6 +2661,7 @@ export const StreamScreen = {
   },
 
   scheduleUnknownProbes() {
+    if (this._labelProbePaused) return;
     const labelSettings = StreamBadgeSettingsStore.snapshot();
     if (!usesMetadataLabels(labelSettings) || !isStreamLabelingEnabled(labelSettings)) return;
     if (!streamProber.enabled || !this.streams.length) return;
@@ -2675,9 +2690,14 @@ export const StreamScreen = {
 
   async runUnknownProbes({ maxBatches = Infinity } = {}) {
     const token = this.loadToken;
+    const generation = this._labelProbeGeneration;
+    const active = () =>
+      token === this.loadToken &&
+      generation === this._labelProbeGeneration &&
+      !this._labelProbePaused;
     const sent = this._probeSent || (this._probeSent = new Set());
     const nextTargets = (count) =>
-      this.getProbeCandidates()
+      (active() ? this.getProbeCandidates() : [])
         .map((stream) => ({
           url: String(stream.url || stream.externalUrl || "").trim(),
           identity: streamProbeIdentity(stream),
@@ -2702,7 +2722,7 @@ export const StreamScreen = {
         identity,
         resolveTimeoutMs: 15000
       });
-      if (token !== this.loadToken) return;
+      if (!active()) return;
       this._probePending.delete(url);
       if (probe) {
         this._probeResults.set(url, probe);
@@ -2767,6 +2787,9 @@ export const StreamScreen = {
       const badge = labelAllowed
         ? renderStreamPlaybackBadge({
             labelSource: labelSettings.playbackLabelSource,
+            filenameFallback: labelSettings.metadataFilenameFallback === true,
+            probeFailed: this._probeFailed?.has(urlKey) === true,
+            fallbackReason: streamProber.failureReason(urlKey),
             stream,
             url: urlKey,
             label: `${sourceModel?.title || stream.title || stream.name || ""} ${
@@ -2778,7 +2801,13 @@ export const StreamScreen = {
             // promising a relay that cannot happen.
             transcodeAvailable:
               this._relayAvailability?.audio ?? (TRANSCODE_ENDPOINT ? null : false),
-            remuxAvailable: this._relayAvailability?.remux ?? (REMUX_ENDPOINT ? null : false),
+            remuxAvailable:
+              this._relayAvailability?.remux ??
+              (REMUX_POLICY.mode === "client"
+                ? clientRemuxAvailable()
+                : REMUX_ENDPOINT
+                  ? null
+                  : false),
             probe: this.getStreamProbe(stream),
             // While the answer is on its way the card says so, instead of looking unanswered.
             probing:
@@ -2845,6 +2874,10 @@ export const StreamScreen = {
             <div class="stream-route-card-heading">${escapeHtml(headline)}</div>
             ${renderStreamPlaybackBadge({
               labelSource: StreamBadgeSettingsStore.snapshot().playbackLabelSource,
+              filenameFallback:
+                StreamBadgeSettingsStore.snapshot().metadataFilenameFallback === true,
+              probeFailed: this._probeFailed?.has(stream.url || stream.externalUrl || "") === true,
+              fallbackReason: streamProber.failureReason(stream.url || stream.externalUrl || ""),
               stream,
               url: stream.url || stream.externalUrl || "",
               label: `${headline} ${quality} ${stream.description || stream.title || ""}`,
@@ -3167,6 +3200,13 @@ export const StreamScreen = {
     this.boundStreamFilterRowHandler = (event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (!target || !this.container?.contains(target)) {
+        return;
+      }
+      const fallback = target.closest("[data-action='labelFallbackReason']");
+      if (fallback) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.showStreamToast(fallback.dataset.reason, { durationMs: 10000 });
         return;
       }
       const refresh = target.closest("[data-action='refreshStreams']");
@@ -3599,7 +3639,9 @@ export const StreamScreen = {
       return "";
     };
     try {
-      assertConfiguredRemuxRoute(REMUX_POLICY, audioIndex);
+      assertConfiguredRemuxRoute(REMUX_POLICY, audioIndex, {
+        serverAvailable: Boolean(REMUX_ENDPOINT)
+      });
     } catch (error) {
       return why(error.reason);
     }
@@ -3742,11 +3784,11 @@ export const StreamScreen = {
         baseUrl: globalThis.location?.href || "http://localhost/"
       })
     )
-      assertConfiguredRemuxRoute(REMUX_POLICY);
+      assertConfiguredRemuxRoute(REMUX_POLICY, 0, { serverAvailable: Boolean(REMUX_ENDPOINT) });
     // Older history entries can already contain an explicit file-relay URL.
     // Preserve that choice while preferring progressive delivery when available.
     if (url.includes("/api/remux?")) {
-      assertConfiguredRemuxRoute(REMUX_POLICY);
+      assertConfiguredRemuxRoute(REMUX_POLICY, 0, { serverAvailable: Boolean(REMUX_ENDPOINT) });
       let inner = "";
       try {
         inner = new URL(url, location.href).searchParams.get("u") || "";
@@ -3776,7 +3818,9 @@ export const StreamScreen = {
       capabilities
     });
     if (verdict.method === PLAYBACK_METHODS.REMUX)
-      assertConfiguredRemuxRoute(REMUX_POLICY, Number(verdict.audioIndex) || 0);
+      assertConfiguredRemuxRoute(REMUX_POLICY, Number(verdict.audioIndex) || 0, {
+        serverAvailable: Boolean(REMUX_ENDPOINT)
+      });
     if (!shouldTranscodeSource({ url, verdict, endpoint: TRANSCODE_ENDPOINT })) {
       // Only the playback verdict can request a container/tag or audio-track copy.
       // A filename extension alone must not send a supported source to the relay.
@@ -3850,6 +3894,15 @@ export const StreamScreen = {
     if (!selected) {
       return;
     }
+    this._labelProbePaused = true;
+    this._labelProbeGeneration = (this._labelProbeGeneration || 0) + 1;
+    streamProber.cancelAll();
+    for (const timer of this._probeRetryTimers || []) clearTimeout(timer);
+    this._probeRetryTimers?.clear();
+    this._probePending?.clear();
+    const selectionGeneration = (this._playSelectionGeneration =
+      (this._playSelectionGeneration || 0) + 1);
+    const selectionCurrent = () => selectionGeneration === this._playSelectionGeneration;
     // Browser Player → Sources owns its own provider filters. Preserve the
     // Stream Selection canonical list across navigation instead of passing
     // only the currently filtered display slice.
@@ -3930,6 +3983,51 @@ export const StreamScreen = {
       return;
     }
 
+    if (!selectionCurrent()) return;
+    let preparedDelivery = false;
+    try {
+      const source = new URL(
+        selected.url || selected.externalUrl || "",
+        globalThis.location?.href || "http://localhost/"
+      );
+      preparedDelivery =
+        /\.(?:m3u8|mpd)$/i.test(source.pathname) ||
+        isConfiguredCopyRelayUrl(source.href, {
+          endpoint: TRANSCODE_ENDPOINT,
+          baseUrl: source.origin
+        }) ||
+        (source.pathname === "/api/remux" && source.searchParams.has("u"));
+    } catch {
+      /* An invalid source is handled by the existing source resolver. */
+    }
+    if (
+      !offlineObjectUrl &&
+      !preparedDelivery &&
+      !this.getStreamProbe(selected) &&
+      streamProber.enabled
+    ) {
+      StartupLoadingOverlay.begin({ itemKey: this.params?.itemId }, "checking");
+      const source = String(selected.url || selected.externalUrl || "").trim();
+      const probe = await streamProber.probe(source, {
+        reason: "playback",
+        identity: streamProbeIdentity(selected),
+        timeoutMs: 15000
+      });
+      if (!selectionCurrent()) return;
+      if (probe) {
+        this._probeResults.set(source, probe);
+        this._probeResults.set(playerStreamProbeKey(selected), probe);
+      } else {
+        StartupLoadingOverlay.finish();
+        this.showStreamToast(
+          "Unable to check this stream: " +
+            streamProber.failureReason(source) +
+            ". Tap the stream to retry."
+        );
+        return;
+      }
+    }
+    StartupLoadingOverlay.setStage("opening");
     // A downloaded file is already on this device; it is never relayed.
     let playerSource = offlineObjectUrl;
     if (!playerSource) {
@@ -3942,6 +4040,7 @@ export const StreamScreen = {
       }
     }
 
+    if (!selectionCurrent()) return;
     const playbackPlan = offlineObjectUrl
       ? null
       : clientRemuxPlan(selected, this.getStreamProbe(selected));
@@ -4118,6 +4217,13 @@ export const StreamScreen = {
   },
 
   onKeyDown(event) {
+    const fallback = event.target?.closest?.("[data-action='labelFallbackReason']");
+    if (fallback && ["Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.showStreamToast(fallback.dataset.reason, { durationMs: 10000 });
+      return;
+    }
     // Any key during the auto-play countdown hands control back to the user.
     // Back just cancels and stays on the picker; other keys cancel and then do
     // their normal thing (OK on the highlighted stream plays it right away).
@@ -4270,6 +4376,12 @@ export const StreamScreen = {
   },
 
   cleanup() {
+    this._playSelectionGeneration = (this._playSelectionGeneration || 0) + 1;
+    this._labelProbePaused = true;
+    this._labelProbeGeneration = (this._labelProbeGeneration || 0) + 1;
+    streamProber.cancelAll();
+    for (const timer of this._probeRetryTimers || []) clearTimeout(timer);
+    this._probeRetryTimers?.clear();
     this.clearExternalHandoffWatch();
     this.closeOfflineDownloadOptions?.();
     this.cancelAutoPlayCountdown();

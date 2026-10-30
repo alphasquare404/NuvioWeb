@@ -39,7 +39,16 @@ export function createBrowserProbeRunner({
     get warm() {
       return warm;
     },
-    probe(url, { timeoutMs = 15000, resolveTimeoutMs = 0, initializationTimeoutMs = 20000 } = {}) {
+    probe(
+      url,
+      {
+        timeoutMs = 15000,
+        resolveTimeoutMs = 0,
+        initializationTimeoutMs = 20000,
+        signal,
+        onFailure
+      } = {}
+    ) {
       const id = ++nextId;
       const submittedAt = Date.now();
       const resolveBudget = Math.max(0, Math.min(15000, Number(resolveTimeoutMs) || 0));
@@ -63,6 +72,7 @@ export function createBrowserProbeRunner({
           : {})
       });
       const task = queue.then(async () => {
+        if (signal?.aborted) return null;
         const queuedMs = Date.now() - submittedAt;
         const remaining = preparationDeadline - Date.now();
         if (remaining <= 0) {
@@ -88,6 +98,7 @@ export function createBrowserProbeRunner({
         const done = (result, fatal = false, reason = "") => {
           if (settled) return;
           settled = true;
+          if (!result) onFailure?.(reason || "metadata-unavailable");
           if (result) warm = true;
           report(result ? "success" : "failure", {
             stage,
@@ -108,6 +119,7 @@ export function createBrowserProbeRunner({
               : {})
           });
           clearTimeout(timer);
+          signal?.removeEventListener("abort", onAbort);
           controller.abort();
           if (worker) {
             worker.onmessage = null;
@@ -120,7 +132,13 @@ export function createBrowserProbeRunner({
           }
           finish(result);
         };
+        const onAbort = () => done(null, true, "cancelled");
         let timer = setTimeout(() => done(null, true, "timeout"), remaining);
+        signal?.addEventListener("abort", onAbort, { once: true });
+        if (signal?.aborted) {
+          onAbort();
+          return answer;
+        }
         const arm = (at, reason = "timeout") => {
           clearTimeout(timer);
           timer = setTimeout(

@@ -1,6 +1,6 @@
 import {
   Input,
-  MATROSKA,
+  ALL_FORMATS,
   CustomSource,
   Output,
   Mp4OutputFormat,
@@ -66,7 +66,7 @@ export async function remux({
   stats.outputWriteBudgetBytes = MAX_COMPRESSED_BYTES;
   await readRange(url, 0, 1, signal, stats, fetcher);
   const input = new Input({
-    formats: [MATROSKA],
+    formats: ALL_FORMATS,
     source: new CustomSource({
       getSize: () => stats.size,
       read: createSourceReader({ url, signal, stats, fetcher }),
@@ -79,25 +79,38 @@ export async function remux({
     const video = await input.getPrimaryVideoTrack();
     const audioTracks = await input.getAudioTracks();
     if (audioTracks.length > 32) throw Error("audio-track-limit");
-    if (!Number.isInteger(audioIndex) || audioIndex < 0 || audioIndex >= audioTracks.length)
+    if (
+      !Number.isInteger(audioIndex) ||
+      audioIndex < 0 ||
+      (audioTracks.length ? audioIndex >= audioTracks.length : audioIndex !== 0)
+    )
       throw Error("audio-track-unavailable");
     const audio = audioTracks[audioIndex];
-    if (video?.codec !== "avc" || audio?.codec !== "aac")
-      throw Error("client-requires-h264-aac-mkv");
+    const format = new Mp4OutputFormat({ fastStart: "fragmented" });
+    if (!video?.codec || !format.getSupportedVideoCodecs().includes(video.codec))
+      throw Error("client-output-video-codec-unsupported");
+    if (audio && (!audio.codec || !format.getSupportedAudioCodecs().includes(audio.codec)))
+      throw Error("client-output-audio-codec-unsupported");
     const vc = await video.getDecoderConfig(),
-      ac = await audio.getDecoderConfig();
+      ac = audio ? await audio.getDecoderConfig() : null;
     if (
       expectedAudio?.index === audioIndex &&
       (expectedAudio.count !== audioTracks.length ||
-        (expectedAudio.codec && expectedAudio.codec !== "aac") ||
-        (expectedAudio.channels && expectedAudio.channels !== ac.numberOfChannels) ||
-        (expectedAudio.sampleRate && expectedAudio.sampleRate !== ac.sampleRate))
+        (expectedAudio.codec && expectedAudio.codec !== audio?.codec) ||
+        (expectedAudio.channels && expectedAudio.channels !== ac?.numberOfChannels) ||
+        (expectedAudio.sampleRate && expectedAudio.sampleRate !== ac?.sampleRate))
     )
       throw Error("audio-probe-mismatch");
-    if (ac.numberOfChannels !== 2) throw Error("client-audio-layout-not-validated");
     const availableAudio = await Promise.all(
       audioTracks.map(async (track, index) => {
-        const config = track.codec === "aac" ? await track.getDecoderConfig() : null;
+        let config = null,
+          codecString = "";
+        try {
+          config = await track.getDecoderConfig();
+          codecString = await track.getCodecParameterString();
+        } catch {
+          /* An unreadable alternative must not block the selected track. */
+        }
         return {
           id: String(track.id),
           index,
@@ -105,7 +118,12 @@ export async function remux({
           language: track.languageCode,
           codec: track.codec,
           channels: config?.numberOfChannels || 0,
-          supported: track.codec === "aac" && config?.numberOfChannels === 2
+          mime: codecString
+            ? `video/mp4; codecs="${await video.getCodecParameterString()},${codecString}"`
+            : "",
+          supported: Boolean(
+            config && codecString && format.getSupportedAudioCodecs().includes(track.codec)
+          )
         };
       })
     );
@@ -114,14 +132,15 @@ export async function remux({
     if (start >= duration) throw Error("seek-outside-duration");
     stamp("tracksReadyMs");
     const vs = new EncodedPacketSink(video),
-      as = new EncodedPacketSink(audio);
+      as = audio ? new EncodedPacketSink(audio) : null;
     let vp = (await vs.getKeyPacket(start)) || (await vs.getFirstKeyPacket());
     if (!vp) throw Error("video-keyframe-unavailable");
     // Keep the selected audio's preroll with the video random-access start.
     // The renderer still seeks to the requested source time; no timestamps shift.
     const audioAnchor = Math.max(0, vp.timestamp);
-    let ap =
-      audioAnchor === 0
+    let ap = !as
+      ? null
+      : audioAnchor === 0
         ? await as.getFirstPacket()
         : (await as.getPacket(audioAnchor)) || (await as.getFirstPacket());
     stamp("keyPacketsReadyMs");
@@ -131,15 +150,15 @@ export async function remux({
       duration,
       start: vp.timestamp,
       requested: start,
-      mime: `video/mp4; codecs="${await video.getCodecParameterString()},${await audio.getCodecParameterString()}"`,
+      mime: `video/mp4; codecs="${await video.getCodecParameterString()}${audio ? "," + (await audio.getCodecParameterString()) : ""}"`,
       video: video.codec,
-      audio: audio.codec,
-      channels: ac.numberOfChannels,
+      audio: audio?.codec || null,
+      channels: ac?.numberOfChannels,
       firstAudioTimestamp: ap?.timestamp
     });
     stamp("metadataAckMs");
     const vout = new EncodedVideoPacketSource(video.codec),
-      aout = new EncodedAudioPacketSource(audio.codec);
+      aout = audio ? new EncodedAudioPacketSource(audio.codec) : null;
     let pendingBytes = 0,
       outputPosition = 0,
       outputDrained = Promise.resolve(),
@@ -223,7 +242,7 @@ export async function remux({
       )
     });
     output.addVideoTrack(vout);
-    output.addAudioTrack(aout);
+    if (aout) output.addAudioTrack(aout);
     await output.start();
     let firstV = true,
       firstA = true;

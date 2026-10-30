@@ -139,8 +139,7 @@ export function chooseHlsAudioIndices(
   { canChangeCodec = canSwitchHlsAudioCodecs() } = {}
 ) {
   const tracks = probe?.audioStreams || [];
-  if (tracks.length < 2 || tracks.some((track) => !["aac", "ac3", "eac3"].includes(track.codec)))
-    return null;
+  if (tracks.length < 2) return null;
   const eligible = tracks.filter(
     (track) =>
       Number.isInteger(track.index) &&
@@ -149,12 +148,11 @@ export function chooseHlsAudioIndices(
       probe.playbackCapabilities?.audio?.find((item) => item.index === track.index)?.supported !==
         false
   );
-  if (
-    new Set(eligible.filter((track) => track.codec === "aac").map((track) => track.profile)).size >
-    1
-  )
-    return null;
-  if (new Set(eligible.map((track) => track.codec)).size > 1 && !canChangeCodec) return null;
+  // A change in profile can change the decoder configuration even within one family.
+  const formats = new Set(
+    eligible.map((track) => `${track.codec}:${track.codec === "aac" ? track.profile || "" : ""}`)
+  );
+  if (formats.size > 1 && !canChangeCodec) return null;
   const indices = eligible.map((track) => track.index).sort((a, b) => a - b);
   return indices.length > 1 && indices.includes(initial) ? indices : null;
 }

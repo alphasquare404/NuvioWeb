@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clientRemuxPlan } from "./remuxClient.js";
+import { clientRemuxPlan, clientRemuxAvailable } from "./remuxClient.js";
 const probe = {
   container: "mkv",
   videoCodec: "h264",
@@ -73,4 +73,17 @@ test("browser-supported container stays direct in client mode", () => {
     }
   };
   assert.equal(clientRemuxPlan({ url: "https://cdn.test/direct.mkv" }, direct, options), null);
+});
+
+test("client availability depends on browser APIs rather than a server endpoint", () => {
+  const scope = {
+    isSecureContext: true,
+    MediaSource: { isTypeSupported() {} },
+    Worker: function () {},
+    navigator: { storage: { getDirectory() {} } }
+  };
+  assert.equal(clientRemuxAvailable(scope), true);
+  assert.equal(clientRemuxAvailable({ ...scope, isSecureContext: false }), false);
+  assert.equal(clientRemuxAvailable({ ...scope, navigator: {} }), false);
+  assert.equal(clientRemuxAvailable({ ...scope, MediaSource: undefined }), false);
 });
