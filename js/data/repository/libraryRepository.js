@@ -8,11 +8,14 @@ import { requestJson, TraktAuthService } from "./traktAuthService.js";
 import { TraktLibrarySourceMode, TraktSettingsStore } from "../local/traktSettingsStore.js";
 import { SimklAuthService } from "./simklAuthService.js";
 import { SimklSyncService } from "./simklSyncService.js";
+import { MdbListAuthStore } from "../local/mdbListAuthStore.js";
+import { MdbListLibraryService } from "./mdbListLibraryService.js";
 
 export const LibrarySourceMode = {
   LOCAL: "local",
   TRAKT: "trakt",
-  SIMKL: "simkl"
+  SIMKL: "simkl",
+  MDBLIST: "mdblist"
 };
 
 export const LibrarySortOptionKey = {
@@ -693,6 +696,11 @@ class LibraryRepository {
         ? LibrarySourceMode.SIMKL
         : LibrarySourceMode.LOCAL;
     }
+    if (selectedMode === TraktLibrarySourceMode.MDBLIST) {
+      return MdbListAuthStore.isAuthenticated()
+        ? LibrarySourceMode.MDBLIST
+        : LibrarySourceMode.LOCAL;
+    }
     if (selectedMode !== TraktLibrarySourceMode.TRAKT) {
       return LibrarySourceMode.LOCAL;
     }
@@ -708,6 +716,9 @@ class LibraryRepository {
     if (SimklAuthService.isAuthenticated()) {
       sourceModes.push(LibrarySourceMode.SIMKL);
     }
+    if (MdbListAuthStore.isAuthenticated()) {
+      sourceModes.push(LibrarySourceMode.MDBLIST);
+    }
     if (await TraktAuthService.getValidAccessToken().catch(() => null)) {
       sourceModes.push(LibrarySourceMode.TRAKT);
     }
@@ -721,6 +732,9 @@ class LibraryRepository {
     }
     if (resolvedSourceMode === LibrarySourceMode.SIMKL) {
       return SimklSyncService.getLibraryTabs();
+    }
+    if (resolvedSourceMode === LibrarySourceMode.MDBLIST) {
+      return MdbListLibraryService.getListTabs();
     }
     await this.ensureFreshTraktState();
     const personalTabs = await getRemotePersonalTabs();
@@ -749,6 +763,10 @@ class LibraryRepository {
       const entries = await SimklSyncService.getLibraryEntries();
       return hydrate ? hydrateEntries(entries) : entries;
     }
+    if (resolvedSourceMode === LibrarySourceMode.MDBLIST) {
+      const entries = await MdbListLibraryService.getItems();
+      return hydrate ? hydrateEntries(entries) : entries;
+    }
     return resolvedSourceMode === LibrarySourceMode.TRAKT
       ? getRemoteEntries({ hydrate })
       : getLocalEntries({ hydrate });
@@ -766,6 +784,9 @@ class LibraryRepository {
     }
     if (resolvedSourceMode === LibrarySourceMode.SIMKL) {
       return SimklSyncService.getMembershipSnapshot(item);
+    }
+    if (resolvedSourceMode === LibrarySourceMode.MDBLIST) {
+      return MdbListLibraryService.getMembershipSnapshot(item);
     }
     const [entries, listTabs] = await Promise.all([
       this.getItems({ sourceMode: resolvedSourceMode }),
@@ -787,6 +808,10 @@ class LibraryRepository {
     }
     if (resolvedSourceMode === LibrarySourceMode.SIMKL) {
       await SimklSyncService.applyMembershipChanges(item, changes, options);
+      return;
+    }
+    if (resolvedSourceMode === LibrarySourceMode.MDBLIST) {
+      await MdbListLibraryService.applyMembershipChanges(item, changes);
       return;
     }
 
@@ -981,6 +1006,15 @@ class LibraryRepository {
         return await SimklSyncService.refresh({ force: true });
       } catch (error) {
         console.warn("[LIB] Simkl library fetch failed", error);
+        return false;
+      }
+    }
+    if (sourceMode === LibrarySourceMode.MDBLIST) {
+      try {
+        await MdbListLibraryService.refresh();
+        return true;
+      } catch (error) {
+        console.warn("[LIB] MDBList library fetch failed", error);
         return false;
       }
     }

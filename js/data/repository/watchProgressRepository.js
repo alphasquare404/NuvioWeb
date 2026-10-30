@@ -13,6 +13,8 @@ import { TraktAuthStore } from "../local/traktAuthStore.js";
 import { TraktAuthService } from "./traktAuthService.js";
 import { SimklAuthStore } from "../local/simklAuthStore.js";
 import { SimklSyncService } from "./simklSyncService.js";
+import { MdbListAuthStore } from "../local/mdbListAuthStore.js";
+import { MdbListSyncService } from "./mdbListSyncService.js";
 import { metaRepository } from "./metaRepository.js";
 import {
   deduplicateContinueWatchingItems,
@@ -175,6 +177,10 @@ function isSimklProgressItem(item = {}) {
   return watchProgressOwner(item) === WatchProgressSource.SIMKL;
 }
 
+function isMdbListProgressItem(item = {}) {
+  return watchProgressOwner(item) === WatchProgressSource.MDBLIST;
+}
+
 function isTraktCompatibleContentId(contentId) {
   const raw = String(contentId || "").trim();
   if (!raw) {
@@ -198,6 +204,9 @@ function selectedContinueWatchingSource() {
   if (requestedSource === WatchProgressSource.SIMKL && SimklAuthStore.isAuthenticated()) {
     return WatchProgressSource.SIMKL;
   }
+  if (requestedSource === WatchProgressSource.MDBLIST && MdbListAuthStore.isAuthenticated()) {
+    return WatchProgressSource.MDBLIST;
+  }
   return WatchProgressSource.NUVIO_SYNC;
 }
 
@@ -207,6 +216,7 @@ function selectedLocalProgressSource() {
   const source = selectedContinueWatchingSource();
   if (source === WatchProgressSource.TRAKT) return "trakt_local";
   if (source === WatchProgressSource.SIMKL) return "simkl_local";
+  if (source === WatchProgressSource.MDBLIST) return "mdblist_local";
   return WatchProgressSource.NUVIO_SYNC;
 }
 
@@ -226,7 +236,16 @@ function filterForSelectedContinueWatchingSource(items = []) {
           !/^(tvdb|mal|anidb|anilist|kitsu|simkl):/i.test(String(item?.contentId || "")))
     );
   }
-  return all.filter((item) => !isTraktProgressItem(item) && !isSimklProgressItem(item));
+  if (source === WatchProgressSource.MDBLIST) {
+    // MDBList is a provider source, not a view over local history. Untagged
+    // rows belong to the previous Nuvio Sync era and must not masquerade as
+    // MDBList progress.
+    return all.filter((item) => isMdbListProgressItem(item));
+  }
+  return all.filter(
+    (item) =>
+      !isTraktProgressItem(item) && !isSimklProgressItem(item) && !isMdbListProgressItem(item)
+  );
 }
 
 function normalizeContentIdList(values = []) {
@@ -514,6 +533,16 @@ async function fetchSimklProgressSnapshot() {
   return SimklSyncService.getProgressSnapshot();
 }
 
+async function fetchMdbListProgressSnapshot() {
+  if (
+    selectedContinueWatchingSource() !== WatchProgressSource.MDBLIST ||
+    !MdbListAuthStore.isAuthenticated()
+  ) {
+    return { historyItems: [], playbackItems: [], watchedShowSeedItems: [] };
+  }
+  return MdbListSyncService.getProgressSnapshot();
+}
+
 // Cache for enriched metadata (5-minute TTL)
 const enrichedMetaCache = new Map();
 const ENRICHED_META_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -669,10 +698,14 @@ class WatchProgressRepository {
     const now = Date.now();
     const useTraktProgress = selectedContinueWatchingSource() === WatchProgressSource.TRAKT;
     const useSimklProgress = selectedContinueWatchingSource() === WatchProgressSource.SIMKL;
+    const useMdbListProgress = selectedContinueWatchingSource() === WatchProgressSource.MDBLIST;
     const daysCap = normalizeTraktContinueWatchingDaysCap(
       TraktSettingsStore.get().continueWatchingDaysCap
     );
-    const cutoffMs = !useTraktProgress || daysCap === 0 ? 0 : now - daysCap * 24 * 60 * 60 * 1000;
+    const cutoffMs =
+      (!useTraktProgress && !useMdbListProgress) || daysCap === 0
+        ? 0
+        : now - daysCap * 24 * 60 * 60 * 1000;
 
     let traktHistoryItems = [];
     let playbackItems = [];
@@ -685,6 +718,11 @@ class WatchProgressRepository {
       watchedShowSeedItems = snapshot.watchedShowSeedItems;
     } else if (useSimklProgress) {
       const snapshot = await fetchSimklProgressSnapshot();
+      traktHistoryItems = snapshot.historyItems;
+      playbackItems = snapshot.playbackItems;
+      watchedShowSeedItems = snapshot.watchedShowSeedItems;
+    } else if (useMdbListProgress) {
+      const snapshot = await fetchMdbListProgressSnapshot();
       traktHistoryItems = snapshot.historyItems;
       playbackItems = snapshot.playbackItems;
       watchedShowSeedItems = snapshot.watchedShowSeedItems;
@@ -728,10 +766,13 @@ class WatchProgressRepository {
     if (selectedContinueWatchingSource() === WatchProgressSource.NUVIO_SYNC) {
       return filterForSelectedContinueWatchingSource(localItems);
     }
+    const selectedSource = selectedContinueWatchingSource();
     const snapshot =
-      selectedContinueWatchingSource() === WatchProgressSource.TRAKT
+      selectedSource === WatchProgressSource.TRAKT
         ? await fetchTraktProgressSnapshot()
-        : await fetchSimklProgressSnapshot();
+        : selectedSource === WatchProgressSource.SIMKL
+          ? await fetchSimklProgressSnapshot()
+          : await fetchMdbListProgressSnapshot();
     // A suppression only means something against the account it was made for,
     // so drop the set outright when the profile or source changes.
     continueWatchingRemovalSuppression.scopeTo(this.getContinueWatchingSourceKey());
@@ -782,6 +823,10 @@ class WatchProgressRepository {
       traktProgressSnapshotCache = null;
       return true;
     }
+    if (source === WatchProgressSource.MDBLIST && MdbListAuthStore.isAuthenticated()) {
+      await MdbListSyncService.refresh({ force: true }).catch(() => false);
+      return true;
+    }
     // Imported here because the sync services import this module in turn.
     const [{ WatchProgressSyncService }, { WatchedItemsSyncService }] = await Promise.all([
       import("../../core/profile/watchProgressSyncService.js"),
@@ -827,7 +872,9 @@ class WatchProgressRepository {
         ? () => SimklSyncService.removePlaybackForContent(normalizedContentId)
         : source === WatchProgressSource.TRAKT && TraktAuthStore.isAuthenticated()
           ? () => removeTraktPlaybackForContent(normalizedContentId)
-          : null;
+          : source === WatchProgressSource.MDBLIST && MdbListAuthStore.isAuthenticated()
+            ? () => MdbListSyncService.removePlaybackForContent(normalizedContentId)
+            : null;
     if (!removeRemote) {
       return true;
     }

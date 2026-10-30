@@ -481,6 +481,10 @@
     <string name="automation_return_tutorial_open">Trouble playing it? Open on YouTube</string>
     <string name="automation_return_caution">The Automation runs when the player closes, so close the player by its own Close button. Swiping it away from the app switcher still sends nothing back.</string>
     <string name="poster_view_larger">View poster</string>
+    <string name="choose_stream">Choose stream</string>
+    <string name="stream_copy_link">Copy stream link</string>
+    <string name="stream_open_external">Open in external player</string>
+    <string name="stream_open_internal">Open in internal player</string>
     <string name="stream_opening_player">Opening player…</string>
     <string name="settings_card_customization_title">Card Customization</string>
     <string name="settings_card_customization_subtitle">Orientation, size, corners and depth surfaces</string>
@@ -1371,6 +1375,7 @@
     <string name="profile_cancel">Cancel</string>
     <string name="profile_save">Save</string>
     <string name="profile_pin_title">Profile PIN lock</string>
+    <string name="profile_pin_badge">PIN protected</string>
     <string name="profile_pin_enabled_subtitle">This profile requires a 4-digit PIN before switching.</string>
     <string name="profile_pin_disabled_subtitle">Set a 4-digit PIN to lock this profile.</string>
     <string name="profile_pin_set">Set PIN</string>
@@ -2018,6 +2023,8 @@
     <string name="update_download_complete">Download complete. Ready to install.</string>
     <string name="update_up_to_date">System is up to date. Latest changes:</string>
     <string name="update_close">Close</string>
+    <string name="update_browser_updated_title">NuvioWeb updated</string>
+    <string name="update_browser_see_changes">See changes</string>
     <string name="update_open_settings">Open Settings</string>
     <string name="update_install">Install</string>
     <string name="update_ignore">Ignore</string>
@@ -2855,7 +2862,7 @@
     <string name="settings_style_horizon">Top Bar</string>
     <string name="settings_style_zen">Minimal</string>
     <string name="settings_tracking_title">Tracking</string>
-    <string name="settings_tracking_subtitle">Manage Trakt and Simkl connections</string>
+    <string name="settings_tracking_subtitle">Manage Trakt, Simkl, and MDBList connections</string>
     <string name="settings_tracking_description">Connect tracking providers and choose which one powers your Library and Continue Watching.</string>
     <string name="tracking_accounts_title">Accounts</string>
     <string name="tracking_sources_title">Sources</string>

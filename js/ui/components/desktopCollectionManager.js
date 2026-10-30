@@ -16,7 +16,7 @@ function viewModeLabel(value) {
   const mode = String(value || "TABBED_GRID").toUpperCase();
   if (mode === "ROWS") return "Rows";
   if (mode === "FOLLOW_LAYOUT") return "Follow Layout";
-  return "Tabs";
+  return "Grid";
 }
 
 function activeProfileId() {

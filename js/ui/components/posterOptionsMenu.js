@@ -33,6 +33,11 @@ export function posterItemFromNode(node, fallbackType = "movie") {
   if (!node?.dataset?.itemId) {
     return null;
   }
+  const cardShape = String(
+    node.dataset.cardShape || node.dataset.cardOrientation || node.dataset.posterShape || ""
+  ).toLowerCase();
+  const isLandscape =
+    cardShape === "landscape" || Boolean(node.classList?.contains("is-landscape"));
   return {
     id: String(node.dataset.itemId || "").trim(),
     type: String(node.dataset.itemType || fallbackType || "movie").trim() || "movie",
@@ -42,6 +47,7 @@ export function posterItemFromNode(node, fallbackType = "movie") {
       ).trim() || "Untitled",
     poster: String(node.dataset.posterSrc || node.dataset.poster || "").trim(),
     background: String(node.dataset.backdropSrc || node.dataset.background || "").trim(),
+    artShape: isLandscape ? "landscape" : "portrait",
     addonBaseUrl: String(node.dataset.addonBaseUrl || "").trim(),
     addonId: String(node.dataset.addonId || "").trim(),
     addonName: String(node.dataset.addonName || "").trim(),
@@ -333,7 +339,8 @@ export class PosterOptionsDialogController {
           header: {
             title: item.title || item.name || item.id || "Untitled",
             subtitle: item.year ? String(item.year) : "",
-            poster: item.poster || ""
+            poster: item.poster || item.background || "",
+            artShape: item.artShape || "portrait"
           },
           items: actions,
           onSelect: (action) => void this.activateOption(action.key),

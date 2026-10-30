@@ -123,6 +123,12 @@ import {
 } from "../../../core/streams/streamFocusReveal.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
+import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
+import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
+import { openDesktopContextMenu } from "../../components/desktopContextMenu.js";
+import { openTouchActionSheet } from "../../components/touchActionSheet.js";
 import {
   getBrowserExternalPlayerOptions,
   getBrowserExternalPlayerPlatform,
@@ -737,7 +743,7 @@ export const StreamScreen = {
     return `
       <button class="stream-desktop-back-button" type="button" data-stream-desktop-back
               aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-        <span class="material-icons" aria-hidden="true">chevron_left</span>
+        ${renderBackButtonIcon()}
       </button>
     `;
   },
@@ -3082,7 +3088,7 @@ export const StreamScreen = {
         <header class="stream-page-heading">
           <button class="stream-page-heading-back" type="button" data-stream-desktop-back
                   aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-            <span class="material-icons" aria-hidden="true">chevron_left</span>
+            ${renderBackButtonIcon()}
           </button>
           <div class="stream-page-heading-copy">
             <div class="stream-page-heading-brand">
@@ -3250,6 +3256,159 @@ export const StreamScreen = {
       }
     };
     this.container.addEventListener("click", this.boundStreamFilterRowHandler, true);
+    this.streamRailDragCleanup?.();
+    this.streamRailDragCleanup = bindHorizontalRailDragScroll({
+      container: this.container,
+      trackSelector: ".stream-route-chip-track"
+    });
+    this.bindStreamCardContextMenu();
+  },
+
+  bindStreamCardContextMenu() {
+    if (!this.container || this.streamContextBoundContainer === this.container) {
+      return;
+    }
+    this.streamContextBoundContainer = this.container;
+    this.streamContextMenuCleanup?.();
+    this.streamTouchIntentCleanup?.();
+    this.streamContextMenuCleanup = bindMediaContextMenu(this.container, {
+      cardSelector: ".stream-route-card[data-action='playStream']",
+      onInvoke: (node, pointer) =>
+        this.openStreamCardContextMenu(node, {
+          type: "pointer",
+          x: pointer.x,
+          y: pointer.y
+        })
+    });
+    this.streamTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+      cardSelector: ".stream-route-card[data-action='playStream']",
+      onLongPress: (node) => this.openStreamCardContextMenu(node, { type: "touch" })
+    });
+  },
+
+  getStreamContextMenuOptions() {
+    const options = [
+      {
+        action: "copyLink",
+        label: t("stream_copy_link", {}, "Copy stream link"),
+        icon: "content_copy"
+      }
+    ];
+    const externalOptions = getBrowserExternalPlayerOptions().filter((id) => id !== "disabled");
+    const configured = normalizeBrowserExternalPlayer(
+      PlayerSettingsStore.get().browserExternalPlayer
+    );
+    const usingExternal = configured !== "disabled" && externalOptions.includes(configured);
+    if (usingExternal) {
+      options.push({
+        action: "openInternal",
+        label: t("stream_open_internal", {}, "Open in internal player"),
+        icon: "play_circle_outline"
+      });
+    } else if (externalOptions.length) {
+      options.push({
+        action: "openExternal",
+        label: t("stream_open_external", {}, "Open in external player"),
+        icon: "open_in_new",
+        player: externalOptions[0]
+      });
+    }
+    return options;
+  },
+
+  openStreamCardContextMenu(node, invocation = {}) {
+    const stream = this.streams.find(
+      (entry) => String(entry?.id || "") === String(node?.dataset?.streamId || "")
+    );
+    if (!stream) {
+      return false;
+    }
+    const options = this.getStreamContextMenuOptions();
+    const onSelect = (option) => {
+      void this.activateStreamContextMenuOption(stream, option);
+    };
+    const onDismiss = () => {
+      node.focus?.({ preventScroll: true });
+    };
+    this.streamActionSheet?.destroy?.();
+    this.streamActionSheet = null;
+    this.streamContextMenu?.destroy?.();
+    this.streamContextMenu = null;
+    if (invocation.type === "touch") {
+      this.streamActionSheet = openTouchActionSheet({
+        header: {
+          title: getStreamHeadline(stream) || "Stream",
+          subtitle: [stream.addonName, getStreamQuality(stream)].filter(Boolean).join(" • ")
+        },
+        items: options,
+        onSelect,
+        onDismiss
+      });
+    } else {
+      this.streamContextMenu = openDesktopContextMenu({
+        x: Number(invocation.x || 0),
+        y: Number(invocation.y || 0),
+        anchorRect: invocation.type === "pointer" ? null : node.getBoundingClientRect(),
+        items: options,
+        onSelect,
+        onDismiss
+      });
+    }
+    return true;
+  },
+
+  async activateStreamContextMenuOption(stream, option) {
+    if (!stream || !option) {
+      return false;
+    }
+    if (option.action === "copyLink") {
+      return this.copyStreamLink(stream);
+    }
+    if (option.action === "openInternal") {
+      await this.playStream(stream.id, { skipExternalRoute: true });
+      return true;
+    }
+    if (option.action === "openExternal") {
+      await this.playStream(stream.id, {
+        playerOverride:
+          option.player || getBrowserExternalPlayerOptions().find((id) => id !== "disabled")
+      });
+      return true;
+    }
+    return false;
+  },
+
+  async copyStreamLink(stream) {
+    const mediaUrl = await resolveExternalHandoffMediaUrl(stream, {
+      season: this.params?.season == null ? null : Number(this.params.season),
+      episode: this.params?.episode == null ? null : Number(this.params.episode),
+      onNetworkResolve: () => this.showStreamToast("Preparing stream...")
+    });
+    if (!mediaUrl) {
+      this.showStreamToast("Could not copy stream link.");
+      return false;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(mediaUrl);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = mediaUrl;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.append(area);
+        area.select();
+        const copied = document.execCommand("copy");
+        area.remove();
+        if (!copied) throw new Error("copy failed");
+      }
+      this.showStreamToast("Stream link copied.");
+      return true;
+    } catch (_) {
+      this.showStreamToast("Could not copy stream link.");
+      return false;
+    }
   },
 
   renderOfflineDownloadNotice() {
@@ -3556,7 +3715,9 @@ export const StreamScreen = {
 
   async routeSelectedStream(selected, context = {}) {
     if (!Environment.isBrowser() || context.offlineObjectUrl) return false;
-    const player = normalizeBrowserExternalPlayer(PlayerSettingsStore.get().browserExternalPlayer);
+    const player = normalizeBrowserExternalPlayer(
+      context.playerOverride || PlayerSettingsStore.get().browserExternalPlayer
+    );
     // A player this platform cannot launch is not a reason to ask a debrid
     // provider for a link. Desktop offers no external player at all, and a
     // stored choice from a phone outlives the device it was made on.
@@ -3883,7 +4044,8 @@ export const StreamScreen = {
       offlineObjectUrl = "",
       offlineDownload = null,
       offlineStream = null,
-      skipExternalRoute = false
+      skipExternalRoute = false,
+      playerOverride = ""
     } = {}
   ) {
     this.cancelAutoPlayCountdown();
@@ -3974,7 +4136,8 @@ export const StreamScreen = {
         offlineStream,
         resumePositionMs,
         resumeProgressPercent,
-        resumeDurationMs
+        resumeDurationMs,
+        playerOverride
       }))
     ) {
       if (returnRoute !== "stream") {
@@ -4382,6 +4545,17 @@ export const StreamScreen = {
     streamProber.cancelAll();
     for (const timer of this._probeRetryTimers || []) clearTimeout(timer);
     this._probeRetryTimers?.clear();
+
+    this.streamRailDragCleanup?.();
+    this.streamRailDragCleanup = null;
+    this.streamContextMenuCleanup?.();
+    this.streamContextMenuCleanup = null;
+    this.streamTouchIntentCleanup?.();
+    this.streamTouchIntentCleanup = null;
+    this.streamContextMenu?.destroy?.();
+    this.streamContextMenu = null;
+    this.streamActionSheet?.destroy?.();
+    this.streamActionSheet = null;
     this.clearExternalHandoffWatch();
     this.closeOfflineDownloadOptions?.();
     this.cancelAutoPlayCountdown();

@@ -7,6 +7,7 @@ import { Platform } from "../../../platform/index.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import { filterReleasedItems } from "../../../core/util/releaseInfoUtils.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import { focusWithoutAutoScroll } from "../../components/sidebarNavigation.js";
 import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 import {
@@ -635,7 +636,7 @@ export const CatalogSeeAllScreen = {
     return `
       <button class="catalog-seeall-browser-back" type="button" data-catalog-seeall-back
               aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
-        <span class="material-icons" aria-hidden="true">chevron_left</span>
+        ${renderBackButtonIcon()}
       </button>
     `;
   },

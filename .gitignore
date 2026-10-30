@@ -20,3 +20,4 @@ ecosystem.config.cjs
 scripts/commit-build-poller.mjs
 .DS_Store
 docs/heading-and-navbar.md
+docs/release-flow.md

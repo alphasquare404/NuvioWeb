@@ -13,7 +13,9 @@ import {
   FEATURE_SWITCHES,
   buildRuntimeEnvScript,
   isFeatureEnabled,
-  readEnvProperties
+  parseProperties,
+  readEnvProperties,
+  resolveLocalPropertiesSource
 } from "./envProperties.mjs";
 import { createDebridApiBridgeHandler } from "../services/debrid-api-bridge/bridge.mjs";
 import { createExternalReturnHandler } from "../services/external-return-bridge/bridge.mjs";
@@ -24,6 +26,8 @@ import { createProbeBridgeHandler } from "../services/probe-bridge/bridge.mjs";
 import { createTranscodeBridgeHandler } from "../services/transcode-bridge/bridge.mjs";
 
 import { normalizeRemuxPolicy, normalizeRemuxCacheMiB } from "../js/core/player/remuxPolicy.js";
+
+import { createMdbListBridgeHandler } from "../services/mdblist-bridge/bridge.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -140,6 +144,18 @@ const transcodeBridgeHandler = createTranscodeBridgeHandler({
   monthlyEgressBytes: Number(process.env.RELAY_MONTHLY_EGRESS_BYTES ?? 0) || 0,
   dailyBudgetBytes: Number(process.env.TRANSCODE_DAILY_BUDGET_BYTES ?? 0) || 0
 });
+
+let mdbListBridgeHandler = null;
+
+async function getMdbListBridgeHandler() {
+  if (mdbListBridgeHandler) return mdbListBridgeHandler;
+  const sourcePath = await resolveLocalPropertiesSource({ rootDir });
+  const properties = sourcePath ? parseProperties(await readFile(sourcePath, "utf8")) : {};
+  mdbListBridgeHandler = createMdbListBridgeHandler({
+    environment: { ...properties, ...process.env }
+  });
+  return mdbListBridgeHandler;
+}
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -404,6 +420,12 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (requestUrl.pathname.startsWith("/api/mdblist/")) {
+      await (
+        await getMdbListBridgeHandler()
+      )(request, response);
+      return;
+    }
     if (requestUrl.pathname === "/nuvio.env.js") {
       const { env } = await readEnvProperties({ rootDir });
       // This is where a deployment's one switch becomes the app's answer. The

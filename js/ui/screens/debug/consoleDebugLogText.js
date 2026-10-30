@@ -1,5 +1,3 @@
-/* global __NUVIO_BUILD_STAMP__ */
-
 /**
  * How a captured console event is read, on screen and in the clipboard.
  *

@@ -20,12 +20,20 @@ export async function readAppMetadata() {
   const fork = packageJson?.nuvioFork || {};
   const sourceUrl = sourceRepositoryUrl || "https://github.com/alphasquare404/NuvioWeb";
   const version = String(packageJson?.version || "0.0.0").trim() || "0.0.0";
+  const channel = String(process.env.NUVIO_BUILD_CHANNEL || "local")
+    .trim()
+    .toLowerCase();
+  const commit = String(process.env.NUVIO_BUILD_COMMIT || "")
+    .trim()
+    .slice(0, 7);
   return {
     name: String(packageJson?.name || "").trim(),
     version,
     identity: {
       name: "NuvioWeb",
       version,
+      channel: ["nightly", "stable", "local"].includes(channel) ? channel : "local",
+      commit,
       upstreamVersion: String(fork.upstreamVersion || "0.3.35").trim() || "0.3.35",
       maintainer: String(fork.maintainer || "alphasquare").trim() || "alphasquare",
       sourceRepositoryUrl: sourceUrl,

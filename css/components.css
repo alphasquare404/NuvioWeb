@@ -765,7 +765,7 @@ button:focus-visible {
   background: #ffb300;
   color: #ffffff;
   font-size: 28px;
-  border: 4px solid var(--bg-color);
+  border: 0;
 }
 
 .profile-grid-compact .profile-primary-dot {
@@ -985,6 +985,12 @@ button:focus-visible {
   border: 0;
   opacity: 0;
   cursor: text;
+  /* iOS still paints the native caret on a transparent input. The PIN boxes
+     draw the only cursor, so keep the native text/caret fully invisible. */
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  caret-color: transparent !important;
+  text-shadow: none !important;
 }
 
 .profile-pin-box-row.is-shaking {
@@ -1047,9 +1053,22 @@ button:focus-visible {
     transform 140ms ease;
 }
 
+.profile-pin-box {
+  position: relative;
+}
+
+/* The dot stays centred in the box but out of the flex flow. While empty it
+   must not take half of the box's centre away from the cursor. */
+.profile-pin-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.72);
+}
+
 .profile-pin-box.is-filled .profile-pin-dot {
   opacity: 1;
-  transform: scale(1);
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .profile-pin-box.is-active .profile-pin-cursor {
@@ -16705,6 +16724,55 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .series-episode-status.idle {
   border: 2px dashed rgba(179, 179, 179, 0.9);
   box-sizing: border-box;
+}
+
+/* The status circle is also the direct watched/unwatched control on browser
+   episode cards. It keeps the existing badge geometry and check glyph. */
+.series-episode-watch-toggle {
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease,
+    filter 140ms ease;
+}
+
+.series-episode-watch-toggle.complete {
+  border-color: transparent;
+  background: var(--secondary-color);
+  color: var(--on-secondary);
+}
+
+.series-episode-watch-toggle.idle {
+  border: 2px dashed rgba(179, 179, 179, 0.9);
+  background: transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .series-episode-watch-toggle:hover {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.14);
+    color: var(--detail-text-primary);
+  }
+
+  /* Watched keeps its Appearance accent fill on hover. Brightness plus the
+     same pale rim makes it interactive without looking unwatched. */
+  .series-episode-watch-toggle.complete:hover {
+    background: var(--secondary-color);
+    color: var(--on-secondary);
+    filter: brightness(1.14);
+  }
+}
+
+.series-episode-watch-toggle:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
 }
 
 .series-episode-unavailable {

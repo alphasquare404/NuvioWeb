@@ -6,6 +6,8 @@ test("app identity preserves fork provenance while using fork-owned links", () =
   const identity = createAppIdentity({
     name: "NuvioWeb",
     version: "0.1.0",
+    channel: "nightly",
+    commit: "abc1234",
     upstreamVersion: "0.3.35",
     maintainer: "alphasquare",
     sourceRepositoryUrl: "https://github.com/alphasquare404/NuvioWeb",
@@ -17,11 +19,22 @@ test("app identity preserves fork provenance while using fork-owned links", () =
   });
 
   assert.equal(identity.version, "0.1.0");
+  assert.equal(identity.channel, "nightly");
+  assert.equal(identity.commit, "abc1234");
   assert.equal(identity.upstreamVersion, "0.3.35");
   assert.equal(identity.maintainer, "alphasquare");
   assert.equal(identity.sourceRepositoryUrl, "https://github.com/alphasquare404/NuvioWeb");
-  assert.equal(identity.contributorsUrl, "https://github.com/alphasquare404/NuvioWeb/graphs/contributors");
+  assert.equal(
+    identity.contributorsUrl,
+    "https://github.com/alphasquare404/NuvioWeb/graphs/contributors"
+  );
   assert.equal(identity.upstreamRepositoryUrl, "https://github.com/NuvioMedia/NuvioWeb");
+});
+
+test("app identity defaults a local build without a commit", () => {
+  const identity = createAppIdentity({});
+  assert.equal(identity.channel, "local");
+  assert.equal(identity.commit, "");
 });
 
 test("app identity rejects non-HTTPS runtime links", () => {

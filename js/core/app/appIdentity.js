@@ -3,6 +3,8 @@
 const FALLBACK_IDENTITY = {
   name: "NuvioWeb",
   version: "0.0.0",
+  channel: "local",
+  commit: "",
   upstreamVersion: "0.3.35",
   maintainer: "alphasquare",
   sourceRepositoryUrl: "https://github.com/alphasquare404/NuvioWeb",
@@ -31,13 +33,18 @@ export function createAppIdentity(raw = {}) {
   return Object.freeze({
     name: text(raw.name, FALLBACK_IDENTITY.name),
     version: text(raw.version, FALLBACK_IDENTITY.version),
+    channel: text(raw.channel, FALLBACK_IDENTITY.channel),
+    commit: text(raw.commit, FALLBACK_IDENTITY.commit),
     upstreamVersion: text(raw.upstreamVersion, FALLBACK_IDENTITY.upstreamVersion),
     maintainer: text(raw.maintainer, FALLBACK_IDENTITY.maintainer),
     sourceRepositoryUrl: httpsUrl(raw.sourceRepositoryUrl, FALLBACK_IDENTITY.sourceRepositoryUrl),
     issuesUrl: httpsUrl(raw.issuesUrl, FALLBACK_IDENTITY.issuesUrl),
     contributorsUrl: httpsUrl(raw.contributorsUrl, FALLBACK_IDENTITY.contributorsUrl),
     licenseUrl: httpsUrl(raw.licenseUrl, FALLBACK_IDENTITY.licenseUrl),
-    upstreamRepositoryUrl: httpsUrl(raw.upstreamRepositoryUrl, FALLBACK_IDENTITY.upstreamRepositoryUrl),
+    upstreamRepositoryUrl: httpsUrl(
+      raw.upstreamRepositoryUrl,
+      FALLBACK_IDENTITY.upstreamRepositoryUrl
+    ),
     latestReleaseUrl: httpsUrl(raw.latestReleaseUrl, FALLBACK_IDENTITY.latestReleaseUrl)
   });
 }

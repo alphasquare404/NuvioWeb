@@ -95,6 +95,7 @@ import {
   renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
+import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import { openDesktopContextMenu } from "../../components/desktopContextMenu.js";
@@ -126,6 +127,7 @@ import {
   shouldPaintRouteHandoff
 } from "../../../core/streams/streamAutoResolve.js";
 import { renderRouteHandoffShell } from "../../components/routeHandoffShell.js";
+import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 import {
   createOfflineMediaId,
   canQueueBrowserOfflineDownload,
@@ -1577,7 +1579,7 @@ function detailUsesTouchLayout() {
 // Trakt and the local library keep a named list instead, so there the question
 // is about that one list.
 function librarySnapshotHasMembership(listMembership = {}, sourceMode) {
-  if (sourceMode === LibrarySourceMode.SIMKL) {
+  if (sourceMode === LibrarySourceMode.SIMKL || sourceMode === LibrarySourceMode.MDBLIST) {
     return Object.values(listMembership).some(Boolean);
   }
   const key = sourceMode === LibrarySourceMode.TRAKT ? "watchlist" : "local";
@@ -4522,7 +4524,7 @@ export const MetaDetailsScreen = {
     return `
       <button class="detail-desktop-back-button" type="button" data-detail-back
               aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-        <span class="material-icons" aria-hidden="true">chevron_left</span>
+        ${renderBackButtonIcon()}
       </button>
     `;
   },
@@ -4535,7 +4537,7 @@ export const MetaDetailsScreen = {
       <header class="detail-heading" data-detail-heading>
         <button class="detail-heading-back" type="button" data-detail-back
                 aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
-          <span class="material-icons" aria-hidden="true">chevron_left</span>
+          ${renderBackButtonIcon()}
         </button>
         <div class="detail-heading-brand" data-detail-heading-brand aria-hidden="true"></div>
         ${renderNavigationRevealButton()}
@@ -4769,12 +4771,13 @@ export const MetaDetailsScreen = {
     // It moves below the artwork instead. A mouse keeps the cinema framing, and
     // TV keeps the single collapsible body its trailer transition animates.
     const heroMetaBelowArtwork = detailUsesTouchLayout();
+    const heroDescriptionHasToggle = heroMetaBelowArtwork || Platform.isBrowser();
     const heroMeta = `
       ${this.renderResumeIndicator()}
       ${creditLine ? `<p class="series-detail-support">${escapeHtml(creditPrefix)}: ${escapeHtml(creditLine)}</p>` : ""}
       ${externalRatings}
       ${
-        heroMetaBelowArtwork
+        heroDescriptionHasToggle
           ? `<p class="series-detail-description">${escapeHtml(
               meta.description || t("detail.noDescription", {}, "No description.")
             )}<button class="detail-description-toggle focusable" type="button"
@@ -6429,6 +6432,9 @@ export const MetaDetailsScreen = {
       episode.offlineDownloadId ||
       (offlineEpisodeMediaId && this.offlineEpisodeMediaIds?.has(offlineEpisodeMediaId))
     );
+    const episodeWatchLabel = isWatched
+      ? t("episodes_mark_unwatched", {}, "Mark as unwatched")
+      : t("episodes_mark_watched", {}, "Mark as watched");
     const metaParts = [
       episode.runtimeMinutes > 0 ? renderEpisodeRuntimeLabel(episode.runtimeMinutes) : "",
       rating != null
@@ -6447,7 +6453,21 @@ export const MetaDetailsScreen = {
         <div class="series-episode-thumb">
           <div class="series-episode-image${shouldBlur ? " is-blurred" : ""}"${episode.thumbnail ? ` data-thumb="${escapeHtml(episode.thumbnail)}"` : ""}></div>
           <div class="series-episode-overlay"></div>
-          ${isWatched ? `<div class="series-episode-status complete">${renderWatchedBadgeGlyph()}</div>` : progressRatio < 0.02 ? `<div class="series-episode-status idle"></div>` : ""}
+          ${
+            Platform.isBrowser()
+              ? `<button type="button"
+                         class="series-episode-status series-episode-watch-toggle ${isWatched ? "complete" : "idle"}"
+                         data-action="toggleEpisodeWatched"
+                         data-video-id="${escapeAttribute(episode.id)}"
+                         aria-label="${escapeAttribute(episodeWatchLabel)}"
+                         aria-pressed="${isWatched ? "true" : "false"}"
+                         title="${escapeAttribute(episodeWatchLabel)}">${isWatched ? renderWatchedBadgeGlyph() : ""}</button>`
+              : isWatched
+                ? `<div class="series-episode-status complete">${renderWatchedBadgeGlyph()}</div>`
+                : progressRatio < 0.02
+                  ? `<div class="series-episode-status idle"></div>`
+                  : ""
+          }
           ${Platform.isBrowser() && isDownloaded ? `<span class="series-episode-offline-status" role="img" aria-label="${escapeAttribute(t("offline.downloaded", {}, "Downloaded"))}"><span class="material-icons" aria-hidden="true">download</span></span>` : ""}
           ${canOfferOfflineSubtitleHandoff(this.getOfflineSubtitlesForEpisode(episode)) ? `<button type="button" class="series-episode-subtitle-action" data-episode-subtitle="${escapeAttribute(episode.id)}" aria-label="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}" title="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}"><span class="material-icons" aria-hidden="true">closed_caption</span></button>` : ""}
           ${isUnavailable ? `<div class="series-episode-unavailable">${escapeHtml(t("episodes_unavailable", {}, "Unavailable").toUpperCase())}</div>` : ""}
@@ -6748,8 +6768,33 @@ export const MetaDetailsScreen = {
       Boolean(LayoutPreferences.get().blurUnwatchedEpisodes) && !isWatched
     );
 
+    const watchLabel = isWatched
+      ? t("episodes_mark_unwatched", {}, "Mark as unwatched")
+      : t("episodes_mark_watched", {}, "Mark as watched");
     let statusNode = thumb.querySelector(".series-episode-status");
-    if (isWatched) {
+    if (Platform.isBrowser()) {
+      if (
+        !(statusNode instanceof HTMLButtonElement) ||
+        !statusNode.classList.contains("series-episode-watch-toggle")
+      ) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "series-episode-status series-episode-watch-toggle";
+        if (statusNode instanceof HTMLElement) {
+          statusNode.replaceWith(button);
+        } else {
+          thumb.appendChild(button);
+        }
+        statusNode = button;
+      }
+      statusNode.className = `series-episode-status series-episode-watch-toggle ${isWatched ? "complete" : "idle"}`;
+      statusNode.dataset.action = "toggleEpisodeWatched";
+      statusNode.dataset.videoId = videoId;
+      statusNode.setAttribute("aria-label", watchLabel);
+      statusNode.setAttribute("aria-pressed", isWatched ? "true" : "false");
+      statusNode.title = watchLabel;
+      statusNode.innerHTML = isWatched ? renderWatchedBadgeGlyph() : "";
+    } else if (isWatched) {
       if (!(statusNode instanceof HTMLElement)) {
         statusNode = document.createElement("div");
         thumb.appendChild(statusNode);
@@ -6879,7 +6924,7 @@ export const MetaDetailsScreen = {
     });
     options.push({
       action: "playManually",
-      label: t("play_manually", {}, "Play manually")
+      label: t("choose_stream", {}, "Choose stream")
     });
     // Per episode, because that is the file the subtitle belongs to. The hero
     // button only ever covers whichever episode the hero itself would play.
@@ -7209,7 +7254,9 @@ export const MetaDetailsScreen = {
     if (sourceMode === LibrarySourceMode.SIMKL) {
       return "simkl:status:plantowatch";
     }
-    return sourceMode === LibrarySourceMode.TRAKT ? "watchlist" : "local";
+    return sourceMode === LibrarySourceMode.TRAKT || sourceMode === LibrarySourceMode.MDBLIST
+      ? "watchlist"
+      : "local";
   },
 
   decorateDesktopLibraryDestinationDialog() {
@@ -7455,6 +7502,161 @@ export const MetaDetailsScreen = {
     );
   },
 
+  bindHeroTouchHold() {
+    if (!Platform.isBrowser() || !this.container) {
+      return null;
+    }
+    const cardSelector = ".series-primary-btn[data-action='playDefault']";
+    const longPressMs = 550;
+    const moveTolerancePx = 10;
+    let active = null;
+    let ignoreClickUntil = 0;
+    const now = () => globalThis.performance?.now?.() ?? Date.now();
+
+    const clearTimer = () => {
+      if (active?.timer) {
+        clearTimeout(active.timer);
+        active.timer = null;
+      }
+    };
+
+    const onTouchStart = (event) => {
+      if (event.touches?.length !== 1) return;
+      const target = event.target instanceof Element ? event.target.closest(cardSelector) : null;
+      if (!(target instanceof HTMLElement) || !this.container?.contains(target)) return;
+      // Claim the gesture before WebKit gets a chance to start selecting the
+      // button label or raise its callout. Tap and hold are answered below.
+      event.preventDefault();
+      clearTimer();
+      this.guardHeroHoldTextSelection();
+      active = {
+        node: target,
+        pointerId: event.touches[0].identifier,
+        startX: event.touches[0].clientX,
+        startY: event.touches[0].clientY,
+        startedAt: now(),
+        held: false,
+        timer: null
+      };
+      active.timer = setTimeout(() => {
+        if (!active) return;
+        active.held = true;
+        active.timer = null;
+        this.guardHeroHoldTextSelection();
+      }, longPressMs);
+    };
+
+    const onTouchMove = (event) => {
+      if (!active) return;
+      const touch = event.touches?.[0];
+      if (!touch || touch.identifier !== active.pointerId) return;
+      const dx = Number(touch.clientX) - active.startX;
+      const dy = Number(touch.clientY) - active.startY;
+      event.preventDefault();
+      if (Math.hypot(dx, dy) > moveTolerancePx) {
+        clearTimer();
+        active = null;
+      }
+    };
+
+    const finish = () => {
+      if (!active) return null;
+      clearTimer();
+      const node = active.node;
+      const held = active.held || now() - active.startedAt >= longPressMs;
+      active = null;
+      ignoreClickUntil = now() + 800;
+      return { node, held };
+    };
+
+    const onTouchEnd = (event) => {
+      const result = finish();
+      if (!result) return;
+      event.preventDefault();
+      this.guardHeroHoldTextSelection();
+      globalThis.getSelection?.()?.removeAllRanges?.();
+      void this.playDefaultFromHero(result.held ? { manualSelection: true } : undefined).catch(
+        (error) =>
+          console.warn(
+            result.held
+              ? "Failed to open stream selection from hero hold"
+              : "Failed to open hero stream",
+            error
+          )
+      );
+    };
+
+    const onTouchCancel = () => {
+      clearTimer();
+      active = null;
+    };
+
+    const onClick = (event) => {
+      if (now() > ignoreClickUntil) return;
+      const target = event.target instanceof Element ? event.target.closest(cardSelector) : null;
+      if (!target || !this.container?.contains(target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+    };
+
+    this.container.addEventListener("touchstart", onTouchStart, {
+      capture: true,
+      passive: false
+    });
+    this.container.addEventListener("touchmove", onTouchMove, {
+      capture: true,
+      passive: false
+    });
+    this.container.addEventListener("touchend", onTouchEnd, true);
+    this.container.addEventListener("touchcancel", onTouchCancel, true);
+    this.container.addEventListener("click", onClick, true);
+    return () => {
+      clearTimer();
+      active = null;
+      this.container?.removeEventListener("touchstart", onTouchStart, true);
+      this.container?.removeEventListener("touchmove", onTouchMove, true);
+      this.container?.removeEventListener("touchend", onTouchEnd, true);
+      this.container?.removeEventListener("touchcancel", onTouchCancel, true);
+      this.container?.removeEventListener("click", onClick, true);
+    };
+  },
+
+  guardHeroHoldTextSelection() {
+    const root = document.documentElement;
+    root.classList.add("is-hero-stream-hold");
+    if (!this.heroTextSelectionChangeHandler) {
+      this.heroTextSelectionChangeHandler = () => {
+        if (!root.classList.contains("is-hero-stream-hold")) return;
+        globalThis.getSelection?.()?.removeAllRanges?.();
+      };
+      document.addEventListener("selectionchange", this.heroTextSelectionChangeHandler);
+    }
+    // Keep selection disabled beyond the release, across the route handoff:
+    // browsers can commit a long-press selection after pointerup, when the
+    // Stream page is already painting underneath it.
+    if (this.heroTextSelectionGuardTimer) {
+      clearTimeout(this.heroTextSelectionGuardTimer);
+    }
+    this.heroTextSelectionGuardTimer = setTimeout(() => {
+      this.releaseHeroSelectionGuard();
+    }, 2200);
+    globalThis.getSelection?.()?.removeAllRanges?.();
+  },
+
+  releaseHeroSelectionGuard() {
+    document.documentElement.classList.remove("is-hero-stream-hold");
+    if (this.heroTextSelectionChangeHandler) {
+      document.removeEventListener("selectionchange", this.heroTextSelectionChangeHandler);
+      this.heroTextSelectionChangeHandler = null;
+    }
+    if (this.heroTextSelectionGuardTimer) {
+      clearTimeout(this.heroTextSelectionGuardTimer);
+      this.heroTextSelectionGuardTimer = null;
+    }
+    globalThis.getSelection?.()?.removeAllRanges?.();
+  },
+
   cancelPendingHeroHold() {
     if (this.pendingHeroHoldTimer) {
       clearTimeout(this.pendingHeroHoldTimer);
@@ -7698,7 +7900,7 @@ export const MetaDetailsScreen = {
           return;
         }
         const desiredMembership =
-          sourceMode === LibrarySourceMode.SIMKL
+          sourceMode === LibrarySourceMode.SIMKL || sourceMode === LibrarySourceMode.MDBLIST
             ? Object.fromEntries(
                 tabs
                   .filter((tab) => tab.isMembershipDestination !== false)
@@ -8762,6 +8964,11 @@ export const MetaDetailsScreen = {
     }
     const useTmdbRecommendationPoster =
       String(railKey || "").startsWith("morelike:") && this.moreLikeThisSource === "tmdb";
+    // Collection cards are poster cards too. Their TMDB payload also contains
+    // a backdrop, and preferring it made the collection rail look like a set
+    // of stills rather than the films' posters.
+    const usePosterFirst =
+      useTmdbRecommendationPoster || String(railKey || "").startsWith("collection:");
     const cards = items
       .map((rawItem) => {
         const item = normalizePreviewItem(rawItem, fallbackType);
@@ -8769,13 +8976,11 @@ export const MetaDetailsScreen = {
         // TMDB recommendations provide distinct portrait and backdrop paths. The
         // desktop recommendation rail is a poster rail, so never substitute a
         // backdrop for a missing TMDB poster.
-        const primaryImage = useTmdbRecommendationPoster
-          ? item.poster || ""
+        const primaryImage = usePosterFirst
+          ? item.poster || item.landscapePoster || ""
           : item.landscapePoster || item.poster || "";
         const fallbackImage =
-          !useTmdbRecommendationPoster && item.poster && item.poster !== primaryImage
-            ? item.poster
-            : "";
+          !usePosterFirst && item.poster && item.poster !== primaryImage ? item.poster : "";
         return `
       <article class="detail-morelike-card focusable"${Platform.isBrowser() ? ' role="button"' : ""}
            data-action="openMoreLikeDetail"
@@ -8890,6 +9095,18 @@ export const MetaDetailsScreen = {
           this.render(this.meta, { selector: `.series-season-btn[data-season="${season}"]` });
         }
       }
+    });
+  },
+
+  bindDesktopSecondaryRailDragScrolling() {
+    if (!Platform.isBrowser() || !this.container) {
+      return;
+    }
+    this.desktopSecondaryRailDragCleanup?.();
+    this.desktopSecondaryRailDragCleanup = bindHorizontalRailDragScroll({
+      container: this.container,
+      trackSelector:
+        ".movie-cast-track, .series-cast-track, .detail-company-track, .detail-comments-modes, .detail-comments-track, .series-insight-tabs, .series-rating-seasons, .series-episode-ratings-grid"
     });
   },
 
@@ -9349,6 +9566,37 @@ export const MetaDetailsScreen = {
       this.bindDesktopDetailActions();
       this.bindDesktopInsightTabActions();
       this.bindDesktopCastPersonActions();
+      if (!this.boundHeroSelectStartHandler && this.container) {
+        this.boundHeroSelectStartHandler = (event) => {
+          const target =
+            event.target instanceof Element
+              ? event.target.closest(".series-primary-btn[data-action='playDefault']")
+              : null;
+          if (!target || !this.container?.contains(target)) return;
+          event.preventDefault();
+          globalThis.getSelection?.()?.removeAllRanges?.();
+        };
+        this.container.addEventListener("selectstart", this.boundHeroSelectStartHandler, true);
+      }
+      if (!this.boundHeroSelectionPointerDownHandler && this.container) {
+        // Selection can begin before the hold threshold is reached. Start the
+        // guard as soon as a finger lands on the hero button, not only once the
+        // long-press callback fires.
+        this.boundHeroSelectionPointerDownHandler = (event) => {
+          if (event.pointerType !== "touch") return;
+          const target =
+            event.target instanceof Element
+              ? event.target.closest(".series-primary-btn[data-action='playDefault']")
+              : null;
+          if (!target || !this.container?.contains(target)) return;
+          this.guardHeroHoldTextSelection();
+        };
+        this.container.addEventListener(
+          "pointerdown",
+          this.boundHeroSelectionPointerDownHandler,
+          true
+        );
+      }
       const seasonDownloadButton = this.container?.querySelector("[data-action='downloadSeason']");
       if (seasonDownloadButton instanceof HTMLButtonElement) {
         seasonDownloadButton.onclick = () => void this.openSeasonDownloadDialog();
@@ -9368,6 +9616,25 @@ export const MetaDetailsScreen = {
         };
         this.container.addEventListener("click", this.boundEpisodeSubtitleActionHandler, true);
       }
+      if (Platform.isBrowser() && !this.boundEpisodeWatchActionHandler) {
+        this.boundEpisodeWatchActionHandler = (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          const button = target?.closest?.(
+            "button[data-action='toggleEpisodeWatched'].series-episode-watch-toggle"
+          );
+          if (!button || !this.container?.contains(button)) return;
+          // The card itself opens the stream picker. Claim the circle before
+          // the rail's card click sees it.
+          event.preventDefault();
+          event.stopPropagation();
+          const episode = this.getEpisodeByVideoId(button.dataset.videoId);
+          if (!episode) return;
+          void this.setEpisodeWatchedState(episode, !this.isEpisodeMarkedWatched(episode)).catch(
+            (error) => console.warn("Failed to toggle episode watched state", error)
+          );
+        };
+        this.container.addEventListener("click", this.boundEpisodeWatchActionHandler, true);
+      }
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
         cardSelector:
@@ -9384,10 +9651,21 @@ export const MetaDetailsScreen = {
           return this.openEpisodeHoldMenu(node, { invocation: { type: "touch" } });
         }
       });
+      this.heroTouchHoldCleanup?.();
+      this.heroTouchHoldCleanup = this.bindHeroTouchHold();
       this.episodeContextMenuCleanup?.();
       this.episodeContextMenuCleanup = bindMediaContextMenu(this.container, {
-        cardSelector: ".series-episode-card[data-action='openEpisodeStreams']",
+        cardSelector:
+          ".series-episode-card[data-action='openEpisodeStreams'], .series-primary-btn[data-action='playDefault']",
         onInvoke: (node, pointer) => {
+          if (node?.matches?.(".series-primary-btn[data-action='playDefault']")) {
+            // Right-clicking the hero button opens the stream picker directly;
+            // the context menu itself is intentionally skipped.
+            void this.playDefaultFromHero({ manualSelection: true }).catch((error) =>
+              console.warn("Failed to open stream selection from hero context menu", error)
+            );
+            return;
+          }
           this.openEpisodeHoldMenu(node, {
             invocation: { type: "pointer", x: pointer.x, y: pointer.y }
           });
@@ -9437,6 +9715,7 @@ export const MetaDetailsScreen = {
     }
     this.bindDesktopSeasonDragScrolling();
     this.bindDesktopPreviewRailDragScrolling();
+    this.bindDesktopSecondaryRailDragScrolling();
     if (this.detailFocusHandler) {
       this.container.removeEventListener("focusin", this.detailFocusHandler, true);
     }
@@ -13017,6 +13296,23 @@ export const MetaDetailsScreen = {
   },
 
   cleanup() {
+    this.heroTouchHoldCleanup?.();
+    this.heroTouchHoldCleanup = null;
+    // The selection guard intentionally outlives this screen for its short
+    // timer: Detail unmounts while Stream paints, and releasing it here would
+    // let the browser commit the long-press selection on the incoming page.
+    if (this.boundHeroSelectStartHandler && this.container) {
+      this.container.removeEventListener("selectstart", this.boundHeroSelectStartHandler, true);
+      this.boundHeroSelectStartHandler = null;
+    }
+    if (this.boundHeroSelectionPointerDownHandler && this.container) {
+      this.container.removeEventListener(
+        "pointerdown",
+        this.boundHeroSelectionPointerDownHandler,
+        true
+      );
+      this.boundHeroSelectionPointerDownHandler = null;
+    }
     this.autoOpenContinueWatchingStreamReady = false;
     this.routeHandoffPending = false;
     this.renderedRouteHandoffMarkup = null;
@@ -13028,6 +13324,8 @@ export const MetaDetailsScreen = {
     this.episodeContextMenuCleanup = null;
     this.browserHorizontalTabScrollCleanup?.();
     this.browserHorizontalTabScrollCleanup = null;
+    this.desktopSecondaryRailDragCleanup?.();
+    this.desktopSecondaryRailDragCleanup = null;
     this.detailBrandObserver?.disconnect();
     this.detailBrandObserver = null;
     this.detailHeadingCleanup?.();
@@ -13128,6 +13426,10 @@ export const MetaDetailsScreen = {
     if (this.boundEpisodeSubtitleActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundEpisodeSubtitleActionHandler, true);
       this.boundEpisodeSubtitleActionHandler = null;
+    }
+    if (this.boundEpisodeWatchActionHandler && this.container) {
+      this.container.removeEventListener("click", this.boundEpisodeWatchActionHandler, true);
+      this.boundEpisodeWatchActionHandler = null;
     }
     if (this.boundDesktopInsightTabActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopInsightTabActionHandler);

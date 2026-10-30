@@ -14,6 +14,8 @@ const { WatchedItemsStore } = await import("../local/watchedItemsStore.js");
 const { TraktSettingsStore, WatchProgressSource } = await import("../local/traktSettingsStore.js");
 const { SimklAuthStore } = await import("../local/simklAuthStore.js");
 const { SimklSyncService } = await import("./simklSyncService.js");
+const { MdbListAuthStore } = await import("../local/mdbListAuthStore.js");
+const { MdbListSyncService } = await import("./mdbListSyncService.js");
 
 test("marking watched commits the local row before a tracking provider completes", async () => {
   values.clear();
@@ -194,6 +196,45 @@ test("un-marking hides the provider's row straight away", async () => {
 
 // And the hold is not permanent: once the provider's list drops the row, the
 // record has done its job and is forgotten, so a later re-watch is not swallowed.
+test("MDBList supplies watched rows and hides local rows from another source", async () => {
+  values.clear();
+  TraktSettingsStore.set({ watchProgressSource: WatchProgressSource.MDBLIST });
+  MdbListAuthStore.saveToken({
+    access_token: "mdb-access",
+    refresh_token: "mdb-refresh",
+    expires_in: 3600
+  });
+  await watchedItemsRepository.mark(
+    {
+      contentId: "nuvio-local",
+      contentType: "movie",
+      title: "Local old",
+      source: "nuvio_sync"
+    },
+    { skipTrackingWrite: true }
+  );
+  const originalGetWatched = MdbListSyncService.getWatchedItems;
+  MdbListSyncService.getWatchedItems = async () => [
+    {
+      contentId: "tt777",
+      contentType: "movie",
+      source: "mdblist_history",
+      title: "MDBList watched",
+      watchedAt: 1_790_000_000_000
+    }
+  ];
+  try {
+    const all = await watchedItemsRepository.getAll();
+    assert.equal(all.length, 1);
+    assert.equal(all[0].contentId, "tt777");
+    assert.equal(all[0].source, "mdblist_history");
+  } finally {
+    MdbListSyncService.getWatchedItems = originalGetWatched;
+    MdbListAuthStore.clearAuth();
+    values.clear();
+  }
+});
+
 test("the hold is forgotten once the provider agrees", async () => {
   values.clear();
   TraktSettingsStore.set({ watchProgressSource: WatchProgressSource.SIMKL });

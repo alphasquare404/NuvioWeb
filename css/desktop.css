@@ -453,48 +453,16 @@ html.desktop-browser {
 }
 
 .desktop-browser .detail-trailer-modal-loading .player-loading-spinner-ring {
+  position: relative;
+  inset: auto;
   width: 32px;
   height: 32px;
-}
-
-.desktop-browser .detail-trailer-modal-close {
-  position: absolute;
-  z-index: 2;
-  top: -18px;
-  right: -18px;
-  display: inline-grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  color: #fff;
-  background: rgba(18, 22, 28, 0.94);
-  font-size: 28px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.desktop-browser .detail-trailer-modal-close:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.86);
-  outline-offset: 3px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .desktop-browser .detail-trailer-modal-close:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
+  margin: 0;
 }
 
 @media (max-width: 700px) {
   .desktop-browser .detail-trailer-modal-backdrop {
     padding: 22px;
-  }
-
-  .desktop-browser .detail-trailer-modal-close {
-    top: 10px;
-    right: 10px;
   }
 }
 
@@ -656,8 +624,8 @@ html.desktop-browser {
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card {
-  min-height: clamp(520px, 70vh, 780px);
-  height: clamp(520px, 70vh, 780px);
+  min-height: 85vh;
+  height: 85vh;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-backdrop {
@@ -665,15 +633,14 @@ html.desktop-browser {
   opacity: 1;
 }
 
+.desktop-browser
+  .home-screen-shell.desktop-navigation-enabled
+  .home-hero-logo {
+  object-position: left 75%;
+}
+
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::before {
-  background: linear-gradient(
-    90deg,
-    rgba(5, 5, 6, 0.96) 0%,
-    rgba(5, 5, 6, 0.88) 26%,
-    rgba(5, 5, 6, 0.55) 48%,
-    rgba(5, 5, 6, 0.16) 72%,
-    rgba(5, 5, 6, 0) 100%
-  );
+  background: none;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::after {
@@ -765,14 +732,7 @@ html.desktop-browser {
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::before {
   width: 100%;
-  background: linear-gradient(
-    90deg,
-    rgba(5, 5, 6, 0.96) 0%,
-    rgba(5, 5, 6, 0.88) 26%,
-    rgba(5, 5, 6, 0.55) 48%,
-    rgba(5, 5, 6, 0.16) 72%,
-    rgba(5, 5, 6, 0) 100%
-  );
+  background: none;
 }
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::after {
@@ -1221,7 +1181,6 @@ html.desktop-browser {
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-poster-card:not(.home-collection-card):hover .home-poster-frame {
     transform: scale(1.04);
-    border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
   }
 }
@@ -1312,7 +1271,6 @@ html.desktop-browser {
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-collection-card:hover .home-poster-frame {
     transform: scale(1.04);
-    border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
   }
 }
@@ -1355,6 +1313,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #folderDetail .desktop-folder-detail-shell {
+  --folder-detail-rail-gutter: clamp(24px, 3.4vw, 64px);
   position: relative;
   z-index: 1;
   box-sizing: border-box;
@@ -1604,10 +1563,28 @@ html.desktop-browser {
   gap: 14px;
   padding: 10px 2px 16px;
   cursor: grab;
-  /* A reorder handle.s whole gesture is the vertical drag. pan-y gave exactly
-     that to the page scroller, which then cancelled the pointer and ended the
-     drag before it began. */
-  touch-action: none;
+  /* Touch keeps native horizontal panning; mouse drag is handled in JS. */
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The phone rail is full-bleed: its scrollport reaches the viewport edges
+   while the first card still starts on the page gutter. Tablet and desktop
+   kept the scrollport inside the shell padding, so a partial card was cut at
+   the content edge with a visible strip beyond it. Match the phone geometry
+   above 600px; the phone rule already owns its own edges. */
+@media (min-width: 601px) {
+  .desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track {
+    box-sizing: border-box;
+    width: calc(100% + 2 * var(--folder-detail-rail-gutter));
+    margin-inline: calc(-1 * var(--folder-detail-rail-gutter));
+    padding-inline: var(--folder-detail-rail-gutter);
+  }
+}
+
+.desktop-browser .horizontal-rail-drag-active {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .desktop-browser #folderDetail .desktop-folder-detail-rows .folder-row-track .seeall-card {
@@ -1626,13 +1603,13 @@ html.desktop-browser {
 
   .desktop-browser #folderDetail .desktop-folder-detail-shell .seeall-card:hover .seeall-card-poster-wrap {
     transform: scale(1.04);
-    border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
   }
 }
 
 @media (max-width: 900px) {
   .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    --folder-detail-rail-gutter: 24px;
     padding-inline: 24px;
   }
 
@@ -2234,17 +2211,24 @@ html.desktop-browser {
 .desktop-browser #detail .series-detail-backdrop,
 .desktop-browser #detail .series-detail-vignette {
   bottom: auto;
-  height: clamp(600px, 72vh, 840px);
+  height: 85vh;
+}
+
+.desktop-browser #detail .series-detail-backdrop {
+  background-position: center center;
+  background-size: cover;
+}
+
+.desktop-browser #detail .series-detail-logo {
+  object-position: left 75%;
 }
 
 .desktop-browser #detail .series-detail-vignette {
-  background:
-    linear-gradient(90deg, rgba(4, 7, 11, 0.94) 0%, rgba(8, 12, 17, 0.72) 42%, rgba(8, 12, 17, 0.25) 72%, rgba(8, 12, 17, 0.08) 100%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.08) 42%, var(--detail-bg) 100%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.08) 42%, var(--detail-bg) 100%);
 }
 
 .desktop-browser #detail .detail-bottom-shadow {
-  top: clamp(440px, 54vh, 660px);
+  top: calc(85vh - clamp(160px, 24vh, 260px));
   bottom: auto;
   height: clamp(160px, 24vh, 260px);
   opacity: 1;
@@ -2262,7 +2246,7 @@ html.desktop-browser {
 }
 
 .desktop-browser #detail .detail-hero-section {
-  min-height: clamp(600px, 72vh, 840px);
+  min-height: 85vh;
   height: auto;
   padding: 0 clamp(20px, 3.4vw, 64px) clamp(48px, 5vh, 72px);
 }
@@ -2574,6 +2558,19 @@ html.desktop-browser {
   font-size: 16px;
   gap: 9px;
   flex: 0 0 auto;
+  /* Holding this button opens the stream picker; the browser must not begin
+     selecting the hero copy underneath the finger while that happens. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.desktop-browser #detail .series-primary-btn *,
+html.is-hero-stream-hold,
+html.is-hero-stream-hold * {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
 }
 
 .desktop-browser #detail .series-secondary-btn {
@@ -2610,6 +2607,19 @@ html.desktop-browser {
 .desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"]:active,
 .desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"]:focus-visible,
 .desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"].focused {
+  color: var(--detail-text-primary);
+}
+
+/* The watched button keeps its dark action tile when it is both selected and
+   focused. The TV rule's white tile would turn the eye glyph black. */
+.desktop-browser
+  #detail
+  .series-circle-btn[data-action="toggleWatched"].is-selected.focused,
+.desktop-browser
+  #detail
+  .series-circle-btn[data-action="toggleWatched"].is-selected:focus-visible {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgb(18 22 28 / 0.76);
   color: var(--detail-text-primary);
 }
 
@@ -2692,12 +2702,60 @@ html.desktop-browser {
 }
 
 .desktop-browser #detail .series-detail-description {
+  position: relative;
   max-width: 660px;
   margin-bottom: 12px;
   font-size: 16px;
   line-height: 1.48;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.desktop-browser #detail .series-detail-description.is-expanded {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  display: block;
+}
+
+.desktop-browser #detail .detail-description-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
+  width: auto;
+  align-items: center;
+  margin: 0;
+  padding: 0 0 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--detail-text-secondary, rgba(255, 255, 255, 0.62));
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  text-shadow:
+    0 0 5px var(--detail-bg),
+    0 0 10px var(--detail-bg);
+  height: 1.45em;
+}
+
+.desktop-browser
+  #detail
+  .series-detail-description.is-expanded
+  .detail-description-toggle {
+  position: static;
+  height: auto;
+  padding: 4px 8px;
+  background: transparent;
+}
+
+.desktop-browser #detail .detail-description-toggle[hidden] {
+  display: none;
+}
+
+.desktop-browser #detail .detail-description-toggle:focus-visible {
+  outline: 2px solid var(--detail-focus-ring);
+  outline-offset: 2px;
 }
 
 .desktop-browser #detail .detail-meta-stack {
@@ -5303,9 +5361,9 @@ html.desktop-browser {
   position: relative;
   overflow: hidden;
   width: 96px;
-  height: 96px;
+  height: 108px;
   margin: 0 auto 9px;
-  border-radius: 50%;
+  border-radius: 16px;
   transition: box-shadow 140ms ease, transform 140ms ease;
 }
 
@@ -5314,6 +5372,7 @@ html.desktop-browser {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center 35%;
 }
 
 .desktop-browser #detail .movie-cast-name {
@@ -5667,7 +5726,6 @@ html.desktop-browser {
   }
 
   .desktop-browser #detail .movie-cast-card:hover .movie-cast-avatar {
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.42);
     transform: scale(1.03);
   }
 
@@ -5676,7 +5734,6 @@ html.desktop-browser {
   }
 
   .desktop-browser #detail .detail-morelike-card:hover .detail-morelike-poster-wrap {
-    border-color: rgba(255, 255, 255, 0.56);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
     transform: scale(1.04);
   }
@@ -5704,7 +5761,7 @@ html.desktop-browser {
 
   .desktop-browser #detail .movie-cast-avatar {
     width: 88px;
-    height: 88px;
+    height: 99px;
   }
 }
 
@@ -5771,6 +5828,10 @@ html.desktop-browser {
   font-size: 13px;
   font-weight: 650;
   cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .desktop-browser #detail .series-season-download-action .material-icons {
@@ -5813,6 +5874,10 @@ html.desktop-browser {
   font-size: 15px;
   font-weight: 600;
   line-height: 1;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .desktop-browser #detail .series-season-select-shell:focus-within {
@@ -6455,6 +6520,19 @@ html.desktop-browser {
     color: var(--detail-text-primary);
   }
 
+  .desktop-browser #detail .series-season-select-shell:hover {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--detail-text-primary);
+  }
+
+  /* Download Season keeps its Appearance accent tint; hover simply
+     strengthens the same palette instead of turning the capsule neutral. */
+  .desktop-browser #detail .series-season-download-action:hover {
+    border-color: rgb(var(--secondary-color-rgb) / 0.64);
+    background: rgb(var(--secondary-color-rgb) / 0.2);
+  }
+
   .desktop-browser #detail .series-episode-card:hover {
     z-index: 1;
   }
@@ -6788,13 +6866,19 @@ html.desktop-browser {
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
+.desktop-browser
+  .profile-card:not(.profile-card-add):not(.focused):not(:focus-visible)
+  .profile-avatar-ring {
+  border-color: transparent;
+}
+
 .desktop-browser .profile-avatar,
 .desktop-browser .profile-grid-compact .profile-avatar,
 .desktop-browser .profile-card.focused .profile-avatar,
 .desktop-browser .profile-grid-compact .profile-card.focused .profile-avatar {
-  width: 92px;
-  height: 92px;
-  font-size: 36px;
+  width: 100%;
+  height: 100%;
+  font-size: 40px;
   transition: none;
 }
 
@@ -6822,26 +6906,41 @@ html.desktop-browser {
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.2);
 }
 
-.desktop-browser .profile-card.is-active-profile .profile-avatar-ring {
-  border-color: var(--secondary-color);
-  box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.28);
-}
-
 .desktop-browser .profile-active-indicator {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: -8px;
+  right: -8px;
   width: 22px;
   height: 22px;
-  border: 2px solid var(--bg-color);
+  border: 0;
   border-radius: 50%;
-  background: var(--secondary-color);
+  background: var(--profile-accent, var(--secondary-color));
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
   font-weight: 700;
+  line-height: 1;
+}
+
+.desktop-browser .profile-pin-indicator {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(10, 10, 12, 0.82);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.24);
+}
+
+.desktop-browser .profile-pin-indicator .material-icons {
+  font-size: 13px;
   line-height: 1;
 }
 
@@ -6876,8 +6975,8 @@ html.desktop-browser {
 
 .desktop-browser .profile-primary-dot,
 .desktop-browser .profile-grid-compact .profile-primary-dot {
-  right: -5px;
-  bottom: -5px;
+  right: -10px;
+  bottom: -10px;
   width: 24px;
   height: 24px;
   border-width: 2px;
@@ -7159,10 +7258,29 @@ html.desktop-browser {
 }
 
 .desktop-browser .profile-avatar-tile {
+  position: relative;
   width: 100%;
   height: auto;
+  min-height: 68px;
   max-width: 84px;
   aspect-ratio: 1;
+}
+
+/* The tile owns its square. An image that contributes its own intrinsic
+   height can outgrow a grid row on WebKit; absolute fill breaks that
+   dependency, which matters most in All where there are the most rows. */
+.desktop-browser .profile-avatar-tile-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.desktop-browser .profile-editor-avatar-grid {
+  align-items: start;
+  grid-auto-rows: minmax(68px, auto);
 }
 
 .desktop-browser .profile-avatar-tile.is-selected,
@@ -8916,7 +9034,6 @@ html.desktop-browser {
 
   .desktop-browser .library-shell.desktop-navigation-enabled .library-grid-card:hover .library-grid-poster {
     transform: scale(1.04);
-    border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
   }
 }
@@ -9338,7 +9455,6 @@ html.desktop-browser {
 
   .desktop-browser .search-screen-shell.desktop-navigation-enabled .search-result-card:hover .search-result-poster-wrap {
     transform: scale(1.04);
-    border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
   }
 }
@@ -9684,7 +9800,6 @@ html.desktop-browser {
 
   .desktop-browser .discover-shell.desktop-navigation-enabled .discover-grid .seeall-card:hover .seeall-card-poster-wrap {
     transform: scale(1.04);
-    border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
   }
 }
@@ -9944,12 +10059,109 @@ html.desktop-browser {
   background: rgba(255, 255, 255, 0.035);
 }
 
+/* Addons is already one card inside the Content & Discovery group. The
+   generic expanded row adds another bordered, padded card around the manager,
+   which then sits inside Installed Addons' own panel. Drop that wrapper so
+   Installed Addons can take the full width of its Addons row. */
 .desktop-browser .settings-shell .settings-collapsible-addon .settings-collapsible-body {
-  margin-left: 12px;
+  margin-left: 0;
 }
 
 .desktop-browser .settings-shell .settings-collapsible-addon .settings-subsection-card {
-  background: rgba(255, 255, 255, 0.025);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser .settings-shell .settings-collapsible-addon .desktop-addon-manager,
+.desktop-browser .settings-shell .settings-collapsible-addon .desktop-addon-section {
+  width: 100%;
+}
+
+/* Plugins, Home Catalogs & Collections and Collections carry the same wrapper
+   inside an already-carded row. Flatten that wrapper and let their own panels
+   use the width of the row. */
+.desktop-browser
+  .settings-shell
+  :is(
+    .settings-collapsible-plugin,
+    .settings-collapsible-home-catalogs,
+    .settings-collapsible-collections
+  )
+  .settings-collapsible-body {
+  margin-left: 0;
+}
+
+.desktop-browser
+  .settings-shell
+  :is(
+    .settings-collapsible-plugin,
+    .settings-collapsible-home-catalogs,
+    .settings-collapsible-collections
+  )
+  .settings-subsection-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-plugin
+  :is(.desktop-plugin-manager, .desktop-plugin-section),
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-home-catalogs
+  :is(.desktop-home-catalog-manager, .desktop-home-catalog-section),
+.desktop-browser
+  .settings-shell
+  .settings-collapsible-collections
+  .desktop-collection-manager {
+  width: 100%;
+}
+
+/* These three managers own their panels and their rules are declared later in
+   this file; keep the flattened frame at section-screen specificity. */
+.desktop-browser
+  #settingsSection
+  :is(
+    .settings-collapsible-plugin,
+    .settings-collapsible-home-catalogs,
+    .settings-collapsible-collections
+  )
+  .settings-collapsible-body {
+  margin-left: 0;
+}
+
+.desktop-browser
+  #settingsSection
+  :is(
+    .settings-collapsible-plugin,
+    .settings-collapsible-home-catalogs,
+    .settings-collapsible-collections
+  )
+  .settings-subsection-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser
+  #settingsSection
+  .settings-collapsible-plugin
+  :is(.desktop-plugin-manager, .desktop-plugin-section),
+.desktop-browser
+  #settingsSection
+  .settings-collapsible-home-catalogs
+  :is(.desktop-home-catalog-manager, .desktop-home-catalog-section),
+.desktop-browser
+  #settingsSection
+  .settings-collapsible-collections
+  .desktop-collection-manager {
+  width: 100%;
 }
 
 /* Desktop Plugins expandable Settings section. */
@@ -11256,13 +11468,6 @@ body.desktop-browser {
     max-height: calc(100vh - var(--browser-safe-area-top) - var(--browser-safe-area-bottom) - 24px);
   }
 
-  .desktop-browser .detail-trailer-modal-close {
-    top: 8px;
-    right: 8px;
-    width: 44px;
-    height: 44px;
-  }
-
   .desktop-browser .nuvio-dialog-backdrop {
     padding:
       calc(12px + var(--browser-safe-area-top))
@@ -11403,6 +11608,41 @@ body.desktop-browser {
   color: var(--detail-text-secondary, rgba(255, 255, 255, 0.76));
   line-height: 1.55;
   overflow-wrap: anywhere;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography-copy {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 10;
+  line-clamp: 10;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography-copy.is-expanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography-toggle {
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--secondary-color);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography-toggle[hidden] {
+  display: none;
+}
+
+.desktop-browser #castDetail .browser-person-detail-biography-toggle:focus-visible {
+  outline: 2px solid var(--detail-focus-ring, rgba(255, 255, 255, 0.82));
+  outline-offset: 3px;
 }
 
 .desktop-browser #castDetail .browser-person-detail-credits {
@@ -12212,7 +12452,6 @@ body.desktop-browser {
 
   .desktop-browser #catalogSeeAll .seeall-card:hover .seeall-card-poster-wrap {
     transform: scale(1.04);
-    border-color: rgba(255, 255, 255, 0.62);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
   }
 }
@@ -12591,7 +12830,7 @@ body.desktop-browser {
 
   .desktop-browser #detail .movie-cast-avatar {
     width: 80px;
-    height: 80px;
+    height: 90px;
     margin-bottom: 7px;
   }
 
@@ -12760,7 +12999,7 @@ body.desktop-browser {
 
   .desktop-browser #detail .movie-cast-avatar {
     width: 88px;
-    height: 88px;
+    height: 99px;
   }
 
   .desktop-browser #detail .series-episode-card {
@@ -12979,6 +13218,7 @@ body.desktop-browser {
   }
 
   .desktop-browser #folderDetail .desktop-folder-detail-shell {
+    --folder-detail-rail-gutter: clamp(28px, 4vw, 44px);
     padding: calc(var(--browser-safe-area-top) + 96px) clamp(28px, 4vw, 44px) 52px;
   }
 
@@ -14639,8 +14879,8 @@ html:not([data-nav-placement="top"])
   .desktop-browser .profile-grid-compact .profile-avatar,
   .desktop-browser .profile-card.focused .profile-avatar,
   .desktop-browser .profile-grid-compact .profile-card.focused .profile-avatar {
-    width: 120px;
-    height: 120px;
+    width: 100%;
+    height: 100%;
     font-size: 40px;
   }
 
@@ -14755,6 +14995,10 @@ html:not([data-nav-placement="top"])
   font: inherit;
   font-size: 15px;
   text-align: left;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .desktop-browser .profile-editor-action[disabled] {
@@ -14779,6 +15023,46 @@ html:not([data-nav-placement="top"])
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   font-size: 12px;
   line-height: 1.35;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .profile-editor-panel .profile-overlay-button-quiet:hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-overlay-button-primary:not(.is-disabled):hover {
+    filter: brightness(1.08);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-editor-action:not([disabled]):not(.profile-editor-action-danger):hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-editor-action-danger:not([disabled]):hover {
+    border-color: rgba(229, 57, 53, 0.7);
+    background: rgba(229, 57, 53, 0.1);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-avatar-category:not(.is-selected):hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  .desktop-browser
+    .profile-editor-panel
+    .profile-avatar-tile:not(.is-selected):hover {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.24);
+  }
 }
 
 /* Library filters: one row out, the rest behind a button.
@@ -17402,9 +17686,19 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
    what it looked like: credits and ratings reading out from under it.
    --------------------------------------------------------------------------- */
 html[data-nav-placement="bottom"].desktop-browser #detail .series-detail-content,
-html[data-nav-placement="bottom"].desktop-browser #castDetail .browser-person-detail,
+html[data-nav-placement="bottom"].desktop-browser #castDetail .browser-person-detail-shell,
 html[data-nav-placement="bottom"].desktop-browser #folderDetail .desktop-folder-detail-shell {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+}
+
+/* Settings now carries `.desktop-navigation-enabled`, so the shared clearance
+   above follows the bar's collapsed/expanded height. Its workspace already had
+   its own 56px tail; use the same 40px content tail as Search and Library
+   instead of stacking both. */
+html[data-nav-placement="bottom"].desktop-browser
+  .settings-shell
+  .settings-workspace {
+  padding-bottom: 40px;
 }
 
 /* ---------------------------------------------------------------------------
@@ -18981,6 +19275,133 @@ html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="t
   transition:
     transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1),
     opacity 180ms ease;
+}
+
+/* Cast's heading is already entering from a compact Detail heading. Keep it
+   at that compact height from the start instead of expanding and collapsing
+   again, so Back does not jump between the two pages. */
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading.cast-page-heading {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100vw;
+  margin: 0 calc(50% - 50vw) 12px;
+  padding: calc(var(--browser-safe-area-top) + 12px)
+    calc(var(--browser-safe-area-right) + 56px) 14px
+    calc(var(--browser-safe-area-left) + 56px);
+  background: rgba(18, 18, 20, 0.46);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  text-align: center;
+  transition: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading.cast-page-heading
+  .page-heading-title {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-size: 18px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .detail-desktop-back-button {
+  position: absolute;
+  top: var(--browser-safe-area-top);
+  left: calc(var(--browser-safe-area-left) + 12px);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
+  pointer-events: auto;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .detail-desktop-back-button:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+html[data-layout="mobile"][data-nav-placement="sidebar"][data-nav-rail-corner="top-right"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .desktop-navigation-reveal {
+  top: var(--browser-safe-area-top);
+}
+
+/* The floating top bar owns the top strip. Leave its height plus a gap above
+   the compact heading, and pin the heading below it rather than under it. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-shell {
+  padding-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 18px
+  );
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading {
+  margin-top: 0;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading {
+  top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 8px
+  );
+  padding-top: 12px;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .detail-desktop-back-button,
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #castDetail
+  .browser-person-detail-heading
+  > .desktop-navigation-reveal {
+  top: 0;
 }
 
 /* Settings' index and section headings use the same progress. */
@@ -21112,3 +21533,1303 @@ html[data-layout="mobile"]
 }
 
 .desktop-browser #player[data-player-orientation="landscape"] #playerUiRoot.controls-visible .player-next-episode-card { bottom: max(var(--player-action-controls-open-bottom), calc(var(--browser-safe-area-bottom) + 20px)); }
+
+/* ---------------------------------------------------------------------------
+   Wide desktop page frame.
+
+   Search, Library, Discover, Settings and See All had each grown their own
+   top clearance and side gutter. At 1440 the differences were small enough to
+   miss, but on a 1920 screen Search's 1440px child cap centered its heading
+   240px into the page while its search field stayed at the 38px gutter. These
+   rules give the wide top-bar layout one frame: the same top line as Settings'
+   headings, one side gutter, and See All's title below Back on that frame
+   instead of beside it.
+   --------------------------------------------------------------------------- */
+html[data-layout="desktop"][data-nav-placement="top"].desktop-browser {
+  --desktop-page-gutter: clamp(24px, 2vw, 40px);
+  --desktop-page-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 16px
+  );
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #search
+  .search-content,
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #library
+  .library-main,
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #discover
+  .discover-main {
+  padding-top: var(--desktop-page-top);
+  padding-left: var(--desktop-page-gutter);
+  padding-right: var(--desktop-page-gutter);
+  scroll-padding-top: var(--desktop-page-top);
+}
+
+/* The old 1440px child cap centered the Search heading and result rows while
+   the search field stayed full-width. Remove it from the page frame. */
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #search
+  .search-content
+  > * {
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* The side-rail Search kept the old 48px header padding and the 1440px child
+   cap while every other desktop page frame used the shared gutter. Put Search
+   on the same frame without moving the rail itself. This is also the live
+   sidebar layout used by a desktop width. */
+html[data-nav-placement="sidebar"] .desktop-browser #search .search-content {
+  padding-left: clamp(24px, 2vw, 40px);
+  padding-right: clamp(24px, 2vw, 40px);
+}
+
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  #search
+  .search-content
+  > * {
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  #search
+  .search-header,
+html[data-nav-placement="sidebar"]
+  .desktop-browser
+  #search
+  .search-page-header {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #library
+  .library-main {
+  padding-left: var(--desktop-page-gutter);
+  padding-right: var(--desktop-page-gutter);
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settings
+  .settings-workspace,
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settingsSection
+  .settings-workspace {
+  padding-left: var(--desktop-page-gutter);
+  padding-right: var(--desktop-page-gutter);
+}
+
+/* Settings' headers carry an extra 2px inset for their own controls. On the
+   shared frame that offset put both Settings titles 2px right of every other
+   page title, so keep the bleed but put the copy on the frame's gutter. */
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settings
+  .settings-nav-index-header,
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settingsSection
+  .settings-content-header {
+  padding-left: var(--settings-header-bleed);
+  padding-right: var(--settings-header-bleed);
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #settingsSection
+  .settings-section-back {
+  left: calc(var(--browser-safe-area-left) + var(--desktop-page-gutter));
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-shell {
+  padding-top: var(--desktop-page-top);
+  padding-left: var(--desktop-page-gutter);
+  padding-right: var(--desktop-page-gutter);
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-header {
+  display: block;
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-title {
+  font-size: clamp(30px, 2.5vw, 40px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-subtitle {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .catalog-seeall-browser-back {
+  position: fixed;
+  top: var(--browser-floating-nav-top);
+  left: calc(var(--browser-safe-area-left) + var(--desktop-page-gutter));
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+}
+
+/* One chevron for every round Back control. */
+.round-back-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  .round-back-icon {
+  width: 24px;
+  height: 24px;
+}
+
+/* The fixed circles on a wide top-bar page all take Settings section's Back
+   as the reference: one glass circle, one 54px box, one gutter, one icon. */
+html[data-layout="desktop"][data-nav-placement="top"]
+  .desktop-browser
+  :is(
+    #detail .detail-desktop-back-button,
+    #castDetail .detail-desktop-back-button,
+    #stream .stream-desktop-back-button,
+    #discover .discover-desktop-back-button,
+    #catalogSeeAll .catalog-seeall-browser-back,
+    #folderDetail .folder-detail-desktop-back,
+    #settings .settings-section-back,
+    #settingsSection .settings-section-back,
+    .desktop-collection-editor-back,
+    .profile-desktop-back-button,
+    .profile-pin-desktop-back
+  ) {
+  position: fixed;
+  top: var(--browser-floating-nav-top);
+  left: calc(var(--browser-safe-area-left) + var(--desktop-page-gutter));
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+  color: var(--text-color);
+  transform: none;
+}
+
+/* See All on a narrow layout with the top bar follows Settings section too:
+   Back owns the bar line, the title belongs to the page below it. */
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-shell {
+  padding-top: calc(
+    var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 16px
+  );
+  padding-left: var(--browser-page-gutter);
+  padding-right: var(--browser-page-gutter);
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-header {
+  position: static;
+  display: block;
+  top: auto;
+  padding: 0;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-title {
+  width: 100%;
+  margin: 0;
+  text-align: left;
+  font-size: 31px;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .seeall-subtitle {
+  margin-top: 6px;
+  text-align: left;
+}
+
+html[data-layout="mobile"][data-nav-placement="top"]
+  .desktop-browser
+  #catalogSeeAll
+  .catalog-seeall-browser-back {
+  position: fixed;
+  top: var(--browser-floating-nav-top);
+  left: calc(var(--browser-safe-area-left) + var(--browser-page-gutter));
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--browser-floating-nav-height) + 2px);
+  height: calc(var(--browser-floating-nav-height) + 2px);
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(18, 18, 20, 0.46);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  -webkit-backdrop-filter: blur(2px) saturate(150%);
+  backdrop-filter: blur(2px) saturate(150%);
+}
+
+@media (max-width: 600px) {
+  html[data-layout="mobile"][data-nav-placement="top"]
+    .desktop-browser
+    #catalogSeeAll
+    .seeall-title {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+}
+
+/* On a phone the top bar switches the app to the wide layout, but these
+   headings still carried the old narrow-screen centring: 56px side padding
+   and a centred title. Settings index stays left-aligned at this width, so
+   Search, Library and Discover follow it. */
+@media (max-width: 600px) {
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #search
+    .search-page-heading,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #library
+    .library-page-header,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #discover
+    .discover-header {
+    padding-left: 0;
+    padding-right: 0;
+    text-align: left;
+  }
+
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #search
+    .search-page-heading,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #library
+    .library-page-title,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #discover
+    .page-heading-title {
+    width: 100%;
+    margin: 0;
+    text-align: left;
+    font-size: 30px;
+    line-height: 1.1;
+  }
+
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #library
+    .library-page-header,
+  html[data-layout="desktop"][data-nav-placement="top"]
+    .desktop-browser
+    #discover
+    .discover-header {
+    justify-content: flex-start;
+  }
+}
+
+/* Top navigation: the floating bar already separates the page from the app,
+   so the heading is a title, not a framed bar. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  #search
+  .search-page-heading,
+html[data-nav-placement="top"]
+  .desktop-browser
+  #library
+  .library-page-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  #discover
+  .discover-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  #settings
+  .settings-nav-index-header,
+html[data-nav-placement="top"]
+  .desktop-browser
+  #settingsSection
+  .settings-content-header {
+  border-bottom: 0;
+}
+
+/* Discover's subtitle belongs to the title block on the left, exactly where
+   Settings puts its section subtitle. */
+html[data-nav-placement="top"]
+  .desktop-browser
+  #discover
+  .discover-header-copy {
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+}
+
+html[data-nav-placement="top"]
+  .desktop-browser
+  #discover
+  .page-heading-subtitle {
+  width: 100%;
+  margin: 6px 0 0;
+  text-align: left;
+}
+
+/* Bottom bar and side rail keep the hairline. Settings was the one page whose
+   index and section headings had no rule under them there. */
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  #settings
+  .settings-nav-index-header,
+html:not([data-nav-placement="top"])
+  .desktop-browser
+  #settingsSection
+  .settings-content-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Cloud's Search belongs beside Refresh, as the same square action. Left to
+   its generic row rule it took the picker row's text height and, on a tablet,
+   stayed next to the pickers while Refresh was pushed to the far edge. */
+.desktop-browser
+  .library-picker-row.library-cloud-filter-row
+  .library-search-button {
+  flex: 0 0 52px;
+  align-self: center;
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  min-height: 52px;
+  margin-left: auto;
+  border-radius: 14px;
+}
+
+.desktop-browser .library-cloud-filter-row .library-cloud-refresh-button {
+  align-self: center;
+  margin-left: 0;
+}
+
+/* The menu itself must change even when artwork colour extraction fails:
+   the Folder Detail backdrop still uses the neutral ambient fallback, and the
+   picker should match that rather than falling back to Settings' surface. */
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-anchor {
+  border-color: rgb(var(--collection-ambient-rgb, 35 40 52) / 0.5) !important;
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 26%,
+    var(--bg-color)
+  ) !important;
+}
+
+html.desktop-browser:not(.nuvio-keyboard-nav)
+  #folderDetail
+  .folder-detail-tab-picker
+  .library-picker-anchor.focused:not(.selected) {
+  border-color: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 64%,
+    white
+  ) !important;
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 34%,
+    var(--bg-color)
+  ) !important;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-menu {
+  border-color: rgb(var(--collection-ambient-rgb, 35 40 52) / 0.42) !important;
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 18%,
+    var(--bg-color)
+  ) !important;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option {
+  color: var(--text-color);
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option.selected {
+  background: rgb(var(--collection-ambient-rgb, 35 40 52) / 0.24) !important;
+}
+
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option:hover,
+.desktop-browser #folderDetail .folder-detail-tab-picker .library-picker-option.focused,
+.desktop-browser
+  #folderDetail
+  .folder-detail-tab-picker
+  .library-picker-option:focus-visible {
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb, 35 40 52)) 42%,
+    var(--bg-color)
+  ) !important;
+  color: var(--text-color) !important;
+  box-shadow: inset 0 0 0 1px
+    color-mix(
+      in srgb,
+      rgb(var(--collection-ambient-rgb, 35 40 52)) 62%,
+      white
+    ) !important;
+  outline: none;
+}
+
+/* Cross-origin artwork can load as a CSS background but cannot be read back
+   through canvas. In that case the menu samples the artwork visually instead
+   of falling back to Settings' surface. */
+.desktop-browser
+  #folderDetail[data-collection-artwork="true"]:not(
+    [data-collection-ambient="true"]
+  )
+  .folder-detail-tab-picker
+  .library-picker-menu {
+  position: absolute;
+  isolation: isolate;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--bg-color) 88%, transparent) !important;
+}
+
+.desktop-browser
+  #folderDetail[data-collection-artwork="true"]:not(
+    [data-collection-ambient="true"]
+  )
+  .folder-detail-tab-picker
+  .library-picker-menu::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgb(10 10 12 / 0.72), rgb(10 10 12 / 0.84)),
+    var(--collection-ambient-artwork, none);
+  background-position: center;
+  background-size: cover;
+  filter: blur(18px) saturate(1.35);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.desktop-browser
+  #folderDetail[data-collection-artwork="true"]:not(
+    [data-collection-ambient="true"]
+  )
+  .folder-detail-tab-picker
+  .library-picker-menu
+  > .library-picker-option {
+  position: relative;
+  z-index: 1;
+}
+
+/* Browser/PWA phones use the same category dropdown as desktop. TV/native
+   keeps the horizontal tab rail. */
+.folder-detail-mobile-picker {
+  display: none;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-picker {
+  display: block;
+  padding: 0 0 12px;
+}
+
+html[data-layout="mobile"]
+  .desktop-browser
+  #folderDetail
+  .folder-detail-mobile-picker
+  .folder-detail-tab-picker {
+  width: 100%;
+}
+
+/* Only wear the artwork palette when extraction actually produced a colour.
+   Without it the picker keeps its normal surface instead of tinting with the
+   neutral fallback. */
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-anchor {
+  border-color: rgb(var(--collection-ambient-rgb) / 0.5);
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 26%,
+    var(--bg-color)
+  );
+}
+
+html.desktop-browser:not(.nuvio-keyboard-nav)
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-anchor.focused:not(.selected) {
+  border-color: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 64%,
+    white
+  ) !important;
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 34%,
+    var(--bg-color)
+  ) !important;
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker.open
+  .library-picker-anchor,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker:focus-within
+  .library-picker-anchor,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-anchor.focused,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-anchor:focus-visible {
+  border-color: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 64%,
+    white
+  );
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 34%,
+    var(--bg-color)
+  ) !important;
+  box-shadow: 0 0 0 3px rgb(var(--collection-ambient-rgb) / 0.3);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser
+    #folderDetail[data-collection-ambient="true"]
+    .folder-detail-tab-picker
+    .library-picker-anchor:hover {
+    border-color: color-mix(
+      in srgb,
+      rgb(var(--collection-ambient-rgb)) 54%,
+      white
+    );
+    background: color-mix(
+      in srgb,
+      rgb(var(--collection-ambient-rgb)) 30%,
+      var(--bg-color)
+    );
+  }
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-menu {
+  border-color: rgb(var(--collection-ambient-rgb) / 0.42);
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 18%,
+    var(--bg-color)
+  );
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option {
+  color: var(--text-color);
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option.selected {
+  background: rgb(var(--collection-ambient-rgb) / 0.24);
+}
+
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option:hover,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option.focused,
+.desktop-browser
+  #folderDetail[data-collection-ambient="true"]
+  .folder-detail-tab-picker
+  .library-picker-option:focus-visible {
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-ambient-rgb)) 42%,
+    var(--bg-color)
+  );
+  color: var(--text-color);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, rgb(var(--collection-ambient-rgb)) 62%, white);
+  outline: none;
+}
+
+/* Desktop Settings uses a collapsible row instead of the mobile tracking
+   route. Give those rows the same branded treatment without hiding their
+   existing inline provider controls. */
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 18px;
+  background: #191a1f;
+  color: #fff;
+  box-shadow: 0 14px 32px rgb(0 0 0 / 0.2);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  right: -28px;
+  bottom: -38px;
+  width: 250px;
+  height: 250px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.14;
+  transform: rotate(-9deg);
+  pointer-events: none;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-trakt {
+  background:
+    radial-gradient(circle at 80% 20%, rgb(255 255 255 / 0.14), transparent 43%),
+    linear-gradient(120deg, #55146f 0%, #9d185b 48%, #ed2637 100%);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-trakt::before {
+  background-image: url("/assets/icons/trakt_tv_glyph.svg");
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-simkl {
+  background:
+    radial-gradient(circle at 82% 22%, rgb(255 255 255 / 0.1), transparent 45%),
+    linear-gradient(120deg, #101114 0%, #24262b 58%, #15161a 100%);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-simkl::before {
+  background-image: url("/assets/icons/simkl_tv_glyph.svg");
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-mdblist {
+  background:
+    radial-gradient(circle at 82% 20%, rgb(255 255 255 / 0.16), transparent 45%),
+    linear-gradient(120deg, #07518f 0%, #0c6bb6 52%, #0b4e8b 100%);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card-mdblist::before {
+  background-image: url("/assets/icons/mdblist_logo.svg");
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger {
+  position: relative;
+  z-index: 1;
+  min-height: 82px;
+  padding: 14px 18px;
+  border: 0 !important;
+  background: transparent !important;
+  color: #fff;
+  box-shadow: none;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-title {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-subtitle {
+  color: rgb(255 255 255 / 0.8);
+  font-size: 13px;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-value {
+  color: rgb(255 255 255 / 0.72);
+  font-size: 12px;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-icon {
+  color: #fff;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger
+  .settings-row-leading-image {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  padding: 7px;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 0.16);
+  object-fit: contain;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger.focused,
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-trigger:focus-visible {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.72);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body {
+  position: relative;
+  z-index: 1;
+  margin-left: 0;
+  padding: 0 16px 16px;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-subsection-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-action-row {
+  border-color: rgb(255 255 255 / 0.2);
+  background: rgb(255 255 255 / 0.94);
+  color: #121318;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-action-row
+  .settings-row-title {
+  color: #121318;
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-action-row
+  .settings-row-subtitle,
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-action-row
+  .settings-row-value {
+  color: rgb(18 19 24 / 0.62);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-row-title,
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-row-subtitle {
+  color: rgb(255 255 255 / 0.86);
+}
+
+.desktop-browser
+  .settings-shell
+  .settings-collapsible.tracking-provider-card
+  .settings-collapsible-body
+  .settings-row-icon {
+  color: #121318;
+}
+
+@media (max-width: 720px) {
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card {
+    border-color: transparent;
+    background-clip: padding-box;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger {
+    min-height: 96px;
+    padding: 16px 18px;
+    border-radius: 20px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger
+    .settings-row-title {
+    font-size: 24px;
+    line-height: 1.1;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger
+    .settings-row-subtitle {
+    margin-top: 5px;
+    font-size: 14px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger
+    .settings-row-value {
+    display: none;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-trigger
+    .settings-row-leading-image {
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
+    padding: 8px;
+    border-radius: 14px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-body {
+    padding: 0 16px 16px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-body
+    .settings-tracking-provider-status,
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-body
+    .settings-tracking-provider-status
+    + p,
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-collapsible-body
+    .settings-trakt-body-copy {
+    color: rgb(255 255 255 / 0.84);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-button {
+    min-height: 48px;
+    padding: 0 16px;
+    border-color: #fff;
+    border-radius: 12px;
+    background: #fff;
+    color: #111;
+    font-size: 14px;
+    font-weight: 650;
+    white-space: normal;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-button.is-secondary {
+    border-color: rgb(255 255 255 / 0.28);
+    background: rgb(255 255 255 / 0.14);
+    color: #fff;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-button.is-danger {
+    border-color: rgb(255 178 176 / 0.32);
+    background: rgb(0 0 0 / 0.2);
+    color: #ffd2d0;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-actions {
+    gap: 10px;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-inline-actions
+    > .settings-tracking-inline-button:only-child {
+    flex: 1 1 100%;
+  }
+
+  .desktop-browser
+    .settings-shell
+    .settings-collapsible.tracking-provider-card
+    .settings-tracking-activation-code {
+    color: #fff;
+    border-color: rgb(255 255 255 / 0.24);
+    background: rgb(0 0 0 / 0.18);
+  }
+}
+
+
+
+/* The automatic build confirmation is a short capsule at the top, then it
+   leaves in the same direction it arrived. */
+.browser-update-toast {
+  position: fixed;
+  z-index: 10000;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  max-width: calc(
+    100vw - 28px - env(safe-area-inset-left, 0px) -
+      env(safe-area-inset-right, 0px)
+  );
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 7px 12px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 999px;
+  background: rgb(25 25 29 / 0.94);
+  color: rgba(255 255 255 / 0.94);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+  animation: browser-update-capsule-in 220ms ease-out both;
+}
+
+.browser-update-toast.is-leaving {
+  animation: browser-update-capsule-out 240ms ease-in both;
+  pointer-events: none;
+}
+
+@keyframes browser-update-capsule-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -120%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes browser-update-capsule-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -120%);
+  }
+}
+
+.browser-update-title {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.browser-update-link {
+  flex: 0 0 auto;
+  color: #b9d7ff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.browser-update-link:hover,
+.browser-update-link:focus-visible {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.browser-update-link:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Poster focus mirrors Continue Watching: one 2px outer ring, no colored
+   inner border. This applies across Home, Discover, Library, Search, See All,
+   Folder Detail, and the Detail rails. */
+html.desktop-browser .home-screen-shell .home-poster-card.focused .home-poster-frame,
+html.desktop-browser .home-screen-shell .home-poster-card:focus-visible .home-poster-frame,
+html.desktop-browser .home-screen-shell .home-seeall-card.focused .home-seeall-card-inner,
+html.desktop-browser .home-screen-shell .home-seeall-card:focus-visible .home-seeall-card-inner,
+html.desktop-browser .discover-shell .discover-card.focused .discover-card-poster,
+html.desktop-browser .discover-shell .discover-card:focus-visible .discover-card-poster,
+html.desktop-browser .library-shell .library-grid-card.focused .library-grid-poster,
+html.desktop-browser .library-shell .library-grid-card:focus-visible .library-grid-poster,
+html.desktop-browser .search-screen-shell .search-result-card.focused .search-result-poster-wrap,
+html.desktop-browser .search-screen-shell .search-result-card:focus-visible .search-result-poster-wrap,
+html.desktop-browser .search-screen-shell .search-seeall-card.focused .search-seeall-inner,
+html.desktop-browser .search-screen-shell .search-seeall-card:focus-visible .search-seeall-inner,
+html.desktop-browser .seeall-card.focused .seeall-card-poster-wrap,
+html.desktop-browser .seeall-card:focus-visible .seeall-card-poster-wrap {
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px var(--secondary-color) !important;
+}
+
+html.desktop-browser #detail .detail-morelike-card.focused .detail-morelike-poster-wrap,
+html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelike-poster-wrap {
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px var(--detail-focus-ring) !important;
+}
+
+/* The delete confirmation came from the TV dialog and kept its 48px padding,
+   40px title and stacked 80px buttons. On the web it is a normal small
+   confirmation card: readable title, quiet Cancel and a red Delete side by
+   side, stacking only on a narrow phone. */
+.desktop-browser .nuvio-dialog-panel.profile-delete-dialog {
+  width: min(420px, calc(100vw - 32px)) !important;
+  max-width: min(420px, calc(100vw - 32px)) !important;
+  padding: 22px;
+  border-radius: 16px;
+  gap: 10px;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-title {
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-subtitle {
+  margin-top: 0;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.62));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.desktop-browser .profile-delete-dialog .profile-delete-actions {
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-button {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-color);
+  font-size: 14px;
+  line-height: 1.2;
+  text-align: center;
+  transform: none;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-button.profile-delete-confirm {
+  border-color: rgba(229, 57, 53, 0.48);
+  background: rgba(229, 57, 53, 0.16);
+  color: #ffb3b0;
+}
+
+.desktop-browser .profile-delete-dialog .nuvio-dialog-button.focused,
+.desktop-browser .profile-delete-dialog .nuvio-dialog-button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-color);
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+  transform: none;
+}
+
+.desktop-browser
+  .profile-delete-dialog
+  .nuvio-dialog-button.profile-delete-confirm.focused,
+.desktop-browser
+  .profile-delete-dialog
+  .nuvio-dialog-button.profile-delete-confirm:focus-visible {
+  border-color: rgba(229, 57, 53, 0.8);
+  background: rgba(229, 57, 53, 0.24);
+  color: #fff;
+  outline-color: rgba(229, 57, 53, 0.85);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser
+    .profile-delete-dialog
+    .nuvio-dialog-button:not(.profile-delete-confirm):hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .desktop-browser
+    .profile-delete-dialog
+    .nuvio-dialog-button.profile-delete-confirm:hover {
+    border-color: rgba(229, 57, 53, 0.8);
+    background: rgba(229, 57, 53, 0.24);
+    color: #fff;
+  }
+}
+
+@media (max-width: 480px) {
+  .desktop-browser .profile-delete-dialog {
+    padding: 18px;
+  }
+
+  .desktop-browser .profile-delete-dialog .profile-delete-actions {
+    flex-direction: column;
+  }
+
+  .desktop-browser .profile-delete-dialog .nuvio-dialog-button {
+    width: 100%;
+    flex: none;
+  }
+}

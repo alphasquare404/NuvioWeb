@@ -3,6 +3,20 @@ import { watchedItemsRepository } from "./watchedItemsRepository.js";
 import { watchProgressRepository } from "./watchProgressRepository.js";
 import { detailWatchedEnrichmentService } from "./detailWatchedEnrichmentService.js";
 import { isWatchProgressCompleted } from "../../domain/model/watchProgress.js";
+import { MdbListAuthStore } from "../local/mdbListAuthStore.js";
+import { WatchProgressSource } from "../local/traktSettingsStore.js";
+import { ownsWatchProgress } from "./trackingWriteScope.js";
+
+function writesMdbListEpisodes() {
+  return ownsWatchProgress(WatchProgressSource.MDBLIST) && MdbListAuthStore.isAuthenticated();
+}
+
+function skipEpisodeTrackingWrite(requested = false) {
+  // MDBList has no useful show-level mark in this app: the provider expands a
+  // show mark over every episode. The episode rows are the correct targets, so
+  // do not suppress them when the finished series is pushed.
+  return Boolean(requested) && !writesMdbListEpisodes();
+}
 
 function isSeriesType(type = "") {
   const normalized = String(type || "")
@@ -151,6 +165,7 @@ async function markReleasedEpisodes(
   if (!episodes.length) {
     return false;
   }
+  const effectiveSkipTrackingWrite = skipEpisodeTrackingWrite(skipTrackingWrite);
   for (const episode of episodes) {
     await watchedItemsRepository.mark(
       {
@@ -162,7 +177,7 @@ async function markReleasedEpisodes(
         videoId: episode.id,
         watchedAt
       },
-      { skipTrackingWrite }
+      { skipTrackingWrite: effectiveSkipTrackingWrite }
     );
     await watchProgressRepository.saveProgress({
       contentId,
@@ -292,7 +307,7 @@ export const watchedSeriesReconciliationService = {
         season: episode.season,
         episode: episode.episode,
         videoId: episode.id,
-        skipTrackingWrite: true
+        skipTrackingWrite: skipEpisodeTrackingWrite(true)
       });
       await watchProgressRepository.removeProgress(normalizedContentId, episode.id);
     }
