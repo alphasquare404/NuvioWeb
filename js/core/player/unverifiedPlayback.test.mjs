@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   selectUnverifiedPlayback,
+  selectFilenamePlaybackAttempt,
+  nextPlaybackFallbackRoute,
   canTryUnverifiedRemux,
   canTryUnverifiedAudioTranscode,
   prepareUnverifiedAudioTranscode,
@@ -25,8 +27,8 @@ const choose = (name, extra = {}) =>
     ...extra
   });
 
-test("unverified filename routes choose copy or direct without authorizing audio conversion", () => {
-  assert.equal(choose("Movie.H264.AAC.mkv").route, "remux");
+test("unverified sources start Direct regardless of retired filename preferences", () => {
+  assert.equal(choose("Movie.H264.AAC.mkv").route, "direct");
   assert.equal(choose("Movie.H264.AAC.mp4").route, "direct");
   assert.equal(choose("Movie.H264.DTS.mkv").route, "direct");
   assert.equal(choose("Movie").route, "direct");
@@ -68,7 +70,7 @@ test("format failures permit one copy attempt, while explicit network/access fai
     false
   );
   assert.equal(canTryUnverifiedRemux({ ...attempt, busy: true }, { mediaErrorCode: 4 }), false);
-  assert.equal(canTryUnverifiedRemux(choose("Movie.H264.AAC.mkv"), { mediaErrorCode: 4 }), false);
+  assert.equal(canTryUnverifiedRemux(choose("Movie.H264.AAC.mkv"), { mediaErrorCode: 4 }), true);
 });
 
 test("trial server delivery uses the same HLS copy-only plan even without probe facts", async () => {
@@ -183,6 +185,140 @@ test("automatic audio conversion needs actual unsupported audio, supported video
     await prepareUnverifiedAudioTranscode(sourceUrl, {
       ...options,
       access: { resolve: async () => ({ reachable: false }) }
+    }),
+    null
+  );
+});
+
+test("filename routing defaults on, but disabled routing always starts Direct", () => {
+  const stream = { url: sourceUrl, name: "Movie H264 AAC.mkv" };
+  const options = {
+    stream,
+    capabilities,
+    policy: { mode: "server" },
+    audioEndpoint: "/api/transcode"
+  };
+  assert.equal(selectFilenamePlaybackAttempt(options).route, "remux");
+  assert.equal(selectFilenamePlaybackAttempt({ ...options, enabled: false }).route, "direct");
+  assert.equal(
+    selectFilenamePlaybackAttempt({ ...options, stream: { ...stream, name: "Movie H264 DTS.mkv" } })
+      .route,
+    "audio-transcode"
+  );
+  assert.equal(
+    selectFilenamePlaybackAttempt({
+      ...options,
+      audioEndpoint: "",
+      stream: { ...stream, name: "Movie H264 DTS.mkv" }
+    }).route,
+    "direct"
+  );
+  assert.equal(
+    selectFilenamePlaybackAttempt({
+      ...options,
+      stream: { ...stream, name: "Movie H264 AAC.mkv" },
+      policy: { mode: "off" }
+    }).route,
+    "direct"
+  );
+});
+test("fallback tries untried supported routes once after any chosen initial estimate", () => {
+  const availability = { remuxAvailable: true, audioAvailable: true };
+  for (const initial of ["direct", "remux", "audio-transcode"]) {
+    const attempt = {
+      route: initial,
+      rawTried: initial === "direct",
+      remuxTried: initial === "remux",
+      audioTranscodeTried: initial === "audio-transcode"
+    };
+    const seen = [initial];
+    for (let i = 0; i < 4; i++) {
+      const next = nextPlaybackFallbackRoute(attempt, { mediaErrorCode: 4 }, availability);
+      if (!next) break;
+      assert.ok(!seen.includes(next));
+      seen.push(next);
+      attempt.route = next;
+      attempt.rawTried ||= next === "direct";
+      attempt.remuxTried ||= next === "remux";
+      attempt.audioTranscodeTried ||= next === "audio-transcode";
+    }
+    assert.deepEqual(new Set(seen), new Set(["direct", "remux", "audio-transcode"]));
+  }
+});
+test("Direct-first order, timeout fallback, unavailable routes and network refusals remain bounded", () => {
+  const attempt = selectFilenamePlaybackAttempt({ stream: { url: sourceUrl }, enabled: false });
+  const availability = { remuxAvailable: true, audioAvailable: true };
+  assert.equal(nextPlaybackFallbackRoute(attempt, { startupStall: true }, availability), "remux");
+  assert.equal(
+    nextPlaybackFallbackRoute(attempt, { detail: "Stream preparation timed out." }, availability),
+    "remux"
+  );
+  assert.equal(
+    nextPlaybackFallbackRoute(attempt, { detail: "server-hls-startup-timeout" }, availability),
+    "remux"
+  );
+  assert.equal(
+    nextPlaybackFallbackRoute(
+      attempt,
+      { mediaErrorCode: 4 },
+      { remuxAvailable: false, audioAvailable: true }
+    ),
+    "audio-transcode"
+  );
+  assert.equal(
+    nextPlaybackFallbackRoute(
+      attempt,
+      { mediaErrorCode: 4 },
+      { remuxAvailable: false, audioAvailable: false }
+    ),
+    null
+  );
+  assert.equal(
+    nextPlaybackFallbackRoute({ ...attempt, busy: true }, { mediaErrorCode: 4 }, availability),
+    null
+  );
+  for (const failure of [
+    { httpStatus: 403, mediaErrorCode: 4 },
+    { detail: "NotAllowedError" },
+    { detail: "CORS", mediaErrorCode: 4 },
+    { mediaErrorCode: 2 }
+  ])
+    assert.equal(nextPlaybackFallbackRoute(attempt, failure, availability), null);
+});
+test("explicit filename audio route can prepare video-copy AAC without a metadata round trip", async () => {
+  let reads = 0;
+  const attempt = selectFilenamePlaybackAttempt({
+    stream: { url: sourceUrl, name: "Movie H264 DTS.mkv" },
+    capabilities,
+    policy: { mode: "server" },
+    audioEndpoint: "/api/transcode"
+  });
+  const options = {
+    capabilities,
+    filenameVerdict: attempt.filenameVerdict,
+    allowFilenameEstimate: true,
+    readProbe: async () => {
+      reads++;
+      return null;
+    },
+    transcodeEndpoint: "/api/transcode",
+    token: "test",
+    access: { resolve: async () => ({ reachable: true, hls: true, mode: "token" }) }
+  };
+  const result = await prepareUnverifiedAudioTranscode(sourceUrl, options);
+  const plan = new URL(result.url, "https://app.test").searchParams;
+  assert.equal(plan.get("v"), "copy");
+  assert.equal(plan.get("a"), "aac");
+  assert.equal(reads, 0);
+  assert.equal(
+    await prepareUnverifiedAudioTranscode(sourceUrl, { ...options, allowFilenameEstimate: false }),
+    null
+  );
+  assert.equal(reads, 1);
+  assert.equal(
+    await prepareUnverifiedAudioTranscode(sourceUrl, {
+      ...options,
+      capabilities: { ...capabilities, aac: false }
     }),
     null
   );

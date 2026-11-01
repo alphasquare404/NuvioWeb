@@ -1,3 +1,4 @@
+import { filterFilenameStreams } from "./filenameStreamPolicy.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -11,7 +12,6 @@ import {
   playerStreamProbeCandidates,
   nextEpisodeSelectionOptions
 } from "./playerStreamPolicy.js";
-import { inspectAutoPlayStreams } from "./streamAutoPlayProbe.js";
 const caps = { h264: true, aac: true, containers: { mp4: true, mkv: false } };
 const facts = { container: "mp4", videoCodec: "h264", audioCodec: "aac" };
 const labels = {
@@ -37,7 +37,7 @@ test("cached facts outside background addons and quota remain eligible without b
     mode: "client",
     probeForStream: () => facts
   };
-  assert.equal(playerStreamProbeCandidates(rows, options).length, 3);
+  assert.equal(playerStreamProbeCandidates(rows, options).length, 0);
   const visible = filterPlayerStreams(rows, options);
   assert.equal(visible.length, 4);
   assert.deepEqual(
@@ -83,36 +83,6 @@ test("Manual initial selection and Auto Next remain separate while next selectio
   assert.deepEqual(next.selectedAddons, ["A"]);
 });
 
-test("a URL-less selected file can reuse metadata even when excluded from background addon checks", async () => {
-  let calls = 0;
-  const raw = {
-    id: "raw",
-    addonName: "B",
-    infoHash: "a".repeat(40),
-    fileIdx: 0,
-    debridCacheStatus: { state: "CACHED" }
-  };
-  const result = await inspectAutoPlayStreams([raw], {
-    settings: { streamDisplayMode: "DIRECT" },
-    labels,
-    capabilities: caps,
-    mode: "client",
-    limit: 10,
-    selection: { mode: "FIRST_STREAM", source: "ALL_SOURCES", hdrPreference: "ANY" },
-    prober: {
-      enabled: true,
-      async probe(url) {
-        calls++;
-        assert.equal(url, "");
-        return facts;
-      }
-    }
-  });
-  assert.equal(calls, 1);
-  assert.equal(result.candidates[0].id, "raw");
-  assert.equal(result.probes.get("torrent-file:" + "a".repeat(40) + ":0").videoCodec, "h264");
-});
-
 test("remembered links cannot bypass current source, regex or compatibility constraints", () => {
   const source = readFileSync(
     new URL("../../ui/screens/stream/streamScreen.js", import.meta.url),
@@ -122,7 +92,6 @@ test("remembered links cannot bypass current source, regex or compatibility cons
   const saved = row("saved", "B");
   for (const extra of [
     { streamAutoPlaySelectedAddons: ["A"] },
-    { streamDisplayMode: "DIRECT", remux: true },
     { streamAutoPlayMode: "REGEX_MATCH", streamAutoPlayRegex: "720p" }
   ]) {
     const settings = {
@@ -138,6 +107,7 @@ test("remembered links cannot bypass current source, regex or compatibility cons
       buildStreamResumeIdentity: () => "",
       streamMergeKey: (s) => s.id,
       filterPlayerStreams,
+      filterFilenameStreams,
       selectAutoPlayStream,
       collectInstalledAddonNames,
       getDeviceCapabilities: () => caps,

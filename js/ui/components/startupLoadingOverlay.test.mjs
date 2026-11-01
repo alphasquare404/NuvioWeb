@@ -148,7 +148,7 @@ test("native video events update status without timers advancing through invente
     new URL("../screens/player/playerScreen.js", import.meta.url),
     "utf8"
   );
-  const method = source.match(/  bindVideoEvents\(\) \{[\s\S]*?\n {2}\},/)?.[0];
+  const method = source.match(/ {2}bindVideoEvents\(\) \{[\s\S]*?\n {2}\},/)?.[0];
   assert.ok(method);
   const handlers = new Map();
   const stages = [];
@@ -203,7 +203,7 @@ test("manual selection releases the attempt overlay before opening the stream li
     "utf8"
   );
   const method = source.match(
-    /  async openStreamRoute\(params, options\) \{[\s\S]*?\n {2}\},/
+    / {2}async openStreamRoute\(params, options\) \{[\s\S]*?\n {2}\},/
   )?.[0];
   assert.ok(method);
   for (const manualMode of [true, false]) {
@@ -299,7 +299,7 @@ test("Detail trusts only metadata loaded for its current route parameters", asyn
     new URL("../screens/detail/metaDetailsScreen.js", import.meta.url),
     "utf8"
   );
-  const method = source.match(/  getStartupOverlayMeta\(\) \{[\s\S]*?\n {2}\},/)?.[0];
+  const method = source.match(/ {2}getStartupOverlayMeta\(\) \{[\s\S]*?\n {2}\},/)?.[0];
   const get = new Function("return ({" + method + "}).getStartupOverlayMeta")();
   const previous = { itemId: "obsession" };
   const current = { itemId: "moana", fallbackTitle: "Moana", backdrop: "moana.jpg" };
@@ -325,5 +325,20 @@ test("unified startup omits the runtime subtitle while retaining logo and loadin
     assert.doesNotMatch(nodes[0].innerHTML, /player-loading-subtitle/);
     assert.match(nodes[0].innerHTML, /player-loading-logo/);
     assert.match(nodes[0].innerHTML, /player-loading-status/);
+  });
+});
+
+test("Back remains actionable throughout finding, metadata, remux preparation, restore and first frame", async () => {
+  await fixture(({ overlay, nodes }) => {
+    for (const stage of ["finding", "opening", "metadata", "loading", "restoring", "frame"]) {
+      let exits = 0;
+      overlay.begin({ title: "Film" }, stage);
+      overlay.setBackHandler(() => exits++);
+      assert.match(nodes[0].innerHTML, /startup-loading-back/);
+      overlay.setRelayText("Preparing remuxing");
+      overlay.back();
+      assert.equal(exits, 1);
+      assert.equal(nodes.length, 0);
+    }
   });
 });

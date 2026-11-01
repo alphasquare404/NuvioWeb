@@ -1,6 +1,7 @@
-import { classifyPlayback } from "./playbackMethod.js";
+import { chooseHlsAudioIndices } from "./relayTracks.js";
 import { classifyStreamFilename } from "../streams/streamCompatibilityFilter.js";
-import { normalizePlaybackLabelSource } from "../streams/streamLabelPolicy.js";
+import { classifyPlayback } from "./playbackMethod.js";
+
 import { REMUX_POLICY, REMUX_ENDPOINT, TRANSCODE_ENDPOINT } from "../../config.js";
 import { clientRemuxPlan } from "./remuxClient.js";
 import { buildRemuxUrl } from "./remuxSource.js";
@@ -14,23 +15,13 @@ import {
 import { TranscodeSettingsStore } from "../../data/local/transcodeSettingsStore.js";
 const copyAccess = createTranscodeAccess({ endpoint: TRANSCODE_ENDPOINT });
 
-// A filename estimate chooses only an initial copy/direct attempt. It cannot
-// authorize an encoder or turn unverified codec support into a file fact.
-export function selectUnverifiedPlayback({
-  stream,
-  probe,
-  labels = {},
-  capabilities = {},
-  policy = REMUX_POLICY
-} = {}) {
+// Unknown file facts start Direct. Only a playback refusal or bounded startup
+// stall can trigger the configured copy route; filenames never authorize encoding.
+export function selectUnverifiedPlayback({ stream, probe, capabilities = {} } = {}) {
   const sourceUrl = String(stream?.url || stream?.externalUrl || "").trim();
   const verdict = probe ? classifyPlayback({ url: sourceUrl, probe, capabilities }) : null;
   if (!sourceUrl || (verdict && verdict.method !== "unknown")) return null;
-  const filename =
-    normalizePlaybackLabelSource(labels.playbackLabelSource) === "FILE_NAME" ||
-    labels.metadataFilenameFallback === true;
-  const estimated = filename ? classifyStreamFilename(stream, capabilities).method : "unknown";
-  const route = estimated === "remux" && policy.mode !== "off" ? "remux" : "direct";
+  const route = "direct";
   return {
     sourceUrl,
     route,
@@ -41,6 +32,71 @@ export function selectUnverifiedPlayback({
     busy: false,
     probeReason: verdict?.reason || ""
   };
+}
+
+// The user may opt into a filename-based first attempt. Encoding remains audio-only.
+export function selectFilenamePlaybackAttempt({
+  stream,
+  probe = null,
+  capabilities = {},
+  enabled = true,
+  policy = REMUX_POLICY,
+  audioEndpoint = TRANSCODE_ENDPOINT
+} = {}) {
+  const attempt = selectUnverifiedPlayback({ stream, capabilities });
+  if (!attempt) return null;
+  const estimate = enabled
+    ? probe
+      ? classifyPlayback({ url: attempt.sourceUrl, probe, capabilities })
+      : classifyStreamFilename(stream, capabilities)
+    : null;
+  const route =
+    estimate?.method === "remux" && policy.mode !== "off"
+      ? "remux"
+      : estimate?.method === "audio-transcode" && audioEndpoint && capabilities.aac === true
+        ? "audio-transcode"
+        : "direct";
+  return {
+    ...attempt,
+    route,
+    rawTried: route === "direct",
+    remuxTried: route === "remux",
+    audioTranscodeTried: route === "audio-transcode",
+    routeFallbackEnabled: true,
+    filenameRouting: enabled,
+    filenameVerdict: probe ? null : estimate
+  };
+}
+
+export function nextPlaybackFallbackRoute(
+  attempt,
+  failure = {},
+  {
+    remuxAvailable = REMUX_POLICY.mode !== "off",
+    audioAvailable = Boolean(TRANSCODE_ENDPOINT)
+  } = {}
+) {
+  if (!attempt || attempt.busy) return null;
+  const preparationTimeout = /Stream preparation timed out|server-hls-startup-timeout/i.test(
+    failure.detail || ""
+  );
+  const eligible = canTryUnverifiedRemux(
+    { ...attempt, route: "direct", remuxTried: false },
+    {
+      ...failure,
+      mediaErrorCode:
+        failure.preparationFailed || (!failure.startupStall && failure.detail)
+          ? 4
+          : failure.mediaErrorCode,
+      detail: preparationTimeout ? "" : failure.detail,
+      startupStall: failure.startupStall || preparationTimeout
+    }
+  );
+  if (!eligible) return null;
+  if (!attempt.rawTried) return "direct";
+  if (!attempt.remuxTried && remuxAvailable) return "remux";
+  if (!attempt.audioTranscodeTried && audioAvailable) return "audio-transcode";
+  return null;
 }
 
 export function canTryUnverifiedRemux(
@@ -74,11 +130,13 @@ export async function prepareUnverifiedRemux(
     transcodeEndpoint = TRANSCODE_ENDPOINT,
     access = copyAccess,
     token = TranscodeSettingsStore.get().token || "",
-    audioIndex = 0
+    audioIndex = 0,
+    probe = null
   } = {}
 ) {
   if (policy.mode === "client") {
-    const plan = clientRemuxPlan({ url: sourceUrl }, null, { policy, attemptCopy: true });
+    const plan = clientRemuxPlan({ url: sourceUrl }, probe, { policy, attemptCopy: true });
+    if (plan && probe) plan.audioIndex = audioIndex;
     if (plan) return { url: plan.sourceUrl, plan };
   }
   if (policy.mode === "server" && remuxEndpoint) {
@@ -87,7 +145,15 @@ export async function prepareUnverifiedRemux(
       const url = buildTranscodePlaylistUrl(sourceUrl, {
         endpoint: transcodeEndpoint,
         token,
-        plan: { video: "copy", audio: "copy", height: 0, channels: 2, audioIndex }
+        plan: {
+          video: "copy",
+          audio: "copy",
+          height: 0,
+          channels: 2,
+          audioIndex,
+          audioIndices:
+            service.alternateAudio && probe ? chooseHlsAudioIndices(probe, audioIndex) : null
+        }
       });
       if (url) return { url, plan: null };
     }
@@ -110,13 +176,15 @@ export function canTryUnverifiedAudioTranscode(attempt, failure, endpoint = TRAN
   return canTryUnverifiedRemux({ ...attempt, route: "direct", remuxTried: false }, failure);
 }
 
-// Only actual file facts plus device assessment may authorize audio encoding.
-// An unsuccessful probe, a playable alternative track or unsupported video stops here.
+// Actual file facts are preferred. The explicit filename-routing preference may
+// authorize an estimated audio-only plan; the video always remains copy.
 export async function prepareUnverifiedAudioTranscode(
   sourceUrl,
   {
     probe = null,
     readProbe,
+    filenameVerdict = null,
+    allowFilenameEstimate = false,
     capabilities = {},
     transcodeEndpoint = TRANSCODE_ENDPOINT,
     access = copyAccess,
@@ -124,9 +192,20 @@ export async function prepareUnverifiedAudioTranscode(
   } = {}
 ) {
   if (!transcodeEndpoint) return null;
-  const facts = probe || (await readProbe?.());
-  if (!facts) return null;
-  const verdict = classifyPlayback({ url: sourceUrl, probe: facts, capabilities });
+  let facts = probe;
+  let verdict = facts ? classifyPlayback({ url: sourceUrl, probe: facts, capabilities }) : null;
+  if (
+    !verdict &&
+    allowFilenameEstimate &&
+    filenameVerdict?.method === "audio-transcode" &&
+    capabilities.aac === true
+  )
+    verdict = filenameVerdict;
+  if (!verdict) {
+    facts = await readProbe?.();
+    if (!facts) return null;
+    verdict = classifyPlayback({ url: sourceUrl, probe: facts, capabilities });
+  }
   const requested = buildTranscodePlan({ capabilities, verdict });
   if (!requested.ok) return null;
   const service = await access.resolve();

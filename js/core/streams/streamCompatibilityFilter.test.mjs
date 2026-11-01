@@ -4,9 +4,7 @@ import {
   filterStreamsByCompatibility,
   normalizeStreamCompatibilityFilter
 } from "./streamCompatibilityFilter.js";
-import { filterPlayerStreams, playerStreamProbeCandidates } from "./playerStreamPolicy.js";
-import { selectAutoPlayStream } from "./streamAutoPlaySelector.js";
-import { setDeviceCapabilitiesForTests } from "../player/deviceCapabilities.js";
+
 import { normalizePlayerSettings } from "../../data/local/playerSettingsStore.js";
 
 const device = {
@@ -82,50 +80,4 @@ test("filter reads encoded filenames and unresolved descriptors without consulti
     ),
     [encoded, unresolved]
   );
-});
-
-test("compatibility filter works with labels disabled and runs before the client probe cap", () => {
-  setDeviceCapabilitiesForTests(device);
-  const settings = { streamCompatibilityFilter: "LIKELY_DIRECT" };
-  assert.deepEqual(
-    filterPlayerStreams(sources, {
-      settings,
-      labels: { showPlaybackLabels: false, labelAddons: [] },
-      capabilities: device
-    }).map((s) => s.id),
-    ["direct"]
-  );
-  assert.deepEqual(
-    playerStreamProbeCandidates(sources, {
-      settings,
-      labels: { showPlaybackLabels: false, labelAddons: ["AIOStreams"] }
-    }),
-    []
-  );
-  const candidates = playerStreamProbeCandidates(sources, {
-    settings,
-    mode: "client",
-    limit: 1,
-    labels: { labelAddons: ["AIOStreams"], clientLabelLimit: 3 }
-  });
-  assert.deepEqual(
-    candidates.map((s) => s.id),
-    ["direct"],
-    "rejected candidates spend no probe slots"
-  );
-});
-
-test("auto selection and preferred binge groups cannot bypass the text filter", () => {
-  setDeviceCapabilitiesForTests(device);
-  const grouped = sources.map((s) => ({
-    ...s,
-    behaviorHints: { bingeGroup: s.id === "video-conversion" ? "preferred" : "" }
-  }));
-  const chosen = selectAutoPlayStream(grouped, {
-    mode: "FIRST_STREAM",
-    streamCompatibilityFilter: "LIKELY_DIRECT",
-    preferredBingeGroup: "preferred",
-    preferBingeGroupInSelection: true
-  });
-  assert.equal(chosen.id, "direct");
 });

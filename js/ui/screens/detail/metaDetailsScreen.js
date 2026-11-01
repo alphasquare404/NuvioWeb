@@ -1,6 +1,5 @@
-import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
-import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
-import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
+import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
+import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import {
   StartupLoadingOverlay,
   usesUnifiedStartup
@@ -8,14 +7,7 @@ import {
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
-import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
-import { createStreamProber } from "../../../core/player/streamProbe.js";
-import { PROBE_ENDPOINT, PROBE_MODE, PROBE_CLIENT_CONCURRENCY } from "../../../config.js";
-import {
-  isOnlyDirectEnabled,
-  usesMetadataLabels
-} from "../../../core/streams/streamLabelPolicy.js";
-import { playerStreamProbeKey } from "../../../core/streams/playerStreamPolicy.js";
+
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
@@ -102,8 +94,7 @@ import { StreamPreferencesStore } from "../../../data/local/streamPreferencesSto
 import {
   collectInstalledAddonNames,
   isAutoPlayEffectivelyEnabled,
-  resolvePreferredBingeGroup,
-  selectAutoPlayStream
+  resolvePreferredBingeGroup
 } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   resolveAutoPlayStream,
@@ -3309,12 +3300,26 @@ export const MetaDetailsScreen = {
     if (this.renderedRouteHandoffMarkup !== markup) {
       this.container.innerHTML = markup;
       this.renderedRouteHandoffMarkup = markup;
+      const back = this.container.querySelector?.("[data-startup-back]");
+      if (back)
+        back.onclick = () => {
+          this.cancelRouteHandoff();
+        };
     }
   },
 
   // Give up holding the page back and show it. Every path that fails to hand
   // off has to reach this, because a waiting screen with nothing coming is a
   // dead end: there is nothing on it to press.
+  cancelRouteHandoff() {
+    this.autoStreamResolveToken = (this.autoStreamResolveToken || 0) + 1;
+    const fromContinueWatching = this.params?.autoOpenContinueWatching === true;
+    if (fromContinueWatching) this.params.autoOpenContinueWatching = false;
+    this.autoOpenContinueWatchingStreamReady = false;
+    this.releaseRouteHandoff();
+    if (fromContinueWatching) void Router.backFromPendingNavigation();
+  },
+
   releaseRouteHandoff() {
     StartupLoadingOverlay.finish();
     if (!this.routeHandoffPending) {
@@ -3345,6 +3350,9 @@ export const MetaDetailsScreen = {
     const deadlineAt = streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
     const token = (this.autoStreamResolveToken || 0) + 1;
     this.autoStreamResolveToken = token;
+    StartupLoadingOverlay.setBackHandler(() => {
+      this.cancelRouteHandoff();
+    });
     const cancelled = () =>
       shouldAbandonAutoResolve({
         startedToken: token,
@@ -3374,25 +3382,8 @@ export const MetaDetailsScreen = {
       ),
       shouldCancel: cancelled,
       deadlineAt,
-      returnOnFirstMatch: true,
-      verifySelection: isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot())
-        ? (partial, stopped) =>
-            this.keepOnlyDirectResolution(partial, () => cancelled() || stopped())
-        : null
+      returnOnFirstMatch: true
     });
-    // The waiting screen is already up, and it is the right place to settle "only direct
-    // streams": the answer needs ffprobe, and a decision taken before it lands is a guess.
-    if (
-      isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot()) &&
-      resolution?.streams?.length &&
-      !resolution.probes
-    ) {
-      resolution = await this.keepOnlyDirectResolution(resolution, cancelled);
-      if (cancelled()) {
-        this.releaseRouteHandoff();
-        return false;
-      }
-    }
     // Nothing took this route over, so the page it was holding back is where
     // the person stays.
     if (cancelled()) {
@@ -3427,72 +3418,6 @@ export const MetaDetailsScreen = {
    * costs nothing the person can see -- and "no direct stream" then falls through to the
    * picker instead of an unplayable player.
    */
-  async keepOnlyDirectResolution(resolution, cancelled = () => false) {
-    StartupLoadingOverlay.setStage("checking");
-    const settings = PlayerSettingsStore.get();
-    const labels = StreamBadgeSettingsStore.snapshot();
-    const capabilities = getDeviceCapabilities();
-    const installedAddonNames = collectInstalledAddonNames(
-      addonRepository.getCachedInstalledAddons()
-    );
-    const preferredBingeGroup =
-      resolution.preferredBingeGroup ||
-      (settings.streamAutoPlayPreferBingeGroupForNextEpisode
-        ? resolution.selected?.behaviorHints?.bingeGroup ||
-          resolution.selected?.raw?.behaviorHints?.bingeGroup ||
-          ""
-        : "");
-    const selection = {
-      mode: settings.streamAutoPlayMode,
-      source: settings.streamAutoPlaySource,
-      regexPattern: settings.streamAutoPlayRegex,
-      installedAddonNames,
-      selectedAddons: settings.streamAutoPlaySelectedAddons,
-      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
-      hdrPreference: resolveHdrPreference(settings),
-      preferredBingeGroup,
-      preferBingeGroupInSelection: Boolean(preferredBingeGroup)
-    };
-    const inspected = await inspectAutoPlayStreams(resolution.streams || [], {
-      settings,
-      labels,
-      capabilities,
-      selection,
-      mode: PROBE_MODE,
-      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
-      deadlineAt: resolution.deadlineAt ?? Infinity,
-      knownProbes: resolution.probes || [],
-      cancelled,
-      context: { season: this.params?.season ?? null, episode: this.params?.episode ?? null },
-      prober: usesMetadataLabels(labels)
-        ? createStreamProber({
-            endpoint: PROBE_ENDPOINT,
-            mode: PROBE_MODE,
-            clientConcurrency: PROBE_CLIENT_CONCURRENCY,
-            timeoutMs: 15000,
-            assess: (probe) => assessPlaybackCapabilities(probe)
-          })
-        : null
-    });
-    if (cancelled()) return resolution;
-    const probeForStream = (stream) =>
-      inspected.probes.get(playerStreamProbeKey(stream)) ||
-      inspected.probes.get(stream.url || stream.externalUrl || "");
-    const selected = selectAutoPlayStream(inspected.candidates, {
-      ...selection,
-      probeOnly: usesMetadataLabels(labels),
-      probeForStream
-    });
-    return {
-      ...resolution,
-      streams: inspected.streams,
-      selected,
-      directStreams: inspected.candidates,
-      hdrExcluded: inspected.hdrExcluded === true,
-      probes: [...inspected.probes],
-      timedOut: !selected && Date.now() >= (resolution.deadlineAt ?? Infinity)
-    };
-  },
 
   getStreamNavigationOptions() {
     // Continue Watching mounts Detail only to resolve the Stream target. Replace
@@ -5628,13 +5553,24 @@ export const MetaDetailsScreen = {
   },
 
   async resolveSeasonEpisodeStreams(episode = {}) {
-    return streamRepository.getStreamsFromAllAddons("series", String(episode.id || ""), {
-      itemId: this.getOfflineSeriesId(),
-      season: Number(episode.season),
-      episode: Number(episode.episode)
-    });
+    const result = await streamRepository.getStreamsFromAllAddons(
+      "series",
+      String(episode.id || ""),
+      {
+        itemId: this.getOfflineSeriesId(),
+        season: Number(episode.season),
+        episode: Number(episode.episode)
+      }
+    );
+    if (result?.status !== "success" || !Array.isArray(result.data)) return result;
+    return {
+      ...result,
+      data: result.data.map((group) => ({
+        ...group,
+        streams: filterFilenameStreams(group.streams || [], PlayerSettingsStore.get())
+      }))
+    };
   },
-
   closeSeasonDownloadDialog({ cancelPreparation = true } = {}) {
     if (cancelPreparation && this.seasonDownloadFlow) this.seasonDownloadFlow.cancelled = true;
     this.seasonDownloadDialog?.destroy?.();
@@ -5913,7 +5849,10 @@ export const MetaDetailsScreen = {
     });
     let streams = [];
     try {
-      streams = flattenSeasonDownloadStreams(await this.resolveSeasonEpisodeStreams(episode));
+      streams = filterFilenameStreams(
+        flattenSeasonDownloadStreams(await this.resolveSeasonEpisodeStreams(episode)),
+        PlayerSettingsStore.get()
+      );
     } catch (_) {}
     if (flow.cancelled) return;
     const eligible = streams.filter((stream) =>
@@ -10901,10 +10840,10 @@ export const MetaDetailsScreen = {
     if (!pending || !pending.streams.length) {
       return [];
     }
-    if (pending.addonFilter === "all") {
-      return pending.streams;
-    }
-    return pending.streams.filter((stream) => stream.addonName === pending.addonFilter);
+    const visible = filterFilenameStreams(pending.streams, PlayerSettingsStore.get());
+    return pending.addonFilter === "all"
+      ? visible
+      : visible.filter((stream) => stream.addonName === pending.addonFilter);
   },
 
   renderEpisodeStreamChooser() {
@@ -10947,6 +10886,7 @@ export const MetaDetailsScreen = {
               <span>${stream.addonName || "Addon"}${stream.sourceType ? ` - ${stream.sourceType}` : ""}</span>
             </div>
             <div class="series-stream-tags">
+              ${renderFilenamePlaybackBadge(stream, StreamBadgeSettingsStore.snapshot())}
               <span class="series-stream-tag">${detectQuality(stream.label || stream.description || "")}</span>
               <span class="series-stream-tag">${
                 String(stream.sourceType || "")
@@ -11030,6 +10970,7 @@ export const MetaDetailsScreen = {
               <span>${stream.addonName || "Addon"}${stream.sourceType ? ` - ${stream.sourceType}` : ""}</span>
             </div>
             <div class="series-stream-tags">
+              ${renderFilenamePlaybackBadge(stream, StreamBadgeSettingsStore.snapshot())}
               <span class="series-stream-tag">${detectQuality(stream.label || stream.description || "")}</span>
               <span class="series-stream-tag">${
                 String(stream.sourceType || "")
@@ -11082,6 +11023,10 @@ export const MetaDetailsScreen = {
   },
 
   consumeBackRequest(backContext = {}) {
+    if (this.routeHandoffPending) {
+      this.cancelRouteHandoff();
+      return true;
+    }
     if (this.seasonHoldMenu) {
       this.closeSeasonHoldMenu();
       return true;
@@ -11129,7 +11074,7 @@ export const MetaDetailsScreen = {
       return;
     }
     const selectedStream =
-      pending.streams.find((stream) => stream.id === streamId) ||
+      this.getFilteredEpisodeStreams().find((stream) => stream.id === streamId) ||
       this.getFilteredEpisodeStreams()[0];
     if (!selectedStream?.url) {
       return;
@@ -11146,6 +11091,8 @@ export const MetaDetailsScreen = {
     this.stopTrailerPlaybackForNavigation();
     Router.navigate("player", {
       streamUrl: selectedStream.url,
+      prepareSelectedSource: true,
+      automaticSourceSelection: false,
       itemId: this.params?.itemId,
       itemType: this.params?.itemType || "series",
       imdbId,
@@ -11319,7 +11266,7 @@ export const MetaDetailsScreen = {
       return;
     }
     const selectedStream =
-      pending.streams.find((stream) => stream.id === streamId) ||
+      this.getFilteredEpisodeStreams().find((stream) => stream.id === streamId) ||
       this.getFilteredEpisodeStreams()[0];
     if (!selectedStream?.url) {
       return;
@@ -11332,6 +11279,8 @@ export const MetaDetailsScreen = {
     this.stopTrailerPlaybackForNavigation();
     Router.navigate("player", {
       streamUrl: selectedStream.url,
+      prepareSelectedSource: true,
+      automaticSourceSelection: false,
       itemId: this.params?.itemId,
       itemType: this.params?.itemType || "movie",
       imdbId,

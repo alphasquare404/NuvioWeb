@@ -324,30 +324,6 @@ test("selection phases share a deadline; Instant has a bounded discovery budget"
   assert.equal(called, false);
 });
 
-test("filename Only Direct filters each arriving chunk before automatic selection", async () => {
-  const { setDeviceCapabilitiesForTests } = await import("../player/deviceCapabilities.js");
-  setDeviceCapabilitiesForTests({ h264: true, hevc: false, aac: true, containers: { mp4: true } });
-  const incompatible = stream("Film.HEVC.AAC.mp4", "https://cdn.test/bad.mp4");
-  const direct = stream("Film.H264.AAC.mp4", "https://cdn.test/good.mp4");
-  const result = await resolveAutoPlayStream({
-    itemType: "movie",
-    videoId: "tt-source",
-    settings: {
-      ...FIRST_STREAM,
-      showOnlyDirectStreams: true,
-      streamAutoPlayTimeoutSeconds: 2147483647
-    },
-    labelSettings: {
-      showPlaybackLabels: true,
-      labelAddons: ["Addon"],
-      playbackLabelSource: "FILE_NAME"
-    },
-    returnOnFirstMatch: true,
-    repository: fakeRepository([[incompatible], [direct]])
-  });
-  assert.equal(result.selected.url, direct.url);
-});
-
 test("Instant starts source discovery rather than expiring at zero milliseconds", async () => {
   let calls = 0;
   const result = await resolveAutoPlayStream({

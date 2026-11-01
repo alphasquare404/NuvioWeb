@@ -1,71 +1,19 @@
-import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
-import { probeMetadataCacheGeneration } from "../../../core/player/probeMetadataCache.js";
-import { streamSelectionDeadline } from "../../../core/streams/streamAutoResolve.js";
-import { probeStreamCandidate } from "../../../core/player/probeStreamCandidate.js";
-import {
-  selectUnverifiedPlayback,
-  prepareUnverifiedRemux
-} from "../../../core/player/unverifiedPlayback.js";
-import {
-  chooseHlsAudioIndices,
-  canSwitchHlsAudioCodecs
-} from "../../../core/player/relayTracks.js";
-import {
-  playerStreamProbeCandidates,
-  playerStreamCheckCandidates,
-  filterPlayerStreams,
-  playerStreamProbeKey
-} from "../../../core/streams/playerStreamPolicy.js";
-import { filterStreamsByCompatibility } from "../../../core/streams/streamCompatibilityFilter.js";
-import {
-  isOnlyDirectEnabled,
-  isStreamLabelingEnabled,
-  isStreamCheckEnabled,
-  usesMetadataLabels
-} from "../../../core/streams/streamLabelPolicy.js";
+import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
+import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
 import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
-import { resolveRelayAvailability } from "../../../core/player/relayAvailability.js";
-import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
+
 import {
   StartupLoadingOverlay,
   usesUnifiedStartup
 } from "../../components/startupLoadingOverlay.js";
-import { tracePlayback, traceUrlKind, traceHost } from "../../../core/util/playbackTrace.js";
+
 import { Router } from "../../navigation/router.js";
 import { loadMoviModule } from "../../../core/player/movi/moviEngine.js";
 import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
-import { renderStreamPlaybackBadge } from "../../components/streamPlaybackBadge.js";
-import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
-import {
-  createStreamProber,
-  isTagCriticalVerdict,
-  streamProbeIdentity
-} from "../../../core/player/streamProbe.js";
-import {
-  buildTranscodePlan,
-  buildTranscodePlaylistUrl,
-  buildTranscodeUrl,
-  createTranscodeAccess,
-  isTranscodeAccessGranted,
-  shouldTranscodeSource
-} from "../../../core/player/transcodeSource.js";
+
 import { buildPlayerSubtitle } from "../../../core/util/runtimeLabel.js";
-import {
-  PROBE_ENDPOINT,
-  PROBE_MODE,
-  PROBE_CLIENT_CONCURRENCY,
-  REMUX_ENDPOINT,
-  REMUX_POLICY,
-  TRANSCODE_ENDPOINT
-} from "../../../config.js";
-import {
-  assertConfiguredRemuxRoute,
-  isConfiguredCopyRelayUrl
-} from "../../../core/player/remuxPolicy.js";
-import { clientRemuxPlan, clientRemuxAvailable } from "../../../core/player/remuxClient.js";
-import { buildRemuxUrl } from "../../../core/player/remuxSource.js";
-import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
-import { PLAYBACK_METHODS, classifyPlayback } from "../../../core/player/playbackMethod.js";
+import { REMUX_ENDPOINT } from "../../../config.js";
+
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
@@ -97,7 +45,7 @@ import {
 import { DebridStreamPresentation } from "../../../core/debrid/directDebridStreamPresentation.js";
 import { DebridSettingsStore } from "../../../data/local/debridSettingsStore.js";
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
-import { TranscodeSettingsStore } from "../../../data/local/transcodeSettingsStore.js";
+
 import {
   getCachedAddonLogoDisplayUrl,
   hasFailedAddonLogo,
@@ -459,24 +407,17 @@ function renderImportedStreamBadgeChipContents(
   return chips.join("");
 }
 
-function renderImportedStreamBadgeChips(stream = {}, badges = [], showFileSizeBadges = true) {
-  const contents = renderImportedStreamBadgeChipContents(stream, badges, showFileSizeBadges);
-  return contents
-    ? `<div class="stream-route-card-badges" aria-label="${escapeHtml(t("settings_stream_badges_section", {}, "Fusion Style"))}">${contents}</div>`
-    : "";
-}
-
 function renderStreamBadges(stream = {}, enabled = true, badgeSettings = null) {
-  if (!enabled) {
-    return "";
-  }
-  const currentBadgeSettings = badgeSettings || StreamBadgeSettingsStore.snapshot();
-  const importedBadges = matchStreamBadges(stream, currentBadgeSettings.rules);
-  return renderImportedStreamBadgeChips(
-    stream,
-    importedBadges,
-    currentBadgeSettings.showFileSizeBadges !== false
-  );
+  const settings = badgeSettings || StreamBadgeSettingsStore.snapshot();
+  const label = renderFilenamePlaybackBadge(stream, settings);
+  const imported = enabled
+    ? renderImportedStreamBadgeChipContents(
+        stream,
+        matchStreamBadges(stream, settings.rules),
+        settings.showFileSizeBadges !== false
+      )
+    : "";
+  return label || imported ? `<div class="stream-route-card-badges">${label}${imported}</div>` : "";
 }
 
 function resolveStreamBadgePlacement(badgeSettings = null) {
@@ -514,20 +455,9 @@ function sortStreamsByAddonOrder(streams = [], sourceChips = []) {
 // batch was what turned a list into half a minute of yellow-label roulette.
 // A probe reads a remote header: measured 2.5-4 s on a good link, and the bridge itself
 // allows far longer. Aborting at three seconds is what turned answered rows into Unknown.
-const streamProber = createStreamProber({
-  endpoint: PROBE_ENDPOINT,
-  mode: PROBE_MODE,
-  clientConcurrency: PROBE_CLIENT_CONCURRENCY,
-  timeoutMs: 15000,
-  assess: (probe) =>
-    assessPlaybackCapabilities(probe, {
-      engine: shouldUseMovi(PlayerSettingsStore.get()) ? "movi" : "native"
-    })
-});
 // Asked once per session, because only the bridge knows whether it wants a secret:
 // `open` and `lan` do not, and `token` does. Asking first is what keeps the app
 // from calling an endpoint the deployment never authorised.
-const transcodeAccess = createTranscodeAccess({ endpoint: TRANSCODE_ENDPOINT });
 
 export const StreamScreen = {
   cancelScheduledRender() {
@@ -743,6 +673,10 @@ export const StreamScreen = {
   },
 
   consumeBackRequest(backContext = {}) {
+    this._playSelectionGeneration = (this._playSelectionGeneration || 0) + 1;
+    this.autoPlayAttempted = true;
+    this.cancelAutoPlayCountdown();
+    StartupLoadingOverlay.finish();
     // A normal Detail -> Stream transition has a durable Detail entry directly
     // behind it. Let Router move through that entry instead of replacing Stream
     // with a synthetic Detail that no longer knows its original parent route.
@@ -777,8 +711,6 @@ export const StreamScreen = {
       loading: Boolean(this.loading),
       error: String(this.error || ""),
       streams: Array.isArray(this.streams) ? this.streams.map((stream) => ({ ...stream })) : [],
-      probeResults: [...(this._probeResults || new Map())],
-      probeGeneration: probeMetadataCacheGeneration(),
       addonFilter: String(this.addonFilter || "all"),
       focusState: this.focusState ? { ...this.focusState } : { zone: "filter", index: 0 },
       sourceChips: Array.isArray(this.sourceChips)
@@ -813,27 +745,8 @@ export const StreamScreen = {
     // Answers from the probe endpoint, keyed by source URL, plus the one-shot guard
     // that stops the screen asking for the same batch on every render.
     this._labelProbePaused = false;
-    this._labelProbeGeneration = (this._labelProbeGeneration || 0) + 1;
-    this._probeResults = new Map();
-    this._cachedProbeHydrationSeen = new Set();
-    this._cachedProbeHydrationPending = 0;
-    this._probeSent = new Set();
-    this._probeOutstanding = false;
-    this._probeRevision = 0;
-    this._autoPlayProbeDeadline = null;
-    this._autoSelectionMetadataDone = "";
-    this._autoSelectionMetadataPromise = null;
-    // Which urls are being probed right now, so a card can say "checking" rather than
-    // "unknown" while it waits.
-    this._probePending = new Set();
-    // Rows whose probe came back empty. They stay "unknown" instead of pretending to check
-    // forever; everything else that has not been answered yet reads as "checking".
-    this._probeFailed = new Set();
-    // A failed probe is not free: the server still ran ffprobe, and repeating it at once is
-    // how 3580 requests turned into 3266 failures. Each url gets a cooldown and a cap.
-    this._probeAttempts = new Map();
-    this._probeCooldownUntil = new Map();
-    this._probesScheduled = false;
+    this._labelProbePaused = false;
+    this._playSelectionGeneration = (this._playSelectionGeneration || 0) + 1;
     // The movi runtime is ~23 MB (element.js plus its wasm) and is fetched when the
     // player route opens. Fetching it while the user is still choosing a link moves
     // that wait somewhere it is not felt: this screen is usually up for several
@@ -844,28 +757,13 @@ export const StreamScreen = {
       this.renderAutoResolvedHandoff(params?.backdrop || "");
     }
     this.params = params || {};
+    if (params.playbackFailureMessage)
+      setTimeout(() => {
+        if (this.params === params)
+          this.showStreamToast(params.playbackFailureMessage, { durationMs: 10000 });
+      }, 0);
     this.loadToken = (this.loadToken || 0) + 1;
     const token = this.loadToken;
-    this._relayAvailability = {
-      remux:
-        REMUX_POLICY.mode === "client" ? clientRemuxAvailable() : REMUX_ENDPOINT ? null : false,
-      audio: TRANSCODE_ENDPOINT ? null : false
-    };
-    if (REMUX_ENDPOINT || TRANSCODE_ENDPOINT)
-      void Promise.all([
-        REMUX_POLICY.mode === "client"
-          ? Promise.resolve(clientRemuxAvailable())
-          : resolveRelayAvailability({ endpoint: REMUX_ENDPOINT }),
-        resolveRelayAvailability({
-          endpoint: TRANSCODE_ENDPOINT,
-          transcode: true,
-          token: String(TranscodeSettingsStore.get().token || "")
-        })
-      ]).then(([remux, audio]) => {
-        if (token !== this.loadToken || Router.getCurrent() !== "stream") return;
-        this._relayAvailability = { remux, audio };
-        this.requestRender();
-      });
     this.focusState = { zone: "filter", index: 0 };
     this.listScrollTop = 0;
     this.appliedFocusKey = null;
@@ -952,7 +850,6 @@ export const StreamScreen = {
       this.streams = Array.isArray(restored.streams)
         ? restored.streams.map((stream) => ({ ...stream }))
         : [];
-      this.restoreProbeResults(restored.probeResults, restored.probeGeneration);
       this.addonFilter = String(restored.addonFilter || "all");
       this.focusState = restored.focusState
         ? { ...restored.focusState }
@@ -1035,8 +932,6 @@ export const StreamScreen = {
       return false;
     }
     this.streams = mergeStreamItems([], this.applyAddonLogos(prefetched));
-    this.restoreProbeResults(this.params?.autoResolvedProbes);
-    this._probeRevision = (this._probeRevision || 0) + 1;
     this._filteredStreamsCache = null;
     this.loading = false;
     this.autoPlaySelectionReady = true;
@@ -1046,7 +941,7 @@ export const StreamScreen = {
 
     const chosenId = String(this.params?.autoResolvedStreamId || "").trim();
     const chosen = chosenId
-      ? this.streams.find((stream) => String(stream?.id || "") === chosenId)
+      ? this.getFilteredStreams().find((stream) => String(stream?.id || "") === chosenId)
       : null;
     if (!chosen) {
       this.requestRender({ delayMs: 0 });
@@ -1055,7 +950,7 @@ export const StreamScreen = {
 
     this.autoPlayAttempted = true;
     this.autoResolvedPlaybackPending = true;
-    void Promise.resolve(this.playStream(chosen.id)).finally(() => {
+    void Promise.resolve(this.playStream(chosen.id, { automatic: true })).finally(() => {
       this.restoreListAfterHandoff();
     });
     return true;
@@ -1530,14 +1425,9 @@ export const StreamScreen = {
         ? this.streams.find((stream) => String(stream?.id || "") === preferredStreamId)
         : null);
     if (match?.id) {
-      const allowed = filterPlayerStreams([match], {
-        settings,
-        labels: StreamBadgeSettingsStore.snapshot(),
-        mode: PROBE_MODE,
-        capabilities: getDeviceCapabilities(),
-        probeForStream: (stream) => this.getStreamProbe(stream)
-      });
+      const allowed = filterFilenameStreams([match], settings);
       const selected = selectAutoPlayStream(allowed, {
+        filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
         mode: settings.streamAutoPlayMode,
         source: settings.streamAutoPlaySource,
         regexPattern: settings.streamAutoPlayRegex,
@@ -1547,7 +1437,7 @@ export const StreamScreen = {
       });
       this.autoResumeAttempted = true;
       this.autoResumeUiActive = false;
-      if (selected?.id) void this.playStream(selected.id);
+      if (selected?.id) void this.playStream(selected.id, { automatic: true });
       else this.requestRender();
       return;
     }
@@ -1561,333 +1451,51 @@ export const StreamScreen = {
     this.requestRender({ delayMs: 0 });
   },
 
-  /** True when no probe is running, queued, or still unanswered. */
-  /** May this url be asked again yet? Two attempts, at least fifteen seconds apart. */
-  canProbeRow(url) {
-    if (!url) return false;
-    if ((this._probeCooldownUntil?.get(url) || 0) > Date.now()) return false;
-    return (this._probeAttempts?.get(url) || 0) < 2;
-  },
-
-  markProbeFailure(url) {
-    if (!url) return;
-    this._probeFailed.add(url);
-    this._probeAttempts.set(url, (this._probeAttempts.get(url) || 0) + 1);
-    this._probeCooldownUntil.set(url, Date.now() + 15 * 1000);
-    if ((this._probeAttempts.get(url) || 0) < 2) {
-      const timers = (this._probeRetryTimers ||= new Set());
-      const timer = setTimeout(() => {
-        timers.delete(timer);
-        this.scheduleUnknownProbes();
-      }, 15000);
-      timers.add(timer);
-      timer.unref?.();
-    }
-  },
-
-  markProbeSuccess(url) {
-    if (!url) return;
-    this._probeFailed.delete(url);
-    this._probeAttempts.delete(url);
-    this._probeCooldownUntil.delete(url);
-  },
-
-  getProbeCandidates() {
-    return playerStreamProbeCandidates(sortStreamsByAddonOrder(this.streams, this.sourceChips), {
-      labels: StreamBadgeSettingsStore.snapshot(),
-      settings: PlayerSettingsStore.get(),
-      capabilities: getDeviceCapabilities(),
-      mode: PROBE_MODE,
-      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
-    });
-  },
-
-  restoreProbeResults(entries = [], generation = probeMetadataCacheGeneration()) {
-    if (generation !== probeMetadataCacheGeneration()) return;
-    for (const [key, probe] of entries || []) {
-      const stream = this.streams.find(
-        (candidate) =>
-          playerStreamProbeKey(candidate) === key ||
-          (candidate.url || candidate.externalUrl) === key
-      );
-      if (!stream || !probe?.videoCodec) continue;
-      this._probeResults.set(key, probe);
-      this._probeResults.set(playerStreamProbeKey(stream), probe);
-      if (stream.url || stream.externalUrl)
-        this._probeResults.set(stream.url || stream.externalUrl, probe);
-    }
-  },
-
-  hydrateCachedProbeResults() {
-    const labels = StreamBadgeSettingsStore.snapshot();
-    if (
-      PROBE_MODE !== "client" ||
-      !usesMetadataLabels(labels) ||
-      !isStreamCheckEnabled(labels) ||
-      !this._probeResults ||
-      !this.streams.length
-    )
-      return;
-    const seen = (this._cachedProbeHydrationSeen ||= new Set());
-    const candidates = this.streams
-      .filter((stream) => {
-        const key = streamProbeIdentity(stream);
-        if (
-          !/^torrent-file:[a-f0-9]{40}:\d+$/.test(key) ||
-          seen.has(key) ||
-          this.getStreamProbe(stream)
-        )
-          return false;
-        seen.add(key);
-        return true;
-      })
-      .slice(0, 1000);
-    if (!candidates.length) return;
-    const token = this.loadToken,
-      generation = probeMetadataCacheGeneration();
-    this._cachedProbeHydrationPending =
-      (this._cachedProbeHydrationPending || 0) + candidates.length;
-    let next = 0;
-    const lane = async () => {
-      while (next < candidates.length && token === this.loadToken) {
-        const stream = candidates[next++],
-          key = streamProbeIdentity(stream);
-        const probe = await streamProber.probe("", { identity: key, timeoutMs: 150 });
-        if (token !== this.loadToken) return;
-        this._cachedProbeHydrationPending--;
-        if (probe && generation === probeMetadataCacheGeneration()) {
-          this.restoreProbeResults([[key, probe]], generation);
-          this._probeRevision = (this._probeRevision || 0) + 1;
-          this._filteredStreamsCache = null;
-          this.requestRender({ delayMs: 0 });
-        }
-      }
-    };
-    void Promise.all(Array.from({ length: Math.min(10, candidates.length) }, () => lane())).then(
-      () => {
-        if (token === this.loadToken) this.maybeAutoPlayStream({ allLoaded: !this.loading });
-      }
-    );
-  },
-
-  getStreamProbe(stream) {
-    return (
-      this._probeResults?.get(stream.url || stream.externalUrl || "") ||
-      this._probeResults?.get(playerStreamProbeKey(stream)) ||
-      null
-    );
-  },
-
-  probesSettled() {
-    if (this._probeOutstanding === true) return false;
-    if ((this._probePending?.size || 0) > 0) return false;
-    if (!streamProber.enabled) return true;
-    return !this.getProbeCandidates().some((stream) => {
-      const url = String(stream.url || stream.externalUrl || "").trim();
-      const key = url || playerStreamProbeKey(stream);
-      return key && !this.getStreamProbe(stream) && !this._probeFailed?.has(key);
-    });
-  },
-
   maybeAutoPlayStream({ allLoaded = false } = {}) {
     if (
       this._labelProbePaused ||
       this.autoResumeUiActive ||
       this.autoPlayAttempted ||
-      this.autoPlayCountdown
-    ) {
+      this.autoPlayCountdown ||
+      Router.getCurrent() !== "stream" ||
+      !this.streams.length
+    )
       return;
-    }
-    // Resume already navigated away, or there is nothing to play.
-    if (Router.getCurrent() !== "stream" || !this.streams.length) {
-      return;
-    }
     const settings = PlayerSettingsStore.get();
-    if (this.params?.manualSelection || this.params?.autoSelectionFinished) {
+    if (
+      this.params?.manualSelection ||
+      this.params?.autoSelectionFinished ||
+      !isAutoPlayEffectivelyEnabled(settings)
+    )
       return;
-    }
-    if (!allLoaded && !this.autoPlaySelectionReady) {
-      return;
-    }
-    // "Manual (choose stream)" is authoritative for a fresh stream screen.
-    // Persisted binge groups may still guide an enabled auto-play mode and the
-    // next-episode player flow, but must not turn Continue Watching or Details
-    // into an implicit auto-play entry point.
-    const autoPlayMode = String(settings.streamAutoPlayMode || "MANUAL").toUpperCase();
-    if (autoPlayMode === "MANUAL" || !isAutoPlayEffectivelyEnabled(settings)) {
-      return;
-    }
+    if (!allLoaded && !this.autoPlaySelectionReady) return;
     if (Number(settings.streamAutoPlayTimeoutSeconds) === 2147483647 && !allLoaded && this.loading)
       return;
-    const preferredBingeGroup = resolvePreferredBingeGroup(settings, () =>
-      StreamPreferencesStore.getEntry(
-        this.params?.itemId,
-        this.params?.videoId || this.params?.itemId
-      )
-    );
-    const installedAddonNames = collectInstalledAddonNames(
-      addonRepository.getCachedInstalledAddons()
-    );
-    const labels = StreamBadgeSettingsStore.snapshot();
-    const strictMetadata = isOnlyDirectEnabled(settings, labels) && usesMetadataLabels(labels);
-    const signatureFor = (streams = this.streams) =>
-      JSON.stringify([
-        streams.map(playerStreamProbeKey),
-        settings.streamDisplayMode,
-        settings.streamAutoPlaySource,
-        settings.streamAutoPlaySelectedAddons,
-        settings.streamAutoPlaySelectedPlugins,
-        settings.streamAutoPlayRegex,
-        labels.playbackLabelSource,
-        labels.clientLabelLimit,
-        preferredBingeGroup
-      ]);
-    const signature = strictMetadata ? signatureFor() : "";
-    const selection = {
-      mode: settings.streamAutoPlayMode,
-      source: settings.streamAutoPlaySource,
-      regexPattern: settings.streamAutoPlayRegex,
-      installedAddonNames,
-      selectedAddons: settings.streamAutoPlaySelectedAddons,
-      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
-      preferredBingeGroup,
-      preferBingeGroupInSelection: Boolean(preferredBingeGroup),
-      hdrPreference: resolveHdrPreference(settings),
-      probeOnly: strictMetadata,
-      probeForStream: (stream) => this.getStreamProbe(stream)
-    };
-    if (
-      strictMetadata &&
-      this._autoSelectionMetadataDone !== signature &&
-      !selectAutoPlayStream(this.getFilteredStreams(), selection)
-    ) {
-      const token = this.loadToken,
-        playGeneration = this._playSelectionGeneration;
-      const active = () =>
-        token === this.loadToken &&
-        playGeneration === this._playSelectionGeneration &&
-        Router.getCurrent() === "stream";
-      const deadlineAt =
-        this._autoPlayProbeDeadline ??
-        this.params?.autoSelectionDeadlineAt ??
-        streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
-      this._autoPlayProbeDeadline = deadlineAt;
-      // Source selection owns priority over cosmetic background work. Facts remain cached.
-      this._labelProbePaused = true;
-      this._labelProbeGeneration = (this._labelProbeGeneration || 0) + 1;
-      streamProber.cancelAll();
-      for (const key of this._probePending || []) {
-        if (!this._probeResults.has(key)) this._probeSent?.delete(key);
-      }
-      this._probePending?.clear();
-      this._probeOutstanding = false;
-      const inspectedStreams = this.streams;
-      this._autoSelectionMetadataPromise = inspectAutoPlayStreams(inspectedStreams, {
-        settings,
-        labels,
-        capabilities: getDeviceCapabilities(),
-        selection,
-        mode: PROBE_MODE,
-        prober: streamProber,
-        deadlineAt,
-        limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
-        cancelled: () => !active(),
-        context: { season: this.params?.season ?? null, episode: this.params?.episode ?? null }
-      })
-        .catch(() => null)
-        .then((result) => {
-          if (!active()) return;
-          if (result) {
-            const byKey = new Map(
-              result.streams.map((stream) => [playerStreamProbeKey(stream), stream])
-            );
-            const byId = new Map(result.streams.map((stream) => [stream.id, stream]));
-            this.streams = this.streams.map((stream) => {
-              const updated = byKey.get(playerStreamProbeKey(stream)) || byId.get(stream.id);
-              return updated?.url && !/^https?:/i.test(stream.url || stream.externalUrl || "")
-                ? { ...stream, url: updated.url, externalUrl: null }
-                : stream;
-            });
-            this.restoreProbeResults([...result.probes]);
-          }
-          this._autoSelectionMetadataDone = signatureFor(result?.streams || inspectedStreams);
-          this._cachedProbeHydrationSeen = new Set();
-          this._probeRevision = (this._probeRevision || 0) + 1;
-          this._filteredStreamsCache = null;
-          this._labelProbePaused = false;
-          this.maybeAutoPlayStream({ allLoaded: !this.loading });
-          this.requestRender();
-        });
-      return;
-    }
-    // With the direct filter on, an empty list is usually "not answered yet", not "nothing
-    // to play". Concluding now would make auto-play look broken, so wait for the probes.
-    if (strictMetadata && this._autoSelectionMetadataDone !== signature) {
-      const unanswered = streamProber.enabled
-        ? this.getProbeCandidates().filter((stream) => {
-            const url = String(stream.url || stream.externalUrl || "").trim();
-            const key = url || playerStreamProbeKey(stream);
-            return key && !this.getStreamProbe(stream) && !this._probeFailed?.has(key);
-          })
-        : [];
-      // The pipeline, not just the row list: some rows already have answers while others
-      // are still queued, and deciding on that half-filled view is how auto-play "failed"
-      // a second before the direct rows appeared.
-      const probesBusy =
-        this._probeOutstanding === true ||
-        (this._probePending?.size || 0) > 0 ||
-        (this._cachedProbeHydrationPending || 0) > 0;
-      if (probesBusy || unanswered.length) {
-        // Continue the same selection deadline; cache/metadata discovery must not
-        // silently add another grace period after source discovery.
-        const deadline =
-          this._autoPlayProbeDeadline ??
-          this.params?.autoSelectionDeadlineAt ??
-          streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
-        this._autoPlayProbeDeadline = deadline;
-        if (Date.now() < deadline) {
-          const token = this.loadToken;
-          setTimeout(() => {
-            if (token === this.loadToken) this.maybeAutoPlayStream({ allLoaded: true });
-          }, 750);
-          return;
-        }
-        // The wait limit ends discovery, not selection: use any confirmed Direct
-        // result already available before falling back to the picker.
-        this.autoPlayAttempted = true;
-      }
-      this._autoPlayProbeDeadline = null;
-    }
-
     const selected = selectAutoPlayStream(this.getFilteredStreams(), {
-      streamCompatibilityFilter: settings.streamCompatibilityFilter,
-      hdrPreference: resolveHdrPreference(settings),
-      probeOnly:
-        isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot()) &&
-        usesMetadataLabels(StreamBadgeSettingsStore.snapshot()),
-      probeForStream: (stream) => this.getStreamProbe(stream),
+      filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
       mode: settings.streamAutoPlayMode,
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
-      installedAddonNames,
+      installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
       selectedAddons: settings.streamAutoPlaySelectedAddons,
       selectedPlugins: settings.streamAutoPlaySelectedPlugins,
-      preferredBingeGroup,
-      preferBingeGroupInSelection: Boolean(preferredBingeGroup)
+      hdrPreference: resolveHdrPreference(settings),
+      preferredBingeGroup: resolvePreferredBingeGroup(settings, () =>
+        StreamPreferencesStore.getEntry(
+          this.params?.itemId,
+          this.params?.videoId || this.params?.itemId
+        )
+      ),
+      preferBingeGroupInSelection: true
     });
     if (!selected?.id) {
-      // Not a verdict while probes are still arriving: leaving this unset is what lets the
-      // list retry once the answers are in.
-      if (allLoaded && this.probesSettled()) {
-        this.autoPlayAttempted = true;
-      }
+      if (allLoaded) this.autoPlayAttempted = true;
       return;
     }
     this.autoPlayAttempted = true;
     this.cancelAutoPlaySelectionWait();
-    void this.playStream(selected.id);
+    void this.playStream(selected.id, { automatic: true });
   },
-
   cancelAutoPlaySelectionWait() {
     if (this.autoPlaySelectionWaitTimer) {
       clearTimeout(this.autoPlaySelectionWaitTimer);
@@ -1905,7 +1513,7 @@ export const StreamScreen = {
     }
     const total = Math.max(0, Math.trunc(Number(seconds) || 0));
     if (total <= 0) {
-      void this.playStream(stream.id);
+      void this.playStream(stream.id, { automatic: true });
       return;
     }
     this.autoPlayCountdown = {
@@ -1922,7 +1530,7 @@ export const StreamScreen = {
       if (this.autoPlayCountdown.secondsLeft <= 0) {
         const targetId = this.autoPlayCountdown.streamId;
         this.cancelAutoPlayCountdown();
-        void this.playStream(targetId);
+        void this.playStream(targetId, { automatic: true });
         return;
       }
       this.requestRender({ delayMs: 0 });
@@ -1993,62 +1601,13 @@ export const StreamScreen = {
   },
 
   getFilteredStreams(filter = this.addonFilter) {
-    const labelSettings = StreamBadgeSettingsStore.snapshot();
-    const settings = PlayerSettingsStore.get();
-    const labelAddonsKey = JSON.stringify([
-      labelSettings,
-      settings.streamDisplayMode,
-      settings.showOnlyDirectStreams,
-      settings.streamCompatibilityFilter
-    ]);
-    const showOnlyDirectStreams = isOnlyDirectEnabled(settings, labelSettings);
-    // Cache the sorted/filtered result so focus navigation (which re-requests
-    // this on every move via badge hydration) does not re-sort and re-parse
-    // the whole source list each keypress. The cache is keyed on the inputs
-    // that affect the result and is cleared in render() when data changes.
-    const cache = this._filteredStreamsCache;
-    if (
-      cache &&
-      cache.streams === this.streams &&
-      cache.chips === this.sourceChips &&
-      cache.filter === filter &&
-      cache.showOnlyDirectStreams === showOnlyDirectStreams &&
-      cache.labelAddonsKey === labelAddonsKey &&
-      // A probe answer can turn a green row into a yellow one, and the filter has to
-      // follow it. Without this the list stayed cached as "all direct" even after
-      // the badge had already changed its mind.
-      cache.probeRevision === this._probeRevision
-    ) {
-      return cache.result;
-    }
-    const orderedStreams = filterStreamsByCompatibility(
+    const ordered = filterFilenameStreams(
       sortStreamsByAddonOrder(this.streams, this.sourceChips),
-      PlayerSettingsStore.get(),
-      getDeviceCapabilities()
+      PlayerSettingsStore.get()
     );
-    const visible = filterPlayerStreams(orderedStreams, {
-      settings,
-      labels: labelSettings,
-      mode: PROBE_MODE,
-      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
-      capabilities: getDeviceCapabilities(),
-      probeForStream: (stream) => this.getStreamProbe(stream)
-    });
-    const result =
-      filter === "all" ? visible : visible.filter((stream) => stream.addonName === filter);
-    this._directFilterHidden = showOnlyDirectStreams ? orderedStreams.length - visible.length : 0;
-    this._filteredStreamsCache = {
-      streams: this.streams,
-      chips: this.sourceChips,
-      filter,
-      probeRevision: this._probeRevision || 0,
-      showOnlyDirectStreams,
-      labelAddonsKey,
-      result
-    };
-    return result;
+    this._directFilterHidden = 0;
+    return filter === "all" ? ordered : ordered.filter((stream) => stream.addonName === filter);
   },
-
   hasPendingSourceLoads(filter = this.addonFilter) {
     if (!Array.isArray(this.sourceChips) || !this.sourceChips.length) {
       return Boolean(this.loading);
@@ -2538,21 +2097,11 @@ export const StreamScreen = {
   // the header cannot disagree with the rows underneath it, and it says nothing
   // at all when there is nothing to report rather than printing three zeroes.
   renderStreamPanelSummary() {
-    // A line that says the list is still being checked. Without it the cards change under
-    // the reader with no explanation, and "Checking…" on a card looks like a stuck label.
-    const checking = this._probePending?.size || 0;
-    const checkingLine =
-      checking > 0
-        ? `<span class="stream-route-panel-summary">${escapeHtml(
-            t("stream_panel_checking", { count: checking }, `Checking ${checking} stream(s)…`)
-          )}</span>`
-        : "";
-    if (!Environment.isBrowser() || !this.offlineDownloadsSupported) return checkingLine;
+    if (!Environment.isBrowser() || !this.offlineDownloadsSupported) return "";
     const summary = summariseOfflineDownloads(
       this.offlineDownloadMetadata ? [...this.offlineDownloadMetadata.values()] : []
     );
-    if (!summary) return checkingLine;
-    return `${checkingLine}<span class="stream-route-panel-summary">${escapeHtml(summary)}</span>`;
+    return summary ? `<span class="stream-route-panel-summary">${escapeHtml(summary)}</span>` : "";
   },
 
   // What a download is doing reads as a sentence on its own line, the way the
@@ -2775,277 +2324,13 @@ export const StreamScreen = {
     return `<button type="button" class="stream-route-offline-action ${className}" data-offline-action="${action}" data-stream-id="${escapeHtml(streamId)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${escapeHtml(icon)}</button>`;
   },
 
-  /**
-   * Ask the deployment what the rows the estimate could not read actually contain.
-   *
-   * Only rows labelled Unknown are sent — a handful per list, once — because the
-   * rest are already answered by the addon's own text. Results are cached inside the
-   * prober, so a later render finds nothing left to ask.
-   */
-  /**
-   * Give the "TB Instant" rows a URL before anyone can talk about them.
-   *
-   * Those rows arrive without a source: the addon defers the debrid lookup until
-   * something asks for it. An unresolved row cannot be probed and cannot be played,
-   * so the resolver is asked for at most a few of them, one at a time, and the
-   * answer is written back onto the stream object — the play path then reuses it
-   * instead of resolving a second time.
-   *
-   * Only rows the estimate called Unknown, only rows with no URL, and only when the
-   * probe endpoint is configured: nothing here runs in a deployment that did not ask
-   * for it.
-   */
-  async resolveUnknownRows({ limit = Infinity } = {}) {
-    // TB Instant preparation already runs independently of probing. Do not
-    // bulk-resolve every raw row here before any client label can progress.
-    if (PROBE_MODE === "client") return 0;
-    const token = this.loadToken;
-    const context = { season: this.params?.season ?? null, episode: this.params?.episode ?? null };
-    const capabilities = getDeviceCapabilities();
-    // Addons do list the same link more than once: the same torrent, the same file,
-    // sometimes from two addons. Resolving each occurrence is a separate debrid
-    // lookup that buys nothing, and it spends the three slots a pass has. The key is
-    // the one this screen already uses to recognise one file behind several rows.
-    const byLink = new Map();
-    for (const stream of this.getProbeCandidates()) {
-      if (String(stream.url || stream.externalUrl || "").trim()) continue;
-      const verdict = classifyPlayback({
-        url: "",
-        label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
-        capabilities
-      });
-      // Not only `Unknown` rows any more. A "Ready (TB)" line carries no URL until
-      // something asks for it, and its text says mp4 + HEVC + AAC, so the estimate
-      // calls it Direct and this filter used to skip it -- which meant it was never
-      // resolved, never probed, and never learned that its HEVC is tagged `hev1`.
-      // Text cannot confirm codecs; every eligible candidate needs probe evidence.
-      if (!DirectDebridResolver.canResolveStream(stream, context)) continue;
-      // Ordered, not merely filtered. The budget is three rows per pass, and a list
-      // has far more Unknown rows than tag-critical ones: taking them in list order
-      // meant the row whose label decides whether playback works could sit at #10 and
-      // never be reached. The rows that matter are resolved first.
-      const tagCritical = isTagCriticalVerdict(verdict, capabilities) ? 1 : 0;
-      const linkKey =
-        directDebridPreparationKey(stream) ||
-        String(stream.id || stream.url || stream.name || "").trim();
-      if (!linkKey) continue;
-      const existing = byLink.get(linkKey);
-      // A duplicate whose text makes it tag-critical wins: that is the one worth the
-      // slot, and the label of the other occurrence reads the same probe answer.
-      if (!existing || tagCritical > existing.tagCritical) {
-        byLink.set(linkKey, { stream, tagCritical });
-      }
-    }
-    const ranked = [...byLink.values()];
-    const candidates = ranked
-      .sort((left, right) => right.tagCritical - left.tagCritical)
-      .slice(0, Math.max(0, limit))
-      .map((entry) => entry.stream);
-
-    let resolved = 0;
-    for (const stream of candidates) {
-      if (token !== this.loadToken) return resolved;
-      try {
-        const cached = DirectDebridResolver.cachedPlayableStream(stream, context);
-        const url = String(cached?.url || "").trim();
-        if (url) {
-          stream.url = url;
-          resolved += 1;
-          continue;
-        }
-        const result = await DirectDebridResolver.resolve(stream, context);
-        if (token !== this.loadToken) return resolved;
-        const fresh = String(result?.url || result?.stream?.url || "").trim();
-        if (fresh) {
-          stream.url = fresh;
-          resolved += 1;
-        }
-      } catch {
-        // One row failing to resolve must not stop the others, and must not touch
-        // playback: it simply stays unresolved and unlabelled.
-      }
-    }
-    return resolved;
-  },
-
-  scheduleUnknownProbes() {
-    if (this._labelProbePaused) return;
-    this.hydrateCachedProbeResults();
-    const labelSettings = StreamBadgeSettingsStore.snapshot();
-    if (!usesMetadataLabels(labelSettings) || !isStreamLabelingEnabled(labelSettings)) return;
-    if (!streamProber.enabled || !this.streams.length) return;
-    if (this._probeOutstanding) return;
-    // Do not add background provider traffic while addon/cache requests are
-    // still obtaining the stream list. Rendering never waits for this queue.
-    const settings = PlayerSettingsStore.get();
-    if (
-      this.loading &&
-      PROBE_MODE === "client" &&
-      !isOnlyDirectEnabled(settings, labelSettings) &&
-      String(settings.streamAutoPlayMode || "MANUAL").toUpperCase() === "MANUAL"
-    )
-      return;
-    this._probeOutstanding = true;
-    const token = this.loadToken;
-    // Each probe slot resolves only its own candidate; no bulk URL barrier.
-    void Promise.resolve()
-      .then(() => (token === this.loadToken ? this.runUnknownProbes() : undefined))
-      .finally(() => {
-        if (token !== this.loadToken) return;
-        this._probeOutstanding = false;
-        this.maybeAutoPlayStream({ allLoaded: !this.loading });
-      });
-  },
-
-  async runUnknownProbes({ maxBatches = Infinity } = {}) {
-    const token = this.loadToken;
-    const generation = this._labelProbeGeneration;
-    const active = () =>
-      token === this.loadToken &&
-      generation === this._labelProbeGeneration &&
-      !this._labelProbePaused;
-    const sent = this._probeSent || (this._probeSent = new Set());
-    const nextTargets = (count) =>
-      (active() ? this.getProbeCandidates() : [])
-        .map((stream) => ({
-          stream,
-          url: String(stream.url || stream.externalUrl || "").trim(),
-          key: playerStreamProbeKey(stream)
-        }))
-        .filter(
-          (row) =>
-            row.key &&
-            !sent.has(row.url || row.key) &&
-            !this._probeResults.has(row.url) &&
-            !this._probeResults.has(row.key) &&
-            this.canProbeRow(row.url || row.key)
-        )
-        .filter(
-          (row, index, rows) =>
-            rows.findIndex((other) => (other.url || other.key) === (row.url || row.key)) === index
-        )
-        .slice(0, count);
-    const probeRow = async ({ stream, url, key }) => {
-      const rowKey = url || key;
-      sent.add(rowKey);
-      this._probePending.add(rowKey);
-      this.requestRender({ delayMs: 0 });
-      const probe = await probeStreamCandidate(streamProber, stream, {
-        mode: PROBE_MODE,
-        active,
-        context: { season: this.params?.season ?? null, episode: this.params?.episode ?? null },
-        onResolved: (resolvedUrl) => {
-          url = resolvedUrl;
-          this._probePending.add(resolvedUrl);
-          this.streams = this.streams.map((candidate) =>
-            playerStreamProbeKey(candidate) === key
-              ? { ...candidate, url: resolvedUrl, externalUrl: null }
-              : candidate
-          );
-        }
-      });
-      if (!active()) return;
-      this._probePending.delete(rowKey);
-      this._probePending.delete(url);
-      if (probe) {
-        if (url) this._probeResults.set(url, probe);
-        this._probeResults.set(key, probe);
-        this.markProbeSuccess(rowKey);
-      } else {
-        sent.delete(rowKey);
-        this.markProbeFailure(url || rowKey);
-      }
-      this._probeRevision = (this._probeRevision || 0) + 1;
-      this._filteredStreamsCache = null;
-      this.requestRender({ delayMs: 0 });
-    };
-    if (PROBE_MODE === "client" && PROBE_CLIENT_CONCURRENCY === 2) {
-      let remaining = maxBatches * 2;
-      while (token === this.loadToken && remaining > 0 && !streamProber.clientParallelReady) {
-        const row = nextTargets(1)[0];
-        if (!row) return;
-        remaining--;
-        await probeRow(row);
-      }
-      const lane = async () => {
-        while (token === this.loadToken && remaining > 0) {
-          const row = nextTargets(1)[0];
-          if (!row) return;
-          remaining--;
-          await probeRow(row);
-        }
-      };
-      // A fast lane takes the next candidate without waiting for its slower peer.
-      await Promise.all([lane(), lane()]);
-      return;
-    }
-    const concurrency = PROBE_MODE === "client" ? 1 : 5;
-    let remaining = maxBatches * concurrency;
-    const lane = async () => {
-      while (active() && remaining > 0) {
-        const row = nextTargets(1)[0];
-        if (!row) return;
-        remaining--;
-        await probeRow(row);
-      }
-    };
-    await Promise.all(Array.from({ length: concurrency }, () => lane()));
-  },
-
   renderStreamCard(stream, index, streamBadgesEnabled = true, badgeSettings = null) {
-    this.scheduleUnknownProbes();
     if (Platform.isBrowser()) {
       const sourceModel = normalizeSourceForDisplay(stream, {
         badgeSettings,
         streamBadgesEnabled,
         addonLogoLookup: this.addonLogoLookup
       });
-      const urlKey = stream.url || stream.externalUrl || playerStreamProbeKey(stream);
-      const labelSettings = StreamBadgeSettingsStore.snapshot();
-      const labelAllowed =
-        labelSettings.showPlaybackLabels !== false &&
-        (this.getStreamProbe(stream) ||
-          playerStreamCheckCandidates(sortStreamsByAddonOrder(this.streams, this.sourceChips), {
-            settings: PlayerSettingsStore.get(),
-            labels: labelSettings,
-            mode: PROBE_MODE,
-            limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
-            capabilities: getDeviceCapabilities()
-          }).some((candidate) => playerStreamProbeKey(candidate) === playerStreamProbeKey(stream)));
-      const badge = labelAllowed
-        ? renderStreamPlaybackBadge({
-            labelSource: labelSettings.playbackLabelSource,
-            filenameFallback: labelSettings.metadataFilenameFallback === true,
-            waiting: streamProber.enabled && !this._probeFailed?.has(urlKey),
-            probeFailed: this._probeFailed?.has(urlKey) === true,
-            fallbackReason: streamProber.failureReason(urlKey),
-            stream,
-            url: urlKey,
-            label: `${sourceModel?.title || stream.title || stream.name || ""} ${
-              sourceModel?.description || stream.description || ""
-            }`,
-            capabilities: getDeviceCapabilities(),
-            // Whether this deployment even offers the relay the label would name. An
-            // empty endpoint means "not offered", and the card says so instead of
-            // promising a relay that cannot happen.
-            transcodeAvailable:
-              this._relayAvailability?.audio ?? (TRANSCODE_ENDPOINT ? null : false),
-            remuxAvailable:
-              this._relayAvailability?.remux ??
-              (REMUX_POLICY.mode === "client"
-                ? clientRemuxAvailable()
-                : REMUX_ENDPOINT
-                  ? null
-                  : false),
-            probe: this.getStreamProbe(stream),
-            // While the answer is on its way the card says so, instead of looking unanswered.
-            probing:
-              !this.getStreamProbe(stream) &&
-              !this._probeFailed?.has(urlKey) &&
-              (this._probePending?.has(urlKey) === true ||
-                this._probePending?.has(playerStreamProbeKey(stream)) === true)
-          })
-        : "";
       return `
         <div class="stream-route-card-row" data-stream-row="${index}">
           <article class="stream-route-card stream-route-card-action focusable${this.isCardActionFocused(index, "play") ? " focused" : ""}"
@@ -3055,7 +2340,6 @@ export const StreamScreen = {
                    data-stream-id="${escapeHtml(stream.id)}"
                    data-stream-row="${index}">
             ${renderBrowserSourceCardContent(sourceModel)}
-            ${badge}
             ${this.renderOfflineDownloadActions(stream)}
           </article>
         </div>
@@ -3102,30 +2386,7 @@ export const StreamScreen = {
                  data-stream-row="${index}">
           <div class="stream-route-card-copy">
             <div class="stream-route-card-heading">${escapeHtml(headline)}</div>
-            ${renderStreamPlaybackBadge({
-              labelSource: StreamBadgeSettingsStore.snapshot().playbackLabelSource,
-              filenameFallback:
-                StreamBadgeSettingsStore.snapshot().metadataFilenameFallback === true,
-              waiting:
-                streamProber.enabled &&
-                !this._probeFailed?.has(
-                  stream.url || stream.externalUrl || playerStreamProbeKey(stream)
-                ),
-              probing:
-                this._probePending?.has(
-                  stream.url || stream.externalUrl || playerStreamProbeKey(stream)
-                ) === true,
-              probeFailed:
-                this._probeFailed?.has(
-                  stream.url || stream.externalUrl || playerStreamProbeKey(stream)
-                ) === true,
-              fallbackReason: streamProber.failureReason(stream.url || stream.externalUrl || ""),
-              stream,
-              url: stream.url || stream.externalUrl || "",
-              label: `${headline} ${quality} ${stream.description || stream.title || ""}`,
-              capabilities: getDeviceCapabilities(),
-              probe: this.getStreamProbe(stream)
-            })}
+
             ${topBadges || ""}
             ${!badges ? `<div class="stream-route-card-quality">${escapeHtml(quality)}</div>` : ""}
             ${descriptionLines.map((line, lineIndex) => `<div class="stream-route-card-line${lineIndex > 0 ? " secondary" : ""}">${escapeHtml(line)}</div>`).join("")}
@@ -3180,6 +2441,8 @@ export const StreamScreen = {
     if (this.renderedMarkup !== nextMarkup) {
       this.container.innerHTML = nextMarkup;
       this.renderedMarkup = nextMarkup;
+      const back = this.container.querySelector?.("[data-startup-back]");
+      if (back) back.onclick = () => this.handleStreamBack();
       this.streamFocusDomCache = null;
       this.focusedElement = null;
     }
@@ -3219,11 +2482,6 @@ export const StreamScreen = {
     const showAddonLogo = badgeSettings.showAddonLogo === true;
     const addonLogosReady = !showAddonLogo || !filtered.length || this.areAddonLogosReady(filtered);
 
-    // Probing used to be scheduled from a rendered card, which meant a list filtered down
-    // to nothing never asked for a single probe -- and so could never fill itself. The list
-    // asks here, where it runs whether or not a card survives the filter.
-    this.scheduleUnknownProbes();
-
     let body = "";
     if (filtered.length && addonLogosReady) {
       body = filtered
@@ -3243,13 +2501,7 @@ export const StreamScreen = {
       body = `<div class="stream-route-empty">${escapeHtml(this.error)}</div>`;
     } else if (!filtered.length) {
       body = `<div class="stream-route-empty">${escapeHtml(
-        this._probePending?.size
-          ? t(
-              "stream_empty_checking",
-              {},
-              "Checking the sources… this list fills as answers arrive."
-            )
-          : t("stream_empty_filter", {}, "No sources found for this filter.")
+        t("stream_empty_filter", {}, "No sources found for this filter.")
       )}</div>`;
     }
     const offlineCopies = (this.offlineLocalCopies || [])
@@ -4027,53 +3279,6 @@ export const StreamScreen = {
    * being made. Empty string means "use the file", which is the honest answer on a
    * deployment without a transcode endpoint, without HLS, or without a token.
    */
-  async remuxPlaylistUrl(
-    url,
-    { audioIndex = 0, audioStreams = null, playbackCapabilities = null } = {}
-  ) {
-    const why = (reason) => {
-      console.warn(`[Playback] hls skipped: ${reason}`);
-      return "";
-    };
-    try {
-      assertConfiguredRemuxRoute(REMUX_POLICY, audioIndex, {
-        serverAvailable: Boolean(REMUX_ENDPOINT)
-      });
-    } catch (error) {
-      return why(error.reason);
-    }
-    if (!TRANSCODE_ENDPOINT) return why("no-endpoint");
-    const access = await transcodeAccess.resolve();
-    if (!access?.hls) return why(`no-hls(mode=${access?.mode || "?"})`);
-    const token = String(TranscodeSettingsStore.get().token || "").trim();
-    if (!isTranscodeAccessGranted({ mode: access?.mode, token })) return why("token-not-granted");
-    const audioIndices = access.alternateAudio
-      ? chooseHlsAudioIndices({ audioStreams, playbackCapabilities }, audioIndex)
-      : null;
-    const playlistUrl = buildTranscodePlaylistUrl(url, {
-      endpoint: TRANSCODE_ENDPOINT,
-      token,
-      plan: {
-        video: "copy",
-        audio: "copy",
-        height: 0,
-        channels: 2,
-        audioIndex,
-        audioIndices
-      }
-    });
-    if (playlistUrl && Array.isArray(audioStreams) && audioStreams.length > 1)
-      tracePlayback("audio-renditions", {
-        tracks: audioIndices?.length || 0,
-        sourceTracks: audioStreams.length,
-        codecs: [...new Set(audioStreams.map((track) => track.codec))].join(","),
-        codecSwitch: canSwitchHlsAudioCodecs(),
-        kind: traceUrlKind(playlistUrl),
-        host: traceHost(playlistUrl)
-      });
-    if (!playlistUrl) why("built-nothing");
-    return playlistUrl;
-  },
 
   /**
    * Is this playlist worth handing to a player?
@@ -4102,172 +3307,6 @@ export const StreamScreen = {
    * A busy server (429) is not a refusal of this source, only of its turn, so it is
    * retried a few times before the slow whole-file relay is chosen.
    */
-  async isPlayableHlsPlaylist(playlistUrl, depth = 0) {
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      let response;
-      try {
-        response = await fetch(playlistUrl, { cache: "no-store" });
-      } catch (error) {
-        console.warn(`[Playback] hls playlist fetch failed: ${error?.message || error}`);
-        return false;
-      }
-      if (response.status === 429 || response.status === 503) {
-        const retryAfter = Number(response.headers.get("retry-after"));
-        const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2000;
-        console.warn(`[Playback] hls playlist busy (${response.status}), retry in ${waitMs}ms`);
-        await new Promise((resolve) => setTimeout(resolve, Math.min(waitMs, 5000)));
-        continue;
-      }
-      if (!response.ok) {
-        console.warn(`[Playback] hls playlist ${response.status}`);
-        return false;
-      }
-      let text = "";
-      try {
-        text = await response.text();
-      } catch (error) {
-        console.warn(`[Playback] hls playlist unreadable: ${error?.message || error}`);
-        return false;
-      }
-      if (depth === 0 && text.includes("#EXT-X-STREAM-INF")) {
-        const child = text
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .find((line) => line && !line.startsWith("#"));
-        if (!child) return false;
-        const base = typeof location !== "undefined" ? location.href : "http://localhost/";
-        return this.isPlayableHlsPlaylist(new URL(child, new URL(playlistUrl, base)).href, 1);
-      }
-      if (!text.includes("#EXTINF")) {
-        console.warn(`[Playback] hls playlist without segments (${text.length} bytes)`);
-        return false;
-      }
-      const pageBase =
-        typeof location !== "undefined" && location.href ? location.href : "http://localhost/";
-      const segment = text
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .find((line) => line && !line.startsWith("#"));
-      if (!segment) {
-        console.warn("[Playback] hls playlist has no segment uri");
-        return false;
-      }
-      // Fire and forget, in its own guard: nothing below may change the answer.
-      void (async () => {
-        try {
-          const segmentUrl = new URL(segment, new URL(playlistUrl, pageBase).href).href;
-          const head = await fetch(segmentUrl, { method: "HEAD", cache: "no-store" });
-          console.warn(`[Playback] hls segment HEAD ${head.status}`);
-        } catch (error) {
-          console.warn(`[Playback] hls segment probe failed: ${error?.message || error}`);
-        }
-      })();
-      return true;
-    }
-    console.warn("[Playback] hls playlist still busy after retries");
-    return false;
-  },
-  async resolvePlayerSource(stream, { attemptCopy = false } = {}) {
-    const url = String(stream?.url || stream?.externalUrl || "").trim();
-    // The remux decision does not depend on the transcode endpoint: a deployment can
-    // run the container copy and not the audio one, and returning early here skipped
-    // the remux path entirely for exactly that configuration.
-    if (!url) return url;
-    if (attemptCopy) return (await prepareUnverifiedRemux(url)).url;
-    const clientPlan = clientRemuxPlan(stream, this.getStreamProbe(stream));
-    if (clientPlan) return clientPlan.sourceUrl;
-    if (
-      isConfiguredCopyRelayUrl(url, {
-        endpoint: TRANSCODE_ENDPOINT,
-        baseUrl: globalThis.location?.href || "http://localhost/"
-      })
-    )
-      assertConfiguredRemuxRoute(REMUX_POLICY, 0, { serverAvailable: Boolean(REMUX_ENDPOINT) });
-    // Older history entries can already contain an explicit file-relay URL.
-    // Preserve that choice while preferring progressive delivery when available.
-    if (url.includes("/api/remux?")) {
-      assertConfiguredRemuxRoute(REMUX_POLICY, 0, { serverAvailable: Boolean(REMUX_ENDPOINT) });
-      let inner = "";
-      try {
-        inner = new URL(url, location.href).searchParams.get("u") || "";
-      } catch {
-        inner = "";
-      }
-      if (inner) {
-        const playlistUrl = await this.remuxPlaylistUrl(inner);
-        const playable = playlistUrl ? await this.isPlayableHlsPlaylist(playlistUrl) : false;
-        // Cannot be skipped if this branch runs: says whether a playlist was offered at all.
-        console.warn(
-          `[Playback] remux branch playlist=${playlistUrl ? "offered" : "none"} playable=${playable}`
-        );
-        if (playable) return playlistUrl;
-      }
-      return url;
-    }
-    // Unknown on the card must not silently become a conversion request based
-    // on addon text. Preserve native playback until file facts are available.
-    const probe = this.getStreamProbe(stream);
-    if (!probe) return url;
-    const capabilities = getDeviceCapabilities();
-    const verdict = classifyPlayback({
-      url,
-      label: [stream.name, stream.title, stream.description].filter(Boolean).join(" "),
-      probe,
-      capabilities
-    });
-    if (verdict.method === PLAYBACK_METHODS.REMUX)
-      assertConfiguredRemuxRoute(REMUX_POLICY, Number(verdict.audioIndex) || 0, {
-        serverAvailable: Boolean(REMUX_ENDPOINT)
-      });
-    if (!shouldTranscodeSource({ url, verdict, endpoint: TRANSCODE_ENDPOINT })) {
-      // Only the playback verdict can request a container/tag or audio-track copy.
-      // A filename extension alone must not send a supported source to the relay.
-      if (verdict.method === PLAYBACK_METHODS.REMUX && REMUX_ENDPOINT) {
-        // The player is told how to wait for this source instead of being asked to sit
-        // through the copy: a remux needs minutes before its first byte, and the
-        // player's own patience is eighteen seconds.
-        // Two deliveries of the same copy. HLS starts in seconds, the file has to be
-        // finished first -- but only a playlist that already holds a segment may be
-        // handed over, or the player sees a zero-length video and calls it finished.
-        const playlistUrl = await this.remuxPlaylistUrl(url, {
-          audioIndex: Number(verdict.audioIndex) || 0,
-          audioStreams: probe.audioStreams,
-          playbackCapabilities: probe.playbackCapabilities
-        });
-        const playable = playlistUrl ? await this.isPlayableHlsPlaylist(playlistUrl) : false;
-        // Cannot be skipped if this branch runs: says whether a playlist was offered at all.
-        console.warn(
-          `[Playback] remux branch playlist=${playlistUrl ? "offered" : "none"} playable=${playable}`
-        );
-        if (playable) return playlistUrl;
-        return buildRemuxUrl(url, REMUX_ENDPOINT, { audioIndex: Number(verdict.audioIndex) || 0 });
-      }
-      return url;
-    }
-    // What this device needs produced, not what the server assumes: a device that
-    // cannot decode AAC has nothing to gain here and must not spend the CPU.
-    const requested = buildTranscodePlan({ capabilities, verdict });
-    if (!requested.ok) return url;
-    const access = await transcodeAccess.resolve();
-    const token = String(TranscodeSettingsStore.get().token || "").trim();
-    if (!isTranscodeAccessGranted({ mode: access?.mode, token })) return url;
-    // A playlist is the one delivery iOS accepts for something still being made;
-    // the single file has to be finished first, and a film is minutes. A deployment
-    // that does not advertise HLS keeps the file, which plays -- only later.
-    if (access?.hls) {
-      const playlist = buildTranscodePlaylistUrl(url, {
-        endpoint: TRANSCODE_ENDPOINT,
-        token,
-        plan: requested.plan
-      });
-      if (playlist) return playlist;
-    }
-    return buildTranscodeUrl(url, {
-      endpoint: TRANSCODE_ENDPOINT,
-      token,
-      plan: requested.plan
-    });
-  },
 
   getPlayerNavigationOptions(returnRoute = "stream") {
     // Autoplay used Stream only to hand off the selected URL, so replace that
@@ -4282,7 +3321,8 @@ export const StreamScreen = {
       offlineDownload = null,
       offlineStream = null,
       skipExternalRoute = false,
-      playerOverride = ""
+      playerOverride = "",
+      automatic = false
     } = {}
   ) {
     this.cancelAutoPlayCountdown();
@@ -4294,14 +3334,16 @@ export const StreamScreen = {
       return;
     }
     this._labelProbePaused = true;
-    this._labelProbeGeneration = (this._labelProbeGeneration || 0) + 1;
-    streamProber.cancelAll();
-    for (const timer of this._probeRetryTimers || []) clearTimeout(timer);
-    this._probeRetryTimers?.clear();
-    this._probePending?.clear();
     const selectionGeneration = (this._playSelectionGeneration =
       (this._playSelectionGeneration || 0) + 1);
-    const selectionCurrent = () => selectionGeneration === this._playSelectionGeneration;
+    const selectionCurrent = () =>
+      selectionGeneration === this._playSelectionGeneration && Router.getCurrent() === "stream";
+    StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "opening");
+    StartupLoadingOverlay.setBackHandler(() => {
+      this._playSelectionGeneration++;
+      this._labelProbePaused = false;
+      this.autoPlayAttempted = true;
+    });
     // Browser Player → Sources owns its own provider filters. Preserve the
     // Stream Selection canonical list across navigation instead of passing
     // only the currently filtered display slice.
@@ -4365,6 +3407,7 @@ export const StreamScreen = {
       continueWatchingBackHome: Boolean(this.params?.continueWatchingBackHome)
     });
 
+    if (!selectionCurrent()) return;
     if (
       !skipExternalRoute &&
       (await this.routeSelectedStream(selected, {
@@ -4384,121 +3427,15 @@ export const StreamScreen = {
     }
 
     if (!selectionCurrent()) return;
-    let preparedDelivery = false;
-    try {
-      const source = new URL(
-        selected.url || selected.externalUrl || "",
-        globalThis.location?.href || "http://localhost/"
-      );
-      preparedDelivery =
-        /\.(?:m3u8|mpd)$/i.test(source.pathname) ||
-        isConfiguredCopyRelayUrl(source.href, {
-          endpoint: TRANSCODE_ENDPOINT,
-          baseUrl: source.origin
-        }) ||
-        (source.pathname === "/api/remux" && source.searchParams.has("u"));
-    } catch {
-      /* An invalid source is handled by the existing source resolver. */
-    }
-    if (
-      !offlineObjectUrl &&
-      !preparedDelivery &&
-      !this.getStreamProbe(selected) &&
-      !this._probeFailed?.has(String(selected.url || selected.externalUrl || "").trim()) &&
-      streamProber.enabled
-    ) {
-      StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "checking");
-      const source = String(selected.url || selected.externalUrl || "").trim();
-      const probe = await streamProber.probe(source, {
-        reason: "playback",
-        identity: streamProbeIdentity(selected),
-        timeoutMs: 15000
-      });
-      if (!selectionCurrent()) return;
-      if (probe) {
-        this._probeResults.set(source, probe);
-        this._probeResults.set(playerStreamProbeKey(selected), probe);
-      } else {
-        this._probeFailed?.add(source);
-      }
-    }
+    const playerSource = offlineObjectUrl || selected.url || selected.externalUrl || null;
+    const playbackPlan = null;
+    const unverifiedPlayback = null;
     StartupLoadingOverlay.setStage("opening");
-    const unverifiedPlayback =
-      offlineObjectUrl || preparedDelivery
-        ? null
-        : selectUnverifiedPlayback({
-            stream: selected,
-            probe: this.getStreamProbe(selected),
-            labels: StreamBadgeSettingsStore.snapshot(),
-            capabilities: getDeviceCapabilities()
-          });
-    if (unverifiedPlayback && !unverifiedPlayback.probeReason)
-      unverifiedPlayback.probeReason = streamProber.failureReason(unverifiedPlayback.sourceUrl);
-    // A downloaded file is already on this device; it is never relayed.
-    let playerSource = offlineObjectUrl;
-    if (!playerSource) {
-      try {
-        playerSource = await this.resolvePlayerSource(selected, {
-          attemptCopy: unverifiedPlayback?.route === "remux"
-        });
-      } catch (error) {
-        if (error?.code !== "REMUX_ROUTE_UNAVAILABLE") throw error;
-        this.showStreamToast(error.message);
-        return;
-      }
-    }
-
-    if (!selectionCurrent()) return;
-    const playbackPlan = offlineObjectUrl
-      ? null
-      : clientRemuxPlan(selected, this.getStreamProbe(selected), {
-          attemptCopy: unverifiedPlayback?.route === "remux"
-        });
-
-    // One line, so a tap that goes wrong can be explained from the phone instead of
-    // guessed at: which delivery the app chose, where it points, and with what plan.
-    // Without it, "the player ended in two seconds" was indistinguishable from a relay
-    // that was never asked -- and the server log showed it was never asked.
-    if (Platform.isBrowser()) {
-      const source = String(playerSource || "");
-      const kind =
-        playbackPlan?.route === "client"
-          ? "client-remux"
-          : !source
-            ? "none"
-            : source.includes("/hls/index.m3u8")
-              ? "hls-playlist"
-              : source.includes("/api/transcode")
-                ? "transcode-file"
-                : source.includes("/api/remux")
-                  ? "remux-file"
-                  : "direct";
-      let host = "";
-      try {
-        host = new URL(source, location.href).host;
-      } catch {
-        host = "";
-      }
-      const video = /[?&]v=([a-z0-9]+)/i.exec(source)?.[1] || "";
-      const audio = /[?&]a=([a-z0-9]+)/i.exec(source)?.[1] || "";
-      const plan = video ? ` plan=v${video}-a${audio}` : "";
-      // Why the HLS delivery was not chosen, said out loud. A silent fallback looks
-      // exactly like a broken relay, and in this case the answer was simply "this
-      // profile has no transcode token" -- a setting wiped by reinstalling the app.
-      let hls = "n/a";
-      if (!TRANSCODE_ENDPOINT) hls = "no-endpoint";
-      else if (!String(TranscodeSettingsStore.get().token || "").trim()) hls = "no-token";
-      else hls = "token-present";
-      console.warn(`[Playback] source kind=${kind} host=${host || "-"}${plan} hls=${hls}`);
-    }
-
-    void this.traceTapDecision?.(selected, playerSource);
-    if (unverifiedPlayback)
-      unverifiedPlayback.mediaUrl = playerSource || unverifiedPlayback.sourceUrl;
     const playbackParams = {
       unverifiedPlayback,
-      sourceProbe: this.getStreamProbe(selected),
-      sourceProbeKey: playerStreamProbeKey(selected),
+      prepareSelectedSource: !offlineObjectUrl,
+      automaticSourceSelection: !offlineObjectUrl && automatic && !this.params?.manualSelection,
+      sourceProbe: null,
       streamUrl: playerSource || null,
       playbackPlan,
       itemId: this.params?.itemId || null,
@@ -4541,6 +3478,7 @@ export const StreamScreen = {
       episode: this.params?.episode == null ? null : Number(this.params.episode),
       episodes: Array.isArray(this.params?.episodes) ? this.params.episodes : [],
       streamCandidates: playerStreamCandidates,
+      streamCandidatesComplete: this.params?.autoResolvedStreamsComplete !== false && !this.loading,
       preferredStreamId: selected.id,
       // A relayed source cannot be ready when the player opens it: the server has to
       // copy the film first. The player is given the status URL for this exact source
@@ -4793,10 +3731,6 @@ export const StreamScreen = {
   cleanup() {
     this._playSelectionGeneration = (this._playSelectionGeneration || 0) + 1;
     this._labelProbePaused = true;
-    this._labelProbeGeneration = (this._labelProbeGeneration || 0) + 1;
-    streamProber.cancelAll();
-    for (const timer of this._probeRetryTimers || []) clearTimeout(timer);
-    this._probeRetryTimers?.clear();
 
     this.streamRailDragCleanup?.();
     this.streamRailDragCleanup = null;

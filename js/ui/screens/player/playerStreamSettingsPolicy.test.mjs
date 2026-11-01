@@ -1,4 +1,3 @@
-import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -14,7 +13,6 @@ import { streamProbeIdentity } from "../../../core/player/streamProbe.js";
 const source = await readFile(new URL("./playerScreen.js", import.meta.url), "utf8");
 const names = [
   "selectNextEpisodeStreamByAutoPlayPolicy",
-  "selectDirectPlayableCandidates",
   "resolveNextEpisodeStreamByAutoPlayPolicy"
 ];
 const methods = names.map(
@@ -48,7 +46,6 @@ function screen(overrides = {}) {
     ...selector,
     withinStreamSelectionDeadline,
     streamSelectionDeadline,
-    inspectAutoPlayStreams,
     classifyPlayback,
     streamProbeIdentity,
     PlayerSettingsStore: { get: () => base },
@@ -233,145 +230,13 @@ test("Instant selects a partial arrival and Unlimited does not expire at the for
   assert.equal((await waiting).selectedStream.id, "first");
 });
 
-test("Only Direct keeps a verified candidate at the deadline and ignores a later probe result", async (t) => {
-  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
-  const requests = [];
-  let late;
-  const s = screen({
-    dependencies: {
-      createStreamProber: () => ({
-        enabled: true,
-        probe: async (url, options) => {
-          requests.push({ url, timeoutMs: options.timeoutMs });
-          if (requests.length === 1) return facts;
-          return new Promise((r) => {
-            late = r;
-          });
-        }
-      })
-    }
-  });
-  const pending = s.resolveNextEpisodeStreamByAutoPlayPolicy(episode, "series", {
-    ...base,
-    showOnlyDirectStreams: true,
-    streamAutoPlayHdrPreference: "PREFER"
-  });
+test("Back stops next-episode discovery without waiting for its original timeout", async () => {
+  const s = screen({ screen: { getPlayableStreamsForVideo: () => new Promise(() => {}) } });
+  const pending = s.resolveNextEpisodeStreamByAutoPlayPolicy(episode, "series", base);
   await flush();
-  assert.equal(requests.length, 2);
-  assert.ok(requests.every((r) => r.timeoutMs <= 1000));
-  t.mock.timers.tick(1000);
-  await flush();
+  assert.equal(typeof s._nextSourceDiscoveryCancel, "function");
+  s._nextSourceDiscoveryCancel();
   const result = await pending;
-  assert.equal(result.selectedStream.id, "first");
-  assert.equal(result.timedOut, false);
-  late(facts);
-  await flush();
-  assert.equal(requests.length, 2, "third probe cannot start after the deadline");
-  assert.equal(s._nextEpisodeProbeResults.size, 1);
-});
-
-test("Instant Only Direct selects the first eligible file without probing the rest", async (t) => {
-  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
-  let probes = 0;
-  const s = screen({
-    dependencies: {
-      createStreamProber: () => ({
-        enabled: true,
-        probe: async () => {
-          probes++;
-          return facts;
-        }
-      })
-    }
-  });
-  const pending = s.resolveNextEpisodeStreamByAutoPlayPolicy(episode, "series", {
-    ...base,
-    showOnlyDirectStreams: true,
-    streamAutoPlayTimeoutSeconds: 0
-  });
-  await flush();
-  assert.equal((await pending).selectedStream.id, "first");
-  assert.equal(probes, 1);
-});
-
-test("Next Episode filename Only Direct performs no probe or metadata initialization", async () => {
-  const s = screen({
-    dependencies: {
-      StreamBadgeSettingsStore: {
-        snapshot: () => ({
-          showPlaybackLabels: true,
-          labelAddons: ["A"],
-          playbackLabelSource: "FILE_NAME"
-        })
-      },
-      createStreamProber: () => {
-        throw Error("filename mode must not initialize probes");
-      }
-    }
-  });
-  const rows = [{ ...row("bad"), name: "Film.HEVC.AAC.mp4" }, row("good")];
-  const chosen = await s.selectNextEpisodeStreamByAutoPlayPolicy(
-    rows,
-    { ...base, showOnlyDirectStreams: true },
-    { installedAddonNames: new Set(["A"]) }
-  );
-  assert.equal(chosen.id, "good");
-  assert.equal(s._nextEpisodeProbeResults.size, 0);
-});
-
-test("Next Episode ignores a stale Only Direct flag when labels are disabled", async () => {
-  const s = screen({
-    dependencies: {
-      StreamBadgeSettingsStore: {
-        snapshot: () => ({ showPlaybackLabels: false, labelAddons: ["A"] })
-      },
-      createStreamProber: () => {
-        throw Error("disabled labels must not initialize probes");
-      }
-    }
-  });
-  assert.equal(
-    (
-      await s.selectNextEpisodeStreamByAutoPlayPolicy(
-        fixtures,
-        { ...base, showOnlyDirectStreams: true },
-        { installedAddonNames: new Set(["A"]) }
-      )
-    ).id,
-    "first"
-  );
-});
-
-test("auto next honors Direct + Remux and the independent check toggle with badges hidden", async () => {
-  const s = screen({
-    dependencies: {
-      getDeviceCapabilities: () => ({
-        h264: true,
-        aac: true,
-        containers: { mp4: true, mkv: false }
-      }),
-      StreamBadgeSettingsStore: {
-        snapshot: () => ({
-          compatibilityCheckEnabled: true,
-          showPlaybackLabels: false,
-          labelAddons: ["A"],
-          clientLabelLimit: 3
-        })
-      },
-      createStreamProber: () => ({
-        enabled: true,
-        probe: async () => ({ ...facts, container: "mkv" })
-      })
-    }
-  });
-  const remux = await s.selectNextEpisodeStreamByAutoPlayPolicy(fixtures, {
-    ...base,
-    streamDisplayMode: "DIRECT_REMUX"
-  });
-  assert.equal(remux?.id, "first");
-  const direct = await s.selectNextEpisodeStreamByAutoPlayPolicy(fixtures, {
-    ...base,
-    streamDisplayMode: "DIRECT"
-  });
-  assert.equal(direct, null);
+  assert.equal(result.selectedStream, null);
+  assert.equal(s._nextSourceDiscoveryCancel, null);
 });

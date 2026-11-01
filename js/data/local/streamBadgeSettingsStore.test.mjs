@@ -11,7 +11,7 @@ globalThis.localStorage = {
 globalThis.__NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__ = false;
 const { StreamBadgeSettingsStore } = await import("./streamBadgeSettingsStore.js");
 
-test("the stream-card label toggle persists off and on without changing other preferences or profiles", async (t) => {
+test("retired label controls disappear without deleting profile appearance preferences", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   storage.clear();
   storage.set("activeProfileId", JSON.stringify("1"));
@@ -30,30 +30,12 @@ test("the stream-card label toggle persists off and on without changing other pr
     new URL("../../ui/screens/settings/settingsScreen.js", import.meta.url),
     "utf8"
   );
-  const registration = source.match(
-    /this\.actionMap\.set\("streams:toggle:playbackLabels", \(\) => \{[\s\S]*?\n {4}\}\);/
-  )?.[0];
-  assert.ok(registration, "the actual Settings action is registered");
-  const screen = { actionMap: new Map() };
-  const updates = [];
-  new Function("StreamBadgeSettingsStore", "PlayerSettingsStore", registration).call(
-    screen,
-    StreamBadgeSettingsStore,
-    { set: (value) => updates.push(value) }
-  );
-  const toggle = screen.actionMap.get("streams:toggle:playbackLabels");
-  for (const enabled of [false, true]) {
-    toggle();
-    assert.equal(StreamBadgeSettingsStore.snapshot().showPlaybackLabels, enabled);
-    const saved = JSON.parse(storage.get("streamBadgeSettings")).profiles;
-    assert.equal(saved["1"].showPlaybackLabels, enabled);
-    assert.equal(saved["2"].showPlaybackLabels, true);
-    assert.deepEqual(saved["1"].labelAddons, ["AIOStreams"]);
-    assert.equal(saved["1"].showAddonLogo, false);
-    assert.equal(saved["1"].showFileSizeBadges, false);
-  }
-  assert.deepEqual(updates, [], "badge visibility does not change filtering");
-  assert.equal(StreamBadgeSettingsStore.snapshot().compatibilityCheckEnabled, true);
+  assert.doesNotMatch(source, /streams:toggle:playbackLabels/);
+  assert.doesNotMatch(source, /streams:toggle:compatibilityChecks/);
+  const saved = JSON.parse(storage.get("streamBadgeSettings")).profiles;
+  assert.equal(saved["1"].showAddonLogo, false);
+  assert.equal(saved["1"].showFileSizeBadges, false);
+  assert.equal(saved["2"].showPlaybackLabels, true);
 });
 
 test("client labeling limit is profile scoped and accepts only the offered values", (t) => {

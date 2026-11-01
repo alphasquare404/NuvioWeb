@@ -1,14 +1,11 @@
+import {
+  filenameStreamDisplayMode,
+  FILENAME_ESTIMATE_NOTICE,
+  FILENAME_FILTER_NOTICE
+} from "../../../core/streams/filenameStreamPolicy.js";
 import { getHdrPlaybackSupport } from "../../../core/player/hdrSupport.js";
 import { probeMetadataCache } from "../../../core/player/probeMetadataCache.js";
-import {
-  CLIENT_LABEL_LIMITS,
-  normalizeClientLabelLimit,
-  normalizePlaybackLabelSource,
-  usesMetadataLabels,
-  isStreamCheckEnabled,
-  streamDisplayMode,
-  normalizeFilenameCheckLimit
-} from "../../../core/streams/streamLabelPolicy.js";
+
 import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
 import { deferWhileReordering } from "../../components/listReorderDrag.js";
 import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
@@ -161,7 +158,6 @@ import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
 import {
   DONATIONS_BASE_URL,
-  PROBE_MODE,
   TRANSCODE_ENDPOINT,
   UNIQUE_CONTRIBUTIONS_BASE_URL
 } from "../../../config.js";
@@ -6631,6 +6627,10 @@ export const SettingsScreen = {
   },
 
   renderStreamsSection(model) {
+    this.actionMap.set("streams:toggle:filenameLabels", () => {
+      const current = StreamBadgeSettingsStore.get();
+      StreamBadgeSettingsStore.set({ showPlaybackLabels: current.showPlaybackLabels === false });
+    });
     // A section that throws leaves the shell mounted and the page blank, which is
     // indistinguishable from a dead app. Say what broke instead, and keep the message in
     // the console where it can be copied.
@@ -6689,11 +6689,6 @@ export const SettingsScreen = {
 
     this.actionMap.set("streams:toggle:addonLogo", () => {
       StreamBadgeSettingsStore.setShowAddonLogo(!badgeSettings.showAddonLogo);
-    });
-
-    this.actionMap.set("streams:toggle:playbackLabels", () => {
-      const current = StreamBadgeSettingsStore.snapshot();
-      StreamBadgeSettingsStore.set({ showPlaybackLabels: current.showPlaybackLabels === false });
     });
 
     const badgePlacement =
@@ -6940,16 +6935,7 @@ export const SettingsScreen = {
       <div class="settings-group-card settings-group-card-fill">
         <div class="settings-stack">
           <div class="settings-group-heading"><div class="settings-group-title">${escapeHtml(t("settings_stream_appearance_group", {}, "Card appearance"))}</div></div>
-          ${this.renderToggleRow({
-            focusKey: "streams:toggle:playbackLabels",
-            title: t("settings_stream_playback_labels", {}, "Show labels on stream card"),
-            subtitle: t(
-              "settings_stream_badges_independent",
-              {},
-              "Show compatibility badges for checked streams. Hiding badges does not stop checks or change filtering."
-            ),
-            checked: badgeSettings.showPlaybackLabels !== false
-          })}
+          ${this.renderToggleRow({ focusKey: "streams:toggle:filenameLabels", title: "Filename playback labels", subtitle: FILENAME_ESTIMATE_NOTICE + " Labels appear first in the badge row.", checked: badgeSettings.showPlaybackLabels !== false })}
         ${this.renderToggleRow({
           focusKey: "streams:toggle:sizeBadges",
           title: t("settings_stream_size_badges_title", {}, "Size badges"),
@@ -7079,224 +7065,6 @@ export const SettingsScreen = {
           }
         </div>
       </div>
-    `;
-  },
-
-  renderStreamCompatibilitySettings(model) {
-    const badgeSettings = model.streamBadgeSettings || StreamBadgeSettingsStore.snapshot();
-    const labelAddons = Array.isArray(badgeSettings.labelAddons) ? badgeSettings.labelAddons : [];
-    this.actionMap.set("streams:toggle:compatibilityChecks", () => {
-      StreamBadgeSettingsStore.set({
-        compatibilityCheckEnabled: !isStreamCheckEnabled(StreamBadgeSettingsStore.snapshot())
-      });
-    });
-    this.actionMap.set("streams:edit:labelAddons", async () => {
-      const addons = await addonRepository.getInstalledAddons().catch(() => []);
-      const current = StreamBadgeSettingsStore.snapshot();
-      const filename = !usesMetadataLabels(current);
-      const options = [
-        ...new Set(
-          addons
-            .map((addon) => String(addon?.displayName || addon?.name || "").trim())
-            .filter(Boolean)
-        )
-      ].map((name) => ({ id: name, label: name }));
-      if (filename)
-        options.unshift({
-          id: "__all_addons__",
-          label: t("settings_stream_check_all_addons", {}, "All addons")
-        });
-      this.openMultiChoiceDialog({
-        title: t("settings_stream_check_addons", {}, "Addons to check"),
-        options,
-        selectedIds:
-          filename && current.filenameAllAddons ? ["__all_addons__"] : current.labelAddons,
-        returnFocusKey: "streams:edit:labelAddons",
-        onToggle: (selectedIds, option) => {
-          if (filename && option.id === "__all_addons__") {
-            const all = selectedIds.includes("__all_addons__");
-            StreamBadgeSettingsStore.set({ filenameAllAddons: all });
-            this.optionDialog.selectedIds = new Set(
-              all ? ["__all_addons__"] : StreamBadgeSettingsStore.snapshot().labelAddons
-            );
-          } else {
-            const names = selectedIds.filter((id) => id !== "__all_addons__");
-            StreamBadgeSettingsStore.set({
-              labelAddons: names,
-              ...(filename ? { filenameAllAddons: false } : {})
-            });
-            this.optionDialog.selectedIds = new Set(names);
-          }
-        }
-      });
-    });
-    this.actionMap.set("streams:toggle:filenameFallback", () => {
-      StreamBadgeSettingsStore.set({
-        metadataFilenameFallback: !StreamBadgeSettingsStore.snapshot().metadataFilenameFallback
-      });
-      this.render();
-    });
-    this.actionMap.set("streams:edit:labelSource", () => {
-      this.openOptionDialog({
-        title: t("settings_stream_check_method", {}, "Check using"),
-        options: [
-          {
-            id: "FILE_METADATA",
-            label: t("settings_stream_label_metadata", {}, "File metadata (Accurate, Slow)")
-          },
-          {
-            id: "FILE_NAME",
-            label: t("settings_stream_label_filename", {}, "File name (Inaccurate, Fast)")
-          }
-        ],
-        selectedId: normalizePlaybackLabelSource(
-          StreamBadgeSettingsStore.snapshot().playbackLabelSource
-        ),
-        returnFocusKey: "streams:edit:labelSource",
-        onSelect: (option) => StreamBadgeSettingsStore.set({ playbackLabelSource: option.id })
-      });
-    });
-    this.actionMap.set("streams:edit:clientLabelLimit", () => {
-      const current = StreamBadgeSettingsStore.snapshot();
-      const filename = !usesMetadataLabels(current);
-      this.openOptionDialog({
-        title: t("settings_stream_check_limit", {}, "Check limit"),
-        options: [
-          ...(filename
-            ? [{ id: "0", label: t("settings_stream_check_all_streams", {}, "All streams") }]
-            : []),
-          ...CLIENT_LABEL_LIMITS.map((count) => ({ id: String(count), label: String(count) }))
-        ],
-        selectedId: String(
-          filename
-            ? normalizeFilenameCheckLimit(current.filenameCheckLimit)
-            : normalizeClientLabelLimit(current.clientLabelLimit)
-        ),
-        returnFocusKey: "streams:edit:clientLabelLimit",
-        onSelect: (option) =>
-          StreamBadgeSettingsStore.set(
-            filename
-              ? { filenameCheckLimit: Number(option.id) }
-              : { clientLabelLimit: Number(option.id) }
-          )
-      });
-    });
-    this.actionMap.set("streams:edit:displayMode", () => {
-      if (!isStreamCheckEnabled(StreamBadgeSettingsStore.snapshot())) return;
-      this.openOptionDialog({
-        title: t("settings_stream_display_mode", {}, "Streams to show"),
-        options: [
-          { id: "ALL", label: t("settings_stream_display_all", {}, "All streams") },
-          { id: "DIRECT", label: t("settings_stream_display_direct", {}, "Direct only") },
-          { id: "DIRECT_REMUX", label: t("settings_stream_display_remux", {}, "Direct + Remux") }
-        ],
-        selectedId: streamDisplayMode(PlayerSettingsStore.get()),
-        returnFocusKey: "streams:edit:displayMode",
-        onSelect: (option) =>
-          PlayerSettingsStore.set({
-            streamDisplayMode: option.id,
-            showOnlyDirectStreams: false,
-            streamCompatibilityFilter: "OFF"
-          })
-      });
-    });
-
-    return `
-          <div class="settings-group-heading"><div class="settings-group-title">${escapeHtml(t("settings_stream_check_group", {}, "Compatibility checks"))}</div></div>
-          ${this.renderToggleRow({
-            focusKey: "streams:toggle:compatibilityChecks",
-            title: t("settings_stream_check_enabled", {}, "Check stream compatibility"),
-            subtitle: t(
-              "settings_stream_check_enabled_description",
-              {},
-              "Check selected addons automatically in the background. Playback may still read file information when needed."
-            ),
-            checked: isStreamCheckEnabled(badgeSettings)
-          })}
-          ${
-            isStreamCheckEnabled(badgeSettings)
-              ? `
-            ${this.renderActionRow({
-              focusKey: "streams:edit:labelSource",
-              title: t("settings_stream_check_method", {}, "Check using"),
-              value: usesMetadataLabels(badgeSettings)
-                ? t("settings_stream_label_metadata", {}, "File metadata (Accurate, Slow)")
-                : t("settings_stream_label_filename", {}, "File name (Inaccurate, Fast)")
-            })}
-            ${
-              usesMetadataLabels(badgeSettings)
-                ? this.renderToggleRow({
-                    focusKey: "streams:toggle:filenameFallback",
-                    title: "Fallback to filename",
-                    subtitle:
-                      "Estimate labels from filenames when metadata checks fail or remain Unknown.",
-                    checked: badgeSettings.metadataFilenameFallback === true
-                  })
-                : ""
-            }
-            ${this.renderActionRow({
-              focusKey: "streams:edit:labelAddons",
-              title: t("settings_stream_check_addons", {}, "Addons to check"),
-              subtitle: t(
-                "settings_stream_check_addons_description",
-                {},
-                "Choose addons for automatic background checks. Existing metadata remains usable from any addon."
-              ),
-              value:
-                !usesMetadataLabels(badgeSettings) && badgeSettings.filenameAllAddons
-                  ? t("settings_stream_check_all_addons", {}, "All addons")
-                  : labelAddons.length
-                    ? labelAddons.join(", ")
-                    : t("settings_stream_label_addons_choose", {}, "Choose")
-            })}
-            ${
-              !usesMetadataLabels(badgeSettings) || PROBE_MODE === "client"
-                ? this.renderActionRow({
-                    focusKey: "streams:edit:clientLabelLimit",
-                    title: t("settings_stream_check_limit", {}, "Check limit"),
-                    subtitle: t(
-                      "settings_stream_check_limit_description",
-                      {},
-                      "Maximum background checks per list, not matching results. Existing metadata and selection checks remain usable."
-                    ),
-                    value: usesMetadataLabels(badgeSettings)
-                      ? String(normalizeClientLabelLimit(badgeSettings.clientLabelLimit))
-                      : Number(badgeSettings.filenameCheckLimit || 0) === 0
-                        ? t("settings_stream_check_all_streams", {}, "All streams")
-                        : String(badgeSettings.filenameCheckLimit)
-                  })
-                : ""
-            }
-          `
-              : ""
-          }
-          <div class="settings-group-heading"><div class="settings-group-title">${escapeHtml(t("settings_stream_filter_group", {}, "Filtering"))}</div></div>
-          ${
-            isStreamCheckEnabled(badgeSettings)
-              ? this.renderActionRow({
-                  focusKey: "streams:edit:displayMode",
-                  title: t("settings_stream_display_mode", {}, "Streams to show"),
-                  subtitle: usesMetadataLabels(badgeSettings)
-                    ? t(
-                        "settings_stream_display_metadata_description",
-                        {},
-                        "Show matching metadata results, including cached and selection results. Pending and Unknown stay hidden."
-                      )
-                    : t(
-                        "settings_stream_display_filename_description",
-                        {},
-                        "Filters use file name estimates. Playback is not verified."
-                      ),
-                  value:
-                    streamDisplayMode(model.player || PlayerSettingsStore.get()) === "DIRECT"
-                      ? t("settings_stream_display_direct", {}, "Direct only")
-                      : streamDisplayMode(model.player || PlayerSettingsStore.get()) ===
-                          "DIRECT_REMUX"
-                        ? t("settings_stream_display_remux", {}, "Direct + Remux")
-                        : t("settings_stream_display_all", {}, "All streams")
-                })
-              : `<p class="settings-row-subtitle">${escapeHtml(t("settings_stream_display_inactive", {}, "The compatibility filter is inactive while checks are off."))}</p>`
-          }
     `;
   },
 
@@ -8479,7 +8247,30 @@ export const SettingsScreen = {
       </div>
     `;
 
+    this.actionMap.set("playback:filenameRouting", () =>
+      PlayerSettingsStore.set({
+        filenamePlaybackRoutingEnabled:
+          PlayerSettingsStore.get().filenamePlaybackRoutingEnabled === false
+      })
+    );
+    const filenameFilterOptions = [
+      { id: "ALL", label: "All streams" },
+      { id: "DIRECT", label: "Direct" },
+      { id: "DIRECT_REMUX", label: "Direct + Remux" }
+    ];
+    this.actionMap.set("playback:filenameStreamFilter", () =>
+      this.openOptionDialog({
+        title: "Stream filter (filename estimate)",
+        options: filenameFilterOptions,
+        selectedId: filenameStreamDisplayMode(PlayerSettingsStore.get()),
+        returnFocusKey: "playback:filenameStreamFilter",
+        onSelect: (option) => PlayerSettingsStore.set({ filenameStreamDisplayMode: option.id })
+      })
+    );
     const audioBody = `
+      ${this.renderToggleRow({ focusKey: "playback:filenameRouting", title: "Choose playback route from filename", subtitle: "Start Direct, remux or server audio conversion using the filename estimate. If it fails or times out, try remaining supported routes once. Off: try Direct, then remux, then supported server audio conversion. Video is never re-encoded.", checked: model.player.filenamePlaybackRoutingEnabled !== false })}
+      <div class="settings-group-heading"><div class="settings-group-title">Stream filter</div></div>
+      ${this.renderActionRow({ focusKey: "playback:filenameStreamFilter", title: "Streams to show (filename estimate)", subtitle: FILENAME_FILTER_NOTICE, value: filenameFilterOptions.find((option) => option.id === filenameStreamDisplayMode(model.player)).label })}
       <div class="settings-stack">
         ${
           // Only offered where the deployment runs the endpoint: a field that
@@ -8541,7 +8332,7 @@ export const SettingsScreen = {
           ),
           value: labelForPlaybackLanguage(model.player.secondaryPreferredAudioLanguage)
         })}
-        ${this.renderStreamCompatibilitySettings(model)}
+
       </div>
     `;
 

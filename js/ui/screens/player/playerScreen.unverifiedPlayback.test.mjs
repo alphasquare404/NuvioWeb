@@ -1,8 +1,11 @@
+import { selectedPlaybackTask } from "../../../core/player/selectedPlaybackTask.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import {
+  selectFilenamePlaybackAttempt,
+  nextPlaybackFallbackRoute,
   canTryUnverifiedRemux,
   canTryUnverifiedAudioTranscode
 } from "../../../core/player/unverifiedPlayback.js";
@@ -122,90 +125,6 @@ test("remux preparation failure reports its actual error and keeps original-URL 
   assert.equal(ctx.plays[0].url, "https://media.test/movie");
 });
 
-test("a URL resolved inside the player receives the client remux route before native playback", async () => {
-  const from = source.indexOf("  async prepareResolvedCandidatePlayback(");
-  const to = source.indexOf("  async switchStream(", from);
-  const raw = { id: "raw", name: "Movie.H264.AAC.mkv" };
-  const clientPlan = { sourceUrl: "https://media.test/resolved", route: "client", method: "remux" };
-  let prepared = 0;
-  const methods = vm.runInNewContext("({" + source.slice(from, to) + "})", {
-    REMUX_POLICY: { mode: "client" },
-    getDeviceCapabilities: () => ({}),
-    StreamBadgeSettingsStore: { snapshot: () => ({ metadataFilenameFallback: true }) },
-    clientRemuxPlan: () => null,
-    selectUnverifiedPlayback: ({ stream }) => ({
-      sourceUrl: stream.url,
-      route: "remux",
-      mediaUrl: stream.url,
-      remuxTried: true
-    }),
-    prepareUnverifiedRemux: async (url) => {
-      prepared++;
-      return { url, plan: clientPlan };
-    },
-    traceHost: () => "media.test",
-    classifyPlayback: () => ({ method: "unknown" }),
-    Environment: { isBrowser: () => true },
-    streamMergeKey: (stream) => stream.id,
-    streamDirectPlaybackUrl: (stream) => stream.url || "",
-    DirectDebridResolver: {
-      canResolveStream: () => true,
-      resolve: async () => ({ status: "success", stream: { url: "https://media.test/resolved" } })
-    }
-  });
-  const ctx = Object.assign(methods, {
-    params: {},
-    streamCandidates: [raw],
-    isActiveMountToken: () => true,
-    getPlayerStreamProbe: () => null,
-    rememberSelectedStreamPreference() {},
-    async playStreamByUrl(url) {
-      this.played = {
-        url,
-        plan: this.params.playbackPlan,
-        attempt: this.params.unverifiedPlayback
-      };
-    }
-  });
-  await ctx.playStreamCandidate(raw);
-  assert.equal(prepared, 1);
-  assert.equal(ctx.played.url, "https://media.test/resolved");
-  assert.equal(ctx.played.plan.route, "client");
-  assert.equal(ctx.played.attempt.sourceUrl, "https://media.test/resolved");
-  assert.equal(raw.url, "https://media.test/resolved");
-});
-
-test("known server copy preserves the selected audio index during candidate handoff", async () => {
-  const from = source.indexOf("  async prepareResolvedCandidatePlayback(");
-  const to = source.indexOf("  async playStreamCandidate(", from);
-  let index;
-  const methods = vm.runInNewContext("({" + source.slice(from, to) + "})", {
-    REMUX_POLICY: { mode: "server" },
-    getDeviceCapabilities: () => ({}),
-    clientRemuxPlan: () => null,
-    StreamBadgeSettingsStore: { snapshot: () => ({}) },
-    selectUnverifiedPlayback: () => null,
-    classifyPlayback: () => ({ method: "remux", audioIndex: 3 }),
-    traceHost: () => "media.test",
-    prepareUnverifiedRemux: async (url, options) => {
-      index = options.audioIndex;
-      return { url: "/hls/index.m3u8", plan: null };
-    }
-  });
-  const ctx = Object.assign(methods, {
-    params: {},
-    getPlayerStreamProbe: () => ({ container: "mkv" })
-  });
-  const delivery = await ctx.prepareResolvedCandidatePlayback(
-    { id: "s" },
-    "https://media.test/source",
-    () => true
-  );
-  assert.equal(index, 3);
-  assert.equal(delivery.url, "/hls/index.m3u8");
-  assert.equal(ctx.params.unverifiedPlayback, null);
-});
-
 test("ambiguous startup automatically tries remux once, with no copy action or button", async () => {
   let calls = 0;
   const ctx = harness(async () => {
@@ -303,4 +222,139 @@ test("verified audio fallback starts existing server delivery once and preserves
   assert.equal(ctx.params.unverifiedPlayback.audioTranscodeTried, true);
   assert.equal(ctx.plays[0].options.preservePendingRestore, true);
   assert.equal(await ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 }), false);
+});
+
+function routedHarness({
+  initial = "direct",
+  copy = async (_url) => ({
+    url: "https://app.test/copied",
+    plan: { route: "client", method: "remux" }
+  })
+} = {}) {
+  const text = source.slice(
+    source.indexOf("  async runUnverifiedPlaybackAttempt("),
+    source.indexOf("  startPlayerControllerPlayback(")
+  );
+  const records = { copy: 0, audio: 0, plays: [], errors: [] };
+  const methods = vm.runInNewContext("({" + text + "})", {
+    AbortController,
+    REMUX_POLICY: { mode: "client" },
+    TRANSCODE_ENDPOINT: "/api/transcode",
+    nextPlaybackFallbackRoute,
+    canTryUnverifiedRemux,
+    canTryUnverifiedAudioTranscode,
+    selectedPlaybackTask,
+    prepareUnverifiedRemux: async (url) => {
+      records.copy++;
+      return copy(url);
+    },
+    prepareUnverifiedAudioTranscode: async () => {
+      records.audio++;
+      return { url: "https://app.test/audio?v=copy&a=aac", plan: null };
+    },
+    getDeviceCapabilities: () => ({ aac: true }),
+    extractPlaybackHttpStatus: () => 0,
+    console: { warn() {} }
+  });
+  const attempt = selectFilenamePlaybackAttempt({
+    stream: { url: "https://media.test/source" },
+    enabled: false
+  });
+  Object.assign(attempt, {
+    route: initial,
+    rawTried: initial === "direct",
+    remuxTried: initial === "remux",
+    audioTranscodeTried: initial === "audio-transcode"
+  });
+  const ctx = Object.assign(methods, {
+    params: { unverifiedPlayback: attempt },
+    activePlaybackUrl: attempt.mediaUrl,
+    playerMountToken: 1,
+    getCurrentStreamCandidate: () => ({ id: "same" }),
+    getStreamCandidateByUrl: () => ({ id: "same" }),
+    isActiveMountToken: () => true,
+    clearPlaybackStallGuard() {},
+    getPlayerStreamProbe: () => null,
+    playStreamByUrl: async (url) => {
+      ctx.activePlaybackUrl = url;
+      records.plays.push(url);
+    },
+    showStartupError: (message) => records.errors.push(message)
+  });
+  return { ctx, records };
+}
+test("new Direct-first fallback runs copy then audio once and coalesces duplicate errors", async () => {
+  const h = routedHarness();
+  await Promise.all([
+    h.ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 }),
+    h.ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 })
+  ]);
+  assert.equal(h.records.copy, 1);
+  assert.equal(h.records.plays.length, 1);
+  await h.ctx.tryUnverifiedRemuxAfterFailure({ startupStall: true });
+  assert.equal(h.records.audio, 1);
+  assert.equal(h.records.plays.length, 2);
+  assert.equal(await h.ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 }), false);
+});
+test("wrong initial remux estimate falls back to original URL without trying remux twice", async () => {
+  const h = routedHarness({ initial: "remux" });
+  await h.ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 });
+  assert.equal(h.records.plays[0], "https://media.test/source");
+  assert.equal(h.records.copy, 0);
+  await h.ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 });
+  assert.equal(h.records.audio, 1);
+  assert.equal(h.records.copy, 0);
+});
+test("a remux preparation error continues to the next supported route without exposing an intermediate error", async () => {
+  const h = routedHarness({
+    copy: async () => {
+      throw new Error("unsupported container");
+    }
+  });
+  await h.ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 });
+  assert.equal(h.records.copy, 1);
+  assert.equal(h.records.audio, 1);
+  assert.equal(h.records.errors.length, 0);
+  assert.equal(h.ctx.params.unverifiedPlayback.busy, false);
+});
+test("Back during route preparation produces no late playback or error", async () => {
+  let release;
+  const h = routedHarness({
+    copy: () =>
+      new Promise((resolve) => {
+        release = resolve;
+      })
+  });
+  const pending = h.ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  h.ctx.playerBackNavigationInProgress = true;
+  h.ctx._selectedSourceAbort.abort();
+  release({ url: "https://app.test/late", plan: null });
+  await pending;
+  assert.equal(h.records.plays.length, 0);
+  assert.equal(h.records.errors.length, 0);
+  assert.equal(h.records.audio, 0);
+});
+
+test("automatic route entry refuses a repeated Direct while an explicit retry remains available", async () => {
+  const h = routedHarness({ initial: "remux" });
+  assert.equal(await h.ctx.runUnverifiedPlaybackAttempt("direct"), true);
+  assert.equal(await h.ctx.runUnverifiedPlaybackAttempt("direct"), false);
+  assert.equal(h.records.plays.length, 1);
+  assert.equal(await h.ctx.runUnverifiedPlaybackAttempt("remux"), false);
+  assert.equal(await h.ctx.tryUnverifiedRemuxAfterFailure({ httpStatus: 502 }), false);
+  assert.equal(await h.ctx.runUnverifiedPlaybackAttempt("direct", { manual: true }), true);
+  assert.equal(h.records.plays.length, 2);
+});
+
+test("server failure falls back to Direct once and terminates when processing is unavailable", async () => {
+  const h = routedHarness({ initial: "remux" });
+  assert.equal(await h.ctx.tryUnverifiedRemuxAfterFailure({ httpStatus: 502 }), true);
+  assert.equal(h.ctx._processingUnavailable, true);
+  assert.equal(h.records.plays.length, 1);
+  for (let i = 0; i < 5; i++)
+    assert.equal(await h.ctx.tryUnverifiedRemuxAfterFailure({ startupStall: true }), false);
+  assert.equal(h.records.plays.length, 1);
+  assert.equal(h.records.copy, 0);
+  assert.equal(h.records.audio, 0);
 });

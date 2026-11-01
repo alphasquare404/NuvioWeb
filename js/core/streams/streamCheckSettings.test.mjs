@@ -3,10 +3,9 @@ import assert from "node:assert/strict";
 import {
   filterPlayerStreams,
   playerStreamCheckCandidates,
-  playerStreamProbeCandidates,
-  allowsPlayerStreamLabel
+  playerStreamProbeCandidates
 } from "./playerStreamPolicy.js";
-import { isOnlyDirectEnabled, streamLabelProbeLimit } from "./streamLabelPolicy.js";
+import { isOnlyDirectEnabled } from "./streamLabelPolicy.js";
 import { normalizeStreamBadgeSettings } from "../../data/local/streamBadgeSettingsStore.js";
 import { normalizePlayerSettings } from "../../data/local/playerSettingsStore.js";
 const capabilities = {
@@ -46,47 +45,16 @@ const options = (settings, labels = metadata) => ({
     audioCodec: "aac"
   })
 });
-test("all streams remain visible while only three selected-addon files are checked with badges hidden", () => {
-  const opt = options({ streamDisplayMode: "ALL" });
-  assert.deepEqual(filterPlayerStreams(rows, opt), rows);
-  assert.deepEqual(
-    playerStreamProbeCandidates(rows, opt).map((s) => s.id),
-    ["0", "2", "4"]
-  );
-  assert.deepEqual(
-    filterPlayerStreams(rows, options({ streamDisplayMode: "DIRECT" })).map((s) => s.id),
-    rows.filter((s) => s.id !== "2").map((s) => s.id)
-  );
-  assert.deepEqual(
-    filterPlayerStreams(rows, options({ streamDisplayMode: "DIRECT_REMUX" })).map((s) => s.id),
-    rows.map((s) => s.id)
-  );
+test("legacy check preferences never start background work or hide any streams", () => {
+  for (const labels of [metadata, filename])
+    for (const streamDisplayMode of ["ALL", "DIRECT", "DIRECT_REMUX"]) {
+      const opt = options({ streamDisplayMode }, labels);
+      assert.deepEqual(filterPlayerStreams(rows, opt), rows);
+      assert.deepEqual(playerStreamCheckCandidates(rows, opt), []);
+      assert.deepEqual(playerStreamProbeCandidates(rows, opt), []);
+    }
 });
-test("filename All addons and All streams are local and independent of metadata network limits", () => {
-  const opt = options({ streamDisplayMode: "DIRECT_REMUX" }, filename);
-  assert.equal(playerStreamCheckCandidates(rows, opt).length, 12);
-  assert.deepEqual(filterPlayerStreams(rows, opt), rows);
-  assert.deepEqual(playerStreamProbeCandidates(rows, opt), []);
-  assert.equal(allowsPlayerStreamLabel(rows[1], filename), true);
-  assert.equal(streamLabelProbeLimit(filename, "client", 1), 0);
-  const limited = { ...filename, filenameCheckLimit: 3 };
-  assert.equal(playerStreamCheckCandidates(rows, options({}, limited)).length, 3);
-  assert.equal(
-    filterPlayerStreams(rows, options({ streamDisplayMode: "DIRECT_REMUX" }, limited)).length,
-    12
-  );
-  const backToMetadata = { ...limited, playbackLabelSource: "FILE_METADATA" };
-  assert.equal(allowsPlayerStreamLabel(rows[1], backToMetadata), false);
-  assert.deepEqual(
-    playerStreamProbeCandidates(rows, options({}, backToMetadata)).map((s) => s.id),
-    ["0", "2", "4"]
-  );
-  assert.deepEqual(
-    playerStreamProbeCandidates(rows, options({}, { ...backToMetadata, labelAddons: [] })),
-    [],
-    "All addons cannot authorize network work"
-  );
-});
+
 test("check disable suspends filtering and network work while preserving the saved view", () => {
   const labels = { ...metadata, compatibilityCheckEnabled: false };
   assert.equal(isOnlyDirectEnabled({ streamDisplayMode: "DIRECT" }, labels), false);

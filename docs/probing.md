@@ -385,3 +385,35 @@ falls back to the picker and cannot spin/retry a single failed revision indefini
 Selected-file inspection uses the host discovery cap (client safety maximum20),
 independently of the user's background label quota; existing facts are still valid
 outside both quotas and no automatic path broadens source/regex permissions.
+
+## Current playback lifecycle: selected sources only (2026-11-01)
+
+This supersedes earlier list-labeling/compatibility-filter workflows above. Lists and autoplay discovery do not inspect media. Playback labels and their controls are deferred. Legacy profile fields remain readable but inactive.
+
+Only the selected file is resolved/inspected, using existing client/server readers and the strong-file-identity metadata cache. Player chooses Direct, configured copy remux, or evidence-authorized server audio conversion. Prepared manifests skip probing. Failed metadata permits bounded Direct/fallback attempts. Filename estimates cannot choose routes or authorize encoding. Existing RAM, range-read, initialization and cache budgets remain.
+
+Manual terminal preparation failures return to the picker with a notice. Automatic startup retries respect source permissions/regex/preferences and try each stable file identity once. Partial discovery can retrieve later rows without widening addon scope. Exhaustion opens the manual picker. Back invalidates selection and stops the reader/media session at every loading stage, including Continue Watching and next-episode discovery.
+
+Delivery belongs to PlayerScreen and the extracted selectedStreamDelivery helper, preserving the existing HLS alternate-audio producer. selectedPlaybackTask bounds preparatory waiting and responds to cancellation. Video encoding and client encoding remain unavailable. Connected-server filtering/sorting is unchanged.
+
+Validation: scoped lint/build pass;1652 tests pass;asset b6458506dc89. Physical client/server acceptance pending; changes are uncommitted on the isolated integration candidate.
+
+## Filename estimates and fast initial routing (2026-11-01)
+
+This supersedes the previous label deferral and required startup probe. Fusion Style offers filename-only playback labels at the front of the badge row. Labels remain estimates even if metadata is cached. The independent Audio & Video filename filter defaults ALL, with DIRECT and DIRECT_REMUX choices and an explicit warning about false exclusions/Unknown rows. Lists, autoplay, retries, saved links, next episodes and source/episode/detail/season selectors share the same policy. Retired metadata-check settings remain inactive. No list probing or connected-server sorting/filter edits were introduced.
+
+filenamePlaybackRoutingEnabled is enabled by default in Audio & Video. It may select initial Direct, configured copy remux or server audio-only conversion from filename/device estimates, without waiting for a separate probe. Off tries Direct, remux, then supported server audio conversion. Actual cached facts are preferred when available. Actual demuxing and selected audio/subtitle discovery still read the source. Without filename permission, audio conversion requires actual selected-source evidence. Video encoding and client encoding remain unavailable; every audio conversion plan copies video.
+
+Each route is tracked to prevent loops and duplicate starts. Direct startup15s; processed startup/preparation30s. Source network/access/autoplay errors are not conversion evidence. Back cancels preparatory work and prevents late URLs/errors; relay waits reject superseded generations. Terminal failure returns manual users to the picker or advances autoplay within its permitted candidates. Known alternative audio can remain copy-only; known multi-audio rendition information is retained.
+
+Validation: lint/build pass;1674 tests pass;asset fe490e0a54b9. Uncommitted isolated integration candidate. Publication of this exact bundle was explicitly approved. Both public previews now serve asset fe490e0a54b9, verified by bundle SHA256 and runtime mode. Client still has no audio-server endpoint. Device acceptance remains pending.
+
+
+## Episode drawer and server HLS recovery — 2026-11-02
+
+- Removed the final deleted renderPlayerStreamLabel call from browser episode-source cards. It threw while rendering the open drawer, leaving an invisible input-blocking panel. A regression renders real episode-stream markup, including loaded, loading and empty states.
+- Automatic route admission now refuses an already-tried route at the execution boundary; explicit user retries remain available. Regressions cover duplicate Direct entry and processing-service 502 followed by a single Direct attempt and exhaustion. The exact origin of the repeated Direct calls in the device log has not been reproduced; the boundary invariant is now enforced.
+- Existing HLS delivery recreates completed jobs when their cached playlist disappeared, including normal admission limits for replacement work. An unfinished producer returns 503/Retry-After rather than a false 502. Completed output without media remains a failure. Playlist completion is sampled before asynchronous reading to avoid rejecting a file written during an in-flight read.
+- No new delivery route, video/client encoding, list probing, or connected-server filter/sort changes. The user-supplied H.264/E-AC3 MKV was readable by ffprobe and produced HLS through the existing bridge in an isolated localhost diagnostic. The public server returned 502 for the same source; no device-level acceptance is claimed yet.
+
+Validation: build ea94f11d41ae and scoped ESLint pass; all 1681 tests pass with test-concurrency=4. Both public test frontends serve the matching bundle (HTTP 200), with client/server runtime modes preserved and no client audio-server endpoint. Existing server preview updated with the HLS handler fix; user-supplied source returned HTTP 200 with one ready segment in 5777ms after restart. Physical drawer/playback acceptance remains pending; no commit or branch merge was made.

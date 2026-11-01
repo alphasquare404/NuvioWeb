@@ -1,13 +1,17 @@
-import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
-import { probeStreamCandidate } from "../../../core/player/probeStreamCandidate.js";
+import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
+import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
+import { selectedPlaybackTask } from "../../../core/player/selectedPlaybackTask.js";
+import { SelectedStreamDelivery } from "../../../core/player/selectedStreamDelivery.js";
+
 import {
+  selectFilenamePlaybackAttempt,
+  nextPlaybackFallbackRoute,
   canTryUnverifiedRemux,
   canTryUnverifiedAudioTranscode,
   prepareUnverifiedAudioTranscode,
-  prepareUnverifiedRemux,
-  selectUnverifiedPlayback
+  prepareUnverifiedRemux
 } from "../../../core/player/unverifiedPlayback.js";
-import { clientRemuxAvailable, clientRemuxPlan } from "../../../core/player/remuxClient.js";
+import { clientRemuxPlan } from "../../../core/player/remuxClient.js";
 import {
   relayTrackContext,
   relayAudioUrl,
@@ -16,15 +20,10 @@ import {
 } from "../../../core/player/relayTracks.js";
 import { createEmbeddedSubtitles } from "../../../core/player/clientRemux/embeddedSubtitles.mjs";
 import { secureMediaUrl } from "../../../core/streams/secureMediaUrl.js";
-import { resolveRelayAvailability } from "../../../core/player/relayAvailability.js";
-import { TranscodeSettingsStore } from "../../../data/local/transcodeSettingsStore.js";
-import { renderStreamPlaybackBadge } from "../../components/streamPlaybackBadge.js";
+
 import {
-  allowsPlayerStreamLabel,
   playerStreamProbeKey,
   filterPlayerStreams,
-  playerStreamProbeCandidates,
-  playerStreamCheckCandidates,
   nextEpisodeSelectionOptions
 } from "../../../core/streams/playerStreamPolicy.js";
 import {
@@ -41,7 +40,6 @@ import { isAppInstalled } from "../../components/browserInstallPrompt.js";
 import { formatRuntimeLabel } from "../../../core/util/runtimeLabel.js";
 import { traceHost } from "../../../core/util/playbackTrace.js";
 import {
-  REMUX_ENDPOINT,
   REMUX_POLICY,
   TRANSCODE_ENDPOINT,
   PROBE_ENDPOINT,
@@ -86,15 +84,15 @@ import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js"
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
 import { matchStreamBadges } from "../../../core/streams/streamBadgeRules.js";
 import { hasReleaseToken } from "../../../core/streams/releaseToken.js";
-import { selectAutoPlayStream } from "../../../core/streams/streamAutoPlaySelector.js";
+import {
+  autoPlayCandidates,
+  selectAutoPlayStream
+} from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   withinStreamSelectionDeadline,
   streamSelectionDeadline
 } from "../../../core/streams/streamAutoResolve.js";
-import {
-  isOnlyDirectEnabled,
-  usesMetadataLabels
-} from "../../../core/streams/streamLabelPolicy.js";
+
 import { metaRepository } from "../../../data/repository/metaRepository.js";
 import { I18n } from "../../../i18n/index.js";
 import { Environment } from "../../../platform/environment.js";
@@ -1558,6 +1556,8 @@ function renderPlayerSourceBadges(
     }
   });
   chips.push(...sizeChips);
+  const filenameLabel = renderFilenamePlaybackBadge(stream, badgeSettings);
+  if (filenameLabel) chips.unshift(filenameLabel);
   return chips.length
     ? `<div class="stream-route-card-badges player-source-badges" aria-label="${escapeHtml(t("settings_stream_badges_section", {}, "Fusion Style"))}">${chips.join("")}</div>`
     : "";
@@ -2143,6 +2143,15 @@ export const PlayerScreen = {
     this.desktopMuteRestoreVolume = null;
     this.playerRouteActive = true;
     this.params = params;
+    this._selectedSourceAbort?.abort();
+    this._selectedSourceProber?.cancelAll();
+    this._selectedSourceAbort = null;
+    this._startupSourceFailures = new Set();
+    this._startupSourceAdvancing = false;
+    this._preparingSelectedSource = false;
+    this._startupDiscoveryCompleted = false;
+    this._processingUnavailable = false;
+
     if (
       params.sourceProbe &&
       (params.streamCandidates || []).some(
@@ -2501,7 +2510,14 @@ export const PlayerScreen = {
       this.updateUiTick();
     }
 
-    if (initialStreamUrl && !this.isExternalFrameMode()) {
+    if (params.prepareSelectedSource && !this.isExternalFrameMode()) {
+      const sourceCandidate = initialStreamCandidate || this.getCurrentStreamCandidate();
+      if (sourceCandidate)
+        void this.playStreamCandidate(sourceCandidate, {
+          preservePendingRestore: true,
+          mountToken
+        });
+    } else if (initialStreamUrl && !this.isExternalFrameMode()) {
       const sourceCandidate =
         this.getStreamCandidateByUrl(initialStreamUrl) || this.getCurrentStreamCandidate();
       this.activePlaybackUrl = initialStreamUrl;
@@ -4541,6 +4557,7 @@ export const PlayerScreen = {
   },
 
   renderPlayerUi() {
+    StartupLoadingOverlay.setBackHandler(() => this.navigateBackToStreamScreen());
     this.uiRefs = null;
     this.lastUiTickState = null;
     this.container.querySelector("#playerUiRoot")?.remove();
@@ -4571,6 +4588,7 @@ export const PlayerScreen = {
       const osdClockEnabled = Boolean(PlayerSettingsStore.get().osdClockEnabled);
       root.innerHTML = `
         <div id="playerLoadingOverlay" class="player-loading-overlay">
+          <button type="button" class="startup-loading-back focusable" data-player-loading-back aria-label="Back">‹ Back</button>
           <div class="player-loading-backdrop"${loadingMeta.backdropUrl ? ` style="background-image:url('${loadingMeta.backdropUrl}')"` : ""}></div>
           <div class="player-loading-gradient"></div>
           <div class="player-loading-center">
@@ -6420,6 +6438,19 @@ export const PlayerScreen = {
       details = null
     } = {}
   ) {
+    if (
+      this.params?.prepareSelectedSource &&
+      (this._preparingSelectedSource || !this.hasPresentedPlaybackFrame) &&
+      !this.playerBackNavigationInProgress
+    ) {
+      void this.advanceAfterSelectedSourceFailure(message, {
+        error,
+        detail,
+        playbackUrl,
+        mediaErrorCode
+      });
+      return;
+    }
     if (this.startupReadiness) {
       this.startupReadiness.timeoutError = reason === "startup-stall" && !mediaErrorCode;
     }
@@ -6581,15 +6612,29 @@ export const PlayerScreen = {
     }).catch(() => {});
   },
 
-  async runUnverifiedPlaybackAttempt(route) {
+  async runUnverifiedPlaybackAttempt(route, { manual = false } = {}) {
     const attempt = this.params?.unverifiedPlayback;
+    if (this.playerBackNavigationInProgress) return true;
     if (!attempt || attempt.busy || !["direct", "remux", "audio-transcode"].includes(route))
       return false;
+    const triedKey = {
+      direct: "rawTried",
+      remux: "remuxTried",
+      "audio-transcode": "audioTranscodeTried"
+    }[route];
+    // Automatic failures can arrive from both media events and the startup timer.
+    // Only an explicit user retry may run a route that has already been attempted.
+    if (attempt.routeFallbackEnabled && attempt[triedKey] && !manual) return false;
     const mountToken = this.playerMountToken;
     const previousUrl = this.activePlaybackUrl;
     const candidate = this.getStreamCandidateByUrl(previousUrl) || this.getCurrentStreamCandidate();
     attempt.busy = true;
     const previousRoute = attempt.route;
+    if (attempt.routeFallbackEnabled) {
+      this._selectedSourceAbort?.abort();
+      this._selectedSourceAbort = new AbortController();
+      this._playbackUrlGeneration = (this._playbackUrlGeneration || 0) + 1;
+    }
     attempt.route = route;
     if (route === "remux") attempt.remuxTried = true;
     else if (route === "audio-transcode") attempt.audioTranscodeTried = true;
@@ -6597,13 +6642,26 @@ export const PlayerScreen = {
     this.clearPlaybackStallGuard();
     this.loadingVisible = true;
     try {
-      const delivery =
+      const prepare = async () =>
         route === "remux"
-          ? await prepareUnverifiedRemux(attempt.sourceUrl)
+          ? await prepareUnverifiedRemux(attempt.sourceUrl, {
+              probe: this.getPlayerStreamProbe?.(candidate),
+              audioIndex: this.getPlayerStreamProbe?.(candidate)
+                ? Number(
+                    classifyPlayback({
+                      url: attempt.sourceUrl,
+                      probe: this.getPlayerStreamProbe(candidate),
+                      capabilities: getDeviceCapabilities()
+                    }).audioIndex
+                  ) || 0
+                : 0
+            })
           : route === "audio-transcode"
             ? await prepareUnverifiedAudioTranscode(attempt.sourceUrl, {
                 probe: this.getPlayerStreamProbe?.(candidate),
                 capabilities: getDeviceCapabilities(),
+                filenameVerdict: attempt.filenameVerdict,
+                allowFilenameEstimate: attempt.filenameRouting === true,
                 readProbe: () => {
                   const prober = (this._fallbackAudioProber ||= createStreamProber({
                     endpoint: PROBE_ENDPOINT,
@@ -6612,32 +6670,72 @@ export const PlayerScreen = {
                     timeoutMs: 15000,
                     assess: (probe) => assessPlaybackCapabilities(probe)
                   }));
-                  return prober.probe(attempt.sourceUrl, {
-                    reason: "audio-fallback",
-                    timeoutMs: 15000,
-                    identity: streamProbeIdentity(candidate)
-                  });
+                  return prober
+                    .probe(attempt.sourceUrl, {
+                      reason: "audio-fallback",
+                      timeoutMs: 15000,
+                      identity: streamProbeIdentity(candidate)
+                    })
+                    .then((facts) => {
+                      if (facts && attempt === this.params?.unverifiedPlayback)
+                        (this._playerListProbeResults ||= new Map()).set(
+                          playerStreamProbeKey(candidate),
+                          facts
+                        );
+                      return facts;
+                    });
                 }
               })
             : { url: attempt.sourceUrl, plan: null };
+      let delivery = attempt.routeFallbackEnabled
+        ? await selectedPlaybackTask(prepare, {
+            signal: this._selectedSourceAbort?.signal,
+            timeoutMs: 30000
+          })
+        : await prepare();
+      if (!delivery && attempt.routeFallbackEnabled && route === "audio-transcode") {
+        const facts = this.getPlayerStreamProbe?.(candidate);
+        const verdict = facts
+          ? classifyPlayback({
+              url: attempt.sourceUrl,
+              probe: facts,
+              capabilities: getDeviceCapabilities()
+            })
+          : null;
+        if (verdict?.method === "remux" && Number(verdict.audioIndex) > 0)
+          delivery = await prepareUnverifiedRemux(attempt.sourceUrl, {
+            probe: facts,
+            audioIndex: Number(verdict.audioIndex)
+          });
+      }
+      if (!delivery && attempt.routeFallbackEnabled)
+        throw new Error("Audio conversion is unavailable for this stream.");
       if (!delivery) {
         attempt.route = previousRoute;
         return false;
       }
       if (
+        this.playerBackNavigationInProgress ||
         !this.isActiveMountToken(mountToken) ||
         attempt !== this.params?.unverifiedPlayback ||
         this.activePlaybackUrl !== previousUrl
       )
         return true;
+      if (
+        route === "audio-transcode" &&
+        (delivery.plan?.method === "remux" || /[?&]a=copy(?:&|$)/.test(delivery.url))
+      )
+        attempt.route = "remux";
       attempt.mediaUrl = delivery.url;
       this.params.playbackPlan = delivery.plan;
       console.warn(
-        `[Playback] fallback route=${route === "remux" ? REMUX_POLICY.mode + "-remux" : route}`
+        `[Playback] fallback route=${attempt.route === "remux" ? REMUX_POLICY.mode + "-remux" : attempt.route}`
       );
       this.relayPrepareDone = false;
       this.relayPrepareUrl = "";
       attempt.busy = false;
+      this._preparingSelectedSource = false;
+      this.activePlaybackUrl = delivery.url;
       await this.playStreamByUrl(delivery.url, {
         preservePanel: true,
         preservePendingRestore: true,
@@ -6647,15 +6745,17 @@ export const PlayerScreen = {
       });
     } catch (error) {
       if (
+        !this.playerBackNavigationInProgress &&
         this.isActiveMountToken(mountToken) &&
         attempt === this.params?.unverifiedPlayback &&
         [previousUrl, attempt.mediaUrl].includes(this.activePlaybackUrl)
       ) {
         attempt.busy = false;
         if (
-          route === "remux" &&
+          (route === "remux" || attempt.routeFallbackEnabled) &&
           (await this.tryUnverifiedRemuxAfterFailure({
             detail: String(error?.message || ""),
+            preparationFailed: attempt.routeFallbackEnabled === true,
             httpStatus: extractPlaybackHttpStatus(String(error?.message || ""))
           }))
         )
@@ -6668,13 +6768,35 @@ export const PlayerScreen = {
         });
       }
     } finally {
-      attempt.busy = false;
+      if (!attempt.routeFallbackEnabled || attempt.route === route) attempt.busy = false;
     }
     return true;
   },
 
   async tryUnverifiedRemuxAfterFailure(failure = {}) {
     const attempt = this.params?.unverifiedPlayback;
+    if (attempt?.routeFallbackEnabled) {
+      if (
+        this.playerBackNavigationInProgress ||
+        (this.hasPresentedPlaybackFrame && !this._preparingSelectedSource) ||
+        attempt.mediaUrl !== this.activePlaybackUrl
+      )
+        return false;
+      if (attempt.busy) return true;
+      if (
+        attempt.route !== "direct" &&
+        [401, 403, 429, 502, 503].includes(Number(failure.httpStatus))
+      ) {
+        this._processingUnavailable = true;
+        failure = { ...failure, httpStatus: 0, detail: "", preparationFailed: true };
+      }
+      const next = nextPlaybackFallbackRoute(attempt, failure, {
+        remuxAvailable: REMUX_POLICY.mode !== "off" && !this._processingUnavailable,
+        audioAvailable: Boolean(TRANSCODE_ENDPOINT) && !this._processingUnavailable
+      });
+      return next ? this.runUnverifiedPlaybackAttempt(next) : false;
+    }
+    if (this._processingUnavailable) return false;
     if (!attempt || this.hasPresentedPlaybackFrame || attempt.mediaUrl !== this.activePlaybackUrl)
       return false;
     if (attempt.busy) return true;
@@ -6691,11 +6813,11 @@ export const PlayerScreen = {
     const attempt = this.params?.unverifiedPlayback;
     if (!attempt) return false;
     if (action === "raw") {
-      void this.runUnverifiedPlaybackAttempt("direct");
+      void this.runUnverifiedPlaybackAttempt("direct", { manual: true });
       return true;
     }
     if (action === "retry") {
-      void this.runUnverifiedPlaybackAttempt(attempt.route);
+      void this.runUnverifiedPlaybackAttempt(attempt.route, { manual: true });
       return true;
     }
     return false;
@@ -7924,6 +8046,13 @@ export const PlayerScreen = {
       return true;
     }
     this.playerBackNavigationInProgress = true;
+    this._candidatePlaybackGeneration = (this._candidatePlaybackGeneration || 0) + 1;
+    this._selectedSourceProber?.cancelAll();
+    this._selectedSourceAbort?.abort();
+    this._fallbackAudioProber?.cancelAll();
+    this.nextEpisodeLaunchToken = (this.nextEpisodeLaunchToken || 0) + 1;
+    this._nextSourceDiscoveryCancel?.();
+    StartupLoadingOverlay.finish();
     const streamParams = this.buildReturnStreamRouteParamsFromPlayer();
     try {
       PlayerController.stop();
@@ -8352,20 +8481,6 @@ export const PlayerScreen = {
     // owner's "only show direct streams" choice has to hold here too: an episode that
     // autoplays a row the list was told to hide is the filter being bypassed.
     let candidates = streamItems;
-    if (isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot())) {
-      candidates = await this.selectDirectPlayableCandidates(streamItems, settings, options);
-      if (options.cancelled?.() === true || Date.now() >= (options.deadlineAt ?? Infinity))
-        return null;
-      if (!candidates.length) {
-        // Nothing plays as it is. Returning null makes the caller open the next-episode
-        // picker -- the same path as "autoplay next episode" being switched off -- instead
-        // of quietly playing a row the filter was asked to hide.
-        console.warn(
-          "[Autoplay] no compatible source matches the next-episode rules; opening the list"
-        );
-        return null;
-      }
-    }
 
     const installedAddonNames =
       options.installedAddonNames instanceof Set
@@ -8389,58 +8504,6 @@ export const PlayerScreen = {
           this._nextEpisodeProbeResults?.get(stream.url || stream.externalUrl || "")
       })
     );
-  },
-
-  async selectDirectPlayableCandidates(
-    streamItems = [],
-    settings = PlayerSettingsStore.get(),
-    options = {}
-  ) {
-    const labels = StreamBadgeSettingsStore.snapshot();
-    const installedAddonNames =
-      options.installedAddonNames ||
-      new Set(
-        ((await addonRepository.getInstalledAddons().catch(() => [])) || []).map((addon) =>
-          String(addon.displayName || addon.name || "")
-        )
-      );
-    const selection = nextEpisodeSelectionOptions(settings, {
-      labels,
-      installedAddonNames,
-      preferredBingeGroup: settings.streamAutoPlayPreferBingeGroupForNextEpisode
-        ? this.getCurrentStreamBingeGroup()
-        : "",
-      bingeGroupOnly: options.bingeGroupOnly
-    });
-    const prober = usesMetadataLabels(labels)
-      ? (this._nextEpisodeProber ||= createStreamProber({
-          endpoint: PROBE_ENDPOINT,
-          mode: PROBE_MODE,
-          clientConcurrency: PROBE_CLIENT_CONCURRENCY,
-          timeoutMs: 15000,
-          assess: (probe) => assessPlaybackCapabilities(probe)
-        }))
-      : null;
-    const inspected = await inspectAutoPlayStreams(streamItems, {
-      settings,
-      labels,
-      capabilities: getDeviceCapabilities(),
-      selection,
-      prober,
-      mode: PROBE_MODE,
-      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
-      deadlineAt: options.deadlineAt ?? Infinity,
-      cancelled: options.cancelled,
-      context: {
-        season: options.season ?? this.params?.season ?? null,
-        episode: options.episode ?? this.params?.episode ?? null
-      },
-      onCandidates: options.onDirectCandidates
-    });
-    if (options.cancelled?.()) return [];
-    this._nextEpisodeProbeResults = inspected.probes;
-    // Preserve newly resolved URLs in the candidates returned for the player handoff.
-    return inspected.candidates;
   },
 
   async resolveNextEpisodeStreamByAutoPlayPolicy(nextEpisode, itemType, settings) {
@@ -8483,6 +8546,7 @@ export const PlayerScreen = {
         return;
       }
       settled = true;
+      this._nextSourceDiscoveryCancel = null;
       clearTimeout(selectionTimer);
       resolveSelection({
         selectedStream: selectedStream || null,
@@ -8491,6 +8555,7 @@ export const PlayerScreen = {
         timedOut
       });
     };
+    this._nextSourceDiscoveryCancel = () => finish(null);
     const trySelect = async () => {
       if (settled || selecting || (!complete && !instant && !hasPreferredBingeGroup)) return;
       selecting = true;
@@ -8666,6 +8731,11 @@ export const PlayerScreen = {
         this.params?.playerBackdropUrl || this.params?.backdrop || this.params?.poster || ""
     };
     this.renderNextEpisodeCard();
+    StartupLoadingOverlay.begin(
+      { ...this.nextEpisodeTransitionMeta, itemKey: String(this.params?.itemId || "") },
+      "finding"
+    );
+    StartupLoadingOverlay.setBackHandler(() => this.navigateBackToStreamScreen());
 
     try {
       const resolution = await this.resolveNextEpisodeStreamByAutoPlayPolicy(
@@ -8720,6 +8790,10 @@ export const PlayerScreen = {
         "player",
         {
           streamUrl: bestStream,
+          prepareSelectedSource: true,
+          automaticSourceSelection: true,
+          automaticNextEpisode: true,
+          streamCandidatesComplete: false,
           sourceProbe: this.getPlayerStreamProbe(bestStreamCandidate),
           sourceProbeKey: playerStreamProbeKey(bestStreamCandidate),
           itemId: this.params?.itemId,
@@ -11041,6 +11115,7 @@ export const PlayerScreen = {
         { ...this.getLoadingOverlayMeta(), itemKey: String(this.params?.itemId || "") },
         this.startupLoadingStage || "loading"
       );
+      StartupLoadingOverlay.setBackHandler(() => this.navigateBackToStreamScreen());
     } else if (unified) {
       StartupLoadingOverlay.finish();
     }
@@ -11703,6 +11778,7 @@ export const PlayerScreen = {
       return;
     }
 
+    const urlGeneration = (this._playbackUrlGeneration = (this._playbackUrlGeneration || 0) + 1);
     // A relayed source has to exist before it can produce a frame. Waiting here keeps
     // the spinner up and the stall guard unarmed: a server copying a film is not a
     // playback error, and eighteen seconds is not long enough to copy one.
@@ -11710,6 +11786,8 @@ export const PlayerScreen = {
       return;
     }
 
+    if (urlGeneration !== this._playbackUrlGeneration || this.playerBackNavigationInProgress)
+      return;
     if (this.offlineObjectUrl && String(streamUrl) !== this.offlineObjectUrl) {
       this.releaseOfflineObjectUrl();
     }
@@ -11849,10 +11927,8 @@ export const PlayerScreen = {
 
   async prepareResolvedCandidatePlayback(streamCandidate, sourceUrl, isCurrent) {
     const candidate = { ...streamCandidate, url: sourceUrl, externalUrl: null };
-    const probe = this.getPlayerStreamProbe(candidate);
-    const capabilities = getDeviceCapabilities();
-    let delivery = { url: sourceUrl, plan: clientRemuxPlan(candidate, probe) };
-    let attempt = null;
+    const signal = this._selectedSourceAbort?.signal;
+    const active = () => isCurrent() && !signal?.aborted && !this.playerBackNavigationInProgress;
     const path = (() => {
       try {
         return new URL(sourceUrl, globalThis.location?.href || "http://localhost/").pathname;
@@ -11860,38 +11936,193 @@ export const PlayerScreen = {
         return "";
       }
     })();
-    if (!delivery.plan && !/\.(?:m3u8|mpd)$/i.test(path) && !path.startsWith("/api/remux")) {
-      attempt = selectUnverifiedPlayback({
-        stream: candidate,
-        probe,
-        capabilities,
-        labels: StreamBadgeSettingsStore.snapshot()
-      });
-      const verdict = probe ? classifyPlayback({ url: sourceUrl, probe, capabilities }) : null;
-      if (
-        attempt?.route === "remux" ||
-        (REMUX_POLICY.mode === "server" && verdict?.method === "remux")
-      )
-        delivery = await prepareUnverifiedRemux(sourceUrl, {
-          audioIndex: Number(verdict?.audioIndex) || 0
-        });
+    const readyDelivery =
+      /\.(?:m3u8|mpd)$/i.test(path) || /\/api\/(?:remux|transcode)(?:\/|$)/.test(path);
+    if (readyDelivery) {
+      this.params.playbackPlan = null;
+      this.params.unverifiedPlayback = null;
+      return { url: sourceUrl, plan: null };
     }
-    if (!isCurrent()) return null;
-    if (attempt) attempt.mediaUrl = delivery.url;
-    this.params.playbackPlan = delivery.plan;
+    const probe = this.getPlayerStreamProbe(candidate);
+    const capabilities = getDeviceCapabilities();
+    const attempt = selectFilenamePlaybackAttempt({
+      stream: candidate,
+      probe,
+      capabilities,
+      enabled: PlayerSettingsStore.get().filenamePlaybackRoutingEnabled !== false
+    });
+    if (!attempt) return { url: sourceUrl, plan: null };
     this.params.unverifiedPlayback = attempt;
+    this.activePlaybackUrl = sourceUrl;
+    attempt.busy = true;
+    let delivery = { url: sourceUrl, plan: null };
+    try {
+      if (this._processingUnavailable && attempt.route !== "direct")
+        throw new Error("The processing service is unavailable.");
+      if (attempt.route === "remux") {
+        if (probe) {
+          const owner = { ...SelectedStreamDelivery, signal, getStreamProbe: () => probe };
+          delivery = {
+            url: await selectedPlaybackTask(() => owner.resolvePlayerSource(candidate), {
+              signal,
+              timeoutMs: 30000
+            }),
+            plan: clientRemuxPlan(candidate, probe)
+          };
+        } else
+          delivery = await selectedPlaybackTask(() => prepareUnverifiedRemux(sourceUrl), {
+            signal,
+            timeoutMs: 30000
+          });
+      } else if (attempt.route === "audio-transcode") {
+        delivery = await selectedPlaybackTask(
+          () =>
+            prepareUnverifiedAudioTranscode(sourceUrl, {
+              probe,
+              capabilities,
+              filenameVerdict: attempt.filenameVerdict,
+              allowFilenameEstimate: attempt.filenameRouting
+            }),
+          { signal, timeoutMs: 30000 }
+        );
+        if (!delivery) throw new Error("Audio conversion is unavailable for this stream.");
+      }
+    } catch (error) {
+      if (!active()) return null;
+      attempt.busy = false;
+      if (
+        await this.tryUnverifiedRemuxAfterFailure({
+          detail: error?.message || "",
+          httpStatus: extractPlaybackHttpStatus(error?.message || ""),
+          preparationFailed: true
+        })
+      )
+        return null;
+      throw error;
+    }
+    if (!active()) return null;
+    attempt.busy = false;
+    attempt.mediaUrl = delivery.url;
+    this.params.playbackPlan = delivery.plan;
+    StartupLoadingOverlay.setStage("loading");
     console.warn(
-      `[Playback] resolved route=${delivery.plan?.route === "client" ? "client-remux" : delivery.url === sourceUrl ? "direct" : "server-remux"} host=${traceHost(sourceUrl)}`
+      `[Playback] resolved route=${attempt.route === "remux" ? REMUX_POLICY.mode + "-remux" : attempt.route} estimate=${attempt.filenameRouting ? "filename" : "off"} host=${traceHost(sourceUrl)}`
     );
     return delivery;
   },
 
+  async advanceAfterSelectedSourceFailure(message, failure = {}) {
+    if (this._startupSourceAdvancing || this.playerBackNavigationInProgress) return;
+    this._startupSourceAdvancing = true;
+    const token = this.playerMountToken;
+    const current = this.getCurrentStreamCandidate();
+    (this._startupSourceFailures ||= new Set()).add(playerStreamProbeKey(current || {}));
+    const detail = String(failure.detail || failure.error?.message || "");
+    const processingUrl = /\/api\/(?:remux|transcode)/.test(
+      failure.playbackUrl || this.activePlaybackUrl || ""
+    );
+    if (failure.error?.code === "PROCESSING_UNAVAILABLE") this._processingUnavailable = true;
+    if (processingUrl && /(?:status|HTTP|responseCode)[^0-9]*(?:401|403|429|5\d\d)/i.test(detail))
+      this._processingUnavailable = true;
+    this.clearPlaybackStallGuard();
+    this._selectedSourceProber?.cancelAll();
+    this._selectedSourceAbort?.abort();
+    this.activePlaybackUrl = null;
+    this.params.unverifiedPlayback = null;
+    try {
+      PlayerController.stop();
+    } catch {
+      /* best effort */
+    }
+    if (this.params.automaticSourceSelection) {
+      const settings = PlayerSettingsStore.get();
+      const candidates = autoPlayCandidates(this.streamCandidates, {
+        ...nextEpisodeSelectionOptions(settings, {
+          installedAddonNames: new Set(
+            addonRepository
+              .getCachedInstalledAddons()
+              .map((addon) => String(addon.displayName || addon.name || ""))
+          ),
+          preferredBingeGroup: this.getCurrentStreamBingeGroup()
+        }),
+        mode:
+          this.params.automaticNextEpisode && settings.streamAutoPlayMode === "MANUAL"
+            ? "FIRST_STREAM"
+            : settings.streamAutoPlayMode
+      });
+      let next = candidates.find(
+        (stream) => !this._startupSourceFailures.has(playerStreamProbeKey(stream))
+      );
+      if (
+        !next &&
+        this.params.streamCandidatesComplete === false &&
+        !this._startupDiscoveryCompleted
+      ) {
+        this._startupDiscoveryCompleted = true;
+        const controller = (this._selectedSourceAbort = new AbortController());
+        try {
+          const rows = await selectedPlaybackTask(
+            () =>
+              this.getPlayableStreamsForVideo(
+                this.params.videoId || this.params.itemId,
+                normalizeItemType(this.params.itemType || "movie")
+              ),
+            { signal: controller.signal, timeoutMs: 45000 }
+          );
+          if (!this.isActiveMountToken(token) || this.playerBackNavigationInProgress) return;
+          this.streamCandidates = this.normalizeStreamCandidates([
+            ...this.streamCandidates,
+            ...rows
+          ]);
+          this.params.streamCandidatesComplete = true;
+          this._startupSourceAdvancing = false;
+          return this.advanceAfterSelectedSourceFailure(message, failure);
+        } catch {
+          if (!this.isActiveMountToken(token) || this.playerBackNavigationInProgress) return;
+        }
+      }
+      if (next) {
+        // Leave the error callback before replacing the media session. Each identity is tried once.
+        await Promise.resolve();
+        if (!this.isActiveMountToken(token) || this.playerBackNavigationInProgress) return;
+        this._startupSourceAdvancing = false;
+        this.loadingVisible = true;
+        StartupLoadingOverlay.setStage("opening");
+        await this.playStreamCandidate(next, { mountToken: token, preservePendingRestore: true });
+        return;
+      }
+    }
+    if (!this.isActiveMountToken(token) || this.playerBackNavigationInProgress) return;
+    const params = this.buildReturnStreamRouteParamsFromPlayer();
+    StartupLoadingOverlay.finish();
+    await Router.navigate(
+      "stream",
+      {
+        ...params,
+        manualSelection: true,
+        autoSelectionFinished: true,
+        autoResolvedStreams: this.streamCandidates,
+        autoResolvedStreamsComplete: this.params.streamCandidatesComplete !== false,
+        autoResolvedStreamId: null,
+        playbackFailureMessage: this.params.automaticSourceSelection
+          ? "None of the permitted streams could be played. Choose another stream."
+          : String(message || "This stream could not be played. Choose another stream.")
+      },
+      { skipStackPush: true, replaceHistory: true }
+    );
+  },
   async playStreamCandidate(streamCandidate, options = {}) {
     const mountToken = options?.mountToken ?? null;
+    this._preparingSelectedSource = this.params?.prepareSelectedSource === true;
+    this._selectedSourceAbort?.abort();
+    this._selectedSourceProber?.cancelAll();
+    this._selectedSourceAbort = new AbortController();
     const generation = (this._candidatePlaybackGeneration =
       (this._candidatePlaybackGeneration || 0) + 1);
     const isCurrent = () =>
-      this.isActiveMountToken(mountToken) && generation === this._candidatePlaybackGeneration;
+      this.isActiveMountToken(mountToken) &&
+      !this.playerBackNavigationInProgress &&
+      generation === this._candidatePlaybackGeneration;
     if (!isCurrent()) {
       return;
     }
@@ -11918,7 +12149,21 @@ export const PlayerScreen = {
       let resolveFailureDetail = "";
 
       if (DirectDebridResolver.canResolveStream(streamCandidate, resolveContext)) {
-        const result = await DirectDebridResolver.resolve(streamCandidate, resolveContext);
+        let result;
+        try {
+          result = await selectedPlaybackTask(
+            () => DirectDebridResolver.resolve(streamCandidate, resolveContext),
+            { signal: this._selectedSourceAbort.signal }
+          );
+        } catch (error) {
+          if (isCurrent())
+            this.showStartupError(error.message, {
+              error,
+              reason: "stream-resolve",
+              streamCandidate
+            });
+          return;
+        }
         if (!isCurrent()) {
           return;
         }
@@ -12021,33 +12266,45 @@ export const PlayerScreen = {
     if (!delivery || !isCurrent()) return;
     targetUrl = delivery.url;
     this.rememberSelectedStreamPreference(streamCandidate);
-    await this.playStreamByUrl(targetUrl, {
-      ...options,
-      mountToken,
-      sourceCandidate: streamCandidate
-    });
+    this._preparingSelectedSource = false;
+    this.activePlaybackUrl = targetUrl;
+    try {
+      await this.playStreamByUrl(targetUrl, {
+        ...options,
+        mountToken,
+        sourceCandidate: streamCandidate
+      });
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (
+        await this.tryUnverifiedRemuxAfterFailure({
+          detail: error?.message || "",
+          preparationFailed: true
+        })
+      )
+        return;
+      this.showStartupError(error?.message || "Unable to start this stream.", {
+        error,
+        playbackUrl: targetUrl,
+        streamCandidate
+      });
+    }
   },
 
   async switchStream(direction) {
-    if (!this.streamCandidates.length) {
-      return;
-    }
-
-    this.currentStreamIndex += direction;
-    if (this.currentStreamIndex >= this.streamCandidates.length) {
-      this.currentStreamIndex = 0;
-    }
-    if (this.currentStreamIndex < 0) {
-      this.currentStreamIndex = this.streamCandidates.length - 1;
-    }
-
-    const selected = this.streamCandidates[this.currentStreamIndex];
-    if (!selected) {
-      return;
-    }
-    await this.playStreamCandidate(selected, { preservePlaybackState: true });
+    this.params.automaticSourceSelection = false;
+    const visible = this.filterPlayerStreamList(this.streamCandidates);
+    if (!visible.length) return;
+    const current = playerStreamProbeKey(this.getCurrentStreamCandidate() || {});
+    const index = visible.findIndex((stream) => playerStreamProbeKey(stream) === current);
+    const next =
+      index < 0
+        ? direction < 0
+          ? visible.length - 1
+          : 0
+        : (index + direction + visible.length) % visible.length;
+    await this.playStreamCandidate(visible[next], { preservePlaybackState: true });
   },
-
   markPlaybackSourceFailed(url = this.activePlaybackUrl) {
     const normalizedUrl = String(url || "").trim();
     if (normalizedUrl) {
@@ -12273,11 +12530,18 @@ export const PlayerScreen = {
     }
     if (!prepareUrl) prepareUrl = String(this.relayPrepareUrl || "").trim();
     if (!prepareUrl) return true;
-    const deadline = Date.now() + 15 * 60 * 1000;
+    const boundedFallback = this.params?.unverifiedPlayback?.routeFallbackEnabled;
+    const routeGeneration = this._playbackUrlGeneration;
+    const deadline = Date.now() + (boundedFallback ? 30000 : 15 * 60 * 1000);
     const startedAt = Date.now();
     let asked = false;
     while (Date.now() < deadline) {
-      if (mountToken && !this.isActiveMountToken(mountToken)) return false;
+      if (
+        (mountToken && !this.isActiveMountToken(mountToken)) ||
+        this.playerBackNavigationInProgress ||
+        routeGeneration !== this._playbackUrlGeneration
+      )
+        return false;
       let response = null;
       try {
         // `start=1` once, on the first call: it tells the server to begin the copy. The
@@ -12313,6 +12577,7 @@ export const PlayerScreen = {
       );
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
+    if (boundedFallback) throw new Error("Stream preparation timed out.");
     // Nothing arrived in fifteen minutes: hand it to the normal path, whose error is
     // more truthful than waiting for ever.
     return true;
@@ -12354,6 +12619,11 @@ export const PlayerScreen = {
     if (!state) return 18000;
     const metadataPending = state.metadataAt == null;
     const attempt = this.params?.unverifiedPlayback;
+    if (attempt?.routeFallbackEnabled && attempt.mediaUrl === this.activePlaybackUrl)
+      return Math.max(
+        1,
+        (attempt.route === "direct" ? 15000 : 30000) - Math.max(0, Date.now() - state.startedAt)
+      );
     const unverifiedDirect =
       attempt?.route === "direct" &&
       !attempt.remuxTried &&
@@ -12389,7 +12659,10 @@ export const PlayerScreen = {
       // stalled, only early. Asking the relay and keeping the spinner up turns a
       // guaranteed false error into a wait -- and this check sits in the guard itself,
       // so it holds for every way a source reaches the screen.
-      if (String(this.activePlaybackUrl || "").includes("/api/remux")) {
+      if (
+        !this.params?.unverifiedPlayback?.routeFallbackEnabled &&
+        String(this.activePlaybackUrl || "").includes("/api/remux")
+      ) {
         void this.relayPrepareState(this.activePlaybackUrl).then((state) => {
           if (state !== "ready" && this.loadingVisible) {
             this.setRelayStatusText(
@@ -15977,7 +16250,6 @@ export const PlayerScreen = {
   },
 
   filterPlayerStreamList(streams) {
-    if (!Environment.isBrowser()) return streams;
     return filterPlayerStreams(streams, {
       mode: PROBE_MODE,
       limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
@@ -15986,152 +16258,6 @@ export const PlayerScreen = {
       capabilities: getDeviceCapabilities(),
       probeForStream: (stream) => this.getPlayerStreamProbe(stream)
     });
-  },
-
-  renderPlayerStreamLabel(stream) {
-    const labels = StreamBadgeSettingsStore.snapshot();
-    if (
-      !Environment.isBrowser() ||
-      labels.showPlaybackLabels === false ||
-      (!this.getPlayerStreamProbe(stream) &&
-        (!allowsPlayerStreamLabel(stream, labels) ||
-          !this._playerLabelCandidateKeys?.has(playerStreamProbeKey(stream))))
-    )
-      return "";
-    return renderStreamPlaybackBadge({
-      labelSource: labels.playbackLabelSource,
-      filenameFallback: labels.metadataFilenameFallback === true,
-      waiting:
-        PROBE_MODE !== "off" && !this._playerListProbeFailed?.has(playerStreamProbeKey(stream)),
-      probeFailed: this._playerListProbeFailed?.has(playerStreamProbeKey(stream)) === true,
-      fallbackReason: this._playerListProber?.failureReason(stream.url || stream.externalUrl || ""),
-      stream,
-      url: stream.url || stream.externalUrl || "",
-      probe: this.getPlayerStreamProbe(stream),
-      capabilities: getDeviceCapabilities(),
-      probing: this._playerListProbePending?.has(playerStreamProbeKey(stream)) === true,
-      remuxAvailable:
-        this._playerRelayAvailability?.remux ??
-        (REMUX_POLICY.mode === "client" ? clientRemuxAvailable() : REMUX_ENDPOINT ? null : false),
-      transcodeAvailable:
-        this._playerRelayAvailability?.audio ?? (TRANSCODE_ENDPOINT ? null : false)
-    });
-  },
-
-  schedulePlayerStreamProbes(streams) {
-    if (!Environment.isBrowser()) return;
-    const settings = PlayerSettingsStore.get();
-    const targets = playerStreamProbeCandidates(streams, {
-      settings,
-      labels: StreamBadgeSettingsStore.snapshot(),
-      mode: PROBE_MODE,
-      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
-    });
-    this._playerLabelCandidateKeys = new Set(
-      playerStreamCheckCandidates(streams, {
-        settings,
-        labels: StreamBadgeSettingsStore.snapshot(),
-        mode: PROBE_MODE,
-        limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
-      }).map(playerStreamProbeKey)
-    );
-    if (!targets.length) return;
-    const token = this.playerMountToken;
-    const results = (this._playerListProbeResults ||= new Map());
-    const pending = (this._playerListProbePending ||= new Set());
-    const failed = (this._playerListProbeFailed ||= new Set());
-    const prober = (this._playerListProber ||= createStreamProber({
-      endpoint: PROBE_ENDPOINT,
-      mode: PROBE_MODE,
-      clientConcurrency: PROBE_CLIENT_CONCURRENCY,
-      timeoutMs: 15000,
-      assess: (probe) => assessPlaybackCapabilities(probe)
-    }));
-
-    if (!prober.enabled) return;
-    const refresh = () => {
-      if (!this.isActiveMountToken(token)) return;
-      if (this.sourcesPanelVisible) this.renderSourcesPanel();
-      if (this.episodePanelVisible && this.episodePanelMode === "streams")
-        this.renderEpisodePanel();
-    };
-    if (!this._playerRelayAvailability) {
-      this._playerRelayAvailability = {
-        remux:
-          REMUX_POLICY.mode === "client" ? clientRemuxAvailable() : REMUX_ENDPOINT ? null : false,
-        audio: TRANSCODE_ENDPOINT ? null : false
-      };
-      void Promise.all([
-        REMUX_POLICY.mode === "client"
-          ? Promise.resolve(clientRemuxAvailable())
-          : resolveRelayAvailability({ endpoint: REMUX_ENDPOINT }),
-        resolveRelayAvailability({
-          endpoint: TRANSCODE_ENDPOINT,
-          transcode: true,
-          token: String(TranscodeSettingsStore.get().token || "")
-        })
-      ]).then(([remux, audio]) => {
-        if (!this.isActiveMountToken(token)) return;
-        this._playerRelayAvailability = { remux, audio };
-        refresh();
-      });
-    }
-    const remaining = targets
-      .filter((stream) => {
-        const key = playerStreamProbeKey(stream);
-        return !results.has(key) && !pending.has(key) && !failed.has(key);
-      })
-      .slice(
-        0,
-        Math.max(
-          0,
-          (PROBE_MODE === "client"
-            ? prober.clientParallelReady
-              ? PROBE_CLIENT_CONCURRENCY
-              : 1
-            : 5) - pending.size
-        )
-      );
-    for (const stream of remaining) {
-      const key = playerStreamProbeKey(stream);
-      let resolvedKey = key;
-      pending.add(key);
-      void Promise.resolve()
-        .then(async () => {
-          const episode =
-            this.episodePanelVisible && this.episodePanelMode === "streams"
-              ? this.episodes?.[this.episodePanelIndex]
-              : null;
-          return probeStreamCandidate(prober, stream, {
-            mode: PROBE_MODE,
-            active: () => this.isActiveMountToken(token),
-            context: {
-              season: episode?.season ?? this.params?.season ?? null,
-              episode: episode?.episode ?? this.params?.episode ?? null
-            },
-            onResolved: (url) => {
-              stream.url = url;
-              stream.externalUrl = null;
-              resolvedKey = playerStreamProbeKey(stream);
-              pending.add(resolvedKey);
-            }
-          });
-        })
-        .catch(() => null)
-        .then((probe) => {
-          if (!this.isActiveMountToken(token)) return;
-          pending.delete(key);
-          pending.delete(resolvedKey);
-          if (probe) {
-            results.set(key, probe);
-            results.set(resolvedKey, probe);
-          } else {
-            failed.add(key);
-            failed.add(resolvedKey);
-          }
-          refresh();
-        });
-    }
   },
 
   getSourceFilters(orderedStreams = this.getOrderedStreamCandidates()) {
@@ -16518,7 +16644,6 @@ export const PlayerScreen = {
     }
 
     const orderedSources = this.getOrderedStreamCandidates();
-    this.schedulePlayerStreamProbes(orderedSources);
     const filters = this.getSourceFilters(orderedSources);
     const filtered = this.getFilteredSources(orderedSources);
     const badgeSettings = StreamBadgeSettingsStore.snapshot();
@@ -16575,7 +16700,6 @@ export const PlayerScreen = {
                     ? Boolean(currentStream) &&
                       streamMergeKey(currentStream) === streamMergeKey(stream)
                     : this.streamCandidates[this.currentStreamIndex]?.url === stream.url;
-                  const playbackLabel = this.renderPlayerStreamLabel(stream);
                   const badges = renderPlayerSourceBadges(stream, badgeSettings);
                   const topBadges = badgePlacement === "TOP" ? badges : "";
                   const bottomBadges = badgePlacement === "BOTTOM" ? badges : "";
@@ -16606,7 +16730,6 @@ export const PlayerScreen = {
                   ${mainTitle}
                   <div class="player-source-desc">${escapeHtml(stream.description || stream.addonName || "")}</div>
                   ${bottomBadges}
-                  ${playbackLabel}
                 </div>
                 ${sourceSide}
               </article>
@@ -16758,6 +16881,7 @@ export const PlayerScreen = {
 
     const selectedStream = list[clamp(index, 0, Math.max(0, list.length - 1))] || null;
     if (selectedStream) {
+      this.params.automaticSourceSelection = false;
       await this.playStreamCandidate(selectedStream, { preservePlaybackState: true });
     }
   },
@@ -17622,7 +17746,6 @@ export const PlayerScreen = {
   },
 
   renderEpisodeStreamsView() {
-    this.schedulePlayerStreamProbes(this.episodePanelStreams || []);
     const selectedEpisode = this.episodes[this.episodePanelIndex] || null;
     const filters = this.getEpisodePanelStreamFilters();
     const streams = this.getFilteredEpisodePanelStreams();
@@ -17713,10 +17836,8 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
                     return `<article class="stream-route-card stream-route-card-action player-episode-stream-card focusable${focused ? " focused" : ""}"
                       data-episode-stream-index="${index}" aria-label="${escapeAttribute(model.accessibleLabel)}">
                       ${renderBrowserSourceCardContent(model)}
-                      ${this.renderPlayerStreamLabel(stream)}
                     </article>`;
                   }
-                  const playbackLabel = this.renderPlayerStreamLabel(stream);
                   const badges = renderPlayerSourceBadges(stream, badgeSettings);
                   const topBadges = badgePlacement === "TOP" ? badges : "";
                   const bottomBadges = badgePlacement === "BOTTOM" ? badges : "";
@@ -17739,8 +17860,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
                         <div class="player-source-title">${escapeHtml(stream.label || "Stream")}</div>
                         <div class="player-source-desc">${escapeHtml(stream.description || stream.addonName || "")}</div>
                         ${bottomBadges}
-                        ${playbackLabel}
-                      </div>
+                            </div>
                       ${sourceSide}
                     </article>
                   `;
@@ -17894,7 +18014,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     try {
       const itemType = this.params?.itemType || "series";
       const streamItems = selectedStream
-        ? this.episodePanelStreams
+        ? this.getFilteredEpisodePanelStreams()
         : await this.getPlayableStreamsForVideo(selected.id, itemType, {
             season: selected.season,
             episode: selected.episode
@@ -17902,8 +18022,8 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       if (!streamItems.length) {
         return;
       }
-      const bestStreamCandidate =
-        selectedStream || this.selectBestStreamCandidate(streamItems) || streamItems[0];
+      const bestStreamCandidate = selectedStream || this.selectBestStreamCandidate(streamItems);
+      if (!bestStreamCandidate) return;
       const bestStream = streamDirectPlaybackUrl(bestStreamCandidate) || null;
       const nextEpisode = this.episodes[this.episodePanelIndex + 1] || null;
       await PlayerController.flushCurrentProgress({ allowCloudSync: false });
@@ -17912,6 +18032,9 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
         "player",
         {
           streamUrl: bestStream,
+          prepareSelectedSource: true,
+          automaticSourceSelection: false,
+          streamCandidatesComplete: !this.episodePanelStreamsLoading,
           itemId: this.params?.itemId,
           itemType,
           imdbId: this.params?.imdbId || null,
@@ -18494,6 +18617,11 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       }
     }
 
+    const loadingBack = target.closest?.("[data-player-loading-back]");
+    if (loadingBack) {
+      this.navigateBackToStreamScreen();
+      return true;
+    }
     const errorAction = target.closest?.("[data-player-error-action]");
     if (errorAction && this.isStartupErrorVisible()) {
       if (this.handleUnverifiedPlaybackAction?.(errorAction.dataset.playerErrorAction)) return true;
@@ -19380,6 +19508,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   },
 
   selectBestStreamCandidate(streams = []) {
+    streams = filterFilenameStreams(streams, PlayerSettingsStore.get());
     if (!Array.isArray(streams) || !streams.length) {
       return null;
     }
@@ -19591,6 +19720,11 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   },
 
   cleanup() {
+    this._nextSourceDiscoveryCancel?.();
+    this._candidatePlaybackGeneration = (this._candidatePlaybackGeneration || 0) + 1;
+    this._selectedSourceAbort?.abort();
+    this._selectedSourceProber?.cancelAll();
+    this._selectedSourceProber = null;
     this._fallbackAudioProber?.cancelAll();
     this._fallbackAudioProber = null;
     this.clearRelayTrackData();

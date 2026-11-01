@@ -40,11 +40,12 @@ const DEFAULT_SWEEP_MS = 5 * 60 * 1000;
 const STREAM_PATH = "/api/transcode";
 const HEALTH_PATH = "/api/transcode/health";
 
-function json(response, status, payload) {
+function json(response, status, payload, headers = {}) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff"
+    "X-Content-Type-Options": "nosniff",
+    ...headers
   });
   response.end(JSON.stringify(payload));
 }
@@ -725,7 +726,10 @@ export function createTranscodeBridgeHandler({
    */
   function ensureHlsJob(source, key, plan) {
     const existing = hlsJobs.get(key);
-    if (existing) {
+    // A completed job may outlive files removed from the cache. Recreate its
+    // producer instead of serving a permanently missing playlist from memory.
+    const outputMissing = existing?.done && !existsSync(path.join(existing.dir, "index.m3u8"));
+    if (existing && !outputMissing) {
       existing.lastUsed = now();
       existing.lastRequestAt = now();
       return existing;
@@ -783,6 +787,9 @@ export function createTranscodeBridgeHandler({
   async function readHlsPlaylist(job) {
     const playlistPath = path.join(job.dir, "index.m3u8");
     for (let attempt = 0; attempt < 100; attempt += 1) {
+      // Capture completion before the read: the producer may finish while an
+      // earlier ENOENT is in flight. In that case, read its final playlist next.
+      const finished = job.failed || job.done;
       try {
         const text = await readFile(playlistPath, "utf8");
         if (job.audioIndices) {
@@ -795,11 +802,11 @@ export function createTranscodeBridgeHandler({
           );
           if (/#EXT-X-STREAM-INF/.test(text) && ready.every(Boolean))
             return await publishEarlyMaster(text, job);
-        } else if (/#EXTINF/.test(text) || job.done) return text;
+        } else if (/#EXTINF/.test(text)) return text;
       } catch {
         // not written yet
       }
-      if (job.failed) return "";
+      if (finished) return "";
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     return "";
@@ -1192,7 +1199,10 @@ export function createTranscodeBridgeHandler({
     // requests, rewritten to carry the key and the token this caller presented.
     if (isPlaylist) {
       // HLS jobs live in hlsJobs; jobs belongs to whole-file delivery.
-      const known = hlsJobs.has(parsed.key);
+      const cached = hlsJobs.get(parsed.key);
+      const known = Boolean(
+        cached && (!cached.done || existsSync(path.join(cached.dir, "index.m3u8")))
+      );
       const address = clientAddress(request.headers, request.socket?.remoteAddress);
       if (!known) {
         const refusal = await admit(parsed.url, address);
@@ -1207,6 +1217,11 @@ export function createTranscodeBridgeHandler({
         job = ensureHlsJob(parsed.url, parsed.key, plan);
         const text = await readHlsPlaylist(job);
         if (!text) {
+          if (!job.failed && !job.done) {
+            log.log(`[transcode] pending ${parsed.key.slice(0, 8)} hls-no-playlist ${host}`);
+            json(response, 503, { ok: false, error: "playlist-not-ready" }, { "Retry-After": "1" });
+            return;
+          }
           log.warn(`[transcode] failed ${parsed.key.slice(0, 8)} hls-no-playlist ${host}`);
           json(response, 502, { ok: false, error: "transcode-failed" });
           return;

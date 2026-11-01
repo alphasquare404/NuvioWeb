@@ -1,3 +1,4 @@
+import { Router } from "../navigation/router.js";
 import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { I18n } from "../../i18n/index.js";
 import { renderLoadingIndicator } from "./loadingIndicator.js";
@@ -25,10 +26,20 @@ let host = null;
 let stage = "finding";
 let relayText = "";
 let presentation = {};
+let backHandler = null;
 
 export const StartupLoadingOverlay = {
   get active() {
     return Boolean(host);
+  },
+  setBackHandler(handler) {
+    backHandler = handler;
+  },
+  back() {
+    const handler = backHandler;
+    this.finish();
+    if (handler) handler();
+    else void Router.back();
   },
   begin(meta = {}, nextStage = "finding") {
     const settings = PlayerSettingsStore.get();
@@ -48,6 +59,7 @@ export const StartupLoadingOverlay = {
       host.id = "startupLoadingOverlay";
       host.className = "player-loading-overlay unified-startup-overlay";
       host.innerHTML = `
+        <button type="button" class="startup-loading-back focusable" aria-label="Back">‹ Back</button>
         <div class="player-loading-backdrop"></div>
         <div class="player-loading-gradient"></div>
         <div class="player-loading-center">
@@ -58,6 +70,8 @@ export const StartupLoadingOverlay = {
           ${renderLoadingIndicator({ className: "unified-startup-spinner" })}
           <div class="player-loading-status" role="status" aria-live="polite"></div>
         </div>`;
+      const back = host.querySelector(".startup-loading-back");
+      if (back) back.onclick = () => this.back();
       document.body.appendChild(host);
     }
     this.updateMetadata(meta);
@@ -118,5 +132,6 @@ export const StartupLoadingOverlay = {
     relayText = "";
     stage = "finding";
     presentation = {};
+    backHandler = null;
   }
 };

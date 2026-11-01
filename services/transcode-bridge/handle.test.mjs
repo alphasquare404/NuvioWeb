@@ -585,3 +585,88 @@ test("alternate audio master and nested playlists share one producer, video, acc
     }
   );
 });
+
+test("an unfinished HLS producer is retryable and a later request joins the same job", async () => {
+  let release;
+  const calls = [];
+  const fake = (_binary, args, options) => {
+    calls.push(args);
+    const handlers = new Map();
+    release = () => {
+      writeFileSync(path.join(options.cwd, "init.mp4"), Buffer.alloc(128));
+      writeFileSync(path.join(options.cwd, "seg00000.m4s"), Buffer.alloc(256));
+      writeFileSync(
+        path.join(options.cwd, "index.m3u8"),
+        "#EXTM3U\n#EXTINF:4,\nseg00000.m4s\n#EXT-X-ENDLIST\n"
+      );
+      handlers.get("close")?.(0);
+    };
+    return {
+      on(event, handler) {
+        handlers.set(event, handler);
+        return this;
+      },
+      kill() {
+        handlers.get("close")?.(1);
+      }
+    };
+  };
+  await withServer({ spawnImpl: fake }, async ({ base }) => {
+    const url =
+      base + "/api/transcode/hls/index.m3u8?u=https%3A%2F%2Fcdn.test%2Fslow.mkv&v=copy&a=copy";
+    try {
+      const pending = await fetch(url);
+      assert.equal(pending.status, 503);
+      assert.equal(pending.headers.get("retry-after"), "1");
+      assert.equal((await pending.json()).error, "playlist-not-ready");
+      release();
+      const ready = await fetch(url);
+      assert.equal(ready.status, 200);
+      assert.match(await ready.text(), /#EXTINF/);
+      assert.equal(calls.length, 1);
+    } finally {
+      release?.();
+    }
+  });
+});
+
+for (const exitCode of [0, 1]) {
+  test(`HLS producer exit ${exitCode} without media is a real failure, not a pending or playable manifest`, async () => {
+    const fake = (_binary, _args, options) => {
+      const handlers = new Map();
+      writeFileSync(path.join(options.cwd, "index.m3u8"), "#EXTM3U\n#EXT-X-ENDLIST\n");
+      setTimeout(() => handlers.get("close")?.(exitCode), 0);
+      return {
+        on(event, handler) {
+          handlers.set(event, handler);
+          return this;
+        },
+        kill() {}
+      };
+    };
+    await withServer({ spawnImpl: fake }, async ({ base }) => {
+      const response = await fetch(
+        base + "/api/transcode/hls/index.m3u8?u=https%3A%2F%2Fcdn.test%2Fempty.mkv&v=copy&a=copy"
+      );
+      assert.equal(response.status, 502);
+      assert.equal((await response.json()).error, "transcode-failed");
+    });
+  });
+}
+
+test("a completed HLS job whose cache directory disappeared is produced again", async () => {
+  const calls = [];
+  await withServer({ spawnImpl: fakeHlsFfmpeg(calls) }, async ({ base, workDir }) => {
+    const url =
+      base + "/api/transcode/hls/index.m3u8?u=https%3A%2F%2Fcdn.test%2Fremoved.mkv&v=copy&a=copy";
+    const first = await fetch(url);
+    assert.equal(first.status, 200);
+    assert.match(await first.text(), /#EXTINF/);
+    const [directory] = await readdir(workDir);
+    await rm(path.join(workDir, directory), { recursive: true, force: true });
+    const second = await fetch(url);
+    assert.equal(second.status, 200);
+    assert.match(await second.text(), /#EXTINF/);
+    assert.equal(calls.length, 2);
+  });
+});

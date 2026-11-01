@@ -30,6 +30,10 @@ export function classifyStreamFilename(stream = {}, capabilities = null) {
   }
   const label = [
     stream.name,
+    stream.label,
+    stream.raw?.filename,
+    stream.raw?.name,
+    stream.raw?.title,
     stream.title,
     stream.description,
     stream.filename,

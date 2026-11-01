@@ -21761,3 +21761,32 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   padding: 0.06em 0.28em;
   background: var(--player-subtitle-background);
 }
+
+/* Loading always leaves a visible exit, including the shared route handoff. */
+.startup-loading-back {
+  position: absolute;
+  top: max(20px, env(safe-area-inset-top));
+  left: max(20px, env(safe-area-inset-left));
+  z-index: 4;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 24px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.startup-loading-back:focus-visible {
+  outline: 3px solid white;
+}
+
+/* Filename estimates share the badge row and always precede imported/size badges. */
+.filename-playback-badge { display: inline-flex; align-items: center; gap: .35em; padding: .25em .55em; border: 1px solid currentColor; border-radius: .4em; font-size: .75em; line-height: 1.2; white-space: nowrap; }
+.filename-playback-badge.tone-green { color: #73df9c; background: #102e20; }
+.filename-playback-badge.tone-yellow { color: #f3d56b; background: #332b11; }
+.filename-playback-badge.tone-orange { color: #ffb46b; background: #382413; }
+.filename-playback-badge.tone-red { color: #ff9999; background: #351c1c; }
+.filename-playback-badge.tone-neutral { color: #c1c7d0; background: #24272c; }
+.filename-playback-estimate { opacity: .8; }

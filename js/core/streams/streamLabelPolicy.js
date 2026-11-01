@@ -9,16 +9,11 @@ export function normalizePlaybackLabelSource(value) {
 export function usesMetadataLabels(labels = {}) {
   return normalizePlaybackLabelSource(labels.playbackLabelSource) === "FILE_METADATA";
 }
-export function isStreamCheckEnabled(labels = {}) {
-  // Older profiles used badge visibility to enable checks. Preserve that choice once.
-  return (labels.compatibilityCheckEnabled ?? labels.showPlaybackLabels) !== false;
+export function isStreamCheckEnabled() {
+  return false;
 }
-export function isStreamLabelingEnabled(labels = {}) {
-  return (
-    isStreamCheckEnabled(labels) &&
-    ((!usesMetadataLabels(labels) && labels.filenameAllAddons === true) ||
-      (Array.isArray(labels.labelAddons) && labels.labelAddons.length > 0))
-  );
+export function isStreamLabelingEnabled() {
+  return false;
 }
 export function normalizeStreamDisplayMode(value) {
   return ["ALL", "DIRECT", "DIRECT_REMUX"].includes(value) ? value : "ALL";

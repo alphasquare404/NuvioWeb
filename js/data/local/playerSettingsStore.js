@@ -1,3 +1,4 @@
+import { filenameStreamDisplayMode } from "../../core/streams/filenameStreamPolicy.js";
 import { createProfileScopedStore } from "./profileScopedStore.js";
 import {
   OFFLINE_PLAYBACK_TARGETS,
@@ -89,6 +90,8 @@ const DEFAULTS = {
   // Hide every stream that would need a relay or a re-encode.
   showOnlyDirectStreams: false,
   streamCompatibilityFilter: "OFF",
+  filenameStreamDisplayMode: "ALL",
+  filenamePlaybackRoutingEnabled: true,
   // Which assisted way back from an external player the person set up. Empty
   // until they choose: an existing profile may already have a Push
   // subscription, and that subscription is the only record the notification
@@ -398,6 +401,8 @@ export function normalizePlayerSettings(settings = {}) {
     showOnlyDirectStreams: persistentSettings.showOnlyDirectStreams === true,
     streamDisplayMode: streamDisplayMode(persistentSettings),
     streamCompatibilityFilter: "OFF",
+    filenameStreamDisplayMode: filenameStreamDisplayMode(persistentSettings),
+    filenamePlaybackRoutingEnabled: persistentSettings.filenamePlaybackRoutingEnabled !== false,
     externalReturnMethod: normalizeExternalReturnMethod(
       persistentSettings.externalReturnMethod ?? DEFAULTS.externalReturnMethod
     ),

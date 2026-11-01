@@ -471,8 +471,15 @@ test("read-only software volume is detected instead of drawing a fictional saved
 });
 
 test("auto-next replaces player and retains its original Back destination", async () => {
-  let navigation;
+  let navigation, backAction;
+  const stages = [];
   const run = method("async playNextEpisode({ userInitiated = false } = {})", {
+    StartupLoadingOverlay: {
+      begin: (_meta, stage) => stages.push(stage),
+      setBackHandler: (handler) => {
+        backAction = handler;
+      }
+    },
     PlayerSettingsStore: {
       get: () => ({ streamAutoPlayMode: "FIRST_STREAM", autoplayNextEpisode: true })
     },
@@ -510,6 +517,9 @@ test("auto-next replaces player and retains its original Back destination", asyn
     setControlsVisible() {}
   };
   assert.equal(await run.call(ctx), true);
+  assert.deepEqual(stages, ["finding"]);
+  assert.equal(typeof backAction, "function");
+  assert.equal(navigation[1].prepareSelectedSource, true);
   assert.equal(navigation[0], "player");
   assert.equal(navigation[1].handoffReturnRoute, "detail");
   assert.equal(navigation[1].returnToStreamOnBack, false);
