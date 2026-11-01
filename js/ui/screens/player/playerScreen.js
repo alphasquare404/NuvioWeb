@@ -1,8 +1,9 @@
 import {
   canTryUnverifiedRemux,
-  prepareUnverifiedRemux
+  prepareUnverifiedRemux,
+  selectUnverifiedPlayback
 } from "../../../core/player/unverifiedPlayback.js";
-import { clientRemuxAvailable } from "../../../core/player/remuxClient.js";
+import { clientRemuxAvailable, clientRemuxPlan } from "../../../core/player/remuxClient.js";
 import {
   relayTrackContext,
   relayAudioUrl,
@@ -11847,9 +11848,52 @@ export const PlayerScreen = {
     this.schedulePlaybackStallGuard();
   },
 
+  async prepareResolvedCandidatePlayback(streamCandidate, sourceUrl, isCurrent) {
+    const candidate = { ...streamCandidate, url: sourceUrl, externalUrl: null };
+    const probe = this.getPlayerStreamProbe(candidate);
+    const capabilities = getDeviceCapabilities();
+    let delivery = { url: sourceUrl, plan: clientRemuxPlan(candidate, probe) };
+    let attempt = null;
+    const path = (() => {
+      try {
+        return new URL(sourceUrl, globalThis.location?.href || "http://localhost/").pathname;
+      } catch {
+        return "";
+      }
+    })();
+    if (!delivery.plan && !/\.(?:m3u8|mpd)$/i.test(path) && !path.startsWith("/api/remux")) {
+      attempt = selectUnverifiedPlayback({
+        stream: candidate,
+        probe,
+        capabilities,
+        labels: StreamBadgeSettingsStore.snapshot()
+      });
+      const verdict = probe ? classifyPlayback({ url: sourceUrl, probe, capabilities }) : null;
+      if (
+        attempt?.route === "remux" ||
+        (REMUX_POLICY.mode === "server" && verdict?.method === "remux")
+      )
+        delivery = await prepareUnverifiedRemux(sourceUrl, {
+          audioIndex: Number(verdict?.audioIndex) || 0
+        });
+    }
+    if (!isCurrent()) return null;
+    if (attempt) attempt.mediaUrl = delivery.url;
+    this.params.playbackPlan = delivery.plan;
+    this.params.unverifiedPlayback = attempt;
+    console.warn(
+      `[Playback] resolved route=${delivery.plan?.route === "client" ? "client-remux" : delivery.url === sourceUrl ? "direct" : "server-remux"} host=${traceHost(sourceUrl)}`
+    );
+    return delivery;
+  },
+
   async playStreamCandidate(streamCandidate, options = {}) {
     const mountToken = options?.mountToken ?? null;
-    if (!this.isActiveMountToken(mountToken)) {
+    const generation = (this._candidatePlaybackGeneration =
+      (this._candidatePlaybackGeneration || 0) + 1);
+    const isCurrent = () =>
+      this.isActiveMountToken(mountToken) && generation === this._candidatePlaybackGeneration;
+    if (!isCurrent()) {
       return;
     }
     if (!streamCandidate) {
@@ -11876,7 +11920,7 @@ export const PlayerScreen = {
 
       if (DirectDebridResolver.canResolveStream(streamCandidate, resolveContext)) {
         const result = await DirectDebridResolver.resolve(streamCandidate, resolveContext);
-        if (!this.isActiveMountToken(mountToken)) {
+        if (!isCurrent()) {
           return;
         }
         if (result.status === "success" && result.stream?.url) {
@@ -11927,7 +11971,7 @@ export const PlayerScreen = {
       }
 
       if (!targetUrl) {
-        if (!this.isActiveMountToken(mountToken)) {
+        if (!isCurrent()) {
           return;
         }
         const startupMessage =
@@ -11962,6 +12006,21 @@ export const PlayerScreen = {
         entry.id === streamCandidate.id ? { ...entry, ...streamCandidate } : entry
       );
     }
+    let delivery;
+    try {
+      delivery = await this.prepareResolvedCandidatePlayback(streamCandidate, targetUrl, isCurrent);
+    } catch (error) {
+      if (isCurrent())
+        this.showStartupError(error?.message || "Unable to prepare this stream.", {
+          error,
+          reason: "resolved-source-prepare",
+          playbackUrl: targetUrl,
+          streamCandidate
+        });
+      return;
+    }
+    if (!delivery || !isCurrent()) return;
+    targetUrl = delivery.url;
     this.rememberSelectedStreamPreference(streamCandidate);
     await this.playStreamByUrl(targetUrl, {
       ...options,

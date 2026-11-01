@@ -1,3 +1,4 @@
+import { remuxLibraryPolicy } from "./remuxLibraryPolicy.mjs";
 import { cp, mkdir, readFile, rm, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -604,7 +605,11 @@ async function runBuild() {
       remuxSources.map((name) => readFile(path.join(remuxSourceDir, name)))
     );
     remuxAssetId = assetBuildId(
-      Buffer.concat([...remuxContents, await readFile(path.join(rootDir, "package-lock.json"))])
+      Buffer.concat([
+        ...remuxContents,
+        await readFile(path.join(rootDir, "scripts/remuxLibraryPolicy.mjs")),
+        await readFile(path.join(rootDir, "package-lock.json"))
+      ])
     );
     const remuxDir = path.join(distDir, "assets/libs/remux", remuxAssetId);
     await mkdir(remuxDir, { recursive: true });
@@ -620,7 +625,13 @@ async function runBuild() {
         minify: true,
         format,
         target: ["safari15", "chrome80"],
-        define: { __NUVIO_REMUX_ASSET_ID__: JSON.stringify(remuxAssetId) }
+        define: { __NUVIO_REMUX_ASSET_ID__: JSON.stringify(remuxAssetId) },
+        plugins: [
+          remuxLibraryPolicy({
+            onModifiedSource: (contents) =>
+              writeFile(path.join(remuxDir, "mediabunny-matroska-demuxer.source.js"), contents)
+          })
+        ]
       });
     }
     await cp(

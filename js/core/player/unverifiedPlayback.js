@@ -65,7 +65,8 @@ export async function prepareUnverifiedRemux(
     remuxEndpoint = REMUX_ENDPOINT,
     transcodeEndpoint = TRANSCODE_ENDPOINT,
     access = copyAccess,
-    token = TranscodeSettingsStore.get().token || ""
+    token = TranscodeSettingsStore.get().token || "",
+    audioIndex = 0
   } = {}
 ) {
   if (policy.mode === "client") {
@@ -78,11 +79,11 @@ export async function prepareUnverifiedRemux(
       const url = buildTranscodePlaylistUrl(sourceUrl, {
         endpoint: transcodeEndpoint,
         token,
-        plan: { video: "copy", audio: "copy", height: 0, channels: 2, audioIndex: 0 }
+        plan: { video: "copy", audio: "copy", height: 0, channels: 2, audioIndex }
       });
       if (url) return { url, plan: null };
     }
-    return { url: buildRemuxUrl(sourceUrl, remuxEndpoint, { audioIndex: 0 }), plan: null };
+    return { url: buildRemuxUrl(sourceUrl, remuxEndpoint, { audioIndex }), plan: null };
   }
   const error = new Error("Remux is unavailable in this host configuration.");
   error.code = "REMUX_ROUTE_UNAVAILABLE";
