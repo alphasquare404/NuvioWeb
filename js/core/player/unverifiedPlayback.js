@@ -4,7 +4,13 @@ import { normalizePlaybackLabelSource } from "../streams/streamLabelPolicy.js";
 import { REMUX_POLICY, REMUX_ENDPOINT, TRANSCODE_ENDPOINT } from "../../config.js";
 import { clientRemuxPlan } from "./remuxClient.js";
 import { buildRemuxUrl } from "./remuxSource.js";
-import { createTranscodeAccess, buildTranscodePlaylistUrl } from "./transcodeSource.js";
+import {
+  createTranscodeAccess,
+  buildTranscodePlaylistUrl,
+  buildTranscodeUrl,
+  buildTranscodePlan,
+  isTranscodeAccessGranted
+} from "./transcodeSource.js";
 import { TranscodeSettingsStore } from "../../data/local/transcodeSettingsStore.js";
 const copyAccess = createTranscodeAccess({ endpoint: TRANSCODE_ENDPOINT });
 
@@ -31,6 +37,7 @@ export function selectUnverifiedPlayback({
     mediaUrl: sourceUrl,
     remuxTried: route === "remux",
     rawTried: route === "direct",
+    audioTranscodeTried: false,
     busy: false,
     probeReason: verdict?.reason || ""
   };
@@ -38,7 +45,7 @@ export function selectUnverifiedPlayback({
 
 export function canTryUnverifiedRemux(
   attempt,
-  { mediaErrorCode = 0, detail = "", httpStatus = 0 } = {}
+  { mediaErrorCode = 0, detail = "", httpStatus = 0, startupStall = false } = {}
 ) {
   if (!attempt || attempt.route !== "direct" || attempt.remuxTried || attempt.busy) return false;
   if ([1, 2].includes(Number(mediaErrorCode))) return false;
@@ -51,6 +58,7 @@ export function canTryUnverifiedRemux(
   )
     return false;
   return (
+    (startupStall && Number(mediaErrorCode) === 0) ||
     [3, 4].includes(Number(mediaErrorCode)) ||
     /NotSupportedError|codec.*unsupported|unsupported.*(?:codec|format)|format.*not supported/i.test(
       detail
@@ -88,4 +96,47 @@ export async function prepareUnverifiedRemux(
   const error = new Error("Remux is unavailable in this host configuration.");
   error.code = "REMUX_ROUTE_UNAVAILABLE";
   throw error;
+}
+
+export function canTryUnverifiedAudioTranscode(attempt, failure, endpoint = TRANSCODE_ENDPOINT) {
+  if (
+    !endpoint ||
+    !attempt ||
+    attempt.route !== "remux" ||
+    attempt.audioTranscodeTried ||
+    attempt.busy
+  )
+    return false;
+  return canTryUnverifiedRemux({ ...attempt, route: "direct", remuxTried: false }, failure);
+}
+
+// Only actual file facts plus device assessment may authorize audio encoding.
+// An unsuccessful probe, a playable alternative track or unsupported video stops here.
+export async function prepareUnverifiedAudioTranscode(
+  sourceUrl,
+  {
+    probe = null,
+    readProbe,
+    capabilities = {},
+    transcodeEndpoint = TRANSCODE_ENDPOINT,
+    access = copyAccess,
+    token = TranscodeSettingsStore.get().token || ""
+  } = {}
+) {
+  if (!transcodeEndpoint) return null;
+  const facts = probe || (await readProbe?.());
+  if (!facts) return null;
+  const verdict = classifyPlayback({ url: sourceUrl, probe: facts, capabilities });
+  const requested = buildTranscodePlan({ capabilities, verdict });
+  if (!requested.ok) return null;
+  const service = await access.resolve();
+  if (!service?.reachable || !isTranscodeAccessGranted({ mode: service.mode, token })) return null;
+  const plan = { ...requested.plan, audioIndex: Number(verdict.audioIndex) || 0 };
+  const url =
+    service.hls &&
+    buildTranscodePlaylistUrl(sourceUrl, { endpoint: transcodeEndpoint, token, plan });
+  return {
+    url: url || buildTranscodeUrl(sourceUrl, { endpoint: transcodeEndpoint, token, plan }),
+    plan: null
+  };
 }

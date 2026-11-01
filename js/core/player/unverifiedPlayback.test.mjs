@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   selectUnverifiedPlayback,
   canTryUnverifiedRemux,
+  canTryUnverifiedAudioTranscode,
+  prepareUnverifiedAudioTranscode,
   prepareUnverifiedRemux
 } from "./unverifiedPlayback.js";
 const sourceUrl = "https://media.test/source";
@@ -97,5 +99,91 @@ test("trial client delivery contains no guessed codec and cannot invoke an encod
   await assert.rejects(
     prepareUnverifiedRemux(sourceUrl, { policy: { mode: "off" }, token: "" }),
     /unavailable/
+  );
+});
+
+test("startup stall permits a single remux but never hides a known network/access failure", () => {
+  const attempt = choose("Movie", { labels: {} });
+  assert.equal(canTryUnverifiedRemux(attempt, { startupStall: true }), true);
+  for (const failure of [
+    { httpStatus: 502 },
+    { mediaErrorCode: 2 },
+    { detail: "CORS" },
+    { detail: "timeout" },
+    { detail: "HTTP 401" }
+  ])
+    assert.equal(canTryUnverifiedRemux(attempt, { startupStall: true, ...failure }), false);
+  assert.equal(
+    canTryUnverifiedRemux({ ...attempt, remuxTried: true }, { startupStall: true }),
+    false
+  );
+  const remux = { ...attempt, route: "remux", remuxTried: true };
+  assert.equal(
+    canTryUnverifiedAudioTranscode(remux, { mediaErrorCode: 4 }, "/api/transcode"),
+    true
+  );
+  assert.equal(canTryUnverifiedAudioTranscode(remux, { mediaErrorCode: 4 }, ""), false);
+  assert.equal(
+    canTryUnverifiedAudioTranscode(
+      { ...remux, audioTranscodeTried: true },
+      { mediaErrorCode: 4 },
+      "/api/transcode"
+    ),
+    false
+  );
+});
+
+test("automatic audio conversion needs actual unsupported audio, supported video and configured server access", async () => {
+  const facts = {
+    container: "mkv",
+    videoCodec: "h264",
+    audioCodec: "dts",
+    audioStreams: [{ index: 0, codec: "dts", channels: 6 }]
+  };
+  const options = {
+    probe: facts,
+    capabilities,
+    transcodeEndpoint: "/api/transcode",
+    token: "test-token",
+    access: { resolve: async () => ({ reachable: true, hls: true, mode: "token" }) }
+  };
+  const delivery = await prepareUnverifiedAudioTranscode(sourceUrl, options);
+  const url = new URL(delivery.url, "https://app.test");
+  assert.equal(url.searchParams.get("v"), "copy");
+  assert.equal(url.searchParams.get("a"), "aac");
+  assert.equal(delivery.plan, null);
+  assert.equal(await prepareUnverifiedAudioTranscode(sourceUrl, { ...options, token: "" }), null);
+  assert.equal(
+    await prepareUnverifiedAudioTranscode(sourceUrl, { ...options, transcodeEndpoint: "" }),
+    null
+  );
+  assert.equal(await prepareUnverifiedAudioTranscode(sourceUrl, { ...options, probe: null }), null);
+  assert.equal(
+    await prepareUnverifiedAudioTranscode(sourceUrl, {
+      ...options,
+      capabilities: { ...capabilities, h264: false }
+    }),
+    null
+  );
+  assert.equal(
+    await prepareUnverifiedAudioTranscode(sourceUrl, {
+      ...options,
+      probe: { ...facts, audioCodec: "aac", audioStreams: [{ index: 0, codec: "aac" }] }
+    }),
+    null
+  );
+  assert.equal(
+    await prepareUnverifiedAudioTranscode(sourceUrl, {
+      ...options,
+      probe: { ...facts, audioStreams: [...facts.audioStreams, { index: 1, codec: "aac" }] }
+    }),
+    null
+  );
+  assert.equal(
+    await prepareUnverifiedAudioTranscode(sourceUrl, {
+      ...options,
+      access: { resolve: async () => ({ reachable: false }) }
+    }),
+    null
   );
 });

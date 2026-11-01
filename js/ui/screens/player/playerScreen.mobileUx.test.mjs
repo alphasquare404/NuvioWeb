@@ -1551,3 +1551,67 @@ test("the real startup guard allows metadata at 27.7 seconds, but an unresponsiv
   assert.equal(failures, 1);
   assert.equal(errorVisible, true);
 });
+
+test("unverified Direct has a 15 second absolute startup deadline; verified playback keeps its budget", () => {
+  let now = 1000;
+  const timeout = method("getPlaybackStallTimeoutMs({ startup = false } = {})", {
+    Date: { now: () => now },
+    REMUX_POLICY: { mode: "client" }
+  }).getPlaybackStallTimeoutMs;
+  const ctx = {
+    activePlaybackUrl: "https://cdn.test/file",
+    startupReadiness: { startedAt: 1000, metadataAt: null },
+    params: {
+      unverifiedPlayback: { route: "direct", mediaUrl: "https://cdn.test/file", remuxTried: false }
+    }
+  };
+  assert.equal(timeout.call(ctx, { startup: true }), 15000);
+  now = 5000;
+  assert.equal(timeout.call(ctx, { startup: true }), 11000);
+  ctx.startupReadiness.metadataAt = 4000;
+  assert.equal(timeout.call(ctx, { startup: true }), 11000);
+  now = 16001;
+  assert.equal(timeout.call(ctx, { startup: true }), 1);
+  ctx.params.unverifiedPlayback.remuxTried = true;
+  assert.equal(timeout.call(ctx, { startup: true }), 5999);
+});
+
+test("startup guard automatically hands an unverified Direct stall to fallback before showing error", async () => {
+  let expire,
+    received = null;
+  const run = method("schedulePlaybackStallGuard({ timeoutMs: timeoutOverrideMs = null } = {})", {
+    setTimeout: (callback) => {
+      expire = callback;
+      return 1;
+    },
+    PlayerController: {
+      getPlaybackReadyState: () => 0,
+      getLastPlaybackErrorCode: () => 0,
+      getLastHlsErrorDetail: () => ""
+    },
+    extractPlaybackHttpStatus: () => 0
+  }).schedulePlaybackStallGuard;
+  const ctx = {
+    activePlaybackUrl: "https://cdn.test/source",
+    loadingVisible: true,
+    hasPresentedPlaybackFrame: false,
+    startupReadiness: { metadataAt: null },
+    params: { unverifiedPlayback: { route: "direct" } },
+    clearPlaybackStallGuard() {},
+    isExternalFrameMode: () => false,
+    getPlaybackStallTimeoutMs: () => 15000,
+    getStreamCandidateByUrl: () => ({}),
+    markPlaybackPresentedAfterAdvance: () => false,
+    async tryUnverifiedRemuxAfterFailure(failure) {
+      received = failure;
+      return true;
+    },
+    showStartupError() {
+      assert.fail("must not show an error before automatic fallback");
+    }
+  };
+  run.call(ctx);
+  await expire();
+  assert.equal(received.startupStall, true);
+  assert.equal(received.mediaErrorCode, 0);
+});

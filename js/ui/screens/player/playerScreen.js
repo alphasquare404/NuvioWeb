@@ -1,5 +1,7 @@
 import {
   canTryUnverifiedRemux,
+  canTryUnverifiedAudioTranscode,
+  prepareUnverifiedAudioTranscode,
   prepareUnverifiedRemux,
   selectUnverifiedPlayback
 } from "../../../core/player/unverifiedPlayback.js";
@@ -2131,6 +2133,8 @@ export const PlayerScreen = {
     this._playerListProbeResults = new Map();
     this._playerListProbePending = new Set();
     this._playerListProbeFailed = new Set();
+    this._fallbackAudioProber?.cancelAll();
+    this._fallbackAudioProber = null;
     this._playerListProber = null;
     this._playerRelayAvailability = null;
     this.desktopLastAudibleVolume = null;
@@ -6570,13 +6574,16 @@ export const PlayerScreen = {
 
   async runUnverifiedPlaybackAttempt(route) {
     const attempt = this.params?.unverifiedPlayback;
-    if (!attempt || attempt.busy || !["direct", "remux"].includes(route)) return false;
+    if (!attempt || attempt.busy || !["direct", "remux", "audio-transcode"].includes(route))
+      return false;
     const mountToken = this.playerMountToken;
     const previousUrl = this.activePlaybackUrl;
     const candidate = this.getStreamCandidateByUrl(previousUrl) || this.getCurrentStreamCandidate();
     attempt.busy = true;
+    const previousRoute = attempt.route;
     attempt.route = route;
     if (route === "remux") attempt.remuxTried = true;
+    else if (route === "audio-transcode") attempt.audioTranscodeTried = true;
     else attempt.rawTried = true;
     this.clearPlaybackStallGuard();
     this.loadingVisible = true;
@@ -6584,7 +6591,30 @@ export const PlayerScreen = {
       const delivery =
         route === "remux"
           ? await prepareUnverifiedRemux(attempt.sourceUrl)
-          : { url: attempt.sourceUrl, plan: null };
+          : route === "audio-transcode"
+            ? await prepareUnverifiedAudioTranscode(attempt.sourceUrl, {
+                probe: this.getPlayerStreamProbe?.(candidate),
+                capabilities: getDeviceCapabilities(),
+                readProbe: () => {
+                  const prober = (this._fallbackAudioProber ||= createStreamProber({
+                    endpoint: PROBE_ENDPOINT,
+                    mode: PROBE_MODE,
+                    clientConcurrency: PROBE_CLIENT_CONCURRENCY,
+                    timeoutMs: 15000,
+                    assess: (probe) => assessPlaybackCapabilities(probe)
+                  }));
+                  return prober.probe(attempt.sourceUrl, {
+                    reason: "audio-fallback",
+                    timeoutMs: 15000,
+                    identity: streamProbeIdentity(candidate)
+                  });
+                }
+              })
+            : { url: attempt.sourceUrl, plan: null };
+      if (!delivery) {
+        attempt.route = previousRoute;
+        return false;
+      }
       if (
         !this.isActiveMountToken(mountToken) ||
         attempt !== this.params?.unverifiedPlayback ||
@@ -6593,6 +6623,9 @@ export const PlayerScreen = {
         return true;
       attempt.mediaUrl = delivery.url;
       this.params.playbackPlan = delivery.plan;
+      console.warn(
+        `[Playback] fallback route=${route === "remux" ? REMUX_POLICY.mode + "-remux" : route}`
+      );
       this.relayPrepareDone = false;
       this.relayPrepareUrl = "";
       attempt.busy = false;
@@ -6608,13 +6641,23 @@ export const PlayerScreen = {
         this.isActiveMountToken(mountToken) &&
         attempt === this.params?.unverifiedPlayback &&
         [previousUrl, attempt.mediaUrl].includes(this.activePlaybackUrl)
-      )
+      ) {
+        attempt.busy = false;
+        if (
+          route === "remux" &&
+          (await this.tryUnverifiedRemuxAfterFailure({
+            detail: String(error?.message || ""),
+            httpStatus: extractPlaybackHttpStatus(String(error?.message || ""))
+          }))
+        )
+          return true;
         this.showStartupError(error?.message || "Unable to prepare this playback attempt.", {
           error,
           reason: "remux-attempt",
           playbackUrl: attempt.mediaUrl,
           streamCandidate: candidate
         });
+      }
     } finally {
       attempt.busy = false;
     }
@@ -6626,19 +6669,18 @@ export const PlayerScreen = {
     if (!attempt || this.hasPresentedPlaybackFrame || attempt.mediaUrl !== this.activePlaybackUrl)
       return false;
     if (attempt.busy) return true;
-    if (REMUX_POLICY.mode === "off" || !canTryUnverifiedRemux(attempt, failure)) return false;
-    // Reserve before any async preparation: native error and play rejection can
-    // describe the same failure, but must never start two remux attempts.
-    return this.runUnverifiedPlaybackAttempt("remux");
+    // Reserve before awaiting: native errors, play rejection and the startup guard
+    // may describe the same failure. Each automatic route gets one attempt only.
+    if (REMUX_POLICY.mode !== "off" && canTryUnverifiedRemux(attempt, failure))
+      return this.runUnverifiedPlaybackAttempt("remux");
+    if (canTryUnverifiedAudioTranscode(attempt, failure))
+      return this.runUnverifiedPlaybackAttempt("audio-transcode");
+    return false;
   },
 
   handleUnverifiedPlaybackAction(action) {
     const attempt = this.params?.unverifiedPlayback;
     if (!attempt) return false;
-    if (action === "copy" && REMUX_POLICY.mode !== "off") {
-      void this.runUnverifiedPlaybackAttempt("remux");
-      return true;
-    }
     if (action === "raw") {
       void this.runUnverifiedPlaybackAttempt("direct");
       return true;
@@ -6855,8 +6897,7 @@ export const PlayerScreen = {
           this.params?.unverifiedPlayback &&
           this.params.unverifiedPlayback.mediaUrl === this.activePlaybackUrl
             ? `
-          ${this.params.unverifiedPlayback.route === "direct" && !this.params.unverifiedPlayback.remuxTried && REMUX_POLICY.mode !== "off" ? `<button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="copy">Try remux</button>` : ""}
-          ${this.params.unverifiedPlayback.route === "remux" ? `<button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="raw">Try original URL</button>` : ""}
+          ${this.params.unverifiedPlayback.route !== "direct" ? `<button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="raw">Try original URL</button>` : ""}
           <button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="retry">Try again</button>
         `
             : ""
@@ -12359,6 +12400,13 @@ export const PlayerScreen = {
     const state = this?.startupReadiness;
     if (!state) return 18000;
     const metadataPending = state.metadataAt == null;
+    const attempt = this.params?.unverifiedPlayback;
+    const unverifiedDirect =
+      attempt?.route === "direct" &&
+      !attempt.remuxTried &&
+      attempt.mediaUrl === this.activePlaybackUrl &&
+      REMUX_POLICY.mode !== "off";
+    if (unverifiedDirect) return Math.max(1, 15000 - Math.max(0, Date.now() - state.startedAt));
     const budget = metadataPending ? 60000 : 18000;
     const startedAt = metadataPending ? state.startedAt : state.metadataAt;
     return Math.max(1, budget - Math.max(0, Date.now() - startedAt));
@@ -12377,7 +12425,7 @@ export const PlayerScreen = {
       Number.isFinite(Number(timeoutOverrideMs)) && Number(timeoutOverrideMs) > 0
         ? Number(timeoutOverrideMs)
         : this.getPlaybackStallTimeoutMs({ startup });
-    this.playbackStallTimer = setTimeout(() => {
+    this.playbackStallTimer = setTimeout(async () => {
       this.playbackStallTimer = null;
       if (sourceUrl !== this.activePlaybackUrl || readiness !== this.startupReadiness) return;
       if (this.isExternalFrameMode() || !this.loadingVisible || !this.activePlaybackUrl) {
@@ -12433,6 +12481,18 @@ export const PlayerScreen = {
         typeof PlayerController.getLastHlsErrorDetail === "function"
           ? PlayerController.getLastHlsErrorDetail()
           : "";
+      if (startup && this.params?.unverifiedPlayback && this.tryUnverifiedRemuxAfterFailure) {
+        if (
+          await this.tryUnverifiedRemuxAfterFailure({
+            mediaErrorCode,
+            detail: lastHlsErrorDetail,
+            httpStatus: extractPlaybackHttpStatus(lastHlsErrorDetail),
+            startupStall: true
+          })
+        )
+          return;
+      }
+      if (sourceUrl !== this.activePlaybackUrl || readiness !== this.startupReadiness) return;
       const targetEngine =
         !isTerminalHlsHttpStatus(extractPlaybackHttpStatus(lastHlsErrorDetail)) &&
         typeof PlayerController.getAlternativePlaybackEngine === "function"
@@ -19569,6 +19629,8 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   },
 
   cleanup() {
+    this._fallbackAudioProber?.cancelAll();
+    this._fallbackAudioProber = null;
     this.clearRelayTrackData();
     StartupLoadingOverlay.finish();
     this.startupLoadingStage = "loading";

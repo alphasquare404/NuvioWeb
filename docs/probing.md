@@ -273,3 +273,23 @@ Checking (owned pending probe work), and Unknown (failed/unavailable metadata).
 Successful metadata replaces those statuses with the playback method. The optional
 filename fallback remains a user preference; these changes never enable it.
 Cold client WASM initialization still takes time independently of media reads.
+
+### Playback when metadata remains unavailable
+
+Filename fallback controls estimated labels. With it disabled, an unverified source
+starts Direct. A confirmed format refusal automatically tries the hoster's configured
+remux path once. An unverified Direct startup that presents no frame has an absolute
+15-second limit (including metadata waiting) and may try that same copy path once.
+Known network/access/HTTP failures, aborts and autoplay refusals do not trigger it.
+The startup error screen no longer has a Try remux button.
+
+If that remux attempt fails with format/unsupported-media evidence or stalls before
+startup, an explicitly configured server audio endpoint may be considered once.
+Actual probe facts and device assessment must confirm supported video and audio-only
+conversion; unknown metadata or a playable alternate track cannot authorize encoding.
+The existing server delivery uses video copy and AAC audio. No client encoding or
+video encoding is enabled. A client deployment without that server endpoint does not
+send media or initiate an audio-conversion probe for this step. Explicit retry and
+original-URL actions remain; the automatic ladder never loops. Pending resume state
+and stale-source protection remain in place. Fallback transitions emit only route
+names in diagnostics, without source URLs or tokens.
