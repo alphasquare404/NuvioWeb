@@ -218,11 +218,22 @@ const directProbe = {
   audioStreams: [{ index: 0, codec: "aac", profile: "LC", channels: 2, sampleRate: 48000 }]
 };
 async function probeTestScreen(name, limit, run, mode = "server", concurrency = 1) {
+  const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const storage = new Map();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: (key) => storage.delete(key)
+    }
+  });
   const saved = {
     env: globalThis.__NUVIO_ENV__,
     badgeSettings: globalThis.__NUVIO_TEST_BADGE_SETTINGS__,
     playerSettings: globalThis.__NUVIO_TEST_PLAYER_SETTINGS__,
     fetch: globalThis.fetch,
+    probeResponse: globalThis.__NUVIO_TEST_PROBE_RESPONSE__,
     media: globalThis.MediaSource,
     document: globalThis.document
   };
@@ -245,6 +256,8 @@ async function probeTestScreen(name, limit, run, mode = "server", concurrency = 
   };
   globalThis.fetch = async (url) => {
     requests.push(new URL(url).searchParams.get("u"));
+    if (globalThis.__NUVIO_TEST_PROBE_RESPONSE__)
+      return globalThis.__NUVIO_TEST_PROBE_RESPONSE__(url);
     return { ok: true, json: async () => ({ ok: true, ...directProbe }) };
   };
   try {
@@ -269,8 +282,11 @@ async function probeTestScreen(name, limit, run, mode = "server", concurrency = 
     });
     await run(screen, requests);
   } finally {
+    if (storageDescriptor) Object.defineProperty(globalThis, "localStorage", storageDescriptor);
+    else delete globalThis.localStorage;
     globalThis.__NUVIO_ENV__ = saved.env;
     globalThis.fetch = saved.fetch;
+    globalThis.__NUVIO_TEST_PROBE_RESPONSE__ = saved.probeResponse;
     globalThis.MediaSource = saved.media;
     globalThis.document = saved.document;
     globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = saved.badgeSettings;
@@ -637,7 +653,7 @@ test("client background labels wait until addon/cache loading completes", async 
       screen.loading = false;
       screen.scheduleUnknownProbes();
       await new Promise((resolve) => setImmediate(resolve));
-      assert.equal(preparations, 1);
+      assert.equal(preparations, 0, "URL preparation belongs to the individual probe slot");
       assert.equal(probes, 1);
     },
     "client"
@@ -1180,4 +1196,63 @@ test("URL-less client candidates enter the bounded queue and finish Unknown inst
     },
     "client"
   );
+});
+
+test("server probes use five independent lanes so a slow first row does not block the remaining list", async () => {
+  await probeTestScreen("server-independent-lanes", 0, async (screen, requests) => {
+    let completeFirst;
+    let active = 0,
+      peak = 0;
+    globalThis.__NUVIO_TEST_PROBE_RESPONSE__ = async (url) => {
+      const source = new URL(url).searchParams.get("u");
+      active++;
+      peak = Math.max(peak, active);
+      if (source === screen.streams[0].url)
+        await new Promise((resolve) => {
+          completeFirst = resolve;
+        });
+      active--;
+      return { ok: true, json: async () => ({ ok: true, ...directProbe }) };
+    };
+    const running = screen.runUnknownProbes();
+    await new Promise((resolve) => setImmediate(resolve));
+    try {
+      assert.equal(requests.length, 8, "free lanes must continue before the first probe completes");
+      assert.ok(peak <= 5);
+      assert.ok(peak >= 2);
+    } finally {
+      completeFirst?.();
+      await running;
+    }
+    assert.equal(screen._probeResults.size, 8);
+  });
+});
+
+test("server scheduling cannot be blocked by a bulk debrid preparation barrier", async () => {
+  await probeTestScreen("server-no-bulk-barrier", 10, async (screen) => {
+    let started = 0;
+    screen.resolveUnknownRows = () => new Promise(() => {});
+    screen.runUnknownProbes = async () => {
+      started++;
+    };
+    screen.maybeAutoPlayStream = () => {};
+    screen.scheduleUnknownProbes();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(started, 1);
+    assert.equal(screen._probeOutstanding, false);
+  });
+});
+
+test("server URL-less candidates reach a terminal status rather than being skipped", async () => {
+  await probeTestScreen("server-raw-queue", 10, async (screen) => {
+    screen.streams = Array.from({ length: 10 }, (_, i) => ({
+      id: "raw-server-" + i,
+      addonName: "TestAddon",
+      name: "Movie"
+    }));
+    await screen.runUnknownProbes();
+    assert.equal(screen._probeFailed.size, 10);
+    assert.equal(screen._probePending.size, 0);
+    for (const timer of screen._probeRetryTimers || []) clearTimeout(timer);
+  });
 });

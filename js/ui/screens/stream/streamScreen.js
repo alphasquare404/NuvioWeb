@@ -2698,8 +2698,8 @@ export const StreamScreen = {
       return;
     this._probeOutstanding = true;
     const token = this.loadToken;
-    void this.resolveUnknownRows()
-      .catch(() => 0)
+    // Each probe slot resolves only its own candidate; no bulk URL barrier.
+    void Promise.resolve()
       .then(() => (token === this.loadToken ? this.runUnknownProbes() : undefined))
       .finally(() => {
         if (token !== this.loadToken) return;
@@ -2725,7 +2725,7 @@ export const StreamScreen = {
         }))
         .filter(
           (row) =>
-            (/^https?:/i.test(row.url) || (PROBE_MODE === "client" && row.key)) &&
+            row.key &&
             !sent.has(row.url || row.key) &&
             !this._probeResults.has(row.url) &&
             !this._probeResults.has(row.key) &&
@@ -2790,13 +2790,17 @@ export const StreamScreen = {
       await Promise.all([lane(), lane()]);
       return;
     }
-    for (let batch = 0; batch < maxBatches; batch += 1) {
-      if (token !== this.loadToken) return;
-      const targets = nextTargets(PROBE_MODE === "client" ? 1 : 5);
-      if (!targets.length) return;
-      await Promise.all(targets.map(probeRow));
-      if (token !== this.loadToken) return;
-    }
+    const concurrency = PROBE_MODE === "client" ? 1 : 5;
+    let remaining = maxBatches * concurrency;
+    const lane = async () => {
+      while (active() && remaining > 0) {
+        const row = nextTargets(1)[0];
+        if (!row) return;
+        remaining--;
+        await probeRow(row);
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, () => lane()));
   },
 
   renderStreamCard(stream, index, streamBadgesEnabled = true, badgeSettings = null) {

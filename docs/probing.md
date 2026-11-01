@@ -315,3 +315,17 @@ Cached metadata identifies a file, not an episode title. Different releases or
 files of the same title need their own result; incomplete identities never reuse
 another file's persistent facts. Network, URL resolution, byte and codec failures
 can still produce Unknown; setting a limit of10 does not promise10 successful files.
+
+### Queue concurrency
+
+Client probe concurrency is configured with PROBE_CLIENT_CONCURRENCY=1 or2.
+Two-worker mode publishes the first successful WASM result before starting the
+second worker; it then fills each free lane without waiting for its peer. Cached
+metadata does not need a WASM worker. The local client acceptance preview is set
+to2; deployments retain their own configured value and existing memory/byte limits.
+
+Server labeling has five independent request lanes. Each lane resolves and probes
+its own candidate, so there is no whole-list URL preparation barrier and a slow
+candidate cannot hold the next group. Missing URLs use the same bounded candidate
+helper and finish with a result or failure status. Existing server bridge resource
+limits still apply; browser worker concurrency does not change server process limits.
