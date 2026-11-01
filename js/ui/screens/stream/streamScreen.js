@@ -1,4 +1,8 @@
 import {
+  selectUnverifiedPlayback,
+  prepareUnverifiedRemux
+} from "../../../core/player/unverifiedPlayback.js";
+import {
   chooseHlsAudioIndices,
   canSwitchHlsAudioCodecs
 } from "../../../core/player/relayTracks.js";
@@ -3940,12 +3944,13 @@ export const StreamScreen = {
     console.warn("[Playback] hls playlist still busy after retries");
     return false;
   },
-  async resolvePlayerSource(stream) {
+  async resolvePlayerSource(stream, { attemptCopy = false } = {}) {
     const url = String(stream?.url || stream?.externalUrl || "").trim();
     // The remux decision does not depend on the transcode endpoint: a deployment can
     // run the container copy and not the audio one, and returning early here skipped
     // the remux path entirely for exactly that configuration.
     if (!url) return url;
+    if (attemptCopy) return (await prepareUnverifiedRemux(url)).url;
     const clientPlan = clientRemuxPlan(stream, this.getStreamProbe(stream));
     if (clientPlan) return clientPlan.sourceUrl;
     if (
@@ -4176,6 +4181,7 @@ export const StreamScreen = {
       !offlineObjectUrl &&
       !preparedDelivery &&
       !this.getStreamProbe(selected) &&
+      !this._probeFailed?.has(String(selected.url || selected.externalUrl || "").trim()) &&
       streamProber.enabled
     ) {
       StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "checking");
@@ -4190,21 +4196,28 @@ export const StreamScreen = {
         this._probeResults.set(source, probe);
         this._probeResults.set(playerStreamProbeKey(selected), probe);
       } else {
-        StartupLoadingOverlay.finish();
-        this.showStreamToast(
-          "Unable to check this stream: " +
-            streamProber.failureReason(source) +
-            ". Tap the stream to retry."
-        );
-        return;
+        this._probeFailed?.add(source);
       }
     }
     StartupLoadingOverlay.setStage("opening");
+    const unverifiedPlayback =
+      offlineObjectUrl || preparedDelivery
+        ? null
+        : selectUnverifiedPlayback({
+            stream: selected,
+            probe: this.getStreamProbe(selected),
+            labels: StreamBadgeSettingsStore.snapshot(),
+            capabilities: getDeviceCapabilities()
+          });
+    if (unverifiedPlayback && !unverifiedPlayback.probeReason)
+      unverifiedPlayback.probeReason = streamProber.failureReason(unverifiedPlayback.sourceUrl);
     // A downloaded file is already on this device; it is never relayed.
     let playerSource = offlineObjectUrl;
     if (!playerSource) {
       try {
-        playerSource = await this.resolvePlayerSource(selected);
+        playerSource = await this.resolvePlayerSource(selected, {
+          attemptCopy: unverifiedPlayback?.route === "remux"
+        });
       } catch (error) {
         if (error?.code !== "REMUX_ROUTE_UNAVAILABLE") throw error;
         this.showStreamToast(error.message);
@@ -4215,7 +4228,9 @@ export const StreamScreen = {
     if (!selectionCurrent()) return;
     const playbackPlan = offlineObjectUrl
       ? null
-      : clientRemuxPlan(selected, this.getStreamProbe(selected));
+      : clientRemuxPlan(selected, this.getStreamProbe(selected), {
+          attemptCopy: unverifiedPlayback?.route === "remux"
+        });
 
     // One line, so a tap that goes wrong can be explained from the phone instead of
     // guessed at: which delivery the app chose, where it points, and with what plan.
@@ -4255,7 +4270,10 @@ export const StreamScreen = {
     }
 
     void this.traceTapDecision?.(selected, playerSource);
+    if (unverifiedPlayback)
+      unverifiedPlayback.mediaUrl = playerSource || unverifiedPlayback.sourceUrl;
     const playbackParams = {
+      unverifiedPlayback,
       streamUrl: playerSource || null,
       playbackPlan,
       itemId: this.params?.itemId || null,

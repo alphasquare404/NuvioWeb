@@ -18,7 +18,7 @@ async function loadStreamScreen(instance = "") {
           const mockPaths = new Map([
             [
               "router",
-              `export const Router = { getCurrent: () => "stream", navigate: async () => {}, back: () => {} };`
+              `export const Router = { getCurrent: () => "stream", navigate: async (...args) => globalThis.__NUVIO_TEST_NAVIGATE__?.(...args), back: () => {} };`
             ],
             [
               "player-settings",
@@ -1077,4 +1077,61 @@ test("checking and player handoff share movie identity and backdrop", async () =
     logoUrl: "https://image.test/logo.png",
     backdropUrl: "https://image.test/background.jpg"
   });
+});
+
+test("a failed metadata check still opens the player, while a known failure is not probed again", async () => {
+  const saved = {
+    env: globalThis.__NUVIO_ENV__,
+    fetch: globalThis.fetch,
+    nav: globalThis.__NUVIO_TEST_NAVIGATE__,
+    labels: globalThis.__NUVIO_TEST_BADGE_SETTINGS__
+  };
+  let requests = 0,
+    navigation;
+  try {
+    globalThis.__NUVIO_ENV__ = { PROBE_MODE: "server", PROBE_ENDPOINT: "https://probe.test/probe" };
+    globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = {
+      playbackLabelSource: "FILE_METADATA",
+      metadataFilenameFallback: true
+    };
+    globalThis.__NUVIO_TEST_NAVIGATE__ = (route, params) => {
+      navigation = { route, params };
+    };
+    globalThis.fetch = async () => {
+      requests++;
+      return { ok: false, status: 502, json: async () => ({ error: "probe-unreadable" }) };
+    };
+    const { StreamScreen: base } = await loadStreamScreen("probe-failure-still-play");
+    const stream = {
+      id: "selected",
+      url: "https://media.test/movie.mp4",
+      name: "Movie.H264.AAC.mp4"
+    };
+    const screen = Object.assign(Object.create(base), {
+      streams: [stream],
+      params: { startFromBeginning: true, itemTitle: "Movie" },
+      _probeResults: new Map(),
+      _probeFailed: new Set(),
+      getFilteredStreams: () => [stream],
+      getStreamProbe: () => null,
+      cancelAutoPlayCountdown() {},
+      cancelAutoPlaySelectionWait() {},
+      getStreamRequestHeaders: () => ({}),
+      showStreamToast() {
+        throw Error("failed metadata must not block play");
+      }
+    });
+    await screen.playStream("selected", { skipExternalRoute: true });
+    assert.equal(navigation.route, "player");
+    assert.equal(navigation.params.streamUrl, stream.url);
+    assert.equal(navigation.params.unverifiedPlayback.route, "direct");
+    assert.equal(requests, 1);
+    await screen.playStream("selected", { skipExternalRoute: true });
+    assert.equal(requests, 1, "pressing Play again does not repeat a known failed probe");
+  } finally {
+    globalThis.__NUVIO_ENV__ = saved.env;
+    globalThis.fetch = saved.fetch;
+    globalThis.__NUVIO_TEST_NAVIGATE__ = saved.nav;
+    globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = saved.labels;
+  }
 });

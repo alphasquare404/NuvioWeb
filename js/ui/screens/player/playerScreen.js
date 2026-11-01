@@ -1,3 +1,7 @@
+import {
+  canTryUnverifiedRemux,
+  prepareUnverifiedRemux
+} from "../../../core/player/unverifiedPlayback.js";
 import { clientRemuxAvailable } from "../../../core/player/remuxClient.js";
 import {
   relayTrackContext,
@@ -6434,6 +6438,16 @@ export const PlayerScreen = {
           resolverStatus,
           resolverDetail
         });
+    const attempt = this.params?.unverifiedPlayback;
+    if (attempt && attempt.mediaUrl === (playbackUrl || this.activePlaybackUrl)) {
+      this.startupErrorDetails.push(
+        "Playback attempt: " + attempt.route + (attempt.remuxTried ? "; remux tried" : "")
+      );
+      if (attempt.probeReason)
+        this.startupErrorDetails.push(
+          "Metadata check: " + cleanPlaybackDiagnosticValue(attempt.probeReason)
+        );
+    }
     this.lastPlaybackErrorAt = 0;
     this.loadingVisible = false;
     this.loadingProgress = null;
@@ -6553,6 +6567,84 @@ export const PlayerScreen = {
     }).catch(() => {});
   },
 
+  async runUnverifiedPlaybackAttempt(route) {
+    const attempt = this.params?.unverifiedPlayback;
+    if (!attempt || attempt.busy || !["direct", "remux"].includes(route)) return false;
+    const mountToken = this.playerMountToken;
+    const previousUrl = this.activePlaybackUrl;
+    const candidate = this.getStreamCandidateByUrl(previousUrl) || this.getCurrentStreamCandidate();
+    attempt.busy = true;
+    attempt.route = route;
+    if (route === "remux") attempt.remuxTried = true;
+    else attempt.rawTried = true;
+    this.clearPlaybackStallGuard();
+    this.loadingVisible = true;
+    try {
+      const delivery =
+        route === "remux"
+          ? await prepareUnverifiedRemux(attempt.sourceUrl)
+          : { url: attempt.sourceUrl, plan: null };
+      if (
+        !this.isActiveMountToken(mountToken) ||
+        attempt !== this.params?.unverifiedPlayback ||
+        this.activePlaybackUrl !== previousUrl
+      )
+        return true;
+      attempt.mediaUrl = delivery.url;
+      this.params.playbackPlan = delivery.plan;
+      this.relayPrepareDone = false;
+      this.relayPrepareUrl = "";
+      attempt.busy = false;
+      await this.playStreamByUrl(delivery.url, {
+        preservePanel: true,
+        preservePendingRestore: true,
+        resetSilentAudioState: false,
+        sourceCandidate: candidate,
+        mountToken
+      });
+    } catch (error) {
+      if (
+        this.isActiveMountToken(mountToken) &&
+        attempt === this.params?.unverifiedPlayback &&
+        [previousUrl, attempt.mediaUrl].includes(this.activePlaybackUrl)
+      )
+        this.showStartupError(error?.message || "Unable to prepare this playback attempt.", {
+          error,
+          reason: "remux-attempt",
+          playbackUrl: attempt.mediaUrl,
+          streamCandidate: candidate
+        });
+    } finally {
+      attempt.busy = false;
+    }
+    return true;
+  },
+
+  async tryUnverifiedRemuxAfterFailure(failure = {}) {
+    const attempt = this.params?.unverifiedPlayback;
+    if (!attempt || this.hasPresentedPlaybackFrame || attempt.mediaUrl !== this.activePlaybackUrl)
+      return false;
+    if (attempt.busy) return true;
+    if (REMUX_POLICY.mode === "off" || !canTryUnverifiedRemux(attempt, failure)) return false;
+    // Reserve before any async preparation: native error and play rejection can
+    // describe the same failure, but must never start two remux attempts.
+    return this.runUnverifiedPlaybackAttempt("remux");
+  },
+
+  handleUnverifiedPlaybackAction(action) {
+    const attempt = this.params?.unverifiedPlayback;
+    if (!attempt) return false;
+    if (action === "raw") {
+      void this.runUnverifiedPlaybackAttempt("direct");
+      return true;
+    }
+    if (action === "retry") {
+      void this.runUnverifiedPlaybackAttempt(attempt.route);
+      return true;
+    }
+    return false;
+  },
+
   startPlayerControllerPlayback(
     url,
     context = {},
@@ -6588,7 +6680,7 @@ export const PlayerScreen = {
       : null;
     this.startPlaybackStartupDiagnostics?.(playbackUrl);
     PlayerController.setStartupPresentationAudioMuted?.(true);
-    return Promise.resolve(PlayerController.play(playbackUrl, context)).catch((error) => {
+    return Promise.resolve(PlayerController.play(playbackUrl, context)).catch(async (error) => {
       if (!this.isActiveMountToken(mountToken) || this.isExternalFrameMode()) {
         return;
       }
@@ -6607,6 +6699,14 @@ export const PlayerScreen = {
         sourceCandidate ||
         this.getStreamCandidateByUrl(playbackUrl) ||
         this.getCurrentStreamCandidate();
+      if (
+        await this.tryUnverifiedRemuxAfterFailure?.({
+          mediaErrorCode,
+          detail,
+          httpStatus: extractPlaybackHttpStatus(detail)
+        })
+      )
+        return;
       this.markPlaybackSourceFailed(playbackUrl);
       if (!this.hasPresentedPlaybackFrame) {
         this.showStartupError(this.getStartupErrorMessage(mediaErrorCode, detail, candidate), {
@@ -6743,6 +6843,15 @@ export const PlayerScreen = {
           <div class="player-startup-error-details" aria-label="${escapeHtml(t("player_error_details", {}, "Playback error details"))}">
             ${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}
           </div>
+        `
+            : ""
+        }
+        ${
+          this.params?.unverifiedPlayback &&
+          this.params.unverifiedPlayback.mediaUrl === this.activePlaybackUrl
+            ? `
+          ${this.params.unverifiedPlayback.route === "remux" ? `<button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="raw">Try original URL</button>` : ""}
+          <button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="retry">Try again</button>
         `
             : ""
         }
@@ -9637,6 +9746,14 @@ export const PlayerScreen = {
       // same source the player was actually playing.
       const currentSourceCandidate =
         this.getStreamCandidateByUrl(this.activePlaybackUrl) || this.getCurrentStreamCandidate();
+      if (
+        await this.tryUnverifiedRemuxAfterFailure?.({
+          mediaErrorCode,
+          detail: playbackErrorDetail,
+          httpStatus: eventDetail.hlsResponseCode
+        })
+      )
+        return;
       const terminalHlsHttpFailure = isTerminalHlsHttpStatus(eventDetail.hlsResponseCode);
       if (
         !this.hasPresentedPlaybackFrame &&
@@ -18291,6 +18408,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
 
     const errorAction = target.closest?.("[data-player-error-action]");
     if (errorAction && this.isStartupErrorVisible()) {
+      if (this.handleUnverifiedPlaybackAction?.(errorAction.dataset.playerErrorAction)) return true;
       if (errorAction.dataset.playerErrorAction === "play")
         return this.retryClientRemuxFromGesture();
       if (String(errorAction.dataset.playerErrorAction || "") === "back") {
@@ -18600,8 +18718,14 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     }
 
     if (this.isStartupErrorVisible()) {
+      if (keyCode === 9) return false;
       event?.preventDefault?.();
       event?.stopPropagation?.();
+      if (
+        isSelectKeyCode(keyCode) &&
+        this.handleUnverifiedPlaybackAction?.(document.activeElement?.dataset?.playerErrorAction)
+      )
+        return true;
       if (
         isSelectKeyCode(keyCode) &&
         document.activeElement?.dataset?.playerErrorAction === "play"
@@ -18790,8 +18914,14 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       return;
     }
     if (this.isStartupErrorVisible()) {
+      if (keyCode === 9) return false;
       event?.preventDefault?.();
       event?.stopPropagation?.();
+      if (
+        isSelectKeyCode(keyCode) &&
+        this.handleUnverifiedPlaybackAction?.(document.activeElement?.dataset?.playerErrorAction)
+      )
+        return true;
       if (
         isSelectKeyCode(keyCode) &&
         document.activeElement?.dataset?.playerErrorAction === "play"

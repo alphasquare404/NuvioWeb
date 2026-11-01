@@ -22,7 +22,8 @@ export function clientRemuxPlan(
     policy = REMUX_POLICY,
     capabilities = getDeviceCapabilities(),
     baseUrl = globalThis.location?.href || "http://localhost/",
-    transcodeEndpoint = TRANSCODE_ENDPOINT
+    transcodeEndpoint = TRANSCODE_ENDPOINT,
+    attemptCopy = false
   } = {}
 ) {
   if (!policy.explicit || policy.mode !== "client") return null;
@@ -45,10 +46,10 @@ export function clientRemuxPlan(
   } catch (error) {
     if (error.message === "Invalid saved audio selection.") throw error;
   }
-  if (!probe && audioIndex === null) return null;
+  if (!probe && audioIndex === null && !attemptCopy) return null;
   const verdict = classifyPlayback({ url: sourceUrl, label: "", probe, capabilities });
-  if (audioIndex === null && verdict.method !== "remux") return null;
-  const index = audioIndex ?? Number(verdict.audioIndex ?? 0);
+  if (audioIndex === null && verdict.method !== "remux" && !attemptCopy) return null;
+  const index = audioIndex ?? (attemptCopy ? 0 : Number(verdict.audioIndex ?? 0));
   if (!Number.isInteger(index) || index < 0) throw Error("Invalid audio selection.");
   return {
     sourceUrl,
@@ -57,15 +58,16 @@ export function clientRemuxPlan(
     delivery: "mse",
     mediaUrl: null,
     audioIndex: index,
-    expectedAudio: probe?.audioStreams?.length
-      ? {
-          index,
-          count: probe.audioStreams.length,
-          codec: probe.audioStreams[index]?.codec,
-          channels: probe.audioStreams[index]?.channels,
-          sampleRate: probe.audioStreams[index]?.sampleRate
-        }
-      : null,
+    expectedAudio:
+      !attemptCopy && probe?.audioStreams?.length
+        ? {
+            index,
+            count: probe.audioStreams.length,
+            codec: probe.audioStreams[index]?.codec,
+            channels: probe.audioStreams[index]?.channels,
+            sampleRate: probe.audioStreams[index]?.sampleRate
+          }
+        : null,
     state: "needs-preflight",
     reason: null,
     serverAssistance: { probe: probe ? PROBE_MODE : "none", media: false }
