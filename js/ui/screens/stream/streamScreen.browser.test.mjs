@@ -1135,3 +1135,23 @@ test("a failed metadata check still opens the player, while a known failure is n
     globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = saved.labels;
   }
 });
+
+test("enabled probing alone does not leave idle or failed cards Checking forever", async () => {
+  await probeTestScreen("checking-is-owned-work", 3, async (screen) => {
+    screen.scheduleUnknownProbes = () => {};
+    screen.isCardActionFocused = () => false;
+    screen.renderOfflineDownloadActions = () => "";
+    const stream = screen.streams[0];
+    let html = screen.renderStreamCard(stream, 0);
+    assert.doesNotMatch(html, /Checking/);
+    assert.match(html, />Unknown</);
+    screen._probePending.add(stream.url);
+    html = screen.renderStreamCard(stream, 0);
+    assert.match(html, /Checking/);
+    screen._probePending.delete(stream.url);
+    screen._probeFailed.add(stream.url);
+    html = screen.renderStreamCard(stream, 0);
+    assert.doesNotMatch(html, /Checking/);
+    assert.match(html, />Unknown</);
+  });
+});

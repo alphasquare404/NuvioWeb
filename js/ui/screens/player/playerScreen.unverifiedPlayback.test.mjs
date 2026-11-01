@@ -197,3 +197,18 @@ test("known server copy preserves the selected audio index during candidate hand
   assert.equal(delivery.url, "/hls/index.m3u8");
   assert.equal(ctx.params.unverifiedPlayback, null);
 });
+
+test("ambiguous direct stall can be remuxed manually without enabling filename fallback", async () => {
+  let calls = 0;
+  const ctx = harness(async (_url) => {
+    calls++;
+    return { url: "/hls/index.m3u8", plan: null };
+  });
+  assert.equal(await ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 0 }), false);
+  assert.equal(ctx.handleUnverifiedPlaybackAction("copy"), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 1);
+  assert.equal(ctx.params.unverifiedPlayback.route, "remux");
+  assert.equal(ctx.params.unverifiedPlayback.remuxTried, true);
+  assert.equal(ctx.plays[0].url, "/hls/index.m3u8");
+});

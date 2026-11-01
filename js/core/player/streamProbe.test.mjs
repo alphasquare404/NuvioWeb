@@ -582,3 +582,47 @@ test("server probe errors preserve known metadata reasons instead of presenting 
   assert.equal(await prober.probe("https://media.test/movie"), null);
   assert.equal(prober.failureReason("https://media.test/movie"), "probe-output-limit");
 });
+
+test("byte-budget failure is remembered across prober instances without becoming successful metadata", async (t) => {
+  const { PROBE_BYTE_FAILURE_TTL_MS } = await import("./streamProbe.js");
+  t.mock.timers.enable({ apis: ["Date"] });
+  let calls = 0;
+  const options = {
+    mode: "client",
+    metadataCache: { get: async () => null },
+    clientProbe: async (_url, { onFailure }) => {
+      calls++;
+      onFailure("probe-byte-budget");
+      return null;
+    }
+  };
+  const identity = "torrent-file:" + "b".repeat(40) + ":519";
+  const first = createStreamProber(options),
+    second = createStreamProber(options);
+  assert.equal(await first.probe("https://media.test/byte-budget-old", { identity }), null);
+  assert.equal(await second.probe("https://media.test/byte-budget-new", { identity }), null);
+  assert.equal(
+    calls,
+    1,
+    "same file with another signed URL must not spend the same byte budget again"
+  );
+  assert.equal(second.failureReason("https://media.test/byte-budget-new"), "probe-byte-budget");
+  t.mock.timers.tick(PROBE_BYTE_FAILURE_TTL_MS + 1);
+  await second.probe("https://media.test/byte-budget-new", { identity });
+  assert.equal(calls, 2, "temporary failure memory expires");
+});
+
+test("transient client network failures remain retryable", async () => {
+  let calls = 0;
+  const prober = createStreamProber({
+    mode: "client",
+    clientProbe: async (_url, { onFailure }) => {
+      calls++;
+      onFailure("range-fetch-failed");
+      return null;
+    }
+  });
+  await prober.probe("https://media.test/transient-retry");
+  await prober.probe("https://media.test/transient-retry");
+  assert.equal(calls, 2);
+});

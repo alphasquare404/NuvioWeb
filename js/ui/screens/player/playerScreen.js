@@ -6635,6 +6635,10 @@ export const PlayerScreen = {
   handleUnverifiedPlaybackAction(action) {
     const attempt = this.params?.unverifiedPlayback;
     if (!attempt) return false;
+    if (action === "copy" && REMUX_POLICY.mode !== "off") {
+      void this.runUnverifiedPlaybackAttempt("remux");
+      return true;
+    }
     if (action === "raw") {
       void this.runUnverifiedPlaybackAttempt("direct");
       return true;
@@ -6851,6 +6855,7 @@ export const PlayerScreen = {
           this.params?.unverifiedPlayback &&
           this.params.unverifiedPlayback.mediaUrl === this.activePlaybackUrl
             ? `
+          ${this.params.unverifiedPlayback.route === "direct" && !this.params.unverifiedPlayback.remuxTried && REMUX_POLICY.mode !== "off" ? `<button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="copy">Try remux</button>` : ""}
           ${this.params.unverifiedPlayback.route === "remux" ? `<button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="raw">Try original URL</button>` : ""}
           <button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="retry">Try again</button>
         `

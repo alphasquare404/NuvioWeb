@@ -4,6 +4,16 @@ export function probeSourceId(value) {
   for (const char of String(value || "")) hash = Math.imul(hash ^ char.codePointAt(0), 16777619);
   return "s" + (hash >>> 0).toString(16).padStart(8, "0");
 }
+export function reportProbeCacheHit(url, tier) {
+  if (
+    globalThis.__NUVIO_CLIENT_PROBE_DEBUG__ !== true ||
+    !["memory", "persistent", "byte-limit-failure"].includes(tier)
+  )
+    return;
+  console.warn(
+    "[ClientProbe] " + JSON.stringify({ event: "cache-hit", sourceId: probeSourceId(url), tier })
+  );
+}
 const labels = new Map();
 export function reportPlaybackLabel(url, probe, verdict) {
   if (globalThis.__NUVIO_CLIENT_PROBE_DEBUG__ !== true || !probe) return;

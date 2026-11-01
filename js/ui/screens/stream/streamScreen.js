@@ -2832,7 +2832,7 @@ export const StreamScreen = {
             probing:
               !this.getStreamProbe(stream) &&
               !this._probeFailed?.has(urlKey) &&
-              (this._probePending?.has(urlKey) === true || streamProber.enabled)
+              this._probePending?.has(urlKey) === true
           })
         : "";
       return `

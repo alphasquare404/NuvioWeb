@@ -1,3 +1,4 @@
+import { reportProbeCacheHit } from "./probeDiagnostics.js";
 import { probeInBrowser, isBrowserProbeParallelReady } from "./ffprobeClient.js";
 import { normalizeProbeMode } from "./probeMode.js";
 import {
@@ -15,6 +16,11 @@ import {
 // deployment's bandwidth to learn what the card already said.
 
 import { PLAYBACK_METHODS, classifyPlayback } from "./playbackMethod.js";
+
+// Deterministic byte-limit failures are not file metadata. Keep them briefly in
+// page memory across screens, so the same failed read is not downloaded again.
+export const PROBE_BYTE_FAILURE_TTL_MS = 10 * 60 * 1000;
+const byteFailures = new Map();
 
 /**
  * Is this the shape where a probe decides whether the file plays at all?
@@ -346,7 +352,10 @@ export function createStreamProber({
         cacheGeneration = probeMetadataCacheGeneration();
       }
       const remembered = cache.get(key);
-      if (remembered?.expiresAt > Date.now()) return assessResult(remembered.facts);
+      if (remembered?.expiresAt > Date.now()) {
+        if (selectedMode === "client") reportProbeCacheHit(source, "memory");
+        return assessResult(remembered.facts);
+      }
       cache.delete(key);
       if (pending.has(key)) {
         const shared = pending.get(key);
@@ -403,10 +412,25 @@ export function createStreamProber({
           }
           requestTimeoutMs = Math.max(0, requestTimeoutMs - (Date.now() - started));
           if (controller.signal.aborted) return null;
-          if (saved && jobGeneration === probeMetadataCacheGeneration()) return saved;
+          if (saved && jobGeneration === probeMetadataCacheGeneration()) {
+            byteFailures.delete(key);
+            reportProbeCacheHit(source, "persistent");
+            return saved;
+          }
           if (!requestTimeoutMs) return null;
         }
         if (controller.signal.aborted) return null;
+        const previousFailure = byteFailures.get(key);
+        if (
+          selectedMode === "client" &&
+          previousFailure?.generation === jobGeneration &&
+          previousFailure.expiresAt > Date.now()
+        ) {
+          failures.set(source, "probe-byte-budget");
+          reportProbeCacheHit(source, "byte-limit-failure");
+          return null;
+        }
+        byteFailures.delete(key);
         const result = await request(
           source,
           reason,
@@ -417,6 +441,16 @@ export function createStreamProber({
         );
         if (controller.signal.aborted) return null;
         if (!result && !failures.has(source)) failures.set(source, "metadata-unavailable");
+        if (!result && selectedMode === "client" && failures.get(source) === "probe-byte-budget") {
+          byteFailures.set(key, {
+            expiresAt: Date.now() + PROBE_BYTE_FAILURE_TTL_MS,
+            generation: jobGeneration
+          });
+          if (byteFailures.size > PROBE_METADATA_MAX_ENTRIES)
+            byteFailures.delete(byteFailures.keys().next().value);
+        }
+        if (result) byteFailures.delete(key);
+
         if (
           result &&
           selectedMode === "client" &&
