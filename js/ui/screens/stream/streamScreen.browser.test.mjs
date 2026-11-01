@@ -1155,3 +1155,29 @@ test("enabled probing alone does not leave idle or failed cards Checking forever
     assert.match(html, />Unknown</);
   });
 });
+
+test("URL-less client candidates enter the bounded queue and finish Unknown instead of waiting forever", async () => {
+  await probeTestScreen(
+    "raw-client-queue",
+    10,
+    async (screen, requests) => {
+      screen.streams = Array.from({ length: 10 }, (_, i) => ({
+        id: "raw-" + i,
+        addonName: "TestAddon",
+        name: "Movie"
+      }));
+      await screen.runUnknownProbes();
+      assert.equal(requests.length, 0);
+      assert.equal(screen._probeFailed.size, 10);
+      assert.equal(screen._probePending.size, 0);
+      screen.scheduleUnknownProbes = () => {};
+      screen.isCardActionFocused = () => false;
+      screen.renderOfflineDownloadActions = () => "";
+      const html = screen.renderStreamCard(screen.streams[0], 0);
+      assert.match(html, />Unknown</);
+      assert.doesNotMatch(html, />Waiting…<|>Checking…</);
+      for (const timer of screen._probeRetryTimers || []) clearTimeout(timer);
+    },
+    "client"
+  );
+});

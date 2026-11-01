@@ -1,3 +1,4 @@
+import { probeStreamCandidate } from "../../../core/player/probeStreamCandidate.js";
 import {
   canTryUnverifiedRemux,
   canTryUnverifiedAudioTranscode,
@@ -16139,34 +16140,41 @@ export const PlayerScreen = {
       );
     for (const stream of remaining) {
       const key = playerStreamProbeKey(stream);
+      let resolvedKey = key;
       pending.add(key);
       void Promise.resolve()
         .then(async () => {
-          let url = stream.url || stream.externalUrl || "";
-          if (!url && PROBE_MODE !== "client" && DirectDebridResolver.canResolveStream(stream)) {
-            const episode =
-              this.episodePanelVisible && this.episodePanelMode === "streams"
-                ? this.episodes?.[this.episodePanelIndex]
-                : null;
-            const resolved = await DirectDebridResolver.resolve(stream, {
+          const episode =
+            this.episodePanelVisible && this.episodePanelMode === "streams"
+              ? this.episodes?.[this.episodePanelIndex]
+              : null;
+          return probeStreamCandidate(prober, stream, {
+            mode: PROBE_MODE,
+            active: () => this.isActiveMountToken(token),
+            context: {
               season: episode?.season ?? this.params?.season ?? null,
               episode: episode?.episode ?? this.params?.episode ?? null
-            });
-            if (resolved?.status === "success") url = resolved.stream?.url || "";
-          }
-          if (!this.isActiveMountToken(token) || !/^https?:/i.test(url)) return null;
-          return prober.probe(url, {
-            reason: "selection",
-            identity: streamProbeIdentity(stream),
-            resolveTimeoutMs: 15000
+            },
+            onResolved: (url) => {
+              stream.url = url;
+              stream.externalUrl = null;
+              resolvedKey = playerStreamProbeKey(stream);
+              pending.add(resolvedKey);
+            }
           });
         })
         .catch(() => null)
         .then((probe) => {
           if (!this.isActiveMountToken(token)) return;
           pending.delete(key);
-          if (probe) results.set(key, probe);
-          else failed.add(key);
+          pending.delete(resolvedKey);
+          if (probe) {
+            results.set(key, probe);
+            results.set(resolvedKey, probe);
+          } else {
+            failed.add(key);
+            failed.add(resolvedKey);
+          }
           refresh();
         });
     }

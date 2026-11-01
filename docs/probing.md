@@ -293,3 +293,25 @@ send media or initiate an audio-conversion probe for this step. Explicit retry a
 original-URL actions remain; the automatic ladder never loops. Pending resume state
 and stale-source protection remain in place. Fallback transitions emit only route
 names in diagnostics, without source URLs or tokens.
+
+### URL-less candidates and the metadata label limit
+
+The metadata label limit belongs to the labeling queue, independently of Instant
+Playback URL preparation. Client candidates no longer require that preparation to
+finish before entering their label slot. A full torrent hash plus file index can
+retrieve cached facts before any URL, debrid request or WASM/media probe. An empty
+URL probe with such an identity is strictly cache-only: a miss never starts media
+reading and does not record a negative result.
+
+On a cache miss, a URL-less candidate uses the existing debrid resolver when its
+bounded probe slot runs, then probes that actual URL. Resolution waits at most
+15 seconds; stale results cannot mutate the list or start a media probe. Unsupported
+or failed resolution reaches a terminal failure status and the existing retry
+policy, rather than leaving an unowned Waiting label indefinitely. This same
+candidate flow is used by the player source list. Source filters/sorting and the
+independent Instant Playback preparation settings/budgets are unchanged.
+
+Cached metadata identifies a file, not an episode title. Different releases or
+files of the same title need their own result; incomplete identities never reuse
+another file's persistent facts. Network, URL resolution, byte and codec failures
+can still produce Unknown; setting a limit of10 does not promise10 successful files.

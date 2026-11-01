@@ -626,3 +626,48 @@ test("transient client network failures remain retryable", async () => {
   await prober.probe("https://media.test/transient-retry");
   assert.equal(calls, 2);
 });
+
+test("strong file identity finds persistent facts before a signed URL exists, without any media or debrid request", async () => {
+  const identity = "torrent-file:" + "a".repeat(40) + ":2";
+  const facts = { container: "mkv", videoCodec: "h264", audioCodec: "aac" };
+  let reads = 0,
+    probes = 0;
+  const p = createStreamProber({
+    mode: "client",
+    metadataCache: {
+      get: async (key) => {
+        reads++;
+        return key === identity ? facts : null;
+      }
+    },
+    clientProbe: async () => {
+      probes++;
+      assert.fail("cache-only lookup must not request media");
+    },
+    assess: async () => ({ video: true })
+  });
+  const result = await p.probe("", { identity });
+  assert.equal(result.videoCodec, "h264");
+  assert.equal(result.playbackCapabilities.video, true);
+  assert.equal((await p.probe("", { identity })).videoCodec, "h264");
+  assert.equal(reads, 1);
+  assert.equal(probes, 0);
+  assert.equal(await p.probe("", { identity: "episode-title" }), null);
+});
+
+test("cache-only miss does not start WASM or poison the next real URL probe", async () => {
+  const identity = "torrent-file:" + "b".repeat(40) + ":4";
+  let probes = 0;
+  const p = createStreamProber({
+    mode: "client",
+    metadataCache: { get: async () => null, set: async () => {} },
+    clientProbe: async () => {
+      probes++;
+      return { container: "mkv", videoCodec: "h264" };
+    }
+  });
+  assert.equal(await p.probe("", { identity }), null);
+  assert.equal(probes, 0);
+  assert.equal((await p.probe("https://cdn.test/actual", { identity })).container, "mkv");
+  assert.equal(probes, 1);
+});

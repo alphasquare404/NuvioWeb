@@ -335,8 +335,10 @@ export function createStreamProber({
       } = {}
     ) {
       const source = String(url || "").trim();
-      if (!enabled || !source) return null;
       const strongIdentity = /^torrent-file:[a-f0-9]{40}:\d+$/.test(identity) ? identity : "";
+      // A file's cached facts do not require a freshly resolved signed URL.
+      // An empty source with a strong identity is a strictly cache-only lookup.
+      if (!enabled || (!source && !(selectedMode === "client" && strongIdentity))) return null;
       const key =
         selectedMode === "client" ? probeUrlIdentity(source) || strongIdentity || source : source;
       const assessResult = async (result) => {
@@ -353,7 +355,7 @@ export function createStreamProber({
       }
       const remembered = cache.get(key);
       if (remembered?.expiresAt > Date.now()) {
-        if (selectedMode === "client") reportProbeCacheHit(source, "memory");
+        if (selectedMode === "client") reportProbeCacheHit(source || key, "memory");
         return assessResult(remembered.facts);
       }
       cache.delete(key);
@@ -414,12 +416,12 @@ export function createStreamProber({
           if (controller.signal.aborted) return null;
           if (saved && jobGeneration === probeMetadataCacheGeneration()) {
             byteFailures.delete(key);
-            reportProbeCacheHit(source, "persistent");
+            reportProbeCacheHit(source || key, "persistent");
             return saved;
           }
           if (!requestTimeoutMs) return null;
         }
-        if (controller.signal.aborted) return null;
+        if (controller.signal.aborted || !source) return null;
         const previousFailure = byteFailures.get(key);
         if (
           selectedMode === "client" &&

@@ -1,3 +1,4 @@
+import { probeStreamCandidate } from "../../../core/player/probeStreamCandidate.js";
 import {
   selectUnverifiedPlayback,
   prepareUnverifiedRemux
@@ -2718,38 +2719,52 @@ export const StreamScreen = {
     const nextTargets = (count) =>
       (active() ? this.getProbeCandidates() : [])
         .map((stream) => ({
+          stream,
           url: String(stream.url || stream.externalUrl || "").trim(),
-          identity: streamProbeIdentity(stream),
           key: playerStreamProbeKey(stream)
         }))
         .filter(
           (row) =>
-            /^https?:/i.test(row.url) &&
-            !sent.has(row.url) &&
+            (/^https?:/i.test(row.url) || (PROBE_MODE === "client" && row.key)) &&
+            !sent.has(row.url || row.key) &&
             !this._probeResults.has(row.url) &&
             !this._probeResults.has(row.key) &&
-            this.canProbeRow(row.url)
+            this.canProbeRow(row.url || row.key)
         )
-        .filter((row, index, rows) => rows.findIndex((other) => other.url === row.url) === index)
+        .filter(
+          (row, index, rows) =>
+            rows.findIndex((other) => (other.url || other.key) === (row.url || row.key)) === index
+        )
         .slice(0, count);
-    const probeRow = async ({ url, identity, key }) => {
-      sent.add(url);
-      this._probePending.add(url);
+    const probeRow = async ({ stream, url, key }) => {
+      const rowKey = url || key;
+      sent.add(rowKey);
+      this._probePending.add(rowKey);
       this.requestRender({ delayMs: 0 });
-      const probe = await streamProber.probe(url, {
-        reason: "selection",
-        identity,
-        resolveTimeoutMs: 15000
+      const probe = await probeStreamCandidate(streamProber, stream, {
+        mode: PROBE_MODE,
+        active,
+        context: { season: this.params?.season ?? null, episode: this.params?.episode ?? null },
+        onResolved: (resolvedUrl) => {
+          url = resolvedUrl;
+          this._probePending.add(resolvedUrl);
+          this.streams = this.streams.map((candidate) =>
+            playerStreamProbeKey(candidate) === key
+              ? { ...candidate, url: resolvedUrl, externalUrl: null }
+              : candidate
+          );
+        }
       });
       if (!active()) return;
+      this._probePending.delete(rowKey);
       this._probePending.delete(url);
       if (probe) {
-        this._probeResults.set(url, probe);
+        if (url) this._probeResults.set(url, probe);
         this._probeResults.set(key, probe);
-        this.markProbeSuccess(url);
+        this.markProbeSuccess(rowKey);
       } else {
-        sent.delete(url);
-        this.markProbeFailure(url);
+        sent.delete(rowKey);
+        this.markProbeFailure(url || rowKey);
       }
       this._probeRevision = (this._probeRevision || 0) + 1;
       this._filteredStreamsCache = null;
@@ -2792,7 +2807,7 @@ export const StreamScreen = {
         streamBadgesEnabled,
         addonLogoLookup: this.addonLogoLookup
       });
-      const urlKey = stream.url || stream.externalUrl || "";
+      const urlKey = stream.url || stream.externalUrl || playerStreamProbeKey(stream);
       const labelSettings = StreamBadgeSettingsStore.snapshot();
       const labelAllowed =
         labelSettings.showPlaybackLabels !== false &&
@@ -2833,7 +2848,8 @@ export const StreamScreen = {
             probing:
               !this.getStreamProbe(stream) &&
               !this._probeFailed?.has(urlKey) &&
-              this._probePending?.has(urlKey) === true
+              (this._probePending?.has(urlKey) === true ||
+                this._probePending?.has(playerStreamProbeKey(stream)) === true)
           })
         : "";
       return `
@@ -2898,9 +2914,17 @@ export const StreamScreen = {
                 StreamBadgeSettingsStore.snapshot().metadataFilenameFallback === true,
               waiting:
                 streamProber.enabled &&
-                !this._probeFailed?.has(stream.url || stream.externalUrl || ""),
-              probing: this._probePending?.has(stream.url || stream.externalUrl || "") === true,
-              probeFailed: this._probeFailed?.has(stream.url || stream.externalUrl || "") === true,
+                !this._probeFailed?.has(
+                  stream.url || stream.externalUrl || playerStreamProbeKey(stream)
+                ),
+              probing:
+                this._probePending?.has(
+                  stream.url || stream.externalUrl || playerStreamProbeKey(stream)
+                ) === true,
+              probeFailed:
+                this._probeFailed?.has(
+                  stream.url || stream.externalUrl || playerStreamProbeKey(stream)
+                ) === true,
               fallbackReason: streamProber.failureReason(stream.url || stream.externalUrl || ""),
               stream,
               url: stream.url || stream.externalUrl || "",
