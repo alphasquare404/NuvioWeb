@@ -3374,13 +3374,18 @@ export const MetaDetailsScreen = {
       ),
       shouldCancel: cancelled,
       deadlineAt,
-      returnOnFirstMatch: true
+      returnOnFirstMatch: true,
+      verifySelection: isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot())
+        ? (partial, stopped) =>
+            this.keepOnlyDirectResolution(partial, () => cancelled() || stopped())
+        : null
     });
     // The waiting screen is already up, and it is the right place to settle "only direct
     // streams": the answer needs ffprobe, and a decision taken before it lands is a guess.
     if (
       isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot()) &&
-      resolution?.streams?.length
+      resolution?.streams?.length &&
+      !resolution.probes
     ) {
       resolution = await this.keepOnlyDirectResolution(resolution, cancelled);
       if (cancelled()) {
@@ -3456,6 +3461,7 @@ export const MetaDetailsScreen = {
       mode: PROBE_MODE,
       limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
       deadlineAt: resolution.deadlineAt ?? Infinity,
+      knownProbes: resolution.probes || [],
       cancelled,
       context: { season: this.params?.season ?? null, episode: this.params?.episode ?? null },
       prober: usesMetadataLabels(labels)

@@ -405,3 +405,99 @@ test("Unlimited cannot release the initial page on a partial result even with re
   assert.equal(result.complete, true);
   assert.equal(result.streams.length, 2);
 });
+
+test("initial Instant compatibility selection keeps discovering after the first raw candidate is rejected", async () => {
+  let push,
+    complete,
+    finished = false;
+  const pending = resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "verified-partial",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 0 },
+    returnOnFirstMatch: true,
+    repository: {
+      getStreamsFromAllAddons(_t, _v, options) {
+        push = options.onChunk;
+        push({ status: "success", data: groupFor([stream("bad", "https://fixture.test/bad")]) });
+        return new Promise((resolve) => {
+          complete = resolve;
+        });
+      }
+    },
+    verifySelection: async (snapshot) => ({
+      ...snapshot,
+      selected: snapshot.streams.find((s) => s.url.endsWith("/good")) || null,
+      probes: []
+    })
+  }).then((result) => {
+    finished = true;
+    return result;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(finished, false);
+  push({ status: "success", data: groupFor([stream("good", "https://fixture.test/good")]) });
+  const result = await pending;
+  assert.equal(result.selected.url, "https://fixture.test/good");
+  assert.equal(result.complete, false);
+  complete({ status: "success", data: [] });
+});
+
+test("Unlimited waits for the compatible complete revision and retains metadata handoff", async () => {
+  let complete,
+    finished = false;
+  const pending = resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "verified-unlimited",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 2147483647 },
+    returnOnFirstMatch: true,
+    repository: {
+      getStreamsFromAllAddons(_t, _v, options) {
+        options.onChunk({
+          status: "success",
+          data: groupFor([stream("first", "https://fixture.test/first")])
+        });
+        return new Promise((resolve) => {
+          complete = resolve;
+        });
+      }
+    },
+    verifySelection: async (snapshot) => ({
+      ...snapshot,
+      selected: snapshot.streams.at(-1),
+      probes: [["file-facts", { container: "mp4", videoCodec: "h264" }]]
+    })
+  }).then((result) => {
+    finished = true;
+    return result;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(finished, false);
+  complete({
+    status: "success",
+    data: groupFor([
+      stream("first", "https://fixture.test/first"),
+      stream("last", "https://fixture.test/last")
+    ])
+  });
+  const result = await pending;
+  assert.equal(result.selected.url, "https://fixture.test/last");
+  assert.equal(result.complete, true);
+  assert.equal(result.probes.length, 1);
+});
+
+test("a failed compatibility verifier does not spin or fall back to an unverified raw candidate", async () => {
+  let calls = 0;
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "verification-failure",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 0 },
+    returnOnFirstMatch: true,
+    repository: fakeRepository([[stream("raw", "https://fixture.test/raw")]]),
+    verifySelection: async () => {
+      calls++;
+      throw Error("inspection failed");
+    }
+  });
+  assert.equal(result.selected, null);
+  assert.ok(calls <= 3);
+});

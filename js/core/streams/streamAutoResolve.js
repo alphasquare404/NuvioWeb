@@ -150,7 +150,8 @@ export async function resolveAutoPlayStream({
   repository = streamRepository,
   now = () => Date.now(),
   deadlineAt = streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds ?? 2147483647),
-  returnOnFirstMatch = false
+  returnOnFirstMatch = false,
+  verifySelection = null
 } = {}) {
   if (!isAutoPlayEffectivelyEnabled(settings)) {
     return { streams: [], selected: null, cancelled: false, reason: "disabled" };
@@ -171,6 +172,67 @@ export async function resolveAutoPlayStream({
   const firstCandidate = new Promise((resolve) => {
     releaseCandidate = resolve;
   });
+
+  let revision = 0,
+    checkedRevision = -1,
+    verification = null,
+    bestVerified = null;
+  const verifiedProbes = new Map();
+  let verifiedHdrExcluded = false;
+  const verify = () => {
+    if (!verifySelection || selected || finished || shouldCancel() || Date.now() >= deadlineAt)
+      return Promise.resolve();
+    if (verification) return verification;
+    const atRevision = revision;
+    verification = Promise.resolve()
+      .then(() =>
+        verifySelection(
+          {
+            streams: [...streams],
+            selected: choose(),
+            preferredBingeGroup,
+            deadlineAt,
+            complete,
+            probes: [...verifiedProbes]
+          },
+          () => finished || shouldCancel() || Date.now() >= deadlineAt
+        )
+      )
+      .then((result) => {
+        if (finished || shouldCancel()) return;
+        checkedRevision = atRevision;
+        verifiedHdrExcluded = result?.hdrExcluded === true;
+        for (const [key, probe] of result?.probes || []) verifiedProbes.set(key, probe);
+        if (result?.streams) {
+          const byId = new Map(result.streams.map((stream) => [stream.id, stream]));
+          streams = streams.map((stream) => {
+            const updated = byId.get(stream.id);
+            return updated?.url && !stream.url
+              ? { ...stream, url: updated.url, externalUrl: null }
+              : stream;
+          });
+        }
+        if (result?.selected) {
+          bestVerified = result.selected;
+          if (
+            (complete && atRevision === revision) ||
+            (!complete && canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt }))
+          ) {
+            selected = bestVerified;
+            if (returnOnFirstMatch) releaseCandidate({ status: "success", data: [] });
+          }
+        }
+      })
+      .catch(() => {
+        checkedRevision = atRevision;
+      })
+      .finally(() => {
+        verification = null;
+        if (!selected && checkedRevision !== revision && !finished && Date.now() < deadlineAt)
+          void verify();
+      });
+    return verification;
+  };
 
   const choose = () =>
     selectAutoPlayStream(
@@ -195,6 +257,7 @@ export async function resolveAutoPlayStream({
     const incoming = flattenStreams({ status: "success", data: groups });
     if (!incoming.length) return;
     streams = mergeStreamItems(streams, incoming);
+    revision++;
     onProgress?.({ streams, count: streams.length });
   };
 
@@ -202,6 +265,10 @@ export async function resolveAutoPlayStream({
     onChunk: (chunkResult) => {
       if (finished || shouldCancel() || chunkResult?.status !== "success") return;
       absorb(Array.isArray(chunkResult.data) ? chunkResult.data : []);
+      if (verifySelection) {
+        void verify();
+        return;
+      }
       // A chunk is a partial list, so it only counts once the grace period for
       // better sources has passed.
       if (!canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt })) return;
@@ -237,13 +304,27 @@ export async function resolveAutoPlayStream({
     return { streams, selected: null, cancelled: false, reason: "error", error };
   }
 
-  finished = true;
   if (shouldCancel()) return { streams, selected: null, cancelled: true, reason: "cancelled" };
 
   streams = mergeStreamItems(streams, flattenStreams(result));
+  revision++;
   onProgress?.({ streams, count: streams.length });
+  if (verifySelection && !selected && !timedOut) {
+    // A complete discovery waits for the corresponding compatibility pass.
+    // Earlier partial passes cannot finalize a different candidate revision.
+    while (checkedRevision !== revision && !shouldCancel() && Date.now() < deadlineAt) {
+      await withinStreamSelectionDeadline(
+        () => verify(),
+        deadlineAt,
+        () => null
+      );
+    }
+  }
+  finished = true;
+  if (shouldCancel()) return { streams, selected: null, cancelled: true, reason: "cancelled" };
+  if (verifySelection && !selected) selected = bestVerified;
 
-  if (!selected) {
+  if (!selected && !verifySelection) {
     // The list is complete now, so the grace period no longer applies.
     const candidate = choose();
     if (candidate?.id) selected = candidate;
@@ -255,17 +336,19 @@ export async function resolveAutoPlayStream({
     cancelled: false,
     complete,
     hdrExcluded:
-      !selected &&
-      resolveHdrPreference(settings) === "AVOID" &&
-      filterAutoPlaySourceStreams(streams, {
-        source: settings.streamAutoPlaySource,
-        installedAddonNames,
-        selectedAddons: settings.streamAutoPlaySelectedAddons,
-        selectedPlugins: settings.streamAutoPlaySelectedPlugins
-      }).some((stream) => hdrFromText(stream) === true),
+      verifiedHdrExcluded ||
+      (!selected &&
+        resolveHdrPreference(settings) === "AVOID" &&
+        filterAutoPlaySourceStreams(streams, {
+          source: settings.streamAutoPlaySource,
+          installedAddonNames,
+          selectedAddons: settings.streamAutoPlaySelectedAddons,
+          selectedPlugins: settings.streamAutoPlaySelectedPlugins
+        }).some((stream) => hdrFromText(stream) === true)),
     timedOut: timedOut && !selected,
     deadlineAt,
     preferredBingeGroup,
+    ...(verifySelection ? { probes: [...verifiedProbes] } : {}),
     reason: selected ? "selected" : timedOut ? "timeout" : "no-match"
   };
 }

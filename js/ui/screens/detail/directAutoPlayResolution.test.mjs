@@ -350,16 +350,16 @@ test("Direct auto selection may inspect a chosen source outside background addon
   assert.equal(result.selected?.id, "aio");
 });
 
-test("client Direct auto selection respects the labeling limit", async () => {
+test("selected client inspection uses its host budget rather than the background label quota", async () => {
   const streams = Array.from({ length: 10 }, (_, i) => row("cap-" + i));
   const { result, probed } = await resolve(streams, {
     mode: "client",
     limit: 0,
     clientLabelLimit: 3,
-    nonDirect: streams.map((s) => s.id)
+    nonDirect: streams.slice(0, 3).map((s) => s.id)
   });
-  assert.equal(probed.length, 3);
-  assert.equal(result.selected, null);
+  assert.equal(probed.length, 4);
+  assert.equal(result.selected?.id, "cap-3");
 });
 
 test("Direct startup filters addon text before preparing or probing capped candidates", async () => {

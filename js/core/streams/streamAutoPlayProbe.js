@@ -24,10 +24,11 @@ export async function inspectAutoPlayStreams(
     cancelled = () => false,
     context = {},
     onCandidates = () => {},
-    probeCandidate = probeStreamCandidate
+    probeCandidate = probeStreamCandidate,
+    knownProbes = []
   }
 ) {
-  const probes = new Map(),
+  const probes = new Map(knownProbes),
     updates = new Map();
   const filterSettings = {
     ...settings,
@@ -70,22 +71,24 @@ export async function inspectAutoPlayStreams(
     if (!active()) break;
     const key = keyFor(original);
     const stream = { ...original };
-    const probe = await withinStreamSelectionDeadline(
-      () =>
-        probeCandidate(prober, stream, {
-          mode,
-          context,
-          active,
-          resolveTimeoutMs: Math.min(15000, deadlineAt - Date.now()),
-          timeoutMs: Math.min(15000, deadlineAt - Date.now()),
-          onResolved: (url) => {
-            stream.url = url;
-            stream.externalUrl = null;
-          }
-        }).catch(() => null),
-      deadlineAt,
-      () => null
-    );
+    const probe =
+      facts(original) ||
+      (await withinStreamSelectionDeadline(
+        () =>
+          probeCandidate(prober, stream, {
+            mode,
+            context,
+            active,
+            resolveTimeoutMs: Math.min(15000, deadlineAt - Date.now()),
+            timeoutMs: Math.min(15000, deadlineAt - Date.now()),
+            onResolved: (url) => {
+              stream.url = url;
+              stream.externalUrl = null;
+            }
+          }).catch(() => null),
+        deadlineAt,
+        () => null
+      ));
     if (!active()) {
       prober.cancelAll?.();
       break;

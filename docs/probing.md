@@ -375,3 +375,13 @@ label work, retaining positive facts and allowing unfinished background candidat
 to resume afterward. Candidate/settings revisions can trigger a new bounded pass;
 manual user selection invalidates the pending automatic pass. A matching candidate
 already available can still be selected without unnecessary reinspection.
+
+Initial detail discovery may verify partial candidate sets while addon requests
+continue. It never stops on a raw candidate rejected by the compatibility filter.
+Instant can finish on the first verified match; Unlimited verifies the complete
+revision before selection. Previously verified facts are carried into the next pass,
+so a later addon arrival does not require re-reading the same file. Verifier failure
+falls back to the picker and cannot spin/retry a single failed revision indefinitely.
+Selected-file inspection uses the host discovery cap (client safety maximum20),
+independently of the user's background label quota; existing facts are still valid
+outside both quotas and no automatic path broadens source/regex permissions.

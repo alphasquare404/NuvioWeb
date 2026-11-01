@@ -114,7 +114,14 @@ export function playerStreamCheckCandidates(
     resolveHdrPreference(settings) === "PREFER"
       ? applyHdrPreference(scoped, { hdrPreference: "PREFER" })
       : scoped;
-  const cap = streamLabelProbeLimit(labels, mode, limit);
+  const configured = Number(limit);
+  const hostCap = Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 20;
+  const cap =
+    purpose === "selection"
+      ? mode === "client"
+        ? Math.min(hostCap || 20, 20)
+        : hostCap
+      : streamLabelProbeLimit(labels, mode, limit);
   return cap === 0 ? ranked : ranked.slice(0, cap);
 }
 
