@@ -35,11 +35,11 @@ test("Only Direct requires metadata when labeling is enabled, and is inactive ot
   };
   assert.deepEqual(
     filterPlayerStreams(rows, options).map((s) => s.id),
-    ["direct"]
+    ["other", "direct"]
   );
   assert.deepEqual(
     filterPlayerStreams(rows, { ...options, labels: { labelAddons: [] } }).map((s) => s.id),
-    rows.map((s) => s.id)
+    ["other", "direct"]
   );
   assert.deepEqual(
     filterPlayerStreams(rows, { ...options, labels: { ...labels, showPlaybackLabels: false } }),
@@ -163,11 +163,8 @@ test("filename Only Direct uses text without probes or the metadata candidate ca
   );
 });
 
-test("a stale Only Direct value cannot filter when labeling is disabled or addons are unchosen", () => {
-  for (const disabled of [
-    { ...labels, showPlaybackLabels: false },
-    { ...labels, labelAddons: [] }
-  ]) {
+test("a legacy disabled check suspends filtering; addon choices only bound background work", () => {
+  for (const disabled of [{ ...labels, showPlaybackLabels: false }]) {
     assert.equal(
       filterPlayerStreams(rows, { settings: { showOnlyDirectStreams: true }, labels: disabled }),
       rows

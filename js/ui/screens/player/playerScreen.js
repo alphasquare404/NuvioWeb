@@ -1,3 +1,4 @@
+import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
 import { probeStreamCandidate } from "../../../core/player/probeStreamCandidate.js";
 import {
   canTryUnverifiedRemux,
@@ -51,7 +52,6 @@ import { createStreamProber, streamProbeIdentity } from "../../../core/player/st
 import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
 import { classifyPlayback } from "../../../core/player/playbackMethod.js";
 import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
-import { filterAutoPlaySourceStreams } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   StartupLoadingOverlay,
   usesUnifiedStartup
@@ -87,10 +87,12 @@ import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSetting
 import { matchStreamBadges } from "../../../core/streams/streamBadgeRules.js";
 import { hasReleaseToken } from "../../../core/streams/releaseToken.js";
 import { selectAutoPlayStream } from "../../../core/streams/streamAutoPlaySelector.js";
-import { withinStreamSelectionDeadline } from "../../../core/streams/streamAutoResolve.js";
+import {
+  withinStreamSelectionDeadline,
+  streamSelectionDeadline
+} from "../../../core/streams/streamAutoResolve.js";
 import {
   isOnlyDirectEnabled,
-  allowsPlaybackMethod,
   usesMetadataLabels
 } from "../../../core/streams/streamLabelPolicy.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
@@ -177,7 +179,6 @@ const BUFFERING_SPINNER_STALL_MS = 0;
 const LOADING_LOGO_FILL_TARGET_LERP = 0.22;
 const LOADING_LOGO_FILL_IDLE_STEP = 0.006;
 const LOADING_LOGO_FILL_FRAME_MS = 80;
-const NEXT_EPISODE_SOURCE_RESOLVE_TIMEOUT_MS = 45000;
 const EPISODE_PANEL_TRANSITION_MS = 220;
 
 function isBackEvent(event) {
@@ -2142,6 +2143,13 @@ export const PlayerScreen = {
     this.desktopMuteRestoreVolume = null;
     this.playerRouteActive = true;
     this.params = params;
+    if (
+      params.sourceProbe &&
+      (params.streamCandidates || []).some(
+        (stream) => playerStreamProbeKey(stream) === params.sourceProbeKey
+      )
+    )
+      this._playerListProbeResults.set(params.sourceProbeKey, params.sourceProbe);
     this.browserToolbarPage = 0;
     this.desktopVolumeReadOnly = false;
     this.desktopVolumeCapabilityVideo = null;
@@ -8352,7 +8360,9 @@ export const PlayerScreen = {
         // Nothing plays as it is. Returning null makes the caller open the next-episode
         // picker -- the same path as "autoplay next episode" being switched off -- instead
         // of quietly playing a row the filter was asked to hide.
-        console.warn("[Autoplay] no direct stream for the next episode; opening the list");
+        console.warn(
+          "[Autoplay] no compatible source matches the next-episode rules; opening the list"
+        );
         return null;
       }
     }
@@ -8375,6 +8385,7 @@ export const PlayerScreen = {
           : "",
         bingeGroupOnly: options.bingeGroupOnly,
         probeForStream: (stream) =>
+          this._nextEpisodeProbeResults?.get(playerStreamProbeKey(stream)) ||
           this._nextEpisodeProbeResults?.get(stream.url || stream.externalUrl || "")
       })
     );
@@ -8385,8 +8396,7 @@ export const PlayerScreen = {
     settings = PlayerSettingsStore.get(),
     options = {}
   ) {
-    // The label comes from the probe, never from the text: this session proved the addon
-    // text wrong about codecs twice. A row that cannot be probed is not counted as direct.
+    const labels = StreamBadgeSettingsStore.snapshot();
     const installedAddonNames =
       options.installedAddonNames ||
       new Set(
@@ -8394,101 +8404,43 @@ export const PlayerScreen = {
           String(addon.displayName || addon.name || "")
         )
       );
-    const scoped = filterAutoPlaySourceStreams(streamItems, {
-      source:
-        settings.streamAutoPlayMode === "MANUAL" ? "ALL_SOURCES" : settings.streamAutoPlaySource,
+    const selection = nextEpisodeSelectionOptions(settings, {
+      labels,
       installedAddonNames,
-      selectedAddons:
-        settings.streamAutoPlayMode === "MANUAL" ? [] : settings.streamAutoPlaySelectedAddons,
-      selectedPlugins:
-        settings.streamAutoPlayMode === "MANUAL" ? [] : settings.streamAutoPlaySelectedPlugins
+      preferredBingeGroup: settings.streamAutoPlayPreferBingeGroupForNextEpisode
+        ? this.getCurrentStreamBingeGroup()
+        : "",
+      bingeGroupOnly: options.bingeGroupOnly
     });
-    const capabilities = getDeviceCapabilities();
-    const labels = StreamBadgeSettingsStore.snapshot();
-    if (!usesMetadataLabels(labels)) {
-      this._nextEpisodeProbeResults = new Map();
-      return filterPlayerStreams(scoped, {
-        settings: { ...settings, showOnlyDirectStreams: true },
-        labels,
-        capabilities
-      });
-    }
-    const targets = playerStreamProbeCandidates(scoped, {
-      settings: { ...settings, showOnlyDirectStreams: true },
-      labels: StreamBadgeSettingsStore.snapshot(),
-      capabilities,
+    const prober = usesMetadataLabels(labels)
+      ? (this._nextEpisodeProber ||= createStreamProber({
+          endpoint: PROBE_ENDPOINT,
+          mode: PROBE_MODE,
+          clientConcurrency: PROBE_CLIENT_CONCURRENCY,
+          timeoutMs: 15000,
+          assess: (probe) => assessPlaybackCapabilities(probe)
+        }))
+      : null;
+    const inspected = await inspectAutoPlayStreams(streamItems, {
+      settings,
+      labels,
+      capabilities: getDeviceCapabilities(),
+      selection,
+      prober,
       mode: PROBE_MODE,
-      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
+      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
+      deadlineAt: options.deadlineAt ?? Infinity,
+      cancelled: options.cancelled,
+      context: {
+        season: options.season ?? this.params?.season ?? null,
+        episode: options.episode ?? this.params?.episode ?? null
+      },
+      onCandidates: options.onDirectCandidates
     });
-    const rows = targets
-      .map((stream) => ({
-        stream,
-        url: String(stream.url || stream.externalUrl || "").trim()
-      }))
-      .filter((row) => row.url);
-    if (!rows.length) {
-      this._nextEpisodeProbeResults = new Map();
-      return [];
-    }
-
-    const prober =
-      this._nextEpisodeProber ||
-      (this._nextEpisodeProber = createStreamProber({
-        endpoint: PROBE_ENDPOINT,
-        mode: PROBE_MODE,
-        clientConcurrency: PROBE_CLIENT_CONCURRENCY,
-        timeoutMs: 15000,
-        assess: (probe) => assessPlaybackCapabilities(probe)
-      }));
-    const probes = new Map();
-    const deadlineAt = options.deadlineAt ?? Infinity;
-    const stopped = () => options.cancelled?.() === true || Date.now() >= deadlineAt;
-    const directRows = () =>
-      [...rows]
-        .sort((a, b) => streamItems.indexOf(a.stream) - streamItems.indexOf(b.stream))
-        .filter(
-          (row) =>
-            probes.has(row.url) &&
-            allowsPlaybackMethod(
-              classifyPlayback({
-                url: row.url,
-                label: [row.stream.name, row.stream.title, row.stream.description]
-                  .filter(Boolean)
-                  .join(" "),
-                probe: probes.get(row.url),
-                capabilities
-              }).method,
-              settings
-            )
-        )
-        .map((row) => row.stream);
-    if (prober.enabled) {
-      // Start the next candidate only after its predecessor has answered. A
-      // cold worker must not spend later candidates' entire budget in its queue.
-      for (const row of rows) {
-        if (stopped()) break;
-        const probe = await withinStreamSelectionDeadline(
-          () =>
-            prober
-              .probe(row.url, {
-                reason: "selection",
-                identity: streamProbeIdentity(row.stream),
-                timeoutMs: Math.min(15000, deadlineAt - Date.now())
-              })
-              .catch(() => null),
-          deadlineAt,
-          () => null
-        );
-        if (stopped()) break;
-        if (probe) {
-          probes.set(row.url, probe);
-          options.onDirectCandidates?.(directRows(), probes);
-        }
-      }
-    }
-    if (options.cancelled?.() === true) return [];
-    this._nextEpisodeProbeResults = probes;
-    return directRows();
+    if (options.cancelled?.()) return [];
+    this._nextEpisodeProbeResults = inspected.probes;
+    // Preserve newly resolved URLs in the candidates returned for the player handoff.
+    return inspected.candidates;
   },
 
   async resolveNextEpisodeStreamByAutoPlayPolicy(nextEpisode, itemType, settings) {
@@ -8499,10 +8451,7 @@ export const PlayerScreen = {
     const instant = timeoutSeconds === 0;
     // Instant selects the first eligible arrival; Unlimited waits for addon
     // completion. A positive duration bounds lookup, retrieval and probing.
-    const deadlineAt =
-      timeoutSeconds === 2147483647
-        ? Infinity
-        : Date.now() + (instant ? NEXT_EPISODE_SOURCE_RESOLVE_TIMEOUT_MS : timeoutSeconds * 1000);
+    const deadlineAt = streamSelectionDeadline(timeoutSeconds);
     const installedAddonNames = new Set(
       (
         (await withinStreamSelectionDeadline(
@@ -8551,6 +8500,8 @@ export const PlayerScreen = {
           () =>
             this.selectNextEpisodeStreamByAutoPlayPolicy(latestStreams, settings, {
               bingeGroupOnly: !complete && !instant,
+              season: nextEpisode.season,
+              episode: nextEpisode.episode,
               installedAddonNames,
               deadlineAt,
               onDirectCandidates: (candidates, probes) => {
@@ -8692,10 +8643,7 @@ export const PlayerScreen = {
 
     const settings = PlayerSettingsStore.get();
     const mode = String(settings.streamAutoPlayMode || "MANUAL").toUpperCase();
-    const shouldAutoSelectInManualMode =
-      mode === "MANUAL" &&
-      (Boolean(settings.autoplayNextEpisode) ||
-        Boolean(settings.streamAutoPlayPreferBingeGroupForNextEpisode));
+    const shouldAutoSelectInManualMode = mode === "MANUAL" && Boolean(settings.autoplayNextEpisode);
     if (mode === "MANUAL" && !shouldAutoSelectInManualMode) {
       return this.openNextEpisodeStreamPicker(nextEpisode, { forceReload: true });
     }
@@ -8772,6 +8720,8 @@ export const PlayerScreen = {
         "player",
         {
           streamUrl: bestStream,
+          sourceProbe: this.getPlayerStreamProbe(bestStreamCandidate),
+          sourceProbeKey: playerStreamProbeKey(bestStreamCandidate),
           itemId: this.params?.itemId,
           itemType,
           imdbId: this.params?.imdbId || null,
@@ -8788,7 +8738,9 @@ export const PlayerScreen = {
           playerBackdropUrl: this.params?.playerBackdropUrl || null,
           playerLogoUrl: this.params?.playerLogoUrl || null,
           episodes: this.episodes || [],
-          streamCandidates: streamItems,
+          streamCandidates: streamItems.map((stream) =>
+            stream.id === bestStreamCandidate.id ? bestStreamCandidate : stream
+          ),
           preferredStreamId: bestStreamCandidate.id || null,
           playbackSourceContext: this.getPlaybackSourceContext(bestStreamCandidate),
           returnToStreamOnBack: this.shouldReturnToStreamOnBack(),
@@ -16018,6 +15970,7 @@ export const PlayerScreen = {
   getPlayerStreamProbe(stream) {
     return (
       this._playerListProbeResults?.get(playerStreamProbeKey(stream)) ||
+      this._nextEpisodeProbeResults?.get(playerStreamProbeKey(stream)) ||
       this._nextEpisodeProbeResults?.get(stream.url || stream.externalUrl || "") ||
       null
     );
@@ -16040,8 +15993,9 @@ export const PlayerScreen = {
     if (
       !Environment.isBrowser() ||
       labels.showPlaybackLabels === false ||
-      !allowsPlayerStreamLabel(stream, labels) ||
-      !this._playerLabelCandidateKeys?.has(playerStreamProbeKey(stream))
+      (!this.getPlayerStreamProbe(stream) &&
+        (!allowsPlayerStreamLabel(stream, labels) ||
+          !this._playerLabelCandidateKeys?.has(playerStreamProbeKey(stream))))
     )
       return "";
     return renderStreamPlaybackBadge({

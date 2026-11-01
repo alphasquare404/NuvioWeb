@@ -511,19 +511,20 @@ test("label addon preferences keep all sources visible while Only Direct is off"
   });
 });
 
-test("Only Direct scopes results to label addons and updates an existing filter cache", async () => {
+test("Only Direct accepts known results outside background addon scope and updates its cache", async () => {
   await probeTestScreen("direct-label-scope", 0, async (screen) => {
     configureLabelScope(screen);
     assert.equal(screen.getFilteredStreams().length, 4);
     globalThis.__NUVIO_TEST_PLAYER_SETTINGS__.showOnlyDirectStreams = true;
     assert.deepEqual(
       screen.getFilteredStreams().map((s) => s.id),
-      ["aio-direct"]
+      ["aio-direct", "other-direct"]
     );
+    globalThis.__NUVIO_TEST_BADGE_SETTINGS__.compatibilityCheckEnabled = true;
     globalThis.__NUVIO_TEST_BADGE_SETTINGS__.showPlaybackLabels = false;
-    assert.equal(screen.getFilteredStreams().length, 4);
+    assert.equal(screen.getFilteredStreams().length, 2);
     globalThis.__NUVIO_TEST_BADGE_SETTINGS__.labelAddons = [];
-    assert.equal(screen.getFilteredStreams().length, 4);
+    assert.equal(screen.getFilteredStreams().length, 2);
     globalThis.__NUVIO_TEST_PLAYER_SETTINGS__.showOnlyDirectStreams = false;
     assert.equal(screen.getFilteredStreams().length, 4);
   });
@@ -1255,4 +1256,126 @@ test("server URL-less candidates reach a terminal status rather than being skipp
     assert.equal(screen._probePending.size, 0);
     for (const timer of screen._probeRetryTimers || []) clearTimeout(timer);
   });
+});
+
+test("auto-resolved metadata follows a stable file identity before its signed URL exists", async () => {
+  const { StreamScreen } = await loadStreamScreen("identity-metadata-handoff");
+  const hash = "b".repeat(40),
+    key = "torrent-file:" + hash + ":0";
+  const raw = { id: "raw", addonName: "TestAddon", infoHash: hash, fileIdx: 0 };
+  const screen = Object.assign(Object.create(StreamScreen), {
+    params: { autoResolvedStreams: [raw], autoResolvedProbes: [[key, directProbe]] },
+    _probeResults: new Map(),
+    _probeSent: new Set(),
+    applyAddonLogos: (streams) => streams,
+    buildSourceChipsFromStreams: () => [],
+    refreshOfflineDownloadMetadata: async () => {},
+    scheduleDebridPreparation() {},
+    requestRender() {}
+  });
+  assert.equal(screen.adoptAutoResolvedStreams(), true);
+  assert.equal(screen.getStreamProbe(screen.streams[0]).videoCodec, "h264");
+  assert.equal(screen._probeResults.has(key), true);
+});
+
+test("returning to the list preserves known facts outside its background quota; cache reset invalidates snapshots", async () => {
+  const { StreamScreen } = await loadStreamScreen("known-facts-back");
+  const stream = { id: "known", addonName: "Other", infoHash: "c".repeat(40), fileIdx: 0 };
+  const key = "torrent-file:" + "c".repeat(40) + ":0";
+  const screen = Object.assign(Object.create(StreamScreen), {
+    streams: [stream],
+    _probeResults: new Map([[key, directProbe]]),
+    getListScrollTop: () => 0
+  });
+  const snapshot = screen.captureRouteState();
+  screen._probeResults = new Map();
+  screen.restoreProbeResults(snapshot.probeResults, snapshot.probeGeneration);
+  assert.equal(screen.getStreamProbe(stream).videoCodec, "h264");
+  screen._probeResults = new Map();
+  screen.restoreProbeResults(snapshot.probeResults, snapshot.probeGeneration + 1);
+  assert.equal(screen.getStreamProbe(stream), null);
+});
+
+test("stream-page autoplay inspects its allowed source outside the background addon scope", async () => {
+  await probeTestScreen("automatic-selected-scope", 3, async (screen, requests) => {
+    screen.streams = [
+      { id: "A", addonName: "A", url: "https://fixture.test/A" },
+      { id: "B", addonName: "B", url: "https://fixture.test/B" }
+    ];
+    globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = {
+      compatibilityCheckEnabled: true,
+      showPlaybackLabels: false,
+      labelAddons: ["A"],
+      playbackLabelSource: "FILE_METADATA",
+      clientLabelLimit: 3
+    };
+    globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = {
+      streamAutoPlayMode: "FIRST_STREAM",
+      streamAutoPlaySource: "ALL_SOURCES",
+      streamAutoPlaySelectedPlugins: ["B"],
+      streamDisplayMode: "DIRECT",
+      streamAutoPlayTimeoutSeconds: 3
+    };
+    screen.loading = false;
+    screen.autoPlaySelectionReady = true;
+    screen.params = {};
+    screen.requestRender = () => {};
+    let selected;
+    screen.playStream = async (id) => {
+      selected = id;
+    };
+    screen.maybeAutoPlayStream({ allLoaded: true });
+    await screen._autoSelectionMetadataPromise;
+    assert.equal(selected, "B");
+    assert.deepEqual(requests, ["https://fixture.test/B"]);
+    assert.equal(
+      screen.getFilteredStreams().some((s) => s.id === "B"),
+      true
+    );
+  });
+});
+
+test("late addon rows survive automatic compatibility inspection and a manual choice invalidates its result", async () => {
+  for (const manual of [false, true])
+    await probeTestScreen("automatic-late-" + manual, 3, async (screen) => {
+      screen.streams = [{ id: "B", addonName: "B", url: "https://fixture.test/pending" }];
+      globalThis.__NUVIO_TEST_BADGE_SETTINGS__ = {
+        compatibilityCheckEnabled: true,
+        labelAddons: ["A"],
+        playbackLabelSource: "FILE_METADATA"
+      };
+      globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = {
+        streamAutoPlayMode: "FIRST_STREAM",
+        streamDisplayMode: "DIRECT",
+        streamAutoPlayTimeoutSeconds: 3
+      };
+      screen.loading = false;
+      screen.autoPlaySelectionReady = true;
+      screen.params = {};
+      screen.requestRender = () => {};
+      let release,
+        plays = 0;
+      globalThis.__NUVIO_TEST_PROBE_RESPONSE__ = () =>
+        new Promise((resolve) => {
+          release = resolve;
+        });
+      screen.playStream = async () => {
+        plays++;
+      };
+      screen.maybeAutoPlayStream({ allLoaded: true });
+      await new Promise((resolve) => setImmediate(resolve));
+      screen.streams[0] = { ...screen.streams[0], title: "updated while checking" };
+      screen.streams = [
+        ...screen.streams,
+        { id: "late", addonName: "C", url: "https://fixture.test/late" }
+      ];
+      if (manual) screen._playSelectionGeneration = (screen._playSelectionGeneration || 0) + 1;
+      release({ ok: true, json: async () => ({ ok: true, ...directProbe }) });
+      await screen._autoSelectionMetadataPromise;
+      assert.equal(
+        screen.streams.some((stream) => stream.id === "late"),
+        true
+      );
+      assert.equal(plays, manual ? 0 : 1);
+    });
 });

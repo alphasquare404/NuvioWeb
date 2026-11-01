@@ -280,8 +280,8 @@ test("a stalled addon cannot keep Finding stream beyond its deadline", async () 
       }
     }
   });
-  assert.equal(result.timedOut, true);
-  assert.equal(result.selected, null);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.selected?.url, "https://a.test/early");
   assert.equal(result.streams.length, 1);
   sendChunk({ status: "success", data: groupFor([stream("Late", "https://a.test/late")]) });
   assert.equal(result.streams.length, 1, "late chunks cannot mutate a finished attempt");
@@ -291,7 +291,7 @@ test("an eligible addon can start selection without waiting for a stalled addon"
   const result = await resolveAutoPlayStream({
     itemType: "movie",
     videoId: "tt1",
-    settings: FIRST_STREAM,
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 0 },
     returnOnFirstMatch: true,
     deadlineAt: Date.now() + 1000,
     repository: {
@@ -308,9 +308,9 @@ test("an eligible addon can start selection without waiting for a stalled addon"
   assert.equal(result.complete, false);
 });
 
-test("selection phases share the same deadline and zero starts no new work", async () => {
+test("selection phases share a deadline; Instant has a bounded discovery budget", async () => {
   assert.equal(streamSelectionDeadline(20, 1000), 21000);
-  assert.equal(streamSelectionDeadline(0, 1000), 1000);
+  assert.equal(streamSelectionDeadline(0, 1000), 46000);
   assert.equal(streamSelectionDeadline(2147483647, 1000), Infinity);
   let called = false;
   const value = await withinStreamSelectionDeadline(
@@ -346,4 +346,62 @@ test("filename Only Direct filters each arriving chunk before automatic selectio
     repository: fakeRepository([[incompatible], [direct]])
   });
   assert.equal(result.selected.url, direct.url);
+});
+
+test("Instant starts source discovery rather than expiring at zero milliseconds", async () => {
+  let calls = 0;
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "instant",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 0 },
+    returnOnFirstMatch: true,
+    repository: {
+      async getStreamsFromAllAddons(_t, _v, options) {
+        calls++;
+        const data = groupFor([stream("ready", "https://fixture.test/ready")]);
+        options.onChunk({ status: "success", data });
+        return { status: "success", data };
+      }
+    }
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.selected.url, "https://fixture.test/ready");
+  assert.equal(result.timedOut, false);
+});
+
+test("Unlimited cannot release the initial page on a partial result even with returnOnFirstMatch", async () => {
+  let complete,
+    finished = false;
+  const pending = resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "unlimited",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 2147483647 },
+    returnOnFirstMatch: true,
+    repository: {
+      getStreamsFromAllAddons(_t, _v, options) {
+        options.onChunk({
+          status: "success",
+          data: groupFor([stream("first", "https://fixture.test/first")])
+        });
+        return new Promise((resolve) => {
+          complete = resolve;
+        });
+      }
+    }
+  }).then((result) => {
+    finished = true;
+    return result;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(finished, false);
+  complete({
+    status: "success",
+    data: groupFor([
+      stream("first", "https://fixture.test/first"),
+      stream("last", "https://fixture.test/last")
+    ])
+  });
+  const result = await pending;
+  assert.equal(result.complete, true);
+  assert.equal(result.streams.length, 2);
 });

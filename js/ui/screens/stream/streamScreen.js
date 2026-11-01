@@ -1,3 +1,6 @@
+import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
+import { probeMetadataCacheGeneration } from "../../../core/player/probeMetadataCache.js";
+import { streamSelectionDeadline } from "../../../core/streams/streamAutoResolve.js";
 import { probeStreamCandidate } from "../../../core/player/probeStreamCandidate.js";
 import {
   selectUnverifiedPlayback,
@@ -17,6 +20,7 @@ import { filterStreamsByCompatibility } from "../../../core/streams/streamCompat
 import {
   isOnlyDirectEnabled,
   isStreamLabelingEnabled,
+  isStreamCheckEnabled,
   usesMetadataLabels
 } from "../../../core/streams/streamLabelPolicy.js";
 import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
@@ -773,6 +777,8 @@ export const StreamScreen = {
       loading: Boolean(this.loading),
       error: String(this.error || ""),
       streams: Array.isArray(this.streams) ? this.streams.map((stream) => ({ ...stream })) : [],
+      probeResults: [...(this._probeResults || new Map())],
+      probeGeneration: probeMetadataCacheGeneration(),
       addonFilter: String(this.addonFilter || "all"),
       focusState: this.focusState ? { ...this.focusState } : { zone: "filter", index: 0 },
       sourceChips: Array.isArray(this.sourceChips)
@@ -809,10 +815,14 @@ export const StreamScreen = {
     this._labelProbePaused = false;
     this._labelProbeGeneration = (this._labelProbeGeneration || 0) + 1;
     this._probeResults = new Map();
+    this._cachedProbeHydrationSeen = new Set();
+    this._cachedProbeHydrationPending = 0;
     this._probeSent = new Set();
     this._probeOutstanding = false;
     this._probeRevision = 0;
     this._autoPlayProbeDeadline = null;
+    this._autoSelectionMetadataDone = "";
+    this._autoSelectionMetadataPromise = null;
     // Which urls are being probed right now, so a card can say "checking" rather than
     // "unknown" while it waits.
     this._probePending = new Set();
@@ -942,6 +952,7 @@ export const StreamScreen = {
       this.streams = Array.isArray(restored.streams)
         ? restored.streams.map((stream) => ({ ...stream }))
         : [];
+      this.restoreProbeResults(restored.probeResults, restored.probeGeneration);
       this.addonFilter = String(restored.addonFilter || "all");
       this.focusState = restored.focusState
         ? { ...restored.focusState }
@@ -1024,14 +1035,7 @@ export const StreamScreen = {
       return false;
     }
     this.streams = mergeStreamItems([], this.applyAddonLogos(prefetched));
-    for (const [url, probe] of this.params?.autoResolvedProbes || []) {
-      if (probe && this.streams.some((stream) => (stream.url || stream.externalUrl) === url)) {
-        this._probeResults.set(url, probe);
-        const stream = this.streams.find((entry) => (entry.url || entry.externalUrl) === url);
-        this._probeResults.set(playerStreamProbeKey(stream), probe);
-        this._probeSent.add(url);
-      }
-    }
+    this.restoreProbeResults(this.params?.autoResolvedProbes);
     this._probeRevision = (this._probeRevision || 0) + 1;
     this._filteredStreamsCache = null;
     this.loading = false;
@@ -1526,8 +1530,25 @@ export const StreamScreen = {
         ? this.streams.find((stream) => String(stream?.id || "") === preferredStreamId)
         : null);
     if (match?.id) {
+      const allowed = filterPlayerStreams([match], {
+        settings,
+        labels: StreamBadgeSettingsStore.snapshot(),
+        mode: PROBE_MODE,
+        capabilities: getDeviceCapabilities(),
+        probeForStream: (stream) => this.getStreamProbe(stream)
+      });
+      const selected = selectAutoPlayStream(allowed, {
+        mode: settings.streamAutoPlayMode,
+        source: settings.streamAutoPlaySource,
+        regexPattern: settings.streamAutoPlayRegex,
+        installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
+        selectedAddons: settings.streamAutoPlaySelectedAddons,
+        selectedPlugins: settings.streamAutoPlaySelectedPlugins
+      });
       this.autoResumeAttempted = true;
-      void this.playStream(match.id);
+      this.autoResumeUiActive = false;
+      if (selected?.id) void this.playStream(selected.id);
+      else this.requestRender();
       return;
     }
     if (!allLoaded && this.loading) {
@@ -1581,6 +1602,74 @@ export const StreamScreen = {
     });
   },
 
+  restoreProbeResults(entries = [], generation = probeMetadataCacheGeneration()) {
+    if (generation !== probeMetadataCacheGeneration()) return;
+    for (const [key, probe] of entries || []) {
+      const stream = this.streams.find(
+        (candidate) =>
+          playerStreamProbeKey(candidate) === key ||
+          (candidate.url || candidate.externalUrl) === key
+      );
+      if (!stream || !probe?.videoCodec) continue;
+      this._probeResults.set(key, probe);
+      this._probeResults.set(playerStreamProbeKey(stream), probe);
+      if (stream.url || stream.externalUrl)
+        this._probeResults.set(stream.url || stream.externalUrl, probe);
+    }
+  },
+
+  hydrateCachedProbeResults() {
+    const labels = StreamBadgeSettingsStore.snapshot();
+    if (
+      PROBE_MODE !== "client" ||
+      !usesMetadataLabels(labels) ||
+      !isStreamCheckEnabled(labels) ||
+      !this._probeResults ||
+      !this.streams.length
+    )
+      return;
+    const seen = (this._cachedProbeHydrationSeen ||= new Set());
+    const candidates = this.streams
+      .filter((stream) => {
+        const key = streamProbeIdentity(stream);
+        if (
+          !/^torrent-file:[a-f0-9]{40}:\d+$/.test(key) ||
+          seen.has(key) ||
+          this.getStreamProbe(stream)
+        )
+          return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 1000);
+    if (!candidates.length) return;
+    const token = this.loadToken,
+      generation = probeMetadataCacheGeneration();
+    this._cachedProbeHydrationPending =
+      (this._cachedProbeHydrationPending || 0) + candidates.length;
+    let next = 0;
+    const lane = async () => {
+      while (next < candidates.length && token === this.loadToken) {
+        const stream = candidates[next++],
+          key = streamProbeIdentity(stream);
+        const probe = await streamProber.probe("", { identity: key, timeoutMs: 150 });
+        if (token !== this.loadToken) return;
+        this._cachedProbeHydrationPending--;
+        if (probe && generation === probeMetadataCacheGeneration()) {
+          this.restoreProbeResults([[key, probe]], generation);
+          this._probeRevision = (this._probeRevision || 0) + 1;
+          this._filteredStreamsCache = null;
+          this.requestRender({ delayMs: 0 });
+        }
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(10, candidates.length) }, () => lane())).then(
+      () => {
+        if (token === this.loadToken) this.maybeAutoPlayStream({ allLoaded: !this.loading });
+      }
+    );
+  },
+
   getStreamProbe(stream) {
     return (
       this._probeResults?.get(stream.url || stream.externalUrl || "") ||
@@ -1595,12 +1684,18 @@ export const StreamScreen = {
     if (!streamProber.enabled) return true;
     return !this.getProbeCandidates().some((stream) => {
       const url = String(stream.url || stream.externalUrl || "").trim();
-      return url && !this.getStreamProbe(stream) && !this._probeFailed?.has(url);
+      const key = url || playerStreamProbeKey(stream);
+      return key && !this.getStreamProbe(stream) && !this._probeFailed?.has(key);
     });
   },
 
   maybeAutoPlayStream({ allLoaded = false } = {}) {
-    if (this.autoResumeUiActive || this.autoPlayAttempted || this.autoPlayCountdown) {
+    if (
+      this._labelProbePaused ||
+      this.autoResumeUiActive ||
+      this.autoPlayAttempted ||
+      this.autoPlayCountdown
+    ) {
       return;
     }
     // Resume already navigated away, or there is nothing to play.
@@ -1622,6 +1717,8 @@ export const StreamScreen = {
     if (autoPlayMode === "MANUAL" || !isAutoPlayEffectivelyEnabled(settings)) {
       return;
     }
+    if (Number(settings.streamAutoPlayTimeoutSeconds) === 2147483647 && !allLoaded && this.loading)
+      return;
     const preferredBingeGroup = resolvePreferredBingeGroup(settings, () =>
       StreamPreferencesStore.getEntry(
         this.params?.itemId,
@@ -1631,32 +1728,123 @@ export const StreamScreen = {
     const installedAddonNames = collectInstalledAddonNames(
       addonRepository.getCachedInstalledAddons()
     );
+    const labels = StreamBadgeSettingsStore.snapshot();
+    const strictMetadata = isOnlyDirectEnabled(settings, labels) && usesMetadataLabels(labels);
+    const signatureFor = (streams = this.streams) =>
+      JSON.stringify([
+        streams.map(playerStreamProbeKey),
+        settings.streamDisplayMode,
+        settings.streamAutoPlaySource,
+        settings.streamAutoPlaySelectedAddons,
+        settings.streamAutoPlaySelectedPlugins,
+        settings.streamAutoPlayRegex,
+        labels.playbackLabelSource,
+        labels.clientLabelLimit,
+        preferredBingeGroup
+      ]);
+    const signature = strictMetadata ? signatureFor() : "";
+    const selection = {
+      mode: settings.streamAutoPlayMode,
+      source: settings.streamAutoPlaySource,
+      regexPattern: settings.streamAutoPlayRegex,
+      installedAddonNames,
+      selectedAddons: settings.streamAutoPlaySelectedAddons,
+      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
+      preferredBingeGroup,
+      preferBingeGroupInSelection: Boolean(preferredBingeGroup),
+      hdrPreference: resolveHdrPreference(settings),
+      probeOnly: strictMetadata,
+      probeForStream: (stream) => this.getStreamProbe(stream)
+    };
+    if (
+      strictMetadata &&
+      this._autoSelectionMetadataDone !== signature &&
+      !selectAutoPlayStream(this.getFilteredStreams(), selection)
+    ) {
+      const token = this.loadToken,
+        playGeneration = this._playSelectionGeneration;
+      const active = () =>
+        token === this.loadToken &&
+        playGeneration === this._playSelectionGeneration &&
+        Router.getCurrent() === "stream";
+      const deadlineAt =
+        this._autoPlayProbeDeadline ??
+        this.params?.autoSelectionDeadlineAt ??
+        streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
+      this._autoPlayProbeDeadline = deadlineAt;
+      // Source selection owns priority over cosmetic background work. Facts remain cached.
+      this._labelProbePaused = true;
+      this._labelProbeGeneration = (this._labelProbeGeneration || 0) + 1;
+      streamProber.cancelAll();
+      for (const key of this._probePending || []) {
+        if (!this._probeResults.has(key)) this._probeSent?.delete(key);
+      }
+      this._probePending?.clear();
+      this._probeOutstanding = false;
+      const inspectedStreams = this.streams;
+      this._autoSelectionMetadataPromise = inspectAutoPlayStreams(inspectedStreams, {
+        settings,
+        labels,
+        capabilities: getDeviceCapabilities(),
+        selection,
+        mode: PROBE_MODE,
+        prober: streamProber,
+        deadlineAt,
+        limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
+        cancelled: () => !active(),
+        context: { season: this.params?.season ?? null, episode: this.params?.episode ?? null }
+      })
+        .catch(() => null)
+        .then((result) => {
+          if (!active()) return;
+          if (result) {
+            const byKey = new Map(
+              result.streams.map((stream) => [playerStreamProbeKey(stream), stream])
+            );
+            const byId = new Map(result.streams.map((stream) => [stream.id, stream]));
+            this.streams = this.streams.map((stream) => {
+              const updated = byKey.get(playerStreamProbeKey(stream)) || byId.get(stream.id);
+              return updated?.url && !/^https?:/i.test(stream.url || stream.externalUrl || "")
+                ? { ...stream, url: updated.url, externalUrl: null }
+                : stream;
+            });
+            this.restoreProbeResults([...result.probes]);
+          }
+          this._autoSelectionMetadataDone = signatureFor(result?.streams || inspectedStreams);
+          this._cachedProbeHydrationSeen = new Set();
+          this._probeRevision = (this._probeRevision || 0) + 1;
+          this._filteredStreamsCache = null;
+          this._labelProbePaused = false;
+          this.maybeAutoPlayStream({ allLoaded: !this.loading });
+          this.requestRender();
+        });
+      return;
+    }
     // With the direct filter on, an empty list is usually "not answered yet", not "nothing
     // to play". Concluding now would make auto-play look broken, so wait for the probes.
-    if (
-      isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot()) &&
-      usesMetadataLabels(StreamBadgeSettingsStore.snapshot())
-    ) {
+    if (strictMetadata && this._autoSelectionMetadataDone !== signature) {
       const unanswered = streamProber.enabled
         ? this.getProbeCandidates().filter((stream) => {
             const url = String(stream.url || stream.externalUrl || "").trim();
-            return url && !this.getStreamProbe(stream) && !this._probeFailed?.has(url);
+            const key = url || playerStreamProbeKey(stream);
+            return key && !this.getStreamProbe(stream) && !this._probeFailed?.has(key);
           })
         : [];
       // The pipeline, not just the row list: some rows already have answers while others
       // are still queued, and deciding on that half-filled view is how auto-play "failed"
       // a second before the direct rows appeared.
-      const probesBusy = this._probeOutstanding === true || (this._probePending?.size || 0) > 0;
+      const probesBusy =
+        this._probeOutstanding === true ||
+        (this._probePending?.size || 0) > 0 ||
+        (this._cachedProbeHydrationPending || 0) > 0;
       if (probesBusy || unanswered.length) {
-        // The owner already has one knob for "how long may the app wait before choosing",
-        // so the probe wait uses it instead of a hidden constant. No waiting at all (0)
-        // still needs a few seconds: without an answer there is nothing to choose.
-        const rawSeconds = Math.trunc(Number(settings.streamAutoPlayTimeoutSeconds || 0));
-        const waitSeconds =
-          rawSeconds === 2147483647 ? 120 : Math.max(5, rawSeconds > 0 ? rawSeconds : 0);
+        // Continue the same selection deadline; cache/metadata discovery must not
+        // silently add another grace period after source discovery.
         const deadline =
-          this._autoPlayProbeDeadline ||
-          (this._autoPlayProbeDeadline = Date.now() + waitSeconds * 1000);
+          this._autoPlayProbeDeadline ??
+          this.params?.autoSelectionDeadlineAt ??
+          streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
+        this._autoPlayProbeDeadline = deadline;
         if (Date.now() < deadline) {
           const token = this.loadToken;
           setTimeout(() => {
@@ -2682,6 +2870,7 @@ export const StreamScreen = {
 
   scheduleUnknownProbes() {
     if (this._labelProbePaused) return;
+    this.hydrateCachedProbeResults();
     const labelSettings = StreamBadgeSettingsStore.snapshot();
     if (!usesMetadataLabels(labelSettings) || !isStreamLabelingEnabled(labelSettings)) return;
     if (!streamProber.enabled || !this.streams.length) return;
@@ -2815,13 +3004,14 @@ export const StreamScreen = {
       const labelSettings = StreamBadgeSettingsStore.snapshot();
       const labelAllowed =
         labelSettings.showPlaybackLabels !== false &&
-        playerStreamCheckCandidates(sortStreamsByAddonOrder(this.streams, this.sourceChips), {
-          settings: PlayerSettingsStore.get(),
-          labels: labelSettings,
-          mode: PROBE_MODE,
-          limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
-          capabilities: getDeviceCapabilities()
-        }).some((candidate) => playerStreamProbeKey(candidate) === playerStreamProbeKey(stream));
+        (this.getStreamProbe(stream) ||
+          playerStreamCheckCandidates(sortStreamsByAddonOrder(this.streams, this.sourceChips), {
+            settings: PlayerSettingsStore.get(),
+            labels: labelSettings,
+            mode: PROBE_MODE,
+            limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
+            capabilities: getDeviceCapabilities()
+          }).some((candidate) => playerStreamProbeKey(candidate) === playerStreamProbeKey(stream)));
       const badge = labelAllowed
         ? renderStreamPlaybackBadge({
             labelSource: labelSettings.playbackLabelSource,
@@ -4307,6 +4497,8 @@ export const StreamScreen = {
       unverifiedPlayback.mediaUrl = playerSource || unverifiedPlayback.sourceUrl;
     const playbackParams = {
       unverifiedPlayback,
+      sourceProbe: this.getStreamProbe(selected),
+      sourceProbeKey: playerStreamProbeKey(selected),
       streamUrl: playerSource || null,
       playbackPlan,
       itemId: this.params?.itemId || null,

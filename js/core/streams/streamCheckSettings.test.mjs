@@ -55,11 +55,11 @@ test("all streams remain visible while only three selected-addon files are check
   );
   assert.deepEqual(
     filterPlayerStreams(rows, options({ streamDisplayMode: "DIRECT" })).map((s) => s.id),
-    ["0", "4"]
+    rows.filter((s) => s.id !== "2").map((s) => s.id)
   );
   assert.deepEqual(
     filterPlayerStreams(rows, options({ streamDisplayMode: "DIRECT_REMUX" })).map((s) => s.id),
-    ["0", "2", "4"]
+    rows.map((s) => s.id)
   );
 });
 test("filename All addons and All streams are local and independent of metadata network limits", () => {
@@ -73,7 +73,7 @@ test("filename All addons and All streams are local and independent of metadata 
   assert.equal(playerStreamCheckCandidates(rows, options({}, limited)).length, 3);
   assert.equal(
     filterPlayerStreams(rows, options({ streamDisplayMode: "DIRECT_REMUX" }, limited)).length,
-    3
+    12
   );
   const backToMetadata = { ...limited, playbackLabelSource: "FILE_METADATA" };
   assert.equal(allowsPlayerStreamLabel(rows[1], backToMetadata), false);

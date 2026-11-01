@@ -329,3 +329,49 @@ its own candidate, so there is no whole-list URL preparation barrier and a slow
 candidate cannot hold the next group. Missing URLs use the same bounded candidate
 helper and finish with a result or failure status. Existing server bridge resource
 limits still apply; browser worker concurrency does not change server process limits.
+
+### Shared selection policy (November 2026)
+
+Playback badges are presentation only. Background checks have their own addon
+scope and quota. Compatibility filters recognize any actual file facts already
+available, including selection results and local cache entries outside that
+background scope/quota. With checks off, the compatibility filter is inactive;
+legacy disabled-check preferences remain disabled. Filename-mode filtering uses
+local estimates rather than spending metadata probe slots. Metadata-mode filters
+still require actual facts: a filename fallback badge cannot authorize encoding
+or turn Unknown metadata into a verified match.
+
+Initial automatic selection and next episode share the cache-first candidate
+inspection helper. A selected URL-less debrid descriptor can reuse metadata by
+strong file identity; otherwise the existing resolver obtains its URL. Source
+addon/plugin permissions and regex are applied before binge preference. Existing
+HDR exclusions and ranking remain in force. First Source stops after the highest
+priority eligible match; parallel background completions do not decide selection
+priority. Unknown/unmatched sources lead to the picker, not relaxed rules.
+
+Manual initial selection stays manual. Prefer Binge Group alone cannot enable
+automatic source selection. Explicit Auto Next may choose the next source while
+initial selection is Manual, but retains selected addon/plugin permissions.
+Remembered links must also pass current source, regex and compatibility constraints.
+Reuse Binge Group remains a preference, not an exception to those constraints.
+
+Instant starts discovery and chooses on the first eligible arrival without waiting
+for every addon; it has the existing next-episode 45-second discovery safety cap.
+Unlimited waits for addon completion. Numeric timeouts carry one deadline through
+source discovery and compatibility inspection; a source already collected may be
+selected at the deadline only if the applicable rules are satisfied. Individual
+network/probe limits remain bounded. The separate 15-second unverified Direct
+playback fallback begins after source selection, not during discovery.
+
+Known facts travel with player handoffs and route snapshots. Cache-only client
+hydration can read up to 1,000 strong file identities in ten local-storage lanes;
+it never resolves URLs or starts a media/WASM probe. Cache generation invalidates
+older snapshots. Selection probes are cancelled at their deadline and stale results
+cannot replace a new selection. User selection pauses background auto selection.
+
+The stream-picker entry point uses that same compatibility pass when its automatic
+source has no known eligible result. Selection temporarily preempts background
+label work, retaining positive facts and allowing unfinished background candidates
+to resume afterward. Candidate/settings revisions can trigger a new bounded pass;
+manual user selection invalidates the pending automatic pass. A matching candidate
+already available can still be selected without unnecessary reinspection.

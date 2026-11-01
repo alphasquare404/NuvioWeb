@@ -36,7 +36,7 @@ export function streamDisplayMode(settings = {}) {
 // Kept as the shared gate for startup selection and existing player integrations.
 // A restrictive view may now include Remux as well as Direct.
 export function isOnlyDirectEnabled(settings = {}, labels = {}) {
-  return streamDisplayMode(settings) !== "ALL" && isStreamLabelingEnabled(labels);
+  return streamDisplayMode(settings) !== "ALL" && isStreamCheckEnabled(labels);
 }
 export function allowsPlaybackMethod(method, settings = {}) {
   return (

@@ -6,6 +6,7 @@ import {
   streamLabelProbeLimit,
   isOnlyDirectEnabled,
   isStreamLabelingEnabled,
+  isStreamCheckEnabled,
   usesMetadataLabels,
   allowsPlaybackMethod
 } from "./streamLabelPolicy.js";
@@ -39,18 +40,18 @@ export function nextEpisodeSelectionOptions(
 ) {
   const mode = String(settings.streamAutoPlayMode || "MANUAL").toUpperCase();
   const prefer = Boolean(settings.streamAutoPlayPreferBingeGroupForNextEpisode);
-  const manualAutoNext = mode === "MANUAL" && (Boolean(settings.autoplayNextEpisode) || prefer);
+  const manualAutoNext = mode === "MANUAL" && Boolean(settings.autoplayNextEpisode);
   return {
     streamCompatibilityFilter: settings.streamCompatibilityFilter,
     hdrPreference: resolveHdrPreference(settings),
     probeOnly: isOnlyDirectEnabled(settings, labels) && usesMetadataLabels(labels),
     probeForStream,
     mode: manualAutoNext ? "FIRST_STREAM" : mode,
-    source: manualAutoNext ? "ALL_SOURCES" : String(settings.streamAutoPlaySource || "ALL_SOURCES"),
+    source: String(settings.streamAutoPlaySource || "ALL_SOURCES"),
     regexPattern: manualAutoNext ? "" : String(settings.streamAutoPlayRegex || ""),
     installedAddonNames,
-    selectedAddons: manualAutoNext ? [] : settings.streamAutoPlaySelectedAddons,
-    selectedPlugins: manualAutoNext ? [] : settings.streamAutoPlaySelectedPlugins,
+    selectedAddons: settings.streamAutoPlaySelectedAddons,
+    selectedPlugins: settings.streamAutoPlaySelectedPlugins,
     preferredBingeGroup: prefer ? preferredBingeGroup : "",
     preferBingeGroupInSelection: prefer,
     bingeGroupOnly: Boolean(bingeGroupOnly)
@@ -59,41 +60,18 @@ export function nextEpisodeSelectionOptions(
 
 export function filterPlayerStreams(
   streams,
-  {
-    settings = {},
-    labels = {},
-    probeForStream = () => null,
-    capabilities = null,
-    mode = "server",
-    limit = 20
-  } = {}
+  { settings = {}, labels = {}, probeForStream = () => null, capabilities = null } = {}
 ) {
   streams = filterStreamsByCompatibility(streams, settings, capabilities);
   if (!isOnlyDirectEnabled(settings, labels)) return streams;
-  const checked = new Set(
-    playerStreamCheckCandidates(streams, { settings, labels, mode, limit, capabilities }).map(
-      playerStreamProbeKey
-    )
-  );
   if (!usesMetadataLabels(labels))
-    return streams.filter(
-      (stream) =>
-        checked.has(playerStreamProbeKey(stream)) &&
-        allowsPlayerStreamLabel(stream, labels) &&
-        allowsPlaybackMethod(classifyStreamFilename(stream, capabilities).method, settings)
+    return streams.filter((stream) =>
+      allowsPlaybackMethod(classifyStreamFilename(stream, capabilities).method, settings)
     );
   capabilities ||= getDeviceCapabilities();
-  const candidates =
-    mode === "client"
-      ? new Set(
-          playerStreamProbeCandidates(streams, { settings, labels, mode, limit, capabilities }).map(
-            playerStreamProbeKey
-          )
-        )
-      : null;
+  // A background quota limits new work, never invalidates facts already obtained
+  // by selection, another screen or a previous metadata check.
   return streams.filter((stream) => {
-    if (!allowsPlayerStreamLabel(stream, labels)) return false;
-    if (candidates && !candidates.has(playerStreamProbeKey(stream))) return false;
     const probe = probeForStream(stream);
     return (
       Boolean(probe) &&
@@ -108,14 +86,27 @@ export function filterPlayerStreams(
 
 export function playerStreamCheckCandidates(
   streams,
-  { settings = {}, labels = {}, limit = 20, mode = "server", capabilities = null } = {}
+  {
+    settings = {},
+    labels = {},
+    limit = 20,
+    mode = "server",
+    capabilities = null,
+    purpose = "background"
+  } = {}
 ) {
-  if (!isStreamLabelingEnabled(labels)) return [];
+  if (purpose === "selection" ? !isStreamCheckEnabled(labels) : !isStreamLabelingEnabled(labels))
+    return [];
   streams = filterStreamsByCompatibility(streams, settings, capabilities);
   const seen = new Set();
   const scoped = streams.filter((stream) => {
     const key = playerStreamProbeKey(stream);
-    if (!key || seen.has(key) || !allowsPlayerStreamLabel(stream, labels)) return false;
+    if (
+      !key ||
+      seen.has(key) ||
+      (purpose !== "selection" && !allowsPlayerStreamLabel(stream, labels))
+    )
+      return false;
     seen.add(key);
     return true;
   });

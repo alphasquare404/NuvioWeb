@@ -191,69 +191,46 @@ export function filterAutoPlaySourceStreams(streams, options = {}) {
   });
 }
 
-export function selectAutoPlayStream(streams, options = {}) {
+// The same hard source/regex constraints and preference order serve discovery,
+// compatibility inspection, resume and final selection.
+export function autoPlayCandidates(streams, options = {}) {
   const mode = normalizeMode(options.mode);
-  const scoped = filterStreamsByCompatibility(filterAutoPlaySourceStreams(streams, options), {
+  if (mode === STREAM_AUTO_PLAY_MODE.MANUAL) return [];
+  let scoped = filterStreamsByCompatibility(filterAutoPlaySourceStreams(streams, options), {
     streamCompatibilityFilter: options.streamCompatibilityFilter
-  });
+  }).filter(isPlayableStream);
+  if (mode === STREAM_AUTO_PLAY_MODE.REGEX_MATCH) {
+    const pattern = String(options.regexPattern || "").trim();
+    let include;
+    try {
+      include = new RegExp(pattern, "i");
+    } catch {
+      return [];
+    }
+    const exclude = buildExcludeRegex(pattern);
+    scoped = scoped.filter(
+      (stream) =>
+        include.test(streamSearchableText(stream)) &&
+        (!exclude || !exclude.test(streamSearchableText(stream)))
+    );
+  }
   const candidates =
     mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM ? applyHdrPreference(scoped, options) : scoped;
-  if (!candidates.length) {
-    return null;
-  }
+  const group = String(options.preferredBingeGroup || "").trim();
+  if (!options.preferBingeGroupInSelection || !group)
+    return options.bingeGroupOnly ? [] : candidates;
+  const preferredHdr =
+    mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM &&
+    options.hdrPreference === "PREFER" &&
+    candidates.some((stream) => streamHdrStatus(stream, options) === true);
+  const matches = (stream) =>
+    streamBingeGroup(stream) === group &&
+    (!preferredHdr || streamHdrStatus(stream, options) === true);
+  return options.bingeGroupOnly
+    ? candidates.filter(matches)
+    : [...candidates.filter(matches), ...candidates.filter((stream) => !matches(stream))];
+}
 
-  // An exact binge-group match takes priority over the normal mode,
-  // including MANUAL. In bingeGroupOnly mode, a miss must open the picker.
-  const preferredBingeGroup = String(options.preferredBingeGroup || "").trim();
-  if (options.preferBingeGroupInSelection && preferredBingeGroup) {
-    const preferredCandidates =
-      mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM &&
-      options.hdrPreference === "PREFER" &&
-      candidates.some(
-        (stream) => isPlayableStream(stream) && streamHdrStatus(stream, options) === true
-      )
-        ? candidates.filter((stream) => streamHdrStatus(stream, options) === true)
-        : candidates;
-    const bingeGroupMatch = preferredCandidates.find(
-      (stream) => streamBingeGroup(stream) === preferredBingeGroup && isPlayableStream(stream)
-    );
-    if (bingeGroupMatch) {
-      return bingeGroupMatch;
-    }
-    if (options.bingeGroupOnly) {
-      return null;
-    }
-  }
-
-  if (mode === STREAM_AUTO_PLAY_MODE.MANUAL) {
-    return null;
-  }
-
-  if (mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM) {
-    return candidates.find((stream) => isPlayableStream(stream)) || null;
-  }
-
-  // REGEX_MATCH
-  const pattern = String(options.regexPattern || "").trim();
-  let includeRegex;
-  try {
-    includeRegex = new RegExp(pattern, "i");
-  } catch (_) {
-    return null;
-  }
-  const excludeRegex = buildExcludeRegex(pattern);
-  const match = candidates.find((stream) => {
-    if (!isPlayableStream(stream)) {
-      return false;
-    }
-    const text = streamSearchableText(stream);
-    if (!includeRegex.test(text)) {
-      return false;
-    }
-    if (excludeRegex && excludeRegex.test(text)) {
-      return false;
-    }
-    return true;
-  });
-  return match || null;
+export function selectAutoPlayStream(streams, options = {}) {
+  return autoPlayCandidates(streams, options)[0] || null;
 }

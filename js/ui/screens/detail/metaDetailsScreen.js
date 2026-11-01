@@ -1,5 +1,5 @@
-import { resolveHdrPreference, hdrFromProbe } from "../../../core/streams/streamHdrPreference.js";
-import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
+import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
+import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
 import { assessPlaybackCapabilities } from "../../../core/player/playbackCapabilities.js";
 import {
   StartupLoadingOverlay,
@@ -8,27 +8,14 @@ import {
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
-import { classifyPlayback } from "../../../core/player/playbackMethod.js";
 import { getDeviceCapabilities } from "../../../core/player/deviceCapabilities.js";
-import { createStreamProber, streamProbeIdentity } from "../../../core/player/streamProbe.js";
-import {
-  DirectDebridStreamPreparer,
-  directDebridPreparationKey
-} from "../../../core/debrid/directDebridStreamPreparer.js";
+import { createStreamProber } from "../../../core/player/streamProbe.js";
 import { PROBE_ENDPOINT, PROBE_MODE, PROBE_CLIENT_CONCURRENCY } from "../../../config.js";
-import { streamLabelProbeLimit } from "../../../core/streams/streamLabelPolicy.js";
 import {
   isOnlyDirectEnabled,
-  allowsPlaybackMethod,
-  usesMetadataLabels,
-  isStreamLabelingEnabled
+  usesMetadataLabels
 } from "../../../core/streams/streamLabelPolicy.js";
-import { filterStreamsByCompatibility } from "../../../core/streams/streamCompatibilityFilter.js";
-import {
-  allowsPlayerStreamLabel,
-  playerStreamProbeCandidates,
-  filterPlayerStreams
-} from "../../../core/streams/playerStreamPolicy.js";
+import { playerStreamProbeKey } from "../../../core/streams/playerStreamPolicy.js";
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
@@ -114,7 +101,6 @@ import {
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
 import {
   collectInstalledAddonNames,
-  filterAutoPlaySourceStreams,
   isAutoPlayEffectivelyEnabled,
   resolvePreferredBingeGroup,
   selectAutoPlayStream
@@ -122,7 +108,6 @@ import {
 import {
   resolveAutoPlayStream,
   streamSelectionDeadline,
-  withinStreamSelectionDeadline,
   shouldAbandonAutoResolve,
   shouldPaintRouteHandoff
 } from "../../../core/streams/streamAutoResolve.js";
@@ -3395,8 +3380,7 @@ export const MetaDetailsScreen = {
     // streams": the answer needs ffprobe, and a decision taken before it lands is a guess.
     if (
       isOnlyDirectEnabled(settings, StreamBadgeSettingsStore.snapshot()) &&
-      resolution?.streams?.length &&
-      !resolution.timedOut
+      resolution?.streams?.length
     ) {
       resolution = await this.keepOnlyDirectResolution(resolution, cancelled);
       if (cancelled()) {
@@ -3418,6 +3402,7 @@ export const MetaDetailsScreen = {
         autoResolvedStreams: resolution.streams,
         autoResolvedStreamId: resolution.selected?.id || null,
         autoResolvedProbes: resolution.probes || [],
+        autoSelectionDeadlineAt: resolution.deadlineAt,
         autoResolvedStreamsComplete: resolution.complete !== false,
         autoSelectionFinished: !resolution.selected,
         autoSelectionTimedOut: resolution.timedOut === true,
@@ -3439,213 +3424,70 @@ export const MetaDetailsScreen = {
    */
   async keepOnlyDirectResolution(resolution, cancelled = () => false) {
     StartupLoadingOverlay.setStage("checking");
-    const streams = Array.isArray(resolution?.streams) ? resolution.streams : [];
-    const capabilities = getDeviceCapabilities();
-    const labelSettings = StreamBadgeSettingsStore.snapshot();
-    const limit = streamLabelProbeLimit(
-      labelSettings,
-      PROBE_MODE,
-      globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20
-    );
     const settings = PlayerSettingsStore.get();
-    const deadlineAt = resolution.deadlineAt ?? Infinity;
-    const expired = () => Date.now() >= deadlineAt;
+    const labels = StreamBadgeSettingsStore.snapshot();
+    const capabilities = getDeviceCapabilities();
     const installedAddonNames = collectInstalledAddonNames(
       addonRepository.getCachedInstalledAddons()
     );
-    const selectionOptions = {
+    const preferredBingeGroup =
+      resolution.preferredBingeGroup ||
+      (settings.streamAutoPlayPreferBingeGroupForNextEpisode
+        ? resolution.selected?.behaviorHints?.bingeGroup ||
+          resolution.selected?.raw?.behaviorHints?.bingeGroup ||
+          ""
+        : "");
+    const selection = {
       mode: settings.streamAutoPlayMode,
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
       installedAddonNames,
       selectedAddons: settings.streamAutoPlaySelectedAddons,
-      selectedPlugins: settings.streamAutoPlaySelectedPlugins
+      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
+      hdrPreference: resolveHdrPreference(settings),
+      preferredBingeGroup,
+      preferBingeGroupInSelection: Boolean(preferredBingeGroup)
     };
-    const eligible = filterStreamsByCompatibility(
-      filterAutoPlaySourceStreams(streams, selectionOptions),
+    const inspected = await inspectAutoPlayStreams(resolution.streams || [], {
       settings,
-      capabilities
-    ).filter((stream) => allowsPlayerStreamLabel(stream, labelSettings));
-    if (!isStreamLabelingEnabled(labelSettings)) return { ...resolution, selected: null };
-    if (!usesMetadataLabels(labelSettings)) {
-      const directStreams = filterPlayerStreams(eligible, {
-        settings: { ...settings, showOnlyDirectStreams: true },
-        labels: labelSettings,
-        capabilities
-      });
-      const selected = selectAutoPlayStream(directStreams, {
-        ...selectionOptions,
-        hdrPreference: resolveHdrPreference(settings),
-        probeOnly: false
-      });
-      return { ...resolution, selected, directStreams, probes: [] };
-    }
-    const prober = createStreamProber({
-      endpoint: PROBE_ENDPOINT,
-      mode: PROBE_MODE,
-      clientConcurrency: PROBE_CLIENT_CONCURRENCY,
-      timeoutMs: 15000,
-      assess: (probe) =>
-        assessPlaybackCapabilities(probe, {
-          engine: shouldUseMovi(PlayerSettingsStore.get()) ? "movi" : "native"
-        })
-    });
-    if (!prober.enabled || !eligible.length) return { ...resolution, selected: null };
-
-    // Apply autoplay source permissions before spending resolution and probe budgets.
-    // The complete list stays available for a manual fallback and its labels.
-    const hdrPreference = resolveHdrPreference(settings);
-    const top = playerStreamProbeCandidates(eligible, {
-      settings: { ...settings, showOnlyDirectStreams: true },
-      labels: labelSettings,
+      labels,
       capabilities,
+      selection,
       mode: PROBE_MODE,
-      limit
+      limit: globalThis.__NUVIO_ENV__?.PROBE_PAGE_LIMIT ?? 20,
+      deadlineAt: resolution.deadlineAt ?? Infinity,
+      cancelled,
+      context: { season: this.params?.season ?? null, episode: this.params?.episode ?? null },
+      prober: usesMetadataLabels(labels)
+        ? createStreamProber({
+            endpoint: PROBE_ENDPOINT,
+            mode: PROBE_MODE,
+            clientConcurrency: PROBE_CLIENT_CONCURRENCY,
+            timeoutMs: 15000,
+            assess: (probe) => assessPlaybackCapabilities(probe)
+          })
+        : null
     });
-    const resolvedByKey = new Map();
-    if (PROBE_MODE !== "client")
-      await withinStreamSelectionDeadline(
-        () =>
-          DirectDebridStreamPreparer.prepare(top, {
-            season: this.params?.season == null ? null : Number(this.params.season),
-            episode: this.params?.episode == null ? null : Number(this.params.episode),
-            playerSettings: settings,
-            installedAddonNames,
-            onPrepared: (stream, prepared) => {
-              const url = String(prepared?.url || "").trim();
-              if (url && !expired() && !cancelled())
-                resolvedByKey.set(directDebridPreparationKey(stream), url);
-            }
-          }).catch(() => {}),
-        deadlineAt,
-        () => null
-      );
     if (cancelled()) return resolution;
-
-    const isMagnet = (value) =>
-      String(value || "")
-        .trim()
-        .toLowerCase()
-        .startsWith("magnet:");
-    const candidates = top.map((stream) => {
-      const direct = [stream?.url, stream?.externalUrl].find((value) => value && !isMagnet(value));
-      return {
-        stream,
-        url: String(resolvedByKey.get(directDebridPreparationKey(stream)) || direct || "").trim()
-      };
+    const probeForStream = (stream) =>
+      inspected.probes.get(playerStreamProbeKey(stream)) ||
+      inspected.probes.get(stream.url || stream.externalUrl || "");
+    const selected = selectAutoPlayStream(inspected.candidates, {
+      ...selection,
+      probeOnly: usesMetadataLabels(labels),
+      probeForStream
     });
-    const resolvedStreams = streams.map((stream) => {
-      const candidate = candidates.find((entry) => entry.stream === stream);
-      return candidate?.url ? { ...stream, url: candidate.url } : stream;
-    });
-    const probes = new Map();
-    // Stable source order within HDR priority groups; stop once a preferred match is confirmed.
-    const batchSize =
-      PROBE_MODE === "client" ||
-      String(settings.streamAutoPlayMode || "")
-        .trim()
-        .toUpperCase() === "FIRST_STREAM"
-        ? 1
-        : 6;
-    const directOf = () =>
-      [...candidates]
-        .sort((a, b) => eligible.indexOf(a.stream) - eligible.indexOf(b.stream))
-        .filter((candidate) => {
-          const probe = probes.get(candidate.url) || null;
-          if (!probe) return false;
-          return allowsPlaybackMethod(
-            classifyPlayback({
-              url: candidate.url,
-              label: [
-                candidate.stream?.name,
-                candidate.stream?.title,
-                candidate.stream?.description
-              ]
-                .filter(Boolean)
-                .join(" "),
-              probe,
-              capabilities
-            }).method,
-            settings
-          );
-        })
-        .map((candidate) => candidate.stream);
-
-    let direct = [];
-    let asked = 0;
-    for (let index = 0; index < candidates.length; index += batchSize) {
-      if (cancelled()) return resolution;
-      if (expired()) break;
-      const batch = candidates.slice(index, index + batchSize);
-      asked += batch.length;
-      await withinStreamSelectionDeadline(
-        () =>
-          Promise.all(
-            batch.map(async (candidate) => {
-              if (!candidate.url) return;
-              const probe = await prober
-                .probe(candidate.url, {
-                  reason: "selection",
-                  identity: streamProbeIdentity(candidate.stream),
-                  timeoutMs: Math.min(15000, deadlineAt - Date.now())
-                })
-                .catch(() => null);
-              if (probe && !expired() && !cancelled()) probes.set(candidate.url, probe);
-            })
-          ),
-        deadlineAt,
-        () => null
-      );
-      direct = directOf();
-      const found = selectAutoPlayStream(direct, {
-        ...selectionOptions,
-        hdrPreference,
-        probeOnly: true,
-        probeForStream: (stream) =>
-          probes.get(candidates.find((entry) => entry.stream === stream)?.url)
-      });
-      if (
-        found &&
-        (hdrPreference !== "PREFER" ||
-          hdrFromProbe(probes.get(candidates.find((entry) => entry.stream === found)?.url)) ===
-            true)
-      )
-        break;
-    }
-
-    if (cancelled()) return resolution;
-    // The phone cannot show a console, so the counts that decide this also go to the
-    // server log: that is how a wrong cap or an empty candidate list becomes visible.
-    const counts = { asked, answered: probes.size, direct: direct.length, streams: streams.length };
-    console.log("[Autoplay] direct candidates", counts);
-    void fetch("/api/debug/log", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        kind: "autoplay",
-        message: JSON.stringify(counts),
-        url: location.href
-      })
-    }).catch(() => {});
-    // HDR exclusions must not fall through to an excluded Direct source.
-    const filteredChoice = selectAutoPlayStream(direct, {
-      ...selectionOptions,
-      hdrPreference,
-      probeOnly: true,
-      probeForStream: (stream) =>
-        probes.get(candidates.find((entry) => entry.stream === stream)?.url)
-    });
-    const chosen = filteredChoice || null;
     return {
       ...resolution,
-      streams: resolvedStreams,
-      selected: chosen,
-      timedOut: !chosen && expired(),
-      hdrExcluded: hdrPreference === "AVOID" && direct.length > 0 && !chosen,
-      directStreams: direct,
-      probes: [...probes]
+      streams: inspected.streams,
+      selected,
+      directStreams: inspected.candidates,
+      hdrExcluded: inspected.hdrExcluded === true,
+      probes: [...inspected.probes],
+      timedOut: !selected && Date.now() >= (resolution.deadlineAt ?? Infinity)
     };
   },
+
   getStreamNavigationOptions() {
     // Continue Watching mounts Detail only to resolve the Stream target. Replace
     // that transient browser-history entry too, otherwise it can resurface after

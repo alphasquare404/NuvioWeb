@@ -12,7 +12,8 @@ export async function probeStreamCandidate(
     active = () => true,
     onResolved = () => {},
     resolver = DirectDebridResolver,
-    resolveTimeoutMs = 15000
+    resolveTimeoutMs = 15000,
+    timeoutMs = 15000
   } = {}
 ) {
   if (!active()) return null;
@@ -45,5 +46,5 @@ export async function probeStreamCandidate(
     }
   }
   if (!active() || !/^https?:/i.test(url)) return null;
-  return prober.probe(url, { identity, reason: "selection", resolveTimeoutMs: 15000 });
+  return prober.probe(url, { identity, reason: "selection", resolveTimeoutMs, timeoutMs });
 }

@@ -1,3 +1,8 @@
+import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
+import {
+  nextEpisodeSelectionOptions,
+  playerStreamProbeKey
+} from "../../../core/streams/playerStreamPolicy.js";
 import vm from "node:vm";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -171,13 +176,15 @@ test("next episode First Source uses HDR preference without weakening Only Direc
     "nextEpisodeSelectionOptions",
     "isOnlyDirectEnabled",
     "StreamBadgeSettingsStore",
+    "playerStreamProbeKey",
     `return ({${method}}).selectNextEpisodeStreamByAutoPlayPolicy;`
   )(
     selectAutoPlayStream,
     resolveHdrPreference,
     (await import("../../../core/streams/playerStreamPolicy.js")).nextEpisodeSelectionOptions,
     (await import("../../../core/streams/streamLabelPolicy.js")).isOnlyDirectEnabled,
-    { snapshot: () => ({ labelAddons: ["Chosen"] }) }
+    { snapshot: () => ({ labelAddons: ["Chosen"] }) },
+    playerStreamProbeKey
   );
   const rows = [
     { id: "sdr", url: "https://cdn.test/sdr", addonName: "Chosen" },
@@ -226,6 +233,8 @@ test("next episode probes an eligible HDR candidate before applying its cap", as
   let assessments = 0;
   const { allowsPlayerStreamLabel } = await import("../../../core/streams/playerStreamPolicy.js");
   const dependencies = {
+    nextEpisodeSelectionOptions,
+    inspectAutoPlayStreams,
     allowsPlayerStreamLabel,
     ...(await import("../../../core/streams/streamLabelPolicy.js")),
     filterPlayerStreams: (await import("../../../core/streams/playerStreamPolicy.js"))
@@ -307,7 +316,7 @@ test("next episode probes an eligible HDR candidate before applying its cap", as
       ["21"]
     );
     assert.equal(assessments, 1);
-    // Manual auto-next searches all source addons, but Only Direct still owns label scope.
+    // Manual alone stays manual; explicit Auto Next retains the configured source permissions.
     probes.length = 0;
     const manual = await run.call(
       {},
@@ -315,9 +324,21 @@ test("next episode probes an eligible HDR candidate before applying its cap", as
       { streamAutoPlayMode: "MANUAL" },
       { installedAddonNames: new Set(["Chosen", "Other"]) }
     );
+    assert.deepEqual(probes, []);
+    assert.deepEqual(manual, []);
+    const automatic = await run.call(
+      {},
+      rows,
+      {
+        streamAutoPlayMode: "MANUAL",
+        autoplayNextEpisode: true,
+        streamAutoPlaySelectedAddons: ["Chosen"]
+      },
+      { installedAddonNames: new Set(["Chosen", "Other"]) }
+    );
     assert.deepEqual(probes, ["https://cdn.test/0"]);
     assert.deepEqual(
-      manual.map((s) => s.id),
+      automatic.map((s) => s.id),
       ["0"]
     );
   } finally {

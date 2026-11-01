@@ -22,6 +22,7 @@ import { isAutoPlayEffectivelyEnabled, selectAutoPlayStream } from "./streamAuto
 // The stream screen's own sentinel for "never choose early": wait for every
 // addon before deciding, however long that takes.
 const WAIT_FOREVER_SECONDS = 2147483647;
+export const INSTANT_SELECTION_TIMEOUT_MS = 45000;
 
 // The stream route carries whatever type the catalog gave it. One place
 // decides what that means, so a caller cannot get it subtly wrong.
@@ -36,7 +37,9 @@ export function normalizeSelectionWaitSeconds(value) {
 // One deadline belongs to the complete Finding stream attempt.
 export function streamSelectionDeadline(seconds, now = Date.now()) {
   const wait = normalizeSelectionWaitSeconds(seconds);
-  return wait === WAIT_FOREVER_SECONDS ? Infinity : now + wait * 1000;
+  return wait === WAIT_FOREVER_SECONDS
+    ? Infinity
+    : now + (wait === 0 ? INSTANT_SELECTION_TIMEOUT_MS : wait * 1000);
 }
 
 export async function withinStreamSelectionDeadline(task, deadlineAt, onTimeout) {
@@ -201,11 +204,7 @@ export async function resolveAutoPlayStream({
       absorb(Array.isArray(chunkResult.data) ? chunkResult.data : []);
       // A chunk is a partial list, so it only counts once the grace period for
       // better sources has passed.
-      if (
-        !returnOnFirstMatch &&
-        !canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt })
-      )
-        return;
+      if (!canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt })) return;
       const candidate = choose();
       if (candidate?.id) {
         selected = candidate;
@@ -252,7 +251,7 @@ export async function resolveAutoPlayStream({
 
   return {
     streams,
-    selected: timedOut ? null : selected || null,
+    selected: selected || null,
     cancelled: false,
     complete,
     hdrExcluded:
@@ -264,8 +263,9 @@ export async function resolveAutoPlayStream({
         selectedAddons: settings.streamAutoPlaySelectedAddons,
         selectedPlugins: settings.streamAutoPlaySelectedPlugins
       }).some((stream) => hdrFromText(stream) === true),
-    timedOut,
+    timedOut: timedOut && !selected,
     deadlineAt,
-    reason: timedOut ? "timeout" : selected ? "selected" : "no-match"
+    preferredBingeGroup,
+    reason: selected ? "selected" : timedOut ? "timeout" : "no-match"
   };
 }

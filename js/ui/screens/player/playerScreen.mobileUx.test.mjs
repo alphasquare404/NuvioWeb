@@ -477,6 +477,7 @@ test("auto-next replaces player and retains its original Back destination", asyn
       get: () => ({ streamAutoPlayMode: "FIRST_STREAM", autoplayNextEpisode: true })
     },
     normalizeItemType: (value) => value,
+    playerStreamProbeKey: (stream) => stream.id,
     streamDirectPlaybackUrl: (stream) => stream.url,
     PlayerController: { flushCurrentProgress: async () => {}, pushProgressIfDue() {} },
     Router: {
@@ -502,6 +503,7 @@ test("auto-next replaces player and retains its original Back destination", asyn
     runNextEpisodeCountdown: async () => true,
     shouldReturnToStreamOnBack: () => false,
     getPlaybackSourceContext: () => ({}),
+    getPlayerStreamProbe: () => null,
     renderNextEpisodeCard() {},
     updateLoadingVisibility() {},
     refreshLoadingOverlayPresentation() {},

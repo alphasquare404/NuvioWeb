@@ -1,10 +1,14 @@
+import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import * as policy from "../../../core/streams/playerStreamPolicy.js";
 import * as labelPolicy from "../../../core/streams/streamLabelPolicy.js";
 import * as selector from "../../../core/streams/streamAutoPlaySelector.js";
-import { withinStreamSelectionDeadline } from "../../../core/streams/streamAutoResolve.js";
+import {
+  withinStreamSelectionDeadline,
+  streamSelectionDeadline
+} from "../../../core/streams/streamAutoResolve.js";
 import { classifyPlayback } from "../../../core/player/playbackMethod.js";
 import { streamProbeIdentity } from "../../../core/player/streamProbe.js";
 const source = await readFile(new URL("./playerScreen.js", import.meta.url), "utf8");
@@ -43,6 +47,8 @@ function screen(overrides = {}) {
     ...policy,
     ...selector,
     withinStreamSelectionDeadline,
+    streamSelectionDeadline,
+    inspectAutoPlayStreams,
     classifyPlayback,
     streamProbeIdentity,
     PlayerSettingsStore: { get: () => base },
@@ -247,7 +253,8 @@ test("Only Direct keeps a verified candidate at the deadline and ignores a later
   });
   const pending = s.resolveNextEpisodeStreamByAutoPlayPolicy(episode, "series", {
     ...base,
-    showOnlyDirectStreams: true
+    showOnlyDirectStreams: true,
+    streamAutoPlayHdrPreference: "PREFER"
   });
   await flush();
   assert.equal(requests.length, 2);

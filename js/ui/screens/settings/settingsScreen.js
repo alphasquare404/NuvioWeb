@@ -4,7 +4,6 @@ import {
   CLIENT_LABEL_LIMITS,
   normalizeClientLabelLimit,
   normalizePlaybackLabelSource,
-  isStreamLabelingEnabled,
   usesMetadataLabels,
   isStreamCheckEnabled,
   streamDisplayMode,
@@ -7183,7 +7182,7 @@ export const SettingsScreen = {
       });
     });
     this.actionMap.set("streams:edit:displayMode", () => {
-      if (!isStreamLabelingEnabled(StreamBadgeSettingsStore.snapshot())) return;
+      if (!isStreamCheckEnabled(StreamBadgeSettingsStore.snapshot())) return;
       this.openOptionDialog({
         title: t("settings_stream_display_mode", {}, "Streams to show"),
         options: [
@@ -7210,7 +7209,7 @@ export const SettingsScreen = {
             subtitle: t(
               "settings_stream_check_enabled_description",
               {},
-              "Choose what to check independently of which streams and badges are shown."
+              "Check selected addons automatically in the background. Playback may still read file information when needed."
             ),
             checked: isStreamCheckEnabled(badgeSettings)
           })}
@@ -7241,7 +7240,7 @@ export const SettingsScreen = {
               subtitle: t(
                 "settings_stream_check_addons_description",
                 {},
-                "Metadata checks require selected addons. All addons is available only for file names."
+                "Choose addons for automatic background checks. Existing metadata remains usable from any addon."
               ),
               value:
                 !usesMetadataLabels(badgeSettings) && badgeSettings.filenameAllAddons
@@ -7258,7 +7257,7 @@ export const SettingsScreen = {
                     subtitle: t(
                       "settings_stream_check_limit_description",
                       {},
-                      "Maximum candidates per list across selected addons, not the number of matching results."
+                      "Maximum background checks per list, not matching results. Existing metadata and selection checks remain usable."
                     ),
                     value: usesMetadataLabels(badgeSettings)
                       ? String(normalizeClientLabelLimit(badgeSettings.clientLabelLimit))
@@ -7273,7 +7272,7 @@ export const SettingsScreen = {
           }
           <div class="settings-group-heading"><div class="settings-group-title">${escapeHtml(t("settings_stream_filter_group", {}, "Filtering"))}</div></div>
           ${
-            isStreamLabelingEnabled(badgeSettings)
+            isStreamCheckEnabled(badgeSettings)
               ? this.renderActionRow({
                   focusKey: "streams:edit:displayMode",
                   title: t("settings_stream_display_mode", {}, "Streams to show"),
@@ -7281,7 +7280,7 @@ export const SettingsScreen = {
                     ? t(
                         "settings_stream_display_metadata_description",
                         {},
-                        "Direct filters show only checked matches from the selected addons. Pending and Unknown stay hidden."
+                        "Show matching metadata results, including cached and selection results. Pending and Unknown stay hidden."
                       )
                     : t(
                         "settings_stream_display_filename_description",
@@ -7296,7 +7295,7 @@ export const SettingsScreen = {
                         ? t("settings_stream_display_remux", {}, "Direct + Remux")
                         : t("settings_stream_display_all", {}, "All streams")
                 })
-              : `<p class="settings-row-subtitle">${escapeHtml(t("settings_stream_display_inactive", {}, "All streams are shown. Enable checks and choose addons to use a compatibility filter."))}</p>`
+              : `<p class="settings-row-subtitle">${escapeHtml(t("settings_stream_display_inactive", {}, "The compatibility filter is inactive while checks are off."))}</p>`
           }
     `;
   },

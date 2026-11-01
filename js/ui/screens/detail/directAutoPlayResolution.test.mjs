@@ -1,3 +1,5 @@
+import { inspectAutoPlayStreams } from "../../../core/streams/streamAutoPlayProbe.js";
+import { playerStreamProbeKey } from "../../../core/streams/playerStreamPolicy.js";
 import * as hdrPolicy from "../../../core/streams/streamHdrPreference.js";
 import * as labelPolicy from "../../../core/streams/streamLabelPolicy.js";
 import assert from "node:assert/strict";
@@ -43,7 +45,8 @@ async function resolve(
     labelAddons = ["AIOStreams", "Torrentio", "Plugin"],
     clientLabelLimit = 5,
     playbackLabelSource = "FILE_METADATA",
-    mode = "server"
+    mode = "server",
+    preferredBingeGroup = ""
   } = {}
 ) {
   const source = await readFile(new URL("./metaDetailsScreen.js", import.meta.url), "utf8");
@@ -56,6 +59,22 @@ async function resolve(
   const playerSettings = { ...settings, ...overrides };
   const dependencies = {
     ...labelPolicy,
+    playerStreamProbeKey,
+    inspectAutoPlayStreams: (streams, options) =>
+      inspectAutoPlayStreams(streams, {
+        ...options,
+        probeCandidate: async (prober, stream, candidateOptions) => {
+          prepared.push(stream);
+          if (prepareDelayMs) await new Promise((resolve) => setTimeout(resolve, prepareDelayMs));
+          if (!candidateOptions.active()) return null;
+          const url = unresolved.includes(stream.id)
+            ? "https://resolved.test/" + stream.id
+            : stream.url;
+          if (!url) return null;
+          candidateOptions.onResolved(url);
+          return prober.probe(url);
+        }
+      }),
     filterPlayerStreams,
     filterStreamsByCompatibility,
     playerStreamProbeCandidates,
@@ -120,7 +139,10 @@ async function resolve(
   const savedEnv = globalThis.__NUVIO_ENV__;
   globalThis.__NUVIO_ENV__ = { PROBE_PAGE_LIMIT: limit };
   try {
-    const result = await run.call({ params: {} }, { streams, selected: streams[0], deadlineAt });
+    const result = await run.call(
+      { params: {} },
+      { streams, selected: streams[0], deadlineAt, preferredBingeGroup }
+    );
     return { result, probed, prepared };
   } finally {
     globalThis.__NUVIO_ENV__ = savedEnv;
@@ -197,7 +219,7 @@ test("resolved URL and probe evidence survive the auto-resolved handoff", async 
   const { result } = await resolve([stream], { unresolved: [stream.id] });
   assert.equal(result.selected?.id, stream.id);
   assert.equal(result.streams[0].url, "https://resolved.test/resolve-me");
-  assert.equal(result.probes[0][0], "https://resolved.test/resolve-me");
+  assert.ok(result.probes.some(([key]) => key === "https://resolved.test/resolve-me"));
 });
 
 test("First stream stops probing immediately when the top candidate is Direct", async () => {
@@ -321,11 +343,11 @@ test("HDR probing does not extend the original stream-selection deadline", async
   assert.ok(Date.now() - start < 90);
 });
 
-test("Direct auto selection does not resolve or probe until label addons are chosen", async () => {
+test("Direct auto selection may inspect a chosen source outside background addon scope", async () => {
   const { result, prepared, probed } = await resolve([row("aio")], { labelAddons: [] });
-  assert.deepEqual(prepared, []);
-  assert.deepEqual(probed, []);
-  assert.equal(result.selected, null);
+  assert.equal(prepared.length, 1);
+  assert.equal(probed.length, 1);
+  assert.equal(result.selected?.id, "aio");
 });
 
 test("client Direct auto selection respects the labeling limit", async () => {
@@ -395,4 +417,15 @@ test("metadata Direct + Remux startup accepts a verified Remux candidate without
     nonDirect: ["remux-first"]
   });
   assert.equal(result.selected?.id, "remux-first");
+});
+
+test("compatibility inspection preserves the preferred binge group after initial selection", async () => {
+  const first = row("first"),
+    group = { ...row("group"), behaviorHints: { bingeGroup: "same" } };
+  const { result, probed } = await resolve([first, group], {
+    preferredBingeGroup: "same",
+    overrides: { streamAutoPlayPreferBingeGroupForNextEpisode: true }
+  });
+  assert.equal(result.selected.id, "group");
+  assert.deepEqual(probed, [group.url]);
 });
