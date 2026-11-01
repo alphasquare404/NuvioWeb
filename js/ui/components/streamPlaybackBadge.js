@@ -30,6 +30,7 @@ export const REMUX_UNAVAILABLE_LABEL = "Remux (unavailable)";
 /** The text cannot decide; only a probe can. Said plainly instead of guessing. */
 export const UNPROBED_LABEL = "Unknown";
 /** The probe is running right now: still a label, and the card never looks finished. */
+export const WAITING_LABEL = "Waiting…";
 export const PROBING_LABEL = "Checking…";
 /** A container nothing can open, on a deployment with no relay to fix it. */
 export const UNSUPPORTED_LABEL = "Unsupported";
@@ -77,6 +78,7 @@ export function renderStreamPlaybackBadge({
   transcodeAvailable = true,
   remuxAvailable = true,
   probing = false,
+  waiting = false,
   labelSource = "FILE_METADATA",
   stream = null,
   filenameFallback = false,
@@ -96,10 +98,10 @@ export function renderStreamPlaybackBadge({
   if (!probe && !filenameMode) {
     if (probing) {
       const palette = COLORS.neutral;
-      return `<span class="stream-playback-badge" title="asking the server what this file really is" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(PROBING_LABEL)}</span>`;
+      return `<span class="stream-playback-badge" title="Reading stream metadata" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(PROBING_LABEL)}</span>`;
     }
     const palette = COLORS.neutral;
-    return `<span class="stream-playback-badge" title="waiting for the probe: the text cannot be trusted with codecs" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(UNPROBED_LABEL)}</span>`;
+    return `<span class="stream-playback-badge" title="${waiting && !probeFailed ? "Waiting to read stream metadata" : "Stream metadata unavailable"}" style="position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.2;background:${palette.background};color:${palette.color};">${escapeHtml(waiting && !probeFailed ? WAITING_LABEL : UNPROBED_LABEL)}</span>`;
   }
   const filenameStream = stream || { url, description: label };
   const result = filenameMode

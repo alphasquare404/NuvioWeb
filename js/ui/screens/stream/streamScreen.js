@@ -2807,6 +2807,7 @@ export const StreamScreen = {
         ? renderStreamPlaybackBadge({
             labelSource: labelSettings.playbackLabelSource,
             filenameFallback: labelSettings.metadataFilenameFallback === true,
+            waiting: streamProber.enabled && !this._probeFailed?.has(urlKey),
             probeFailed: this._probeFailed?.has(urlKey) === true,
             fallbackReason: streamProber.failureReason(urlKey),
             stream,
@@ -2895,6 +2896,10 @@ export const StreamScreen = {
               labelSource: StreamBadgeSettingsStore.snapshot().playbackLabelSource,
               filenameFallback:
                 StreamBadgeSettingsStore.snapshot().metadataFilenameFallback === true,
+              waiting:
+                streamProber.enabled &&
+                !this._probeFailed?.has(stream.url || stream.externalUrl || ""),
+              probing: this._probePending?.has(stream.url || stream.externalUrl || "") === true,
               probeFailed: this._probeFailed?.has(stream.url || stream.externalUrl || "") === true,
               fallbackReason: streamProber.failureReason(stream.url || stream.externalUrl || ""),
               stream,

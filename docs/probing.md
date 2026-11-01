@@ -256,3 +256,20 @@ RAM results in the current page; reopen the stream list to refresh its labels.
 Other open tabs should be reloaded after clearing. Pending pre-clear probes
 cannot repopulate the cleared cache. CDN URL resolution has its separate
 60-second memory cache described above.
+
+### Client MKV attachments and label progress
+
+For metadata-only client probes, the sparse file view replaces structurally located
+Matroska Attachments headers with equivalent EBML Void headers. The file offsets
+and every track/media byte are preserved; font/artwork payloads are skipped, not
+downloaded or replaced with fabricated media. The parser uses bounded Segment and
+SeekHead traversal and never searches arbitrary packet contents. Other containers
+and unrecognized/malformed layouts keep the existing probe behavior and budgets.
+This view is confined to ffprobe: playback and embedded text subtitle readers
+continue to read the original source. The download cap remains 13 MiB.
+
+Both server and client metadata labels distinguish Waiting (not yet checked),
+Checking (owned pending probe work), and Unknown (failed/unavailable metadata).
+Successful metadata replaces those statuses with the playback method. The optional
+filename fallback remains a user preference; these changes never enable it.
+Cold client WASM initialization still takes time independently of media reads.

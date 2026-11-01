@@ -1,3 +1,4 @@
+import { probeMatroskaPatches } from "./probeMatroskaView.js";
 import { normalizeProbe } from "./probeMetadata.js";
 import { installProbeSparseFile } from "./probeSparseFile.js";
 
@@ -33,6 +34,7 @@ async function runProbe() {
       {
         size: job.size,
         chunks: job.chunks,
+        patches: probeMatroskaPatches(job.size, job.chunks),
         onMissing: (position) => {
           missing ??= position;
         }

@@ -15986,6 +15986,8 @@ export const PlayerScreen = {
     return renderStreamPlaybackBadge({
       labelSource: labels.playbackLabelSource,
       filenameFallback: labels.metadataFilenameFallback === true,
+      waiting:
+        PROBE_MODE !== "off" && !this._playerListProbeFailed?.has(playerStreamProbeKey(stream)),
       probeFailed: this._playerListProbeFailed?.has(playerStreamProbeKey(stream)) === true,
       fallbackReason: this._playerListProber?.failureReason(stream.url || stream.externalUrl || ""),
       stream,

@@ -1,6 +1,10 @@
 // A seekable virtual file backed only by the ranges ffprobe actually requests.
 // Missing bytes are errors, never zero-filled invented media or full-file buffers.
-export function installProbeSparseFile(FS, { size, chunks, onMissing }, path = "/probe-input") {
+export function installProbeSparseFile(
+  FS,
+  { size, chunks, onMissing, patches = [] },
+  path = "/probe-input"
+) {
   const node = FS.createNode(FS.root, path.slice(1), 0o100444, 0);
   node.node_ops = {
     getattr: () => ({
@@ -36,6 +40,15 @@ export function installProbeSparseFile(FS, { size, chunks, onMissing }, path = "
         const from = at - chunk.start,
           count = Math.min(wanted - copied, chunk.bytes.length - from);
         buffer.set(chunk.bytes.subarray(from, from + count), offset + copied);
+        for (const patch of patches) {
+          const start = Math.max(at, patch.start);
+          const end = Math.min(at + count, patch.start + patch.bytes.length);
+          if (end > start)
+            buffer.set(
+              patch.bytes.subarray(start - patch.start, end - patch.start),
+              offset + copied + start - at
+            );
+        }
         copied += count;
       }
       return copied;

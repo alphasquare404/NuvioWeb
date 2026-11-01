@@ -96,7 +96,7 @@ test("an estimate says so, an exact probe does not", () => {
     capabilities: ALL
   });
   assert.match(estimate, />Unknown</);
-  assert.match(estimate, /waiting for the probe/);
+  assert.match(estimate, /Stream metadata unavailable/);
 
   const exact = renderStreamPlaybackBadge({
     url: "https://cdn/a.mkv",
@@ -263,4 +263,26 @@ test("fallback marker replaces the visible estimate suffix; ordinary filename la
   assert.match(fallback, /labelFallbackReason/);
   assert.doesNotMatch(fallback, /\(estimate\)/);
   assert.match(renderStreamPlaybackBadge({ ...options, labelSource: "FILE_NAME" }), /\(estimate\)/);
+});
+
+test("metadata labels distinguish waiting, checking and failed without enabling filename estimates", () => {
+  const args = {
+    url: "https://cdn/a.mkv",
+    label: "AVC AAC",
+    capabilities: ALL,
+    filenameFallback: false,
+    waiting: true
+  };
+  assert.match(renderStreamPlaybackBadge(args), />Waiting…</);
+  assert.match(renderStreamPlaybackBadge({ ...args, probing: true }), />Checking…</);
+  const failure = renderStreamPlaybackBadge({ ...args, probeFailed: true });
+  assert.match(failure, />Unknown</);
+  assert.doesNotMatch(failure, /Waiting|Checking|Remux|estimated/);
+  assert.match(
+    renderStreamPlaybackBadge({
+      ...args,
+      probe: { container: "mkv", videoCodec: "h264", audioCodec: "aac" }
+    }),
+    />Remux</
+  );
 });

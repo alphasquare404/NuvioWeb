@@ -1144,7 +1144,7 @@ test("enabled probing alone does not leave idle or failed cards Checking forever
     const stream = screen.streams[0];
     let html = screen.renderStreamCard(stream, 0);
     assert.doesNotMatch(html, /Checking/);
-    assert.match(html, />Unknown</);
+    assert.match(html, />Waiting…</);
     screen._probePending.add(stream.url);
     html = screen.renderStreamCard(stream, 0);
     assert.match(html, /Checking/);
