@@ -15,8 +15,14 @@ const LABELS = {
   unknown: ["Unknown", "neutral"]
 };
 export function renderFilenamePlaybackBadge(stream, settings = {}, capabilities = null) {
-  if (settings?.showPlaybackLabels === false) return "";
   const { method } = classifyStreamFilename(stream, capabilities);
+  return renderFilenamePlaybackMethodBadge(method, settings);
+}
+
+// Also used by Settings to illustrate each label without claiming a real file
+// needs that method on the current device.
+export function renderFilenamePlaybackMethodBadge(method, settings = {}) {
+  if (settings?.showPlaybackLabels === false) return "";
   const [label, tone] = LABELS[method] || LABELS.unknown;
   const description = label + ". " + FILENAME_ESTIMATE_NOTICE;
   return `<span class="stream-route-stream-badge filename-playback-badge tone-${tone}" title="${escape(description)}" aria-label="${escape(description)}">${label} <span class="filename-playback-estimate">≈</span></span>`;

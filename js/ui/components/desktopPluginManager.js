@@ -17,6 +17,7 @@ function createSourceId() {
 
 export function createDesktopPluginManager({ requestRender } = {}) {
   const state = {
+    formOpen: false,
     isLoading: false,
     pluginsEnabled: false,
     sources: [],
@@ -62,8 +63,7 @@ export function createDesktopPluginManager({ requestRender } = {}) {
       let synced = true;
       do {
         state.syncPending = false;
-        synced =
-          (await PluginSyncService.push({ automatic: true })) && synced;
+        synced = (await PluginSyncService.push({ automatic: true })) && synced;
       } while (state.syncPending);
       return synced;
     };
@@ -104,6 +104,7 @@ export function createDesktopPluginManager({ requestRender } = {}) {
         enabled: true
       });
       state.sourceName = "";
+      state.formOpen = false;
       state.sourceUrlTemplate = "";
       loadSources();
       setStatus(`${name} saved locally.`);
@@ -131,7 +132,9 @@ export function createDesktopPluginManager({ requestRender } = {}) {
     const before = PluginManager.listPluginSources();
     PluginManager.setPluginSourceEnabled(sourceId, source.enabled === false);
     loadSources();
-    setStatus(`${source.name || "Plugin source"} ${source.enabled === false ? "enabled" : "disabled"} locally.`);
+    setStatus(
+      `${source.name || "Plugin source"} ${source.enabled === false ? "enabled" : "disabled"} locally.`
+    );
     await rerender();
     PluginSyncService.recordLocalMutation(null, before, PluginManager.listPluginSources());
     await syncSources(before);
@@ -197,6 +200,10 @@ export function createDesktopPluginManager({ requestRender } = {}) {
   };
 
   return {
+    get count() {
+      return PluginManager.listPluginSources().length;
+    },
+
     async load() {
       state.isLoading = true;
       await rerender();
@@ -241,6 +248,8 @@ export function createDesktopPluginManager({ requestRender } = {}) {
               <span class="desktop-plugin-count">${state.sources.length} sources</span>
             </div>
             ${state.statusMessage ? `<p class="desktop-plugin-status${statusClass}" role="status">${escapeHtml(state.statusMessage)}</p>` : ""}
+            <details class="settings-manager-add" data-plugin-add-disclosure ${state.formOpen || state.addError ? "open" : ""}>
+            <summary class="settings-manager-add-trigger">+ Add Source</summary>
             <form class="desktop-plugin-form" data-plugin-form>
               <div class="desktop-plugin-form-fields">
                 <div class="desktop-plugin-field">
@@ -258,6 +267,7 @@ export function createDesktopPluginManager({ requestRender } = {}) {
               <p class="desktop-plugin-template-help">Available variables: <code>{tmdbId}</code>, <code>{mediaType}</code>, <code>{season}</code>, <code>{episode}</code></p>
               ${state.addError ? `<p class="desktop-plugin-form-message is-error" role="alert">${escapeHtml(state.addError)}</p>` : ""}
             </form>
+            </details>
             <div class="desktop-plugin-source-list">${sources}</div>
           </section>
           ${renderConfirmation()}
@@ -266,6 +276,11 @@ export function createDesktopPluginManager({ requestRender } = {}) {
     },
 
     bind(container) {
+      container
+        .querySelector("[data-plugin-add-disclosure]")
+        ?.addEventListener("toggle", (event) => {
+          state.formOpen = event.currentTarget.open;
+        });
       container.querySelector("[data-plugin-name]")?.addEventListener("input", (event) => {
         state.sourceName = String(event.target?.value || "");
         state.addError = "";
@@ -282,7 +297,10 @@ export function createDesktopPluginManager({ requestRender } = {}) {
         void setPluginsEnabled(Boolean(event.target?.checked));
       });
       container.querySelectorAll("[data-plugin-source-toggle]").forEach((node) => {
-        node.addEventListener("change", () => void setSourceEnabled(state.sources[Number(node.dataset.pluginSourceToggle || -1)]));
+        node.addEventListener(
+          "change",
+          () => void setSourceEnabled(state.sources[Number(node.dataset.pluginSourceToggle || -1)])
+        );
       });
       container.querySelectorAll("[data-plugin-source-remove]").forEach((node) => {
         node.addEventListener("click", () => {
@@ -294,13 +312,17 @@ export function createDesktopPluginManager({ requestRender } = {}) {
         state.removeTarget = null;
         void rerender();
       });
-      container.querySelector("[data-plugin-remove-confirm]")?.addEventListener("click", () => void confirmRemove());
-      container.querySelector("[data-plugin-dialog-backdrop]")?.addEventListener("click", (event) => {
-        if (event.target === event.currentTarget) {
-          state.removeTarget = null;
-          void rerender();
-        }
-      });
+      container
+        .querySelector("[data-plugin-remove-confirm]")
+        ?.addEventListener("click", () => void confirmRemove());
+      container
+        .querySelector("[data-plugin-dialog-backdrop]")
+        ?.addEventListener("click", (event) => {
+          if (event.target === event.currentTarget) {
+            state.removeTarget = null;
+            void rerender();
+          }
+        });
     },
 
     async handleKeyDown(event) {

@@ -152,7 +152,7 @@ export const ThemeManager = {
   apply() {
     const theme = ThemeStore.get();
     const colors = {
-      ...ThemeColors.getPalette(theme.themeName)
+      ...ThemeColors.getPalette(theme.themeName, theme.accentColor)
     };
     if (theme.amoledMode) {
       colors["--bg-color"] = "#000000";

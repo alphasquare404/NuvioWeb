@@ -1,3 +1,4 @@
+import { normalizeAccentColor } from "../../core/theme/accentColor.js";
 import { createProfileScopedStore } from "./profileScopedStore.js";
 
 const KEY = "themeSettings";
@@ -6,6 +7,7 @@ const DEFAULT_THEME = {
   mode: "dark",
   themeName: "WHITE",
   accentColor: "#ffffff",
+  customAccentColor: "#1e88e5",
   fontFamily: "INTER",
   language: null,
   amoledMode: false,
@@ -43,10 +45,10 @@ export function accentColorForTheme(themeName) {
   return String(ACCENT_BY_THEME[normalizedThemeName] || DEFAULT_THEME.accentColor).toLowerCase();
 }
 
-function normalizeTheme(settings = {}) {
+export function normalizeTheme(settings = {}) {
   const accent = String(settings?.accentColor || DEFAULT_THEME.accentColor).toLowerCase();
   const storedThemeName = String(settings?.themeName || DEFAULT_THEME.themeName).toUpperCase();
-  const themeFromAccent = THEME_BY_ACCENT.get(accent);
+  const themeFromAccent = storedThemeName === "CUSTOM" ? null : THEME_BY_ACCENT.get(accent);
   const themeName = String(
     themeFromAccent && themeFromAccent !== storedThemeName
       ? themeFromAccent
@@ -60,7 +62,16 @@ function normalizeTheme(settings = {}) {
     ...DEFAULT_THEME,
     ...settings,
     themeName,
-    accentColor: normalizedAccent,
+    accentColor:
+      themeName === "CUSTOM"
+        ? normalizeAccentColor(settings.accentColor) ||
+          normalizeAccentColor(settings.customAccentColor) ||
+          DEFAULT_THEME.customAccentColor
+        : normalizedAccent,
+    customAccentColor:
+      normalizeAccentColor(settings.customAccentColor) ||
+      (themeName === "CUSTOM" ? normalizeAccentColor(settings.accentColor) : null) ||
+      DEFAULT_THEME.customAccentColor,
     settingsUiStyle: ["CLASSIC", "HORIZON", "ZEN"].includes(
       String(settings?.settingsUiStyle || "").toUpperCase()
     )

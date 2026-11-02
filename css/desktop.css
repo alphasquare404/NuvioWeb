@@ -22833,3 +22833,1127 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
     flex: none;
   }
 }
+
+/* Settings content only. Page Back, heading, navigation and background keep
+   their existing rules above. TV never enters this browser-only scope. */
+.desktop-browser .settings-shell .settings-playback-content {
+  max-width: 960px;
+  padding: 0;
+  margin: 0;
+}
+.desktop-browser .settings-shell .settings-playback-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 28px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+.desktop-browser .settings-shell .settings-playback-tab {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  min-height: 42px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.desktop-browser .settings-shell .settings-playback-tab[aria-selected="true"] {
+  background: var(--text-color);
+  color: var(--bg-color, #101010);
+}
+.desktop-browser .settings-shell .settings-playback-topic-heading {
+  display: none;
+}
+.desktop-browser .settings-shell .settings-playback-topic-panel[hidden] {
+  display: none !important;
+}
+.desktop-browser .settings-shell .settings-playback-topic-panel {
+  padding: 0;
+  min-width: 0;
+}
+.desktop-browser .settings-shell .settings-playback-topic-panel .settings-stack {
+  gap: 0;
+}
+.desktop-browser .settings-shell .settings-playback-content .settings-action-row {
+  min-width: 0;
+  min-height: 64px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border-color);
+  padding: 16px 0;
+  gap: 16px;
+}
+.desktop-browser .settings-shell .settings-playback-content .settings-action-row:focus-visible,
+.desktop-browser .settings-shell .settings-playback-topic-heading:focus-visible,
+.desktop-browser .settings-shell .settings-playback-tab:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 3px;
+}
+.desktop-browser .settings-shell .settings-playback-content .settings-row-copy {
+  min-width: 0;
+  flex: 1 1 0;
+}
+.desktop-browser .settings-shell .settings-playback-content .settings-row-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.desktop-browser .settings-shell .settings-playback-content .settings-row-subtitle {
+  margin-top: 5px;
+  max-width: 66ch;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: normal;
+}
+.desktop-browser .settings-shell .settings-playback-content .settings-group-title {
+  font-size: 18px;
+}
+.desktop-browser .settings-shell .settings-playback-content .settings-group-heading {
+  margin: 24px 0 8px;
+}
+.desktop-browser .settings-shell .settings-audio-language-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 26px;
+}
+.desktop-browser .settings-shell .settings-audio-language-group > .settings-group-heading {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+.desktop-browser .settings-shell .settings-audio-language-group > .settings-action-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  min-height: 100px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--bg-elevated);
+}
+.desktop-browser .settings-shell .settings-audio-language-group .settings-row-title {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.desktop-browser .settings-shell .settings-audio-language-group .settings-row-tail {
+  justify-content: space-between;
+}
+.desktop-browser .settings-shell .settings-audio-language-group .settings-row-value {
+  color: var(--text-color);
+  font-size: 16px;
+}
+.desktop-browser .settings-shell .settings-field-help {
+  margin: 16px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.desktop-browser .settings-shell .settings-field-help summary {
+  min-height: 44px;
+  padding: 10px 0;
+  cursor: pointer;
+  color: var(--text-color);
+}
+.desktop-browser .settings-shell .settings-field-help p {
+  margin: 8px 0;
+  max-width: 70ch;
+}
+.desktop-browser .settings-shell .settings-filename-filter-warning {
+  margin: 16px 0;
+  padding-left: 12px;
+  border-left: 2px solid #cba667;
+  color: var(--text-color);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.desktop-browser .settings-shell .settings-source-live-preview {
+  max-width: 960px;
+  margin: 20px 0 28px;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--bg-elevated);
+}
+.desktop-browser .settings-shell .settings-live-preview-caption {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.desktop-browser .settings-shell .settings-live-preview-note {
+  color: var(--text-secondary);
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card {
+  margin: 0;
+  padding: 14px 0;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 0;
+  background: transparent;
+}
+.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card:last-child {
+  border-bottom: 0;
+}
+.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card-copy {
+  min-width: 0;
+}
+.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card-heading,
+.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card-line {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card-heading {
+  font-size: 14px;
+}
+.desktop-browser .settings-shell .settings-subtitle-live-preview {
+  position: relative;
+  isolation: isolate;
+  aspect-ratio: 16 / 9;
+  width: min(100%, 680px);
+  margin: 0 0 26px;
+  overflow: hidden;
+  border-radius: 16px;
+  color: #fff;
+  background: linear-gradient(165deg, #4b4e55 0%, #68616a 44%, #2f3139 45%, #12191c 100%);
+}
+.desktop-browser .settings-shell .settings-subtitle-live-preview::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(transparent 35%, #000b);
+  z-index: -1;
+}
+.desktop-browser .settings-shell .settings-subtitle-live-preview .settings-live-preview-caption {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  right: 16px;
+  color: #f5f5f5;
+}
+.desktop-browser .settings-shell .settings-subtitle-live-sample {
+  position: absolute;
+  bottom: var(--preview-bottom);
+  left: 7%;
+  right: 7%;
+  text-align: center;
+  font-size: var(--preview-size);
+  font-weight: var(--preview-weight);
+  color: var(--preview-text);
+  background: var(--preview-background);
+  text-shadow: -1px -1px 0 var(--preview-outline), 1px -1px 0 var(--preview-outline), -1px 1px 0 var(--preview-outline), 1px 1px 0 var(--preview-outline);
+  line-height: 1.4;
+}
+.desktop-browser .settings-shell .settings-live-preview-progress {
+  position: absolute;
+  bottom: 20px;
+  left: 16px;
+  right: 16px;
+  height: 2px;
+  background: #ffffff40;
+}
+.desktop-browser .settings-shell .settings-live-preview-progress::before {
+  content: "";
+  display: block;
+  width: 22%;
+  height: 100%;
+  background: #fff;
+}
+@media (max-width: 959px) {
+  .desktop-browser .settings-shell .settings-playback-tabs {
+    display: none;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic {
+    border-bottom: 1px solid var(--border-color);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    min-height: 76px;
+    padding: 16px 0;
+    background: transparent;
+    border: 0;
+    color: var(--text-color);
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-title,
+  .desktop-browser .settings-shell .settings-playback-topic-summary {
+    display: block;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-summary {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-top: 5px;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic.is-open .settings-playback-topic-chevron {
+    transform: rotate(180deg);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-panel {
+    padding: 12px 0 26px;
+  }
+  .desktop-browser .settings-shell .settings-playback-content .settings-action-row:not(.settings-toggle-row) {
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .desktop-browser .settings-shell .settings-playback-content .settings-action-row:not(.settings-toggle-row) > .settings-row-copy {
+    flex-basis: 100%;
+  }
+  .desktop-browser .settings-shell .settings-playback-content .settings-action-row:not(.settings-toggle-row) > .settings-row-tail {
+    width: 100%;
+    max-width: none;
+    justify-content: space-between;
+    flex-shrink: 1;
+  }
+  .desktop-browser .settings-shell .settings-playback-content .settings-row-value {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .desktop-browser .settings-shell .settings-playback-content .settings-toggle-row > .settings-row-copy {
+    flex: 1 1 0;
+  }
+  .desktop-browser .settings-shell .settings-playback-content .settings-toggle-row > .settings-row-tail {
+    flex: 0 0 auto;
+  }
+  .desktop-browser .settings-shell .settings-source-live-preview {
+    padding: 16px;
+  }
+}
+
+/* Keep language labels and values on separate lines on narrow cards. */
+.desktop-browser .settings-shell .settings-playback-content .settings-audio-language-group > .settings-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: space-between;
+}
+.desktop-browser .settings-shell .settings-playback-content .settings-audio-language-group .settings-row-copy,
+.desktop-browser .settings-shell .settings-playback-content .settings-audio-language-group .settings-row-tail {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Selected mobile/tablet treatment: separate accordion cards. */
+@media (max-width: 959px) {
+  .desktop-browser .settings-shell .settings-playback-topic {
+    margin-bottom: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    background: var(--bg-elevated);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic.is-open {
+    border-color: var(--text-secondary);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-heading {
+    min-height: 82px;
+    padding: 18px 16px;
+    gap: 14px;
+    border-radius: 18px;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    border-radius: 12px;
+    background: var(--bg-color);
+    color: var(--text-secondary);
+    font-size: 21px;
+    line-height: 1;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic.is-open .settings-playback-topic-icon {
+    background: var(--text-color);
+    color: var(--bg-color);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-copy {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-chevron {
+    flex: 0 0 auto;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-panel {
+    padding: 0 16px 20px;
+  }
+  .desktop-browser .settings-shell .settings-playback-content .settings-audio-language-group {
+    gap: 10px;
+  }
+  .desktop-browser .settings-shell .settings-playback-content .settings-audio-language-group > .settings-action-row {
+    padding: 14px 10px;
+    background: var(--bg-color);
+  }
+}
+
+/* Wide Playback uses the page width without changing its heading or shell. */
+@media (min-width: 960px) {
+  .desktop-browser .settings-shell .settings-playback-content {
+    width: 100%;
+    max-width: 1400px;
+    margin-inline: auto;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-panel > .settings-stack {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    align-items: stretch;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-panel > .settings-stack > .settings-action-row {
+    min-height: 112px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--bg-elevated);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-panel > .settings-stack > .settings-group-heading {
+    grid-column: 1 / -1;
+  }
+  .desktop-browser .settings-shell .settings-playback-audio-controls {
+    min-width: 0;
+  }
+}
+@media (min-width: 1200px) {
+  .desktop-browser .settings-shell .settings-playback-topic-panel > .settings-stack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .desktop-browser .settings-shell .settings-playback-topic[data-playback-group="audio"] > .settings-playback-topic-panel,
+  .desktop-browser .settings-shell .settings-playback-topic[data-playback-group="subtitles"] > .settings-playback-topic-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 32px;
+  }
+  .desktop-browser .settings-shell .settings-playback-topic[data-playback-group="subtitles"] > .settings-playback-topic-panel > .settings-stack {
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-panel > .settings-source-live-preview,
+  .desktop-browser .settings-shell .settings-playback-topic-panel > .settings-subtitle-live-preview {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    margin: 0;
+  }
+}
+/* Settings cards borrow a restrained wash from the user's theme accent.
+   Use the secondary token: pointer focus can deliberately clear focus tokens. */
+.desktop-browser .settings-shell {
+  --settings-card-wash: linear-gradient(125deg,
+    rgb(var(--secondary-color-rgb) / 0.09),
+    rgb(var(--secondary-color-rgb) / 0.025));
+  --settings-card-edge: rgb(var(--secondary-color-rgb) / 0.24);
+}
+.desktop-browser .settings-shell .settings-group-card,
+.desktop-browser .settings-shell .settings-subsection-card,
+.desktop-browser .settings-shell .settings-source-live-preview,
+.desktop-browser .settings-shell .settings-audio-language-group > .settings-action-row {
+  background-image: var(--settings-card-wash);
+  border-color: var(--settings-card-edge);
+}
+@media (max-width: 959px) {
+  .desktop-browser .settings-shell .settings-playback-topic {
+    background-image: var(--settings-card-wash);
+    border-color: var(--settings-card-edge);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic.is-open {
+    border-color: rgb(var(--secondary-color-rgb) / 0.65);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic-icon {
+    color: var(--secondary-color);
+    background: rgb(var(--secondary-color-rgb) / 0.12);
+  }
+  .desktop-browser .settings-shell .settings-playback-topic.is-open .settings-playback-topic-icon {
+    color: var(--on-secondary);
+    background: var(--secondary-color);
+  }
+}
+@media (min-width: 960px) {
+  .desktop-browser .settings-shell .settings-playback-topic-panel > .settings-stack > .settings-action-row {
+    background-image: var(--settings-card-wash);
+    border-color: var(--settings-card-edge);
+  }
+}
+/* Only wide browser Settings exposes the index beside its section. Routes,
+   Back and all narrow-page selectors remain in place. */
+@media (min-width: 1024px) {
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-workspace {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 24px;
+    align-items: start;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-sidebar-frame {
+    display: block;
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-content-frame,
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-content {
+    display: contents;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-content-header {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    grid-column: 2;
+    grid-row: 2;
+    min-width: 0;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-sidebar {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 6px;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    overflow: visible;
+    padding: 12px;
+    border: 1px solid var(--settings-card-edge);
+    border-radius: 18px;
+    background: var(--settings-card-wash), var(--bg-elevated);
+    touch-action: auto;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-item {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    padding: 10px 8px;
+    border-radius: 10px;
+    flex: none;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-subtitle,
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-chevron {
+    display: none;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-item.selected {
+    background: rgb(var(--secondary-color-rgb) / 0.14);
+    color: var(--text-color);
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group-title {
+    margin: 14px 8px 6px;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group {
+    gap: 4px;
+  }
+}
+/* Panel navigation stays compact even when the app uses tablet typography. */
+@media (min-width: 1024px) {
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-label {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group-title {
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-icon {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-icon-material {
+    font-size: 18px;
+  }
+}
+@media (min-width: 1024px) {
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-sidebar-frame {
+    position: sticky;
+    top: calc(var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 24px);
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-sidebar {
+    max-height: max(240px, calc(100vh - 210px));
+    max-height: max(240px, calc(100dvh - 210px));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+  }
+}
+/* A height-limited panel scrolls its groups; it must never shrink them. */
+@media (min-width: 1024px) {
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-sidebar > * {
+    flex-shrink: 0;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group {
+    flex: 0 0 auto;
+    height: auto;
+    overflow: visible;
+  }
+  /* The underlying index route also has grouped-card rules. Panel rows use
+     the same geometry on the index route and on a section route. */
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group .settings-nav-item,
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group .settings-nav-item:first-child,
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group .settings-nav-item:last-child {
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group .settings-nav-item + .settings-nav-item {
+    border-top: 0;
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group .settings-nav-item.selected {
+    background: rgb(var(--secondary-color-rgb) / 0.14);
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-group .settings-nav-item:not(.selected):hover {
+    background: rgb(var(--secondary-color-rgb) / 0.07);
+  }
+}
+/* Content & Discovery: one manager workspace, desktop tabs and narrow cards. */
+.desktop-browser .settings-shell .settings-discovery-content {
+  width: 100%;
+  max-width: 1400px;
+  margin-inline: auto;
+  min-width: 0;
+}
+.desktop-browser .settings-shell .settings-discovery-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+.desktop-browser .settings-shell .settings-discovery-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 9px 14px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.desktop-browser .settings-shell .settings-discovery-tab[aria-selected="true"] {
+  color: var(--text-color);
+  background: rgb(var(--secondary-color-rgb) / 0.14);
+  border-color: var(--settings-card-edge);
+}
+.desktop-browser .settings-shell .settings-discovery-count {
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 7px;
+  background: var(--bg-elevated);
+  font-size: 12px;
+  text-align: center;
+}
+.desktop-browser .settings-shell .settings-discovery-heading { display: none; }
+.desktop-browser .settings-shell .settings-discovery-body[hidden] { display: none !important; }
+.desktop-browser .settings-shell .settings-discovery-body { min-width: 0; }
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-section, .desktop-plugin-section) {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-section-heading, .desktop-plugin-section-heading) {
+  margin-bottom: 18px;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-section-heading h2, .desktop-plugin-section-heading h2) {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.4;
+}
+.desktop-browser .settings-shell .settings-manager-add { margin: 0 0 18px; }
+.desktop-browser .settings-shell .settings-manager-add-trigger {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--secondary-color);
+  color: var(--on-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+.desktop-browser .settings-shell .settings-manager-add-trigger::-webkit-details-marker { display: none; }
+.desktop-browser .settings-shell .settings-manager-add[open] > .settings-manager-add-trigger {
+  margin-bottom: 12px;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-form, .desktop-plugin-form, .desktop-collection-add-form) {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--settings-card-edge);
+  border-radius: 12px;
+  background: var(--settings-card-wash), var(--bg-elevated);
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-list, .desktop-plugin-source-list, .desktop-collection-manager-list) {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--settings-card-edge);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--settings-card-wash), var(--bg-elevated);
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-card, .desktop-plugin-source, .desktop-collection-manager-row) {
+  min-width: 0;
+  margin: 0;
+  padding: 18px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-card, .desktop-plugin-source, .desktop-collection-manager-row) + :is(.desktop-addon-card, .desktop-plugin-source, .desktop-collection-manager-row) {
+  border-top: 1px solid var(--border-color);
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-card, .desktop-collection-manager-row) {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-card-copy, .desktop-plugin-source-copy, .desktop-collection-manager-copy) { min-width: 0; }
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-url, .desktop-plugin-source-copy p) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-card h2, .desktop-plugin-source h3, .desktop-collection-manager-row h3) {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-description, .desktop-addon-url, .desktop-plugin-source p, .desktop-collection-manager-row p) {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-card-actions, .desktop-plugin-source-actions, .desktop-collection-manager-actions) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-action, .desktop-plugin-action, .desktop-collection-manager-actions button) {
+  min-height: 40px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-input-row, .desktop-plugin-input-row, .desktop-plugin-form-fields, .desktop-collection-add-form) {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.desktop-browser .settings-shell .settings-discovery-content input { min-width: 0; max-width: 100%; }
+.desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-empty, .desktop-plugin-empty, .desktop-collection-manager-empty) {
+  margin: 0;
+  padding: 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+@media (max-width: 1023px) {
+  .desktop-browser .settings-shell .settings-discovery-tabs { display: none; }
+  .desktop-browser .settings-shell .settings-discovery-topic {
+    margin-bottom: 12px;
+    border: 1px solid var(--settings-card-edge);
+    border-radius: 18px;
+    background: var(--settings-card-wash), var(--bg-elevated);
+  }
+  .desktop-browser .settings-shell .settings-discovery-topic.is-open {
+    border-color: rgb(var(--secondary-color-rgb) / 0.65);
+  }
+  .desktop-browser .settings-shell .settings-discovery-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 86px;
+    padding: 18px 14px;
+    border: 0;
+    border-radius: 18px;
+    color: var(--text-color);
+    background: transparent;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+  }
+  .desktop-browser .settings-shell .settings-discovery-icon {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    border-radius: 11px;
+    background: rgb(var(--secondary-color-rgb) / 0.12);
+    color: var(--secondary-color);
+    font-size: 20px;
+  }
+  .desktop-browser .settings-shell .settings-discovery-copy { flex: 1; min-width: 0; }
+  .desktop-browser .settings-shell .settings-discovery-title { display: block; font-size: 15px; font-weight: 600; }
+  .desktop-browser .settings-shell .settings-discovery-summary { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 12px; }
+  .desktop-browser .settings-shell .settings-discovery-chevron { flex: 0 0 auto; }
+  .desktop-browser .settings-shell .settings-discovery-topic.is-open .settings-discovery-chevron { transform: rotate(180deg); }
+  .desktop-browser .settings-shell .settings-discovery-body { padding: 0 14px 18px; }
+  .desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-card, .desktop-collection-manager-row) {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 8px;
+    padding: 16px 12px;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-card-actions, .desktop-collection-manager-actions) {
+    grid-column: 2;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-plugin-source {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-action, .desktop-plugin-action, .desktop-collection-manager-actions button) { min-height: 44px; }
+  .desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-input-row, .desktop-plugin-input-row, .desktop-collection-add-form) { flex-direction: column; align-items: stretch; }
+  .desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-input, .desktop-plugin-input, .desktop-collection-add-form input) { font-size: 16px; width: 100%; }
+  .desktop-browser .settings-shell .settings-discovery-content :is(.desktop-addon-section-heading h2, .desktop-plugin-section-heading h2) { font-size: 16px; }
+}
+.desktop-browser .settings-shell .settings-discovery-content .desktop-plugin-master {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-color: var(--settings-card-edge);
+  background: var(--settings-card-wash), var(--bg-elevated);
+}
+.desktop-browser .settings-shell .settings-discovery-content .desktop-plugin-master > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.desktop-browser .settings-shell .settings-discovery-content .desktop-plugin-master h2 {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.desktop-browser .settings-shell .settings-discovery-content .desktop-plugin-master p {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.desktop-browser .settings-shell .settings-discovery-content .desktop-plugin-master-toggle {
+  flex: 0 0 auto;
+}
+/* Narrow Addons rows reserve the drag target's actual width. Names and
+   long addon versions wrap independently instead of competing for one line. */
+@media (max-width: 1023px) {
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-section-heading h2,
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-count {
+    display: none;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-section-heading {
+    margin-bottom: 12px;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-section-heading p {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-card {
+    grid-template-columns: 44px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 12px;
+    padding: 16px 12px;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-drag-handle {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    margin: 0;
+    border: 0;
+    background: transparent;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-card-heading {
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-card h2 {
+    flex: 0 0 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-version {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-description {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+    line-height: 1.5;
+    margin-top: 6px;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-card-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    margin-top: 2px;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-toggle {
+    min-width: 0;
+    justify-self: start;
+    gap: 6px;
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-toggle-label {
+    font-size: 12px;
+  }
+}
+@media (max-width: 360px) {
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-card-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .desktop-browser .settings-shell .settings-discovery-content .desktop-addon-toggle {
+    grid-column: 1 / -1;
+  }
+}
+/* Layout topics: scoped to browser settings content; outer navigation stays shared. */
+.desktop-browser .settings-shell .settings-layout-content { max-width:1400px; width:100%; min-width:0; margin-inline:auto; }
+.desktop-browser .settings-shell .settings-layout-topic-tabs { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:16px; margin-bottom:24px; border-bottom:1px solid var(--settings-card-edge); }
+.desktop-browser .settings-shell .settings-layout-topic-tab { border:1px solid transparent; border-radius:12px; padding:12px 16px; background:transparent; color:var(--text-secondary); font:inherit; font-size:14px; cursor:pointer; }
+.desktop-browser .settings-shell .settings-layout-topic-tab[aria-selected="true"] { color:var(--text-color); background:rgb(var(--secondary-color-rgb) / .16); border-color:var(--settings-card-edge); }
+.desktop-browser .settings-shell .settings-layout-topic-heading { display:none; }
+.desktop-browser .settings-shell .settings-layout-topic-body[hidden] { display:none !important; }
+.desktop-browser .settings-shell .settings-layout-topic-body { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; align-items:start; }
+.desktop-browser .settings-shell .settings-layout-topic-controls { min-width:0; }
+.desktop-browser .settings-shell .settings-layout-topic-controls .settings-stack { min-width:0; }
+.desktop-browser .settings-shell .settings-layout-range { padding:18px 0; border-bottom:1px solid var(--settings-card-edge); }
+.desktop-browser .settings-shell .settings-layout-range label { display:flex; gap:16px; justify-content:space-between; align-items:center; font-size:14px; font-weight:600; }
+.desktop-browser .settings-shell .settings-layout-range output { color:var(--secondary-color); font-variant-numeric:tabular-nums; }
+.desktop-browser .settings-shell .settings-layout-range input { display:block; width:100%; height:44px; margin:4px 0 0; accent-color:var(--secondary-color); cursor:pointer; }
+.desktop-browser .settings-shell .settings-layout-content :is(button,input):focus-visible { outline:2px solid var(--secondary-color); outline-offset:3px; }
+.desktop-browser .settings-shell .settings-layout-live-preview { min-width:0; padding:20px; border:1px solid var(--settings-card-edge); border-radius:18px; background:var(--settings-card-wash),var(--bg-elevated); overflow:hidden; }
+.desktop-browser .settings-shell .settings-layout-live-caption { color:var(--text-secondary); font-size:11px; line-height:1.5; margin-bottom:18px; }
+.desktop-browser .settings-shell .settings-layout-example-caption { color:var(--text-secondary); font-size:12px; margin:14px 0; }
+.desktop-browser .settings-shell .settings-layout-example-hero { display:flex; align-items:end; min-height:130px; padding:16px; border-radius:12px; background:linear-gradient(135deg,rgb(var(--secondary-color-rgb) / .45),rgb(var(--secondary-color-rgb) / .06)); font-size:18px; font-weight:600; }
+.desktop-browser .settings-shell .settings-layout-example-posters { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.desktop-browser .settings-shell .settings-layout-example-poster { display:flex; align-items:end; aspect-ratio:2/3; min-width:0; padding:10px; border-radius:10px; background:linear-gradient(155deg,rgb(var(--secondary-color-rgb) / .5),rgb(var(--secondary-color-rgb) / .08)); font-size:11px; }
+.desktop-browser .settings-shell .settings-layout-example-poster:nth-child(2) { background:linear-gradient(155deg,#586a75,#152c38); }
+.desktop-browser .settings-shell .settings-layout-example-poster:nth-child(3) { background:linear-gradient(155deg,#7b6970,#2c2330); }
+.desktop-browser .settings-shell .settings-layout-example-poster[data-example-depth="true"] { box-shadow:inset 0 2px 0 rgb(255 255 255 / var(--preview-edge)),inset 0 var(--preview-coverage) 28px rgb(255 255 255 / var(--preview-sheen)); }
+.desktop-browser .settings-shell .settings-layout-example-posters[data-orientation="landscape"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.desktop-browser .settings-shell .settings-layout-example-posters[data-orientation="landscape"] .settings-layout-example-poster { aspect-ratio:16/9; }
+.desktop-browser .settings-shell .settings-layout-example-posters[data-orientation="landscape"] .settings-layout-example-poster:last-child { display:none; }
+.desktop-browser .settings-shell .settings-layout-example-posters[data-orientation="source"] .settings-layout-example-poster:nth-child(2) { aspect-ratio:3/4; align-self:end; }
+.desktop-browser .settings-shell .settings-layout-example-continue { margin-top:16px; }
+.desktop-browser .settings-shell .settings-layout-example-art { width:100%; aspect-ratio:16/9; border-radius:10px; background:linear-gradient(35deg,#24343f,rgb(var(--secondary-color-rgb) / .6),#6c6a7a); }
+.desktop-browser .settings-shell .settings-layout-example-art.is-poster { width:38%; aspect-ratio:2/3; }
+.desktop-browser .settings-shell .settings-layout-example-card-copy { font-size:12px; margin-top:10px; }
+.desktop-browser .settings-shell .settings-layout-example-progress { height:3px; margin-top:8px; background:rgb(255 255 255 / .15); }
+.desktop-browser .settings-shell .settings-layout-example-progress span { display:block; height:100%; width:46%; background:var(--secondary-color); }
+.desktop-browser .settings-shell .settings-layout-example-trailer { display:inline-block; padding:8px 12px; border:1px solid var(--settings-card-edge); border-radius:8px; font-size:12px; }
+.desktop-browser .settings-shell .settings-layout-example-episode { display:flex; align-items:center; gap:12px; margin-top:16px; font-size:12px; }
+.desktop-browser .settings-shell .settings-layout-example-episode-art { display:block; flex:0 0 90px; aspect-ratio:16/9; border-radius:6px; background:linear-gradient(30deg,#304654,rgb(var(--secondary-color-rgb) / .6),#918278); }
+.desktop-browser .settings-shell .settings-layout-live-preview .is-blurred { filter:blur(7px); }
+@media (min-width:1280px) {
+ .desktop-browser .settings-shell .settings-layout-topic-body:has(.settings-layout-live-preview) { grid-template-columns:minmax(0,1.55fr) minmax(260px,1fr); gap:32px; }
+ .desktop-browser .settings-shell .settings-layout-live-preview { position:sticky; top:24px; }
+}
+@media (max-width:1023px) {
+ .desktop-browser .settings-shell .settings-layout-topic-tabs { display:none; }
+ .desktop-browser .settings-shell .settings-layout-topic { border:1px solid var(--settings-card-edge); border-radius:18px; margin-bottom:12px; background:var(--settings-card-wash),var(--bg-elevated); }
+ .desktop-browser .settings-shell .settings-layout-topic.is-open { border-color:rgb(var(--secondary-color-rgb) / .65); }
+ .desktop-browser .settings-shell .settings-layout-topic-heading { display:flex; align-items:center; gap:12px; width:100%; min-height:86px; padding:18px 14px; border:0; border-radius:18px; color:var(--text-color); background:transparent; text-align:left; font:inherit; cursor:pointer; }
+ .desktop-browser .settings-shell .settings-layout-topic-icon { display:grid; place-items:center; flex:0 0 36px; width:36px; height:36px; border-radius:11px; background:rgb(var(--secondary-color-rgb) / .12); color:var(--secondary-color); font-size:20px; }
+ .desktop-browser .settings-shell .settings-layout-topic-copy { flex:1; min-width:0; }
+ .desktop-browser .settings-shell .settings-layout-topic-title { display:block; font-size:15px; font-weight:600; }
+ .desktop-browser .settings-shell .settings-layout-topic-summary { display:block; margin-top:3px; color:var(--text-secondary); font-size:12px; }
+ .desktop-browser .settings-shell .settings-layout-topic-chevron { flex:0 0 auto; }
+ .desktop-browser .settings-shell .settings-layout-topic.is-open .settings-layout-topic-chevron { transform:rotate(180deg); }
+ .desktop-browser .settings-shell .settings-layout-topic-body { padding:0 14px 18px; gap:18px; }
+ .desktop-browser .settings-shell .settings-layout-live-preview { grid-row:1; padding:16px; }
+ .desktop-browser .settings-shell .settings-layout-topic-controls .settings-row { flex-wrap:wrap; gap:12px; }
+ .desktop-browser .settings-shell .settings-layout-topic-controls .settings-row-main { min-width:0; }
+}
+.desktop-browser .settings-shell .settings-layout-content .settings-layout-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.desktop-browser .settings-shell .settings-layout-content .settings-layout-card { min-height:140px; padding:10px; }
+.desktop-browser .settings-shell .settings-layout-content .settings-layout-preview { height:90px; }
+.desktop-browser .settings-shell .settings-layout-content .settings-layout-name { font-size:13px; }
+@media (max-width:600px) {
+ .desktop-browser .settings-shell .settings-layout-content .settings-layout-grid { grid-template-columns:minmax(0,1fr); }
+ .desktop-browser .settings-shell .settings-layout-content .settings-layout-card { display:grid; grid-template-columns:110px minmax(0,1fr); align-items:center; min-height:92px; gap:14px; text-align:left; }
+ .desktop-browser .settings-shell .settings-layout-content .settings-layout-preview { height:70px; width:110px; }
+ .desktop-browser .settings-shell .settings-layout-topic-controls .settings-row-copy { min-width:0; }
+ .desktop-browser .settings-shell .settings-layout-topic-controls .settings-action-row:not(.settings-toggle-row) { flex-wrap:wrap; }
+ .desktop-browser .settings-shell .settings-layout-topic-controls .settings-action-row:not(.settings-toggle-row) .settings-row-copy { flex-basis:100%; }
+ .desktop-browser .settings-shell .settings-layout-topic-controls .settings-action-row:not(.settings-toggle-row) .settings-row-tail { width:100%; justify-content:space-between; }
+}
+/* Browser Integrations: preserve native controls and dialogs within service groups. */
+.desktop-browser .settings-shell .settings-integration-content { width:100%; max-width:1400px; min-width:0; margin-inline:auto; }
+.desktop-browser .settings-shell .settings-integration-services { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:28px; }
+.desktop-browser .settings-shell .settings-integration-service { display:flex; align-items:start; gap:12px; padding:18px 14px; min-width:0; border:1px solid var(--settings-card-edge); border-radius:16px; background:var(--settings-card-wash),var(--bg-elevated); color:var(--text-color); text-align:left; font:inherit; cursor:pointer; }
+.desktop-browser .settings-shell .settings-integration-service[aria-pressed="true"] { border-color:var(--secondary-color); background:linear-gradient(rgb(var(--secondary-color-rgb) / .14),rgb(var(--secondary-color-rgb) / .14)),var(--bg-elevated); }
+.desktop-browser .settings-shell .settings-integration-icon { display:grid; place-items:center; flex:0 0 34px; width:34px; height:34px; border-radius:10px; color:var(--secondary-color); background:rgb(var(--secondary-color-rgb) / .12); font-size:20px; }
+.desktop-browser .settings-shell .settings-integration-copy { min-width:0; flex:1; }
+.desktop-browser .settings-shell .settings-integration-name { display:block; font-size:14px; font-weight:600; }
+.desktop-browser .settings-shell .settings-integration-summary { display:block; margin-top:4px; color:var(--text-secondary); font-size:12px; overflow-wrap:anywhere; }
+.desktop-browser .settings-shell .settings-integration-service-mobile { display:none; }
+.desktop-browser .settings-shell .settings-integration-service-body[hidden],
+.desktop-browser .settings-shell .settings-integration-group-body[hidden] { display:none !important; }
+.desktop-browser .settings-shell .settings-integration-topic:not(.is-open) { display:none; }
+.desktop-browser .settings-shell .settings-integration-detail-heading { display:flex; justify-content:space-between; align-items:start; gap:20px; margin-bottom:20px; }
+.desktop-browser .settings-shell .settings-integration-detail-heading h2 { margin:0; font-size:20px; }
+.desktop-browser .settings-shell .settings-integration-detail-heading p { margin:4px 0 0; color:var(--text-secondary); font-size:13px; }
+.desktop-browser .settings-shell .settings-integration-status { flex:0 1 auto; color:var(--text-secondary); font-size:11px; border:1px solid var(--settings-card-edge); border-radius:12px; padding:4px 10px; }
+.desktop-browser .settings-shell .settings-integration-group { min-width:0; padding:20px; margin-bottom:18px; border:1px solid var(--settings-card-edge); border-radius:16px; background:var(--settings-card-wash),var(--bg-elevated); }
+.desktop-browser .settings-shell .settings-integration-group h3 { margin:0 0 12px; font-size:15px; }
+.desktop-browser .settings-shell .settings-integration-hint { color:var(--text-secondary); font-size:12px; line-height:1.5; margin:0 0 14px; }
+.desktop-browser .settings-shell .settings-integration-group .settings-stack { gap:0; min-width:0; }
+.desktop-browser .settings-shell .settings-integration-group .settings-action-row { border:0; border-top:1px solid var(--settings-card-edge); border-radius:0; padding:16px 0; min-width:0; background:transparent; }
+.desktop-browser .settings-shell .settings-integration-group .settings-action-row:first-child { border-top:0; }
+.desktop-browser .settings-shell .settings-integration-group .settings-row-copy { min-width:0; }
+.desktop-browser .settings-shell .settings-integration-group .settings-row-tail { flex-shrink:0; }
+.desktop-browser .settings-shell .settings-integration-group .settings-row-title { font-size:14px; }
+.desktop-browser .settings-shell .settings-integration-group .settings-row-subtitle { font-size:12px; line-height:1.5; }
+.desktop-browser .settings-shell .settings-integration-group .settings-action-row:hover { background:rgb(var(--secondary-color-rgb) / .06); }
+.desktop-browser .settings-shell .settings-integration-group-toggle { width:100%; display:flex; align-items:center; justify-content:space-between; gap:16px; border:0; padding:0; min-height:28px; text-align:left; font:inherit; font-size:15px; font-weight:600; background:transparent; color:var(--text-color); cursor:pointer; }
+.desktop-browser .settings-shell .settings-integration-group-toggle[aria-expanded="true"] { margin-bottom:16px; }
+.desktop-browser .settings-shell .settings-integration-group-toggle[aria-expanded="true"] > span:last-child { transform:rotate(180deg); }
+.desktop-browser .settings-shell .settings-integration-content :is(button):focus-visible { outline:2px solid var(--secondary-color); outline-offset:3px; }
+.desktop-browser .settings-shell .settings-integration-rule { margin-top:20px; min-width:0; }
+.desktop-browser .settings-shell .settings-integration-rule h4 { margin:0 0 8px; font-size:13px; font-weight:600; }
+.desktop-browser .settings-shell .settings-integration-rule-choices { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.desktop-browser .settings-shell .settings-integration-rule-choices .settings-action-row { display:flex; flex-direction:column; align-items:stretch; gap:10px; border-top:1px solid var(--settings-card-edge); }
+.desktop-browser .settings-shell .settings-integration-rule-choices .settings-row-title { font-size:12px; }
+.desktop-browser .settings-shell .settings-integration-rule-choices .settings-row-subtitle { display:none; }
+.desktop-browser .settings-shell .settings-integration-rule-choices .settings-row-tail { justify-content:space-between; }
+@media (min-width:1280px) {
+ .desktop-browser .settings-shell .settings-integration-columns { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px; align-items:start; }
+ .desktop-browser .settings-shell .settings-integration-topic[data-integration-service="debrid"] .settings-integration-columns { grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); }
+}
+@media (min-width:1024px) and (max-width:1279px) {
+ .desktop-browser .settings-shell .settings-integration-services { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:1023px) {
+ .desktop-browser .settings-shell .settings-integration-services { display:none; }
+ .desktop-browser .settings-shell .settings-integration-topic,
+ .desktop-browser .settings-shell .settings-integration-topic:not(.is-open) { display:block; border:1px solid var(--settings-card-edge); border-radius:18px; margin-bottom:12px; background:var(--settings-card-wash),var(--bg-elevated); }
+ .desktop-browser .settings-shell .settings-integration-topic.is-open { border-color:var(--secondary-color); }
+ .desktop-browser .settings-shell .settings-integration-service-mobile { display:flex; align-items:center; width:100%; min-height:86px; border:0; padding:18px 14px; background:transparent; }
+ .desktop-browser .settings-shell .settings-integration-chevron { flex:0 0 auto; }
+ .desktop-browser .settings-shell .settings-integration-topic.is-open .settings-integration-chevron { transform:rotate(180deg); }
+ .desktop-browser .settings-shell .settings-integration-detail-heading { display:none; }
+ .desktop-browser .settings-shell .settings-integration-service-body { padding:0 14px 8px; }
+ .desktop-browser .settings-shell .settings-integration-group { border:0; border-top:1px solid var(--settings-card-edge); border-radius:0; padding:18px 0; margin:0; background:transparent; }
+ .desktop-browser .settings-shell .settings-integration-group-toggle { min-height:44px; }
+ .desktop-browser .settings-shell .settings-integration-group .settings-action-row:not(.settings-toggle-row) { flex-wrap:wrap; gap:10px; }
+ .desktop-browser .settings-shell .settings-integration-group .settings-action-row:not(.settings-toggle-row) .settings-row-copy { flex-basis:100%; }
+ .desktop-browser .settings-shell .settings-integration-group .settings-action-row:not(.settings-toggle-row) .settings-row-tail { width:100%; justify-content:space-between; }
+ .desktop-browser .settings-shell .settings-integration-rule-choices { display:block; }
+ .desktop-browser .settings-shell .settings-integration-rule-choices .settings-row-subtitle { display:block; }
+}
+.desktop-browser .settings-shell .settings-integration-mobile-notice { display:none; }
+@media (max-width:1023px) {
+ .desktop-browser .settings-shell .settings-integration-mobile-notice { display:block; color:var(--text-secondary); margin:0 0 16px; font-size:12px; }
+}
+/* Appearance and Fusion use shared theme-tinted content cards, with the route shell unchanged. */
+.desktop-browser .settings-shell :is(.settings-appearance-content,.settings-fusion-workspace) { width:100%; max-width:1400px; min-width:0; margin-inline:auto; }
+.desktop-browser .settings-shell .settings-design-card { min-width:0; padding:22px; border:1px solid var(--settings-card-edge); border-radius:18px; background:var(--settings-card-wash),var(--bg-elevated); margin-bottom:20px; }
+.desktop-browser .settings-shell .settings-design-card h2 { margin:0 0 8px; font-size:17px; }
+.desktop-browser .settings-shell .settings-design-hint { margin:0 0 18px; color:var(--text-secondary); font-size:12px; line-height:1.6; }
+.desktop-browser .settings-shell .settings-design-card .settings-stack { gap:0; }
+.desktop-browser .settings-shell .settings-design-card .settings-action-row { border:0; border-top:1px solid var(--settings-card-edge); border-radius:0; padding:16px 0; min-width:0; background:transparent; }
+.desktop-browser .settings-shell .settings-design-card .settings-action-row:first-child { border-top:0; }
+.desktop-browser .settings-shell .settings-design-card .settings-row-copy { min-width:0; }
+.desktop-browser .settings-shell .settings-design-card .settings-row-title { font-size:14px; }
+.desktop-browser .settings-shell .settings-design-card .settings-row-subtitle { font-size:12px; line-height:1.5; }
+.desktop-browser .settings-shell .settings-appearance-swatches { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:10px; margin:24px 0; }
+.desktop-browser .settings-shell .settings-appearance-swatches .settings-theme-card { min-width:0; min-height:112px; padding:12px 6px; border-radius:13px; }
+.desktop-browser .settings-shell .settings-appearance-swatches .settings-theme-name { font-size:12px; white-space:normal; }
+.desktop-browser .settings-shell .settings-custom-color-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; border-top:1px solid var(--settings-card-edge); padding:18px 0; }
+.desktop-browser .settings-shell .settings-custom-color-row label { display:flex; align-items:center; gap:16px; font-size:14px; }
+.desktop-browser .settings-shell .settings-custom-color-row input { width:54px; height:44px; padding:4px; border:1px solid var(--settings-card-edge); border-radius:9px; background:var(--bg-elevated); cursor:pointer; }
+.desktop-browser .settings-shell .settings-custom-hex { padding:10px 14px; min-height:44px; border:1px solid var(--settings-card-edge); border-radius:9px; background:var(--bg-elevated); color:var(--text-color); font:inherit; font-size:13px; cursor:pointer; }
+.desktop-browser .settings-shell :is(.settings-custom-hex,[data-appearance-color]):focus-visible { outline:2px solid var(--focus-color); outline-offset:3px; }
+.desktop-browser .settings-shell .settings-fusion-sources .settings-subsection-card { padding:0; margin:0; border:0; background:transparent; }
+.desktop-browser .settings-shell .settings-fusion-sources .settings-collapsible-trigger { padding:0; border:0; }
+.desktop-browser .settings-shell .settings-fusion-sources .settings-collapsible-body { margin-top:20px; }
+.desktop-browser .settings-shell .settings-fusion-source-card { min-width:0; }
+.desktop-browser .settings-shell .settings-fusion-source-copy { min-width:0; overflow-wrap:anywhere; }
+.desktop-browser .settings-shell .settings-fusion-source-actions { flex-wrap:wrap; }
+.desktop-browser .settings-shell .settings-fusion-live-example { min-width:0; }
+.desktop-browser .settings-shell .settings-fusion-live-example .settings-group-card { width:100%; margin:0 0 20px; }
+@media (min-width:1280px) {
+ .desktop-browser .settings-shell .settings-appearance-details { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; align-items:start; }
+ .desktop-browser .settings-shell .settings-fusion-workspace { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0 24px; align-items:start; }
+ .desktop-browser .settings-shell .settings-fusion-live-example { position:sticky; top:24px; }
+ .desktop-browser .settings-shell .settings-fusion-sources { grid-column:1 / -1; }
+}
+@media (max-width:1279px) {
+ .desktop-browser .settings-shell .settings-appearance-swatches { grid-template-columns:repeat(4,minmax(0,1fr)); }
+}
+@media (max-width:1023px) {
+ .desktop-browser .settings-shell .settings-design-card { padding:18px 14px; margin-bottom:14px; }
+ .desktop-browser .settings-shell .settings-fusion-workspace { display:flex; flex-direction:column; }
+ .desktop-browser .settings-shell .settings-fusion-workspace > * { width:100%; }
+ .desktop-browser .settings-shell .settings-fusion-live-example { order:-1; }
+ .desktop-browser .settings-shell .settings-appearance-swatches { gap:8px; }
+ .desktop-browser .settings-shell .settings-appearance-swatches .settings-theme-card { min-height:94px; }
+ .desktop-browser .settings-shell .settings-appearance-swatches .settings-theme-swatch { width:36px; height:36px; }
+ .desktop-browser .settings-shell .settings-appearance-swatches .settings-theme-swatch-wrap { min-height:40px; }
+ .desktop-browser .settings-shell .settings-design-card .settings-action-row:not(.settings-toggle-row) { flex-wrap:wrap; gap:10px; }
+ .desktop-browser .settings-shell .settings-design-card .settings-action-row:not(.settings-toggle-row) .settings-row-copy { flex-basis:100%; }
+ .desktop-browser .settings-shell .settings-design-card .settings-action-row:not(.settings-toggle-row) .settings-row-tail { width:100%; justify-content:space-between; }
+ .desktop-browser .settings-shell .settings-fusion-source-card { display:flex; flex-direction:column; align-items:stretch; gap:14px; }
+ .desktop-browser .settings-shell .settings-fusion-source-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+ .desktop-browser .settings-shell .settings-fusion-source-action { min-height:44px; }
+}
+.desktop-browser .settings-shell .settings-fusion-live-example .settings-source-live-preview { max-width:none; margin:0 0 20px; padding:22px; border:1px solid var(--settings-card-edge); border-radius:18px; background:var(--settings-card-wash),var(--bg-elevated); }
+.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-card { min-height:0; gap:12px; padding:18px 0; }
+.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-card-heading { font-size:14px; line-height:1.5; }
+.desktop-browser .settings-shell .settings-fusion-live-example :is(.stream-route-card-line,.stream-route-card-quality) { font-size:12px; line-height:1.5; margin-top:4px; }
+.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-stream-badge { font-size:11px; min-height:22px; padding:3px 6px; }
+.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-card-side { flex:0 0 44px; max-width:44px; }
+.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-addon-badge { width:32px; height:32px; font-size:12px; }
+.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-addon-name { font-size:10px; overflow-wrap:anywhere; }
