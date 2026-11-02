@@ -7728,6 +7728,9 @@ export const PlayerScreen = {
     overlay.classList.toggle("hidden", hidden);
     overlay.classList.toggle("is-still-watching", Boolean(this.stillWatchingPromptVisible));
     controlsOverlay?.classList.toggle("pause-overlay-active", !hidden);
+    this.container
+      ?.querySelector("#playerUiRoot")
+      ?.classList.toggle("pause-screen-visible", !hidden);
     if (hidden) {
       return;
     }
@@ -7786,7 +7789,7 @@ export const PlayerScreen = {
       <div class="player-pause-overlay-shade"></div>
       <div class="player-pause-overlay-content">
         <div class="player-pause-kicker">${escapeHtml(t("pause_you_are_watching", {}, "You're watching"))}</div>
-        ${meta.logoUrl ? `<img class="player-pause-logo" src="${escapeAttribute(meta.logoUrl)}" alt="${escapeAttribute(meta.title)}" />` : `<div class="player-pause-title">${escapeHtml(meta.title)}</div>`}
+        ${meta.logoUrl ? `<img class="player-pause-logo" src="${escapeAttribute(meta.logoUrl)}" alt="${escapeAttribute(meta.title)}" />` : `<div class="player-pause-title"><span>${escapeHtml(meta.title)}</span></div>`}
         <div class="player-pause-meta-line">${escapeHtml([meta.episodeCode, meta.episodeTitle, meta.releaseYear, formatRuntimeLabel(this.getPlaybackDurationSeconds() / 60) || meta.runtime].filter(Boolean).join(" · "))}</div>
         ${sourceBadges ? `<div class="player-pause-badges">${sourceBadges}</div>` : ""}
         ${meta.description ? `<div class="player-pause-description">${escapeHtml(meta.description)}</div>` : ""}
@@ -18743,18 +18746,29 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       this.stillWatchingPromptVisible
     )
       return;
+    const title = content.querySelector?.(".player-pause-title");
+    const titleText = title?.querySelector("span");
+    if (titleText) {
+      const distance = Math.max(0, titleText.scrollWidth - title.clientWidth);
+      title.classList.toggle("is-overflowing", distance > 1);
+      title.style.setProperty("--pause-title-travel", -distance + "px");
+      title.style.setProperty("--pause-title-duration", Math.max(8, distance / 35 + 4) + "s");
+      title.tabIndex = distance > 1 ? 0 : -1;
+    }
     content.style.transform = "none";
     const rect = playerLocalRect(overlay, this.browserOrientation);
     const style = getComputedStyle(overlay);
-    const top = Number.parseFloat(style.paddingTop) || 84;
-    const bottom = Number.parseFloat(style.paddingBottom) || 12;
-    const available = Math.max(1, rect.height - top - bottom);
+    const top = Number.parseFloat(style.paddingTop) || 16;
+    const bottom = Number.parseFloat(style.paddingBottom) || 16;
+    // Equal clearance keeps the full content centered even when it must shrink.
+    const inset = Math.max(top, bottom);
+    const available = Math.max(1, rect.height - 2 * inset);
     const height = Math.max(1, content.scrollHeight);
     const scale = Math.min(1, available / height);
     const y = clamp(
       (rect.height - height * scale) / 2,
-      top,
-      Math.max(top, rect.height - bottom - height * scale)
+      inset,
+      Math.max(inset, rect.height - inset - height * scale)
     );
     content.style.top = y + "px";
     content.style.transformOrigin = "left top";

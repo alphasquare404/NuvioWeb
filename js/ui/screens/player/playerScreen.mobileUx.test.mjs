@@ -115,10 +115,11 @@ test("pause content scales to available height without adding scroll", () => {
   const run = method("fitPauseOverlay()", {
     Environment: { isBrowser: () => true },
     clamp: (x, a, b) => Math.max(a, Math.min(b, x)),
-    getComputedStyle: () => ({ paddingBottom: "12px" })
+    getComputedStyle: () => ({ paddingTop: "16px", paddingBottom: "16px" })
   }).fitPauseOverlay;
   run.call({ uiRefs: { pauseOverlay: overlay }, pauseOverlayVisible: true });
-  assert.equal(content.style.transform, "scale(0.49)");
+  assert.equal(content.style.transform, `scale(${358 / 600})`);
+  assert.equal(content.style.top, "16px");
   content.scrollHeight = 100;
   run.call({ uiRefs: { pauseOverlay: overlay }, pauseOverlayVisible: true });
   assert.equal(content.style.transform, "none");
