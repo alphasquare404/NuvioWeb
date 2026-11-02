@@ -2483,4 +2483,10 @@
     <string name="settings_fusion_display_hint">Pilih tampilan kartu stream dan panel sumber player.</string>
     <string name="settings_filename_route_title">Tentukan pemrosesan stream berdasarkan nama file</string>
     <string name="settings_preview_all_labels">Label hanya contoh; kebutuhan pemutaran sebenarnya mengikuti file dan perangkat ini. Tidak ada stream yang diambil atau diperiksa.</string>
+    <string name="settings_offline_progress_description">Nonaktif: tontonan unduhan memakai watch-and-forget. Posisi, status selesai ditonton, dan aktivitas tracking tidak disimpan, termasuk di perangkat ini. Aktif: catat progres dan gunakan sinkronisasi akun serta tracking seperti biasa. Eksperimental: progres dari perangkat lain dapat bertentangan.</string>
+    <string name="player_loading_audio_tracks">Memuat pilihan audio…</string>
+    <string name="player_audio_selection_unavailable">Pemilihan audio tidak tersedia untuk pemutaran ini.</string>
+    <string name="player_audio_switch_failed">Tidak dapat mengganti audio dengan pengolahan stream yang tersedia.</string>
+    <string name="player_audio_direct_default">Audio bawaan pemutar</string>
+    <string name="player_audio_direct_default_help">Browser memilih track selama pemutaran Direct.</string>
 </resources>

@@ -10413,8 +10413,7 @@ export const SettingsScreen = {
         ${this.renderToggleRow({
           focusKey: "downloads:syncOfflineProgress",
           title: "Sync offline progress (experimental)",
-          subtitle:
-            "Experimental, and still has plenty of bugs. Off: watching a download records nothing at all â€” not your position, not that you finished it, and nothing reaches your account or tracking service. On: a download is treated like any other playback, and two devices can disagree about which position is newer. A tracking service is sent the position but not when you watched it, so an offline session arrives at Trakt or Simkl stamped with the time it got there; a finished title does carry its real time.",
+          subtitle: t("settings_offline_progress_description"),
           checked: Boolean(model.player?.syncOfflineProgress)
         })}
       </div></div>

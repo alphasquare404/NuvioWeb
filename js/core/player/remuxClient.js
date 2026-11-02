@@ -74,10 +74,15 @@ export function clientRemuxPlan(
   };
 }
 
-export async function loadClientRemux(options) {
+export function clientRemuxAssets() {
   const version =
     typeof __NUVIO_REMUX_ASSET_ID__ === "undefined" ? "dev" : __NUVIO_REMUX_ASSET_ID__;
   const assetBase = new URL("./assets/libs/remux/" + version + "/", document.baseURI);
+  return { version, assetBase };
+}
+
+export async function loadClientRemux(options) {
+  const { version, assetBase } = clientRemuxAssets();
   const module = await runStartupStep(
     "runtime-import",
     () => import(new URL("client-runtime.js", assetBase).href)

@@ -11,7 +11,7 @@ import {
   prepareUnverifiedAudioTranscode,
   prepareUnverifiedRemux
 } from "../../../core/player/unverifiedPlayback.js";
-import { clientRemuxPlan } from "../../../core/player/remuxClient.js";
+import { clientRemuxPlan, clientRemuxAssets } from "../../../core/player/remuxClient.js";
 import {
   relayTrackContext,
   relayAudioUrl,
@@ -3719,6 +3719,20 @@ export const PlayerScreen = {
   },
 
   getUnavailableTrackMessage(kind = "audio") {
+    if (kind === "audio" && this.directTrackLoading)
+      return t("player_loading_audio_tracks", {}, "Loading audio tracks…");
+    if (
+      kind === "audio" &&
+      !PlayerController.clientRemux &&
+      !this.relayTrackContext &&
+      !PlayerController.video?.audioTracks &&
+      !PlayerController.video?.webkitAudioTracks
+    )
+      return t(
+        "player_audio_selection_unavailable",
+        {},
+        "Audio selection is unavailable for this playback."
+      );
     return kind === "subtitle" ? "No subtitle tracks available." : "No audio tracks available.";
   },
 
@@ -4115,6 +4129,172 @@ export const PlayerScreen = {
     return { audioTracks: [], subtitleTracks: [], variants: [] };
   },
 
+  loadDirectSubtitleData({ confirmedMkv = false } = {}) {
+    const url = this.activePlaybackUrl;
+    const video = PlayerController.video;
+    const candidate = this.getCurrentStreamCandidate();
+    if (
+      !Environment.isBrowser() ||
+      !video ||
+      !/^https?:/i.test(url || "") ||
+      PlayerController.clientRemux ||
+      this.relayTrackContext ||
+      this.isCurrentSourceAdaptiveManifest() ||
+      (!confirmedMkv && !this.isCurrentSourceLikelyMkv(url, candidate))
+    )
+      return;
+    const token = this.relayTrackToken;
+    const active = () =>
+      token === this.relayTrackToken &&
+      this.activePlaybackUrl === url &&
+      PlayerController.video === video &&
+      !this.playerBackNavigationInProgress;
+    const addonTracks = new Set((this.externalTrackNodes || []).map((node) => node.track));
+    const nativeSubtitles = this.getTextTracks().some(
+      (track) => !addonTracks.has(track) && ["subtitles", "captions", "forced"].includes(track.kind)
+    );
+    if (!nativeSubtitles && !this.relayTextSubtitles) {
+      const { assetBase, version } = clientRemuxAssets();
+      this.relayTextSubtitles = createEmbeddedSubtitles({
+        video,
+        assetBase,
+        version,
+        requestHeaders: this.getCurrentStreamRequestHeaders(candidate),
+        getTime: () => this.getPlaybackCurrentSeconds(),
+        onTracks: () => {
+          if (active()) this.refreshTrackDialogs();
+        },
+        onStatus: () => {
+          if (active()) this.refreshTrackDialogs();
+        },
+        onCues: () => {
+          if (active()) this.refreshSubtitleCueStyles();
+        }
+      });
+      this.relayTextSubtitles.setDelay(Number(this.subtitleDelayMs || 0) / 1000);
+      this.relayTextSubtitles.setSource(url);
+    }
+  },
+
+  async loadDirectTrackData() {
+    const url = this.activePlaybackUrl;
+    const video = PlayerController.video;
+    if (
+      !Environment.isBrowser() ||
+      !video ||
+      !/^https?:/i.test(url || "") ||
+      PlayerController.clientRemux ||
+      this.relayTrackContext ||
+      this.isCurrentSourceAdaptiveManifest()
+    )
+      return;
+    if (
+      this.directTrackUrl === url &&
+      this.directTrackVideo === video &&
+      (this.directTrackLoading ||
+        this.directTrackProbe ||
+        Date.now() - Number(this.directTrackAttemptAt || 0) < 15000)
+    )
+      return;
+    this.directTrackAttemptAt = Date.now();
+    this.directTrackUrl = url;
+    this.directTrackVideo = video;
+    this.directTrackLoading = true;
+    const token = this.relayTrackToken;
+    const candidate = this.getCurrentStreamCandidate();
+    const active = () =>
+      token === this.relayTrackToken &&
+      this.activePlaybackUrl === url &&
+      PlayerController.video === video &&
+      !this.playerBackNavigationInProgress;
+    const prober = (this._directTrackProber ||= createStreamProber({
+      endpoint: PROBE_ENDPOINT,
+      mode: PROBE_MODE,
+      clientConcurrency: PROBE_CLIENT_CONCURRENCY,
+      timeoutMs: 15000,
+      assess: (probe) => assessPlaybackCapabilities(probe)
+    }));
+    try {
+      this.loadDirectSubtitleData();
+      const probe = await prober.probe(url, {
+        reason: "tracks",
+        identity: streamProbeIdentity(candidate)
+      });
+      if (!active()) return;
+      this.directTrackProbe = probe;
+      const nativeTracks = PlayerController.getBrowserAudioTracks();
+      if (!nativeTracks.length && probe) {
+        this.directAudioTracks = (probe.audioStreams || []).map((track) => ({
+          ...track,
+          engine: "direct-source",
+          id: "direct-source-" + track.index,
+          selected: false,
+          supported:
+            REMUX_POLICY.mode !== "off" &&
+            probe.playbackCapabilities?.relayVideo !== false &&
+            probe.playbackCapabilities?.audio?.find((a) => a.index === track.index)?.supported !==
+              false
+        }));
+      }
+      if (probe?.container === "mkv") this.loadDirectSubtitleData({ confirmedMkv: true });
+    } catch (_) {
+      // Track discovery must never interrupt a video that is already playing.
+    } finally {
+      if (active()) {
+        this.directTrackLoading = false;
+        this.refreshTrackDialogs();
+      }
+    }
+  },
+
+  async switchDirectAudioTrack(entry) {
+    if (this.directAudioSwitching || !this.directTrackProbe || entry.supported === false) return;
+    const url = this.activePlaybackUrl;
+    const token = this.relayTrackToken;
+    const mountToken = this.playerMountToken;
+    const candidate = this.getCurrentStreamCandidate();
+    this.directAudioSwitching = true;
+    try {
+      const delivery = await prepareUnverifiedRemux(url, {
+        probe: this.directTrackProbe,
+        audioIndex: entry.track.index
+      });
+      if (
+        this.activePlaybackUrl !== url ||
+        token !== this.relayTrackToken ||
+        !this.isActiveMountToken(mountToken) ||
+        this.playerBackNavigationInProgress
+      )
+        return;
+      this.params.playbackPlan = delivery.plan;
+      const attempt = this.params.unverifiedPlayback;
+      if (attempt) {
+        attempt.route = "remux";
+        attempt.remuxTried = true;
+        attempt.mediaUrl = delivery.url;
+      }
+      await this.playStreamByUrl(delivery.url, {
+        preservePanel: true,
+        preservePlaybackState: true,
+        resetSilentAudioState: false,
+        sourceCandidate: candidate,
+        requestedAudioIndex: entry.track.index,
+        mountToken
+      });
+    } catch (_) {
+      if (this.activePlaybackUrl === url && this.isActiveMountToken(mountToken))
+        this.showAspectToast(
+          t(
+            "player_audio_switch_failed",
+            {},
+            "Unable to switch audio with the available stream processing."
+          )
+        );
+    } finally {
+      this.directAudioSwitching = false;
+    }
+  },
+
   clearRelayTrackData() {
     this.relayTrackToken = Number(this.relayTrackToken || 0) + 1;
     this.relayTextSubtitles?.destroy();
@@ -4123,6 +4303,12 @@ export const PlayerScreen = {
     this.relayTrackContext = null;
     this.relayTrackPlaybackUrl = null;
     this.relayTrackVideo = null;
+    this._directTrackProber?.cancelAll();
+    this.directTrackUrl = null;
+    this.directTrackVideo = null;
+    this.directTrackProbe = null;
+    this.directTrackLoading = false;
+    this.directAudioTracks = [];
   },
 
   async loadRelayTrackData(playbackUrl) {
@@ -4134,10 +4320,10 @@ export const PlayerScreen = {
     this.clearRelayTrackData();
     const token = this.relayTrackToken;
     const context = relayTrackContext(playbackUrl, TRANSCODE_ENDPOINT);
-    if (!context || !PlayerController.video) return;
-    this.relayTrackContext = context;
     this.relayTrackPlaybackUrl = playbackUrl;
     this.relayTrackVideo = PlayerController.video;
+    if (!context || !PlayerController.video) return;
+    this.relayTrackContext = context;
     const active = () => token === this.relayTrackToken;
     const refresh = () => {
       if (active()) this.refreshTrackDialogs();
@@ -7497,13 +7683,16 @@ export const PlayerScreen = {
     }
   },
 
-  schedulePauseOverlay() {
-    this.clearPauseOverlayTimer();
+  schedulePauseOverlay({ restart = false } = {}) {
     if (!this.canShowPauseOverlay()) {
+      this.clearPauseOverlayTimer();
       this.pauseOverlayVisible = false;
       this.renderPauseOverlay();
       return;
     }
+    if (restart) this.clearPauseOverlayTimer();
+    // Passive playback statistics must not restart the pause delay or hide it.
+    if (this.pauseOverlayVisible || this.pauseOverlayTimer) return;
     this.pauseOverlayVisible = false;
     this.renderPauseOverlay();
     this.pauseOverlayTimer = setTimeout(() => {
@@ -9728,6 +9917,7 @@ export const PlayerScreen = {
       }
       this.attemptPendingPlaybackRestore({ force: true });
 
+      this.loadDirectSubtitleData();
       this.startupTrackPreferenceReady = true;
       this.refreshTrackDialogs();
       this.updateUiTick();
@@ -11764,6 +11954,7 @@ export const PlayerScreen = {
       preservePlaybackState = false,
       preservePendingRestore = false,
       forceEngine = null,
+      requestedAudioIndex = null,
       sourceCandidate: explicitSourceCandidate = null,
       mountToken = null
     } = {}
@@ -11854,6 +12045,7 @@ export const PlayerScreen = {
     }
     this.markPlaybackProgress();
     this.clearPlaybackStallGuard();
+    this.clearRelayTrackData();
     this.clearSubtitleCueStyleBindings();
     if (resetSilentAudioState) {
       this.silentAudioFallbackAttempts.clear();
@@ -11872,9 +12064,12 @@ export const PlayerScreen = {
     this.selectedManifestSubtitleTrackId = null;
     this.startupSubtitlePreferenceApplied = false;
     this.startupSubtitlePreferenceApplying = false;
-    this.startupAudioPreferenceApplied = false;
+    this.pendingDirectAudioSelection = Number.isInteger(requestedAudioIndex)
+      ? { url: streamUrl, index: requestedAudioIndex }
+      : null;
+    this.startupAudioPreferenceApplied = Boolean(this.pendingDirectAudioSelection);
     this.startupAudioPreferenceApplying = false;
-    this.startupAudioFallbackApplied = false;
+    this.startupAudioFallbackApplied = Boolean(this.pendingDirectAudioSelection);
     this.startupAudioTrackSetSignature = "";
     this.clearStartupAudioPreferenceRetry();
     this.failedAutomaticAudioFallbackEntryId = "";
@@ -12782,6 +12977,20 @@ export const PlayerScreen = {
   refreshTrackDialogs() {
     this.invalidateTrackDialogCaches();
     this.syncTrackState();
+    const requestedAudio = this.pendingDirectAudioSelection;
+    if (requestedAudio?.url === this.activePlaybackUrl) {
+      // A manual source-track choice takes precedence over startup language defaults.
+      const selected = this.getAudioEntries().find(
+        (entry) =>
+          entry.selected &&
+          entry.track?.engine !== "direct-source" &&
+          entry.track?.index === requestedAudio.index
+      );
+      if (selected) {
+        this.rememberAudioTrackSelection(this.getAudioTrackPreference(selected));
+        this.pendingDirectAudioSelection = null;
+      }
+    }
     const audioTrackSetSignature = this.getStartupAudioTrackSetSignature();
     this.startupAudioTrackSetSignature = audioTrackSetSignature;
     this.ensureSupportedAudioTrackSelected();
@@ -15038,6 +15247,7 @@ export const PlayerScreen = {
     this.cancelSeekPreview({ commit: false });
     this.syncTrackState();
     this.subtitleDialogVisible = true;
+    void this.loadDirectTrackData();
     this.audioDialogVisible = false;
     this.speedDialogVisible = false;
     this.sourcesPanelVisible = false;
@@ -15749,7 +15959,8 @@ export const PlayerScreen = {
         : typeof PlayerController.getBrowserAudioTracks === "function"
           ? PlayerController.getBrowserAudioTracks()
           : this.getAudioTracks();
-    const entries = browserTracks.map((track, index) => {
+    const tracks = browserTracks.length ? browserTracks : this.directAudioTracks || [];
+    const entries = tracks.map((track, index) => {
       const display = formatAudioTrackDisplay(track, index);
       const support =
         track.supported === false
@@ -15773,6 +15984,22 @@ export const PlayerScreen = {
       };
     });
 
+    if (!browserTracks.length && tracks.some((track) => track.engine === "direct-source")) {
+      entries.unshift({
+        id: "audio-direct-default",
+        label: t("player_audio_direct_default", {}, "Player default audio"),
+        secondary: t(
+          "player_audio_direct_default_help",
+          {},
+          "The browser chooses the track during Direct playback."
+        ),
+        selected: true,
+        supported: true,
+        unsupportedReason: null,
+        browserAudioTrackIndex: -1,
+        track: { engine: "direct-default", selected: true }
+      });
+    }
     this.trackDialogCache.audioEntries = entries;
     return entries;
   },
@@ -15782,6 +16009,7 @@ export const PlayerScreen = {
       return false;
     }
     const entries = this.getAudioEntries();
+    if (entries.some((entry) => entry.track?.engine === "direct-source")) return false;
     const supportedEntryIndex = entries.findIndex((entry) => entry?.supported !== false);
     if (supportedEntryIndex < 0) {
       return false;
@@ -15830,6 +16058,7 @@ export const PlayerScreen = {
     this.syncTrackState();
     this.applyAudioAmplification();
     this.audioDialogVisible = true;
+    void this.loadDirectTrackData();
     this.subtitleDialogVisible = false;
     this.speedDialogVisible = false;
     this.sourcesPanelVisible = false;
@@ -15858,7 +16087,7 @@ export const PlayerScreen = {
   applyAudioTrack(index, { automaticFallback = false, rememberSelection = false } = {}) {
     const entries = this.getAudioEntries();
     const selectedEntry = entries[index] || null;
-    if (!selectedEntry) {
+    if (!selectedEntry || selectedEntry.track?.engine === "direct-default") {
       return;
     }
     if (!automaticFallback) {
@@ -15875,6 +16104,13 @@ export const PlayerScreen = {
 
     const browserAudioTrackIndex = Number(selectedEntry.browserAudioTrackIndex);
     if (!Number.isFinite(browserAudioTrackIndex)) {
+      return;
+    }
+
+    if (selectedEntry.track?.engine === "direct-source") {
+      // Discovering tracks in a dialog must not restart working Direct playback.
+      if (!rememberSelection) return;
+      void this.switchDirectAudioTrack(selectedEntry);
       return;
     }
 
@@ -19279,12 +19515,12 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       }
       this.dismissPauseOverlay({ revealControls: true, focus: false });
       if (this.paused) {
-        this.schedulePauseOverlay();
+        this.schedulePauseOverlay({ restart: true });
       }
       return;
     }
     if (this.paused) {
-      this.schedulePauseOverlay();
+      this.schedulePauseOverlay({ restart: true });
     }
 
     if (this.episodePanelVisible && this.handleEpisodePanelKey(event)) {

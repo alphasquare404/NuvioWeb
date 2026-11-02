@@ -3103,4 +3103,10 @@
     <string name="settings_fusion_display_hint">Choose what appears on stream cards and player source panels.</string>
     <string name="settings_filename_route_title">Determine stream processing based on filename</string>
     <string name="settings_preview_all_labels">Example labels only; actual playback needs depend on the file and this device. No stream is fetched or checked.</string>
+    <string name="settings_offline_progress_description">Off: downloaded playback is watch-and-forget. No position, watched status, or tracking activity is saved, including on this device. On: record progress and use normal account and tracking sync. Experimental: progress from other devices may conflict.</string>
+    <string name="player_loading_audio_tracks">Loading audio tracks…</string>
+    <string name="player_audio_selection_unavailable">Audio selection is unavailable for this playback.</string>
+    <string name="player_audio_switch_failed">Unable to switch audio with the available stream processing.</string>
+    <string name="player_audio_direct_default">Player default audio</string>
+    <string name="player_audio_direct_default_help">The browser chooses the track during Direct playback.</string>
 </resources>
