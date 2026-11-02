@@ -608,6 +608,9 @@ export const StreamScreen = {
   getStartupOverlayMeta() {
     return {
       itemKey: String(this.params?.itemId || ""),
+      itemType: this.params?.itemType,
+      posterUrl: this.params?.poster || "",
+      textlessPoster: this.params?.textlessPoster || "",
       title: this.params?.playerTitle || this.params?.itemTitle || "Nuvio",
       logoUrl: this.params?.playerLogoUrl || this.params?.logo || "",
       backdropUrl: this.getBackdropUrl()
@@ -2423,12 +2426,7 @@ export const StreamScreen = {
     const backdrop = backdropUrl === null ? this.getBackdropUrl() : backdropUrl;
     if (Platform.isBrowser() && usesUnifiedStartup()) {
       StartupLoadingOverlay.begin(
-        {
-          itemKey: String(this.params?.itemId || ""),
-          title: this.params?.itemTitle || this.params?.playerTitle || "Nuvio",
-          logoUrl: this.params?.logo || "",
-          backdropUrl: backdrop
-        },
+        { ...this.getStartupOverlayMeta(), backdropUrl: backdrop },
         "opening"
       );
       this.container.innerHTML = "";
@@ -3470,6 +3468,8 @@ export const StreamScreen = {
       playerGenres: this.params?.genres || [],
       playerReleaseYear: this.params?.year || "",
       playerBackdropUrl: this.getBackdropUrl() || null,
+      playerPosterUrl: this.params?.poster || null,
+      textlessPoster: this.params?.textlessPoster || null,
       playerLogoUrl: this.params?.logo || null,
       castItems: this.params?.castItems || [],
       parentalWarnings: this.params?.parentalWarnings || null,

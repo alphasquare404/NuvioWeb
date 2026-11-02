@@ -213,12 +213,18 @@ test("checking and player handoff share movie identity and backdrop", async () =
   const { StreamScreen: screen } = await loadStreamScreen("checking-presentation");
   screen.params = {
     itemId: 42,
+    itemType: "movie",
+    poster: "https://image.test/poster.jpg",
+    textlessPoster: "https://image.test/textless.jpg",
     itemTitle: "Movie",
     logo: "https://image.test/logo.png",
     backdrop: "https://image.test/background.jpg"
   };
   assert.deepEqual(screen.getStartupOverlayMeta(), {
     itemKey: "42",
+    itemType: "movie",
+    posterUrl: "https://image.test/poster.jpg",
+    textlessPoster: "https://image.test/textless.jpg",
     title: "Movie",
     logoUrl: "https://image.test/logo.png",
     backdropUrl: "https://image.test/background.jpg"

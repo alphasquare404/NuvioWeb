@@ -2424,6 +2424,7 @@ export const PlayerScreen = {
     this.playbackStallTimer = null;
     this.startupReadiness = null;
     this.lastPlaybackProgressAt = Date.now();
+    this.playbackTransitionLightweight = false;
     this.hasPresentedPlaybackFrame = false;
     this.startupErrorMessage = "";
     this.startupErrorMediaCode = 0;
@@ -4774,7 +4775,7 @@ export const PlayerScreen = {
       const osdClockEnabled = Boolean(PlayerSettingsStore.get().osdClockEnabled);
       root.innerHTML = `
         <div id="playerLoadingOverlay" class="player-loading-overlay">
-          <button type="button" class="startup-loading-back focusable" data-player-loading-back aria-label="Back">‹ Back</button>
+          <button type="button" class="startup-loading-back focusable" data-player-loading-back aria-label="Back"><img class="player-desktop-back-icon" src="assets/icons/ic_player_back.svg" alt="" aria-hidden="true" /></button>
           <div class="player-loading-backdrop"${loadingMeta.backdropUrl ? ` style="background-image:url('${loadingMeta.backdropUrl}')"` : ""}></div>
           <div class="player-loading-gradient"></div>
           <div class="player-loading-center">
@@ -6323,6 +6324,14 @@ export const PlayerScreen = {
   getLoadingOverlayMeta() {
     const transition = this.nextEpisodeTransitionMeta || null;
     return {
+      internalPlayer: true,
+      itemType: this.params?.itemType,
+      orientation:
+        this.browserOrientation?.preference ||
+        this.params?.playerOrientationPreference ||
+        "landscape",
+      posterUrl: this.params?.playerPosterUrl || this.params?.poster || "",
+      textlessPoster: this.params?.textlessPoster || "",
       title: String(
         transition?.title ||
           this.params?.playerTitle ||
@@ -8111,7 +8120,8 @@ export const PlayerScreen = {
       itemSubtitle: itemType === "series" ? "" : this.params?.playerSubtitle || "",
       year: this.params?.playerReleaseYear || this.params?.year || "",
       backdrop,
-      poster: this.params?.poster || backdrop,
+      poster: this.params?.playerPosterUrl || this.params?.poster || backdrop,
+      textlessPoster: this.params?.textlessPoster || null,
       logo,
       parentalWarnings: this.params?.parentalWarnings || null,
       parentalGuide: this.params?.parentalGuide || null,
@@ -8217,7 +8227,8 @@ export const PlayerScreen = {
       itemSubtitle: itemType === "series" ? "" : this.params?.playerSubtitle || "",
       year: this.params?.playerReleaseYear || this.params?.year || "",
       backdrop,
-      poster: this.params?.poster || backdrop,
+      poster: this.params?.playerPosterUrl || this.params?.poster || backdrop,
+      textlessPoster: this.params?.textlessPoster || null,
       logo,
       parentalWarnings: this.params?.parentalWarnings || null,
       parentalGuide: this.params?.parentalGuide || null,
@@ -8924,7 +8935,11 @@ export const PlayerScreen = {
     };
     this.renderNextEpisodeCard();
     StartupLoadingOverlay.begin(
-      { ...this.nextEpisodeTransitionMeta, itemKey: String(this.params?.itemId || "") },
+      {
+        ...this.getLoadingOverlayMeta(),
+        ...this.nextEpisodeTransitionMeta,
+        itemKey: String(this.params?.itemId || "")
+      },
       "finding"
     );
     StartupLoadingOverlay.setBackHandler(() => this.navigateBackToStreamScreen());
@@ -9002,6 +9017,12 @@ export const PlayerScreen = {
           playerSubtitle: nextEpisode.episodeTitle || nextEpisode.episodeLabel || "",
           playerEpisodeTitle: nextEpisode.episodeTitle || "",
           playerBackdropUrl: this.params?.playerBackdropUrl || null,
+          playerPosterUrl: this.params?.playerPosterUrl || this.params?.poster || null,
+          textlessPoster: this.params?.textlessPoster || null,
+          playerOrientationPreference:
+            this.browserOrientation?.preference ||
+            this.params?.playerOrientationPreference ||
+            "landscape",
           playerLogoUrl: this.params?.playerLogoUrl || null,
           episodes: this.episodes || [],
           streamCandidates: streamItems.map((stream) =>
@@ -10801,10 +10822,14 @@ export const PlayerScreen = {
   },
 
   isStartupLoadingVisible() {
-    return Boolean(this.loadingVisible && !this.hasPresentedPlaybackFrame);
+    return Boolean(
+      this.loadingVisible && !this.hasPresentedPlaybackFrame && !this.playbackTransitionLightweight
+    );
   },
 
   isBufferingSpinnerVisible() {
+    if (this.playbackTransitionLightweight && this.loadingVisible)
+      return !this.isExternalFrameMode() && !this.isStartupErrorVisible();
     if (this.seekLoading) {
       if (this.isStartupLoadingVisible()) {
         return false;
@@ -10984,6 +11009,7 @@ export const PlayerScreen = {
   },
 
   presentStartedPlayback() {
+    this.playbackTransitionLightweight = false;
     StartupLoadingOverlay.finish();
     this.startupLoadingStage = "loading";
     const overlay = this.uiRefs?.loadingOverlay;
@@ -11302,11 +11328,25 @@ export const PlayerScreen = {
   },
 
   updateLoadingVisibility() {
-    const unified = Environment.isBrowser() && usesUnifiedStartup() && !this.isExternalFrameMode();
-    if (unified && this.isStartupLoadingVisible() && !this.isStartupErrorVisible()) {
+    const unified =
+      Environment.isBrowser() &&
+      usesUnifiedStartup(undefined, { internalPlayer: true }) &&
+      !this.isExternalFrameMode();
+    const nextEpisodeLoading = Boolean(
+      this.nextEpisodeLaunching && (this.nextEpisodeCardSearching || this.loadingVisible)
+    );
+    if (
+      unified &&
+      (this.isStartupLoadingVisible() || nextEpisodeLoading) &&
+      !this.isStartupErrorVisible()
+    ) {
       StartupLoadingOverlay.begin(
         { ...this.getLoadingOverlayMeta(), itemKey: String(this.params?.itemId || "") },
-        this.startupLoadingStage || "loading"
+        this.nextEpisodeCardSearching
+          ? "finding"
+          : nextEpisodeLoading
+            ? "opening"
+            : this.startupLoadingStage || "loading"
       );
       StartupLoadingOverlay.setBackHandler(() => this.navigateBackToStreamScreen());
     } else if (unified) {
@@ -12013,6 +12053,10 @@ export const PlayerScreen = {
         this.params.playbackPlan.sourceUrl === streamUrl
     });
 
+    this.playbackTransitionLightweight = Boolean(
+      preservePlaybackState &&
+      (this.hasPresentedPlaybackFrame || this.playbackTransitionLightweight)
+    );
     this.hasPresentedPlaybackFrame = false;
     this.startupPlaybackBaselineSeconds = null;
     this.startupPlaybackHasAdvanced = false;
@@ -18289,6 +18333,12 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
           playerSubtitle:
             `${selected.title || ""}`.trim() || `S${selected.season}E${selected.episode}`,
           playerBackdropUrl: this.params?.playerBackdropUrl || null,
+          playerPosterUrl: this.params?.playerPosterUrl || this.params?.poster || null,
+          textlessPoster: this.params?.textlessPoster || null,
+          playerOrientationPreference:
+            this.browserOrientation?.preference ||
+            this.params?.playerOrientationPreference ||
+            "landscape",
           playerLogoUrl: this.params?.playerLogoUrl || null,
           episodes: this.episodes,
           streamCandidates: streamItems,

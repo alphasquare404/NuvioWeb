@@ -2,20 +2,25 @@ import { Router } from "../navigation/router.js";
 import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { I18n } from "../../i18n/index.js";
 import { renderLoadingIndicator } from "./loadingIndicator.js";
+import { createPlayerOrientation } from "../screens/player/browserPlayerOrientation.js";
+import { resolveDetailPortraitBackdrop } from "../screens/detail/detailPortraitPlate.js";
 
 const STAGES = {
   finding: ["startup_loading_finding", "Finding a stream…"],
-  checking: ["startup_loading_checking", "Checking streams…"],
-  opening: ["startup_loading_opening", "Opening player…"],
-  loading: ["startup_loading_video", "Loading video…"],
-  metadata: ["startup_loading_metadata", "Reading video information…"],
-  frame: ["startup_loading_frame", "Waiting for the first frame…"],
+  checking: ["startup_loading_preparing", "Preparing video…"],
+  opening: ["startup_loading_preparing", "Preparing video…"],
+  loading: ["startup_loading_preparing", "Preparing video…"],
+  metadata: ["startup_loading_preparing", "Preparing video…"],
+  frame: ["startup_loading_starting", "Starting playback…"],
   restoring: ["startup_loading_restoring", "Resuming playback…"]
 };
 
-export function usesUnifiedStartup(settings = PlayerSettingsStore.get()) {
+export function usesUnifiedStartup(
+  settings = PlayerSettingsStore.get(),
+  { internalPlayer = false } = {}
+) {
   return (
-    settings.browserExternalPlayer === "disabled" &&
+    (internalPlayer || settings.browserExternalPlayer === "disabled") &&
     (!settings.playerEngine || settings.playerEngine === "native")
   );
 }
@@ -27,8 +32,13 @@ let stage = "finding";
 let relayText = "";
 let presentation = {};
 let backHandler = null;
+let orientation = null;
+let artworkResize = null;
 
 export const StartupLoadingOverlay = {
+  get orientation() {
+    return orientation?.preference || "landscape";
+  },
   get active() {
     return Boolean(host);
   },
@@ -43,7 +53,10 @@ export const StartupLoadingOverlay = {
   },
   begin(meta = {}, nextStage = "finding") {
     const settings = PlayerSettingsStore.get();
-    if (!usesUnifiedStartup(settings) || settings.loadingOverlayEnabled === false) {
+    if (
+      !usesUnifiedStartup(settings, { internalPlayer: meta.internalPlayer === true }) ||
+      settings.loadingOverlayEnabled === false
+    ) {
       this.finish();
       return false;
     }
@@ -59,7 +72,7 @@ export const StartupLoadingOverlay = {
       host.id = "startupLoadingOverlay";
       host.className = "player-loading-overlay unified-startup-overlay";
       host.innerHTML = `
-        <button type="button" class="startup-loading-back focusable" aria-label="Back">‹ Back</button>
+        <button type="button" class="startup-loading-back focusable" aria-label="Back"><img class="player-desktop-back-icon" src="assets/icons/ic_player_back.svg" alt="" aria-hidden="true" /></button>
         <div class="player-loading-backdrop"></div>
         <div class="player-loading-gradient"></div>
         <div class="player-loading-center">
@@ -69,11 +82,22 @@ export const StartupLoadingOverlay = {
           </div>
           ${renderLoadingIndicator({ className: "unified-startup-spinner" })}
           <div class="player-loading-status" role="status" aria-live="polite"></div>
+          <div class="player-loading-detail hidden"></div>
         </div>`;
       const back = host.querySelector(".startup-loading-back");
       if (back) back.onclick = () => this.back();
       document.body.appendChild(host);
+      orientation = createPlayerOrientation(host, {
+        preference: meta.orientation || "landscape",
+        manageBody: false,
+        onChange: () => this.refreshArtwork()
+      });
     }
+    if (!orientation?.mobile && !artworkResize) {
+      artworkResize = () => this.refreshArtwork();
+      globalThis.addEventListener?.("resize", artworkResize);
+    }
+    orientation?.setPreference(meta.orientation);
     this.updateMetadata(meta);
     this.setStage(nextStage);
     return Boolean(host);
@@ -81,7 +105,15 @@ export const StartupLoadingOverlay = {
   updateMetadata(meta = {}) {
     if (!host || (meta.itemKey && presentation.itemKey && meta.itemKey !== presentation.itemKey))
       return;
-    for (const key of ["itemKey", "title", "subtitle", "backdropUrl"]) {
+    for (const key of [
+      "itemKey",
+      "itemType",
+      "title",
+      "subtitle",
+      "backdropUrl",
+      "posterUrl",
+      "textlessPoster"
+    ]) {
       if (String(meta[key] || "").trim()) presentation[key] = String(meta[key]).trim();
     }
     const owner = host;
@@ -89,10 +121,7 @@ export const StartupLoadingOverlay = {
     const identity = host.querySelector(".player-loading-identity");
     const logo = host.querySelector(".player-loading-logo");
     title.textContent = presentation.title || "Nuvio";
-    const backdrop = presentation.backdropUrl || "";
-    if (backdrop)
-      host.querySelector(".player-loading-backdrop").style.backgroundImage =
-        `url("${backdrop.replace(/"/g, "%22").replace(/\\/g, "%5C")}")`;
+    this.refreshArtwork();
     const logoUrl = String(meta.logoUrl || "").trim();
     if (logoUrl && logoUrl !== presentation.logoUrl) {
       presentation.logoUrl = logoUrl;
@@ -113,13 +142,37 @@ export const StartupLoadingOverlay = {
       if (logo.complete && logo.naturalWidth) logo.onload();
     }
   },
+  refreshArtwork() {
+    if (!host) return;
+    const portrait = orientation?.mobile
+      ? orientation.preference === "portrait"
+      : globalThis.innerHeight > globalThis.innerWidth;
+    const textless = resolveDetailPortraitBackdrop({
+      id: presentation.itemKey,
+      type: presentation.itemType,
+      textlessPoster: presentation.textlessPoster
+    });
+    const poster = textless || presentation.posterUrl || presentation.backdropUrl || "";
+    const backdrop = portrait ? poster : presentation.backdropUrl || poster;
+    const node = host.querySelector(".player-loading-backdrop");
+    if (node)
+      node.style.backgroundImage = backdrop
+        ? `url("${backdrop.replace(/"/g, "%22").replace(/\\/g, "%5C")}")`
+        : "";
+  },
   setStage(nextStage) {
     if (STAGES[nextStage]) stage = nextStage;
+    if (stage === "frame" || stage === "restoring") relayText = "";
     const node = host?.querySelector(".player-loading-status");
     if (!node) return;
     const enabled = PlayerSettingsStore.get().showPlayerLoadingStatus !== false;
     const [key, fallback] = STAGES[stage];
-    node.textContent = enabled ? relayText || I18n.t(key, {}, { fallback }) : "";
+    node.textContent = enabled ? I18n.t(key, {}, { fallback }) : "";
+    const detail = host.querySelector(".player-loading-detail");
+    if (detail) {
+      detail.textContent = enabled ? relayText : "";
+      detail.classList.toggle("hidden", !enabled || !relayText);
+    }
     node.classList.toggle("hidden", !enabled);
   },
   setRelayText(text) {
@@ -127,6 +180,10 @@ export const StartupLoadingOverlay = {
     this.setStage(stage);
   },
   finish() {
+    if (artworkResize) globalThis.removeEventListener?.("resize", artworkResize);
+    artworkResize = null;
+    orientation?.destroy();
+    orientation = null;
     host?.remove();
     host = null;
     relayText = "";

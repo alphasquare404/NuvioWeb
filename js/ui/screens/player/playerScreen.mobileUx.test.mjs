@@ -512,6 +512,7 @@ test("auto-next replaces player and retains its original Back destination", asyn
     shouldReturnToStreamOnBack: () => false,
     getPlaybackSourceContext: () => ({}),
     getPlayerStreamProbe: () => null,
+    getLoadingOverlayMeta: () => ({ internalPlayer: true }),
     renderNextEpisodeCard() {},
     updateLoadingVisibility() {},
     refreshLoadingOverlayPresentation() {},
@@ -1627,4 +1628,73 @@ test("startup guard automatically hands an unverified Direct stall to fallback b
   await expire();
   assert.equal(received.startupStall, true);
   assert.equal(received.mediaErrorCode, 0);
+});
+
+test("audio transitions and seeks show a light indicator instead of the startup splash", () => {
+  const startup = method("isStartupLoadingVisible()").isStartupLoadingVisible;
+  const buffering = method("isBufferingSpinnerVisible()").isBufferingSpinnerVisible;
+  let external = false,
+    error = false;
+  const ctx = {
+    loadingVisible: true,
+    hasPresentedPlaybackFrame: false,
+    isExternalFrameMode: () => external,
+    isStartupErrorVisible: () => error,
+    isStartupLoadingVisible: startup
+  };
+  assert.equal(startup.call(ctx), true);
+  assert.equal(buffering.call(ctx), false);
+  ctx.playbackTransitionLightweight = true;
+  assert.equal(startup.call(ctx), false);
+  assert.equal(buffering.call(ctx), true);
+  external = true;
+  assert.equal(buffering.call(ctx), false);
+  external = false;
+  error = true;
+  assert.equal(buffering.call(ctx), false);
+  error = false;
+  ctx.playbackTransitionLightweight = false;
+  ctx.hasPresentedPlaybackFrame = true;
+  ctx.seekLoading = true;
+  assert.equal(startup.call(ctx), false);
+  assert.equal(buffering.call(ctx), true);
+});
+
+test("background player updates do not dismiss loading while the next episode source is being found", () => {
+  const stages = [];
+  let finished = 0;
+  const update = method("updateLoadingVisibility()", {
+    Environment: { isBrowser: () => true },
+    usesUnifiedStartup: () => true,
+    StartupLoadingOverlay: {
+      begin: (_, stage) => stages.push(stage),
+      setBackHandler() {},
+      finish() {
+        finished++;
+      }
+    }
+  }).updateLoadingVisibility;
+  const ctx = {
+    params: { itemId: "series" },
+    nextEpisodeLaunching: true,
+    nextEpisodeCardSearching: true,
+    loadingVisible: false,
+    isExternalFrameMode: () => false,
+    isStartupLoadingVisible: () => false,
+    isStartupErrorVisible: () => false,
+    getLoadingOverlayMeta: () => ({}),
+    isStartupGateReleaseReady: () => false,
+    clearBufferingSpinnerTimer() {}
+  };
+  update.call(ctx);
+  update.call(ctx);
+  assert.deepEqual(stages, ["finding", "finding"]);
+  assert.equal(finished, 0);
+  ctx.nextEpisodeCardSearching = false;
+  ctx.loadingVisible = true;
+  update.call(ctx);
+  assert.equal(stages.at(-1), "opening");
+  ctx.nextEpisodeLaunching = false;
+  update.call(ctx);
+  assert.equal(finished, 1);
 });

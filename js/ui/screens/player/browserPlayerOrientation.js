@@ -108,7 +108,7 @@ export function bindRotatedPlayerScroll(body, state) {
 
 export function createPlayerOrientation(
   container,
-  { scope = globalThis, preference = "landscape", onChange = () => {} } = {}
+  { scope = globalThis, preference = "landscape", onChange = () => {}, manageBody = true } = {}
 ) {
   const pointer = scope.matchMedia?.("(pointer: coarse)");
   const mobile = pointer
@@ -138,7 +138,8 @@ export function createPlayerOrientation(
   };
   let physical = physicalOrientation();
   const state = { rotated: false, rotation: 0, width: 0, height: 0, preference, mobile };
-  const clearScroll = mobile ? bindRotatedPlayerScroll(scope.document.body, state) : () => {};
+  const clearScroll =
+    mobile && manageBody ? bindRotatedPlayerScroll(scope.document.body, state) : () => {};
   const sync = () => {
     if (destroyed || !mobile) return;
     const w = scope.innerWidth,
@@ -164,7 +165,7 @@ export function createPlayerOrientation(
     container.dataset.playerToolbarSize =
       state.width <= 360 ? "small" : state.width <= 600 ? "compact" : "regular";
     const body = scope.document.body;
-    body.classList.toggle("browser-player-stage-rotated", state.rotated);
+    if (manageBody) body.classList.toggle("browser-player-stage-rotated", state.rotated);
     const values = {
       "--player-canvas-width": state.width + "px",
       "--player-canvas-height": state.height + "px",
@@ -174,7 +175,7 @@ export function createPlayerOrientation(
     };
     for (const [key, value] of Object.entries(values)) {
       container.style.setProperty(key, value);
-      body.style.setProperty(key, value);
+      if (manageBody) body.style.setProperty(key, value);
     }
     const style = scope.getComputedStyle(body);
     const sides = ["top", "right", "bottom", "left"];
@@ -190,6 +191,11 @@ export function createPlayerOrientation(
     }
     onChange(state);
   };
+  state.setPreference = (value) => {
+    if (!["portrait", "landscape"].includes(value) || value === state.preference) return;
+    state.preference = value;
+    sync();
+  };
   state.toggle = () => {
     state.preference = state.preference === "landscape" ? "portrait" : "landscape";
     sync();
@@ -197,14 +203,14 @@ export function createPlayerOrientation(
   state.destroy = () => {
     clearScroll();
     destroyed = true;
-    scope.removeEventListener("resize", sync);
-    scope.removeEventListener("orientationchange", sync);
+    scope.removeEventListener?.("resize", sync);
+    scope.removeEventListener?.("orientationchange", sync);
     scope.screen?.orientation?.removeEventListener?.("change", sync);
     scope.visualViewport?.removeEventListener("resize", sync);
     container.classList.remove("browser-player-rotated");
     delete container.dataset.playerOrientation;
     delete container.dataset.playerToolbarSize;
-    scope.document.body.classList.remove("browser-player-stage-rotated");
+    if (manageBody) scope.document.body.classList.remove("browser-player-stage-rotated");
     for (const side of ["top", "right", "bottom", "left"])
       container.style.removeProperty("--browser-safe-area-" + side);
     for (const key of [
@@ -215,7 +221,7 @@ export function createPlayerOrientation(
       "--player-canvas-rotation"
     ]) {
       container.style.removeProperty(key);
-      scope.document.body.style.removeProperty(key);
+      if (manageBody) scope.document.body.style.removeProperty(key);
     }
   };
   if (mobile) {

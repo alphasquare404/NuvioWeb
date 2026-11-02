@@ -191,3 +191,32 @@ test("viewport-only browsers follow axis changes but not same-axis resizes", () 
   assert.equal(state.rotated, false);
   state.destroy();
 });
+
+test("independent loading orientation never alters or clears the active player body canvas", () => {
+  const { container, scope } = fixture();
+  let writes = 0;
+  scope.document.body.classList = {
+    toggle() {
+      writes++;
+    },
+    remove() {
+      writes++;
+    }
+  };
+  scope.document.body.style = {
+    setProperty() {
+      writes++;
+    },
+    removeProperty() {
+      writes++;
+    }
+  };
+  const state = createPlayerOrientation(container, { scope, manageBody: false });
+  assert.equal(state.rotated, true);
+  state.setPreference("portrait");
+  assert.equal(state.rotated, false);
+  state.setPreference("landscape");
+  assert.equal(state.rotated, true);
+  state.destroy();
+  assert.equal(writes, 0);
+});

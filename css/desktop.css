@@ -21363,7 +21363,8 @@ html[data-layout="mobile"]
 .desktop-browser #player .player-desktop-volume[hidden] { display: none; }
 .desktop-browser #player .player-desktop-volume:disabled { opacity: .35; cursor: not-allowed; }
 .desktop-browser #player .player-pause-overlay-ends-at { font-size: clamp(12px, calc(var(--pause-stage-width) * .01), 16px); line-height: 1.3; color: rgba(255,255,255,.65); margin-top: 3px; }
-.desktop-browser #player .player-desktop-back-button {
+.desktop-browser #player .player-desktop-back-button,
+.desktop-browser .startup-loading-back {
   top: calc(var(--browser-floating-nav-top) + (var(--browser-floating-nav-height) - var(--browser-floating-back-control-size)) / 2);
   left: clamp(20px, 3.4vw, 64px);
 }
@@ -21372,7 +21373,8 @@ html[data-layout="mobile"]
 .desktop-browser .desktop-external-player-dialog { box-sizing: border-box; overflow-x: hidden; max-width: calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px) !important; }
 .desktop-browser .desktop-external-player-actions .nuvio-dialog-button { flex-shrink: 0; overflow-wrap: anywhere; }
 @media (max-width: 960px) {
-  html[data-layout="mobile"] .desktop-browser #player .player-desktop-back-button { left: calc(8px + var(--browser-safe-area-left)); width: var(--browser-mobile-control-size); height: var(--browser-mobile-control-size); }
+  html[data-layout="mobile"] .desktop-browser #player .player-desktop-back-button,
+  html[data-layout="mobile"] .desktop-browser .startup-loading-back { left: calc(8px + var(--browser-safe-area-left)); width: var(--browser-mobile-control-size); height: var(--browser-mobile-control-size); }
   html[data-layout="mobile"] .desktop-browser #player .player-desktop-back-button[data-back-style="stream"] { top: calc(var(--browser-safe-area-top) + 17px); left: calc(var(--browser-safe-area-left) + 12px); width: 44px; height: 44px; border: 0; border-radius: 0; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 @media (max-width: 600px) {
@@ -21507,7 +21509,9 @@ html[data-layout="mobile"]
 .desktop-browser #player[data-player-orientation="portrait"] .player-audio-controls-list { max-height: 150px; }
 
 /* Mobile Back follows local canvas safe areas in both native and CSS orientation. */
-.desktop-browser #player[data-player-orientation] .player-desktop-back-button { top: calc(var(--browser-safe-area-top) + 17px); left: calc(var(--browser-safe-area-left) + 12px); width: 44px; height: 44px; }
+.desktop-browser #player[data-player-orientation] .player-desktop-back-button,
+.desktop-browser #player[data-player-orientation] .startup-loading-back,
+.desktop-browser .unified-startup-overlay[data-player-orientation] .startup-loading-back { top: calc(var(--browser-safe-area-top) + 17px); left: calc(var(--browser-safe-area-left) + 12px); width: 44px; height: 44px; }
 
 /* Player Back is an icon only; keep its existing hit target. */
 .desktop-browser #player .player-desktop-back-button,

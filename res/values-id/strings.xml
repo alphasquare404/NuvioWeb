@@ -2489,4 +2489,6 @@
     <string name="player_audio_switch_failed">Tidak dapat mengganti audio dengan pengolahan stream yang tersedia.</string>
     <string name="player_audio_direct_default">Audio bawaan pemutar</string>
     <string name="player_audio_direct_default_help">Browser memilih track selama pemutaran Direct.</string>
+    <string name="startup_loading_preparing">Menyiapkan video…</string>
+    <string name="startup_loading_starting">Memulai pemutaran…</string>
 </resources>

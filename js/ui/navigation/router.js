@@ -868,10 +868,16 @@ export const Router = {
     ) {
       StartupLoadingOverlay.finish();
     }
-    if (routeName === "player" && Platform.isBrowser()) {
+    if (routeName === "player" && Platform.isBrowser() && !params.externalFrameUrl) {
+      params.playerOrientationPreference ||= StartupLoadingOverlay.orientation;
       StartupLoadingOverlay.begin(
         {
           itemKey: String(params.itemId || ""),
+          itemType: params.itemType,
+          internalPlayer: true,
+          orientation: params.playerOrientationPreference,
+          posterUrl: params.playerPosterUrl || params.poster || "",
+          textlessPoster: params.textlessPoster || "",
           title: params.playerTitle || params.itemTitle || "Nuvio",
           subtitle: params.playerSubtitle || "",
           logoUrl: params.playerLogoUrl || "",
@@ -879,6 +885,7 @@ export const Router = {
         },
         "opening"
       );
+      StartupLoadingOverlay.setBackHandler(() => void this.back());
     }
     const navigationStart = ROUTER_PERF_DEBUG ? routerPerfNow() : 0;
 

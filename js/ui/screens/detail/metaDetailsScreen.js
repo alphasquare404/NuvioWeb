@@ -3250,6 +3250,9 @@ export const MetaDetailsScreen = {
     const meta = this.overlayMetaParams === this.params ? this.meta : null;
     return {
       itemKey: String(this.params?.itemId || ""),
+      itemType: this.params?.itemType || meta?.type,
+      posterUrl: this.params?.fallbackPoster || this.params?.poster || meta?.poster || "",
+      textlessPoster: meta?.textlessPoster || "",
       title: this.params?.fallbackTitle || this.params?.itemTitle || meta?.name || "Nuvio",
       logoUrl: this.params?.logo || meta?.logo || "",
       backdropUrl:
@@ -11185,6 +11188,7 @@ export const MetaDetailsScreen = {
         year: releaseYear,
         backdrop: streamBackdrop,
         poster: this.meta?.poster || null,
+        textlessPoster: this.meta?.textlessPoster || null,
         logo: this.meta?.logo || null,
         runtime: episode.runtimeMinutes || null,
         parentalWarnings: this.meta?.parentalWarnings || null,
@@ -11241,6 +11245,7 @@ export const MetaDetailsScreen = {
         year: releaseYear,
         backdrop: streamBackdrop,
         poster: this.meta?.poster || null,
+        textlessPoster: this.meta?.textlessPoster || null,
         logo: this.meta?.logo || null,
         parentalWarnings: this.meta?.parentalWarnings || null,
         parentalGuide: this.meta?.parentalGuide || null,

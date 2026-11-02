@@ -5,7 +5,19 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 async function fixture(run) {
-  const saved = { document: globalThis.document, settings: globalThis.__STARTUP_SETTINGS__ };
+  const saved = {
+    document: globalThis.document,
+    settings: globalThis.__STARTUP_SETTINGS__,
+    storage: globalThis.localStorage,
+    width: globalThis.innerWidth,
+    height: globalThis.innerHeight
+  };
+  globalThis.localStorage = {
+    getItem: (key) =>
+      key.includes("tmdbSettings") ? JSON.stringify({ enabled: true, useArtwork: true }) : null,
+    setItem() {},
+    removeItem() {}
+  };
   globalThis.__STARTUP_SETTINGS__ = {
     browserExternalPlayer: "disabled",
     playerEngine: "native",
@@ -17,7 +29,7 @@ async function fixture(run) {
     const classes = new Set();
     return {
       textContent: "",
-      style: {},
+      style: { setProperty() {}, removeProperty() {} },
       naturalWidth: 0,
       complete: false,
       classList: {
@@ -33,9 +45,10 @@ async function fixture(run) {
   };
   const createNode = () => ({
     textContent: "",
-    style: {},
+    style: { setProperty() {}, removeProperty() {} },
     hidden: false,
-    classList: { toggle() {} },
+    dataset: {},
+    classList: { toggle() {}, remove() {} },
     remove() {
       nodes.splice(nodes.indexOf(this), 1);
     },
@@ -44,6 +57,7 @@ async function fixture(run) {
     },
     children: {
       ".player-loading-status": child(),
+      ".player-loading-detail": child(),
       ".player-loading-backdrop": child(),
       ".player-loading-title": child(),
       ".player-loading-subtitle": child(),
@@ -89,6 +103,9 @@ async function fixture(run) {
     overlay.finish();
     globalThis.document = saved.document;
     globalThis.__STARTUP_SETTINGS__ = saved.settings;
+    globalThis.localStorage = saved.storage;
+    globalThis.innerWidth = saved.width;
+    globalThis.innerHeight = saved.height;
   }
 }
 
@@ -123,7 +140,7 @@ test("loading status toggle hides stage and relay text without hiding the overla
     assert.equal(nodes[0].children[".player-loading-status"].textContent, "");
     settings.showPlayerLoadingStatus = true;
     overlay.setRelayText("");
-    assert.equal(nodes[0].children[".player-loading-status"].textContent, "Checking streams…");
+    assert.equal(nodes[0].children[".player-loading-status"].textContent, "Preparing video…");
   });
 });
 
@@ -251,7 +268,7 @@ test("late logo metadata replaces text on the same overlay only after its image 
     logo.onload();
     assert.equal(identity.classList.contains("has-logo"), true);
     assert.equal(logo.classList.contains("hidden"), false);
-    assert.equal(node.children[".player-loading-status"].textContent, "Checking streams…");
+    assert.equal(node.children[".player-loading-status"].textContent, "Preparing video…");
     logo.onerror();
     assert.equal(
       identity.classList.contains("has-logo"),
@@ -310,6 +327,9 @@ test("Detail trusts only metadata loaded for its current route parameters", asyn
   };
   assert.deepEqual(get.call(screen), {
     itemKey: "moana",
+    itemType: undefined,
+    posterUrl: "",
+    textlessPoster: "",
     title: "Moana",
     logoUrl: "",
     backdropUrl: "moana.jpg"
@@ -340,5 +360,55 @@ test("Back remains actionable throughout finding, metadata, remux preparation, r
       assert.equal(exits, 1);
       assert.equal(nodes.length, 0);
     }
+  });
+});
+
+test("actual internal playback uses unified loading despite the saved external default", async () => {
+  await fixture(({ overlay, nodes, settings, usesUnifiedStartup }) => {
+    settings.browserExternalPlayer = "lenna";
+    assert.equal(usesUnifiedStartup(), false);
+    assert.equal(overlay.begin({ internalPlayer: true, title: "Offline title" }, "loading"), true);
+    assert.equal(nodes.length, 1);
+    assert.equal(nodes[0].children[".player-loading-status"].textContent, "Preparing video…");
+  });
+});
+
+test("preparation aliases share one honest phase while known processing is a separate detail", async () => {
+  await fixture(({ overlay, nodes }) => {
+    overlay.begin({ title: "Film" }, "loading");
+    const status = nodes[0].children[".player-loading-status"];
+    for (const stage of ["checking", "opening", "loading", "metadata"]) {
+      overlay.setStage(stage);
+      assert.equal(status.textContent, "Preparing video…");
+    }
+    overlay.setRelayText("Preparing remux");
+    assert.equal(status.textContent, "Preparing video…");
+    assert.equal(nodes[0].children[".player-loading-detail"].textContent, "Preparing remux");
+    overlay.setStage("frame");
+    assert.equal(status.textContent, "Starting playback…");
+    assert.equal(nodes[0].children[".player-loading-detail"].textContent, "");
+    assert.doesNotMatch(nodes[0].innerHTML, />‹ Back/);
+    assert.match(nodes[0].innerHTML, /assets\/icons\/ic_player_back\.svg/);
+  });
+});
+
+test("loading artwork follows presentation orientation with the same textless poster resolver as Detail", async () => {
+  await fixture(({ overlay, nodes }) => {
+    globalThis.innerWidth = 390;
+    globalThis.innerHeight = 844;
+    overlay.begin({
+      title: "Film",
+      itemKey: "film",
+      itemType: "movie",
+      posterUrl: "poster.jpg",
+      textlessPoster: "textless.jpg",
+      backdropUrl: "backdrop.jpg"
+    });
+    const image = nodes[0].children[".player-loading-backdrop"];
+    assert.equal(image.style.backgroundImage, 'url("textless.jpg")');
+    globalThis.innerWidth = 844;
+    globalThis.innerHeight = 390;
+    overlay.refreshArtwork();
+    assert.equal(image.style.backgroundImage, 'url("backdrop.jpg")');
   });
 });

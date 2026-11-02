@@ -3109,4 +3109,6 @@
     <string name="player_audio_switch_failed">Unable to switch audio with the available stream processing.</string>
     <string name="player_audio_direct_default">Player default audio</string>
     <string name="player_audio_direct_default_help">The browser chooses the track during Direct playback.</string>
+    <string name="startup_loading_preparing">Preparing video…</string>
+    <string name="startup_loading_starting">Starting playback…</string>
 </resources>

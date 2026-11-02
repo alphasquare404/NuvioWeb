@@ -21765,19 +21765,24 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 /* Loading always leaves a visible exit, including the shared route handoff. */
 .startup-loading-back {
   position: absolute;
-  top: max(20px, env(safe-area-inset-top));
-  left: max(20px, env(safe-area-inset-left));
+  top: calc(var(--browser-safe-area-top, env(safe-area-inset-top)) + 17px);
+  left: calc(var(--browser-safe-area-left, env(safe-area-inset-left)) + 12px);
   z-index: 4;
-  min-height: 44px;
-  padding: 8px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 24px;
-  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: white;
   font: inherit;
+  line-height: 1;
   cursor: pointer;
   pointer-events: auto;
 }
+.startup-loading-back .player-desktop-back-icon { display: block; width: 24px; height: 24px; }
 .startup-loading-back:focus-visible {
   outline: 3px solid white;
 }
@@ -21790,3 +21795,21 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .filename-playback-badge.tone-red { color: #ff9999; background: #351c1c; }
 .filename-playback-badge.tone-neutral { color: #c1c7d0; background: #24272c; }
 .filename-playback-estimate { opacity: .8; }
+
+/* The loading canvas follows the requested player orientation from its first paint. */
+.unified-startup-overlay.browser-player-rotated {
+  inset: auto;
+  width: var(--player-canvas-width);
+  height: var(--player-canvas-height);
+  left: var(--player-canvas-left);
+  top: var(--player-canvas-top);
+  transform-origin: 0 0;
+  transform: rotate(var(--player-canvas-rotation));
+}
+.unified-startup-overlay .player-loading-center { width: 80%; max-width: 900px; }
+.unified-startup-overlay .player-loading-identity { opacity: 1; animation: none; }
+.unified-startup-overlay .player-loading-logo { max-width: 100%; max-height: min(24vh, 170px); }
+.unified-startup-overlay[data-player-orientation] .player-loading-logo { max-height: min(calc(var(--player-canvas-height) * .24), 170px); }
+.unified-startup-overlay .player-loading-title { max-width: 100%; font-size: clamp(22px, 3vw, 44px); }
+.unified-startup-overlay .player-loading-status { margin-top: 16px; font-size: clamp(13px, 1.2vw, 18px); }
+.unified-startup-overlay .player-loading-detail { margin-top: 8px; color: rgba(255,255,255,.7); font-size: clamp(12px, 1vw, 15px); }
