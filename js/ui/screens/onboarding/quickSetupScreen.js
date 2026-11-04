@@ -22,7 +22,7 @@ import {
   renderBrowserSourceCardContent
 } from "../../components/browserStreamSourceCard.js";
 import { renderFilenamePlaybackMethodBadge } from "../../components/filenamePlaybackBadge.js";
-import { quickSetupReleaseFeatures } from "./quickSetupRelease.js";
+import { loadQuickSetupReleaseFeatures } from "./quickSetupRelease.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
 import { I18n } from "../../../i18n/index.js";
 import { Router } from "../../navigation/router.js";
@@ -114,15 +114,18 @@ export const QuickSetupScreen = {
     this.initialLabels = this.labels;
     this.initialFilenameRouting = this.filenameRouting;
     this.initialStreamFilter = this.streamFilter;
-    this.releaseFeatures = quickSetupReleaseFeatures({
+    const releaseOptions = {
       mode: REMUX_MODE,
       remuxEndpoint: REMUX_ENDPOINT,
       transcodeEndpoint: TRANSCODE_ENDPOINT
-    });
+    };
 
     // Asking about a notification the browser cannot deliver is a step that
     // wastes the one thing this flow is spending: attention.
-    this.pushState = await getBrowserPushReturnState().catch(() => ({ state: "unavailable" }));
+    [this.pushState, this.releaseFeatures] = await Promise.all([
+      getBrowserPushReturnState().catch(() => ({ state: "unavailable" })),
+      loadQuickSetupReleaseFeatures(releaseOptions)
+    ]);
     this.stepIndex = 0;
 
     ScreenUtils.show(this.container);
@@ -170,7 +173,7 @@ export const QuickSetupScreen = {
     const isRelease = step === "release";
 
     this.container.innerHTML = `
-      <main class="quick-setup-screen">
+      <main class="quick-setup-screen" data-setup-step="${escapeHtml(step)}">
         <header class="quick-setup-header">
           <img class="quick-setup-logo" src="assets/brand/app_logo_wordmark.png" alt="Nuvio" />
           <p class="quick-setup-progress-label">${escapeHtml(
@@ -298,7 +301,7 @@ export const QuickSetupScreen = {
             {},
             features.client
               ? "Powered by Mediabunny, compatible streams are repackaged on your device without changing the video quality."
-              : "Powered by Jellyfin FFmpeg, compatible streams are repackaged on the server without changing the video quality."
+              : "Powered by FFmpeg, compatible streams are repackaged on the server without changing the video quality."
           )
         )}</p></section>`
       : "";
@@ -328,11 +331,22 @@ export const QuickSetupScreen = {
               {},
               "Remux and transcoding are not available on this host. Streams must use formats supported by your device."
             );
-    return `<div class="quick-setup-features">${remux}${audio}<p class="quick-setup-note"><strong>${escapeHtml(t("quick_setup_limitations", {}, "Current limitations"))}</strong><br>${escapeHtml(warning)}</p></div>`;
+    const cors = features.client
+      ? t(
+          "quick_setup_cors_client",
+          {},
+          "Client remux and direct in-app downloads require CORS permission from the stream host. Direct playback may still work when CORS is blocked."
+        )
+      : t(
+          "quick_setup_cors_downloads",
+          {},
+          "Direct in-app downloads require CORS permission from the stream host."
+        );
+    return `<div class="quick-setup-features">${remux}${audio}<p class="quick-setup-note"><strong>${escapeHtml(t("quick_setup_limitations", {}, "Current limitations"))}</strong><br>${escapeHtml(warning)}<br><br>${escapeHtml(cors)} <a class="quick-setup-cors-link focusable" href="https://www.reddit.com/user/alphasquare_/comments/1xnmw1k/nuvioweb_internal_player_downloads_cors/" target="_blank" rel="noopener noreferrer">${escapeHtml(t("quick_setup_cors_read_more", {}, "Read More"))}</a></p></div>`;
   },
 
   renderReleaseStep() {
-    return `<h1>${escapeHtml(t("quick_setup_release_title", {}, "New in v0.2.1"))}</h1>
+    return `<div class="quick-setup-release-intro"><h1>${escapeHtml(t("quick_setup_release_title", {}, "New in v0.2.1"))}</h1>
       <h2 class="quick-setup-release-heading">${escapeHtml(t("quick_setup_release_heading", {}, "More ways to watch, right here."))}</h2>
       <p>${escapeHtml(
         this.releaseFeatures.remuxProvider || this.releaseFeatures.audioTranscoding
@@ -346,7 +360,7 @@ export const QuickSetupScreen = {
               {},
               "Review how streams are labelled, played, and filtered without changing your existing preferences."
             )
-      )}</p>
+      )}</p></div>
       ${this.renderReleaseCapabilities()}
       ${this.renderWhatsNew()}
       <p class="quick-setup-existing-settings">${escapeHtml(t("quick_setup_existing_settings", {}, "Your existing settings are preserved. You can keep them or review your playback preferences."))}</p>`;
@@ -468,7 +482,7 @@ export const QuickSetupScreen = {
 
   renderProcessingStep() {
     const field = (id, title, body, checked) =>
-      `<label class="quick-setup-processing-field"><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(body)}</small></span><input type="checkbox" class="focusable" data-processing-field="${id}" ${checked ? "checked" : ""} /></label>`;
+      `<button type="button" class="quick-setup-processing-field quick-setup-processing-toggle focusable" role="switch" aria-checked="${Boolean(checked)}" data-action="toggleProcessing" data-processing-field="${id}"><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(body)}</small></span><span class="settings-toggle-pill${checked ? " is-checked" : ""}" aria-hidden="true"><span class="settings-toggle-thumb"></span></span></button>`;
     return `<h1>${escapeHtml(t("quick_setup_processing_title", {}, "Stream processing"))}</h1>
       <p>${escapeHtml(t("quick_setup_processing_body", {}, "Choose how streams are labelled, opened, and filtered."))}</p>
       <div class="quick-setup-processing-fields">
@@ -515,11 +529,9 @@ export const QuickSetupScreen = {
 
   onChange(event) {
     const field = event.target.dataset.processingField;
-    if (!["labels", "filenameRouting", "streamFilter"].includes(field)) return;
-    if (field === "streamFilter") {
-      if (!["ALL", "DIRECT", "DIRECT_REMUX"].includes(event.target.value)) return;
-      this.streamFilter = event.target.value;
-    } else this[field] = event.target.checked;
+    if (field !== "streamFilter" || !["ALL", "DIRECT", "DIRECT_REMUX"].includes(event.target.value))
+      return;
+    this.streamFilter = event.target.value;
     this.render();
     this.container.querySelector(`[data-processing-field="${field}"]`)?.focus();
   },
@@ -848,6 +860,15 @@ export const QuickSetupScreen = {
     if (!node || !this.container.contains(node)) return;
     event.preventDefault();
     const action = node.dataset.action;
+
+    if (action === "toggleProcessing") {
+      const field = node.dataset.processingField;
+      if (!["labels", "filenameRouting"].includes(field)) return;
+      this[field] = !this[field];
+      this.render();
+      this.container.querySelector(`[data-processing-field="${field}"]`)?.focus();
+      return;
+    }
 
     if (action === "choosePlayer") {
       this.player = normalizeBrowserExternalPlayer(node.dataset.player);

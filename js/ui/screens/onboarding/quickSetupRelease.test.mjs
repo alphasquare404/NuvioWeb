@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { quickSetupReleaseFeatures } from "./quickSetupRelease.js";
+import { quickSetupReleaseFeatures, loadQuickSetupReleaseFeatures } from "./quickSetupRelease.js";
 import { selectQuickSetupSteps } from "./quickSetupSteps.js";
 
 test("client remux advertises Mediabunny and never server audio conversion", () => {
@@ -12,15 +12,16 @@ test("client remux advertises Mediabunny and never server audio conversion", () 
   });
 });
 
-test("server processing is described only when its endpoints are configured", () => {
+test("server processing is described only when configured and verified", () => {
   assert.deepEqual(
     quickSetupReleaseFeatures({
       mode: "server",
       remuxEndpoint: "/remux",
-      transcodeEndpoint: "/transcode"
+      transcodeEndpoint: "/transcode",
+      availability: { remux: true, audioTranscoding: true }
     }),
     {
-      remuxProvider: "Jellyfin FFmpeg",
+      remuxProvider: "FFmpeg",
       client: false,
       audioTranscoding: true
     }
@@ -30,6 +31,10 @@ test("server processing is described only when its endpoints are configured", ()
     false
   );
   assert.equal(quickSetupReleaseFeatures({ mode: "server" }).remuxProvider, null);
+  assert.equal(
+    quickSetupReleaseFeatures({ mode: "server", remuxEndpoint: "/remux" }).remuxProvider,
+    null
+  );
   assert.deepEqual(
     quickSetupReleaseFeatures({
       mode: "off",
@@ -42,6 +47,46 @@ test("server processing is described only when its endpoints are configured", ()
       audioTranscoding: false
     }
   );
+});
+
+test("onboarding confirms the binary capability rather than trusting a configured health URL", async () => {
+  const options = { mode: "server", remuxEndpoint: "/remux", transcodeEndpoint: "/transcode" };
+  const unverified = await loadQuickSetupReleaseFeatures(options, {
+    fetchImpl: async () => ({ ok: true, json: async () => ({ ok: true }) })
+  });
+  assert.equal(unverified.remuxProvider, null);
+  assert.equal(unverified.audioTranscoding, false);
+  const verified = await loadQuickSetupReleaseFeatures(options, {
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        ffmpeg: { verified: true, available: true, remux: true, audioTranscoding: true }
+      })
+    })
+  });
+  assert.equal(verified.remuxProvider, "FFmpeg");
+  assert.equal(verified.audioTranscoding, true);
+  const unavailable = await loadQuickSetupReleaseFeatures(options, {
+    fetchImpl: async () => {
+      throw Error("unreachable");
+    }
+  });
+  assert.equal(unavailable.remuxProvider, null);
+  assert.equal(unavailable.audioTranscoding, false);
+});
+
+test("client onboarding never requests a server FFmpeg capability", async () => {
+  const features = await loadQuickSetupReleaseFeatures(
+    { mode: "client", remuxEndpoint: "/remux", transcodeEndpoint: "/transcode" },
+    {
+      fetchImpl: () => {
+        throw Error("must not request");
+      }
+    }
+  );
+  assert.equal(features.remuxProvider, "Mediabunny");
+  assert.equal(features.audioTranscoding, false);
 });
 
 test("upgrading an internal profile adds a release introduction and processing before offline sync", () => {
@@ -102,7 +147,8 @@ test("What's new starts collapsed and advertises only enabled processing feature
     quickSetupReleaseFeatures({
       mode: "server",
       remuxEndpoint: "/remux",
-      transcodeEndpoint: "/transcode"
+      transcodeEndpoint: "/transcode",
+      availability: { remux: true, audioTranscoding: true }
     })
   );
   assert.ok(server.includes("Audio transcoding"));

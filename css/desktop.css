@@ -7879,13 +7879,13 @@ html.is-hero-stream-hold * {
   }
 }
 
-.desktop-browser .settings-shell .settings-toggle-pill {
+.desktop-browser :is(.settings-shell, :where(#quickSetup)) .settings-toggle-pill {
   width: 42px;
   height: 24px;
   padding: 3px;
 }
 
-.desktop-browser .settings-shell .settings-toggle-thumb {
+.desktop-browser :is(.settings-shell, :where(#quickSetup)) .settings-toggle-thumb {
   width: 18px;
   height: 18px;
 }
@@ -24011,6 +24011,17 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 
 
 /* v0.2.1 internal-player setup. External-player steps keep their original layout. */
+.desktop-browser #quickSetup .quick-setup-release-intro > p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.desktop-browser #quickSetup .quick-setup-cors-link {
+  color: var(--text-color);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .desktop-browser #quickSetup .quick-setup-release-heading {
   margin: 0 0 12px;
   font-size: 20px;
@@ -24131,11 +24142,17 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   line-height: 1.4;
   color: var(--text-secondary);
 }
-.desktop-browser #quickSetup .quick-setup-processing-field input {
-  width: 22px;
-  height: 22px;
+.desktop-browser #quickSetup .quick-setup-processing-field > .settings-toggle-pill {
   flex: 0 0 auto;
-  accent-color: var(--secondary-color);
+}
+.desktop-browser #quickSetup .quick-setup-processing-toggle {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid rgb(var(--focus-color-rgb) / 0.12);
+  background: none;
+  color: var(--text-color);
+  font: inherit;
+  text-align: start;
   cursor: pointer;
 }
 .desktop-browser #quickSetup .quick-setup-processing-field select {
@@ -24149,7 +24166,7 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   font: inherit;
   font-size: 16px;
 }
-.desktop-browser #quickSetup .quick-setup-processing-field :is(input, select):focus-visible {
+.desktop-browser #quickSetup :is(.quick-setup-processing-toggle, .quick-setup-processing-field select):focus-visible {
   outline: 2px solid var(--secondary-color);
   outline-offset: 4px;
 }
@@ -24159,11 +24176,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 .desktop-browser #quickSetup .quick-setup-stream-preview .stream-route-card {
   cursor: default;
 }
-@media (pointer: coarse) {
-  .desktop-browser #quickSetup .quick-setup-processing-field input {
-    margin: 11px;
-  }
-}
 @media (max-width: 380px) {
   .desktop-browser #quickSetup .quick-setup-actions {
     flex-wrap: wrap;
@@ -24171,5 +24183,107 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   }
   .desktop-browser #quickSetup .quick-setup-actions-end {
     margin-left: auto;
+  }
+}
+
+/* Tablets get readable page width rather than a stretched phone column. */
+@media (min-width: 601px) {
+  .desktop-browser #quickSetup .quick-setup-screen {
+    width: min(100%, 880px);
+    min-height: 0;
+    padding: max(32px, env(safe-area-inset-top)) 32px max(32px, env(safe-area-inset-bottom));
+    gap: 28px;
+  }
+  .desktop-browser #quickSetup .quick-setup-header {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgb(var(--focus-color-rgb) / 0.12);
+  }
+  .desktop-browser #quickSetup .quick-setup-body {
+    min-width: 0;
+  }
+  .desktop-browser #quickSetup .quick-setup-body h1 {
+    font-size: 30px;
+  }
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="player"] .quick-setup-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .desktop-browser #quickSetup .quick-setup-option,
+  .desktop-browser #quickSetup .quick-setup-option-choose {
+    min-width: 0;
+  }
+  .desktop-browser #quickSetup .quick-setup-actions {
+    border-top: 1px solid rgb(var(--focus-color-rgb) / 0.12);
+    padding-top: 20px;
+  }
+  .desktop-browser #quickSetup .quick-setup-footnote {
+    margin-top: 0;
+  }
+  .desktop-browser #quickSetup .quick-setup-release-actions {
+    max-width: 560px;
+    margin-inline: auto;
+  }
+  .desktop-browser #quickSetup .quick-setup-release-actions .quick-setup-actions-end {
+    align-items: stretch;
+  }
+}
+
+/* Desktop and landscape tablets place the form next to the real stream cards. */
+@media (min-width: 960px) {
+  .desktop-browser #quickSetup .quick-setup-screen:is([data-setup-step="release"], [data-setup-step="processing"], [data-setup-step="player"]) {
+    width: min(100%, 1120px);
+    padding: max(40px, env(safe-area-inset-top)) 40px max(40px, env(safe-area-inset-bottom));
+  }
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="release"] .quick-setup-body {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: start;
+    gap: 24px 40px;
+  }
+  .desktop-browser #quickSetup .quick-setup-release-intro {
+    min-width: 0;
+    padding-top: 4px;
+  }
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="release"] .quick-setup-features {
+    margin-top: 0;
+  }
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="release"] :is(.quick-setup-whats-new, .quick-setup-existing-settings) {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+  .desktop-browser #quickSetup .quick-setup-release-heading {
+    margin: 16px 0;
+    font-size: 24px;
+  }
+  .desktop-browser #quickSetup .quick-setup-changes {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 28px;
+  }
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="processing"] .quick-setup-body {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: start;
+    gap: 12px 40px;
+  }
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="processing"] .quick-setup-body > h1,
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="processing"] .quick-setup-body > p:first-of-type {
+    grid-column: 1 / -1;
+  }
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="processing"] .quick-setup-processing-fields {
+    grid-column: 1;
+    grid-row: 3;
+    margin-bottom: 0;
+  }
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="processing"] .quick-setup-stream-preview {
+    grid-column: 2;
+    grid-row: 3 / span 2;
+  }
+  .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="processing"] .quick-setup-body > .quick-setup-preview-note {
+    grid-column: 1;
+    grid-row: 4;
   }
 }

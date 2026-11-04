@@ -3181,7 +3181,7 @@
     <string name="quick_setup_review_settings">Review my settings</string>
     <string name="quick_setup_keep_settings">Keep my settings</string>
     <string name="quick_setup_client_remux">Powered by Mediabunny, compatible streams are repackaged on your device without changing the video quality.</string>
-    <string name="quick_setup_server_remux">Powered by Jellyfin FFmpeg, compatible streams are repackaged on the server without changing the video quality.</string>
+    <string name="quick_setup_server_remux">Powered by FFmpeg, compatible streams are repackaged on the server without changing the video quality.</string>
     <string name="quick_setup_audio_transcoding">Unsupported audio can be converted automatically while preserving the original video quality.</string>
     <string name="quick_setup_limitations">Current limitations</string>
     <string name="quick_setup_client_limitations">Transcoding is not supported in client mode. Your device must support the original video and audio codecs.</string>
@@ -3224,4 +3224,7 @@
     <string name="quick_setup_changes_buffer">Increased remux buffering limits.</string>
     <string name="quick_setup_changes_downloads">Downloads save richer metadata and artwork without requiring a visit to Details first.</string>
     <string name="quick_setup_changes_onboarding">Updated onboarding preserves existing player and offline-sync preferences.</string>
+    <string name="quick_setup_cors_client">Client remux and direct in-app downloads require CORS permission from the stream host. Direct playback may still work when CORS is blocked.</string>
+    <string name="quick_setup_cors_downloads">Direct in-app downloads require CORS permission from the stream host.</string>
+    <string name="quick_setup_cors_read_more">Read More</string>
 </resources>
