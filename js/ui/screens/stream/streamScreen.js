@@ -1512,24 +1512,7 @@ export const StreamScreen = {
       this.params?.itemId,
       this.params?.videoId
     );
-    const selected = selectAutoPlayStream(this.getFilteredStreams(), {
-      reusableStream,
-      filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
-      mode: settings.streamAutoPlayMode,
-      source: settings.streamAutoPlaySource,
-      regexPattern: settings.streamAutoPlayRegex,
-      installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
-      selectedAddons: settings.streamAutoPlaySelectedAddons,
-      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
-      hdrPreference: resolveHdrPreference(settings),
-      preferredBingeGroup: resolvePreferredBingeGroup(settings, () =>
-        StreamPreferencesStore.getEntry(
-          this.params?.itemId,
-          this.params?.videoId || this.params?.itemId
-        )
-      ),
-      preferBingeGroupInSelection: true
-    });
+    const selected = this.selectStreamForAutoPlay(this.getFilteredStreams());
     if (
       reusableStream &&
       this.loading &&
@@ -1563,6 +1546,32 @@ export const StreamScreen = {
     );
     this.cancelAutoPlaySelectionWait();
     void this.playStream(selected.id, { automatic: true });
+  },
+  selectStreamForAutoPlay(streams) {
+    const settings = PlayerSettingsStore.get();
+    const reusableStream = reusableStreamPreference(
+      settings,
+      this.params?.itemId,
+      this.params?.videoId
+    );
+    return selectAutoPlayStream(streams, {
+      reusableStream,
+      filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
+      mode: settings.streamAutoPlayMode,
+      source: settings.streamAutoPlaySource,
+      regexPattern: settings.streamAutoPlayRegex,
+      installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
+      selectedAddons: settings.streamAutoPlaySelectedAddons,
+      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
+      hdrPreference: resolveHdrPreference(settings),
+      preferredBingeGroup: resolvePreferredBingeGroup(settings, () =>
+        StreamPreferencesStore.getEntry(
+          this.params?.itemId,
+          this.params?.videoId || this.params?.itemId
+        )
+      ),
+      preferBingeGroupInSelection: true
+    });
   },
   cancelAutoPlaySelectionWait() {
     if (this.autoPlaySelectionWaitTimer) {
@@ -3128,8 +3137,7 @@ export const StreamScreen = {
     if (PlayerSettingsStore.get().externalReturnMethod !== "automation") {
       await bindBrowserPushReturn({ token: prepared.handoff?.token });
     }
-    launchBrowserExternalPlayer({ href: prepared.launch.href });
-    return true;
+    return launchBrowserExternalPlayer({ href: prepared.launch.href });
   },
 
   /**
@@ -3193,7 +3201,8 @@ export const StreamScreen = {
       offlineStream = null,
       skipExternalRoute = false,
       playerOverride = "",
-      automatic = false
+      automatic = false,
+      failedExternalStreamIds = []
     } = {}
   ) {
     this.cancelAutoPlayCountdown();
@@ -3279,21 +3288,72 @@ export const StreamScreen = {
     });
 
     if (!selectionCurrent()) return;
-    if (
+    const externalPlayer = normalizeBrowserExternalPlayer(
+      playerOverride || PlayerSettingsStore.get().browserExternalPlayer
+    );
+    const externalRequested =
       !skipExternalRoute &&
-      (await this.routeSelectedStream(selected, {
-        offlineObjectUrl,
-        offlineDownload,
-        offlineStream,
-        resumePositionMs,
-        resumeProgressPercent,
-        resumeDurationMs,
-        playerOverride
-      }))
-    ) {
-      if (returnRoute !== "stream") {
-        this.leaveForOriginWhenHidden();
+      !offlineObjectUrl &&
+      Environment.isBrowser() &&
+      externalPlayer !== "disabled" &&
+      getBrowserExternalPlayerOptions().includes(externalPlayer);
+    let routed = false;
+    if (!skipExternalRoute) {
+      try {
+        routed = await this.routeSelectedStream(selected, {
+          offlineObjectUrl,
+          offlineDownload,
+          offlineStream,
+          resumePositionMs,
+          resumeProgressPercent,
+          resumeDurationMs,
+          playerOverride
+        });
+      } catch (error) {
+        if (!externalRequested) throw error;
+        console.warn("External player handoff failed", { name: error?.name || "Error" });
       }
+    }
+    if (!selectionCurrent()) return;
+    if (routed) {
+      if (returnRoute !== "stream") this.leaveForOriginWhenHidden();
+      return;
+    }
+    if (externalRequested) {
+      const failedIds = [...failedExternalStreamIds, selected.id];
+      const next = automatic
+        ? this.selectStreamForAutoPlay(
+            this.getFilteredStreams().filter((stream) => !failedIds.includes(stream.id))
+          )
+        : null;
+      console.warn(
+        "[AutoPlay]",
+        JSON.stringify({
+          event: "external-handoff-failed",
+          automatic,
+          player: externalPlayer,
+          failed: failedIds.length,
+          tryingNext: Boolean(next?.id)
+        })
+      );
+      if (next?.id) {
+        this.showStreamToast("Stream failed. Trying the next stream...");
+        return this.playStream(next.id, {
+          automatic: true,
+          playerOverride: externalPlayer,
+          failedExternalStreamIds: failedIds
+        });
+      }
+      this._labelProbePaused = false;
+      this.autoResolvedPlaybackPending = false;
+      StartupLoadingOverlay.finish();
+      this.requestRender({ delayMs: 0 });
+      this.showStreamToast(
+        automatic
+          ? "Could not open any matching stream in your external player. Choose another stream."
+          : "Could not open this stream in your external player. Choose another stream.",
+        { durationMs: 10000 }
+      );
       return;
     }
 

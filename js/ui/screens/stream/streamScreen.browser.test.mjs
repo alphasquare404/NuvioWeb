@@ -15,6 +15,16 @@ async function loadStreamScreen(instance = "") {
       {
         name: "stream-screen-browser-mocks",
         setup(buildApi) {
+          if (instance.startsWith("external-")) {
+            buildApi.onResolve({ filter: /startupLoadingOverlay\.js$/ }, () => ({
+              path: "startup",
+              namespace: "external-test"
+            }));
+            buildApi.onLoad({ filter: /.*/, namespace: "external-test" }, () => ({
+              contents:
+                "export const usesUnifiedStartup = () => false; export const StartupLoadingOverlay = { begin() {}, setBackHandler() {}, finish() {}, setStage() {} };"
+            }));
+          }
           const mockPaths = new Map([
             [
               "router",
@@ -317,3 +327,57 @@ test("stream page waits for the remembered source during partial discovery", asy
     delete globalThis.__NUVIO_TEST_REUSABLE_STREAM__;
   }
 });
+
+for (const scenario of ["next", "exhausted", "manual", "cancelled", "throw"]) {
+  test("external autoplay handoff: " + scenario, async () => {
+    const { StreamScreen } = await loadStreamScreen("external-" + scenario);
+    const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { userAgent: "iPhone" }
+    });
+    const calls = [];
+    const navigations = [];
+    const messages = [];
+    try {
+      configureAutoPlayScreen(StreamScreen, {
+        params: { itemId: "movie", itemType: "movie", startFromBeginning: true },
+        streams: [
+          { id: "bad", url: "https://example.com/bad" },
+          { id: "good", url: "https://example.com/good" }
+        ],
+        settings: { browserExternalPlayer: "lenna" }
+      });
+      globalThis.__NUVIO_TEST_NAVIGATE__ = (...args) => navigations.push(args);
+      StreamScreen.getStartupOverlayMeta = () => ({});
+      StreamScreen.requestRender = () => {};
+      StreamScreen.showStreamToast = (text) => messages.push(text);
+      StreamScreen.routeSelectedStream = async (selected) => {
+        calls.push(selected.id);
+        if (scenario === "cancelled") StreamScreen._playSelectionGeneration++;
+        if (scenario === "throw" && selected.id === "bad") throw new Error("resolution failed");
+        return scenario !== "exhausted" && selected.id === "good";
+      };
+      await StreamScreen.playStream("bad", { automatic: scenario !== "manual" });
+      assert.deepEqual(
+        calls,
+        ["manual", "cancelled"].includes(scenario) ? ["bad"] : ["bad", "good"]
+      );
+      assert.deepEqual(
+        navigations,
+        [],
+        "external selection must never navigate to internal player"
+      );
+      if (["manual", "exhausted"].includes(scenario)) {
+        assert.match(messages.at(-1), /Choose another stream/);
+        assert.equal(StreamScreen.autoResolvedPlaybackPending, false);
+        assert.equal(StreamScreen._labelProbePaused, false);
+      }
+    } finally {
+      if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+      else delete globalThis.navigator;
+      delete globalThis.__NUVIO_TEST_PLAYER_SETTINGS__;
+      delete globalThis.__NUVIO_TEST_NAVIGATE__;
+    }
+  });
+}
