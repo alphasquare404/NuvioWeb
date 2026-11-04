@@ -255,9 +255,14 @@ function artworkFileName(downloadId, kind) {
 async function cacheArtwork(download, kind, sourceUrl) {
   const url = safePublicUrl(sourceUrl);
   if (!url || !isHttpUrl(url)) return "";
-  const response = await fetch(url);
-  if (!response.ok) return "";
-  const image = await response.blob();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  let image;
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) return "";
+    image = await response.blob();
+  } finally { clearTimeout(timeout); }
   if (!image.size || !String(image.type || "").toLowerCase().startsWith("image/")) return "";
   const fileName = artworkFileName(download.downloadId, kind);
   const directory = await getArtworkDirectory(true);
@@ -270,9 +275,17 @@ async function cacheArtwork(download, kind, sourceUrl) {
   return fileName;
 }
 
-async function captureOfflineArtwork(download) {
+const artworkJobs = new Map();
+function captureOfflineArtwork(download) {
+  const id = download.downloadId;
+  const job = (artworkJobs.get(id) || Promise.resolve()).catch(() => {}).then(() => captureOfflineArtworkFiles(download));
+  artworkJobs.set(id, job);
+  void job.finally(() => { if (artworkJobs.get(id) === job) artworkJobs.delete(id); });
+  return job;
+}
+async function captureOfflineArtworkFiles(download) {
   try {
-    const [posterFile, backdropFile, seriesPosterFile, logoFile] = await Promise.all([
+    const results = await Promise.allSettled([
       cacheArtwork(download, "poster", download.poster),
       cacheArtwork(download, "backdrop", download.backdrop),
       download.contentType === "episode"
@@ -280,14 +293,9 @@ async function captureOfflineArtwork(download) {
         : Promise.resolve(""),
       cacheArtwork(download, "logo", download.displaySnapshot?.logo)
     ]);
-    if (!posterFile && !backdropFile && !seriesPosterFile && !logoFile) return;
-    await writeDownload({
-      ...download,
-      localPosterFile: posterFile || download.localPosterFile || "",
-      localBackdropFile: backdropFile || download.localBackdropFile || "",
-      localSeriesPosterFile: seriesPosterFile || download.localSeriesPosterFile || "",
-      localLogoFile: logoFile || download.localLogoFile || ""
-    });
+    const keys = ["localPosterFile", "localBackdropFile", "localSeriesPosterFile", "localLogoFile"];
+    const patch = Object.fromEntries(results.flatMap((result, index) => result.status === "fulfilled" && result.value ? [[keys[index], result.value]] : []));
+    if (Object.keys(patch).length) await updateBrowserOfflineDownload(download.downloadId, patch);
   } catch (_) {
     // Artwork is optional enrichment; a media copy must remain usable without it.
   }
@@ -407,6 +415,7 @@ function buildMetadata(input, downloadId, fileName) {
     episodeOverview: text(input.episodeOverview || input.overview),
     episodeRuntimeMinutes: Number(input.episodeRuntimeMinutes || input.runtimeMinutes || 0) || 0,
     displaySnapshot: createOfflineDisplaySnapshot(input.displaySnapshot || input),
+    offlineMetadataStatus: "pending",
     year: text(input.year || input.releaseYear || input.releaseInfo).match(/\b(19|20)\d{2}\b/)?.[0] || "",
     contentType,
     mediaId: text(input.mediaId || input.itemId || input.tmdbId || input.imdbId),
@@ -1018,13 +1027,26 @@ export async function updateBrowserOfflineDownload(downloadId, patch = {}) {
 }
 
 export async function enrichBrowserOfflineDownloadDisplay(downloadId, displaySnapshot = {}) {
+  await artworkJobs.get(downloadId)?.catch(() => {});
   const current = await readDownload(downloadId);
   if (!current) return null;
+  const snapshot = mergeOfflineDisplaySnapshot(current.displaySnapshot || {}, displaySnapshot);
+  const isEpisode = current.contentType === "episode";
   const next = await writeDownload({
     ...current,
-    displaySnapshot: mergeOfflineDisplaySnapshot(current.displaySnapshot || {}, displaySnapshot)
+    displaySnapshot: snapshot,
+    title: (isEpisode ? snapshot.episode?.title : snapshot.title) || current.title,
+    seriesTitle: isEpisode ? snapshot.title || current.seriesTitle : current.seriesTitle,
+    description: snapshot.overview || current.description,
+    genres: snapshot.genres?.length ? snapshot.genres : current.genres,
+    runtimeMinutes: snapshot.runtimeMinutes || current.runtimeMinutes,
+    episodeOverview: isEpisode ? snapshot.episode?.overview || current.episodeOverview : current.episodeOverview,
+    episodeRuntimeMinutes: isEpisode ? snapshot.episode?.runtimeMinutes || current.episodeRuntimeMinutes : current.episodeRuntimeMinutes,
+    poster: (isEpisode ? snapshot.episode?.still : snapshot.poster) || current.poster,
+    backdrop: snapshot.backdrop || current.backdrop,
+    year: String(snapshot.year || "").match(/\b(19|20)\d{2}\b/)?.[0] || current.year
   });
-  void captureOfflineArtwork({
+  await captureOfflineArtwork({
     ...next,
     poster:
       next.contentType === "episode"

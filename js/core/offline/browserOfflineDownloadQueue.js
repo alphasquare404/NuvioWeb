@@ -1,3 +1,4 @@
+import { enrichOfflineDownloadMetadata } from "./offlineMetadataEnrichment.js";
 import {
   canQueueBrowserOfflineDownload,
   cancelBrowserOfflineDownload,
@@ -170,6 +171,7 @@ async function runActiveDownload(download) {
     }
     const result = await startBrowserOfflineDownload(request);
     if (result?.status === "completed") {
+      void enrichOfflineDownloadMetadata(result.download);
       await downloadSelectedSubtitleAfterVideo(result.download);
     }
   } catch (_) {
@@ -228,6 +230,10 @@ export async function initializeBrowserOfflineDownloadQueue() {
         isOfflineSubtitleStepUnfinished(download?.offlineSubtitleStatus)
     );
     void Promise.all(pendingSubtitleDownloads.map((download) => downloadSelectedSubtitleAfterVideo(download)));
+    for (const download of await listOfflineDownloads()) {
+      if (download.status === "completed" && ["pending", "processing", "partial"].includes(download.offlineMetadataStatus))
+        void enrichOfflineDownloadMetadata(download);
+    }
     void scheduleBrowserOfflineDownloads();
     return capabilities;
   })().finally(() => {
@@ -243,6 +249,7 @@ export async function enqueueBrowserOfflineDownload(input = {}) {
   const existing = await getOfflineDownload(downloadId);
   if (["completed", "downloading", "queued"].includes(String(existing?.status || ""))) {
     if (existing?.status === "queued") runtimeQueuedRequests.set(downloadId, input);
+    if (existing?.status === "completed") void enrichOfflineDownloadMetadata(existing);
     return { status: "existing", download: existing };
   }
   const result = await createQueuedBrowserOfflineDownload(input, await nextQueueSequence());
