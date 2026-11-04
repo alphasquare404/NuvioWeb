@@ -1,3 +1,4 @@
+import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
 import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
@@ -8,13 +9,16 @@ import {
 } from "../../components/startupLoadingOverlay.js";
 
 import { Router } from "../../navigation/router.js";
+import {
+  streamSelectionDeadline,
+  reportAutoPlaySelection
+} from "../../../core/streams/streamAutoResolve.js";
 import { loadMoviModule } from "../../../core/player/movi/moviEngine.js";
 import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
 
 import { buildPlayerSubtitle } from "../../../core/util/runtimeLabel.js";
 import { REMUX_ENDPOINT } from "../../../config.js";
 
-import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -78,7 +82,6 @@ import {
   shouldRevealFocusedStreamItem,
   streamFocusRevealKey
 } from "../../../core/streams/streamFocusReveal.js";
-import { NuvioDialog } from "../../components/nuvioDialog.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
@@ -96,18 +99,9 @@ import {
 import { resolveExternalHandoffMediaUrl } from "../../components/externalHandoffMediaUrl.js";
 import { resolveExternalResumeSeconds } from "../../components/externalPlayerResume.js";
 import { bindBrowserPushReturn } from "../../components/browserPushReturn.js";
-import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
-import {
-  createBrowserOfflineSubtitlePicker,
-  createBrowserOfflineSubtitleSnapshot
-} from "../../components/browserOfflineSubtitlePicker.js";
-import { subtitleRepository } from "../../../data/repository/subtitleRepository.js";
 import {
   canQueueBrowserOfflineDownload,
   createOfflineDownloadId,
-  createOfflineSubtitleFingerprint,
-  getOfflineSubtitleIdentityParts,
-  getSafeOfflineSubtitleDescriptors,
   deleteBrowserOfflineDownload,
   getOfflineDownload,
   isBrowserOfflineDownloadSupported,
@@ -128,7 +122,6 @@ import {
 } from "../../components/browserOfflinePlaybackChoice.js";
 import {
   cancelQueuedBrowserOfflineDownload,
-  enqueueBrowserOfflineDownload,
   initializeBrowserOfflineDownloadQueue,
   pauseQueuedBrowserOfflineDownload,
   resumeQueuedBrowserOfflineDownload
@@ -460,6 +453,7 @@ function sortStreamsByAddonOrder(streams = [], sourceChips = []) {
 // from calling an endpoint the deployment never authorised.
 
 export const StreamScreen = {
+  ...BrowserOfflineDownloadOptions,
   cancelScheduledRender() {
     if (this.renderDelayTimer) {
       clearTimeout(this.renderDelayTimer);
@@ -807,13 +801,26 @@ export const StreamScreen = {
       Math.trunc(Number(playerSettings.streamAutoPlayTimeoutSeconds || 0))
     );
     this.autoPlaySelectionReady = autoPlayWaitSeconds === 0;
-    if (autoPlayWaitSeconds > 0 && autoPlayWaitSeconds !== 2147483647) {
-      this.autoPlaySelectionWaitTimer = setTimeout(() => {
-        this.autoPlaySelectionWaitTimer = null;
-        this.autoPlaySelectionReady = true;
-        this.maybeAutoResumeStream();
-        this.maybeAutoPlayStream();
-      }, autoPlayWaitSeconds * 1000);
+    this.autoPlaySelectionExpired = false;
+    this.autoPlaySelectionDeadlineAt = streamSelectionDeadline(autoPlayWaitSeconds);
+    if (
+      !this.autoPlayAttempted &&
+      !params.manualSelection &&
+      isAutoPlayEffectivelyEnabled(playerSettings) &&
+      Number.isFinite(this.autoPlaySelectionDeadlineAt)
+    ) {
+      this.autoPlaySelectionWaitTimer = setTimeout(
+        () => {
+          this.autoPlaySelectionWaitTimer = null;
+          this.autoPlaySelectionReady = true;
+          this.autoPlaySelectionExpired = true;
+          this.maybeAutoResumeStream({ allLoaded: true });
+          this.autoResumeAttempted = true;
+          this.autoResumeUiActive = false;
+          this.maybeAutoPlayStream({ deadlineReached: true });
+        },
+        Math.max(0, this.autoPlaySelectionDeadlineAt - Date.now())
+      );
     }
     this.offlineDownloadsSupported = false;
     this.offlineDownloadMetadata = new Map();
@@ -947,6 +954,19 @@ export const StreamScreen = {
       ? this.getFilteredStreams().find((stream) => String(stream?.id || "") === chosenId)
       : null;
     if (!chosen) {
+      if (chosenId) {
+        this.autoResolvedPlaybackPending = false;
+        this.params.autoResolvedStreamId = null;
+        this.params.autoSelectionFinished = true;
+        this.autoPlayAttempted = true;
+        this.cancelAutoPlaySelectionWait();
+        StartupLoadingOverlay.finish();
+        reportAutoPlaySelection(
+          "stream",
+          { streams: this.streams, reason: "filtered-choice" },
+          PlayerSettingsStore.get()
+        );
+      }
       this.requestRender({ delayMs: 0 });
       return true;
     }
@@ -1204,6 +1224,10 @@ export const StreamScreen = {
       if (!chunkStreams.length) {
         return;
       }
+      // Source selection must not spend its deadline waiting for decorative images.
+      this.streams = mergeStreamItems(this.streams, chunkStreams);
+      this.maybeAutoResumeStream();
+      this.maybeAutoPlayStream();
       await Promise.all([
         preloadMatchedStreamBadgeImages(chunkStreams, badgeSettings),
         ...(showAddonLogo ? [preloadAddonLogoImages(chunkStreams, this.addonLogoLookup)] : [])
@@ -1348,6 +1372,7 @@ export const StreamScreen = {
   // Continue Watching can pass the identity of the stream that was playing.
   // If that same source shows up again, resume it directly.
   maybeAutoResumeStream({ allLoaded = false } = {}) {
+    if (this.autoPlaySelectionExpired && !allLoaded) return;
     if (this.autoResumeAttempted) {
       return;
     }
@@ -1440,8 +1465,11 @@ export const StreamScreen = {
       });
       this.autoResumeAttempted = true;
       this.autoResumeUiActive = false;
-      if (selected?.id) void this.playStream(selected.id, { automatic: true });
-      else this.requestRender();
+      if (selected?.id) {
+        this.autoPlayAttempted = true;
+        this.cancelAutoPlaySelectionWait();
+        void this.playStream(selected.id, { automatic: true });
+      } else this.requestRender();
       return;
     }
     if (!allLoaded && this.loading) {
@@ -1454,7 +1482,7 @@ export const StreamScreen = {
     this.requestRender({ delayMs: 0 });
   },
 
-  maybeAutoPlayStream({ allLoaded = false } = {}) {
+  maybeAutoPlayStream({ allLoaded = false, deadlineReached = false } = {}) {
     if (
       this._labelProbePaused ||
       this.autoResumeUiActive ||
@@ -1471,7 +1499,8 @@ export const StreamScreen = {
       !isAutoPlayEffectivelyEnabled(settings)
     )
       return;
-    if (!allLoaded && !this.autoPlaySelectionReady) return;
+    if (this.autoPlaySelectionExpired && !deadlineReached) return;
+    if (!allLoaded && !this.autoPlaySelectionReady && !deadlineReached) return;
     if (Number(settings.streamAutoPlayTimeoutSeconds) === 2147483647 && !allLoaded && this.loading)
       return;
     const selected = selectAutoPlayStream(this.getFilteredStreams(), {
@@ -1492,10 +1521,28 @@ export const StreamScreen = {
       preferBingeGroupInSelection: true
     });
     if (!selected?.id) {
-      if (allLoaded) this.autoPlayAttempted = true;
+      if (allLoaded || deadlineReached) {
+        this.autoPlayAttempted = true;
+        this.cancelAutoPlaySelectionWait();
+        reportAutoPlaySelection(
+          "stream",
+          {
+            streams: this.streams,
+            complete: allLoaded,
+            reason: deadlineReached ? "timeout" : "no-match",
+            timedOut: deadlineReached
+          },
+          settings
+        );
+      }
       return;
     }
     this.autoPlayAttempted = true;
+    reportAutoPlaySelection(
+      "stream",
+      { streams: this.streams, selected, complete: allLoaded, reason: "selected" },
+      settings
+    );
     this.cancelAutoPlaySelectionWait();
     void this.playStream(selected.id, { automatic: true });
   },
@@ -2948,198 +2995,6 @@ export const StreamScreen = {
     if (!stream) return;
     if (!Environment.isBrowser()) return;
     this.openOfflineDownloadOptions(stream);
-  },
-
-  closeOfflineDownloadOptions() {
-    this.offlineDownloadOptionsDialog?.destroy?.();
-    this.offlineDownloadOptionsDialog = null;
-    this.offlineDownloadOptionsState = null;
-  },
-
-  async discoverOfflineDownloadSubtitles(context = {}) {
-    const type = context.itemType === "tv" ? "series" : context.itemType;
-    const id = context.imdbId || context.itemId || context.mediaId;
-    if (!type || !id) return [];
-    return subtitleRepository.getSubtitles(type, id, context.videoId || null, {
-      season: context.season,
-      episode: context.episode,
-      title: context.title,
-      year: context.year
-    });
-  },
-
-  getPreferredOfflineDownloadSubtitle(subtitles = []) {
-    const settings = PlayerSettingsStore.get();
-    const preferred = String(
-      settings.subtitleStyle?.preferredLanguage || settings.subtitleLanguage || "off"
-    )
-      .trim()
-      .toLowerCase();
-    if (!preferred || preferred === "off") return null;
-    return (
-      (subtitles || []).find((subtitle) => {
-        const language = String(subtitle.lang || subtitle.language || "").toLowerCase();
-        return language === preferred || language.startsWith(`${preferred}-`);
-      }) || null
-    );
-  },
-
-  createOfflineSubtitleDescriptor(subtitle = null) {
-    if (!subtitle) return null;
-    const identity = getOfflineSubtitleIdentityParts(subtitle);
-    return {
-      addonId: String(subtitle.addonId || ""),
-      fingerprint: createOfflineSubtitleFingerprint(subtitle),
-      providerSubtitleId: identity.providerSubtitleId,
-      urlIdentity: identity.urlIdentity,
-      lang: String(subtitle.lang || subtitle.language || ""),
-      fileName: subtitleReleaseName(subtitle),
-      forced: subtitle.forced === true,
-      sdh: subtitle.sdh === true || subtitle.hearingImpaired === true
-    };
-  },
-
-  createOfflineSubtitleSelection(mode = "none", subtitles = []) {
-    const descriptors = getSafeOfflineSubtitleDescriptors(
-      (Array.isArray(subtitles) ? subtitles : [subtitles]).map((subtitle) =>
-        this.createOfflineSubtitleDescriptor(subtitle)
-      )
-    );
-    return {
-      offlineSubtitleMode: mode,
-      offlineSubtitleDescriptors: mode === "none" ? [] : descriptors,
-      offlineSubtitle: mode === "specific" ? descriptors[0] || null : null
-    };
-  },
-
-  renderOfflineDownloadOptionsContent(state) {
-    const content = document.createElement("div");
-    content.className = "stream-download-options";
-    const source = state.stream || {};
-    const snapshot = state.subtitleSnapshot || [];
-    const sourceDisplay = normalizeSourceForDisplay(source);
-    const quality = sourceDisplay.quality;
-    const size = formatBytes(
-      source.behaviorHints?.videoSize || source.raw?.behaviorHints?.videoSize || source.videoSize
-    );
-    const header = document.createElement("div");
-    header.className = "download-options-header";
-    header.innerHTML = `<div class="stream-download-options-source">${escapeHtml([quality, size].filter(Boolean).join(" · ") || "Selected source")}<span>${escapeHtml(sourceDisplay.addonName || source.addonName || "")}</span></div><div class="stream-download-options-label">Subtitles</div>`;
-    content.appendChild(header);
-    const picker = createBrowserOfflineSubtitlePicker({
-      snapshot,
-      selection: state,
-      preferredLabel: state.preferredLabel,
-      loading: state.loading,
-      onSelect: (next) => {
-        Object.assign(state, next);
-        this.showOfflineDownloadOptions(state);
-      }
-    });
-    content.appendChild(picker);
-    if (state.error) {
-      const unavailable = document.createElement("div");
-      unavailable.className = "stream-download-options-unavailable";
-      unavailable.textContent = "Subtitles unavailable — video can still be downloaded.";
-      content.appendChild(unavailable);
-    }
-    return content;
-  },
-
-  showOfflineDownloadOptions(state) {
-    this.offlineDownloadOptionsDialog?.destroy?.();
-    this.offlineDownloadOptionsDialog = new NuvioDialog({
-      title: "Download Options",
-      widthVw: 34,
-      panelClassName: "stream-download-options-dialog",
-      actionsClassName: "stream-download-options-actions",
-      content: () => this.renderOfflineDownloadOptionsContent(state),
-      buttons: [
-        {
-          label: "Cancel",
-          className: "season-download-secondary-action",
-          onAction: () => this.closeOfflineDownloadOptions()
-        },
-        {
-          label: "Download",
-          className: "stream-download-primary-action",
-          onAction: () => void this.confirmOfflineDownloadOptions(state)
-        }
-      ],
-      onDismiss: () => this.closeOfflineDownloadOptions()
-    });
-    this.offlineDownloadOptionsDialog.mount(document.body);
-  },
-
-  async openOfflineDownloadOptions(stream) {
-    const state = {
-      stream,
-      context: this.getOfflineDownloadContext(stream),
-      subtitles: [],
-      subtitleSnapshot: [],
-      selectedMode: "none",
-      selectedIndex: null,
-      preferredLabel: "",
-      selectedLanguage: "",
-      loading: true,
-      error: false
-    };
-    this.offlineDownloadOptionsState = state;
-    this.showOfflineDownloadOptions(state);
-    try {
-      state.subtitles = await this.discoverOfflineDownloadSubtitles(state.context);
-      state.subtitleSnapshot = createBrowserOfflineSubtitleSnapshot(state.subtitles, (subtitle) =>
-        this.createOfflineSubtitleDescriptor(subtitle)
-      );
-      const preferred = this.getPreferredOfflineDownloadSubtitle(
-        state.subtitleSnapshot.map((entry) => entry.subtitle)
-      );
-      state.preferredLabel = preferred ? normalizeSubtitleForDisplay(preferred).language : "";
-    } catch (_) {
-      state.error = true;
-    } finally {
-      state.loading = false;
-      if (this.offlineDownloadOptionsState === state) this.showOfflineDownloadOptions(state);
-    }
-  },
-
-  async confirmOfflineDownloadOptions(state = this.offlineDownloadOptionsState) {
-    if (!state?.context) return;
-    const snapshot = state.subtitleSnapshot || [];
-    const selectedSubtitle = Number.isInteger(state.selectedIndex)
-      ? snapshot[state.selectedIndex]?.subtitle
-      : null;
-    const preferredSubtitle = this.getPreferredOfflineDownloadSubtitle(
-      snapshot.map((entry) => entry.subtitle)
-    );
-    const languageSubtitles = snapshot
-      .filter((entry) => entry.language === state.selectedLanguage)
-      .map((entry) => entry.subtitle);
-    const selection =
-      state.selectedMode === "all"
-        ? this.createOfflineSubtitleSelection(
-            "all",
-            snapshot.map((entry) => entry.subtitle)
-          )
-        : state.selectedMode === "language"
-          ? {
-              ...this.createOfflineSubtitleSelection("language", languageSubtitles),
-              offlineSubtitleLanguage: state.selectedLanguage
-            }
-          : state.selectedMode === "preferred"
-            ? this.createOfflineSubtitleSelection("preferred", preferredSubtitle)
-            : state.selectedMode === "specific"
-              ? this.createOfflineSubtitleSelection("specific", selectedSubtitle)
-              : this.createOfflineSubtitleSelection("none");
-    try {
-      await enqueueBrowserOfflineDownload({
-        ...state.context,
-        ...selection
-      });
-      this.closeOfflineDownloadOptions();
-    } catch (_) {
-      this.showStreamToast("Could not download this source.");
-    }
   },
 
   async playOfflineDownload(streamId) {

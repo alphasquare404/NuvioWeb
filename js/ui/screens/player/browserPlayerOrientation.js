@@ -45,10 +45,14 @@ export function bindRotatedPlayerScroll(body, state) {
       active = null;
       return;
     }
-    const node = event.target?.closest?.(
-      ".player-subtitle-rail, .player-audio-track-list, .player-audio-controls-list, .player-dialog-list, .player-sources-list, .player-episode-list, .player-episode-stream-list, .desktop-external-player-actions"
+    let node = event.target?.closest?.(
+      ".player-subtitle-rail, .player-audio-track-list, .player-audio-controls-list, .player-dialog-list, .player-sources-list, .player-episode-list, .player-episode-stream-list, .desktop-external-player-actions, .player-subtitle-overlay-grid, .player-audio-overlay-grid, .player-more-body, .player-playback-info, .nv-panel-body"
     );
-    if (!node || node.scrollHeight <= node.clientHeight) return;
+    const scrollSelector =
+      ".player-subtitle-overlay-grid, .player-audio-overlay-grid, .player-more-body, .player-playback-info, .nv-panel-body";
+    while (node && node.scrollHeight <= node.clientHeight)
+      node = node.parentElement?.closest?.(scrollSelector);
+    if (!node) return;
     active = {
       node,
       id: event.pointerId,

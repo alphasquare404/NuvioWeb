@@ -1,0 +1,1859 @@
+/* Geometry, typography and icon sizing match player-redesign-proposal.html. */
+.desktop-browser #player #playerUiRoot.player-presentation {
+  --nv-accent: var(--secondary-color);
+  --nv-paper: #f6f8fb;
+  --nv-soft: #bbc2cb;
+  --nv-base: #07090c;
+  --nv-panel: #101419;
+  --nv-line: #2b313a;
+  font:
+    400 14px/1.45 system-ui,
+    sans-serif;
+  color: var(--nv-paper);
+  container-type: inline-size;
+  container-name: nv-preview;
+}
+
+.desktop-browser #player #playerUiRoot.player-presentation.nv-player * {
+  box-sizing: border-box;
+}
+.desktop-browser #player #playerUiRoot.player-presentation button {
+  font: inherit;
+  color: inherit;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-player button {
+  -webkit-tap-highlight-color: transparent;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(#000b 0, transparent 29%, transparent 44%, #000d 100%);
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-shade {
+  background: linear-gradient(#0008, transparent 20%, transparent 42%, #07090c 68%);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-top {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  z-index: 2;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-icon {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px;
+  flex-shrink: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-icon svg {
+  width: 22px !important;
+  height: 22px !important;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-identity {
+  padding-top: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-title {
+  font-size: 16px;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode {
+  color: var(--nv-soft);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-clock {
+  padding: 5px 8px 0 10px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-clock small {
+  display: block;
+  color: var(--nv-soft);
+  font-size: 11px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-clock {
+  display: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-center {
+  position: absolute;
+  top: 44%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  z-index: 2;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-center .nv-main {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgb(17 26 35 / 0.1);
+  border: 1px solid #ffffff24;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-center .nv-main svg {
+  width: 30px !important;
+  height: 30px !important;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-skip {
+  position: relative;
+  width: 48px;
+  height: 48px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-skip svg {
+  width: 29px !important;
+  height: 29px !important;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-skip small {
+  position: absolute;
+  font-size: 11px;
+  top: 17px;
+  left: 17px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-center {
+  top: 225px;
+  gap: 28px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-bottom {
+  position: absolute;
+  bottom: 12px;
+  left: 24px;
+  right: 24px;
+  z-index: 2;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-time-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--nv-soft);
+  font-variant-numeric: tabular-nums;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-time-row .nv-elapsed {
+  color: var(--nv-paper);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-time-row .nv-remaining {
+  margin-left: auto;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-progress {
+  position: relative;
+  margin: 2px 0 7px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-progress input {
+  display: block;
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-progress
+  input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--nv-accent) 0 var(--nv-progress, 24%),
+    #c4ccd45c var(--nv-progress, 24%) 60%,
+    #ffffff30 60% 100%
+  );
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-progress
+  input::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--nv-accent);
+  margin-top: -4.5px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-progress input::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: #ffffff35;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-progress input::-moz-range-progress {
+  background: var(--nv-accent);
+  height: 4px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-progress input::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: 0;
+  background: var(--nv-accent);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-seek-preview {
+  position: absolute;
+  bottom: 34px;
+  left: var(--nv-progress, 24%);
+  transform: translateX(-50%);
+  background: var(--nv-panel);
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-utilities {
+  display: flex;
+  margin-left: auto;
+  align-items: center;
+  gap: 7px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-labeled {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 8px;
+  min-width: 54px;
+  min-height: 51px;
+  font-size: 11px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-desktop .nv-labeled {
+  flex-direction: row;
+  font-size: 12px;
+  min-height: 44px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-volume {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-volume input {
+  width: 62px;
+  accent-color: var(--nv-accent);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-primary-row {
+  display: none;
+  gap: 4px;
+  align-items: center;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-desktop .nv-primary-row,
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation.nv-player[data-transport="bottom"]
+  .nv-primary-row {
+  display: flex;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-desktop .nv-center,
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation.nv-player[data-transport="bottom"]
+  .nv-center {
+  display: none;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation.nv-player:not(.nv-desktop)
+  .nv-utilities {
+  width: 100%;
+  margin-left: 0;
+  justify-content: space-between;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation.nv-player:not(.nv-desktop)[data-transport="bottom"]
+  .nv-tools {
+  flex-wrap: wrap;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-bottom {
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-portrait-summary {
+  display: block;
+  margin-bottom: 22px;
+  font-size: 14px;
+  color: var(--nv-paper);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-toast {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  background: var(--nv-panel);
+  border: 1px solid var(--nv-line);
+  border-radius: 8px;
+  padding: 9px 13px;
+  font-size: 12px;
+  max-width: 85%;
+  text-align: center;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  background: #0008;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(330px, 85%);
+  background: var(--nv-panel);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--nv-line);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel-head {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  gap: 8px;
+  min-height: 62px;
+  border-bottom: 1px solid var(--nv-line);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel-head strong {
+  font-size: 17px;
+  font-weight: 500;
+  flex: 1;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel-body {
+  padding: 8px 12px 12px;
+  min-height: 0;
+  overflow: auto;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel[data-rich="true"] {
+  width: min(470px, 90%);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning {
+  position: absolute;
+  top: 85px;
+  left: 28px;
+  z-index: 2;
+  border-left: 3px solid var(--nv-accent);
+  padding: 8px 14px;
+  background: #07090ce6;
+  max-width: calc(100% - 56px);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning strong {
+  display: block;
+  font-weight: 500;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning small {
+  color: var(--nv-soft);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-card {
+  display: grid;
+  --nv-episode-thumb-width: 112px;
+  grid-template-columns: var(--nv-episode-thumb-width) minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--nv-line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 14px 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-card[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--nv-accent) 12%, var(--nv-panel));
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-thumb {
+  aspect-ratio: 16/9;
+  border-radius: 6px;
+  background: linear-gradient(130deg, #17242d, #687b7d 52%, #131b22);
+  position: relative;
+  overflow: hidden;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 15% 20% -20%;
+  border: 12px solid #0b151dcc;
+  border-radius: 50% 50% 0 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-copy strong {
+  display: block;
+  font-weight: 500;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-copy small {
+  color: var(--nv-soft);
+  font-size: 11px;
+  display: block;
+  margin: 4px 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-copy p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--nv-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-source-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-source-filters button {
+  min-height: 44px;
+  border: 1px solid var(--nv-line);
+  background: var(--nv-base);
+  border-radius: 20px;
+  padding: 8px 12px;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-source-filters
+  button[aria-pressed="true"] {
+  border-color: var(--nv-accent);
+  background: color-mix(in srgb, var(--nv-accent) 20%, var(--nv-panel));
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-stream-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px;
+  margin: 8px 0;
+  border: 1px solid var(--nv-line);
+  border-radius: 10px;
+  background: var(--nv-base);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-stream-card strong {
+  display: block;
+  font-weight: 500;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-stream-card small {
+  display: block;
+  color: var(--nv-soft);
+  margin: 5px 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-badges {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 11px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-badges span {
+  padding: 2px 5px;
+  border: 1px solid var(--nv-line);
+  border-radius: 4px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-badges span:first-child {
+  color: #e8ce73;
+  border-color: #9d853f;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-season-select {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  color: var(--nv-paper);
+  background: var(--nv-base);
+  border: 1px solid var(--nv-line);
+  border-radius: 7px;
+  padding: 8px;
+  font: inherit;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-panel[data-rich="true"] {
+  width: 100%;
+  top: 110px;
+}
+@container nv-preview (max-width:560px) {
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-panel[data-rich="true"] {
+    width: 100%;
+    top: 55px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-episode-card {
+    --nv-episode-thumb-width: 96px;
+  }
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-group {
+  color: var(--nv-soft);
+  font-size: 11px;
+  margin: 10px 10px 5px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-choice {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  min-height: 48px;
+  text-align: left;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-choice[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--nv-accent) 16%, var(--nv-panel));
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-choice .nv-check {
+  width: 19px;
+  color: var(--nv-accent);
+  flex-shrink: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-choice .nv-copy {
+  flex: 1;
+  min-width: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-choice small {
+  display: block;
+  font-size: 11px;
+  color: var(--nv-soft);
+  margin-top: 2px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-choice:disabled {
+  opacity: 0.5;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-subtle-action {
+  color: var(--nv-soft);
+  border-top: 1px solid var(--nv-line);
+  border-radius: 0;
+  margin-top: 8px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-mini-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-mini-row span {
+  flex: 1;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-mini-row .nv-value {
+  flex: 0 0 auto;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-mini-row select {
+  background: var(--nv-base);
+  color: var(--nv-paper);
+  border: 1px solid var(--nv-line);
+  border-radius: 6px;
+  padding: 7px;
+  font: inherit;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-value {
+  color: var(--nv-soft);
+  font-variant-numeric: tabular-nums;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-panel {
+  top: auto;
+  width: 100%;
+  bottom: 0;
+  min-height: 345px;
+  border-left: 0;
+  border-top: 1px solid var(--nv-line);
+  border-radius: 16px 16px 0 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #07090ce8;
+  z-index: 1;
+  padding: 70px 24px 30px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-copy {
+  width: min(360px, 100%);
+  text-align: center;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-copy > svg {
+  width: 30px !important;
+  height: 30px !important;
+  color: var(--nv-soft);
+  display: block;
+  margin-inline: auto;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-copy h3 {
+  font:
+    500 20px/1.3 system-ui,
+    sans-serif;
+  margin: 15px 0 8px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-copy p {
+  color: var(--nv-soft);
+  margin: 0 0 20px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-actions button {
+  min-height: 44px;
+  padding: 9px 15px;
+  border: 1px solid var(--nv-line);
+  border-radius: 8px;
+  background: var(--nv-panel);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-actions .nv-retry {
+  background: var(--nv-accent);
+  color: #06111b;
+  border-color: var(--nv-accent);
+  font-weight: 500;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-copy details {
+  color: var(--nv-soft);
+  font-size: 12px;
+  text-align: left;
+  margin-top: 18px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-copy summary {
+  padding: 8px 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-player[data-chrome="hidden"] .nv-top,
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation.nv-player[data-chrome="hidden"]
+  .nv-center,
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation.nv-player[data-chrome="hidden"]
+  .nv-bottom {
+  visibility: hidden;
+}
+@container nv-preview (max-width:850px) {
+  .desktop-browser #player #playerUiRoot.player-presentation.nv-desktop .nv-labeled {
+    min-width: 44px;
+    width: 44px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation.nv-desktop .nv-labeled > span {
+    display: none;
+  }
+}
+@container nv-preview (max-width:560px) {
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-top {
+    left: 7px;
+    right: 7px;
+    gap: 2px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-clock {
+    display: none;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-bottom {
+    left: 12px;
+    right: 12px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation.nv-desktop .nv-tools {
+    flex-wrap: wrap;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation.nv-desktop .nv-utilities {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation.nv-desktop .nv-labeled {
+    flex-direction: column;
+    font-size: 11px;
+    min-width: 44px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-volume {
+    display: none;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-utilities .nv-fullscreen {
+    display: none;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-labeled {
+    min-width: 44px;
+    padding: 5px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-panel {
+    top: auto;
+    width: 100%;
+    min-height: 345px;
+    border-left: 0;
+    border-top: 1px solid var(--nv-line);
+    border-radius: 16px 16px 0 0;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-error-copy h3 {
+    font-size: 18px;
+  }
+}
+.desktop-browser #player #playerUiRoot.player-presentation [hidden],
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel.hidden {
+  display: none !important;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-chrome {
+  position: absolute;
+  inset: 0;
+  display: block;
+  padding: 0;
+  z-index: auto;
+  background: transparent;
+  pointer-events: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-chrome.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  :is(.nv-top, .nv-center, .nv-bottom, .nv-panel, .nv-error) {
+  pointer-events: auto;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-shade {
+  background: linear-gradient(#000b 0, transparent 29%, transparent 44%, #000d 100%);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-top {
+  height: auto;
+  padding: 0;
+  margin: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-back-slot {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-back-slot
+  > .player-desktop-back-button {
+  position: static;
+  inset: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-identity {
+  display: block;
+  margin: 0;
+  max-width: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-title {
+  line-height: 1.45;
+  margin: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode {
+  padding: 0;
+  line-height: 1.45;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-clock {
+  position: static;
+  align-self: auto;
+  color: var(--nv-paper);
+  text-shadow: none;
+  line-height: 1.45;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-next-slot {
+  flex: 0 0 auto;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-bottom {
+  display: block;
+  position: absolute;
+  width: auto;
+  height: auto;
+  top: auto;
+  padding: 0;
+  gap: 0;
+  margin: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-time-row {
+  line-height: 1.45;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-icon {
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  line-height: inherit;
+  box-shadow: none;
+  font-weight: 400;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-tools {
+  width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+  padding: 0;
+  margin: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-primary-row {
+  flex: 0 0 auto;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-primary-row .nv-main {
+  background: transparent;
+  border: 0;
+  margin: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-utilities {
+  min-width: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-volume {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-volume input {
+  appearance: auto;
+  -webkit-appearance: auto;
+  width: 62px;
+  height: auto;
+  min-height: 0;
+  max-width: none;
+  margin: 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: initial;
+  box-shadow: none;
+  accent-color: var(--nv-accent);
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-volume
+  input::-webkit-slider-runnable-track {
+  background: initial;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-progress {
+  min-height: 24px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation #playerProgressShell {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+  cursor: pointer;
+  touch-action: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .player-progress-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 10px;
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: #ffffff30;
+  box-shadow: none;
+  overflow: visible;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .player-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 4px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--nv-accent);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .player-progress-fill::after {
+  content: "";
+  position: absolute;
+  right: -6.5px;
+  top: -4.5px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--nv-accent);
+  box-shadow: none;
+  transform: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .player-progress-buffered {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: #c4ccd45c;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-seek-preview {
+  top: auto;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  white-space: nowrap;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-portrait-summary {
+  display: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-portrait-summary {
+  display: block;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel {
+  left: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  transition: none;
+  animation: none;
+  overflow: hidden;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel-head {
+  flex: 0 0 auto;
+  margin: 0;
+  line-height: 1.45;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel-head strong {
+  color: var(--nv-paper);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel-body {
+  flex: 0 1 auto;
+  margin: 0;
+  line-height: 1.45;
+  overscroll-behavior: contain;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-panel-body
+  :is(.player-episode-list, .player-episode-stream-list, .player-sources-list) {
+  display: block;
+  padding: 0;
+  margin: 0;
+  flex: none;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  gap: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-choice {
+  height: auto;
+  max-width: none;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  box-shadow: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-choice .nv-check svg {
+  width: 19px;
+  height: 19px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-mini-row {
+  border: 0;
+  background: transparent;
+  line-height: 1.45;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-group {
+  line-height: 1.45;
+  padding: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-season-select {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  color-scheme: dark;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-season-slot {
+  padding: 0;
+  margin: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-card {
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font: inherit;
+  color: inherit;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-episode-card
+  .player-episode-thumb-wrap {
+  display: block;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 16/9;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #17242d;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-card .player-episode-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-episode-card
+  .player-episode-thumb-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #17242d;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-copy {
+  display: block;
+  min-width: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-copy strong {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-source-filters {
+  margin: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-source-filters button {
+  font: inherit;
+  color: inherit;
+  box-shadow: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .stream-route-card {
+  margin: 8px 0;
+  padding: 14px;
+  border: 1px solid var(--nv-line);
+  border-radius: 10px;
+  background: var(--nv-base);
+  color: var(--nv-paper);
+  box-shadow: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .stream-route-card.selected {
+  border-color: var(--nv-accent);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .player-source-playing {
+  display: block;
+  position: static;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--nv-accent);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .player-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  border: 0;
+  background: #0008;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .player-modal-backdrop.hidden {
+  display: none;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  :is(.player-html-subtitles, .player-native-subtitles) {
+  z-index: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .player-loading-spinner {
+  z-index: 1;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error {
+  padding: 70px 24px 30px;
+  pointer-events: auto;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error.hidden {
+  display: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-copy h3 {
+  color: var(--nv-paper);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-copy details {
+  width: 100%;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-actions button {
+  font: inherit;
+  color: inherit;
+  box-shadow: none;
+  min-width: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error-actions .nv-retry {
+  color: var(--on-secondary, #06111b);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning {
+  inset: auto;
+  top: 85px;
+  left: 28px;
+  right: auto;
+  width: auto;
+  height: auto;
+  margin: 0;
+  color: var(--nv-paper);
+  font: inherit;
+  opacity: 1;
+  transform: none;
+  transition: none;
+  animation: none;
+  box-shadow: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning.hidden {
+  display: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning.is-exiting {
+  opacity: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-toast {
+  inset: auto;
+  top: 84px;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: max-content;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  line-height: 1.45;
+  pointer-events: none;
+  transform: translateX(-50%);
+  box-shadow: none;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-chrome.pause-overlay-active
+  :is(.nv-top, .nv-center, .nv-bottom) {
+  visibility: hidden;
+  pointer-events: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation:not(.controls-visible) .nv-top {
+  visibility: hidden;
+  pointer-events: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation[data-error="true"] .nv-top {
+  visibility: visible;
+}
+@container nv-preview (max-width:560px) {
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-panel {
+    border-left: 0;
+    border-top: 1px solid var(--nv-line);
+    border-radius: 16px 16px 0 0;
+    min-height: 345px;
+  }
+  .desktop-browser
+    #player
+    #playerUiRoot.player-presentation
+    .nv-episode-card
+    .player-episode-thumb-wrap {
+    width: 100%;
+  }
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-panel {
+  top: auto;
+  width: 100%;
+  min-height: 345px;
+  border-left: 0;
+  border-top: 1px solid var(--nv-line);
+  border-radius: 16px 16px 0 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-panel[data-rich="true"] {
+  top: 110px;
+}
+
+/* Empty chrome slots must not create an extra flex gap. */
+.desktop-browser #player #playerUiRoot.player-presentation .nv-next-slot:empty {
+  display: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-clock {
+  margin: 0;
+  max-width: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-clock small {
+  line-height: 18px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-mobile .nv-volume {
+  display: none;
+}
+
+.desktop-browser #player #playerUiRoot.player-presentation .nv-title {
+  display: block;
+}
+
+/* Reset legacy dialog borders and fixed rail heights before applying the proposal. */
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel {
+  border: 0;
+  border-left: 1px solid var(--nv-line);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel-body {
+  height: auto;
+  max-height: none;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  :is(.nv-choice small, .nv-episode-copy small, .nv-warning small) {
+  line-height: 18px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-panel {
+  border-left: 0;
+  border-top: 1px solid var(--nv-line);
+}
+@container nv-preview (max-width:560px) {
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-panel {
+    border-left: 0;
+    border-top: 1px solid var(--nv-line);
+  }
+}
+
+/* Reuse orientation-mapped insets for native and CSS-rotated player canvases. */
+.desktop-browser #player #playerUiRoot.player-presentation {
+  --nv-safe-top: var(--browser-safe-area-top, env(safe-area-inset-top, 0px));
+  --nv-safe-right: var(--browser-safe-area-right, env(safe-area-inset-right, 0px));
+  --nv-safe-bottom: var(--browser-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  --nv-safe-left: var(--browser-safe-area-left, env(safe-area-inset-left, 0px));
+  --nv-header-gutter: 14px;
+  --nv-controls-gutter: 24px;
+  --nv-controls-bottom: 12px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait {
+  --nv-controls-gutter: 16px;
+  --nv-controls-bottom: 16px;
+}
+@container nv-preview (max-width: 560px) {
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-chrome {
+    --nv-header-gutter: 7px;
+    --nv-controls-gutter: 12px;
+  }
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-top {
+  top: calc(12px + var(--nv-safe-top));
+  left: calc(var(--nv-header-gutter) + var(--nv-safe-left));
+  right: calc(var(--nv-header-gutter) + var(--nv-safe-right));
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-bottom,
+.desktop-browser #player #playerUiRoot.player-presentation.nv-portrait .nv-bottom {
+  bottom: calc(var(--nv-controls-bottom) + var(--nv-safe-bottom));
+  left: calc(var(--nv-controls-gutter) + var(--nv-safe-left));
+  right: calc(var(--nv-controls-gutter) + var(--nv-safe-right));
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-center {
+  left: calc(50% + (var(--nv-safe-left) - var(--nv-safe-right)) / 2);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel {
+  padding: var(--nv-safe-top) var(--nv-safe-right) var(--nv-safe-bottom) var(--nv-safe-left);
+  max-height: 100%;
+  min-height: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-error {
+  padding: calc(70px + var(--nv-safe-top)) calc(24px + var(--nv-safe-right))
+    calc(30px + var(--nv-safe-bottom)) calc(24px + var(--nv-safe-left));
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-toast {
+  top: calc(84px + var(--nv-safe-top));
+  max-width: calc(100% - var(--nv-safe-left) - var(--nv-safe-right) - 32px);
+  left: calc(50% + (var(--nv-safe-left) - var(--nv-safe-right)) / 2);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning {
+  top: calc(76px + var(--nv-safe-top));
+  left: calc(20px + var(--nv-safe-left));
+  display: block;
+  width: 240px;
+  max-width: calc(100% - var(--nv-safe-left) - var(--nv-safe-right) - 40px);
+  padding: 7px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning strong {
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning small {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning-severity {
+  flex-shrink: 0;
+  max-width: 50%;
+  text-align: right;
+}
+
+/* Header actions stay above non-interactive guidance and keep their own hit targets. */
+.desktop-browser #player #playerUiRoot.player-presentation .nv-top {
+  z-index: 3;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-top button {
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning {
+  top: calc(18px + var(--nv-safe-top));
+  width: max-content;
+  border: 0;
+  padding: 0 0 0 12px;
+  background: transparent;
+  pointer-events: none;
+  text-shadow:
+    0 1px 4px #000,
+    0 1px 12px #000a;
+  transition:
+    top 180ms ease,
+    opacity 180ms ease;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation.controls-visible:not(.pause-screen-visible)
+  .nv-warning {
+  top: calc(76px + var(--nv-safe-top));
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning-content {
+  position: relative;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning-line {
+  position: absolute;
+  left: -12px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--nv-accent);
+  transform-origin: top;
+  animation: nvGuidanceLine calc(120ms + var(--nv-warning-count) * 180ms) linear both;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning-item {
+  display: block;
+  opacity: 0;
+  animation: nvGuidanceRow 180ms ease both;
+  animation-delay: calc(120ms + var(--nv-warning-index) * 180ms);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-warning-severity {
+  max-width: none;
+  text-align: inherit;
+}
+@keyframes nvGuidanceLine {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes nvGuidanceRow {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-warning {
+    transition: none;
+  }
+  .desktop-browser
+    #player
+    #playerUiRoot.player-presentation
+    :is(.nv-warning-line, .nv-warning-item) {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Keep transport controls unobstructed; buffering itself continues normally. */
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation.controls-visible
+  #playerBufferingSpinner {
+  display: none;
+}
+
+/* Opacity alone leaves the loading Back button on top of the player Back. */
+.desktop-browser #player #playerUiRoot.player-presentation #playerLoadingOverlay.hidden {
+  visibility: hidden;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  #playerLoadingOverlay.hidden
+  .startup-loading-back {
+  pointer-events: none;
+}
+
+/* One vertical scroll surface per drawer, including long subtitle release names. */
+.desktop-browser #player #playerUiRoot.player-presentation :is(.nv-panel, .nv-panel-body) {
+  min-width: 0;
+  overflow-x: hidden;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-panel-body {
+  width: 100%;
+  flex: 1 1 auto;
+  touch-action: pan-y;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  :is(.nv-choice, .nv-copy, .nv-style-copy) {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  :is(.nv-language-filter, .nv-source-picker) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--nv-soft);
+  font-size: 11px;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  :is(.nv-language-filter, .nv-source-picker)
+  select {
+  min-height: 36px;
+  max-width: 100%;
+  min-width: 0;
+  background: var(--nv-base);
+  color: var(--nv-paper);
+  color-scheme: dark;
+  border: 1px solid var(--nv-line);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 13px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-language-filter {
+  margin-bottom: 10px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-style-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--nv-line);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-style-copy small {
+  display: block;
+  color: var(--nv-soft);
+  font-size: 12px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-style-actions {
+  display: flex;
+  flex-shrink: 0;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-source-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-source-picker {
+  max-width: calc(100% - 52px);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .stream-route-card {
+  display: flex;
+  flex-wrap: wrap;
+  position: relative;
+  align-items: center;
+  min-height: 0;
+  padding: 12px 12px 12px 54px;
+  gap: 8px;
+  border-radius: 12px;
+  background: rgba(26, 26, 31, 0.82);
+  grid-template-columns: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .stream-route-card-action::before {
+  top: 13px;
+  left: 12px;
+  width: 30px;
+  height: 30px;
+  background-size: 19px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .stream-route-card-heading {
+  font-size: 14px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .stream-route-card-line {
+  font-size: 12px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .stream-route-offline-actions {
+  display: flex;
+  gap: 8px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .stream-route-offline-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--nv-accent);
+  border-radius: 50%;
+  color: var(--nv-paper);
+  background: transparent;
+  cursor: pointer;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-card[aria-current="true"] {
+  border-left: 3px solid var(--nv-accent);
+  padding-left: 9px;
+  background: color-mix(in srgb, var(--nv-accent) 12%, var(--nv-panel));
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-current {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+  background: #0006;
+  color: white;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-current svg {
+  width: 26px;
+  height: 26px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-episode-current-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: var(--nv-accent);
+}
+/* Errors own the surface; the normal Play button and pause screen cannot cover recovery. */
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation[data-error="true"]
+  :is(.nv-center, .nv-bottom, #playerPauseOverlay) {
+  visibility: hidden;
+  pointer-events: none;
+}
+.desktop-browser #player #playerUiRoot.player-presentation[data-error="true"] .nv-error {
+  z-index: 4;
+}
+.desktop-browser #player #playerUiRoot.player-presentation[data-error="true"] .nv-top {
+  z-index: 5;
+}
+
+/* Inline video has one custom transport, including during Safari startup. */
+.desktop-browser #player video::-webkit-media-controls-start-playback-button {
+  display: none;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation.nv-mobile[data-transport="center"]
+  .nv-primary-row {
+  display: none;
+}
+
+.desktop-browser #player #playerUiRoot.player-presentation .player-source-playing {
+  order: 2;
+  flex: 0 0 100%;
+  margin: 0;
+}
+
+/* Shared filter component, with panel-owned dimensions and no page-level styling. */
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker {
+  position: relative;
+  min-width: 0;
+  width: 132px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-anchor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  padding: 5px 9px;
+  border: 1px solid var(--nv-line);
+  border-radius: 8px;
+  background: var(--nv-base);
+  color: var(--nv-paper);
+  cursor: pointer;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-copy {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 1px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-title {
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--nv-soft);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-value {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-icon {
+  display: flex;
+  flex: 0 0 16px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-chevron {
+  width: 16px;
+  height: 16px;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-addon-picker.open
+  .nv-addon-picker-chevron {
+  transform: rotate(180deg);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 190px;
+  max-height: min(220px, calc(var(--player-canvas-height, 100dvh) - 100px));
+  box-sizing: border-box;
+  padding: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--nv-line);
+  border-radius: 10px;
+  background: var(--nv-panel);
+  box-shadow: 0 8px 24px #0006;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-option {
+  display: block;
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 10px;
+  border-radius: 6px;
+  color: var(--nv-paper);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  .nv-addon-picker-option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--nv-accent) 16%, var(--nv-panel));
+  color: var(--nv-accent);
+}
+.desktop-browser
+  #player
+  #playerUiRoot.player-presentation
+  :is(.nv-addon-picker-anchor, .nv-addon-picker-option):focus-visible {
+  outline: 2px solid var(--nv-accent);
+  outline-offset: -2px;
+}
+@media (hover: hover) {
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-option:hover {
+    background: color-mix(in srgb, var(--nv-paper) 8%, var(--nv-panel));
+  }
+}
+
+/* Keep language choices inside the rotated player instead of an OS select popup. */
+.desktop-browser #player #playerUiRoot.player-presentation .nv-language-anchor {
+  border: 1px solid var(--nv-line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-height: 40px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-language-options {
+  max-height: 160px;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--nv-line);
+  border-radius: 8px;
+  overscroll-behavior: contain;
+}
+
+/* Stream navigation and source controls share one fixed header. */
+.desktop-browser #player #playerUiRoot.player-presentation .nv-stream-head {
+  gap: 6px;
+  padding: 8px 10px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-stream-title {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--nv-paper);
+  font: inherit;
+  cursor: pointer;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-stream-title svg {
+  width: 22px;
+  height: 22px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-stream-head .nv-source-toolbar {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  gap: 6px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-stream-head .nv-addon-picker {
+  width: auto;
+  flex: 0 1 132px;
+  max-width: calc(100% - 38px);
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-stream-head .nv-icon {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 40px;
+}
+
+.desktop-browser #player #playerUiRoot.player-presentation .nv-season-picker {
+  position: relative;
+  margin: 4px 0 8px;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-season-picker .nv-addon-picker {
+  width: 100%;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-season-picker .nv-addon-picker-menu {
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+.desktop-browser #player #playerUiRoot.player-presentation .nv-addon-picker-menu {
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: var(--nv-line) transparent;
+}
+
+/* Compact drawers follow the player canvas, including CSS-rotated phones.
+   Outer safe-area padding stays on .nv-panel; only inner spacing shrinks. */
+@container nv-preview (max-width: 900px) {
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-panel-head {
+    min-height: 52px;
+    padding: 4px 8px;
+    gap: 6px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-panel-body {
+    padding: 6px 8px 8px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-choice {
+    padding: 6px 8px;
+    gap: 8px;
+    min-height: 44px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-episode-card {
+    padding: 10px 0;
+    gap: 8px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-episode-card[aria-current="true"] {
+    padding-left: 6px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .stream-route-card {
+    padding: 8px 8px 8px 46px;
+    gap: 6px;
+    margin: 6px 0;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .stream-route-card-action::before {
+    top: 9px;
+    left: 8px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-group {
+    margin: 6px 8px 4px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-style-item {
+    padding: 4px 0;
+    gap: 6px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-language-filter {
+    margin-bottom: 6px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-season-picker {
+    margin: 0 0 6px;
+  }
+}
+@container nv-preview (max-width: 560px) {
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-panel-body {
+    padding: 4px 6px 6px;
+  }
+  .desktop-browser #player #playerUiRoot.player-presentation .nv-panel-head {
+    padding-inline: 6px;
+  }
+}
+
+/* Native buttons keep the arrow unless the player explicitly marks them clickable. */
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser
+    #player
+    #playerUiRoot.player-presentation
+    :is(button, a[href], [role="button"], [role="option"], select, input[type="range"]):not(
+      :disabled
+    ):not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+  .desktop-browser
+    #player
+    #playerUiRoot.player-presentation
+    :is(button, [role="button"], [role="option"], select, input[type="range"]):is(
+      :disabled,
+      [aria-disabled="true"]
+    ) {
+    cursor: not-allowed;
+  }
+}

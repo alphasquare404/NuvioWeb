@@ -216,7 +216,9 @@ test("episode stream drawer renders browser cards without the removed metadata l
     episodePanelIndex: 0,
     episodePanelStreamFilter: "all",
     getEpisodePanelStreamFilters: () => ["all", "A"],
-    getFilteredEpisodePanelStreams: () => rows
+    getFilteredEpisodePanelStreams: () => rows,
+    renderPanelDownloadButton: (index) =>
+      `<button data-player-download-index="${index}">Download</button>`
   };
   const html = render.call(ctx);
   assert.equal((html.match(/data-episode-stream-index=/g) || []).length, rows.length);

@@ -103,6 +103,7 @@ function configureAutoPlayScreen(StreamScreen, { params = {}, streams = [], sett
   StreamScreen.autoPlayAttempted = false;
   StreamScreen.autoPlayCountdown = null;
   StreamScreen.autoPlaySelectionReady = true;
+  StreamScreen.autoPlaySelectionExpired = false;
   StreamScreen.getFilteredStreams = () => streams;
   globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = {
     streamAutoPlayMode: "FIRST_STREAM",
@@ -229,4 +230,64 @@ test("checking and player handoff share movie identity and backdrop", async () =
     logoUrl: "https://image.test/logo.png",
     backdropUrl: "https://image.test/background.jpg"
   });
+});
+
+test("stream deadline selects an available result and cannot restart autoplay for late results", async () => {
+  const { StreamScreen } = await loadStreamScreen();
+  const original = StreamScreen.playStream,
+    originalFilter = StreamScreen.getFilteredStreams;
+  const played = [];
+  try {
+    StreamScreen.playStream = async (id) => played.push(id);
+    configureAutoPlayScreen(StreamScreen, {
+      streams: [{ id: "a", url: "https://fixture.test/a.mp4" }]
+    });
+    StreamScreen.autoPlaySelectionExpired = true;
+    StreamScreen.maybeAutoPlayStream({ deadlineReached: true });
+    assert.deepEqual(played, ["a"]);
+    configureAutoPlayScreen(StreamScreen, {
+      streams: [{ id: "late", url: "https://fixture.test/late.mp4" }]
+    });
+    StreamScreen.autoPlaySelectionExpired = true;
+    StreamScreen.maybeAutoPlayStream({ allLoaded: true });
+    assert.deepEqual(played, ["a"]);
+  } finally {
+    StreamScreen.playStream = original;
+    StreamScreen.getFilteredStreams = originalFilter;
+    delete globalThis.__NUVIO_TEST_PLAYER_SETTINGS__;
+  }
+});
+test("a prefetched stream rejected by the current filter releases Opening player", async () => {
+  const { StreamScreen } = await loadStreamScreen();
+  const names = [
+    "applyAddonLogos",
+    "buildSourceChipsFromStreams",
+    "refreshOfflineDownloadMetadata",
+    "scheduleDebridPreparation",
+    "getFilteredStreams",
+    "requestRender"
+  ];
+  const original = Object.fromEntries(names.map((n) => [n, StreamScreen[n]]));
+  try {
+    configureAutoPlayScreen(StreamScreen, {
+      params: {
+        autoResolvedStreams: [{ id: "a", url: "https://fixture.test/a" }],
+        autoResolvedStreamId: "a"
+      }
+    });
+    StreamScreen.autoResolvedPlaybackPending = true;
+    StreamScreen.applyAddonLogos = (a) => a;
+    StreamScreen.buildSourceChipsFromStreams = () => [];
+    StreamScreen.refreshOfflineDownloadMetadata = () => {};
+    StreamScreen.scheduleDebridPreparation = () => {};
+    StreamScreen.getFilteredStreams = () => [];
+    StreamScreen.requestRender = () => {};
+    assert.equal(StreamScreen.adoptAutoResolvedStreams(), true);
+    assert.equal(StreamScreen.autoResolvedPlaybackPending, false);
+    assert.equal(StreamScreen.params.autoResolvedStreamId, null);
+    assert.equal(StreamScreen.autoPlayAttempted, true);
+  } finally {
+    Object.assign(StreamScreen, original);
+    delete globalThis.__NUVIO_TEST_PLAYER_SETTINGS__;
+  }
 });

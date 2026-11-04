@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canSelectFromPartialList,
+  reportAutoPlaySelection,
   streamSelectionDeadline,
   withinStreamSelectionDeadline,
   normalizeSelectionWaitSeconds,
@@ -476,4 +477,87 @@ test("a failed compatibility verifier does not spin or fall back to an unverifie
   });
   assert.equal(result.selected, null);
   assert.ok(calls <= 3);
+});
+
+test("Back aborts Unlimited selection promptly and late addon chunks cannot mutate the result", async () => {
+  const controller = new AbortController();
+  let push;
+  const pending = resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "cancel",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 2147483647 },
+    signal: controller.signal,
+    repository: {
+      getStreamsFromAllAddons(_t, _v, o) {
+        push = o.onChunk;
+        return new Promise(() => {});
+      }
+    }
+  });
+  await new Promise((r) => setImmediate(r));
+  controller.abort();
+  const result = await pending;
+  assert.equal(result.cancelled, true);
+  push({ status: "success", data: groupFor([stream("late", "https://fixture.test/late")]) });
+  assert.equal(result.streams.length, 0);
+});
+test("an already cancelled search never starts source discovery", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let calls = 0;
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "cancelled",
+    settings: FIRST_STREAM,
+    signal: controller.signal,
+    repository: {
+      getStreamsFromAllAddons() {
+        calls++;
+      }
+    }
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.cancelled, true);
+});
+test("fresh addon manifests preserve the allowed-addon scope when the initial cache was empty", async () => {
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "fresh",
+    settings: {
+      ...FIRST_STREAM,
+      streamAutoPlaySource: "INSTALLED_ADDONS_ONLY",
+      streamAutoPlaySelectedAddons: ["A"]
+    },
+    installedAddonNames: new Set(),
+    repository: {
+      async getStreamsFromAllAddons(_t, _v, o) {
+        o.onAddon({ displayName: "A" });
+        o.onAddon({ displayName: "B" });
+        return {
+          status: "success",
+          data: [
+            { addonName: "B", streams: [{ url: "https://fixture.test/b" }] },
+            { addonName: "A", streams: [{ url: "https://fixture.test/a" }] }
+          ]
+        };
+      }
+    }
+  });
+  assert.equal(result.selected.addonName, "A");
+});
+test("selection diagnostics exclude source URLs, credentials, regex and raw exception text", (t) => {
+  const logs = [];
+  t.mock.method(console, "warn", (s) => logs.push(s));
+  reportAutoPlaySelection(
+    "detail",
+    {
+      reason: "error",
+      streams: [{ url: "https://secret.test/?token=private" }],
+      error: new Error("private")
+    },
+    { streamAutoPlayTimeoutSeconds: 3, streamAutoPlayRegex: "secret-regex" }
+  );
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /selection-finished/);
+  assert.doesNotMatch(logs[0], /secret|private|token/);
 });

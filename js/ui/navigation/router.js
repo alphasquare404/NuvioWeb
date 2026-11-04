@@ -560,6 +560,16 @@ export const Router = {
   // reused. A route reached from itself used to fail the second test for want
   // of a second container; a stackable route is given one, so Detail A stays
   // mounted under Detail B and Back reveals it rather than rebuilding it.
+  // Authentication routes share #account; their route names are not DOM ids.
+  // Resolve this before first mount too, otherwise a retained Settings layer
+  // can remain above a newly opened sign-in form.
+  getRouteContainer(routeName) {
+    const containerId = ["authSignIn", "authQrSignIn", "syncCode"].includes(routeName)
+      ? "account"
+      : routeName;
+    return this.routes[routeName]?.container || document?.getElementById?.(containerId);
+  },
+
   canSuspendOutgoingRoute(routeName, outgoingHistoryIndex, options = {}) {
     return Boolean(
       Platform.isBrowser() &&
@@ -577,8 +587,8 @@ export const Router = {
       return false;
     }
     const parentScreen = this.routes[this.current];
-    const parentContainer = parentScreen?.container || document?.getElementById?.(this.current);
-    const childContainer = options?.childContainer || document?.getElementById?.(routeName);
+    const parentContainer = this.getRouteContainer(this.current);
+    const childContainer = options?.childContainer || this.getRouteContainer(routeName);
     if (!parentScreen || !parentContainer || !childContainer) {
       return false;
     }
@@ -630,7 +640,7 @@ export const Router = {
     if (!top) {
       return false;
     }
-    const container = this.routes[routeName]?.container || document?.getElementById?.(routeName);
+    const container = this.getRouteContainer(routeName);
     if (!container || top.childContainer === container) {
       return false;
     }
@@ -673,7 +683,7 @@ export const Router = {
   // is re-stated after mount rather than trusted.
   reassertTopLayerChrome(routeName) {
     const top = this.suspendedRouteStack[this.suspendedRouteStack.length - 1];
-    const container = this.routes[routeName]?.container || document?.getElementById?.(routeName);
+    const container = this.getRouteContainer(routeName);
     if (!top || !container || top.childContainer !== container) {
       return;
     }
@@ -701,10 +711,7 @@ export const Router = {
   // layer holding it is cleaned up first to keep the stack honest about what
   // is actually still alive.
   releaseSuspendedLayersForRoute(routeName, incomingContainer = null) {
-    const container =
-      incomingContainer ||
-      this.routes[routeName]?.container ||
-      document?.getElementById?.(routeName);
+    const container = incomingContainer || this.getRouteContainer(routeName);
     for (let index = this.suspendedRouteStack.length - 1; index >= 0; index -= 1) {
       const layer = this.suspendedRouteStack[index];
       if (layer.route !== routeName) {
@@ -1024,7 +1031,12 @@ export const Router = {
       }
     } else if (this.current === routeName) {
       this.captureCurrentRouteState(routeName, options?.captureHistoryIndex);
-      this.routes[this.current].cleanup?.();
+      // The incoming browser player has already claimed the unified loading
+      // screen above. Outgoing playback must not dismiss that screen.
+      this.routes[this.current].cleanup?.({
+        preserveStartupLoading:
+          routeName === "player" && Platform.isBrowser() && !params.externalFrameUrl
+      });
     }
 
     // Resolved here rather than at the top: a stacked navigation has just

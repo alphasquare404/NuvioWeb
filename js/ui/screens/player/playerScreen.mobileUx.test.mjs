@@ -377,6 +377,7 @@ test("outside More Actions dismisses the panel without starting video gestures",
     container: { contains: () => true },
     uiRefs: { root: { querySelector: () => panel } },
     renderControlButtons: () => renders++,
+    updateModalBackdrop() {},
     revealDesktopPlayerControls: () => reveals++
   };
   const dismiss = method("dismissDesktopPlayerPanelFromPointer(target)", {
@@ -411,6 +412,7 @@ test("track popover height stops below Back and above the toolbar", () => {
     uiRefs: {
       subtitleDialog: dialog,
       root: {
+        classList: { contains: () => false },
         style: { setProperty() {} },
         getBoundingClientRect: () => ({ top: 0, left: 0, bottom: 844, width: 390 }),
         querySelector: (selector) => {
@@ -473,6 +475,7 @@ test("read-only software volume is detected instead of drawing a fictional saved
 
 test("auto-next replaces player and retains its original Back destination", async () => {
   let navigation, backAction;
+  let countdowns = 0;
   const stages = [];
   const run = method("async playNextEpisode({ userInitiated = false } = {})", {
     StartupLoadingOverlay: {
@@ -502,13 +505,19 @@ test("auto-next replaces player and retains its original Back destination", asyn
       streamRouteParams: { returnToSearchOnBack: true }
     },
     episodes: [{ id: "s2e4", season: 2, episode: 4 }],
+    pauseOverlayMeta: {
+      cast: [{ name: "Actor", character: "Pilot", photo: "https://image.test/actor.jpg" }]
+    },
     resolveNextEpisodeInfo: () => ({ videoId: "s2e4", season: 2, episode: 4, hasAired: true }),
     resolveNextEpisodeStreamByAutoPlayPolicy: async () => ({
       streamItems: [{ id: "one", url: "https://example.test/video" }],
       selectedStream: { id: "one", url: "https://example.test/video" }
     }),
     isNextEpisodeLaunchActive: () => true,
-    runNextEpisodeCountdown: async () => true,
+    runNextEpisodeCountdown: async () => {
+      countdowns++;
+      return true;
+    },
     shouldReturnToStreamOnBack: () => false,
     getPlaybackSourceContext: () => ({}),
     getPlayerStreamProbe: () => null,
@@ -519,6 +528,8 @@ test("auto-next replaces player and retains its original Back destination", asyn
     setControlsVisible() {}
   };
   assert.equal(await run.call(ctx), true);
+  assert.equal(countdowns, 1, "automatic next retains its countdown");
+  assert.deepEqual(navigation[1].castItems, ctx.pauseOverlayMeta.cast);
   assert.deepEqual(stages, ["finding"]);
   assert.equal(typeof backAction, "function");
   assert.equal(navigation[1].prepareSelectedSource, true);
@@ -527,11 +538,26 @@ test("auto-next replaces player and retains its original Back destination", asyn
   assert.equal(navigation[1].returnToStreamOnBack, false);
   assert.equal(navigation[2].replaceHistory, true);
   assert.deepEqual(navigation[1].streamRouteParams, { returnToSearchOnBack: true });
+  ctx.nextEpisodeLaunching = false;
+  ctx.loadingVisible = false;
+  let firstCardRender;
+  ctx.renderNextEpisodeCard = () => {
+    firstCardRender ??= ctx.loadingVisible;
+  };
+  assert.equal(await run.call(ctx, { userInitiated: true }), true);
+  assert.equal(countdowns, 1, "a clicked Next must not run another countdown");
+  assert.equal(firstCardRender, true, "loading hides the automatic card before its first render");
+  assert.deepEqual(navigation[1].castItems, ctx.pauseOverlayMeta.cast);
 });
 
 test("touch subtitle selection keeps rail position and does not paint TV focus", () => {
   const rails = [{ scrollTop: 0 }, { scrollTop: 140 }, { scrollTop: 30 }];
-  const dialog = { classList: { toggle() {} }, querySelectorAll: () => rails, innerHTML: "" };
+  const dialog = {
+    classList: { toggle() {} },
+    querySelector: () => null,
+    querySelectorAll: () => rails,
+    innerHTML: ""
+  };
   const ctx = {
     uiRefs: { subtitleDialog: dialog },
     subtitleDialogVisible: true,
@@ -1666,6 +1692,8 @@ test("background player updates do not dismiss loading while the next episode so
   const update = method("updateLoadingVisibility()", {
     Environment: { isBrowser: () => true },
     usesUnifiedStartup: () => true,
+    PlaybackLoadingTrace: { begin() {}, sample() {} },
+    PlayerController: {},
     StartupLoadingOverlay: {
       begin: (_, stage) => stages.push(stage),
       setBackHandler() {},
@@ -1676,6 +1704,7 @@ test("background player updates do not dismiss loading while the next episode so
   }).updateLoadingVisibility;
   const ctx = {
     params: { itemId: "series" },
+    getPlaybackCurrentSeconds: () => 0,
     nextEpisodeLaunching: true,
     nextEpisodeCardSearching: true,
     loadingVisible: false,
@@ -1697,4 +1726,95 @@ test("background player updates do not dismiss loading while the next episode so
   ctx.nextEpisodeLaunching = false;
   update.call(ctx);
   assert.equal(finished, 1);
+});
+
+test("header Back, Next and center buttons never enter video gesture handling", () => {
+  const run = method("isDesktopVideoAreaClick(target, event = null)", {
+    Environment: { isBrowser: () => true }
+  }).isDesktopVideoAreaClick;
+  const ctx = {
+    container: { contains: () => true },
+    isExternalFrameMode: () => false,
+    controlsVisible: true,
+    uiRefs: { progressShell: null }
+  };
+  for (const selector of [
+    "[data-player-desktop-back]",
+    ".nv-top",
+    ".nv-center",
+    ".player-control-btn[data-action]"
+  ]) {
+    const target = {
+      closest: (selectors) => (selectors.split(", ").includes(selector) ? {} : null)
+    };
+    assert.equal(run.call(ctx, target, { clientY: 20 }), false, selector);
+  }
+  assert.equal(run.call(ctx, { closest: () => null }, { clientY: 150 }), true);
+});
+
+test("seekbar retains the latest requested target until the real frame reaches it", () => {
+  const display = method(
+    "getDisplayedPlaybackSeconds(current = this.getPlaybackCurrentSeconds())"
+  ).getDisplayedPlaybackSeconds;
+  const ctx = { seekLoading: true, seekLoadingTargetSeconds: 90 };
+  assert.equal(display.call(ctx, 15), 90);
+  ctx.seekLoadingTargetSeconds = 0;
+  assert.equal(display.call(ctx, 15), 0);
+  ctx.seekLoadingTargetSeconds = 120;
+  assert.equal(display.call(ctx, 15), 120);
+  let clears = 0;
+  const ready = method("completeSeekLoadingIfReady()", {
+    PlayerController: { isClientRemuxRestoring: () => false }
+  }).completeSeekLoadingIfReady;
+  Object.assign(ctx, {
+    isStartupLoadingVisible: () => false,
+    isPlaybackFrameReady: () => true,
+    getPlaybackCurrentSeconds: () => 15,
+    clearSeekLoading: () => ++clears
+  });
+  assert.equal(ready.call(ctx), false);
+  assert.equal(clears, 0);
+  ctx.getPlaybackCurrentSeconds = () => 120;
+  ready.call(ctx);
+  assert.equal(clears, 1);
+  ctx.seekLoading = false;
+  assert.equal(display.call(ctx, 121), 121);
+});
+test("a playback error prevents a delayed pause screen from reopening", () => {
+  const canShow = method("canShowPauseOverlay()", {
+    PlayerSettingsStore: { get: () => ({ pauseOverlayEnabled: true }) }
+  }).canShowPauseOverlay;
+  const ctx = {
+    paused: true,
+    isExternalFrameMode: () => false,
+    isStartupErrorVisible: () => true,
+    seekPreviewSeconds: null,
+    isDialogOpen: () => false,
+    isNextEpisodeCardVisible: () => false
+  };
+  assert.equal(canShow.call(ctx), false);
+  ctx.isStartupErrorVisible = () => false;
+  assert.equal(canShow.call(ctx), true);
+});
+
+test("manual episode switching carries cast photos and roles to the next player", async () => {
+  let navigation;
+  const run = method("async playEpisodeFromPanel(selectedStream = null)", {
+    PlayerController: { flushCurrentProgress: async () => {}, pushProgressIfDue() {} },
+    Router: { navigate: async (_route, params) => (navigation = params) },
+    streamDirectPlaybackUrl: (stream) => stream.url
+  }).playEpisodeFromPanel;
+  const stream = { id: "source", url: "https://media.test/episode" };
+  const cast = [{ name: "Actor", photo: "https://image.test/actor.jpg", character: "Pilot" }];
+  const ctx = {
+    params: { itemId: "series", itemType: "series" },
+    episodes: [{ id: "e2", season: 1, episode: 2 }],
+    episodePanelIndex: 0,
+    pauseOverlayMeta: { cast },
+    getFilteredEpisodePanelStreams: () => [stream],
+    getPlaybackSourceContext: () => ({}),
+    shouldReturnToStreamOnBack: () => false
+  };
+  await run.call(ctx, stream);
+  assert.deepEqual(navigation.castItems, cast);
 });

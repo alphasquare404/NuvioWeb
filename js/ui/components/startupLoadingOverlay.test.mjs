@@ -178,6 +178,8 @@ test("native video events update status without timers advancing through invente
   const bind = new Function(
     "PlayerController",
     "StartupLoadingOverlay",
+    "Environment",
+    "PlaybackLoadingTrace",
     "return ({" + method + "}).bindVideoEvents"
   )(
     { video },
@@ -185,7 +187,9 @@ test("native video events update status without timers advancing through invente
       setStage(stage) {
         stages.push(stage);
       }
-    }
+    },
+    { isBrowser: () => true },
+    { stage() {} }
   );
   const screen = new Proxy(
     {

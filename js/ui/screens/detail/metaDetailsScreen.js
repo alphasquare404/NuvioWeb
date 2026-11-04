@@ -98,6 +98,7 @@ import {
 } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   resolveAutoPlayStream,
+  reportAutoPlaySelection,
   streamSelectionDeadline,
   shouldAbandonAutoResolve,
   shouldPaintRouteHandoff
@@ -3315,6 +3316,7 @@ export const MetaDetailsScreen = {
   // off has to reach this, because a waiting screen with nothing coming is a
   // dead end: there is nothing on it to press.
   cancelRouteHandoff() {
+    this.autoStreamResolveAbort?.abort();
     this.autoStreamResolveToken = (this.autoStreamResolveToken || 0) + 1;
     const fromContinueWatching = this.params?.autoOpenContinueWatching === true;
     if (fromContinueWatching) this.params.autoOpenContinueWatching = false;
@@ -3350,6 +3352,8 @@ export const MetaDetailsScreen = {
       return Router.navigate("stream", params, options);
     }
 
+    this.autoStreamResolveAbort?.abort();
+    const controller = (this.autoStreamResolveAbort = new AbortController());
     const deadlineAt = streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
     const token = (this.autoStreamResolveToken || 0) + 1;
     this.autoStreamResolveToken = token;
@@ -3385,8 +3389,10 @@ export const MetaDetailsScreen = {
       ),
       shouldCancel: cancelled,
       deadlineAt,
-      returnOnFirstMatch: true
+      returnOnFirstMatch: true,
+      signal: controller.signal
     });
+    reportAutoPlaySelection("detail", resolution, settings);
     // Nothing took this route over, so the page it was holding back is where
     // the person stays.
     if (cancelled()) {

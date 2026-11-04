@@ -152,6 +152,7 @@ function retry({
       nextEpisodeSelectionOptions,
       playerStreamProbeKey,
       selectedPlaybackTask,
+      extractPlaybackHttpStatus: () => 0,
       normalizeItemType: (v) => v,
       StartupLoadingOverlay: { finish() {}, setStage() {} },
       Router: { navigate: async (...args) => navigations.push(args) }
@@ -307,4 +308,40 @@ test("new playback attempts bound Direct to 15s and processed routes to 30s", (t
       route === "direct" ? 6000 : 21000
     );
   }
+});
+
+test("startup errors retain the unresolved candidate for automatic fallback", () => {
+  const calls = [];
+  const candidate = { id: "unresolved", addonName: "A", infoHash: "a".repeat(40) };
+  const ctx = Object.assign(methods(["showStartupError"], {}), {
+    params: { prepareSelectedSource: true },
+    _preparingSelectedSource: true,
+    advanceAfterSelectedSourceFailure: (...args) => calls.push(args)
+  });
+  ctx.showStartupError("Cannot resolve", { streamCandidate: candidate, reason: "debrid-resolve" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][1].streamCandidate, candidate);
+});
+
+test("unresolved debrid failures exhaust permitted candidates once despite a stale current source", async () => {
+  const rows = ["first", "second", "third"].map((id, index) => ({
+    id,
+    addonName: "A",
+    infoHash: String(index + 1).repeat(40),
+    fileIdx: 0
+  }));
+  rows.splice(1, 0, { id: "forbidden", addonName: "B", infoHash: "f".repeat(40), fileIdx: 0 });
+  const h = retry({ rows });
+  // The media accessor cannot identify a candidate before it has a playable URL.
+  h.ctx.getCurrentStreamCandidate = () => null;
+  for (const candidate of rows.filter((stream) => stream.addonName === "A")) {
+    await h.ctx.advanceAfterSelectedSourceFailure("Cannot resolve", {
+      streamCandidate: candidate,
+      reason: "debrid-resolve"
+    });
+  }
+  assert.deepEqual(h.plays, ["second", "third"]);
+  assert.equal(h.ctx._startupSourceFailures.size, 3);
+  assert.equal(h.navigations.length, 1);
+  assert.equal(h.navigations[0][1].autoSelectionFinished, true);
 });

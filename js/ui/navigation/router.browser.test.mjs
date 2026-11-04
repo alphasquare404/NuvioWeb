@@ -2174,3 +2174,78 @@ test("player navigation preserves the selected source even with remux configured
     assert.equal(Router.currentParams.streamUrl, streamUrl);
   }
 });
+
+test("first Sign In from retained Settings layers above Settings using the shared account container", async () => {
+  const home = makeScreen("home"),
+    settings = makeScreen("settings"),
+    section = makeScreen("settingsSection"),
+    auth = makeScreen("authSignIn");
+  resetRouter({ home, settings, settingsSection: section, authSignIn: auth });
+  for (const [name, screen] of [
+    ["home", home],
+    ["settings", settings],
+    ["settingsSection", section]
+  ]) {
+    screen.container = makeContainer();
+    screenContainers.set(name, screen.container);
+  }
+  const account = makeContainer();
+  screenContainers.set("account", account);
+  auth.mount = async function () {
+    this.container = account;
+  };
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("settings");
+  await Router.navigate("settingsSection", { section: "account" });
+  assert.equal(auth.container, undefined);
+  await Router.navigate("authSignIn");
+  assert.equal(Router.getCurrent(), "authSignIn");
+  assert.equal(Router.suspendedRouteStack.at(-1).childContainer, account);
+  assert.equal(account.style.getPropertyValue("position"), "fixed");
+  assert.ok(
+    Number(account.style.getPropertyValue("z-index")) >
+      Number(section.container.style.getPropertyValue("z-index"))
+  );
+  assert.equal(section.container.inert, true);
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "settingsSection");
+  assert.equal(section.container.inert, false);
+});
+test("unmounted authentication routes resolve the account container before navigation", () => {
+  resetRouter({
+    authSignIn: makeScreen("authSignIn"),
+    authQrSignIn: makeScreen("authQrSignIn"),
+    syncCode: makeScreen("syncCode")
+  });
+  const account = makeContainer();
+  screenContainers.set("account", account);
+  for (const route of ["authSignIn", "authQrSignIn", "syncCode"])
+    assert.equal(Router.getRouteContainer(route), account);
+});
+
+test("replacing a browser player preserves the incoming loading surface only for internal playback", async () => {
+  const player = makeScreen("player");
+  const cleanupOptions = [];
+  player.cleanup = (options) => cleanupOptions.push(options);
+  resetRouter({ player });
+  Router.init();
+  await Router.navigate("player", {
+    itemId: "series",
+    videoId: "e1",
+    streamUrl: "https://media.test/e1"
+  });
+  await Router.navigate(
+    "player",
+    { itemId: "series", videoId: "e2", streamUrl: "https://media.test/e2" },
+    { replaceHistory: true }
+  );
+  assert.equal(cleanupOptions.at(-1).preserveStartupLoading, true);
+  await Router.navigate(
+    "player",
+    { itemId: "series", externalFrameUrl: "https://media.test/embed" },
+    { replaceHistory: true }
+  );
+  assert.equal(cleanupOptions.at(-1).preserveStartupLoading, false);
+});

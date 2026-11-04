@@ -1,3 +1,4 @@
+import { PlaybackLoadingTrace } from "../../core/player/playbackLoadingTrace.js";
 import { Router } from "../navigation/router.js";
 import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { I18n } from "../../i18n/index.js";
@@ -47,7 +48,7 @@ export const StartupLoadingOverlay = {
   },
   back() {
     const handler = backHandler;
-    this.finish();
+    this.finish("back");
     if (handler) handler();
     else void Router.back();
   },
@@ -61,7 +62,7 @@ export const StartupLoadingOverlay = {
       return false;
     }
     if (meta.itemKey && presentation.itemKey && meta.itemKey !== presentation.itemKey)
-      this.finish();
+      this.finish("replaced");
     if (
       !host &&
       typeof document !== "undefined" &&
@@ -98,6 +99,7 @@ export const StartupLoadingOverlay = {
       globalThis.addEventListener?.("resize", artworkResize);
     }
     orientation?.setPreference(meta.orientation);
+    PlaybackLoadingTrace.begin(nextStage);
     this.updateMetadata(meta);
     this.setStage(nextStage);
     return Boolean(host);
@@ -162,6 +164,7 @@ export const StartupLoadingOverlay = {
   },
   setStage(nextStage) {
     if (STAGES[nextStage]) stage = nextStage;
+    PlaybackLoadingTrace.stage(stage);
     if (stage === "frame" || stage === "restoring") relayText = "";
     const node = host?.querySelector(".player-loading-status");
     if (!node) return;
@@ -179,7 +182,8 @@ export const StartupLoadingOverlay = {
     relayText = String(text || "");
     this.setStage(stage);
   },
-  finish() {
+  finish(reason = "finished") {
+    if (reason !== "presenting") PlaybackLoadingTrace.finish(reason);
     if (artworkResize) globalThis.removeEventListener?.("resize", artworkResize);
     artworkResize = null;
     orientation?.destroy();

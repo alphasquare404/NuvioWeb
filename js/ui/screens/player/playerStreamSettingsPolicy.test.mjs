@@ -6,6 +6,8 @@ import * as labelPolicy from "../../../core/streams/streamLabelPolicy.js";
 import * as selector from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   withinStreamSelectionDeadline,
+  resolveAutoPlayStream,
+  reportAutoPlaySelection,
   streamSelectionDeadline
 } from "../../../core/streams/streamAutoResolve.js";
 import { classifyPlayback } from "../../../core/player/playbackMethod.js";
@@ -45,6 +47,8 @@ function screen(overrides = {}) {
     ...policy,
     ...selector,
     withinStreamSelectionDeadline,
+    resolveAutoPlayStream,
+    reportAutoPlaySelection,
     streamSelectionDeadline,
     classifyPlayback,
     streamProbeIdentity,
@@ -129,36 +133,33 @@ test("Prefer Binge Group falls back without hints or matching groups, retaining 
   );
 });
 
-test("Next Episode deadline rejects late selection and never starts duplicate concurrent selection", async (t) => {
+test("Next Episode evaluates a ready permitted addon at deadline even when another addon stalls", async (t) => {
   t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
-  let release,
-    attempts = 0,
-    lastOptions;
+  let complete;
   const s = screen({
     screen: {
-      selectNextEpisodeStreamByAutoPlayPolicy: async (_rows, _settings, options) => {
-        attempts++;
-        lastOptions = options;
-        return new Promise((r) => {
-          release = r;
+      getPlayableStreamsForVideo: async (_id, _type, { onChunk }) => {
+        onChunk([{ ...row("forbidden"), addonName: "B" }, fixtures[0]]);
+        return new Promise((resolve) => {
+          complete = resolve;
         });
       }
     }
   });
-  const pending = s.resolveNextEpisodeStreamByAutoPlayPolicy(episode, "series", base);
+  const pending = s.resolveNextEpisodeStreamByAutoPlayPolicy(episode, "series", {
+    ...base,
+    streamAutoPlaySource: "INSTALLED_ADDONS_ONLY",
+    streamAutoPlaySelectedAddons: ["A"]
+  });
   await flush();
-  assert.equal(attempts, 1);
   t.mock.timers.tick(1000);
   await flush();
   const result = await pending;
-  assert.equal(result.selectedStream, null);
-  assert.equal(result.timedOut, true);
-  assert.equal(result.error, null);
-  assert.equal(lastOptions.cancelled(), true);
-  release(fixtures[0]);
+  assert.equal(result.selectedStream.id, "first");
+  assert.equal(result.timedOut, false);
+  complete([row("late")]);
   await flush();
-  assert.equal(result.selectedStream, null);
-  assert.equal(attempts, 1);
+  assert.equal(result.selectedStream.id, "first");
 });
 
 test("deadline includes addon lookup and does not start fetching sources after expiry", async (t) => {
@@ -239,4 +240,36 @@ test("Back stops next-episode discovery without waiting for its original timeout
   const result = await pending;
   assert.equal(result.selectedStream, null);
   assert.equal(s._nextSourceDiscoveryCancel, null);
+});
+
+test("Unlimited does not release Next Episode early for a matching binge group", async () => {
+  let complete,
+    finished = false;
+  const matching = { ...row("same"), behaviorHints: { bingeGroup: "g" } };
+  const s = screen({
+    screen: {
+      getCurrentStreamBingeGroup: () => "g",
+      getPlayableStreamsForVideo: async (_id, _type, { onChunk }) => {
+        onChunk([matching]);
+        return new Promise((r) => {
+          complete = r;
+        });
+      }
+    }
+  });
+  const pending = s
+    .resolveNextEpisodeStreamByAutoPlayPolicy(episode, "series", {
+      ...base,
+      streamAutoPlayTimeoutSeconds: 2147483647,
+      streamAutoPlayPreferBingeGroupForNextEpisode: true
+    })
+    .then((r) => {
+      finished = true;
+      return r;
+    });
+  await flush();
+  assert.equal(finished, false);
+  complete([matching]);
+  await flush();
+  assert.equal((await pending).selectedStream.id, "same");
 });

@@ -1,3 +1,5 @@
+import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
+import { PlaybackLoadingTrace } from "../../../core/player/playbackLoadingTrace.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
 import { selectedPlaybackTask } from "../../../core/player/selectedPlaybackTask.js";
@@ -35,7 +37,9 @@ import {
   playerLocalPoint,
   playerLocalRect
 } from "./browserPlayerOrientation.js";
-import { paginateBrowserToolbar } from "./browserToolbar.js";
+
+import { BrowserPlayerPresentationScreen } from "./browserPlayerPresentationScreen.js";
+import { playerDesignIcon } from "./browserPlayerPresentation.js";
 import { isAppInstalled } from "../../components/browserInstallPrompt.js";
 import { formatRuntimeLabel } from "../../../core/util/runtimeLabel.js";
 import { traceHost } from "../../../core/util/playbackTrace.js";
@@ -90,6 +94,8 @@ import {
 } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   withinStreamSelectionDeadline,
+  resolveAutoPlayStream,
+  reportAutoPlaySelection,
   streamSelectionDeadline
 } from "../../../core/streams/streamAutoResolve.js";
 
@@ -138,10 +144,20 @@ import {
   decodeOfflineSubtitleBytes,
   detectOfflineSubtitleFormat,
   getBrowserOfflineSubtitleFile,
+  getBrowserOfflineArtwork,
   getOfflineDownload,
   isOfflineSubtitleTextLoadable,
-  listOfflineSubtitles
+  listOfflineSubtitles,
+  listOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
+import {
+  createBrowserOfflinePlayback,
+  releaseBrowserOfflinePlayback
+} from "../../../core/offline/browserOfflinePlayback.js";
+import {
+  selectCompletedOfflineDetailDownloads,
+  createOfflineEpisodeEntries
+} from "../detail/offlineDetailData.js";
 import { DirectDebridResolver } from "../../../core/debrid/directDebridResolver.js";
 import { TrackingScrobbleService } from "../../../data/repository/trackingScrobbleService.js";
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
@@ -2125,6 +2141,8 @@ function uniqueNonEmptyValues(values = []) {
 }
 
 export const PlayerScreen = {
+  ...BrowserOfflineDownloadOptions,
+  ...BrowserPlayerPresentationScreen,
   async mount(params = {}) {
     this.container = document.getElementById("player");
     this.unbindDesktopPlayerPointerBridge();
@@ -2160,12 +2178,15 @@ export const PlayerScreen = {
     )
       this._playerListProbeResults.set(params.sourceProbeKey, params.sourceProbe);
     this.browserToolbarPage = 0;
-    this.desktopVolumeReadOnly = false;
+    this.desktopVolumeReadOnly = true;
     this.desktopVolumeCapabilityVideo = null;
     this.desktopVolumeWriteRevision = Number(this.desktopVolumeWriteRevision || 0) + 1;
     this.subtitleKeyboardNavigation = false;
     this.offlineObjectUrl = Environment.isBrowser() ? String(params.offlineObjectUrl || "") : "";
     this.offlineDownloadId = Environment.isBrowser() ? String(params.offlineDownloadId || "") : "";
+    this.offlinePlayerDownloads = [];
+    this.offlinePlayerArtworkUrls = new Set();
+    this.offlinePlayerLibraryLoaded = false;
     this.trackPreferenceContentId = this.getTrackPreferenceContentId();
     this.rememberedAudioTrackPreference = TrackPreferencesStore.getAudio(
       this.trackPreferenceContentId
@@ -2451,6 +2472,7 @@ export const PlayerScreen = {
     this.bufferingSpinnerTimer = null;
     this.bufferingSpinnerBaselineSeconds = null;
     this.moreActionsVisible = false;
+    this.playbackInfoVisible = false;
     this.controlFocusZone = "buttons";
     this.stickyProgressFocus = false;
     this.autoHideControlsAfterSeek = false;
@@ -2494,6 +2516,7 @@ export const PlayerScreen = {
     this.audioMediaSource = null;
 
     this.renderPlayerUi();
+    if (this.offlineDownloadId) void this.loadOfflinePlayerLibrary();
     this.bindDesktopPlayerPointerBridge();
     this.pauseOverlayMeta = this.buildPauseOverlayMeta();
     if (!this.isExternalFrameMode()) {
@@ -4751,7 +4774,9 @@ export const PlayerScreen = {
 
     const root = document.createElement("div");
     root.id = "playerUiRoot";
-    root.className = "player-ui-root";
+    root.className =
+      "player-ui-root" +
+      (Environment.isBrowser() && !this.isExternalFrameMode() ? " player-presentation" : "");
     root.tabIndex = -1;
 
     if (this.isExternalFrameMode()) {
@@ -4842,7 +4867,10 @@ export const PlayerScreen = {
         <div id="playerMobileMorePanel" class="player-mobile-more-panel hidden"></div>
         <div id="playerSourcesPanel" class="player-sources-panel hidden"></div>
 
-        <div id="playerControlsOverlay" class="player-controls-overlay">
+        ${
+          Environment.isBrowser()
+            ? this.renderBrowserPlayerChrome(header, osdClockEnabled)
+            : `        <div id="playerControlsOverlay" class="player-controls-overlay">
           <div class="player-controls-gradient player-controls-gradient-top"></div>
           <div class="player-controls-gradient player-controls-gradient-bottom"></div>
 
@@ -4876,7 +4904,8 @@ export const PlayerScreen = {
               </div>
             </div>
           </div>
-        </div>
+        </div>`
+        }
       `;
     }
 
@@ -4897,6 +4926,7 @@ export const PlayerScreen = {
       });
     }
     this.cachePlayerUiRefs(root);
+    this.configureProposalPresentation?.();
     this.syncPlayerOverlayLayoutState();
     this.bindLoadingLogoFallback();
     if (!this.isExternalFrameMode()) {
@@ -4940,7 +4970,7 @@ export const PlayerScreen = {
           <img class="player-desktop-tool-icon" data-player-desktop-mute-icon src="assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}" alt="" aria-hidden="true" />
         </button>
         <input class="player-desktop-volume" type="range" min="0" max="100" step="1"
-               value="${volumePercent}" data-player-desktop-volume aria-label="Volume" />
+               value="${volumePercent}" data-player-desktop-volume aria-label="Volume" ${this.desktopVolumeReadOnly !== false ? "hidden disabled" : ""} />
         ${
           pictureInPictureAvailable
             ? `<button class="player-desktop-tool-button" type="button" tabindex="-1" data-player-desktop-action="picture-in-picture"
@@ -5469,11 +5499,11 @@ export const PlayerScreen = {
       }
 
       const actionTarget = target.closest(
-        ".player-control-btn[data-action], [data-player-pointer-action], [data-player-error-action], " +
+        ".player-control-btn[data-action], [data-player-loading-back], [data-player-pointer-action], [data-player-error-action], " +
           "[data-sources-zone], [data-subtitle-style-action], [data-subtitle-rail], " +
-          "[data-audio-step], [data-audio-column], [data-speed-index], [data-episode-action], " +
+          "[data-audio-step], [data-audio-column], [data-proposal-subtitle-language], [data-speed-index], [data-episode-action], " +
           "[data-episode-stream-action], [data-episode-stream-filter-index], " +
-          "[data-episode-stream-index], [data-episode-season-index], [data-episode-index], " +
+          "[data-episode-stream-index], [data-player-download-index], [data-episode-season-index], [data-episode-index], " +
           "[data-player-desktop-action], [data-player-desktop-volume]"
       );
       if (actionTarget && this.container.contains(actionTarget)) {
@@ -5499,6 +5529,16 @@ export const PlayerScreen = {
     };
     this.container.addEventListener("input", this.boundDesktopPlayerInputHandler);
     this.boundDesktopPlayerChangeHandler = (event) => {
+      const size = event.target?.closest?.("[data-proposal-subtitle-size]");
+      if (size && this.container.contains(size)) {
+        this.subtitleStyleSettings = {
+          ...this.subtitleStyleSettings,
+          fontSize: Number(size.value)
+        };
+        this.schedulePersistPlayerPresentationSettings();
+        this.applySubtitlePresentationSettings();
+        this.renderSubtitleDialog();
+      }
       const select = event.target?.closest?.("[data-player-episode-season]");
       if (select && this.container.contains(select))
         this.selectEpisodePanelSeason(Number(select.value));
@@ -5679,13 +5719,16 @@ export const PlayerScreen = {
     if (
       !Environment.isBrowser() ||
       this.isExternalFrameMode() ||
-      (this.moreActionsVisible && this.isCompactBrowserPlayerToolbar()) ||
+      this.moreActionsVisible ||
       !this.container?.contains(target)
     ) {
       return false;
     }
     const blockedSelector = [
       "[data-player-desktop-back]",
+      ".player-control-btn[data-action]",
+      ".nv-top",
+      ".nv-center",
       ".player-controls-top",
       ".player-controls-bottom",
       ".player-mobile-more-panel",
@@ -5814,8 +5857,15 @@ export const PlayerScreen = {
 
   detectDesktopSoftwareVolume() {
     const video = this.getDesktopPlaybackVideo();
-    if (!video || this.desktopVolumeCapabilityVideo === video || (!video.paused && !video.muted))
+    if (!video) {
+      this.desktopVolumeReadOnly = true;
       return;
+    }
+    if (this.desktopVolumeCapabilityVideo === video) return;
+    if (!video.paused && !video.muted) {
+      this.desktopVolumeReadOnly = true;
+      return;
+    }
     this.desktopVolumeCapabilityVideo = video;
     const original = Number(video.volume);
     const probe = original > 0.5 ? 0.25 : 0.75;
@@ -6093,12 +6143,13 @@ export const PlayerScreen = {
     }
     const tools = Array.from(
       this.uiRefs?.root?.querySelectorAll(
-        ".player-desktop-playback-tools, .player-mobile-more-panel"
+        ".player-presentation, .player-desktop-playback-tools, .player-mobile-more-panel"
       ) || []
     );
     if (!tools.length) {
       return;
     }
+    this.detectDesktopSoftwareVolume?.();
     const { volume, muted } = this.getDesktopVolumeState();
     const fullscreen = this.isDesktopPlayerFullscreen();
     const fullscreenAvailable =
@@ -6122,11 +6173,15 @@ export const PlayerScreen = {
       muteButton?.setAttribute("aria-label", muteLabel);
       muteButton?.setAttribute("title", muteLabel);
       if (muteIcon) {
-        muteIcon.src = `assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}`;
+        if (muteIcon.tagName === "IMG")
+          muteIcon.src = `assets/icons/${muted ? "ic_player_volume_muted.svg" : "ic_player_volume.svg"}`;
+        else muteIcon.innerHTML = playerDesignIcon(muted ? "volume-x" : "volume-2");
       }
       if (volumeInput) {
-        volumeInput.hidden = Boolean(this.desktopVolumeReadOnly);
-        volumeInput.disabled = Boolean(this.desktopVolumeReadOnly);
+        volumeInput.hidden = this.desktopVolumeReadOnly !== false;
+        volumeInput.disabled = this.desktopVolumeReadOnly !== false;
+        if (volumeInput.closest?.(".nv-volume"))
+          volumeInput.closest(".nv-volume").hidden = this.desktopVolumeReadOnly !== false;
         volumeInput.title = this.desktopVolumeReadOnly
           ? "Use your device volume buttons"
           : "Volume";
@@ -6140,7 +6195,9 @@ export const PlayerScreen = {
       fullscreenButton?.setAttribute("aria-label", fullscreenLabel);
       fullscreenButton?.setAttribute("title", fullscreenLabel);
       if (fullscreenIcon) {
-        fullscreenIcon.src = `assets/icons/${fullscreen ? "ic_player_fullscreen_exit.svg" : "ic_player_fullscreen.svg"}`;
+        if (fullscreenIcon.tagName === "IMG")
+          fullscreenIcon.src = `assets/icons/${fullscreen ? "ic_player_fullscreen_exit.svg" : "ic_player_fullscreen.svg"}`;
+        else fullscreenIcon.innerHTML = playerDesignIcon(fullscreen ? "minimize" : "maximize");
       }
       if (pictureInPictureButton) {
         pictureInPictureButton.hidden = !pictureInPictureAvailable;
@@ -6159,11 +6216,12 @@ export const PlayerScreen = {
       return false;
     }
 
-    if (this.moreActionsVisible && this.isCompactBrowserPlayerToolbar()) {
+    if (this.moreActionsVisible) {
       const panel = this.uiRefs?.root?.querySelector("#playerMobileMorePanel");
       if (panel?.contains(target)) return false;
       this.moreActionsVisible = false;
       this.renderControlButtons();
+      this.updateModalBackdrop();
       this.revealDesktopPlayerControls();
       return true;
     }
@@ -6641,8 +6699,10 @@ export const PlayerScreen = {
       void this.advanceAfterSelectedSourceFailure(message, {
         error,
         detail,
+        streamCandidate,
         playbackUrl,
-        mediaErrorCode
+        mediaErrorCode,
+        reason
       });
       return;
     }
@@ -6661,7 +6721,7 @@ export const PlayerScreen = {
           })
       );
     }
-    StartupLoadingOverlay.finish();
+    StartupLoadingOverlay.finish("error");
     this.startupErrorMessage =
       String(message || "").trim() || t("player_error_playback_fallback", {}, "Playback error");
     this.startupErrorMediaCode = Number(mediaErrorCode || 0);
@@ -6697,6 +6757,7 @@ export const PlayerScreen = {
     this.stopLoadingLogoFillAnimation();
     this.clearPlaybackStallGuard();
     this.clearBufferingSpinnerTimer();
+    this.clearPauseOverlayTimer();
     this.releaseStartupAudioGate({ resume: false });
     this.sourcesLoading = false;
     this.sourcesError = "";
@@ -7189,6 +7250,7 @@ export const PlayerScreen = {
   },
 
   renderStartupErrorOverlay() {
+    if (Environment.isBrowser() && this.renderProposalError?.()) return;
     const overlay = this.uiRefs?.startupErrorOverlay;
     if (!overlay) {
       return;
@@ -7197,6 +7259,7 @@ export const PlayerScreen = {
     overlay.classList.toggle("hidden", !visible);
     overlay.setAttribute("aria-hidden", visible ? "false" : "true");
     if (!visible) {
+      this.uiRefs?.root?.classList.remove("player-presentation-error");
       overlay.innerHTML = "";
       return;
     }
@@ -7206,28 +7269,19 @@ export const PlayerScreen = {
     const detailLines = Array.isArray(this.startupErrorDetails)
       ? this.startupErrorDetails.filter(Boolean)
       : [];
+    this.uiRefs?.root?.classList.toggle("player-presentation-error", visible);
     overlay.innerHTML = `
       <div class="player-startup-error-shell">
         <div class="player-startup-error-title">${escapeHtml(t("player_error_title", {}, "Playback Error"))}</div>
-        <div class="player-startup-error-message">${escapeHtml(message)}</div>
+        <div class="player-startup-error-message">${escapeHtml(t("player_error_recovery_help", {}, "Try again or choose another source."))}</div>
         ${
-          detailLines.length
+          detailLines.length || message
             ? `
-          <div class="player-startup-error-details" aria-label="${escapeHtml(t("player_error_details", {}, "Playback error details"))}">
-            ${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}
-          </div>
+          <details class="player-startup-error-diagnostics"><summary>${escapeHtml(t("player_error_details", {}, "Playback error details"))}</summary><div class="player-startup-error-details"><div>${escapeHtml(message)}</div>${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div><button type="button" class="player-startup-error-button" data-player-error-action="copy-details">${escapeHtml(t("player_copy_error_details", {}, "Copy details"))}</button></details>
         `
             : ""
         }
-        ${
-          this.params?.unverifiedPlayback &&
-          this.params.unverifiedPlayback.mediaUrl === this.activePlaybackUrl
-            ? `
-          ${this.params.unverifiedPlayback.route !== "direct" ? `<button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="raw">Try original URL</button>` : ""}
-          <button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="retry">Try again</button>
-        `
-            : ""
-        }
+        <div class="player-error-recovery-actions"><button type="button" class="player-startup-error-button" data-player-error-action="retry-current">${escapeHtml(t("action_retry", {}, "Try again"))}</button><button type="button" class="player-startup-error-button" data-player-error-action="choose-source">${escapeHtml(this.offlineDownloadId ? t("episodes_panel_title", {}, "Episodes") : t("stream_panel_title", {}, "Streams"))}</button></div>
         ${this.canManuallyStartClientRemux() ? `<button class="player-startup-error-button focusable" type="button" tabindex="0" data-player-error-action="play">${escapeHtml(t("detail_btn_play", {}, "Play"))}</button>` : ""}
         <button class="player-startup-error-button focusable focused" type="button" tabindex="-1" data-player-error-action="back">
           ${escapeHtml(t("player_go_back", {}, "Go Back"))}
@@ -7578,7 +7632,7 @@ export const PlayerScreen = {
           0
       ),
       cast: extractPauseOverlayCast({
-        castItems: this.params?.castItems,
+        castItems: this.params?.castItems || resolvedMeta?.castItems,
         castMembers: this.params?.castMembers || resolvedMeta?.castMembers,
         cast: this.params?.cast || resolvedMeta?.cast,
         credits: this.params?.credits || resolvedMeta?.credits
@@ -7627,6 +7681,7 @@ export const PlayerScreen = {
       PlayerSettingsStore.get().pauseOverlayEnabled !== false &&
       !this.isExternalFrameMode() &&
       this.paused &&
+      !this.isStartupErrorVisible() &&
       !this.loadingVisible &&
       !this.seekOverlayVisible &&
       this.seekPreviewSeconds == null &&
@@ -7733,7 +7788,7 @@ export const PlayerScreen = {
     if (!overlay) {
       return;
     }
-    const hidden = !this.pauseOverlayVisible || this.loadingVisible;
+    const hidden = !this.pauseOverlayVisible || this.loadingVisible || this.isStartupErrorVisible();
     overlay.classList.toggle("hidden", hidden);
     overlay.classList.toggle("is-still-watching", Boolean(this.stillWatchingPromptVisible));
     controlsOverlay?.classList.toggle("pause-overlay-active", !hidden);
@@ -8710,132 +8765,61 @@ export const PlayerScreen = {
   },
 
   async resolveNextEpisodeStreamByAutoPlayPolicy(nextEpisode, itemType, settings) {
-    const timeoutSeconds = Math.max(
-      0,
-      Math.trunc(Number(settings.streamAutoPlayTimeoutSeconds || 0))
-    );
-    const instant = timeoutSeconds === 0;
-    // Instant selects the first eligible arrival; Unlimited waits for addon
-    // completion. A positive duration bounds lookup, retrieval and probing.
-    const deadlineAt = streamSelectionDeadline(timeoutSeconds);
-    const installedAddonNames = new Set(
-      (
-        (await withinStreamSelectionDeadline(
-          () => addonRepository.getInstalledAddons().catch(() => []),
-          deadlineAt,
-          () => []
-        )) || []
-      )
-        .map((addon) => String(addon?.displayName || addon?.name || "").trim())
-        .filter(Boolean)
-    );
-    let latestStreams = [];
-    const hasPreferredBingeGroup = Boolean(
-      settings.streamAutoPlayPreferBingeGroupForNextEpisode && this.getCurrentStreamBingeGroup()
-    );
-    let settled = false;
-    let resolveSelection;
-    let selectionTimer = null;
-    let complete = false;
-    let selecting = false;
-    let revision = 0;
-    let bestConfirmed = null;
-
-    const selection = new Promise((resolve) => {
-      resolveSelection = resolve;
-    });
-    const finish = (selectedStream, error = null, timedOut = false) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      this._nextSourceDiscoveryCancel = null;
-      clearTimeout(selectionTimer);
-      resolveSelection({
-        selectedStream: selectedStream || null,
-        streamItems: latestStreams,
-        error,
-        timedOut
-      });
-    };
-    this._nextSourceDiscoveryCancel = () => finish(null);
-    const trySelect = async () => {
-      if (settled || selecting || (!complete && !instant && !hasPreferredBingeGroup)) return;
-      selecting = true;
-      const startedRevision = revision;
-      try {
-        const selected = await withinStreamSelectionDeadline(
-          () =>
-            this.selectNextEpisodeStreamByAutoPlayPolicy(latestStreams, settings, {
-              bingeGroupOnly: !complete && !instant,
+    const deadlineAt = streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    this._nextSourceDiscoveryCancel?.();
+    this._nextSourceDiscoveryCancel = cancel;
+    try {
+      const installed = await withinStreamSelectionDeadline(
+        () => addonRepository.getInstalledAddons().catch(() => []),
+        deadlineAt,
+        () => [],
+        controller.signal
+      );
+      const selectionSettings = {
+        ...settings,
+        streamAutoPlayMode:
+          settings.streamAutoPlayMode === "MANUAL" && settings.autoplayNextEpisode
+            ? "FIRST_STREAM"
+            : settings.streamAutoPlayMode
+      };
+      const result = await resolveAutoPlayStream({
+        itemType,
+        videoId: nextEpisode.videoId,
+        settings: selectionSettings,
+        deadlineAt,
+        installedAddonNames: new Set(
+          (installed || []).map((a) => String(a.displayName || a.name || "").trim()).filter(Boolean)
+        ),
+        preferredBingeGroup: settings.streamAutoPlayPreferBingeGroupForNextEpisode
+          ? this.getCurrentStreamBingeGroup()
+          : "",
+        returnOnFirstMatch: true,
+        signal: controller.signal,
+        repository: {
+          getStreamsFromAllAddons: async (type, videoId, options) => {
+            const wrap = (rows) => ({ status: "success", data: [{ streams: rows }] });
+            const rows = await this.getPlayableStreamsForVideo(videoId, type, {
               season: nextEpisode.season,
               episode: nextEpisode.episode,
-              installedAddonNames,
-              deadlineAt,
-              onDirectCandidates: (candidates, probes) => {
-                if (settled || Date.now() >= deadlineAt) return;
-                bestConfirmed = selectAutoPlayStream(
-                  candidates,
-                  nextEpisodeSelectionOptions(settings, {
-                    labels: StreamBadgeSettingsStore.snapshot(),
-                    installedAddonNames,
-                    preferredBingeGroup: hasPreferredBingeGroup
-                      ? this.getCurrentStreamBingeGroup()
-                      : "",
-                    probeForStream: (stream) => probes.get(stream.url || stream.externalUrl || "")
-                  })
-                );
-                this._nextEpisodeProbeResults = new Map(probes);
-                if (instant && bestConfirmed) finish(bestConfirmed);
-              },
-              cancelled: () => settled || Date.now() >= deadlineAt
-            }),
-          deadlineAt,
-          () => null
-        );
-        if (settled) return;
-        if (Date.now() >= deadlineAt) finish(bestConfirmed, null, !bestConfirmed);
-        else if (selected) finish(selected);
-        else if (complete && startedRevision === revision) finish(null);
-      } catch (error) {
-        finish(null, error);
-      } finally {
-        selecting = false;
-        if (!settled && startedRevision !== revision) void trySelect();
-      }
-    };
-    const onChunk = (streams) => {
-      if (settled) return;
-      latestStreams = Array.isArray(streams) ? streams : latestStreams;
-      revision++;
-      void trySelect();
-    };
-
-    if (Date.now() >= deadlineAt) {
-      finish(null, null, true);
-      return selection;
+              onChunk: (rows) => options.onChunk?.(wrap(rows))
+            });
+            return wrap(rows);
+          }
+        }
+      });
+      reportAutoPlaySelection("next-episode", result, selectionSettings);
+      return {
+        selectedStream: result.selected,
+        streamItems: result.streams,
+        error: result.error || null,
+        timedOut: result.timedOut === true,
+        complete: result.complete === true
+      };
+    } finally {
+      if (this._nextSourceDiscoveryCancel === cancel) this._nextSourceDiscoveryCancel = null;
     }
-    if (Number.isFinite(deadlineAt))
-      selectionTimer = setTimeout(
-        () => finish(bestConfirmed, null, !bestConfirmed),
-        Math.max(1, deadlineAt - Date.now())
-      );
-
-    void this.getPlayableStreamsForVideo(nextEpisode.videoId, itemType, {
-      season: nextEpisode.season,
-      episode: nextEpisode.episode,
-      onChunk
-    })
-      .then(async (streams) => {
-        if (settled) return;
-        latestStreams = Array.isArray(streams) ? streams : latestStreams;
-        complete = true;
-        revision++;
-        await trySelect();
-      })
-      .catch((error) => finish(null, error));
-
-    return selection;
   },
 
   async openNextEpisodeStreamPicker(
@@ -8898,6 +8882,18 @@ export const PlayerScreen = {
   },
 
   async playNextEpisode({ userInitiated = false } = {}) {
+    if (this.offlineDownloadId) {
+      await this.loadOfflinePlayerLibrary();
+      const current = this.episodes.findIndex(
+        (e) =>
+          Number(e.season) === Number(this.params.season) &&
+          Number(e.episode) === Number(this.params.episode)
+      );
+      const next = this.episodes[current + 1];
+      if (current >= 0 && next) return this.playOfflinePlayerEpisode(next);
+      this.showAspectToast(t("player_no_downloaded_episode", {}, "No next episode downloaded"));
+      return false;
+    }
     const nextEpisode = this.resolveNextEpisodeInfo();
     const itemType = normalizeItemType(this.params?.itemType || "movie");
     if (
@@ -8924,6 +8920,9 @@ export const PlayerScreen = {
     this.nextEpisodeCardSourceName = "";
     this.nextEpisodeCardCountdownSec = null;
     if (userInitiated) {
+      // A deliberate Next already confirms the transition. Keep one loading
+      // surface visible instead of briefly exposing the automatic Up next card.
+      this.loadingVisible = true;
       this.consecutiveAutoPlayCount = 0;
     }
     this.nextEpisodeTransitionMeta = {
@@ -8972,7 +8971,10 @@ export const PlayerScreen = {
       }
       const bestStreamCandidate = selectedStream;
       const bestStream = streamDirectPlaybackUrl(bestStreamCandidate) || null;
-      if (!(await this.runNextEpisodeCountdown(launchToken, bestStreamCandidate))) {
+      if (
+        !userInitiated &&
+        !(await this.runNextEpisodeCountdown(launchToken, bestStreamCandidate))
+      ) {
         return false;
       }
       const nextEpisodeIndex = this.episodes.findIndex(
@@ -9000,7 +9002,7 @@ export const PlayerScreen = {
           prepareSelectedSource: true,
           automaticSourceSelection: true,
           automaticNextEpisode: true,
-          streamCandidatesComplete: false,
+          streamCandidatesComplete: resolution.complete === true,
           sourceProbe: this.getPlayerStreamProbe(bestStreamCandidate),
           sourceProbeKey: playerStreamProbeKey(bestStreamCandidate),
           itemId: this.params?.itemId,
@@ -9024,6 +9026,9 @@ export const PlayerScreen = {
             this.params?.playerOrientationPreference ||
             "landscape",
           playerLogoUrl: this.params?.playerLogoUrl || null,
+          castItems: this.pauseOverlayMeta?.cast?.length
+            ? this.pauseOverlayMeta.cast
+            : this.params?.castItems || [],
           episodes: this.episodes || [],
           streamCandidates: streamItems.map((stream) =>
             stream.id === bestStreamCandidate.id ? bestStreamCandidate : stream
@@ -9738,6 +9743,7 @@ export const PlayerScreen = {
   positionTrackDialogs() {
     if (!Environment.isBrowser() || !this.uiRefs?.root) return;
     const root = this.uiRefs.root;
+    if (root.classList.contains("player-presentation")) return;
     const row = root.querySelector(".player-controls-row");
     if (!row) return;
     const bounds = playerLocalRect(root, this.browserOrientation);
@@ -9783,7 +9789,8 @@ export const PlayerScreen = {
       this.audioDialogVisible ||
       this.sourcesPanelVisible ||
       this.episodePanelVisible ||
-      this.speedDialogVisible;
+      this.speedDialogVisible ||
+      (Environment.isBrowser() && this.moreActionsVisible);
     if (hasModal && (this.pauseOverlayVisible || this.pauseOverlayTimer))
       this.dismissPauseOverlay();
     modalBackdrop.classList.toggle("hidden", !hasModal);
@@ -9801,11 +9808,16 @@ export const PlayerScreen = {
     if (!video) {
       return;
     }
+    if (Environment.isBrowser()) {
+      video.controls = false;
+      video.removeAttribute?.("controls");
+    }
 
     const setStartupStage = (stage) => {
       if (this.hasPresentedPlaybackFrame) return;
       this.startupLoadingStage = stage;
       StartupLoadingOverlay.setStage(stage);
+      PlaybackLoadingTrace.stage(stage);
     };
     const onLoadStart = () => setStartupStage("loading");
     const onMetadataProgress = () => {
@@ -9831,12 +9843,7 @@ export const PlayerScreen = {
       if (this.isStartupErrorVisible()) {
         return;
       }
-      if (this.seekLoading) {
-        this.seekLoading = false;
-        this.seekLoadingBaselineSeconds = null;
-        this.seekLoadingTargetSeconds = null;
-        this.clearBufferingSpinnerTimer();
-      }
+      if (this.seekLoading) this.completeSeekLoadingIfReady();
       if (this.startupAudioGateActive && !this.startupAudioGateAllowsPlayback) {
         this.paused = false;
         this.startupTrackPreferenceReady = true;
@@ -10116,9 +10123,18 @@ export const PlayerScreen = {
           reason: "media-error"
         }
       );
-      // Keep source switching user-initiated after an in-playback failure. Opening
-      // the panel here steals focus from the player.
-      this.renderSourcesPanel();
+      // Offer recovery without automatically changing the chosen source.
+      this.showStartupError(
+        this.mediaErrorMessage(mediaErrorCode, playbackErrorDetail, currentSourceCandidate),
+        {
+          mediaErrorCode,
+          detail: playbackErrorDetail,
+          eventDetail,
+          streamCandidate: currentSourceCandidate,
+          playbackUrl: this.activePlaybackUrl,
+          reason: "media-error"
+        }
+      );
 
       console.warn("Playback failed", {
         url: this.activePlaybackUrl,
@@ -10340,73 +10356,46 @@ export const PlayerScreen = {
   },
 
   getBrowserToolbarControls(base) {
-    const middle = base.slice(1);
-    if (this.browserOrientation?.mobile)
-      middle.push({
-        action: "rotate",
-        icon: "assets/icons/ic_player_rotate.svg",
-        title: "Rotate"
-      });
-    if (this.getPlaybackSpeedOptions().length > 1)
-      middle.push({
-        action: "speed",
-        label: this.getPlaybackSpeed() + "x",
-        title: "Playback speed"
-      });
-    middle.push({
-      action: "aspect",
-      icon: "assets/icons/ic_player_aspect_ratio.svg",
-      title: "Aspect Ratio"
-    });
-    if (this.canOpenInExternalPlayer())
-      middle.push({
-        action: "externalPlayer",
-        icon: "assets/icons/ic_player_external.svg",
-        title: "Play with external player"
-      });
-    const row = this.uiRefs?.root?.querySelector(".player-controls-row");
-    const right = this.uiRefs?.root?.querySelector(".player-controls-right");
-    const primary = this.uiRefs?.controlButtons?.querySelector(".is-primary");
-    const step =
-      typeof getComputedStyle === "function" && row
-        ? Number.parseFloat(getComputedStyle(row).getPropertyValue("--player-toolbar-step")) || 40
-        : 40;
-    const width = Math.max(
-      step * 3,
-      Number(row?.clientWidth || 400) -
-        Number(right?.offsetWidth || 220) -
-        Number(primary?.offsetWidth || 42) -
-        16
-    );
-    const result = paginateBrowserToolbar(middle, { width, step, page: this.browserToolbarPage });
-    this.browserToolbarPage = result.page;
+    const find = (action) => base.find((entry) => entry.action === action);
     return [
       base[0],
-      ...(result.page > 0
-        ? [
-            {
-              action: "backFromMore",
-              icon: "assets/icons/ic_player_back.svg",
-              title: "Previous controls"
-            }
-          ]
-        : []),
-      ...result.actions,
-      ...(result.page < result.pages - 1
-        ? [{ action: "more", icon: "assets/icons/ic_player_more.svg", title: "Next controls" }]
-        : [])
-    ];
+      {
+        action: "seekBack10",
+        icon: "assets/icons/ic_player_rewind_10.svg",
+        title: t("player_seek_back_10", {}, "Back 10 seconds")
+      },
+      {
+        action: "seekForward10",
+        icon: "assets/icons/ic_player_forward_10.svg",
+        title: t("player_seek_forward_10", {}, "Forward 10 seconds")
+      },
+      find("playNextEpisode"),
+      find("subtitleDialog"),
+      find("audioTrack"),
+      find("episodes"),
+      {
+        ...find("source"),
+        title: this.offlineDownloadId
+          ? t("player_local_file", {}, "File")
+          : t("stream_panel_title", {}, "Streams")
+      },
+      {
+        action: "more",
+        icon: "assets/icons/ic_player_more.svg",
+        title: t("player_more", {}, "More")
+      }
+    ].filter(Boolean);
   },
-
   renderCompactBrowserMorePanel() {
-    // Browser actions now page inline; never leave an old floating panel open.
-    const panel = this.uiRefs?.mobileMorePanel;
-    if (panel) {
-      panel.classList.add("hidden");
-      panel.innerHTML = "";
-    }
+    this.renderProposalMore();
   },
 
+  decorateBrowserTrackPanel(dialog, title, action) {
+    if (!Environment.isBrowser() || !dialog) return;
+    const heading = dialog.querySelector(".player-dialog-title");
+    if (heading)
+      heading.outerHTML = `<header class="player-panel-heading"><strong>${escapeHtml(title)}</strong><button type="button" class="player-control-btn player-panel-close" data-action="${action}" aria-label="${escapeAttribute(t("common_close", {}, "Close"))}">×</button></header>`;
+  },
   getControlRenderSignature(controls = this.getControlDefinitions()) {
     return JSON.stringify(
       controls.map((control) => [
@@ -10431,6 +10420,10 @@ export const PlayerScreen = {
 
     const controls = this.getControlDefinitions();
     const controlRenderSignature = this.getControlRenderSignature(controls);
+    if (Environment.isBrowser() && this.renderProposalControls) {
+      this.renderProposalControls(controls);
+      return;
+    }
     if (
       this.stickyProgressFocus &&
       this.controlsVisible &&
@@ -10446,8 +10439,8 @@ export const PlayerScreen = {
         (control) => `
       <button class="player-control-btn focusable${control.primary ? " is-primary" : ""}"
               data-action="${control.action}"
-              tabindex="-1"
-              title="${escapeHtml(control.title || "")}">
+              tabindex="${Environment.isBrowser() ? "0" : "-1"}"
+              title="${escapeHtml(control.title || "")}" aria-label="${escapeAttribute(control.title || control.label || "")}">
         ${
           control.icon
             ? control.primary || control.useMask
@@ -10455,10 +10448,12 @@ export const PlayerScreen = {
               : `<img class="player-control-icon" src="${control.icon}" alt="" aria-hidden="true" />`
             : `<span class="player-control-label">${escapeHtml(control.label || "")}</span>`
         }
+        ${Environment.isBrowser() && !["playPause", "seekBack10", "seekForward10", "playNextEpisode"].includes(control.action) ? `<span class="player-tool-caption">${escapeHtml(control.title || "")}</span>` : ""}
       </button>
     `
       )
       .join("");
+
     this.renderedControlSignature = controlRenderSignature;
 
     const buttons = Array.from(wrap.querySelectorAll(".player-control-btn"));
@@ -10625,7 +10620,8 @@ export const PlayerScreen = {
       this.audioDialogVisible ||
       this.sourcesPanelVisible ||
       this.episodePanelVisible ||
-      this.speedDialogVisible
+      this.speedDialogVisible ||
+      (Environment.isBrowser() && this.moreActionsVisible)
     );
   },
 
@@ -11010,6 +11006,15 @@ export const PlayerScreen = {
 
   presentStartedPlayback() {
     this.playbackTransitionLightweight = false;
+    PlayerController.setStartupPresentationAudioMuted?.(false);
+    PlaybackLoadingTrace.sample({
+      muted: PlayerController.video?.muted,
+      paused: PlayerController.video?.paused,
+      audioGate: Boolean(this.startupAudioGateActive),
+      presentationMuted: Boolean(PlayerController.startupPresentationAudioMuted),
+      firstFrame: Boolean(this.hasPresentedPlaybackFrame),
+      restoring: Boolean(this.pendingPlaybackRestore)
+    });
     StartupLoadingOverlay.finish();
     this.startupLoadingStage = "loading";
     const overlay = this.uiRefs?.loadingOverlay;
@@ -11135,6 +11140,18 @@ export const PlayerScreen = {
     }, 4200);
   },
 
+  getDisplayedPlaybackSeconds(current = this.getPlaybackCurrentSeconds()) {
+    if (
+      this.controlsVisible &&
+      this.controlFocusZone === "progress" &&
+      this.seekPreviewSeconds != null
+    )
+      return Number(this.seekPreviewSeconds);
+    return this.seekLoading && Number.isFinite(this.seekLoadingTargetSeconds)
+      ? this.seekLoadingTargetSeconds
+      : current;
+  },
+
   getPlaybackCurrentSeconds() {
     if (typeof PlayerController.getCurrentTimeSeconds === "function") {
       return Number(PlayerController.getCurrentTimeSeconds() || 0);
@@ -11210,9 +11227,10 @@ export const PlayerScreen = {
     if (!this.seekLoading || this.pendingPlaybackRestore || this.isStartupLoadingVisible()) {
       return false;
     }
-    if (!this.isPlaybackFrameReady()) {
+    if (!this.isPlaybackFrameReady() || PlayerController.isClientRemuxRestoring?.()) return false;
+    const target = this.seekLoadingTargetSeconds;
+    if (Number.isFinite(target) && Math.abs(this.getPlaybackCurrentSeconds() - target) > 0.75)
       return false;
-    }
     return this.clearSeekLoading({ hideBuffering: true });
   },
 
@@ -11260,6 +11278,7 @@ export const PlayerScreen = {
       return;
     }
     this.paused = false;
+    if (!this.startupAudioGateActive && PlayerController.video?.paused) PlayerController.resume();
   },
 
   attemptPendingPlaybackRestore({ force = false } = {}) {
@@ -11328,6 +11347,25 @@ export const PlayerScreen = {
   },
 
   updateLoadingVisibility() {
+    if (this.loadingVisible || this._preparingSelectedSource) {
+      const video = PlayerController.video;
+      PlaybackLoadingTrace.sample({
+        engine: PlayerController.playbackEngine,
+        paused: video?.paused,
+        muted: video?.muted,
+        audioGate: Boolean(this.startupAudioGateActive),
+        presentationMuted: Boolean(PlayerController.startupPresentationAudioMuted),
+        restoring: Boolean(this.pendingPlaybackRestore),
+        seeking: Boolean(this.seekLoading),
+        firstFrame: Boolean(this.hasPresentedPlaybackFrame),
+        controls: Boolean(this.controlsVisible),
+        readyState: Number(video?.readyState || 0),
+        networkState: Number(video?.networkState || 0),
+        position: this.getPlaybackCurrentSeconds(),
+        target: Number(this.seekLoadingTargetSeconds || 0),
+        mediaErrorCode: Number(video?.error?.code || 0)
+      });
+    }
     const unified =
       Environment.isBrowser() &&
       usesUnifiedStartup(undefined, { internalPlayer: true }) &&
@@ -11350,7 +11388,7 @@ export const PlayerScreen = {
       );
       StartupLoadingOverlay.setBackHandler(() => this.navigateBackToStreamScreen());
     } else if (unified) {
-      StartupLoadingOverlay.finish();
+      StartupLoadingOverlay.finish(this.loadingVisible ? "presenting" : "finished");
     }
     const overlay = this.uiRefs?.loadingOverlay;
     const bufferingSpinner = this.uiRefs?.bufferingSpinner;
@@ -11509,15 +11547,19 @@ export const PlayerScreen = {
     this.shouldShowNextEpisodeCard();
     void this.refreshLoadingOverlayProgress();
     const current = this.getPlaybackCurrentSeconds();
+    if (
+      this.hasPresentedPlaybackFrame &&
+      !this.loadingVisible &&
+      !this.startupAudioGateActive &&
+      !this.pendingPlaybackRestore &&
+      PlayerController.startupPresentationAudioMuted
+    ) {
+      PlayerController.setStartupPresentationAudioMuted(false);
+    }
     this.updateActiveSkipInterval(current);
     this.updateSkipIntroCountdown(Date.now());
     const duration = this.getPlaybackDurationSeconds();
-    const effectiveProgressSeconds =
-      this.controlsVisible &&
-      this.controlFocusZone === "progress" &&
-      this.seekPreviewSeconds != null
-        ? Number(this.seekPreviewSeconds)
-        : current;
+    const effectiveProgressSeconds = this.getDisplayedPlaybackSeconds(current);
     const progress = duration > 0 ? clamp(effectiveProgressSeconds / duration, 0, 1) : 0;
     const uiRefs = this.uiRefs || {};
     const uiState = this.lastUiTickState || (this.lastUiTickState = {});
@@ -11593,6 +11635,7 @@ export const PlayerScreen = {
       }
     }
 
+    this.syncProposalTime?.(effectiveProgressSeconds, duration);
     const timeLabel = uiRefs.timeLabel;
     if (timeLabel) {
       const nextTimeLabel = `${formatTime(effectiveProgressSeconds)} / ${formatTime(duration)}`;
@@ -11973,6 +12016,8 @@ export const PlayerScreen = {
   },
 
   releaseOfflineObjectUrl() {
+    for (const url of this.offlinePlayerArtworkUrls || []) globalThis.URL?.revokeObjectURL?.(url);
+    this.offlinePlayerArtworkUrls?.clear();
     const objectUrl = String(this.offlineObjectUrl || "");
     this.offlineObjectUrl = "";
     if (
@@ -12256,8 +12301,25 @@ export const PlayerScreen = {
   async advanceAfterSelectedSourceFailure(message, failure = {}) {
     if (this._startupSourceAdvancing || this.playerBackNavigationInProgress) return;
     this._startupSourceAdvancing = true;
+    console.warn(
+      "[AutoPlay] " +
+        JSON.stringify({
+          event: "source-startup-failed",
+          automatic: Boolean(this.params.automaticSourceSelection),
+          reason: /^[a-z0-9-]{1,40}$/.test(failure.reason || "")
+            ? failure.reason
+            : "startup-failure",
+          mediaErrorCode: Number(failure.mediaErrorCode) || 0,
+          httpStatus:
+            extractPlaybackHttpStatus(failure.detail || failure.error?.message || "") || 0,
+          received: this.streamCandidates.length,
+          complete: this.params.streamCandidatesComplete !== false
+        })
+    );
     const token = this.playerMountToken;
-    const current = this.getCurrentStreamCandidate();
+    // Resolution can fail before a candidate has a playable URL. The media
+    // accessor may still point at another source, so retain the failed attempt.
+    const current = failure.streamCandidate || this.getCurrentStreamCandidate();
     (this._startupSourceFailures ||= new Set()).add(playerStreamProbeKey(current || {}));
     const detail = String(failure.detail || failure.error?.message || "");
     const processingUrl = /\/api\/(?:remux|transcode)/.test(
@@ -12323,6 +12385,14 @@ export const PlayerScreen = {
           if (!this.isActiveMountToken(token) || this.playerBackNavigationInProgress) return;
         }
       }
+      console.warn(
+        "[AutoPlay] " +
+          JSON.stringify({
+            event: next ? "trying-next-source" : "permitted-sources-exhausted",
+            eligible: candidates.length,
+            failed: this._startupSourceFailures.size
+          })
+      );
       if (next) {
         // Leave the error callback before replacing the media session. Each identity is tried once.
         await Promise.resolve();
@@ -12649,7 +12719,9 @@ export const PlayerScreen = {
         Math.abs(currentSeconds - seekTargetSeconds) <= 0.75;
       if (
         (reachedSeekTarget && this.isPlaybackFrameReady()) ||
-        (Number.isFinite(currentSeconds) &&
+        (!PlayerController.isClientRemuxRestoring?.() &&
+          !Number.isFinite(seekTargetSeconds) &&
+          Number.isFinite(currentSeconds) &&
           Number.isFinite(seekBaselineSeconds) &&
           currentSeconds > seekBaselineSeconds + STARTUP_PLAYBACK_ADVANCE_EPSILON_SECONDS)
       ) {
@@ -15290,7 +15362,16 @@ export const PlayerScreen = {
     return String(side || "").toLowerCase() === "plus" ? 1 : -1;
   },
   openSubtitleDialog() {
+    if (Environment.isBrowser()) {
+      if (this.episodePanelVisible) this.hideEpisodePanel();
+      this.moreActionsVisible = false;
+      this.renderCompactBrowserMorePanel?.();
+    }
+
     this.subtitleKeyboardNavigation = false;
+    this.proposalSubtitleStyleVisible = false;
+    this.proposalSubtitleLanguageFilter = "all";
+    this.proposalSubtitleLanguagePickerOpen = false;
     this.cancelSeekPreview({ commit: false });
     this.syncTrackState();
     this.subtitleDialogVisible = true;
@@ -15681,6 +15762,7 @@ export const PlayerScreen = {
   },
 
   renderSubtitleDialog() {
+    if (Environment.isBrowser() && this.renderProposalSubtitle?.()) return;
     const dialog = this.uiRefs?.subtitleDialog;
     if (!dialog) {
       return;
@@ -15692,6 +15774,9 @@ export const PlayerScreen = {
       return;
     }
 
+    const styleExpanded = Boolean(
+      dialog.querySelector?.(".player-subtitle-style-disclosure")?.open
+    );
     const pointerScrollTransaction = this.hasActiveSubtitlePointerScrollTransaction()
       ? this.subtitlePointerScrollTransaction
       : null;
@@ -15804,6 +15889,22 @@ export const PlayerScreen = {
         </div>
       </div>
     `;
+    this.decorateBrowserTrackPanel?.(
+      dialog,
+      t("subtitle_dialog_title", {}, "Subtitles"),
+      "subtitleDialog"
+    );
+    if (Environment.isBrowser()) {
+      const styles = dialog.querySelector(".player-subtitle-style-rail");
+      if (styles) {
+        const disclosure = document.createElement("details");
+        disclosure.className = "player-subtitle-style-disclosure";
+        disclosure.open = styleExpanded || (!pointerMode && this.subtitleFocusedRail === "style");
+        disclosure.innerHTML = `<summary>${escapeHtml(t("player_subtitle_appearance_sync", {}, "Appearance & synchronization"))}</summary>`;
+        styles.before(disclosure);
+        disclosure.append(styles);
+      }
+    }
     if (pointerScrollTransaction) {
       const optionRail = dialog.querySelector(".player-subtitle-options-rail");
       if (optionRail instanceof HTMLElement && !optionRail.classList.contains("hidden")) {
@@ -16101,6 +16202,12 @@ export const PlayerScreen = {
   },
 
   openAudioDialog() {
+    if (Environment.isBrowser()) {
+      if (this.episodePanelVisible) this.hideEpisodePanel();
+      this.moreActionsVisible = false;
+      this.renderCompactBrowserMorePanel?.();
+    }
+
     this.cancelSeekPreview({ commit: false });
     this.syncTrackState();
     this.applyAudioAmplification();
@@ -16201,6 +16308,7 @@ export const PlayerScreen = {
   },
 
   renderAudioDialog() {
+    if (Environment.isBrowser() && this.renderProposalAudio?.()) return;
     const dialog = this.uiRefs?.audioDialog;
     if (!dialog) {
       return;
@@ -16265,6 +16373,7 @@ export const PlayerScreen = {
           ${audioControls.map((control, index) => this.renderAudioControlItem(control, index)).join("")}
         </div>
       `;
+      this.decorateBrowserTrackPanel?.(dialog, t("audio_dialog_title", {}, "Audio"), "audioTrack");
       return;
     }
 
@@ -16306,6 +16415,7 @@ export const PlayerScreen = {
         </div>
       </div>
     `;
+    this.decorateBrowserTrackPanel?.(dialog, t("audio_dialog_title", {}, "Audio"), "audioTrack");
     this.scrollAudioDialogIntoView();
   },
 
@@ -16422,6 +16532,12 @@ export const PlayerScreen = {
   },
 
   openSpeedDialog() {
+    if (Environment.isBrowser()) {
+      if (this.episodePanelVisible) this.hideEpisodePanel();
+      this.moreActionsVisible = false;
+      this.renderCompactBrowserMorePanel?.();
+    }
+
     const currentSpeed = this.getPlaybackSpeed();
     const speedOptions = this.getPlaybackSpeedOptions();
     this.speedDialogVisible = true;
@@ -16495,6 +16611,11 @@ export const PlayerScreen = {
           .join("")}
       </div>
     `;
+    this.decorateBrowserTrackPanel?.(
+      dialog,
+      t("player_playback_speed", {}, "Playback speed"),
+      "speed"
+    );
   },
 
   handleSpeedDialogKey(event) {
@@ -16649,6 +16770,25 @@ export const PlayerScreen = {
   },
 
   openSourcesPanel({ forceReload = false } = {}) {
+    if (this.offlineDownloadId) {
+      this.sourcesPanelVisible = true;
+      this.subtitleDialogVisible = false;
+      this.audioDialogVisible = false;
+      this.speedDialogVisible = false;
+      this.moreActionsVisible = false;
+      if (this.episodePanelVisible) this.hideEpisodePanel();
+      this.renderControlButtons();
+      this.renderSubtitleDialog();
+      this.renderAudioDialog();
+      this.renderSpeedDialog();
+      this.renderSourcesPanel();
+      this.updateModalBackdrop();
+      return;
+    }
+    if (Environment.isBrowser()) {
+      this.moreActionsVisible = false;
+      this.renderCompactBrowserMorePanel?.();
+    }
     this.cancelSeekPreview({ commit: false });
     this.sourcesPanelVisible = true;
     this.subtitleDialogVisible = false;
@@ -16694,6 +16834,7 @@ export const PlayerScreen = {
   },
 
   closeSourcesPanel() {
+    this.panelAddonPickerOpen = null;
     this.sourcesPanelVisible = false;
     this.sourcesError = "";
     this.renderSourcesPanel();
@@ -16702,6 +16843,7 @@ export const PlayerScreen = {
   },
 
   async reloadSources() {
+    if (this.offlineDownloadId) return;
     if (this.sourcesLoading) {
       return;
     }
@@ -16826,6 +16968,7 @@ export const PlayerScreen = {
 
   applyPlayerDrawerHeader(panel, { sources = false, streams = false } = {}) {
     if (!Environment.isBrowser() || !panel) return;
+    if (this.renderProposalDrawerHeader?.(panel, { sources, streams })) return;
     const nested = streams && !sources;
     const identity = this.getPlayerDrawerIdentity(
       nested ? this.episodes?.[this.episodePanelIndex] : null
@@ -16915,6 +17058,7 @@ export const PlayerScreen = {
   },
 
   renderSourcesPanel() {
+    if (Environment.isBrowser() && this.renderProposalFile?.()) return;
     const panel = this.uiRefs?.sourcesPanel;
     if (!panel) {
       return;
@@ -16926,6 +17070,13 @@ export const PlayerScreen = {
       return;
     }
 
+    if (this.offlineDownloadId) {
+      const file = this.offlinePlayerDownloads?.find(
+        (d) => d.downloadId === this.offlineDownloadId
+      );
+      panel.innerHTML = `<header class="player-panel-heading"><strong>${escapeHtml(t("player_local_file", {}, "File"))}</strong><button type="button" class="player-control-btn player-panel-close" data-action="source" aria-label="${escapeAttribute(t("common_close", {}, "Close"))}">×</button></header><div class="player-local-file"><strong>${escapeHtml(file?.filename || this.getCurrentStreamCandidate()?.title || this.params.playerTitle || "Offline")}</strong><p>${escapeHtml(t("player_file_on_device", {}, "Saved on this device"))}</p><p>${escapeHtml(file?.mimeType || "")}</p></div>`;
+      return;
+    }
     const orderedSources = this.getOrderedStreamCandidates();
     const filters = this.getSourceFilters(orderedSources);
     const filtered = this.getFilteredSources(orderedSources);
@@ -16983,6 +17134,22 @@ export const PlayerScreen = {
                     ? Boolean(currentStream) &&
                       streamMergeKey(currentStream) === streamMergeKey(stream)
                     : this.streamCandidates[this.currentStreamIndex]?.url === stream.url;
+                  if (Environment.isBrowser()) {
+                    const model = normalizeSourceForDisplay(
+                      {
+                        ...stream,
+                        name: stream.raw?.name || stream.name || stream.label,
+                        description:
+                          stream.raw?.description || stream.raw?.title || stream.description
+                      },
+                      { badgeSettings }
+                    );
+                    if (model.showAddonLogo && stream.addonLogo)
+                      model.addonLogoUrl = getPlayerSourceLogoDisplayUrl(stream.addonLogo, () =>
+                        this.scheduleSourceLogoRender()
+                      );
+                    return `<article class="stream-route-card stream-route-card-action player-source-card focusable${focused ? " focused" : ""}${isCurrent ? " selected" : ""}" data-sources-zone="list" data-sources-index="${index}" aria-label="${escapeAttribute(model.accessibleLabel)}">${renderBrowserSourceCardContent(model)}${this.renderPanelDownloadButton(index, "source", stream)}${isCurrent ? `<div class="player-source-playing">${escapeHtml(t("sources_playing", {}, "Playing"))}</div>` : ""}</article>`;
+                  }
                   const badges = renderPlayerSourceBadges(stream, badgeSettings);
                   const topBadges = badgePlacement === "TOP" ? badges : "";
                   const bottomBadges = badgePlacement === "BOTTOM" ? badges : "";
@@ -17269,13 +17436,17 @@ export const PlayerScreen = {
     const viewportWidth = this.browserOrientation?.mobile
       ? this.browserOrientation.width
       : viewport.width;
-    const viewportHeight = this.browserOrientation?.mobile
-      ? this.browserOrientation.height
-      : viewport.height;
+    const portraitBand = this.getProposalLayout?.().portrait && !this.getProposalLayout?.().desktop;
+    const videoTop = portraitBand ? 120 : 0;
+    const viewportHeight = portraitBand
+      ? 210
+      : this.browserOrientation?.mobile
+        ? this.browserOrientation.height
+        : viewport.height;
     if (objectFit === "fill") {
       return {
         x: 0,
-        y: 0,
+        y: videoTop,
         width: viewportWidth,
         height: viewportHeight,
         displayMethod: "PLAYER_DISPLAY_MODE_FULL_SCREEN"
@@ -17293,7 +17464,7 @@ export const PlayerScreen = {
 
     return {
       x: (viewportWidth - width) / 2,
-      y: (viewportHeight - height) / 2,
+      y: videoTop + (viewportHeight - height) / 2,
       width,
       height,
       displayMethod: shouldCover
@@ -17307,6 +17478,7 @@ export const PlayerScreen = {
     this.applyAspectMode({ showToast: true });
   },
   renderParentalGuideOverlay() {
+    if (Environment.isBrowser() && this.renderProposalWarning?.()) return;
     const overlay = this.uiRefs?.parentalGuide;
     if (!overlay) {
       return;
@@ -17533,7 +17705,104 @@ export const PlayerScreen = {
     }, containerExitDelay + PARENTAL_GUIDE_CONTAINER_OUT_MS);
   },
 
+  async loadOfflinePlayerLibrary() {
+    const id = this.offlineDownloadId;
+    if (!id || this.offlinePlayerLibraryLoaded) return;
+    const downloads = await listOfflineDownloads().catch(() => []);
+    if (this.offlineDownloadId !== id) return;
+    const current = downloads.find((d) => d.downloadId === id);
+    this.offlinePlayerDownloads = current
+      ? selectCompletedOfflineDetailDownloads(downloads, {
+          itemType: this.params.itemType,
+          itemIds: [current.seriesId, current.mediaId, this.params.itemId]
+        })
+      : [];
+    if (normalizeItemType(this.params.itemType) === "series") {
+      const stored = createOfflineEpisodeEntries(this.offlinePlayerDownloads);
+      for (const episode of stored) {
+        const artwork = await getBrowserOfflineArtwork(episode.offlineDownloadId, "backdrop").catch(
+          () => null
+        );
+        if (this.offlineDownloadId !== id) return;
+        episode.thumbnail = artwork?.file ? URL.createObjectURL(artwork.file) : null;
+        if (episode.thumbnail) this.offlinePlayerArtworkUrls.add(episode.thumbnail);
+      }
+      this.episodes = stored.map((episode) => ({
+        ...this.episodes.find(
+          (e) => Number(e.season) === episode.season && Number(e.episode) === episode.episode
+        ),
+        ...episode
+      }));
+      this.episodePanelIndex = Math.max(
+        0,
+        this.episodes.findIndex(
+          (e) =>
+            Number(e.season) === Number(this.params.season) &&
+            Number(e.episode) === Number(this.params.episode)
+        )
+      );
+    }
+    this.offlinePlayerLibraryLoaded = true;
+    this.renderControlButtons();
+    if (this.episodePanelVisible) this.renderEpisodePanel();
+    if (this.sourcesPanelVisible) this.renderSourcesPanel();
+  },
+
+  async playOfflinePlayerEpisode(episode) {
+    if (!episode?.offlineDownloadId || this.switchingEpisode) return false;
+    this.switchingEpisode = true;
+    let playback;
+    try {
+      playback = await createBrowserOfflinePlayback(episode.offlineDownloadId);
+      if (!playback) {
+        this.showAspectToast(
+          t("player_offline_file_unavailable", {}, "Downloaded file is unavailable")
+        );
+        return false;
+      }
+      const source = {
+        id: `offline-${playback.download.downloadId}`,
+        url: playback.objectUrl,
+        title: playback.download.filename || episode.title,
+        addonName: "Offline",
+        mimeType: playback.download.mimeType
+      };
+      await PlayerController.flushCurrentProgress({ allowCloudSync: false });
+      await Router.navigate("player", {
+        ...this.params,
+        videoId: episode.id,
+        season: episode.season,
+        episode: episode.episode,
+        playerSubtitle: `S${episode.season} E${episode.episode} · ${episode.title || ""}`,
+        playerEpisodeTitle: episode.title,
+        streamUrl: playback.objectUrl,
+        streamCandidates: [source],
+        preferredStreamId: source.id,
+        offlineDownloadId: playback.download.downloadId,
+        offlineObjectUrl: playback.objectUrl,
+        playbackSourceContext: { addonName: source.addonName, selectedStreamId: source.id },
+        unverifiedPlayback: null,
+        episodes: this.episodes,
+        automaticSourceSelection: false,
+        prepareSelectedSource: false,
+        resumePositionMs: 0,
+        resumeDurationMs: 0
+      });
+      return true;
+    } catch (_) {
+      releaseBrowserOfflinePlayback(playback);
+      return false;
+    } finally {
+      this.switchingEpisode = false;
+    }
+  },
+
   toggleEpisodePanel() {
+    if (Environment.isBrowser()) {
+      this.moreActionsVisible = false;
+      this.renderCompactBrowserMorePanel?.();
+    }
+
     if (!this.episodes.length) {
       return;
     }
@@ -18119,6 +18388,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
                     return `<article class="stream-route-card stream-route-card-action player-episode-stream-card focusable${focused ? " focused" : ""}"
                       data-episode-stream-index="${index}" aria-label="${escapeAttribute(model.accessibleLabel)}">
                       ${renderBrowserSourceCardContent(model)}
+                      ${this.renderPanelDownloadButton(index, "episode", stream)}
                     </article>`;
                   }
                   const badges = renderPlayerSourceBadges(stream, badgeSettings);
@@ -18171,7 +18441,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     }
     const panel = document.createElement("div");
     panel.id = "episodeSidePanel";
-    panel.className = "player-episode-panel";
+    panel.className = "player-episode-panel nv-panel";
 
     this.syncEpisodePanelSeasonToIndex();
     const seasons = this.getEpisodePanelSeasons();
@@ -18213,10 +18483,17 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
         const code = episodeDisplayCode(episode);
         const thumbnail = episodeThumbnailUrl(episode);
         const date = formatEpisodePanelDate(episode.released);
+        if (Environment.isBrowser() && this.renderProposalEpisodeCard)
+          return this.renderProposalEpisodeCard(episode, index, {
+            thumbnail,
+            date,
+            current,
+            duration: formatRuntimeLabel(episode.runtimeMinutes || episode.runtime || 0)
+          });
         return `
         <div class="player-episode-item focusable${selectedClass}" tabindex="-1" data-episode-index="${index}">
           <div class="player-episode-thumb-wrap">
-            ${thumbnail ? `<img class="player-episode-thumb" src="${escapeAttribute(thumbnail)}" alt="" />` : `<div class="player-episode-thumb-fallback"></div>`}
+            ${thumbnail ? `<img class="player-episode-thumb" src="${escapeAttribute(thumbnail)}" alt="" loading="lazy" decoding="async" />` : `<div class="player-episode-thumb-fallback"></div>`}
             ${code ? `<div class="player-episode-code">${escapeHtml(code)}</div>` : ""}
             ${current ? `<div class="player-episode-current">&#10003;</div>` : ""}
           </div>
@@ -18249,6 +18526,17 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     `;
     this.applyPlayerDrawerHeader(panel, { streams: isStreamsView });
     panelHost.appendChild(panel);
+    panel.querySelectorAll("img.player-episode-thumb").forEach((image) => {
+      image.addEventListener(
+        "error",
+        () => {
+          const fallback = document.createElement("div");
+          fallback.className = "player-episode-thumb-fallback";
+          image.replaceWith(fallback);
+        },
+        { once: true }
+      );
+    });
     if (shouldAnimateEntry) {
       panel.classList.add("is-entering");
       const finishEntry = () => {
@@ -18266,6 +18554,8 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   },
 
   hideEpisodePanel() {
+    this.episodeSeasonPickerOpen = false;
+    this.panelAddonPickerOpen = null;
     this.episodePanelVisible = false;
     this.episodePanelStreamLoadToken = Number(this.episodePanelStreamLoadToken || 0) + 1;
     const panel = this.uiRefs?.root?.querySelector("#episodeSidePanel");
@@ -18289,6 +18579,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     if (!selected?.id) {
       return;
     }
+    if (this.offlineDownloadId) return this.playOfflinePlayerEpisode(selected);
     if (!selectedStream && this.episodePanelMode !== "streams") {
       await this.openEpisodeStreamsView({ forceReload: true });
       return;
@@ -18340,6 +18631,9 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
             this.params?.playerOrientationPreference ||
             "landscape",
           playerLogoUrl: this.params?.playerLogoUrl || null,
+          castItems: this.pauseOverlayMeta?.cast?.length
+            ? this.pauseOverlayMeta.cast
+            : this.params?.castItems || [],
           episodes: this.episodes,
           streamCandidates: streamItems,
           preferredStreamId: bestStreamCandidate.id || null,
@@ -18522,6 +18816,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   },
 
   performControlAction(action) {
+    if (this.handleProposalAction?.(action)) return;
     if (action === "playPause") {
       this.togglePause();
       this.renderControlButtons();
@@ -18581,18 +18876,54 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     }
 
     if (Environment.isBrowser() && (action === "more" || action === "backFromMore")) {
-      this.browserToolbarPage = Math.max(
-        0,
-        Number(this.browserToolbarPage || 0) + (action === "more" ? 1 : -1)
-      );
-      this.renderControlButtons();
+      const opening = action === "more" && !this.moreActionsVisible;
+      if (opening) {
+        this.subtitleDialogVisible = false;
+        this.audioDialogVisible = false;
+        this.speedDialogVisible = false;
+        this.sourcesPanelVisible = false;
+        this.hideEpisodePanel();
+        this.renderSubtitleDialog();
+        this.renderAudioDialog();
+        this.renderSpeedDialog();
+        this.renderSourcesPanel();
+      }
+      this.moreActionsVisible = opening;
+      this.playbackInfoVisible = false;
+      this.renderCompactBrowserMorePanel();
+      this.updateModalBackdrop();
       this.resetControlsAutoHide();
       return;
     }
     if (action === "rotate") {
-      this.browserOrientation?.toggle();
-      this.params.playerOrientationPreference = this.browserOrientation?.preference || "landscape";
+      if (!this.browserOrientation?.mobile) return;
+      this.browserOrientation.toggle();
+      this.params.playerOrientationPreference = this.browserOrientation.preference;
+      this.moreActionsVisible = false;
       this.renderControlButtons();
+      this.updateModalBackdrop();
+      return;
+    }
+    if (action === "seekBack10" || action === "seekForward10") {
+      this.seekPlaybackSeconds(
+        Math.max(
+          0,
+          Math.min(
+            this.getPlaybackDurationSeconds() || Infinity,
+            this.getPlaybackCurrentSeconds() + (action === "seekBack10" ? -10 : 10)
+          )
+        )
+      );
+      this.resetControlsAutoHide();
+      return;
+    }
+    if (action === "presentationPip") {
+      void this.toggleDesktopPictureInPicture();
+      return;
+    }
+    if (action === "playbackInfo" || action === "moreInfoBack") {
+      this.playbackInfoVisible = action === "playbackInfo";
+      this.renderCompactBrowserMorePanel();
       return;
     }
     if (action === "externalPlayer") {
@@ -18863,6 +19194,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     this.seekPreviewSeconds = null;
     this.seekRepeatCount = 0;
     this.seekPlaybackSeconds(duration * ratio);
+    this.updateUiTick();
     this.resetControlsAutoHide();
     return true;
   },
@@ -18892,6 +19224,75 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   },
 
   async onPointerActivate(target, event) {
+    const seasonPicker = target?.closest?.(
+      "[data-action='toggleEpisodeSeasonPicker'], [data-action='selectEpisodeSeasonOption']"
+    );
+    if (seasonPicker && this.episodePanelVisible) {
+      if (seasonPicker.dataset.action === "toggleEpisodeSeasonPicker") {
+        this.episodeSeasonPickerOpen = !this.episodeSeasonPickerOpen;
+        this.renderEpisodePanel();
+      } else {
+        this.episodeSeasonPickerOpen = false;
+        const season = this.getEpisodePanelSeasons()[Number(seasonPicker.dataset.optionIndex)];
+        if (season !== undefined) this.selectEpisodePanelSeason(season);
+        else this.renderEpisodePanel();
+      }
+      return true;
+    }
+    const subtitleLanguagePicker = target?.closest?.(
+      "[data-action='proposalSubtitleLanguageToggle'], [data-action='proposalSubtitleLanguageFilter']"
+    );
+    if (subtitleLanguagePicker && this.subtitleDialogVisible) {
+      if (subtitleLanguagePicker.dataset.action === "proposalSubtitleLanguageToggle") {
+        this.proposalSubtitleLanguagePickerOpen = !this.proposalSubtitleLanguagePickerOpen;
+      } else {
+        const key = subtitleLanguagePicker.dataset.proposalSubtitleFilter;
+        if (
+          key === "all" ||
+          this.getSubtitleLanguageRailItems().some((language) => language.key === key)
+        ) {
+          this.proposalSubtitleLanguageFilter = key;
+        }
+        this.proposalSubtitleLanguagePickerOpen = false;
+      }
+      this.renderSubtitleDialog();
+      this.uiRefs?.subtitleDialog
+        ?.querySelector("[data-action='proposalSubtitleLanguageToggle']")
+        ?.focus({ preventScroll: true });
+      return true;
+    }
+    const panelPicker = target?.closest?.(
+      "[data-action='togglePanelAddonPicker'], [data-action='selectPanelAddonOption']"
+    );
+    if (panelPicker) {
+      const scope = panelPicker.dataset.picker;
+      const sources = scope === "player-source";
+      if (panelPicker.dataset.action === "togglePanelAddonPicker") {
+        this.panelAddonPickerOpen = this.panelAddonPickerOpen === scope ? null : scope;
+      } else {
+        const filters = sources ? this.getSourceFilters() : this.getEpisodePanelStreamFilters();
+        const selected = filters[Number(panelPicker.dataset.optionIndex)];
+        this.panelAddonPickerOpen = null;
+        if (selected !== undefined) {
+          if (sources) this.setSourceFilter(selected);
+          else this.selectEpisodePanelSource(selected);
+        }
+      }
+      if (sources) this.renderSourcesPanel();
+      else this.renderEpisodePanel();
+      return true;
+    }
+    const download = target?.closest?.("[data-player-download-index]");
+    if (download) {
+      const episodeScope = download.dataset.playerDownloadScope === "episode";
+      const stream = (
+        episodeScope ? this.getFilteredEpisodePanelStreams() : this.getFilteredSources()
+      )[Number(download.dataset.playerDownloadIndex)];
+      if (!stream) return false;
+      const episode = episodeScope ? this.episodes[this.episodePanelIndex] : null;
+      await this.openOfflineDownloadOptions(stream, this.getPanelDownloadContext(stream, episode));
+      return true;
+    }
     if (!target || this.isExternalFrameMode()) {
       return false;
     }
@@ -18924,6 +19325,32 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     }
     const errorAction = target.closest?.("[data-player-error-action]");
     if (errorAction && this.isStartupErrorVisible()) {
+      const action = errorAction.dataset.playerErrorAction;
+      if (action === "retry-current") {
+        const source = this.getCurrentStreamCandidate();
+        if (!source) return false;
+        this.clearStartupError();
+        await this.playStreamCandidate(source, { preservePlaybackState: true });
+        return true;
+      }
+      if (action === "choose-source") {
+        this.clearStartupError();
+        if (this.offlineDownloadId && this.episodes.length) this.toggleEpisodePanel();
+        else this.openSourcesPanel();
+        return true;
+      }
+      if (action === "copy-details") {
+        const text = [this.startupErrorMessage, ...(this.startupErrorDetails || [])]
+          .filter(Boolean)
+          .join("\n");
+        try {
+          await navigator.clipboard.writeText(text);
+          this.showAspectToast(t("automation_return_copied", {}, "Copied"));
+        } catch (_) {
+          this.showAspectToast(t("player_copy_failed", {}, "Could not copy details"));
+        }
+        return true;
+      }
       if (this.handleUnverifiedPlaybackAction?.(errorAction.dataset.playerErrorAction)) return true;
       if (errorAction.dataset.playerErrorAction === "play")
         return this.retryClientRemuxFromGesture();
@@ -18995,6 +19422,14 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       return true;
     }
 
+    const proposalSubtitle = target.closest?.("[data-proposal-subtitle-language]");
+    if (proposalSubtitle && this.subtitleDialogVisible) {
+      const options = this.getSubtitleOptionsForLanguage(
+        proposalSubtitle.dataset.proposalSubtitleLanguage
+      );
+      this.selectSubtitleOption(options[Number(proposalSubtitle.dataset.proposalSubtitleIndex)]);
+      return true;
+    }
     const subtitleNode = target.closest?.("[data-subtitle-rail]");
     if (subtitleNode && this.subtitleDialogVisible) {
       const isOptionSelection = this.preserveSubtitlePointerOptionScroll(subtitleNode);
@@ -19167,6 +19602,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     if (this.moreActionsVisible) {
       this.moreActionsVisible = false;
       this.renderControlButtons();
+      this.updateModalBackdrop();
       this.focusFirstControl();
       return true;
     }
@@ -19233,6 +19669,22 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       return false;
     }
 
+    if (keyCode === 9) return false;
+    const focusedAction = activeTarget?.closest?.(
+      "button[data-action], button[data-player-error-action], button[data-proposal-subtitle-language], button[data-audio-column], button[data-sources-zone], button[data-episode-index], button[data-episode-action], button[data-episode-stream-action], button[data-episode-stream-filter-index]"
+    );
+    const focusedSummary = activeTarget?.closest?.("summary");
+    if ((keyCode === 13 || keyCode === 32) && focusedSummary) return false;
+    if (
+      (keyCode === 13 ||
+        (keyCode === 32 && (this.isDialogOpen() || this.isStartupErrorVisible()))) &&
+      focusedAction
+    ) {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      if (!event?.repeat) await this.onPointerActivate(focusedAction, event);
+      return true;
+    }
     if (this.isStartupErrorVisible()) {
       if (keyCode === 9) return false;
       event?.preventDefault?.();
@@ -20019,7 +20471,8 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     this.updateUiTick();
   },
 
-  cleanup() {
+  cleanup({ preserveStartupLoading = false } = {}) {
+    this.closeOfflineDownloadOptions?.();
     this._nextSourceDiscoveryCancel?.();
     this._candidatePlaybackGeneration = (this._candidatePlaybackGeneration || 0) + 1;
     this._selectedSourceAbort?.abort();
@@ -20028,7 +20481,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     this._fallbackAudioProber?.cancelAll();
     this._fallbackAudioProber = null;
     this.clearRelayTrackData();
-    StartupLoadingOverlay.finish();
+    if (!preserveStartupLoading) StartupLoadingOverlay.finish();
     this.startupLoadingStage = "loading";
     try {
       this.playerRouteActive = false;

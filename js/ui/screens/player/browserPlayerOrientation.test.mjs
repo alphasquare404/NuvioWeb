@@ -220,3 +220,49 @@ test("independent loading orientation never alters or clears the active player b
   state.destroy();
   assert.equal(writes, 0);
 });
+
+test("rotated track drawers scroll their parent when the nearest rail has no overflow", () => {
+  const handlers = new Map();
+  const body = { addEventListener: (name, fn) => handlers.set(name, fn), removeEventListener() {} };
+  const drawer = { scrollTop: 0, scrollHeight: 800, clientHeight: 200 };
+  const rail = { scrollHeight: 100, clientHeight: 100, parentElement: { closest: () => drawer } };
+  const target = { closest: () => rail };
+  const cleanup = bindRotatedPlayerScroll(body, { rotated: true, height: 390 });
+  const event = (x) => ({
+    target,
+    pointerType: "touch",
+    pointerId: 7,
+    clientX: x,
+    clientY: 100,
+    preventDefault() {}
+  });
+  handlers.get("pointerdown")(event(100));
+  handlers.get("pointermove")(event(170));
+  assert.equal(drawer.scrollTop, 70);
+  cleanup();
+});
+
+test("safe areas rotate with the canvas and native orientation restores inherited insets", () => {
+  const { container, scope } = fixture();
+  const values = new Map();
+  container.style = {
+    setProperty: (key, value) => values.set(key, value),
+    removeProperty: (key) => values.delete(key)
+  };
+  const physicalInsets = {
+    "--browser-safe-area-top": "44px",
+    "--browser-safe-area-right": "0px",
+    "--browser-safe-area-bottom": "34px",
+    "--browser-safe-area-left": "0px"
+  };
+  scope.getComputedStyle = () => ({ getPropertyValue: (key) => physicalInsets[key] || "" });
+  const state = createPlayerOrientation(container, { scope });
+  assert.equal(state.rotation, 90);
+  assert.equal(values.get("--browser-safe-area-left"), "44px");
+  assert.equal(values.get("--browser-safe-area-right"), "34px");
+  assert.equal(values.get("--browser-safe-area-top"), "0px");
+  state.toggle();
+  assert.equal(state.rotation, 0);
+  assert.equal(values.has("--browser-safe-area-left"), false);
+  state.destroy();
+});

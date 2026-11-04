@@ -2993,13 +2993,13 @@ html.is-hero-stream-hold * {
   scrollbar-color: rgba(255, 255, 255, 0.32) transparent;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-row,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-row,
 .desktop-browser #stream .stream-route-card-row {
   gap: 0;
   margin-bottom: 10px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card,
 .desktop-browser #stream .stream-route-card {
   min-height: 100px;
   padding: 15px 18px;
@@ -3071,8 +3071,8 @@ html.is-hero-stream-hold * {
   outline-offset: 2px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card.focused,
-.desktop-browser #player #episodeSidePanel .stream-route-card:focus-visible,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card.focused,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card:focus-visible,
 .desktop-browser #stream .stream-route-card.focused,
 .desktop-browser #stream .stream-route-card:focus-visible {
   border-color: var(--secondary-color);
@@ -3082,28 +3082,28 @@ html.is-hero-stream-hold * {
   transform: none;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-heading,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-heading,
 .desktop-browser #stream .stream-route-card-heading {
   font-size: 17px;
   line-height: 1.28;
   font-weight: 600;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-quality,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-quality,
 .desktop-browser #stream .stream-route-card-quality {
   margin-top: 5px;
   font-size: 15px;
   line-height: 1.3;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-badges,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-badges,
 .desktop-browser #stream .stream-route-card-badges {
   gap: 5px;
   margin: 7px 0 6px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-stream-badge,
-.desktop-browser #player #episodeSidePanel .stream-route-stream-badge.size,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-stream-badge,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-stream-badge.size,
 .desktop-browser #stream .stream-route-stream-badge,
 .desktop-browser #stream .stream-route-stream-badge.size {
   min-height: 24px;
@@ -3112,51 +3112,51 @@ html.is-hero-stream-hold * {
   font-size: 12px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-stream-badge.image,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-stream-badge.image,
 .desktop-browser #stream .stream-route-stream-badge.image {
   min-width: 40px;
   max-width: 104px;
   padding: 3px 6px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-stream-badge.image img,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-stream-badge.image img,
 .desktop-browser #stream .stream-route-stream-badge.image img {
   max-width: 92px;
   max-height: 18px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-line,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-line,
 .desktop-browser #stream .stream-route-card-line {
   margin-top: 4px;
   font-size: 13px;
   line-height: 1.35;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-line.secondary,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-line.secondary,
 .desktop-browser #stream .stream-route-card-line.secondary {
   margin-top: 2px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-side,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-side,
 .desktop-browser #stream .stream-route-card-side {
   width: 108px;
   flex-basis: 108px;
   gap: 7px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-addon-badge,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-badge,
 .desktop-browser #stream .stream-route-addon-badge {
   width: 44px;
   height: 44px;
   border-width: 1px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-addon-badge span,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-badge span,
 .desktop-browser #stream .stream-route-addon-badge span {
   font-size: 20px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-addon-name,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-name,
 .desktop-browser #stream .stream-route-addon-name {
   max-width: 108px;
   overflow: hidden;
@@ -3256,7 +3256,7 @@ html.is-hero-stream-hold * {
    the column beside it. It is a pseudo-element because the whole card is
    already the button -- a second focusable target would be one more stop for
    keyboard and remote navigation to pass through for no gain. */
-.desktop-browser #player #episodeSidePanel .stream-route-card-action,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action,
 .desktop-browser #stream .stream-route-card-action {
   position: relative;
   display: flex;
@@ -3270,7 +3270,7 @@ html.is-hero-stream-hold * {
   padding: 16px 18px 16px 70px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-action::before,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action::before,
 .desktop-browser #stream .stream-route-card-action::before {
   content: "";
   position: absolute;
@@ -3300,7 +3300,7 @@ html.is-hero-stream-hold * {
    can be done about it. Ordering here rather than moving the markup keeps the
    same card builder serving the detail screen.s season downloads, which have
    no download row and no play affordance. */
-.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-copy,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-copy,
 .desktop-browser #stream .stream-route-card-action > .stream-route-card-copy {
   order: 1;
   flex: 0 0 100%;
@@ -3311,7 +3311,7 @@ html.is-hero-stream-hold * {
    the play affordance keeps a column to itself and the card reads as one block
    of text rather than three indents. Padding rather than margin: these are
    full-width flex items and a margin would push them past the card. */
-.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-status,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-status,
 .desktop-browser #stream .stream-route-card-action > .stream-route-card-status {
   order: 2;
   flex: 0 0 100%;
@@ -3325,7 +3325,7 @@ html.is-hero-stream-hold * {
   line-height: 1.3;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-status-text,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status-text,
 .desktop-browser #stream .stream-route-card-status-text {
   min-width: 0;
   overflow: hidden;
@@ -3333,26 +3333,26 @@ html.is-hero-stream-hold * {
   white-space: nowrap;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-status.downloading,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status.downloading,
 .desktop-browser #stream .stream-route-card-status.downloading {
   color: var(--secondary-color);
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-status.queued,
-.desktop-browser #player #episodeSidePanel .stream-route-card-status.paused,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status.queued,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status.paused,
 .desktop-browser #stream .stream-route-card-status.queued,
 .desktop-browser #stream .stream-route-card-status.paused {
   color: rgba(255, 196, 92, 0.95);
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-status.offline,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status.offline,
 .desktop-browser #stream .stream-route-card-status.offline {
   color: rgba(126, 211, 148, 0.95);
 }
 
 /* The source and its controls share the card's last line: where this came from
    on the left, what can be done with it on the right. */
-.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-side,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-side,
 .desktop-browser #stream .stream-route-card-action > .stream-route-card-side {
   /* The television lays the source out as a 108px column with the name under
      its badge. On one line it is a badge and a name side by side, and the name
@@ -3371,14 +3371,14 @@ html.is-hero-stream-hold * {
 
 /* The source badge and the download control are the two round things on the
    last line, so they are the same round thing: one size, one centre line. */
-.desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-addon-badge,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-addon-badge,
 .desktop-browser #stream .stream-route-card-action .stream-route-addon-badge {
   width: 32px;
   height: 32px;
   flex: 0 0 auto;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-offline-action,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-offline-action,
 .desktop-browser #stream .stream-route-card-action .stream-route-offline-action {
   display: inline-flex;
   align-items: center;
@@ -3392,8 +3392,8 @@ html.is-hero-stream-hold * {
   line-height: 1;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-side,
-.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-offline-actions,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-side,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-offline-actions,
 .desktop-browser #stream .stream-route-card-action > .stream-route-card-side,
 .desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
   align-items: center;
@@ -3419,19 +3419,19 @@ html.is-hero-stream-hold * {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-addon-badge span,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-addon-badge span,
 .desktop-browser #stream .stream-route-card-action .stream-route-addon-badge span {
   font-size: 11px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-addon-name,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-addon-name,
 .desktop-browser #stream .stream-route-card-action .stream-route-addon-name {
   max-width: min(260px, 40vw);
   color: var(--text-secondary);
   font-size: 12.5px;
 }
 
-.desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-offline-actions,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-offline-actions,
 .desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
   order: 5;
   flex: 0 0 auto;
@@ -3488,7 +3488,7 @@ html.is-hero-stream-hold * {
     color: var(--text-color);
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card:hover,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card:hover,
 .desktop-browser #stream .stream-route-card:hover {
     border-color: rgba(255, 255, 255, 0.28);
     background: rgba(34, 34, 40, 0.94);
@@ -3574,13 +3574,13 @@ html.is-hero-stream-hold * {
     padding-left: 20px;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card,
 .desktop-browser #stream .stream-route-card {
     align-items: flex-start;
     flex-wrap: wrap;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-side,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-side,
 .desktop-browser #stream .stream-route-card-side {
     width: 100%;
     flex-basis: 100%;
@@ -3588,7 +3588,7 @@ html.is-hero-stream-hold * {
     justify-content: flex-start;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-addon-name,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-name,
 .desktop-browser #stream .stream-route-addon-name {
     max-width: none;
   }
@@ -13530,9 +13530,9 @@ body.desktop-browser {
     padding-top: 0;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-heading,
-.desktop-browser #player #episodeSidePanel .stream-route-card-line,
-.desktop-browser #player #episodeSidePanel .stream-route-addon-name,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-heading,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-line,
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-name,
 .desktop-browser #stream .stream-route-title,
   .desktop-browser #stream .stream-route-subtitle,
   .desktop-browser #stream .stream-route-detail-line,
@@ -13542,7 +13542,7 @@ body.desktop-browser {
     overflow-wrap: anywhere;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-copy,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-copy,
 .desktop-browser #stream .stream-route-card-copy {
     min-width: 0;
   }
@@ -13629,12 +13629,12 @@ body.desktop-browser {
     padding-inline: 14px;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-row,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-row,
 .desktop-browser #stream .stream-route-card-row {
     margin-bottom: 12px;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card,
 .desktop-browser #stream .stream-route-card {
     min-height: 0;
     padding: 14px;
@@ -13642,7 +13642,7 @@ body.desktop-browser {
     touch-action: pan-y;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-heading,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-heading,
 .desktop-browser #stream .stream-route-card-heading {
     display: -webkit-box;
     font-size: 16px;
@@ -13653,25 +13653,25 @@ body.desktop-browser {
     line-clamp: 2;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-quality,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-quality,
 .desktop-browser #stream .stream-route-card-quality {
     margin-top: 4px;
     font-size: 14px;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-line,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-line,
 .desktop-browser #stream .stream-route-card-line {
     font-size: 12px;
     overflow-wrap: anywhere;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-side,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-side,
 .desktop-browser #stream .stream-route-card-side {
     min-height: 44px;
     gap: 8px;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-addon-badge,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-badge,
 .desktop-browser #stream .stream-route-addon-badge {
     width: 42px;
     height: 42px;
@@ -16564,14 +16564,14 @@ html:not([data-nav-placement="top"])
     padding: 10px 10px 12px;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-action,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action,
 .desktop-browser #stream .stream-route-card-action {
     padding: 14px 14px 14px 56px;
     column-gap: 10px;
     row-gap: 8px;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-action::before,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action::before,
 .desktop-browser #stream .stream-route-card-action::before {
     top: 14px;
     left: 14px;
@@ -16584,7 +16584,7 @@ html:not([data-nav-placement="top"])
   /* The earlier phone rules make the source a full-width row of its own, which
      would push the controls onto a fourth line. It shares the last line here,
      the same as everywhere else. */
-  .desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-card-side,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-side,
 .desktop-browser #stream .stream-route-card-action > .stream-route-card-side {
     width: auto;
     flex: 0 1 auto;
@@ -16592,18 +16592,18 @@ html:not([data-nav-placement="top"])
     justify-content: flex-start;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-action .stream-route-addon-name,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-addon-name,
 .desktop-browser #stream .stream-route-card-action .stream-route-addon-name {
     max-width: min(150px, 42vw);
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-action > .stream-route-offline-actions,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-offline-actions,
 .desktop-browser #stream .stream-route-card-action > .stream-route-offline-actions {
     flex: 0 0 auto;
     margin: 0 0 0 auto;
   }
 
-  .desktop-browser #player #episodeSidePanel .stream-route-card-status,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status,
 .desktop-browser #stream .stream-route-card-status {
     font-size: 12px;
   }
@@ -21150,7 +21150,7 @@ html[data-layout="mobile"]
 .desktop-browser #player #episodeSidePanel .player-episode-source-picker > span { color: rgba(255,255,255,.55); font-size: 10px; line-height: 1.2; letter-spacing: .06em; text-transform: uppercase; }
 .desktop-browser #player #episodeSidePanel [data-player-episode-source] { min-width: 0; width: 100%; height: 24px; padding: 0; border: 0; background: transparent; color: #f5f5f5; font: inherit; font-size: 14px; color-scheme: dark; cursor: pointer; }
 .desktop-browser #player #episodeSidePanel .player-episode-stream-list { padding: 3px; scroll-padding-block: 4px; }
-.desktop-browser #player #episodeSidePanel .stream-route-card-action {
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -21164,18 +21164,18 @@ html[data-layout="mobile"]
   transform: none;
   box-shadow: none;
 }
-.desktop-browser #player #episodeSidePanel .stream-route-card-action::before { top: 16px; left: 14px; width: 32px; height: 32px; background-size: 19px 19px; }
-.desktop-browser #player #episodeSidePanel .stream-route-card-heading { font-size: clamp(14px, 3.7vw, 16px); line-height: 1.3; overflow-wrap: anywhere; }
-.desktop-browser #player #episodeSidePanel .stream-route-card-line { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
-.desktop-browser #player #episodeSidePanel .stream-route-addon-name { max-width: 100%; font-size: 12px; }
-.desktop-browser #player #episodeSidePanel .stream-route-card-side { max-width: 100%; }
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action::before { top: 16px; left: 14px; width: 32px; height: 32px; background-size: 19px 19px; }
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-heading { font-size: clamp(14px, 3.7vw, 16px); line-height: 1.3; overflow-wrap: anywhere; }
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-line { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-name { max-width: 100%; font-size: 12px; }
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-side { max-width: 100%; }
 .desktop-browser #player #episodeSidePanel .stream-playback-badge { position: static !important; order: 2; display: inline-flex; max-width: 100%; margin: 0; white-space: normal; }
-.desktop-browser #player #episodeSidePanel .stream-route-card-action.focused { background: #191919; border-color: var(--secondary-color); box-shadow: none; }
+.desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action.focused { background: #191919; border-color: var(--secondary-color); box-shadow: none; }
 .desktop-browser #player #episodeSidePanel .player-episode-stream-empty { padding: 28px 12px; color: rgba(255,255,255,.6); font-size: 14px; text-align: center; }
 @media (hover: hover) and (pointer: fine) {
   .desktop-browser #player #episodeSidePanel .player-episode-close-btn:hover,
   .desktop-browser #player #episodeSidePanel .player-episode-stream-action:hover { border-color: rgba(255,255,255,.38); background: rgba(255,255,255,.12); }
-  .desktop-browser #player #episodeSidePanel .stream-route-card-action:hover,
+  .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action:hover,
   .desktop-browser #player #episodeSidePanel .player-episode-item:hover { background: #191919; border-color: var(--secondary-color); }
 }
 .desktop-browser #player #episodeSidePanel .player-episode-source-picker:focus-within { border-color: var(--secondary-color); }
