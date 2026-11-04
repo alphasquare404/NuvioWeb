@@ -130,7 +130,10 @@ export const WatchedItemsStore = {
     LocalStore.set(WATCHED_ITEMS_KEY, next);
     // Un-watching is a deliberate change, never one of playback's periodic
     // writes, so Continue Watching is told the same way a completion is.
-    notifyChange(pid, "remove", { authoritative: true });
+    notifyChange(pid, "remove", {
+      authoritative: true,
+      item: { contentId: targetContentId, season: targetSeason, episode: targetEpisode, rootOnly }
+    });
   },
 
   replaceForProfile(profileId, items = []) {

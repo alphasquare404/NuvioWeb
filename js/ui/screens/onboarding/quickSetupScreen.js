@@ -92,7 +92,7 @@ export const QuickSetupScreen = {
     this.progressMode = settings.externalPlayerProgress === "manual" ? "manual" : "automatic";
     this.offlineSync = settings.syncOfflineProgress === true;
     this.returnMethod = settings.externalReturnMethod;
-    this.initialPlayer = this.player;
+    this.initialPlayer = stored;
     this.initialProgressMode = this.progressMode;
     this.initialOfflineSync = this.offlineSync;
     this.initialReturnMethod = this.returnMethod;

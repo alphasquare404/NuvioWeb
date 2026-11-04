@@ -126,9 +126,9 @@ export function getPosterOptions(state, options = {}) {
           ? t("library_manage_lists", {}, "Manage Lists")
           : state.sourceMode === LibrarySourceMode.SIMKL
             ? "Manage Simkl Status"
-          : state.isSaved
-            ? t("detail.removeFromLibrary", {}, "Remove from Library")
-            : t("detail.addToLibrary", {}, "Add to Library")
+            : state.isSaved
+              ? t("detail.removeFromLibrary", {}, "Remove from Library")
+              : t("detail.addToLibrary", {}, "Add to Library")
     });
   }
   if (includeWatched) {
@@ -185,13 +185,10 @@ export async function activatePosterOption(state, action, _options = {}) {
       title: item.title || item.name || item.id || "Untitled",
       watchedAt: Date.now()
     });
-    await watchProgressRepository.saveProgress({
+    await watchProgressRepository.removePlaybackProgress({
       contentId: item.id,
       contentType: item.type || "movie",
-      videoId: null,
-      positionMs: 100,
-      durationMs: 100,
-      updatedAt: Date.now()
+      videoId: null
     });
     return { type: "updated", state: { ...state, isWatched: true } };
   }
@@ -318,9 +315,7 @@ export class PosterOptionsDialogController {
       // Right-click anchors to the pointer; Hold Enter has no coordinates, so
       // it anchors to the focused card and restores focus there on close.
       const focused =
-        this.invocation?.type === "pointer"
-          ? null
-          : document.querySelector(".focusable.focused");
+        this.invocation?.type === "pointer" ? null : document.querySelector(".focusable.focused");
       return adopt(
         openDesktopContextMenu({
           x: Number(this.invocation?.x || 0),
@@ -441,11 +436,15 @@ export class PosterOptionsDialogController {
       normalizedAction === "confirmDestructiveSimklRemoval"
     ) {
       try {
-        await libraryRepository.applyMembershipChanges(this.listPicker.item, {
-          desiredMembership: this.listPicker.membership || {}
-        }, {
-          destructiveRemovalConfirmed: normalizedAction === "confirmDestructiveSimklRemoval"
-        });
+        await libraryRepository.applyMembershipChanges(
+          this.listPicker.item,
+          {
+            desiredMembership: this.listPicker.membership || {}
+          },
+          {
+            destructiveRemovalConfirmed: normalizedAction === "confirmDestructiveSimklRemoval"
+          }
+        );
         this.onChanged?.(this.state);
         this.destroy();
       } catch (error) {

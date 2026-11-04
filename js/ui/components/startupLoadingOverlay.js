@@ -31,6 +31,7 @@ export function usesUnifiedStartup(
 let host = null;
 let stage = "finding";
 let relayText = "";
+let playbackAttempt = null;
 let presentation = {};
 let backHandler = null;
 let orientation = null;
@@ -170,13 +171,77 @@ export const StartupLoadingOverlay = {
     if (!node) return;
     const enabled = PlayerSettingsStore.get().showPlayerLoadingStatus !== false;
     const [key, fallback] = STAGES[stage];
-    node.textContent = enabled ? I18n.t(key, {}, { fallback }) : "";
+    let status = I18n.t(key, {}, { fallback });
+    const routes = {
+      direct: ["startup_loading_direct", "Opening directly…"],
+      remux: ["startup_loading_remux", "Preparing remux playback…"],
+      "audio-transcode": ["startup_loading_audio_conversion", "Converting audio…"]
+    };
+    if (playbackAttempt && !["finding", "frame", "restoring"].includes(stage)) {
+      const route = routes[playbackAttempt.route];
+      if (route) status = I18n.t(route[0], {}, { fallback: route[1] });
+    }
+    if (playbackAttempt?.sourceNumber)
+      status =
+        I18n.t("startup_loading_stream", [playbackAttempt.sourceNumber], {
+          fallback: `Stream ${playbackAttempt.sourceNumber}`
+        }) +
+        " · " +
+        status;
+    node.textContent = enabled ? status : "";
     const detail = host.querySelector(".player-loading-detail");
     if (detail) {
-      detail.textContent = enabled ? relayText : "";
-      detail.classList.toggle("hidden", !enabled || !relayText);
+      let failure = "";
+      if (playbackAttempt?.failedRoute && routes[playbackAttempt.failedRoute]) {
+        const labels = {
+          direct: [
+            "startup_loading_direct_failed",
+            "Direct playback did not start. Trying another method."
+          ],
+          remux: [
+            "startup_loading_remux_failed",
+            "Remux playback did not start. Trying another method."
+          ],
+          "audio-transcode": [
+            "startup_loading_audio_failed",
+            "Audio conversion did not start. Trying another method."
+          ]
+        };
+        const label = labels[playbackAttempt.failedRoute];
+        failure = I18n.t(label[0], {}, { fallback: label[1] });
+      } else if (playbackAttempt?.failedSourceNumber) {
+        const number = playbackAttempt.failedSourceNumber;
+        failure = I18n.t("startup_loading_stream_failed", [number], {
+          fallback: `Stream ${number} could not play. Trying the next stream.`
+        });
+      }
+      const detailText = [failure, relayText].filter(Boolean).join(" ");
+      detail.textContent = enabled ? detailText : "";
+      detail.classList.toggle("hidden", !enabled || !detailText);
     }
     node.classList.toggle("hidden", !enabled);
+  },
+  setPlaybackAttempt({ sourceNumber, route, failedRoute } = {}) {
+    if (
+      !playbackAttempt ||
+      (sourceNumber !== undefined && sourceNumber !== playbackAttempt.sourceNumber)
+    ) {
+      const number =
+        Number.isSafeInteger(sourceNumber) && sourceNumber > 0 && sourceNumber < 10000
+          ? sourceNumber
+          : null;
+      playbackAttempt = {
+        sourceNumber: number,
+        failedSourceNumber: number > 1 ? number - 1 : null
+      };
+    }
+    if (route !== undefined)
+      playbackAttempt.route = ["direct", "remux", "audio-transcode"].includes(route) ? route : "";
+    if (failedRoute !== undefined)
+      playbackAttempt.failedRoute = ["direct", "remux", "audio-transcode"].includes(failedRoute)
+        ? failedRoute
+        : "";
+    this.setStage(stage);
   },
   setRelayText(text) {
     relayText = String(text || "");
@@ -191,6 +256,7 @@ export const StartupLoadingOverlay = {
     host?.remove();
     host = null;
     relayText = "";
+    playbackAttempt = null;
     stage = "finding";
     presentation = {};
     backHandler = null;

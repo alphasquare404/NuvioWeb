@@ -7768,13 +7768,10 @@ export const MetaDetailsScreen = {
         title: this.meta?.name || this.params?.fallbackTitle || "Untitled",
         watchedAt: Date.now()
       });
-      await watchProgressRepository.saveProgress({
+      await watchProgressRepository.removePlaybackProgress({
         contentId: this.params?.itemId,
         contentType: this.params?.itemType || "movie",
-        videoId: null,
-        positionMs: 100,
-        durationMs: 100,
-        updatedAt: Date.now()
+        videoId: null
       });
     }
     if (!isSeries && this.meta?.ids?.trakt) {
@@ -8272,15 +8269,12 @@ export const MetaDetailsScreen = {
           videoId: episode.id,
           watchedAt: Date.now()
         });
-        await watchProgressRepository.saveProgress({
+        await watchProgressRepository.removePlaybackProgress({
           contentId: this.params?.itemId,
           contentType: "series",
           videoId: episode.id,
           season: episode.season,
-          episode: episode.episode,
-          positionMs: 100,
-          durationMs: 100,
-          updatedAt: Date.now()
+          episode: episode.episode
         });
       } else {
         await watchedItemsRepository.unmark(this.params?.itemId, {
@@ -8443,15 +8437,12 @@ export const MetaDetailsScreen = {
         videoId: episode.id,
         watchedAt: Date.now()
       });
-      await watchProgressRepository.saveProgress({
+      await watchProgressRepository.removePlaybackProgress({
         contentId: this.params?.itemId,
         contentType: "series",
         videoId: episode.id,
         season: episode.season,
-        episode: episode.episode,
-        positionMs: 100,
-        durationMs: 100,
-        updatedAt: Date.now()
+        episode: episode.episode
       });
     } else {
       await watchedItemsRepository.unmark(this.params?.itemId, {

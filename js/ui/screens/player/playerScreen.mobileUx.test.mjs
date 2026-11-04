@@ -1592,7 +1592,7 @@ test("the real startup guard allows metadata at 27.7 seconds, but an unresponsiv
   assert.equal(errorVisible, true);
 });
 
-test("unverified Direct has a 15 second absolute startup deadline; verified playback keeps its budget", () => {
+test("unverified Direct has a 13 second absolute startup deadline; verified playback keeps its budget", () => {
   let now = 1000;
   const timeout = method("getPlaybackStallTimeoutMs({ startup = false } = {})", {
     Date: { now: () => now },
@@ -1605,11 +1605,11 @@ test("unverified Direct has a 15 second absolute startup deadline; verified play
       unverifiedPlayback: { route: "direct", mediaUrl: "https://cdn.test/file", remuxTried: false }
     }
   };
-  assert.equal(timeout.call(ctx, { startup: true }), 15000);
+  assert.equal(timeout.call(ctx, { startup: true }), 13000);
   now = 5000;
-  assert.equal(timeout.call(ctx, { startup: true }), 11000);
+  assert.equal(timeout.call(ctx, { startup: true }), 9000);
   ctx.startupReadiness.metadataAt = 4000;
-  assert.equal(timeout.call(ctx, { startup: true }), 11000);
+  assert.equal(timeout.call(ctx, { startup: true }), 9000);
   now = 16001;
   assert.equal(timeout.call(ctx, { startup: true }), 1);
   ctx.params.unverifiedPlayback.remuxTried = true;
@@ -1817,4 +1817,55 @@ test("manual episode switching carries cast photos and roles to the next player"
   };
   await run.call(ctx, stream);
   assert.deepEqual(navigation.castItems, cast);
+});
+
+test("dismissing an already-cleared pause screen still repairs its DOM visibility", () => {
+  const dismiss = method(
+    "dismissPauseOverlay({ revealControls = false, focus = false } = {})"
+  ).dismissPauseOverlay;
+  let renders = 0,
+    clears = 0;
+  const ctx = {
+    pauseOverlayVisible: false,
+    clearPauseOverlayTimer: () => clears++,
+    renderPauseOverlay: () => renders++
+  };
+  dismiss.call(ctx);
+  assert.equal(renders, 1);
+  assert.equal(clears, 1);
+  dismiss.call(ctx);
+  assert.equal(renders, 2);
+});
+test("visible controls restore the header mask across repeated pause and error transitions", () => {
+  const sync = method("syncPlayerOverlayLayoutState()").syncPlayerOverlayLayoutState;
+  const rootClasses = new Set(["pause-screen-visible"]),
+    overlayClasses = new Set(["pause-overlay-active"]);
+  const classes = (set) => ({ toggle: (name, on) => (on ? set.add(name) : set.delete(name)) });
+  const ctx = {
+    controlsVisible: true,
+    pauseOverlayVisible: false,
+    loadingVisible: false,
+    uiRefs: {
+      root: { classList: classes(rootClasses), querySelector: () => null },
+      controlsOverlay: { classList: classes(overlayClasses) }
+    },
+    isExternalFrameMode: () => false,
+    isStartupErrorVisible: () => false,
+    updateBrowserNativeSubtitleOffset() {},
+    syncPlayerActionOverlayOffset() {}
+  };
+  for (let i = 0; i < 3; i++) {
+    ctx.pauseOverlayVisible = true;
+    sync.call(ctx);
+    assert.equal(overlayClasses.has("pause-overlay-active"), true);
+    ctx.pauseOverlayVisible = false;
+    sync.call(ctx);
+    assert.equal(rootClasses.has("pause-screen-visible"), false);
+    assert.equal(overlayClasses.has("pause-overlay-active"), false);
+    assert.equal(rootClasses.has("controls-visible"), true);
+  }
+  ctx.pauseOverlayVisible = true;
+  ctx.isStartupErrorVisible = () => true;
+  sync.call(ctx);
+  assert.equal(overlayClasses.has("pause-overlay-active"), false);
 });

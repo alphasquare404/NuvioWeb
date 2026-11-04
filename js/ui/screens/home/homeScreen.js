@@ -147,6 +147,7 @@ import {
 } from "./nextUpSeedPolicy.js";
 import { continueWatchingEnrichmentSignatureFor } from "./continueWatchingEnrichmentSignature.js";
 import {
+  resetContinueWatchingDisplayWatchedState,
   patchContinueWatchingDisplayProgress,
   removeContinueWatchingDisplayItem
 } from "./continueWatchingProgressPatch.js";
@@ -9305,10 +9306,9 @@ export const HomeScreen = {
     const handleWatchProgressChange = (change) => {
       const { reason, authoritative, item } = change || {};
       if (
-        authoritative &&
         reason === "upsert" &&
         item &&
-        shouldRefreshContinueWatchingForChange(change, ProfileManager.getActiveProfileId())
+        String(change.profileId || "") === String(ProfileManager.getActiveProfileId() || "")
       ) {
         // Reflect the accepted external-playback position on an
         // already-displayed card immediately, ahead of the full store
@@ -9318,6 +9318,22 @@ export const HomeScreen = {
         const patched = patchContinueWatchingDisplayProgress(this.continueWatchingDisplay, item);
         if (patched) {
           this.continueWatchingDisplay = patched;
+          this.persistContinueWatchingSnapshot();
+          this.requestBackgroundRender();
+        }
+      }
+      if (
+        reason === "remove" &&
+        Array.isArray(change?.removedItems) &&
+        String(change.profileId || "") === String(ProfileManager.getActiveProfileId() || "")
+      ) {
+        const remaining = change.removedItems.reduce(
+          (display, removed) => removeContinueWatchingDisplayItem(display, removed) || display,
+          this.continueWatchingDisplay
+        );
+        if (remaining !== this.continueWatchingDisplay) {
+          this.continueWatchingDisplay = remaining;
+          this.persistContinueWatchingSnapshot();
           this.requestBackgroundRender();
         }
       }
@@ -9333,7 +9349,7 @@ export const HomeScreen = {
         authoritative &&
         reason === "upsert" &&
         item &&
-        shouldRefreshContinueWatchingForChange(change, ProfileManager.getActiveProfileId())
+        String(change.profileId || "") === String(ProfileManager.getActiveProfileId() || "")
       ) {
         // Finishing a title removes its progress row instead of updating it, so
         // there is nothing for the progress patch above to touch. Under a
@@ -9343,6 +9359,22 @@ export const HomeScreen = {
         const remaining = removeContinueWatchingDisplayItem(this.continueWatchingDisplay, item);
         if (remaining) {
           this.continueWatchingDisplay = remaining;
+          this.persistContinueWatchingSnapshot();
+          this.requestBackgroundRender();
+        }
+      }
+      if (
+        reason === "remove" &&
+        item &&
+        String(change.profileId || "") === String(ProfileManager.getActiveProfileId() || "")
+      ) {
+        const remaining = resetContinueWatchingDisplayWatchedState(
+          this.continueWatchingDisplay,
+          item
+        );
+        if (remaining) {
+          this.continueWatchingDisplay = remaining;
+          this.persistContinueWatchingSnapshot();
           this.requestBackgroundRender();
         }
       }

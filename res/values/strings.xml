@@ -851,7 +851,7 @@
     <string name="cache_duration_day_other">%1$d days</string>
     <string name="cache_duration_days_hours">%1$dd %2$dh</string>
     <string name="autoplay_mode_manual">Manual (choose stream)</string>
-    <string name="autoplay_mode_first">Auto-play first source</string>
+    <string name="autoplay_mode_first">Automatic selection</string>
     <string name="autoplay_mode_regex">Auto-play regex match</string>
     <string name="autoplay_stream_selection">Auto Stream Selection</string>
     <string name="autoplay_next_episode">Auto-play Next Episode</string>
@@ -883,7 +883,7 @@
     <string name="autoplay_regex_title">Regex Pattern</string>
     <string name="autoplay_no_items">No items available</string>
     <string name="autoplay_mode_manual_desc">Always show source list and let me choose.</string>
-    <string name="autoplay_mode_first_desc">Play the first available source automatically.</string>
+    <string name="autoplay_mode_first_desc">Choose a stream using your autoplay preferences. Try another if playback fails.</string>
     <string name="autoplay_mode_regex_desc">Play first source whose text matches your regex pattern.</string>
     <string name="autoplay_scope_all_desc">Auto-play can use both installed addons and enabled plugins.</string>
     <string name="autoplay_scope_addons_desc">Auto-play only considers streams coming from your installed addons.</string>
@@ -3166,4 +3166,12 @@
     <string name="downloads_download">Download</string>
     <string name="player_all_languages">All languages</string>
     <string name="subtitle_tab_language">Language</string>
+    <string name="startup_loading_stream">Stream %1$s</string>
+    <string name="startup_loading_direct">Opening directly…</string>
+    <string name="startup_loading_remux">Preparing remux playback…</string>
+    <string name="startup_loading_audio_conversion">Converting audio…</string>
+    <string name="startup_loading_stream_failed">Stream %1$s could not play. Trying the next stream.</string>
+    <string name="startup_loading_direct_failed">Direct playback did not start. Trying another method.</string>
+    <string name="startup_loading_remux_failed">Remux playback did not start. Trying another method.</string>
+    <string name="startup_loading_audio_failed">Audio conversion did not start. Trying another method.</string>
 </resources>

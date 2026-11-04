@@ -16,6 +16,7 @@ function harness(prepare, mode = "server") {
     source.indexOf("  startPlayerControllerPlayback(")
   );
   const methods = vm.runInNewContext("({" + text + "})", {
+    StartupLoadingOverlay: {},
     REMUX_POLICY: { mode },
     canTryUnverifiedRemux,
     canTryUnverifiedAudioTranscode: (attempt, failure) =>
@@ -154,6 +155,7 @@ test("audio fallback reservation is single use and ignores a result after switch
   Object.assign(
     ctx,
     vm.runInNewContext("({" + methodsText + "})", {
+      StartupLoadingOverlay: {},
       REMUX_POLICY: { mode: "server" },
       canTryUnverifiedRemux,
       canTryUnverifiedAudioTranscode: (a, f) =>
@@ -205,6 +207,7 @@ test("verified audio fallback starts existing server delivery once and preserves
   Object.assign(
     ctx,
     vm.runInNewContext("({" + methodsText + "})", {
+      StartupLoadingOverlay: {},
       REMUX_POLICY: { mode: "server" },
       canTryUnverifiedRemux,
       canTryUnverifiedAudioTranscode: (a, f) =>
@@ -237,6 +240,7 @@ function routedHarness({
   );
   const records = { copy: 0, audio: 0, plays: [], errors: [] };
   const methods = vm.runInNewContext("({" + text + "})", {
+    StartupLoadingOverlay: {},
     AbortController,
     REMUX_POLICY: { mode: "client" },
     TRANSCODE_ENDPOINT: "/api/transcode",

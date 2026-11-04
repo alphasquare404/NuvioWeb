@@ -684,7 +684,7 @@
     <string name="cache_duration_day_other">%1$d hari</string>
     <string name="cache_duration_days_hours">%1$d h %2$d j</string>
     <string name="autoplay_mode_manual">Manual (pilih stream)</string>
-    <string name="autoplay_mode_first">Putar otomatis sumber pertama</string>
+    <string name="autoplay_mode_first">Pilih otomatis</string>
     <string name="autoplay_mode_regex">Putar otomatis cocokkan regex</string>
     <string name="autoplay_stream_selection">Pemilihan Stream Otomatis</string>
     <string name="autoplay_next_episode">Putar Otomatis Episode Berikutnya</string>
@@ -716,7 +716,7 @@
     <string name="autoplay_regex_title">Pola Regex</string>
     <string name="autoplay_no_items">Tidak ada item tersedia</string>
     <string name="autoplay_mode_manual_desc">Selalu tampilkan daftar sumber dan biarkan saya memilih.</string>
-    <string name="autoplay_mode_first_desc">Putar sumber pertama yang tersedia secara otomatis.</string>
+    <string name="autoplay_mode_first_desc">Pilih stream sesuai preferensi autoplay. Coba stream lain jika gagal diputar.</string>
     <string name="autoplay_mode_regex_desc">Putar sumber pertama yang teksnya cocok dengan pola regex Anda.</string>
     <string name="autoplay_scope_all_desc">Putar otomatis bisa menggunakan addon terpasang dan plugin yang diaktifkan.</string>
     <string name="autoplay_scope_addons_desc">Putar otomatis hanya mempertimbangkan stream dari addon terpasang Anda.</string>
@@ -2546,4 +2546,12 @@
     <string name="downloads_download">Unduh</string>
     <string name="player_all_languages">Semua bahasa</string>
     <string name="subtitle_tab_language">Bahasa</string>
+    <string name="startup_loading_stream">Stream %1$s</string>
+    <string name="startup_loading_direct">Memutar secara langsung…</string>
+    <string name="startup_loading_remux">Menyiapkan pemutaran remux…</string>
+    <string name="startup_loading_audio_conversion">Mengonversi audio…</string>
+    <string name="startup_loading_stream_failed">Stream %1$s gagal diputar. Mencoba stream berikutnya.</string>
+    <string name="startup_loading_direct_failed">Pemutaran langsung gagal dimulai. Mencoba cara lain.</string>
+    <string name="startup_loading_remux_failed">Pemutaran remux gagal dimulai. Mencoba cara lain.</string>
+    <string name="startup_loading_audio_failed">Konversi audio gagal dimulai. Mencoba cara lain.</string>
 </resources>

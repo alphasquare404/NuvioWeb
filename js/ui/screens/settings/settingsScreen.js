@@ -1,3 +1,4 @@
+import { visibleAutoplayAddonSelection } from "./autoplayAddonSelection.js";
 import { renderFilenamePlaybackMethodBadge } from "../../components/filenamePlaybackBadge.js";
 import { normalizeAccentColor, accentTextColor } from "../../../core/theme/accentColor.js";
 import {
@@ -530,7 +531,7 @@ const STREAM_AUTOPLAY_MODE_OPTIONS = [
     id: "FIRST_STREAM",
     labelKey: "autoplay_mode_first",
     captionKey: "autoplay_mode_first_desc",
-    label: "Auto-play first source"
+    label: "Automatic selection"
   },
   {
     id: "REGEX_MATCH",
@@ -3220,7 +3221,8 @@ export const SettingsScreen = {
   },
 
   playWithUsesExternal(model = {}) {
-    return normalizeBrowserExternalPlayer(model.player?.browserExternalPlayer) !== "disabled";
+    const player = normalizeBrowserExternalPlayer(model.player?.browserExternalPlayer);
+    return player !== "disabled" && getBrowserExternalPlayerOptions().includes(player);
   },
 
   renderActionRow({
@@ -8085,7 +8087,9 @@ export const SettingsScreen = {
         selectedIds: PlayerSettingsStore.get().streamAutoPlaySelectedAddons,
         returnFocusKey: "playback:autoStreamAddons",
         onToggle: (selectedIds) =>
-          PlayerSettingsStore.set({ streamAutoPlaySelectedAddons: selectedIds })
+          PlayerSettingsStore.set({
+            streamAutoPlaySelectedAddons: visibleAutoplayAddonSelection(selectedIds, options)
+          })
       });
     });
     this.actionMap.set("playback:autoStreamPlugins", () => {
@@ -8798,7 +8802,12 @@ export const SettingsScreen = {
                   "Auto-play only considers selected installed addons."
                 ),
                 value: model.player.streamAutoPlaySelectedAddons?.length
-                  ? String(model.player.streamAutoPlaySelectedAddons.length)
+                  ? String(
+                      visibleAutoplayAddonSelection(
+                        model.player.streamAutoPlaySelectedAddons,
+                        model.addons
+                      ).length
+                    )
                   : t("autoplay_all_addons", {}, "All installed addons")
               })
             : ""

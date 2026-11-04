@@ -6691,6 +6691,7 @@ export const PlayerScreen = {
       details = null
     } = {}
   ) {
+    PlayerController.pauseResumeTrace?.failure("player-error");
     if (
       this.params?.prepareSelectedSource &&
       (this._preparingSelectedSource || !this.hasPresentedPlaybackFrame) &&
@@ -6892,6 +6893,8 @@ export const PlayerScreen = {
       this._playbackUrlGeneration = (this._playbackUrlGeneration || 0) + 1;
     }
     attempt.route = route;
+    StartupLoadingOverlay.setPlaybackAttempt?.({ route, failedRoute: previousRoute });
+    attempt.routeStartedAt = Date.now();
     if (route === "remux") attempt.remuxTried = true;
     else if (route === "audio-transcode") attempt.audioTranscodeTried = true;
     else attempt.rawTried = true;
@@ -6946,7 +6949,7 @@ export const PlayerScreen = {
       let delivery = attempt.routeFallbackEnabled
         ? await selectedPlaybackTask(prepare, {
             signal: this._selectedSourceAbort?.signal,
-            timeoutMs: 30000
+            timeoutMs: route === "remux" ? 17000 : route === "direct" ? 13000 : 30000
           })
         : await prepare();
       if (!delivery && attempt.routeFallbackEnabled && route === "audio-transcode") {
@@ -7737,9 +7740,7 @@ export const PlayerScreen = {
 
   dismissPauseOverlay({ revealControls = false, focus = false } = {}) {
     this.clearPauseOverlayTimer();
-    if (!this.pauseOverlayVisible && !revealControls) {
-      return;
-    }
+    // Reconcile DOM visibility even when another event already cleared the flag.
     this.pauseOverlayVisible = false;
     this.renderPauseOverlay();
     if (revealControls && !this.loadingVisible) {
@@ -9808,6 +9809,17 @@ export const PlayerScreen = {
     if (!video) {
       return;
     }
+    PlayerController.pauseResumeTrace?.attach(video, () => ({
+      presented: this.hasPresentedPlaybackFrame,
+      engine: PlayerController.playbackEngine,
+      route: this.params?.unverifiedPlayback?.route,
+      remuxMode: REMUX_POLICY.mode,
+      offline: Boolean(this.offlineDownloadId),
+      mediaErrorCode: PlayerController.getLastPlaybackErrorCode?.(),
+      httpStatus: extractPlaybackHttpStatus(PlayerController.getLastHlsErrorDetail?.() || ""),
+      remux: PlayerController.clientRemux?.snapshot()
+    }));
+
     if (Environment.isBrowser()) {
       video.controls = false;
       video.removeAttribute?.("controls");
@@ -10195,6 +10207,7 @@ export const PlayerScreen = {
   },
 
   unbindVideoEvents() {
+    PlayerController.pauseResumeTrace?.detach();
     this.startupReadiness = null;
     this.playbackStartupDiagnosticCleanup?.();
     this.playbackStartupDiagnosticCleanup = null;
@@ -10632,6 +10645,13 @@ export const PlayerScreen = {
     }
     const controlsVisible = Boolean(this.controlsVisible) && !this.isExternalFrameMode();
     root.classList.toggle("controls-visible", controlsVisible);
+    // Controls can return through tap, resume, a drawer, or error recovery.
+    // None may retain the pause screen's visibility mask over the header.
+    const pauseVisible = Boolean(
+      this.pauseOverlayVisible && !this.loadingVisible && !this.isStartupErrorVisible?.()
+    );
+    root.classList.toggle("pause-screen-visible", pauseVisible);
+    this.uiRefs?.controlsOverlay?.classList.toggle("pause-overlay-active", pauseVisible);
     this.updateBrowserNativeSubtitleOffset();
     const backButton = root.querySelector("[data-player-desktop-back]");
     if (backButton) {
@@ -12240,6 +12260,8 @@ export const PlayerScreen = {
     });
     if (!attempt) return { url: sourceUrl, plan: null };
     this.params.unverifiedPlayback = attempt;
+    StartupLoadingOverlay.setPlaybackAttempt?.({ route: attempt.route });
+    attempt.routeStartedAt = Date.now();
     this.activePlaybackUrl = sourceUrl;
     attempt.busy = true;
     let delivery = { url: sourceUrl, plan: null };
@@ -12252,14 +12274,14 @@ export const PlayerScreen = {
           delivery = {
             url: await selectedPlaybackTask(() => owner.resolvePlayerSource(candidate), {
               signal,
-              timeoutMs: 30000
+              timeoutMs: 17000
             }),
             plan: clientRemuxPlan(candidate, probe)
           };
         } else
           delivery = await selectedPlaybackTask(() => prepareUnverifiedRemux(sourceUrl), {
             signal,
-            timeoutMs: 30000
+            timeoutMs: 17000
           });
       } else if (attempt.route === "audio-transcode") {
         delivery = await selectedPlaybackTask(
@@ -12441,6 +12463,14 @@ export const PlayerScreen = {
     if (!streamCandidate) {
       return;
     }
+    StartupLoadingOverlay.setPlaybackAttempt?.({
+      sourceNumber: this.params?.automaticSourceSelection
+        ? (this._startupSourceFailures?.size || 0) + 1
+        : null,
+      route: "",
+      failedRoute: ""
+    });
+
     if (Environment.isBrowser()) {
       const selectedStreamIdentity = streamMergeKey(streamCandidate);
       const selectedStreamIndex = this.streamCandidates.findIndex(
@@ -12846,7 +12876,10 @@ export const PlayerScreen = {
     if (!prepareUrl) return true;
     const boundedFallback = this.params?.unverifiedPlayback?.routeFallbackEnabled;
     const routeGeneration = this._playbackUrlGeneration;
-    const deadline = Date.now() + (boundedFallback ? 30000 : 15 * 60 * 1000);
+    const remuxBegan = this.params?.unverifiedPlayback?.routeStartedAt;
+    const deadline = boundedFallback
+      ? (Number.isFinite(remuxBegan) ? remuxBegan : Date.now()) + 17000
+      : Date.now() + 15 * 60 * 1000;
     const startedAt = Date.now();
     let asked = false;
     while (Date.now() < deadline) {
@@ -12936,14 +12969,21 @@ export const PlayerScreen = {
     if (attempt?.routeFallbackEnabled && attempt.mediaUrl === this.activePlaybackUrl)
       return Math.max(
         1,
-        (attempt.route === "direct" ? 15000 : 30000) - Math.max(0, Date.now() - state.startedAt)
+        (attempt.route === "audio-transcode" ? 30000 : attempt.route === "remux" ? 17000 : 13000) -
+          Math.max(
+            0,
+            Date.now() -
+              (attempt.route === "remux" && Number.isFinite(attempt.routeStartedAt)
+                ? attempt.routeStartedAt
+                : state.startedAt)
+          )
       );
     const unverifiedDirect =
       attempt?.route === "direct" &&
       !attempt.remuxTried &&
       attempt.mediaUrl === this.activePlaybackUrl &&
       REMUX_POLICY.mode !== "off";
-    if (unverifiedDirect) return Math.max(1, 15000 - Math.max(0, Date.now() - state.startedAt));
+    if (unverifiedDirect) return Math.max(1, 13000 - Math.max(0, Date.now() - state.startedAt));
     const budget = metadataPending ? 60000 : 18000;
     const startedAt = metadataPending ? state.startedAt : state.metadataAt;
     return Math.max(1, budget - Math.max(0, Date.now() - startedAt));
@@ -13014,6 +13054,7 @@ export const PlayerScreen = {
         return;
       }
 
+      PlayerController.pauseResumeTrace?.failure("stall-timeout");
       const mediaErrorCode = Number(PlayerController.getLastPlaybackErrorCode?.() || 0);
       const sourceCandidate =
         this.getStreamCandidateByUrl(this.activePlaybackUrl) || this.getCurrentStreamCandidate();

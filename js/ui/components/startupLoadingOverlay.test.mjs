@@ -416,3 +416,46 @@ test("loading artwork follows presentation orientation with the same textless po
     assert.equal(image.style.backgroundImage, 'url("backdrop.jpg")');
   });
 });
+
+test("loading distinguishes source attempts from method fallbacks and clears them on exit", async () => {
+  await fixture(({ overlay, nodes }) => {
+    overlay.begin({ title: "Film" }, "opening");
+    overlay.setPlaybackAttempt({ sourceNumber: 1, route: "remux" });
+    const status = nodes[0].children[".player-loading-status"];
+    const detail = nodes[0].children[".player-loading-detail"];
+    assert.equal(status.textContent, "Stream 1 · Preparing remux playback…");
+    overlay.setStage("metadata");
+    assert.equal(status.textContent, "Stream 1 · Preparing remux playback…");
+    overlay.setPlaybackAttempt({ route: "direct", failedRoute: "remux" });
+    assert.equal(status.textContent, "Stream 1 · Opening directly…");
+    assert.match(detail.textContent, /Remux playback did not start/);
+    overlay.setPlaybackAttempt({ sourceNumber: 2, route: "remux", failedRoute: "" });
+    assert.equal(status.textContent, "Stream 2 · Preparing remux playback…");
+    assert.equal(detail.textContent, "Stream 1 could not play. Trying the next stream.");
+    overlay.setStage("frame");
+    assert.equal(status.textContent, "Stream 2 · Starting playback…");
+    overlay.finish();
+    overlay.begin({ title: "Another film" }, "opening");
+    assert.equal(nodes[0].children[".player-loading-status"].textContent, "Preparing video…");
+    assert.equal(nodes[0].children[".player-loading-detail"].textContent, "");
+  });
+});
+
+test("attempt details respect the loading-status setting and allow only known methods", async () => {
+  await fixture(({ overlay, nodes, settings }) => {
+    overlay.begin({ title: "Film" }, "loading");
+    overlay.setPlaybackAttempt({ sourceNumber: 2, route: "audio-transcode" });
+    const status = nodes[0].children[".player-loading-status"];
+    const detail = nodes[0].children[".player-loading-detail"];
+    assert.equal(status.textContent, "Stream 2 · Converting audio…");
+    settings.showPlayerLoadingStatus = false;
+    overlay.setStage("loading");
+    assert.equal(status.textContent, "");
+    assert.equal(detail.textContent, "");
+    assert.equal(detail.classList.contains("hidden"), true);
+    settings.showPlayerLoadingStatus = true;
+    overlay.setPlaybackAttempt({ sourceNumber: "secret", route: "secret", failedRoute: "secret" });
+    assert.equal(status.textContent, "Preparing video…");
+    assert.equal(detail.textContent, "");
+  });
+});

@@ -294,7 +294,7 @@ test("Back during Continue Watching also prevents the deferred automatic launch"
   assert.equal(releases, 1);
 });
 
-test("new playback attempts bound Direct to 15s and processed routes to 30s", (t) => {
+test("Direct uses 13s and remux uses 17s while audio conversion retains 30s", (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: 10000 });
   const ctx = Object.assign(methods(["getPlaybackStallTimeoutMs"], {}), {
     activePlaybackUrl: "media",
@@ -305,7 +305,7 @@ test("new playback attempts bound Direct to 15s and processed routes to 30s", (t
     ctx.params.unverifiedPlayback.route = route;
     assert.equal(
       ctx.getPlaybackStallTimeoutMs({ startup: true }),
-      route === "direct" ? 6000 : 21000
+      route === "audio-transcode" ? 21000 : route === "remux" ? 8000 : 4000
     );
   }
 });
@@ -313,7 +313,7 @@ test("new playback attempts bound Direct to 15s and processed routes to 30s", (t
 test("startup errors retain the unresolved candidate for automatic fallback", () => {
   const calls = [];
   const candidate = { id: "unresolved", addonName: "A", infoHash: "a".repeat(40) };
-  const ctx = Object.assign(methods(["showStartupError"], {}), {
+  const ctx = Object.assign(methods(["showStartupError"], { PlayerController: {} }), {
     params: { prepareSelectedSource: true },
     _preparingSelectedSource: true,
     advanceAfterSelectedSourceFailure: (...args) => calls.push(args)
@@ -344,4 +344,29 @@ test("unresolved debrid failures exhaust permitted candidates once despite a sta
   assert.equal(h.ctx._startupSourceFailures.size, 3);
   assert.equal(h.navigations.length, 1);
   assert.equal(h.navigations[0][1].autoSelectionFinished, true);
+});
+
+test("remux metadata and frame waits share the preparation deadline", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 10000 });
+  const ctx = Object.assign(methods(["getPlaybackStallTimeoutMs"], {}), {
+    activePlaybackUrl: "media",
+    startupReadiness: { startedAt: 9500, metadataAt: null },
+    params: {
+      unverifiedPlayback: {
+        mediaUrl: "media",
+        routeFallbackEnabled: true,
+        route: "remux",
+        routeStartedAt: 1000
+      }
+    }
+  });
+  assert.equal(ctx.getPlaybackStallTimeoutMs({ startup: true }), 8000);
+  ctx.startupReadiness.metadataAt = 9900;
+  assert.equal(
+    ctx.getPlaybackStallTimeoutMs({ startup: true }),
+    8000,
+    "metadata must not restart the budget"
+  );
+  t.mock.timers.tick(8000);
+  assert.equal(ctx.getPlaybackStallTimeoutMs({ startup: true }), 1);
 });

@@ -114,7 +114,8 @@ function notifyChange(profileId, reason, meta = {}) {
     profileId: String(profileId || "1"),
     reason: String(reason || "update"),
     authoritative: Boolean(meta.authoritative),
-    item: meta.item || null
+    item: meta.item || null,
+    removedItems: meta.removedItems || []
   };
   changeListeners.forEach((listener) => {
     try {
@@ -203,7 +204,8 @@ export const WatchProgressStore = {
     const wantedContentId = String(contentId || "").trim();
     const wantedVideoId = videoId == null ? null : String(videoId);
     const pid = String(profileId || "1");
-    const next = this.listAll().filter((item) => {
+    const before = this.listAll();
+    const next = before.filter((item) => {
       if (String(item.profileId || "1") !== pid) {
         return true;
       }
@@ -216,7 +218,10 @@ export const WatchProgressStore = {
       return String(item.videoId || "") !== wantedVideoId;
     });
     persistProgressItems(next);
-    notifyChange(pid, "remove", { authoritative });
+    notifyChange(pid, "remove", {
+      authoritative,
+      removedItems: before.filter((item) => !next.includes(item))
+    });
   },
 
   replaceForProfile(profileId, items = []) {

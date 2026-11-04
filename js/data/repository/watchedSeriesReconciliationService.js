@@ -179,17 +179,14 @@ async function markReleasedEpisodes(
       },
       { skipTrackingWrite: effectiveSkipTrackingWrite }
     );
-    await watchProgressRepository.saveProgress({
+    await watchProgressRepository.removePlaybackProgress({
       contentId,
       contentType,
       videoId: episode.id,
       season: episode.season,
       episode: episode.episode,
       title: meta?.name || null,
-      episodeTitle: episode.title || null,
-      positionMs: 100,
-      durationMs: 100,
-      updatedAt: watchedAt
+      episodeTitle: episode.title || null
     });
   }
   return true;

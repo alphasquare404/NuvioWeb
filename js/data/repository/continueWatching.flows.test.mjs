@@ -535,7 +535,7 @@ test("an episode's position is patched on its own card and no other", async () =
   await device.repo.saveProgress(episode(1, 3, 0.44));
   assert.deepEqual(
     readSnapshot(device).items.map((item) => item.positionMs),
-    [at(0.2), at(0.44)]
+    [at(0.44), at(0.2)]
   );
 });
 
@@ -564,4 +564,32 @@ test("a season zero episode keeps its own card", async () => {
     readSnapshot(device).items.map((item) => item.positionMs),
     [at(0.6), at(0.1)]
   );
+});
+
+test("completion keeps only watched history and still supplies a Next Up seed", async () => {
+  const device = await freshDevice();
+  await device.repo.saveProgress(episode(1, 2, 0.4));
+  await device.watched.mark({
+    contentId: "tt0903747",
+    contentType: "series",
+    videoId: "tt0903747:s1e2",
+    season: 1,
+    episode: 2,
+    watchedAt: Date.now()
+  });
+  await device.repo.removePlaybackProgress({
+    contentId: "tt0903747",
+    videoId: "tt0903747:s1e2",
+    season: 1,
+    episode: 2
+  });
+  assert.equal(device.ProgressStore.listForProfile("1").length, 0);
+  assert.equal((await device.repo.getRecent()).length, 0);
+  assert.ok(
+    (await device.repo.getAllForContinueWatching()).some(
+      (i) => i.season === 1 && i.episode === 2 && i.positionMs === i.durationMs
+    )
+  );
+  await device.watched.unmark("tt0903747", { season: 1, episode: 2, skipTrackingWrite: true });
+  assert.equal((await device.repo.getAllForContinueWatching()).length, 0);
 });
