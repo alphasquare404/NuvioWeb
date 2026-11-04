@@ -26,7 +26,7 @@ test("paused playback and a ready decoder keep the existing ahead limit", () => 
 });
 
 test("readiness buffering still refuses output that exceeds the hard compressed-byte budget", () => {
-  const unit = 16 * 1024 * 1024,
+  const unit = 25 * 1024 * 1024,
     budget = new BufferBudget({ maxBytes: MAX_PLAYBACK_COMPRESSED_BYTES });
   budget.reserve(unit);
   budget.append(unit, 20, true);

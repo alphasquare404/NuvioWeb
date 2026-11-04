@@ -10,8 +10,8 @@ export function isManagedBufferBlocked({ signalSeen, allowed, seekApplied, hasBu
   return Boolean(signalSeen && !allowed && seekApplied && hasBufferedData);
 }
 
-export const MAX_COMPRESSED_BYTES = 32 * 1024 * 1024;
-export const MAX_PLAYBACK_COMPRESSED_BYTES = 64 * 1024 * 1024;
+export const MAX_COMPRESSED_BYTES = 50 * 1024 * 1024;
+export const MAX_PLAYBACK_COMPRESSED_BYTES = 100 * 1024 * 1024;
 
 // Account a complete muxer write before appending its first OPFS piece. Pieces
 // already admitted must be allowed to finish, even if MSE exposes samples early.
@@ -58,7 +58,7 @@ export class BufferBudget {
       throw Error("output-write-exceeds-buffer-budget");
     // Keep room for the playing GOP and its successor. A one-GOP window can
     // deadlock before the final frame, since safe eviction waits past its end.
-    // Small writes retain the 32 MiB limit; growth is capped per session.
+    // Small writes retain the 50 MiB limit; growth is capped per session.
     this.limitBytes = Math.min(
       this.maxBytes,
       Math.max(this.limitBytes, 2 * writeBytes + 64 * 1024)
