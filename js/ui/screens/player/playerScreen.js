@@ -1,5 +1,4 @@
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
-import { PlaybackLoadingTrace } from "../../../core/player/playbackLoadingTrace.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
 import { selectedPlaybackTask } from "../../../core/player/selectedPlaybackTask.js";
@@ -6691,7 +6690,6 @@ export const PlayerScreen = {
       details = null
     } = {}
   ) {
-    PlayerController.pauseResumeTrace?.failure("player-error");
     if (
       this.params?.prepareSelectedSource &&
       (this._preparingSelectedSource || !this.hasPresentedPlaybackFrame) &&
@@ -6711,17 +6709,6 @@ export const PlayerScreen = {
       this.startupReadiness.timeoutError = reason === "startup-stall" && !mediaErrorCode;
     }
     this.reportPlaybackStartupDiagnostics?.(reason || "startup-error");
-    const clientRemuxDiagnostic = PlayerController.getClientRemuxStartupDiagnostic?.();
-    if (clientRemuxDiagnostic) {
-      console.warn("[ClientRemux] startup " + clientRemuxDiagnostic);
-      console.warn(
-        "[ClientRemux] audio-context " +
-          JSON.stringify({
-            boostDb: Number(this.audioAmplificationDb || 0),
-            state: this.audioContext?.state || "none"
-          })
-      );
-    }
     StartupLoadingOverlay.finish("error");
     this.startupErrorMessage =
       String(message || "").trim() || t("player_error_playback_fallback", {}, "Playback error");
@@ -9809,16 +9796,6 @@ export const PlayerScreen = {
     if (!video) {
       return;
     }
-    PlayerController.pauseResumeTrace?.attach(video, () => ({
-      presented: this.hasPresentedPlaybackFrame,
-      engine: PlayerController.playbackEngine,
-      route: this.params?.unverifiedPlayback?.route,
-      remuxMode: REMUX_POLICY.mode,
-      offline: Boolean(this.offlineDownloadId),
-      mediaErrorCode: PlayerController.getLastPlaybackErrorCode?.(),
-      httpStatus: extractPlaybackHttpStatus(PlayerController.getLastHlsErrorDetail?.() || ""),
-      remux: PlayerController.clientRemux?.snapshot()
-    }));
 
     if (Environment.isBrowser()) {
       video.controls = false;
@@ -9829,7 +9806,6 @@ export const PlayerScreen = {
       if (this.hasPresentedPlaybackFrame) return;
       this.startupLoadingStage = stage;
       StartupLoadingOverlay.setStage(stage);
-      PlaybackLoadingTrace.stage(stage);
     };
     const onLoadStart = () => setStartupStage("loading");
     const onMetadataProgress = () => {
@@ -10207,7 +10183,6 @@ export const PlayerScreen = {
   },
 
   unbindVideoEvents() {
-    PlayerController.pauseResumeTrace?.detach();
     this.startupReadiness = null;
     this.playbackStartupDiagnosticCleanup?.();
     this.playbackStartupDiagnosticCleanup = null;
@@ -11027,14 +11002,6 @@ export const PlayerScreen = {
   presentStartedPlayback() {
     this.playbackTransitionLightweight = false;
     PlayerController.setStartupPresentationAudioMuted?.(false);
-    PlaybackLoadingTrace.sample({
-      muted: PlayerController.video?.muted,
-      paused: PlayerController.video?.paused,
-      audioGate: Boolean(this.startupAudioGateActive),
-      presentationMuted: Boolean(PlayerController.startupPresentationAudioMuted),
-      firstFrame: Boolean(this.hasPresentedPlaybackFrame),
-      restoring: Boolean(this.pendingPlaybackRestore)
-    });
     StartupLoadingOverlay.finish();
     this.startupLoadingStage = "loading";
     const overlay = this.uiRefs?.loadingOverlay;
@@ -11367,25 +11334,6 @@ export const PlayerScreen = {
   },
 
   updateLoadingVisibility() {
-    if (this.loadingVisible || this._preparingSelectedSource) {
-      const video = PlayerController.video;
-      PlaybackLoadingTrace.sample({
-        engine: PlayerController.playbackEngine,
-        paused: video?.paused,
-        muted: video?.muted,
-        audioGate: Boolean(this.startupAudioGateActive),
-        presentationMuted: Boolean(PlayerController.startupPresentationAudioMuted),
-        restoring: Boolean(this.pendingPlaybackRestore),
-        seeking: Boolean(this.seekLoading),
-        firstFrame: Boolean(this.hasPresentedPlaybackFrame),
-        controls: Boolean(this.controlsVisible),
-        readyState: Number(video?.readyState || 0),
-        networkState: Number(video?.networkState || 0),
-        position: this.getPlaybackCurrentSeconds(),
-        target: Number(this.seekLoadingTargetSeconds || 0),
-        mediaErrorCode: Number(video?.error?.code || 0)
-      });
-    }
     const unified =
       Environment.isBrowser() &&
       usesUnifiedStartup(undefined, { internalPlayer: true }) &&
@@ -13054,7 +13002,6 @@ export const PlayerScreen = {
         return;
       }
 
-      PlayerController.pauseResumeTrace?.failure("stall-timeout");
       const mediaErrorCode = Number(PlayerController.getLastPlaybackErrorCode?.() || 0);
       const sourceCandidate =
         this.getStreamCandidateByUrl(this.activePlaybackUrl) || this.getCurrentStreamCandidate();

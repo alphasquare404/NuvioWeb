@@ -1,4 +1,3 @@
-import { PlaybackPauseTrace } from "./playbackPauseTrace.js";
 import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
 import { markPlaybackWatched } from "./markPlaybackWatched.js";
@@ -51,7 +50,6 @@ export const PlayerController = {
   desiredPlaybackRate: 1,
   videoElementListeners: [],
   markPlaybackWatched,
-  pauseResumeTrace: PlaybackPauseTrace,
   externalProgressHandoff: null,
   clientRemux: null,
   clientRemuxDisposal: Promise.resolve(),
@@ -2017,7 +2015,6 @@ export const PlayerController = {
 
   pause() {
     if (!this.video) return;
-    this.pauseResumeTrace?.pauseRequest();
 
     this.flushCurrentProgress({ forceCloudSync: true });
 
@@ -2028,7 +2025,6 @@ export const PlayerController = {
 
   resume() {
     if (!this.video) return;
-    this.pauseResumeTrace?.resumeRequest();
 
     // A user explicitly resumed the built-in player after an external return.
     // Its subsequent progress is authoritative again.
@@ -2046,7 +2042,6 @@ export const PlayerController = {
         if (this.isExpectedPlayInterruption(error)) {
           return;
         }
-        this.pauseResumeTrace?.playRejected(error);
         console.warn("Playback resume rejected", error);
       });
     }
