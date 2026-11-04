@@ -23413,6 +23413,8 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
     width: 30px;
     height: 30px;
     flex: 0 0 30px;
+    /* Panel icons keep the index tile's corners on touch tablets too. */
+    border-radius: 11px;
   }
   .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-nav-icon-material {
     font-size: 18px;
