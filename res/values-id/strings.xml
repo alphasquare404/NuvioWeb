@@ -2554,4 +2554,6 @@
     <string name="startup_loading_direct_failed">Pemutaran langsung gagal dimulai. Mencoba cara lain.</string>
     <string name="startup_loading_remux_failed">Pemutaran remux gagal dimulai. Mencoba cara lain.</string>
     <string name="startup_loading_audio_failed">Konversi audio gagal dimulai. Mencoba cara lain.</string>
+    <string name="player_airplay_connected">Terhubung</string>
+    <string name="player_airplay_unavailable">AirPlay tidak tersedia untuk stream ini.</string>
 </resources>

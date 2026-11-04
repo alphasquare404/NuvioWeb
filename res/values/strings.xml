@@ -3174,4 +3174,6 @@
     <string name="startup_loading_direct_failed">Direct playback did not start. Trying another method.</string>
     <string name="startup_loading_remux_failed">Remux playback did not start. Trying another method.</string>
     <string name="startup_loading_audio_failed">Audio conversion did not start. Trying another method.</string>
+    <string name="player_airplay_connected">Connected</string>
+    <string name="player_airplay_unavailable">AirPlay is unavailable for this stream.</string>
 </resources>

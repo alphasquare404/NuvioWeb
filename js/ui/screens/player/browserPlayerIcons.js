@@ -1,5 +1,7 @@
 // Icon geometry from the approved player design (Lucide). See assets/licenses/lucide.txt.
 export const PLAYER_DESIGN_ICONS = {
+  airplay:
+    '<path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"></path><path d="m12 15 5 6H7Z"></path>',
   "chevron-left": '<path d="m15 18-6-6 6-6"></path>',
   "skip-forward":
     '<path d="M21 4v16"></path><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"></path>',

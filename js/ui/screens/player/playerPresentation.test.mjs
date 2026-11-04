@@ -108,6 +108,18 @@ test("Rotate is absent on desktop and retained for touch tablets", () => {
   ctx.browserOrientation.mobile = true;
   render.call(ctx);
   assert.match(panel.innerHTML, /data-action="rotate"/);
+  assert.doesNotMatch(panel.innerHTML, /data-action="airplay"/);
+  ctx.isPlayerAirPlaySupported = () => true;
+  ctx.getDesktopPlaybackVideo = () => ({ webkitCurrentPlaybackTargetIsWireless: true });
+  for (const mobile of [false, true]) {
+    ctx.browserOrientation.mobile = mobile;
+    render.call(ctx);
+    assert.match(panel.innerHTML, /data-action="airplay"/);
+    assert.match(panel.innerHTML, /Connected/);
+  }
+  ctx.isPlayerAirPlaySupported = () => false;
+  render.call(ctx);
+  assert.doesNotMatch(panel.innerHTML, /data-action="airplay"/);
 });
 test("Next invokes the existing next episode policy with user intent", () => {
   let options;
@@ -489,4 +501,76 @@ test("episode seasons use an in-player menu and retain the real season values", 
   await activate.call(ctx, target("selectEpisodeSeasonOption", "2"));
   assert.equal(selected, 3);
   assert.equal(ctx.episodeSeasonPickerOpen, false);
+});
+
+test("AirPlay accepts Safari original network sources alongside remux, excluding local-only sources", () => {
+  const mixin = readFileSync(
+    new URL("./browserPlayerPresentationScreen.js", import.meta.url),
+    "utf8"
+  );
+  const controller = { playbackEngine: "native-file" };
+  const supported = method(
+    "isPlayerAirPlaySupported()",
+    { PlayerController: controller },
+    mixin
+  ).isPlayerAirPlaySupported;
+  const video = {
+    currentSrc: "https://example.com/video.mp4",
+    webkitShowPlaybackTargetPicker() {}
+  };
+  const ctx = { getDesktopPlaybackVideo: () => video };
+  assert.equal(supported.call(ctx), true);
+  controller.playbackEngine = "client-remux";
+  video.currentSrc = "blob:local-output";
+  assert.equal(supported.call(ctx), false);
+  video.querySelector = () => ({ src: "https://example.com/original.mkv?token=example" });
+  assert.equal(supported.call(ctx), true);
+  delete video.querySelector;
+  controller.playbackEngine = "native-file";
+  video.currentSrc = "https://example.com/video.mp4";
+  ctx.offlineDownloadId = "download";
+  assert.equal(supported.call(ctx), false);
+  ctx.offlineDownloadId = null;
+  delete video.webkitShowPlaybackTargetPicker;
+  assert.equal(supported.call(ctx), false);
+});
+
+test("AirPlay opens the native picker synchronously and handles picker failures without interrupting playback", () => {
+  const mixin = readFileSync(
+    new URL("./browserPlayerPresentationScreen.js", import.meta.url),
+    "utf8"
+  );
+  const open = method(
+    "openPlayerAirPlayPicker()",
+    { t: (_key, fallback) => fallback },
+    mixin
+  ).openPlayerAirPlayPicker;
+  const calls = [];
+  const video = {
+    disableRemotePlayback: true,
+    setAttribute: (...args) => calls.push(args),
+    webkitShowPlaybackTargetPicker() {
+      assert.equal(this, video);
+      calls.push("picker");
+    }
+  };
+  const ctx = {
+    isPlayerAirPlaySupported: () => true,
+    getDesktopPlaybackVideo: () => video,
+    moreActionsVisible: true,
+    renderCompactBrowserMorePanel: () => calls.push("render"),
+    updateModalBackdrop() {},
+    showAspectToast: () => calls.push("error")
+  };
+  assert.equal(open.call(ctx), true);
+  assert.equal(video.disableRemotePlayback, false);
+  assert.deepEqual(calls, [["x-webkit-airplay", "allow"], "picker", "render"]);
+  assert.equal(ctx.moreActionsVisible, false);
+  ctx.moreActionsVisible = true;
+  video.webkitShowPlaybackTargetPicker = () => {
+    throw new Error("unavailable");
+  };
+  assert.equal(open.call(ctx), false);
+  assert.equal(ctx.moreActionsVisible, true);
+  assert.equal(calls.at(-1), "error");
 });

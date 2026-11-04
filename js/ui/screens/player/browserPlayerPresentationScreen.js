@@ -161,6 +161,42 @@ export const BrowserPlayerPresentationScreen = {
     shell?.setAttribute("aria-valuenow", String(seconds(current)));
     shell?.setAttribute("aria-valuetext", `${time(current)} / ${time(duration)}`);
   },
+  isPlayerAirPlaySupported() {
+    const video = this.getDesktopPlaybackVideo();
+    // Safari can use the original network source alongside local MSE output.
+    // The receiver handles compatibility; local downloads still stay local.
+    const source =
+      video?.querySelector?.("source[data-nuvio-airplay-source]")?.src ||
+      video?.currentSrc ||
+      video?.src ||
+      "";
+    return Boolean(
+      !this.offlineDownloadId &&
+      typeof video?.webkitShowPlaybackTargetPicker === "function" &&
+      /^https?:\/\//i.test(String(source))
+    );
+  },
+  openPlayerAirPlayPicker() {
+    if (!this.isPlayerAirPlaySupported()) return false;
+    const video = this.getDesktopPlaybackVideo();
+    try {
+      // A previous client-remux source may have disabled remote playback on
+      // this same element. Only opt back in for the current network source.
+      video.disableRemotePlayback = false;
+      video.setAttribute("x-webkit-airplay", "allow");
+      // Keep this synchronous inside the click's user activation.
+      video.webkitShowPlaybackTargetPicker();
+      this.moreActionsVisible = false;
+      this.renderCompactBrowserMorePanel();
+      this.updateModalBackdrop();
+      return true;
+    } catch {
+      this.showAspectToast(
+        t("player_airplay_unavailable", "AirPlay is unavailable for this stream.")
+      );
+      return false;
+    }
+  },
   renderProposalMore() {
     const panel = this.uiRefs?.mobileMorePanel;
     if (!panel) return;
@@ -210,6 +246,7 @@ export const BrowserPlayerPresentationScreen = {
       ${this.getPlaybackSpeedOptions().length > 1 ? row("speed", t("player_playback_speed", "Speed"), this.getPlaybackSpeed() + "×") : ""}
       ${row("aspect", t("player_more_aspect_ratio", "Aspect ratio"), aspect)}
       ${this.isDesktopPictureInPictureSupported() ? row("presentationPip", "Picture-in-Picture", "", "picture-in-picture-2") : ""}
+      ${this.isPlayerAirPlaySupported?.() ? row("airplay", "AirPlay", this.getDesktopPlaybackVideo()?.webkitCurrentPlaybackTargetIsWireless ? t("player_airplay_connected", "Connected") : "", "airplay") : ""}
       <button type="button" class="nv-choice player-control-btn" data-action="playbackInfo"><span class="nv-copy">${playerText(t("player_playback_information", "Playback information"))}</span>${playerDesignIcon("chevron-right")}</button>
     </div>`;
   },
@@ -437,6 +474,10 @@ export const BrowserPlayerPresentationScreen = {
   },
   handleProposalAction(action) {
     if (!this.uiRefs?.root?.classList.contains("nv-player")) return false;
+    if (action === "airplay") {
+      this.openPlayerAirPlayPicker();
+      return true;
+    }
     if (action === "proposalSubtitleStyle" || action === "proposalSubtitleBack") {
       this.proposalSubtitleStyleVisible = action === "proposalSubtitleStyle";
       this.renderSubtitleDialog();

@@ -1,3 +1,4 @@
+import { attachRemuxMediaSources } from "./airplaySource.mjs";
 import {
   BufferBudget,
   MAX_PLAYBACK_COMPRESSED_BYTES,
@@ -158,6 +159,7 @@ export function createClientRemux({
     old?.seekRecovery.dispose();
     old?.startup.dispose();
     video.pause();
+    old.releaseMediaSources?.();
     video.removeAttribute("src");
     video.load();
     if (old?.objectUrl) URL.revokeObjectURL(old.objectUrl);
@@ -320,8 +322,7 @@ export function createClientRemux({
         { once: true }
       );
     });
-    video.disableRemotePlayback = true;
-    video.src = s.objectUrl;
+    s.releaseMediaSources = attachRemuxMediaSources(video, s.objectUrl, film?.sourceUrl);
     video.load();
     video.playbackRate = playbackRate;
     await opened;
