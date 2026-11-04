@@ -2249,3 +2249,28 @@ test("replacing a browser player preserves the incoming loading surface only for
   );
   assert.equal(cleanupOptions.at(-1).preserveStartupLoading, false);
 });
+
+test("first Collection mount layers its own shell instead of the inherited Home container", async () => {
+  const home = makeScreen("home");
+  home.container = makeContainer();
+  const folderContainer = makeContainer();
+  const folderDetail = Object.assign(Object.create(home), makeScreen("folderDetail"));
+  folderDetail.mount = async function () {
+    this.container = folderContainer;
+  };
+  resetRouter({ home, folderDetail });
+  screenContainers.set("home", home.container);
+  screenContainers.set("folderDetail", folderContainer);
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("folderDetail", { collectionId: "streaming", folderId: "netflix" });
+  assert.equal(Router.suspendedRouteStack.at(-1).childContainer, folderContainer);
+  assert.equal(folderContainer.style.getPropertyValue("z-index"), "1000");
+  assert.equal(home.container.style.getPropertyValue("z-index"), "");
+  assert.equal(home.container.inert, true);
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.current, "home");
+  assert.equal(home.container.inert, false);
+  assert.equal(folderContainer.style.getPropertyValue("z-index"), "");
+});

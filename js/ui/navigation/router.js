@@ -567,7 +567,14 @@ export const Router = {
     const containerId = ["authSignIn", "authQrSignIn", "syncCode"].includes(routeName)
       ? "account"
       : routeName;
-    return this.routes[routeName]?.container || document?.getElementById?.(containerId);
+    // FolderDetail inherits Home behavior, but before its first mount it also
+    // inherits Home's live container. Only a screen's own container belongs to
+    // this route; otherwise resolve the incoming route's shell element.
+    const screen = this.routes[routeName];
+    return (
+      (Object.prototype.hasOwnProperty.call(screen || {}, "container") && screen.container) ||
+      document?.getElementById?.(containerId)
+    );
   },
 
   canSuspendOutgoingRoute(routeName, outgoingHistoryIndex, options = {}) {
