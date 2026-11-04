@@ -81,6 +81,8 @@ services:
       TRANSCODE_ACCESS: ${TRANSCODE_ACCESS:-token}
       TRANSCODE_TOKEN: ${TRANSCODE_TOKEN:-}
       TRANSCODE_AUDIO_BITRATE: ${TRANSCODE_AUDIO_BITRATE:-192k}
+      # Optional executable path inside this container. The image includes FFmpeg.
+      FFMPEG_PATH: ${FFMPEG_PATH:-}
     volumes:
       # A finished transcode is what the next seek reads, so it outlives the
       # container. The bridge sweeps its own files by age.

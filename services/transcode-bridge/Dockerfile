@@ -8,6 +8,7 @@ WORKDIR /app
 COPY services/transcode-bridge ./services/transcode-bridge
 COPY services/remux-bridge/bridge.mjs ./services/remux-bridge/bridge.mjs
 COPY services/shared/egressBudget.mjs ./services/shared/egressBudget.mjs
+COPY services/shared/ffmpegRuntime.mjs ./services/shared/ffmpegRuntime.mjs
 COPY js/core/player/clientRemux/range.mjs js/core/player/clientRemux/mkvTextSubtitles.mjs js/core/player/clientRemux/mkvSubtitleCues.mjs ./js/core/player/clientRemux/
 
 # Transcodes are written under the OS temporary directory, which the deployment

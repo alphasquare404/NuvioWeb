@@ -5,6 +5,7 @@ import { mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { createEgressBudget } from "../shared/egressBudget.mjs";
+import { resolveFFmpegPath, publicFFmpegCapabilities } from "../shared/ffmpegRuntime.mjs";
 import path from "node:path";
 
 // Remux bridge.
@@ -136,7 +137,8 @@ export function parseByteRange(header, size) {
 }
 
 export function createRemuxBridgeHandler({
-  ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg",
+  ffmpegPath = resolveFFmpegPath(),
+  ffmpegRuntime = null,
   workDir = path.join(tmpdir(), "nuvio-remux"),
   ttlMs = DEFAULT_TTL_MS,
   finishedTtlMs = DEFAULT_FINISHED_TTL_MS,
@@ -524,8 +526,9 @@ export function createRemuxBridgeHandler({
       // What this deployment offers, and how much of its budget is left, so a client
       // can say "server is preparing, queued" instead of failing silently.
       const used = budgetUsedToday();
-      json(response, 200, {
-        ok: true,
+      json(response, ffmpegRuntime && !ffmpegRuntime.remux ? 503 : 200, {
+        ok: !ffmpegRuntime || ffmpegRuntime.remux,
+        ffmpeg: publicFFmpegCapabilities(ffmpegRuntime),
         maxConcurrent,
         active: running.size,
         busy: maxConcurrent > 0 && running.size >= maxConcurrent,
@@ -537,6 +540,10 @@ export function createRemuxBridgeHandler({
         maxDiskBytes: maxTotalBytes,
         abandoned
       });
+      return;
+    }
+    if (ffmpegRuntime && !ffmpegRuntime.remux) {
+      json(response, 503, { ok: false, error: "ffmpeg-unavailable" });
       return;
     }
     if (requestUrl.pathname === STATUS_PATH) {

@@ -5,6 +5,7 @@ import { createReadStream, createWriteStream, existsSync, statSync } from "node:
 import { mkdir, readdir, readFile, rm, rename, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createEgressBudget } from "../shared/egressBudget.mjs";
+import { resolveFFmpegPath, publicFFmpegCapabilities } from "../shared/ffmpegRuntime.mjs";
 import path from "node:path";
 import {
   parseAudioIndices,
@@ -410,7 +411,8 @@ export function hlsJobIsIdle(job, { at = Date.now(), idleMs = 0 } = {}) {
 }
 
 export function createTranscodeBridgeHandler({
-  ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg",
+  ffmpegPath = resolveFFmpegPath(),
+  ffmpegRuntime = null,
   workDir = process.env.TRANSCODE_WORK_DIR || path.join(tmpdir(), "nuvio-transcode"),
   access = process.env.TRANSCODE_ACCESS || ACCESS.TOKEN,
   token = process.env.TRANSCODE_TOKEN || "",
@@ -984,6 +986,13 @@ export function createTranscodeBridgeHandler({
       });
       return null;
     }
+    if (
+      ffmpegRuntime &&
+      (!ffmpegRuntime.remux || (planResult.plan.audio === "aac" && !ffmpegRuntime.audioTranscoding))
+    ) {
+      json(response, 503, { ok: false, error: "ffmpeg-capability-unavailable" });
+      return null;
+    }
     const parsed = parseTranscodeSource(requestUrl.searchParams.get("u"), {
       planSignature: planResult.signature
     });
@@ -1104,13 +1113,18 @@ export function createTranscodeBridgeHandler({
       // `hls` is advertised so the app can ask for the delivery this bridge actually
       // offers instead of assuming: an older deployment without it keeps the
       // whole-file answer, which still plays -- only later.
-      json(response, 200, {
-        ok: true,
+      json(response, ffmpegRuntime && !ffmpegRuntime.remux ? 503 : 200, {
+        ok: !ffmpegRuntime || ffmpegRuntime.remux,
+        ffmpeg: publicFFmpegCapabilities(ffmpegRuntime),
         access: normalizeAccess(access),
-        hls: true,
+        hls: !ffmpegRuntime || ffmpegRuntime.hls,
         embeddedText: true,
         alternateAudio: true,
-        offered: { video: "copy", audio: "aac", audioModes: ["aac", "copy"] },
+        offered: {
+          video: "copy",
+          audio: ffmpegRuntime && !ffmpegRuntime.audioTranscoding ? "copy" : "aac",
+          audioModes: ffmpegRuntime && !ffmpegRuntime.audioTranscoding ? ["copy"] : ["aac", "copy"]
+        },
         maxConcurrent,
         active: running.size,
         busy: maxConcurrent > 0 && running.size >= maxConcurrent,
@@ -1129,6 +1143,10 @@ export function createTranscodeBridgeHandler({
 
     const hlsMedia = HLS_MEDIA_ROUTE.exec(requestUrl.pathname);
     const isPlaylist = requestUrl.pathname === HLS_PLAYLIST_PATH;
+    if (ffmpegRuntime && !ffmpegRuntime.hls && (isPlaylist || hlsMedia)) {
+      json(response, 503, { ok: false, error: "hls-unavailable" });
+      return;
+    }
     if (requestUrl.pathname !== STREAM_PATH && !isPlaylist && !hlsMedia) {
       json(response, 404, { ok: false, error: "unknown_path" });
       return;

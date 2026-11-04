@@ -24,6 +24,7 @@ import { createIntrodbBridgeHandler } from "../services/introdb-bridge/bridge.mj
 import { createRemuxBridgeHandler } from "../services/remux-bridge/bridge.mjs";
 import { createProbeBridgeHandler } from "../services/probe-bridge/bridge.mjs";
 import { createTranscodeBridgeHandler } from "../services/transcode-bridge/bridge.mjs";
+import { inspectFFmpegRuntime, resolveFFmpegPath } from "../services/shared/ffmpegRuntime.mjs";
 
 import { normalizeRemuxPolicy, normalizeRemuxCacheMiB } from "../js/core/player/remuxPolicy.js";
 
@@ -60,6 +61,17 @@ const featureEnabled = {
   remux: remuxPolicy.mode === "server",
   transcode: envFlag("TRANSCODE_ENABLED", FEATURE_DEFAULTS.TRANSCODE_ENABLED)
 };
+const configuredFeatures = { ...featureEnabled };
+const ffmpegRuntime =
+  featureEnabled.remux || featureEnabled.transcode ? await inspectFFmpegRuntime() : null;
+if (ffmpegRuntime) {
+  featureEnabled.remux &&= ffmpegRuntime.remux;
+  featureEnabled.transcode &&= ffmpegRuntime.audioTranscoding;
+  console.log(
+    `[ffmpeg] source=${ffmpegRuntime.source} available=${ffmpegRuntime.available} remux=${ffmpegRuntime.remux} audio=${ffmpegRuntime.audioTranscoding}`
+  );
+}
+const ffmpegPath = ffmpegRuntime?.path || resolveFFmpegPath();
 // The paths this server mounts. A feature that is on and not given an endpoint gets
 // its own, which is what makes "probe is on by default" true without configuration.
 const FEATURE_PATHS = {
@@ -106,7 +118,8 @@ const probeBridgeHandler = createProbeBridgeHandler({
   ffprobePath: process.env.FFPROBE_PATH || "ffprobe"
 });
 const remuxBridgeHandler = createRemuxBridgeHandler({
-  ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+  ffmpegPath,
+  ffmpegRuntime,
   // Deployment policy. One relay at a time by default: a remux is a copy of a whole
   // film, so the limit that matters on a home connection is how many run at once.
   ttlMs: Number(process.env.REMUX_TTL_MS ?? 15 * 60 * 1000) || 0,
@@ -128,7 +141,8 @@ const remuxBridgeHandler = createRemuxBridgeHandler({
 // is the default and it refuses everything until the deployment sets a token, and
 // `lan` judges the caller by the address a tunnel forwards, not by the socket.
 const transcodeBridgeHandler = createTranscodeBridgeHandler({
-  ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+  ffmpegPath,
+  ffmpegRuntime,
   access: process.env.TRANSCODE_ACCESS || "token",
   token: process.env.TRANSCODE_TOKEN || "",
   bitrate: process.env.TRANSCODE_AUDIO_BITRATE || "192k",
@@ -467,12 +481,14 @@ const server = http.createServer(async (request, response) => {
       resolved.PROBE_PAGE_LIMIT = pageLimit || "20";
       Object.entries(FEATURE_SWITCHES).forEach(([switchKey, endpointKey]) => {
         const raw = String(process.env[switchKey] ?? "").trim();
+        const externalEndpoint = /^https?:\/\//i.test(String(env[endpointKey] || "").trim());
         const on =
           switchKey === "PROBE_ENABLED"
             ? probeMode === "server"
             : switchKey === "REMUX_ENABLED"
-              ? featureEnabled.remux
-              : isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey]);
+              ? configuredFeatures.remux && (externalEndpoint || featureEnabled.remux)
+              : isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey]) &&
+                (externalEndpoint || ffmpegRuntime?.audioTranscoding === true);
         resolved[endpointKey] = on
           ? String(env[endpointKey] || "").trim() || FEATURE_PATHS[endpointKey]
           : "";

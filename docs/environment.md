@@ -183,3 +183,36 @@ Client remux does not send media to the remux server. `PROBE_MODE=server` indepe
 The shared relay token is entered at Settings → Playback → Audio & Video → Transcode token. Moving this field preserves the stored token. Metadata labeling has an opt-in filename fallback; an exclamation in a circle explains why the estimate was used. Filename estimates never authorize audio or video encoding. Failed background checks retry once after at least 15 seconds; selecting a stream cancels active and queued labeling and checks the selected stream first when no previous failure is known. A failed or inconclusive check does not block manual Play: a Remux filename estimate chooses a copy-only attempt; other unverified labels try the original URL. An initial format/decoder failure may try the configured copy route once. Network/access failures do not trigger automatic conversion, and remux failure never loops back automatically. The error UI offers manual original-URL and retry actions.
 
 Client probe caching distinguishes successful file facts from failures. Successful persistent entries require a stable torrent hash and file index and last up to30days; an episode title alone is not an identity. Byte-budget failures are remembered in page memory for10minutes to avoid repeating the same bounded download on navigation, then can be tried again. A full reload clears that failure memory. Transient network failures retain the existing retry policy. Checking denotes actual pending work, not merely an enabled probing feature. With filename fallback disabled, an inconclusive/non-running check remains Unknown; an ambiguous Direct startup failure offers a manual Try remux action without changing the labeling setting.
+
+## FFmpeg server dependency
+
+Node.js server installs include the pinned optional `ffmpeg-static` dependency.
+With a normal `npm ci`, its install script downloads the binary for the server's
+platform. It stays on the server and is not copied into the browser build. Client
+remux continues to use Mediabunny and does not execute a server binary.
+
+Executable selection is `FFMPEG_PATH`, then the packaged binary, then `ffmpeg`
+on `PATH`. An explicitly configured `FFMPEG_PATH` is authoritative: if it fails,
+the server does not silently switch to another executable. This can point at a
+standard FFmpeg installation or a compatible Jellyfin build; Jellyfin is not
+required. If optional dependencies or install scripts are omitted, install
+FFmpeg on the server or set this override before enabling server processing.
+
+The transcode-bridge Docker image already installs FFmpeg using Alpine's package
+manager, so no separate host installation is needed. In Compose, `FFMPEG_PATH`
+refers to an executable **inside that container**.
+
+At startup the Node server and standalone transcode bridge check the executable,
+MP4/HLS muxers, HTTP/HTTPS protocols, and AAC encoder with bounded local commands.
+No media URL is fetched for these checks. Health responses expose verified
+capability booleans without executable paths. Missing FFmpeg capabilities return 503
+instead of starting a job. The Node preview omits unavailable local processing
+endpoints from its public config; explicitly configured remote endpoints remain
+independent of the local executable.
+
+Onboarding verifies server health before advertising server remux or audio
+transcoding. An older bridge without verified capability fields, an unreachable
+service, or a missing binary does not advertise those features in onboarding.
+Existing playback policy is unchanged for older bridge responses. Installing
+FFmpeg does not enable remux or audio transcoding automatically: host switches,
+access rules, and budgets still apply. Full video transcoding is not offered.
