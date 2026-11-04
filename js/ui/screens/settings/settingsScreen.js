@@ -9716,6 +9716,24 @@ export const SettingsScreen = {
     void poll();
   },
 
+  async copyTrackingDeviceCode(provider) {
+    const target = {
+      trakt: { service: TraktAuthService, prefix: "desktopTrakt" },
+      simkl: { service: SimklAuthService, prefix: "desktopSimkl" },
+      mdblist: { service: MdbListAuthService, prefix: "desktopMdbList" }
+    }[provider];
+    const code = String(target?.service.getCurrentAuthState().userCode || "").trim();
+    if (!code) return false;
+    const copied = await copyDeviceAuthorizationCode(code);
+    // Approval/polling may replace the code while the clipboard resolves.
+    if (String(target.service.getCurrentAuthState().userCode || "").trim() !== code) return copied;
+    this[`${target.prefix}StatusMessage`] = copied ? t("common.copied", {}, "Copied!") : null;
+    this[`${target.prefix}ErrorMessage`] = copied
+      ? null
+      : t("debug_console_copy_failed", {}, "Copy failed");
+    return copied;
+  },
+
   renderDesktopTrackingSection() {
     const settings = TraktSettingsStore.get();
     const trakt = TraktAuthService.getCurrentAuthState();
@@ -9762,6 +9780,11 @@ export const SettingsScreen = {
     this.actionMap.set("tracking:desktop:behavior", () =>
       this.toggleDesktopTrackingSection("behavior")
     );
+    for (const provider of ["trakt", "simkl", "mdblist"]) {
+      this.actionMap.set(`tracking:desktop:${provider}:copy`, () =>
+        this.copyTrackingDeviceCode(provider)
+      );
+    }
     this.actionMap.set("tracking:desktop:trakt:connect", async () => {
       this.desktopTraktErrorMessage = null;
       try {
@@ -9982,6 +10005,7 @@ export const SettingsScreen = {
              <code class="settings-tracking-activation-code">${escapeHtml(simkl.userCode || "-")}</code>
              <div class="settings-tracking-activation-url">${escapeHtml(activationUrl)}</div>
              <div class="settings-tracking-inline-actions">
+               ${inlineButton("tracking:desktop:simkl:copy", t("debrid_device_auth_copy_code", {}, "Copy Code"))}
                ${inlineButton("tracking:desktop:simkl:open", "Open Simkl PIN")}
                ${inlineButton("tracking:desktop:simkl:cancel", "Cancel", "is-secondary")}
              </div>
@@ -10004,6 +10028,7 @@ export const SettingsScreen = {
              <code class="settings-tracking-activation-code">${escapeHtml(mdbList.userCode || "-")}</code>
              <div class="settings-tracking-activation-url">${escapeHtml(mdbListActivationUrl)}</div>
              <div class="settings-tracking-inline-actions">
+               ${inlineButton("tracking:desktop:mdblist:copy", t("debrid_device_auth_copy_code", {}, "Copy Code"))}
                ${inlineButton("tracking:desktop:mdblist:open", "Open MDBList")}
                ${inlineButton("tracking:desktop:mdblist:cancel", "Cancel", "is-secondary")}
              </div>
@@ -10023,6 +10048,7 @@ export const SettingsScreen = {
              <code class="settings-tracking-activation-code">${escapeHtml(trakt.userCode || "-")}</code>
              <div class="settings-tracking-activation-url">${escapeHtml(trakt.verificationUrl || "https://trakt.tv/activate")}</div>
              <div class="settings-tracking-inline-actions">
+               ${inlineButton("tracking:desktop:trakt:copy", t("debrid_device_auth_copy_code", {}, "Copy Code"))}
                ${inlineButton("tracking:desktop:trakt:open", "Open Trakt")}
                ${inlineButton("tracking:desktop:trakt:cancel", "Cancel", "is-secondary")}
              </div>
