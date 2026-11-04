@@ -13,6 +13,16 @@
 
 import { ExperienceModeStore } from "../../../data/local/experienceModeStore.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
+import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
+import { REMUX_MODE, REMUX_ENDPOINT, TRANSCODE_ENDPOINT } from "../../../config.js";
+import { filenameStreamDisplayMode } from "../../../core/streams/filenameStreamPolicy.js";
+import { settingsStreamPreviewSources } from "../settings/playbackSettingsPresentation.js";
+import {
+  normalizeSourceForDisplay,
+  renderBrowserSourceCardContent
+} from "../../components/browserStreamSourceCard.js";
+import { renderFilenamePlaybackMethodBadge } from "../../components/filenamePlaybackBadge.js";
+import { quickSetupReleaseFeatures } from "./quickSetupRelease.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
 import { I18n } from "../../../i18n/index.js";
 import { Router } from "../../navigation/router.js";
@@ -97,6 +107,18 @@ export const QuickSetupScreen = {
     this.initialOfflineSync = this.offlineSync;
     this.initialReturnMethod = this.returnMethod;
     this.automationAvailability = getAutomationReturnAvailability();
+    this.includeReleaseIntro = ExperienceModeStore.get().quickSetupVersion > 0;
+    this.labels = StreamBadgeSettingsStore.get().showPlaybackLabels !== false;
+    this.filenameRouting = settings.filenamePlaybackRoutingEnabled !== false;
+    this.streamFilter = filenameStreamDisplayMode(settings);
+    this.initialLabels = this.labels;
+    this.initialFilenameRouting = this.filenameRouting;
+    this.initialStreamFilter = this.streamFilter;
+    this.releaseFeatures = quickSetupReleaseFeatures({
+      mode: REMUX_MODE,
+      remuxEndpoint: REMUX_ENDPOINT,
+      transcodeEndpoint: TRANSCODE_ENDPOINT
+    });
 
     // Asking about a notification the browser cannot deliver is a step that
     // wastes the one thing this flow is spending: attention.
@@ -106,6 +128,8 @@ export const QuickSetupScreen = {
     ScreenUtils.show(this.container);
     this.onClickBound = this.onClick.bind(this);
     this.container.addEventListener("click", this.onClickBound);
+    this.onChangeBound = this.onChange.bind(this);
+    this.container.addEventListener("change", this.onChangeBound);
     this.render();
   },
 
@@ -119,7 +143,9 @@ export const QuickSetupScreen = {
       automaticProgress: capabilities.automaticProgress,
       pushState: this.pushState?.state,
       automationAvailability: this.automationAvailability,
-      progressMode: this.progressMode
+      progressMode: this.progressMode,
+      internalProcessing: true,
+      includeReleaseIntro: this.includeReleaseIntro
     });
   },
 
@@ -141,6 +167,7 @@ export const QuickSetupScreen = {
     const step = this.currentStep();
     const position = Math.min(this.stepIndex, steps.length - 1);
     const isLast = position >= steps.length - 1;
+    const isRelease = step === "release";
 
     this.container.innerHTML = `
       <main class="quick-setup-screen">
@@ -155,16 +182,22 @@ export const QuickSetupScreen = {
           )}</p>
         </header>
         <section class="quick-setup-body">${this.renderStep(step)}</section>
-        <p class="quick-setup-footnote">${escapeHtml(
-          t(
-            "quick_setup_change_later",
-            {},
-            "Nothing here is final — all of these are in Settings, under Playback or Downloads."
-          )
-        )}</p>
-        <footer class="quick-setup-actions">
+        ${
+          isRelease
+            ? ""
+            : `<p class="quick-setup-footnote">${escapeHtml(
+                t(
+                  "quick_setup_change_later",
+                  {},
+                  "Nothing here is final — all of these are in Settings, under Playback or Downloads."
+                )
+              )}</p>`
+        }
+        <footer class="quick-setup-actions${isRelease ? " quick-setup-release-actions" : ""}">
           <button class="quick-setup-skip focusable" type="button" data-action="skip">${escapeHtml(
-            t("quick_setup_skip", {}, "Skip setup")
+            isRelease
+              ? t("quick_setup_keep_settings", {}, "Keep my settings")
+              : t("quick_setup_skip", {}, "Skip setup")
           )}</button>
           <div class="quick-setup-actions-end">
             ${
@@ -175,7 +208,11 @@ export const QuickSetupScreen = {
                 : ""
             }
             <button class="quick-setup-next focusable" type="button" data-action="${isLast ? "finish" : "next"}">${escapeHtml(
-              isLast ? t("quick_setup_finish", {}, "Done") : t("quick_setup_next", {}, "Next")
+              isRelease
+                ? t("quick_setup_review_settings", {}, "Review my settings")
+                : isLast
+                  ? t("quick_setup_finish", {}, "Done")
+                  : t("quick_setup_next", {}, "Next")
             )}</button>
           </div>
         </footer>
@@ -186,6 +223,8 @@ export const QuickSetupScreen = {
   },
 
   renderStep(step) {
+    if (step === "release") return this.renderReleaseStep();
+    if (step === "processing") return this.renderProcessingStep();
     if (step === "offlineSync") return this.renderOfflineSyncStep();
     if (step === "progress") return this.renderProgressStep();
     if (step === "return") return this.renderReturnStep();
@@ -246,7 +285,243 @@ export const QuickSetupScreen = {
         )
       )}</p>
       ${note}
-      <div class="quick-setup-options">${cards}</div>`;
+      <div class="quick-setup-options">${cards}</div>
+      ${this.player === "disabled" ? this.renderReleaseCapabilities() : ""}`;
+  },
+
+  renderReleaseCapabilities() {
+    const features = this.releaseFeatures;
+    const remux = features.remuxProvider
+      ? `<section class="quick-setup-feature"><h2>Remux</h2><p>${escapeHtml(
+          t(
+            features.client ? "quick_setup_client_remux" : "quick_setup_server_remux",
+            {},
+            features.client
+              ? "Powered by Mediabunny, compatible streams are repackaged on your device without changing the video quality."
+              : "Powered by Jellyfin FFmpeg, compatible streams are repackaged on the server without changing the video quality."
+          )
+        )}</p></section>`
+      : "";
+    const audio = features.audioTranscoding
+      ? `<section class="quick-setup-feature"><h2>${escapeHtml(t("quick_setup_audio_transcoding_title", {}, "Audio transcoding"))}</h2><p>${escapeHtml(t("quick_setup_audio_transcoding", {}, "Unsupported audio can be converted automatically while preserving the original video quality."))}</p></section>`
+      : "";
+    const warning = features.client
+      ? t(
+          "quick_setup_client_limitations",
+          {},
+          "Transcoding is not supported in client mode. Your device must support the original video and audio codecs."
+        )
+      : features.audioTranscoding
+        ? t(
+            "quick_setup_server_limitations",
+            {},
+            "Full video transcoding is not supported. Audio conversion cannot make an unsupported video codec playable."
+          )
+        : features.remuxProvider
+          ? t(
+              "quick_setup_no_audio_transcoding",
+              {},
+              "Audio transcoding is disabled on this host. Full video transcoding is not supported."
+            )
+          : t(
+              "quick_setup_no_processing",
+              {},
+              "Remux and transcoding are not available on this host. Streams must use formats supported by your device."
+            );
+    return `<div class="quick-setup-features">${remux}${audio}<p class="quick-setup-note"><strong>${escapeHtml(t("quick_setup_limitations", {}, "Current limitations"))}</strong><br>${escapeHtml(warning)}</p></div>`;
+  },
+
+  renderReleaseStep() {
+    return `<h1>${escapeHtml(t("quick_setup_release_title", {}, "New in v0.2.1"))}</h1>
+      <h2 class="quick-setup-release-heading">${escapeHtml(t("quick_setup_release_heading", {}, "More ways to watch, right here."))}</h2>
+      <p>${escapeHtml(
+        this.releaseFeatures.remuxProvider || this.releaseFeatures.audioTranscoding
+          ? t(
+              "quick_setup_release_body",
+              {},
+              "The internal player now supports more stream formats, so you can watch more without switching apps."
+            )
+          : t(
+              "quick_setup_release_body_unassisted",
+              {},
+              "Review how streams are labelled, played, and filtered without changing your existing preferences."
+            )
+      )}</p>
+      ${this.renderReleaseCapabilities()}
+      ${this.renderWhatsNew()}
+      <p class="quick-setup-existing-settings">${escapeHtml(t("quick_setup_existing_settings", {}, "Your existing settings are preserved. You can keep them or review your playback preferences."))}</p>`;
+  },
+
+  renderWhatsNew() {
+    const features = this.releaseFeatures;
+    const groups = [
+      [
+        t("quick_setup_changes_new", {}, "New"),
+        [
+          features.remuxProvider
+            ? t(
+                "quick_setup_changes_remux",
+                {},
+                "Internal player remux — Play more compatible formats without re-encoding the video."
+              )
+            : null,
+          features.audioTranscoding
+            ? t(
+                "quick_setup_changes_audio",
+                {},
+                "Audio transcoding — Convert unsupported audio while preserving the original video."
+              )
+            : null,
+          t(
+            "quick_setup_changes_airplay",
+            {},
+            "AirPlay — Send the original stream to a compatible AirPlay device on supported devices."
+          ),
+          t(
+            "quick_setup_changes_processing",
+            {},
+            "Stream processing controls — Choose playback labels, filename-based processing, and stream filters."
+          ),
+          t(
+            "quick_setup_changes_colors",
+            {},
+            "Custom accent colors — Pick your own color in Appearance."
+          ),
+          t(
+            "quick_setup_changes_mdblist",
+            {},
+            "MDBList integration — Connect your account and sync your library."
+          )
+        ]
+      ],
+      [
+        t("quick_setup_changes_fix", {}, "Fix"),
+        [
+          t(
+            "quick_setup_changes_autoplay",
+            {},
+            "Autoplay waits for eligible sources and reuses the last successfully played link."
+          ),
+          t(
+            "quick_setup_changes_cw",
+            {},
+            "Continue Watching updates sooner, including completed episodes and Next Up."
+          ),
+          t(
+            "quick_setup_changes_tracks",
+            {},
+            "Improved audio-track selection and built-in subtitle handling."
+          ),
+          t("quick_setup_changes_collections", {}, "Fixed Collection pages failing to open."),
+          t(
+            "quick_setup_changes_touch",
+            {},
+            "Fixed stream context menus and unwanted text selection when holding media cards."
+          ),
+          t(
+            "quick_setup_changes_panels",
+            {},
+            "Fixed player controls, dropdown orientation, and overlapping panels on smaller screens."
+          )
+        ]
+      ],
+      [
+        t("quick_setup_changes_change", {}, "Change"),
+        [
+          t(
+            "quick_setup_changes_player",
+            {},
+            "Redesigned player controls, episode lists, and stream panels."
+          ),
+          t("quick_setup_changes_screens", {}, "Updated loading and pause screens."),
+          t(
+            "quick_setup_changes_settings",
+            {},
+            "Settings use connected panels on larger screens and separate navigation on smaller screens."
+          ),
+          features.remuxProvider
+            ? t("quick_setup_changes_buffer", {}, "Increased remux buffering limits.")
+            : null,
+          t(
+            "quick_setup_changes_downloads",
+            {},
+            "Downloads save richer metadata and artwork without requiring a visit to Details first."
+          ),
+          t(
+            "quick_setup_changes_onboarding",
+            {},
+            "Updated onboarding preserves existing player and offline-sync preferences."
+          )
+        ]
+      ]
+    ];
+    return `<details class="quick-setup-whats-new"><summary class="focusable">${escapeHtml(t("quick_setup_whats_new", {}, "What's new"))}</summary><div class="quick-setup-changes">${groups
+      .map(
+        ([title, entries]) =>
+          `<section><h3>${escapeHtml(title)}</h3><ul>${entries
+            .filter(Boolean)
+            .map((entry) => `<li>${escapeHtml(entry)}</li>`)
+            .join("")}</ul></section>`
+      )
+      .join("")}</div></details>`;
+  },
+
+  renderProcessingStep() {
+    const field = (id, title, body, checked) =>
+      `<label class="quick-setup-processing-field"><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(body)}</small></span><input type="checkbox" class="focusable" data-processing-field="${id}" ${checked ? "checked" : ""} /></label>`;
+    return `<h1>${escapeHtml(t("quick_setup_processing_title", {}, "Stream processing"))}</h1>
+      <p>${escapeHtml(t("quick_setup_processing_body", {}, "Choose how streams are labelled, opened, and filtered."))}</p>
+      <div class="quick-setup-processing-fields">
+        ${field("labels", t("quick_setup_labels", {}, "Labels"), t("quick_setup_labels_body", {}, "Show Direct, Remux, Transcoding, or Unknown estimates on stream cards."), this.labels)}
+        ${field("filenameRouting", t("settings_filename_route_title", {}, "Determine stream processing based on filename"), t("settings_filename_route_short", {}, "Estimate how to play the stream from its filename. If playback fails, another supported method is tried automatically."), this.filenameRouting)}
+        <label class="quick-setup-processing-field"><span><strong>${escapeHtml(t("quick_setup_filter", {}, "Stream filter"))}</strong><small>${escapeHtml(t("settings_filename_filter_short", {}, "Filename estimates. Also applies to autoplay and next episodes."))}</small></span><select class="focusable" data-processing-field="streamFilter">${[
+          ["ALL", "All streams"],
+          ["DIRECT", "Direct"],
+          ["DIRECT_REMUX", "Direct + Remux"]
+        ]
+          .map(
+            ([value, label]) =>
+              `<option value="${value}" ${this.streamFilter === value ? "selected" : ""}>${escapeHtml(label)}</option>`
+          )
+          .join("")}</select></label>
+      </div>
+      ${this.renderStreamPreview()}
+      <p class="quick-setup-preview-note">${escapeHtml(t("quick_setup_filter_warning", {}, "Filename estimates are not compatibility checks. Incorrect filenames can hide playable streams, including Unknown results."))}</p>`;
+  },
+
+  renderStreamPreview() {
+    const badgeSettings = {
+      ...StreamBadgeSettingsStore.snapshot(),
+      showPlaybackLabels: this.labels
+    };
+    const cards = settingsStreamPreviewSources(this.streamFilter)
+      .map((source) => {
+        const display = normalizeSourceForDisplay(source, {
+          badgeSettings: { ...badgeSettings, showPlaybackLabels: false }
+        });
+        const label = renderFilenamePlaybackMethodBadge(source.previewMethod, badgeSettings);
+        if (label)
+          display.badges = display.badges
+            ? display.badges.replace(">", `>${label}`)
+            : `<div class="stream-route-card-badges">${label}</div>`;
+        const top = badgeSettings.badgePlacement === "TOP";
+        display.topBadges = top ? display.badges : "";
+        display.bottomBadges = top ? "" : display.badges;
+        return `<div class="stream-route-card-row"><article class="stream-route-card stream-route-card-action" data-preview-source="${source.id}">${renderBrowserSourceCardContent(display)}<div class="stream-route-offline-actions"><span class="stream-route-offline-action download" aria-hidden="true">↓</span></div></article></div>`;
+      })
+      .join("");
+    return `<section class="quick-setup-stream-preview" aria-label="${escapeHtml(t("settings_preview_streams", {}, "Stream card preview"))}"><h2>${escapeHtml(t("settings_preview_streams", {}, "Stream card preview"))}</h2><p class="quick-setup-preview-note">${escapeHtml(t("quick_setup_preview_note", {}, "Example filenames only. No stream is fetched or checked."))}</p>${cards}</section>`;
+  },
+
+  onChange(event) {
+    const field = event.target.dataset.processingField;
+    if (!["labels", "filenameRouting", "streamFilter"].includes(field)) return;
+    if (field === "streamFilter") {
+      if (!["ALL", "DIRECT", "DIRECT_REMUX"].includes(event.target.value)) return;
+      this.streamFilter = event.target.value;
+    } else this[field] = event.target.checked;
+    this.render();
+    this.container.querySelector(`[data-processing-field="${field}"]`)?.focus();
   },
 
   // A figure belongs to the answer it illustrates, so each one lives inside its
@@ -653,6 +928,20 @@ export const QuickSetupScreen = {
   // flow without touching anything leaves the profile exactly as it was, which
   // is what makes it safe to show to someone who is already set up.
   commitStep(step) {
+    if (step === "processing") {
+      if (this.labels !== this.initialLabels) {
+        StreamBadgeSettingsStore.set({ showPlaybackLabels: this.labels });
+        this.initialLabels = this.labels;
+      }
+      const changes = {};
+      if (this.filenameRouting !== this.initialFilenameRouting)
+        changes.filenamePlaybackRoutingEnabled = this.filenameRouting;
+      if (this.streamFilter !== this.initialStreamFilter)
+        changes.filenameStreamDisplayMode = this.streamFilter;
+      if (Object.keys(changes).length) PlayerSettingsStore.set(changes);
+      this.initialFilenameRouting = this.filenameRouting;
+      this.initialStreamFilter = this.streamFilter;
+    }
     if (step === "player" && this.player !== this.initialPlayer) {
       PlayerSettingsStore.set({ browserExternalPlayer: this.player });
       this.initialPlayer = this.player;
@@ -687,6 +976,7 @@ export const QuickSetupScreen = {
 
   cleanup() {
     this.container?.removeEventListener("click", this.onClickBound);
+    this.container?.removeEventListener("change", this.onChangeBound);
     ScreenUtils.hide(this.container);
   }
 };
