@@ -1,3 +1,7 @@
+import {
+  matchesReusableStream,
+  reusableStreamPreference
+} from "../../../core/streams/streamReusePreference.js";
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
@@ -1503,7 +1507,13 @@ export const StreamScreen = {
     if (!allLoaded && !this.autoPlaySelectionReady && !deadlineReached) return;
     if (Number(settings.streamAutoPlayTimeoutSeconds) === 2147483647 && !allLoaded && this.loading)
       return;
+    const reusableStream = reusableStreamPreference(
+      settings,
+      this.params?.itemId,
+      this.params?.videoId
+    );
     const selected = selectAutoPlayStream(this.getFilteredStreams(), {
+      reusableStream,
       filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
       mode: settings.streamAutoPlayMode,
       source: settings.streamAutoPlaySource,
@@ -1520,6 +1530,14 @@ export const StreamScreen = {
       ),
       preferBingeGroupInSelection: true
     });
+    if (
+      reusableStream &&
+      this.loading &&
+      !allLoaded &&
+      !deadlineReached &&
+      !matchesReusableStream(selected, reusableStream)
+    )
+      return;
     if (!selected?.id) {
       if (allLoaded || deadlineReached) {
         this.autoPlayAttempted = true;

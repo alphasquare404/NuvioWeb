@@ -1,3 +1,4 @@
+import { matchesReusableStream } from "./streamReusePreference.js";
 import { filterFilenameStreams } from "./filenameStreamPolicy.js";
 import { streamHdrStatus } from "./streamHdrPreference.js";
 import { applyHdrPreference } from "./streamHdrPreference.js";
@@ -234,5 +235,10 @@ export function autoPlayCandidates(streams, options = {}) {
 }
 
 export function selectAutoPlayStream(streams, options = {}) {
-  return autoPlayCandidates(streams, options)[0] || null;
+  const candidates = autoPlayCandidates(streams, options);
+  return (
+    candidates.find((stream) => matchesReusableStream(stream, options.reusableStream)) ||
+    candidates[0] ||
+    null
+  );
 }

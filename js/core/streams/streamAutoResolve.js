@@ -1,3 +1,4 @@
+import { reusableStreamPreference, matchesReusableStream } from "./streamReusePreference.js";
 // Picking a stream without a screen to pick it on.
 //
 // Auto stream selection used to happen on the stream screen: the app navigated
@@ -141,6 +142,7 @@ export function resolveHandoffReturnRoute({
 // fetched on the way. The streams come back even when nothing was chosen, so
 // the caller can hand them to the stream screen rather than fetching twice.
 export async function resolveAutoPlayStream({
+  itemId,
   itemType,
   videoId,
   settings = {},
@@ -168,6 +170,7 @@ export async function resolveAutoPlayStream({
   const type = normalizeStreamType(itemType);
   const startedAt = now();
   const waitSeconds = normalizeSelectionWaitSeconds(settings.streamAutoPlayTimeoutSeconds);
+  const reusableStream = reusableStreamPreference(settings, itemId, videoId);
   let streams = [];
   let selected = null;
   let finished = false;
@@ -239,8 +242,9 @@ export async function resolveAutoPlayStream({
     return verification;
   };
 
-  const choose = () =>
-    selectAutoPlayStream(streams, {
+  const choose = ({ allowOther = false } = {}) => {
+    const candidate = selectAutoPlayStream(streams, {
+      reusableStream,
       filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
       mode: settings.streamAutoPlayMode,
       hdrPreference: resolveHdrPreference(settings),
@@ -252,6 +256,14 @@ export async function resolveAutoPlayStream({
       preferredBingeGroup,
       preferBingeGroupInSelection: Boolean(preferredBingeGroup)
     });
+    // A partial addon response must not beat a still-pending remembered source.
+    return reusableStream &&
+      !complete &&
+      !allowOther &&
+      !matchesReusableStream(candidate, reusableStream)
+      ? null
+      : candidate;
+  };
 
   const absorb = (groups) => {
     const incoming = flattenStreams({ status: "success", data: groups });
@@ -353,7 +365,7 @@ export async function resolveAutoPlayStream({
 
   if (!selected && !verifySelection) {
     // The list is complete now, so the grace period no longer applies.
-    const candidate = choose();
+    const candidate = choose({ allowOther: true });
     if (candidate?.id) selected = candidate;
   }
 

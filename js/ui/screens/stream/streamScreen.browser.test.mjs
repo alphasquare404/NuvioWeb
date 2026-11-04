@@ -26,7 +26,7 @@ async function loadStreamScreen(instance = "") {
             ],
             [
               "stream-preferences",
-              `export const StreamPreferencesStore = { getValid: () => null };`
+              `export const StreamPreferencesStore = { getValid: () => globalThis.__NUVIO_TEST_REUSABLE_STREAM__ || null };`
             ],
             [
               "addon-repository",
@@ -289,5 +289,31 @@ test("a prefetched stream rejected by the current filter releases Opening player
   } finally {
     Object.assign(StreamScreen, original);
     delete globalThis.__NUVIO_TEST_PLAYER_SETTINGS__;
+  }
+});
+
+test("stream page waits for the remembered source during partial discovery", async () => {
+  const { StreamScreen } = await loadStreamScreen("remembered-partial");
+  const early = { id: "early", name: "Early", url: "https://example.com/early" };
+  configureAutoPlayScreen(StreamScreen, {
+    params: { itemId: "movie" },
+    streams: [early],
+    settings: { streamReuseLastLinkEnabled: true }
+  });
+  StreamScreen.loading = true;
+  let played = null;
+  StreamScreen.playStream = async (id) => {
+    played = id;
+  };
+  StreamScreen.cancelAutoPlaySelectionWait = () => {};
+  globalThis.__NUVIO_TEST_REUSABLE_STREAM__ = { streamId: "remembered" };
+  try {
+    StreamScreen.maybeAutoPlayStream();
+    assert.equal(played, null);
+    assert.equal(StreamScreen.autoPlayAttempted, false);
+    StreamScreen.maybeAutoPlayStream({ allLoaded: true });
+    assert.equal(played, "early");
+  } finally {
+    delete globalThis.__NUVIO_TEST_REUSABLE_STREAM__;
   }
 });

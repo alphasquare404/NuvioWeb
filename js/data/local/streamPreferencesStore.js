@@ -62,6 +62,7 @@ export const StreamPreferencesStore = {
     const ageMs = Date.now() - cachedAtMs;
     if (
       !entry ||
+      entry.playbackConfirmed !== true ||
       !Number.isFinite(maxAgeMs) ||
       maxAgeMs <= 0 ||
       cachedAtMs <= 0 ||
@@ -85,6 +86,7 @@ export const StreamPreferencesStore = {
       key,
       streamId: sid,
       cachedAtMs: Date.now(),
+      playbackConfirmed: metadata?.playbackConfirmed === true,
       bingeGroup: String(metadata?.bingeGroup || "").trim() || null,
       resumeIdentity: String(metadata?.resumeIdentity || "").trim() || null
     });

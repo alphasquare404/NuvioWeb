@@ -2239,13 +2239,6 @@ export const PlayerScreen = {
     if (this.currentStreamIndex < 0) {
       this.currentStreamIndex = 0;
     }
-    // Remember the stream that actually plays so the stream list can focus it on
-    // the next visit. Only persist when the caller provided a real candidate list
-    // (this skips trailers and synthetic single-url playback).
-    if (Array.isArray(params.streamCandidates) && params.streamCandidates.length) {
-      const playingStreamCandidate = this.streamCandidates[this.currentStreamIndex] || null;
-      this.rememberSelectedStreamPreference(playingStreamCandidate);
-    }
     this.activePlaybackSourceContext =
       this.getPlaybackSourceContext(
         preferredStreamCandidate ||
@@ -2696,10 +2689,11 @@ export const PlayerScreen = {
   rememberSelectedStreamPreference(streamCandidate) {
     const prefContentId = String(this.params?.itemId || "").trim();
     const prefVideoId = String(this.params?.videoId || this.params?.itemId || "").trim();
-    if (!streamCandidate?.id || !prefContentId) {
+    if (this.offlineDownloadId || !streamCandidate?.id || !prefContentId) {
       return;
     }
     StreamPreferencesStore.set(prefContentId, prefVideoId, streamCandidate.id, {
+      playbackConfirmed: true,
       bingeGroup:
         streamCandidate?.behaviorHints?.bingeGroup ||
         streamCandidate?.raw?.behaviorHints?.bingeGroup ||
@@ -8773,6 +8767,7 @@ export const PlayerScreen = {
             : settings.streamAutoPlayMode
       };
       const result = await resolveAutoPlayStream({
+        itemId: this.params?.itemId,
         itemType,
         videoId: nextEpisode.videoId,
         settings: selectionSettings,
@@ -10976,6 +10971,7 @@ export const PlayerScreen = {
       return false;
     }
     this.hasPresentedPlaybackFrame = true;
+    this.rememberSelectedStreamPreference?.(this.getCurrentStreamCandidate?.());
     if (!this.startupTrackPreferenceReady) {
       // Tracks may arrive before the first real frame is presented. Re-run the
       // startup track pass once playback is actually live.
@@ -12555,7 +12551,6 @@ export const PlayerScreen = {
     }
     if (!delivery || !isCurrent()) return;
     targetUrl = delivery.url;
-    this.rememberSelectedStreamPreference(streamCandidate);
     this._preparingSelectedSource = false;
     this.activePlaybackUrl = targetUrl;
     try {
