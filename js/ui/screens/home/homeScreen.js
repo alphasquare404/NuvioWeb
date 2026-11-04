@@ -1,3 +1,6 @@
+import { playbackCompletionPreparation } from "../../../data/repository/playbackCompletionPreparation.js";
+import { isWatchProgressFromOtherSource } from "../../../data/repository/watchProgressProvenance.js";
+import { watchProgressCardKey } from "../../../domain/model/watchProgress.js";
 import { Router } from "../../navigation/router.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
@@ -147,6 +150,7 @@ import {
 } from "./nextUpSeedPolicy.js";
 import { continueWatchingEnrichmentSignatureFor } from "./continueWatchingEnrichmentSignature.js";
 import {
+  retireCompletedContinueWatchingCards,
   resetContinueWatchingDisplayWatchedState,
   patchContinueWatchingDisplayProgress,
   removeContinueWatchingDisplayItem
@@ -9130,6 +9134,7 @@ export const HomeScreen = {
           }
         });
       }
+      this.retireCompletedContinueWatchingCards();
       this.render();
       this.loadData({
         background: true,
@@ -9172,6 +9177,7 @@ export const HomeScreen = {
         this.continueWatchingDisplay = patched;
       }
     });
+    this.retireCompletedContinueWatchingCards();
     this.continueWatchingHydratedFromSnapshot = Boolean(this.continueWatchingDisplay.length);
     this.continueWatchingLoading = false;
     this.continueWatchingResolved = false;
@@ -9428,6 +9434,12 @@ export const HomeScreen = {
   // happened, or a Watch Progress source switched while Home was covered, was
   // to reload the page.
   onRouteRevealed() {
+    if (
+      this.loadedWatchProgressSourceKey ===
+        watchProgressRepository.getContinueWatchingSourceKey() &&
+      this.retireCompletedContinueWatchingCards()
+    )
+      this.deferredRenderPending = true;
     // A render was owed while Home was covered, and its data is already correct
     // -- paint it now rather than leaving the old row standing until a network
     // refresh happens to finish.
@@ -11496,7 +11508,8 @@ export const HomeScreen = {
     allProgress = [],
     inProgressItems = [],
     nextUpProgressCandidates = [],
-    watchedItems = []
+    watchedItems = [],
+    layoutPrefs = this.layoutPrefs
   } = {}) {
     const resolvedCandidates =
       Array.isArray(nextUpProgressCandidates) && nextUpProgressCandidates.length
@@ -11506,7 +11519,7 @@ export const HomeScreen = {
             includeProgressSeeds: watchProgressRepository.getContinueWatchingSource?.() === "trakt",
             includeWatchedItemSeeds:
               watchProgressRepository.getContinueWatchingSource?.() !== "trakt",
-            nextUpFromFurthestEpisode: this.layoutPrefs?.nextUpFromFurthestEpisode
+            nextUpFromFurthestEpisode: layoutPrefs?.nextUpFromFurthestEpisode
           });
 
     if (!resolvedCandidates.length) {
@@ -11562,7 +11575,7 @@ export const HomeScreen = {
           allProgress,
           watchedEpisodeKeys,
           {
-            showUnairedNextUp: this.layoutPrefs?.showUnairedNextUp
+            showUnairedNextUp: layoutPrefs?.showUnairedNextUp
           }
         );
         if (!nextEpisode) {
@@ -11643,6 +11656,104 @@ export const HomeScreen = {
     return nextUpItems.sort(
       (left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0)
     );
+  },
+
+  retireCompletedContinueWatchingCards() {
+    const source = watchProgressRepository.getContinueWatchingSource?.();
+    const profile = ProfileManager.getActiveProfileId();
+    const next = retireCompletedContinueWatchingCards(
+      this.continueWatchingDisplay,
+      selectWatchedItemsForContinueWatching(WatchedItemsStore.listForProfile(profile), source),
+      WatchProgressStore.listForProfile(profile).filter(
+        (item) => !isWatchProgressFromOtherSource(item, source)
+      )
+    );
+    if (next === this.continueWatchingDisplay) return false;
+    this.continueWatchingDisplay = next;
+    this.persistContinueWatchingSnapshot();
+    return true;
+  },
+
+  async prepareCompletedEpisodeNextUp(context, scope) {
+    if (watchProgressRepository.getContinueWatchingSourceKey() !== scope) return false;
+    const profile = ProfileManager.getActiveProfileId();
+    const source = watchProgressRepository.getContinueWatchingSource();
+    const prefs = LayoutPreferences.get();
+    const prefsKey = JSON.stringify(prefs);
+    const contentId = context.itemId;
+    const completedKey = watchProgressCardKey({ ...context, contentId });
+    const readWatched = () =>
+      selectWatchedItemsForContinueWatching(WatchedItemsStore.listForProfile(profile), source);
+    const readProgress = () =>
+      WatchProgressStore.listForProfile(profile).filter(
+        (item) =>
+          String(item.contentId) === String(contentId) &&
+          !isWatchProgressFromOtherSource(item, source)
+      );
+    const watched = readWatched();
+    const marker = watched.find((item) => watchProgressCardKey(item) === completedKey);
+    if (!marker) return false;
+    const seed = {
+      ...context,
+      contentId,
+      contentType: context.itemType,
+      updatedAt: marker.watchedAt,
+      positionMs: 100,
+      durationMs: 100
+    };
+    const progress = readProgress();
+    const allProgress = [...progress, seed];
+    const candidates = this.selectNextUpProgressCandidates(
+      allProgress,
+      progress,
+      watched.filter((item) => String(item.contentId) === String(contentId)),
+      {
+        applyDaysCap: source === "trakt",
+        includeProgressSeeds: true,
+        includeWatchedItemSeeds: shouldSeedNextUpFromLocalWatchedItems(source),
+        nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
+      }
+    );
+    // Reuse Home's complete resolver, including watched/in-progress, seasons,
+    // dismissed titles, unaired policy and artwork. Never fetch a stream here.
+    const items = await this.buildNextUpItems({
+      allProgress,
+      inProgressItems: progress,
+      nextUpProgressCandidates: candidates,
+      watchedItems: watched,
+      layoutPrefs: prefs
+    });
+    if (
+      watchProgressRepository.getContinueWatchingSourceKey() !== scope ||
+      JSON.stringify(LayoutPreferences.get()) !== prefsKey ||
+      !readWatched().some((item) => watchProgressCardKey(item) === completedKey) ||
+      readProgress().some(
+        (item) =>
+          Number(item.positionMs) > 0 &&
+          Number(item.durationMs) > 0 &&
+          Number(item.positionMs) / Number(item.durationMs) < 0.9 &&
+          Number(item.updatedAt) >= Number(marker.watchedAt)
+      )
+    )
+      return false;
+    const next = items.find((item) => String(item.contentId) === String(contentId));
+    const current =
+      this.loadedWatchProgressSourceKey === scope
+        ? this.continueWatchingDisplay || []
+        : readContinueWatchingDisplaySnapshot(scope);
+    let display = retireCompletedContinueWatchingCards(current, readWatched(), readProgress());
+    if (next && !ContinueWatchingPreferences.getDismissedNextUpKeys().includes(contentId)) {
+      display = [
+        ...display.filter((item) => String(item.contentId) !== String(contentId)),
+        next
+      ].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+    }
+    writeContinueWatchingDisplaySnapshot(scope, display);
+    if (this.loadedWatchProgressSourceKey === scope) {
+      this.continueWatchingDisplay = display;
+      this.requestBackgroundRender();
+    }
+    return true;
   },
 
   persistContinueWatchingSnapshot() {
@@ -13197,3 +13308,7 @@ export const HomeScreen = {
     ScreenUtils.hide(this.container);
   }
 };
+
+playbackCompletionPreparation.register((context, scope) =>
+  HomeScreen.prepareCompletedEpisodeNextUp(context, scope)
+);

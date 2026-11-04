@@ -56,3 +56,29 @@ export function resetContinueWatchingDisplayWatchedState(displayItems, target) {
   });
   return next.length === displayItems.length ? null : next;
 }
+
+// A remounted Home missed completion notifications. Retire stale cached cards
+// synchronously, but preserve a rewatch started after the watched marker.
+export function retireCompletedContinueWatchingCards(
+  displayItems,
+  watchedItems,
+  progressItems = []
+) {
+  const watched = new Map(
+    watchedItems.map((item) => [watchProgressCardKey(item), Number(item.watchedAt || 0)])
+  );
+  const progress = new Map(progressItems.map((item) => [watchProgressCardKey(item), item]));
+  const next = (displayItems || []).filter((item) => {
+    const key = watchProgressCardKey(item);
+    if (!watched.has(key)) return true;
+    const current = progress.get(key);
+    return (
+      current &&
+      Number(current.updatedAt || 0) > watched.get(key) &&
+      Number(current.positionMs || 0) > 0 &&
+      Number(current.durationMs || 0) > 0 &&
+      Number(current.positionMs) / Number(current.durationMs) < 0.9
+    );
+  });
+  return next.length === (displayItems || []).length ? displayItems : next;
+}

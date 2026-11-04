@@ -1,3 +1,4 @@
+import { playbackCompletionPreparation } from "../../data/repository/playbackCompletionPreparation.js";
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
 import { watchedItemsRepository } from "../../data/repository/watchedItemsRepository.js";
 import { watchedSeriesReconciliationService } from "../../data/repository/watchedSeriesReconciliationService.js";
@@ -31,6 +32,7 @@ function normalizeContext(context = {}) {
 export function createMarkPlaybackWatched({
   watchedRepository = watchedItemsRepository,
   progressRepository = watchProgressRepository,
+  completionPreparation = playbackCompletionPreparation,
   seriesReconciliation = watchedSeriesReconciliationService
 } = {}) {
   return async function markPlaybackWatched(
@@ -61,6 +63,13 @@ export function createMarkPlaybackWatched({
     // resume row. Removing by the stable playback identity also clears an old
     // provider-specific episode ID that would otherwise keep CW stale.
     await progressRepository.removePlaybackProgress(active);
+
+    if (seriesReconciliation.isSeriesType(active.itemType)) {
+      void completionPreparation.prepare(
+        active,
+        progressRepository.getContinueWatchingSourceKey?.()
+      );
+    }
 
     if (reconcileSeries && seriesReconciliation.isSeriesType(active.itemType)) {
       await seriesReconciliation.reconcile(active.itemId, active.itemType, {
