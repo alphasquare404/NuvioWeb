@@ -1,6 +1,14 @@
+import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
+import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
+import {
+  StartupLoadingOverlay,
+  usesUnifiedStartup
+} from "../../components/startupLoadingOverlay.js";
 import { Router } from "../../navigation/router.js";
 import { ScreenUtils } from "../../navigation/screen.js";
 import { isBrowserOfflineNow } from "../../../core/offline/browserOnlineState.js";
+
+import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
 import { subtitleReleaseName } from "../../../domain/model/subtitle.js";
 import { setBrowserMediaTitle } from "../../navigation/browserDocumentTitle.js";
 import { metaRepository } from "../../../data/repository/metaRepository.js";
@@ -90,6 +98,8 @@ import {
 } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
   resolveAutoPlayStream,
+  reportAutoPlaySelection,
+  streamSelectionDeadline,
   shouldAbandonAutoResolve,
   shouldPaintRouteHandoff
 } from "../../../core/streams/streamAutoResolve.js";
@@ -1636,6 +1646,7 @@ export const MetaDetailsScreen = {
     }
     this.params = params || {};
     this.meta = { ...snapshot.meta };
+    this.overlayMetaParams = this.params;
     this.isSavedInLibrary = Boolean(snapshot.isSavedInLibrary);
     this.isMarkedWatched = Boolean(snapshot.isMarkedWatched);
     this.episodes = this.applyOfflineEpisodeVisibility(
@@ -2274,6 +2285,7 @@ export const MetaDetailsScreen = {
 
     // Fast first paint with base metadata.
     this.meta = meta;
+    this.overlayMetaParams = this.params;
     setBrowserMediaTitle({ title: meta?.name, year: meta?.releaseInfo });
     this.setEpisodesForConnectivity(meta);
     if (!this.remoteMetaUnavailable) {
@@ -3233,8 +3245,47 @@ export const MetaDetailsScreen = {
   // so the wait begins on the picture that was tapped rather than on black,
   // and ends on the same picture the stream route then shows. One image, three
   // routes, no blink.
+  getStartupOverlayMeta() {
+    // Before this route's metadata arrives, this.meta can still belong to the
+    // previous title. Route parameters are the only trusted artwork then.
+    const meta = this.overlayMetaParams === this.params ? this.meta : null;
+    return {
+      itemKey: String(this.params?.itemId || ""),
+      itemType: this.params?.itemType || meta?.type,
+      posterUrl: this.params?.fallbackPoster || this.params?.poster || meta?.poster || "",
+      textlessPoster: meta?.textlessPoster || "",
+      title: this.params?.fallbackTitle || this.params?.itemTitle || meta?.name || "Nuvio",
+      logoUrl: this.params?.logo || meta?.logo || "",
+      backdropUrl:
+        this.params?.backdrop ||
+        this.params?.fallbackBackground ||
+        meta?.background ||
+        meta?.landscapePoster ||
+        meta?.poster ||
+        ""
+    };
+  },
+
   renderRouteHandoff() {
     if (!this.container) {
+      return;
+    }
+    if (Platform.isBrowser() && usesUnifiedStartup()) {
+      if (
+        !isAutoPlayEffectivelyEnabled(PlayerSettingsStore.get()) ||
+        this.params?.manualSelection
+      ) {
+        this.routeHandoffPending = false;
+        StartupLoadingOverlay.finish();
+        return;
+      }
+      if (StartupLoadingOverlay.active) {
+        StartupLoadingOverlay.updateMetadata(this.getStartupOverlayMeta());
+      } else {
+        StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "finding");
+      }
+      this.routeHandoffPending = PlayerSettingsStore.get().loadingOverlayEnabled !== false;
+      if (this.routeHandoffPending) this.container.innerHTML = "";
       return;
     }
     const markup = renderRouteHandoffShell({
@@ -3253,13 +3304,29 @@ export const MetaDetailsScreen = {
     if (this.renderedRouteHandoffMarkup !== markup) {
       this.container.innerHTML = markup;
       this.renderedRouteHandoffMarkup = markup;
+      const back = this.container.querySelector?.("[data-startup-back]");
+      if (back)
+        back.onclick = () => {
+          this.cancelRouteHandoff();
+        };
     }
   },
 
   // Give up holding the page back and show it. Every path that fails to hand
   // off has to reach this, because a waiting screen with nothing coming is a
   // dead end: there is nothing on it to press.
+  cancelRouteHandoff() {
+    this.autoStreamResolveAbort?.abort();
+    this.autoStreamResolveToken = (this.autoStreamResolveToken || 0) + 1;
+    const fromContinueWatching = this.params?.autoOpenContinueWatching === true;
+    if (fromContinueWatching) this.params.autoOpenContinueWatching = false;
+    this.autoOpenContinueWatchingStreamReady = false;
+    this.releaseRouteHandoff();
+    if (fromContinueWatching) void Router.backFromPendingNavigation();
+  },
+
   releaseRouteHandoff() {
+    StartupLoadingOverlay.finish();
     if (!this.routeHandoffPending) {
       return;
     }
@@ -3276,15 +3343,23 @@ export const MetaDetailsScreen = {
   // the answer already in hand -- or, when nothing matched, with the streams it
   // found, so the screen it falls back to does not fetch them a second time.
   async openStreamRoute(params, options) {
+    params = { ...params, castItems: this.castItems || [] };
     const settings = PlayerSettingsStore.get();
     // "Choose stream" is an explicit request for the picker, and so is a route
     // that asked for manual selection.
     if (!isAutoPlayEffectivelyEnabled(settings) || params?.manualSelection) {
+      StartupLoadingOverlay.finish();
       return Router.navigate("stream", params, options);
     }
 
+    this.autoStreamResolveAbort?.abort();
+    const controller = (this.autoStreamResolveAbort = new AbortController());
+    const deadlineAt = streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
     const token = (this.autoStreamResolveToken || 0) + 1;
     this.autoStreamResolveToken = token;
+    StartupLoadingOverlay.setBackHandler(() => {
+      this.cancelRouteHandoff();
+    });
     const cancelled = () =>
       shouldAbandonAutoResolve({
         startedToken: token,
@@ -3303,7 +3378,9 @@ export const MetaDetailsScreen = {
       this.renderRouteHandoff();
     }
 
-    const resolution = await resolveAutoPlayStream({
+    let resolution = await resolveAutoPlayStream({
+      itemId: params?.itemId,
+      labelSettings: StreamBadgeSettingsStore.snapshot(),
       itemType: params?.itemType,
       videoId: params?.videoId || params?.itemId,
       settings,
@@ -3311,24 +3388,46 @@ export const MetaDetailsScreen = {
       preferredBingeGroup: resolvePreferredBingeGroup(settings, () =>
         StreamPreferencesStore.getEntry(params?.itemId, params?.videoId || params?.itemId)
       ),
-      shouldCancel: cancelled
+      shouldCancel: cancelled,
+      deadlineAt,
+      returnOnFirstMatch: true,
+      signal: controller.signal
     });
+    reportAutoPlaySelection("detail", resolution, settings);
     // Nothing took this route over, so the page it was holding back is where
     // the person stays.
     if (cancelled()) {
       this.releaseRouteHandoff();
       return false;
     }
+    if (!resolution.selected) StartupLoadingOverlay.finish();
     return Router.navigate(
       "stream",
       {
         ...params,
         autoResolvedStreams: resolution.streams,
-        autoResolvedStreamId: resolution.selected?.id || null
+        autoResolvedStreamId: resolution.selected?.id || null,
+        autoResolvedProbes: resolution.probes || [],
+        autoSelectionDeadlineAt: resolution.deadlineAt,
+        autoResolvedStreamsComplete: resolution.complete !== false,
+        autoSelectionFinished: !resolution.selected,
+        autoSelectionTimedOut: resolution.timedOut === true,
+        autoSelectionHdrExcluded: resolution.hdrExcluded === true,
+
+        autoSelectionTimeoutSeconds: settings.streamAutoPlayTimeoutSeconds
       },
       options
     );
   },
+
+  /**
+   * Narrow an auto-play resolution to the streams that really play as they are.
+   *
+   * The decision this replaces was taken from the addon text, which this session proved
+   * wrong about codecs twice. Here the waiting screen is already up, so asking ffprobe
+   * costs nothing the person can see -- and "no direct stream" then falls through to the
+   * picker instead of an unplayable player.
+   */
 
   getStreamNavigationOptions() {
     // Continue Watching mounts Detail only to resolve the Stream target. Replace
@@ -3971,6 +4070,7 @@ export const MetaDetailsScreen = {
           ? `S${episode.season}E${episode.episode} - ${episode.title || ""}`
           : "",
         playerEpisodeTitle: episode?.title || "",
+        playerGenres: this.meta?.genres || [],
         playerReleaseYear: playback.download.year || "",
         playerBackdropUrl:
           this.meta?.background ||
@@ -3979,6 +4079,7 @@ export const MetaDetailsScreen = {
           playback.download.poster ||
           null,
         playerLogoUrl: this.meta?.logo || null,
+        castItems: this.castItems || [],
         episodes: this.episodes || [],
         streamCandidates: [source],
         preferredStreamId: source.id,
@@ -4453,12 +4554,13 @@ export const MetaDetailsScreen = {
     // It moves below the artwork instead. A mouse keeps the cinema framing, and
     // TV keeps the single collapsible body its trailer transition animates.
     const heroMetaBelowArtwork = detailUsesTouchLayout();
+    const heroDescriptionHasToggle = heroMetaBelowArtwork || Platform.isBrowser();
     const heroMeta = `
       ${this.renderResumeIndicator()}
       ${creditLine ? `<p class="series-detail-support">${escapeHtml(creditPrefix)}: ${escapeHtml(creditLine)}</p>` : ""}
       ${externalRatings}
       ${
-        heroMetaBelowArtwork
+        heroDescriptionHasToggle
           ? `<p class="series-detail-description">${escapeHtml(
               meta.description || t("detail.noDescription", {}, "No description.")
             )}<button class="detail-description-toggle focusable" type="button"
@@ -5461,13 +5563,24 @@ export const MetaDetailsScreen = {
   },
 
   async resolveSeasonEpisodeStreams(episode = {}) {
-    return streamRepository.getStreamsFromAllAddons("series", String(episode.id || ""), {
-      itemId: this.getOfflineSeriesId(),
-      season: Number(episode.season),
-      episode: Number(episode.episode)
-    });
+    const result = await streamRepository.getStreamsFromAllAddons(
+      "series",
+      String(episode.id || ""),
+      {
+        itemId: this.getOfflineSeriesId(),
+        season: Number(episode.season),
+        episode: Number(episode.episode)
+      }
+    );
+    if (result?.status !== "success" || !Array.isArray(result.data)) return result;
+    return {
+      ...result,
+      data: result.data.map((group) => ({
+        ...group,
+        streams: filterFilenameStreams(group.streams || [], PlayerSettingsStore.get())
+      }))
+    };
   },
-
   closeSeasonDownloadDialog({ cancelPreparation = true } = {}) {
     if (cancelPreparation && this.seasonDownloadFlow) this.seasonDownloadFlow.cancelled = true;
     this.seasonDownloadDialog?.destroy?.();
@@ -5746,7 +5859,10 @@ export const MetaDetailsScreen = {
     });
     let streams = [];
     try {
-      streams = flattenSeasonDownloadStreams(await this.resolveSeasonEpisodeStreams(episode));
+      streams = filterFilenameStreams(
+        flattenSeasonDownloadStreams(await this.resolveSeasonEpisodeStreams(episode)),
+        PlayerSettingsStore.get()
+      );
     } catch (_) {}
     if (flow.cancelled) return;
     const eligible = streams.filter((stream) =>
@@ -6113,6 +6229,9 @@ export const MetaDetailsScreen = {
       episode.offlineDownloadId ||
       (offlineEpisodeMediaId && this.offlineEpisodeMediaIds?.has(offlineEpisodeMediaId))
     );
+    const episodeWatchLabel = isWatched
+      ? t("episodes_mark_unwatched", {}, "Mark as unwatched")
+      : t("episodes_mark_watched", {}, "Mark as watched");
     const metaParts = [
       episode.runtimeMinutes > 0 ? renderEpisodeRuntimeLabel(episode.runtimeMinutes) : "",
       rating != null
@@ -6131,7 +6250,21 @@ export const MetaDetailsScreen = {
         <div class="series-episode-thumb">
           <div class="series-episode-image${shouldBlur ? " is-blurred" : ""}"${episode.thumbnail ? ` data-thumb="${escapeHtml(episode.thumbnail)}"` : ""}></div>
           <div class="series-episode-overlay"></div>
-          ${isWatched ? `<div class="series-episode-status complete">${renderWatchedBadgeGlyph()}</div>` : progressRatio < 0.02 ? `<div class="series-episode-status idle"></div>` : ""}
+          ${
+            Platform.isBrowser()
+              ? `<button type="button"
+                         class="series-episode-status series-episode-watch-toggle ${isWatched ? "complete" : "idle"}"
+                         data-action="toggleEpisodeWatched"
+                         data-video-id="${escapeAttribute(episode.id)}"
+                         aria-label="${escapeAttribute(episodeWatchLabel)}"
+                         aria-pressed="${isWatched ? "true" : "false"}"
+                         title="${escapeAttribute(episodeWatchLabel)}">${isWatched ? renderWatchedBadgeGlyph() : ""}</button>`
+              : isWatched
+                ? `<div class="series-episode-status complete">${renderWatchedBadgeGlyph()}</div>`
+                : progressRatio < 0.02
+                  ? `<div class="series-episode-status idle"></div>`
+                  : ""
+          }
           ${Platform.isBrowser() && isDownloaded ? `<span class="series-episode-offline-status" role="img" aria-label="${escapeAttribute(t("offline.downloaded", {}, "Downloaded"))}"><span class="material-icons" aria-hidden="true">download</span></span>` : ""}
           ${canOfferOfflineSubtitleHandoff(this.getOfflineSubtitlesForEpisode(episode)) ? `<button type="button" class="series-episode-subtitle-action" data-episode-subtitle="${escapeAttribute(episode.id)}" aria-label="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}" title="${escapeAttribute(t("offline.sendSubtitle", {}, "Send subtitle to another app"))}"><span class="material-icons" aria-hidden="true">closed_caption</span></button>` : ""}
           ${isUnavailable ? `<div class="series-episode-unavailable">${escapeHtml(t("episodes_unavailable", {}, "Unavailable").toUpperCase())}</div>` : ""}
@@ -6432,8 +6565,33 @@ export const MetaDetailsScreen = {
       Boolean(LayoutPreferences.get().blurUnwatchedEpisodes) && !isWatched
     );
 
+    const watchLabel = isWatched
+      ? t("episodes_mark_unwatched", {}, "Mark as unwatched")
+      : t("episodes_mark_watched", {}, "Mark as watched");
     let statusNode = thumb.querySelector(".series-episode-status");
-    if (isWatched) {
+    if (Platform.isBrowser()) {
+      if (
+        !(statusNode instanceof HTMLButtonElement) ||
+        !statusNode.classList.contains("series-episode-watch-toggle")
+      ) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "series-episode-status series-episode-watch-toggle";
+        if (statusNode instanceof HTMLElement) {
+          statusNode.replaceWith(button);
+        } else {
+          thumb.appendChild(button);
+        }
+        statusNode = button;
+      }
+      statusNode.className = `series-episode-status series-episode-watch-toggle ${isWatched ? "complete" : "idle"}`;
+      statusNode.dataset.action = "toggleEpisodeWatched";
+      statusNode.dataset.videoId = videoId;
+      statusNode.setAttribute("aria-label", watchLabel);
+      statusNode.setAttribute("aria-pressed", isWatched ? "true" : "false");
+      statusNode.title = watchLabel;
+      statusNode.innerHTML = isWatched ? renderWatchedBadgeGlyph() : "";
+    } else if (isWatched) {
       if (!(statusNode instanceof HTMLElement)) {
         statusNode = document.createElement("div");
         thumb.appendChild(statusNode);
@@ -7611,13 +7769,10 @@ export const MetaDetailsScreen = {
         title: this.meta?.name || this.params?.fallbackTitle || "Untitled",
         watchedAt: Date.now()
       });
-      await watchProgressRepository.saveProgress({
+      await watchProgressRepository.removePlaybackProgress({
         contentId: this.params?.itemId,
         contentType: this.params?.itemType || "movie",
-        videoId: null,
-        positionMs: 100,
-        durationMs: 100,
-        updatedAt: Date.now()
+        videoId: null
       });
     }
     if (!isSeries && this.meta?.ids?.trakt) {
@@ -8115,15 +8270,12 @@ export const MetaDetailsScreen = {
           videoId: episode.id,
           watchedAt: Date.now()
         });
-        await watchProgressRepository.saveProgress({
+        await watchProgressRepository.removePlaybackProgress({
           contentId: this.params?.itemId,
           contentType: "series",
           videoId: episode.id,
           season: episode.season,
-          episode: episode.episode,
-          positionMs: 100,
-          durationMs: 100,
-          updatedAt: Date.now()
+          episode: episode.episode
         });
       } else {
         await watchedItemsRepository.unmark(this.params?.itemId, {
@@ -8176,6 +8328,8 @@ export const MetaDetailsScreen = {
   // progress from before playback, and only leaving for Home and coming back
   // rebuilt them. Home was already right, because Home has this hook.
   onRouteRevealed() {
+    // Back reveals the preserved page after autoplay has already handed off.
+    this.releaseRouteHandoff();
     // Revealed, not mounted: the router has just put the route's generic title
     // back in the tab, because that is all it knows. This screen knows the
     // title it is showing.
@@ -8284,15 +8438,12 @@ export const MetaDetailsScreen = {
         videoId: episode.id,
         watchedAt: Date.now()
       });
-      await watchProgressRepository.saveProgress({
+      await watchProgressRepository.removePlaybackProgress({
         contentId: this.params?.itemId,
         contentType: "series",
         videoId: episode.id,
         season: episode.season,
-        episode: episode.episode,
-        positionMs: 100,
-        durationMs: 100,
-        updatedAt: Date.now()
+        episode: episode.episode
       });
     } else {
       await watchedItemsRepository.unmark(this.params?.itemId, {
@@ -8601,6 +8752,11 @@ export const MetaDetailsScreen = {
     }
     const useTmdbRecommendationPoster =
       String(railKey || "").startsWith("morelike:") && this.moreLikeThisSource === "tmdb";
+    // Collection cards are poster cards too. Their TMDB payload also contains
+    // a backdrop, and preferring it made the collection rail look like a set
+    // of stills rather than the films' posters.
+    const usePosterFirst =
+      useTmdbRecommendationPoster || String(railKey || "").startsWith("collection:");
     const cards = items
       .map((rawItem) => {
         const item = normalizePreviewItem(rawItem, fallbackType);
@@ -8608,13 +8764,11 @@ export const MetaDetailsScreen = {
         // TMDB recommendations provide distinct portrait and backdrop paths. The
         // desktop recommendation rail is a poster rail, so never substitute a
         // backdrop for a missing TMDB poster.
-        const primaryImage = useTmdbRecommendationPoster
-          ? item.poster || ""
+        const primaryImage = usePosterFirst
+          ? item.poster || item.landscapePoster || ""
           : item.landscapePoster || item.poster || "";
         const fallbackImage =
-          !useTmdbRecommendationPoster && item.poster && item.poster !== primaryImage
-            ? item.poster
-            : "";
+          !usePosterFirst && item.poster && item.poster !== primaryImage ? item.poster : "";
         return `
       <article class="detail-morelike-card focusable"${Platform.isBrowser() ? ' role="button"' : ""}
            data-action="openMoreLikeDetail"
@@ -9249,6 +9403,25 @@ export const MetaDetailsScreen = {
           void this.sendOfflineSubtitleForEpisode(episode);
         };
         this.container.addEventListener("click", this.boundEpisodeSubtitleActionHandler, true);
+      }
+      if (Platform.isBrowser() && !this.boundEpisodeWatchActionHandler) {
+        this.boundEpisodeWatchActionHandler = (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          const button = target?.closest?.(
+            "button[data-action='toggleEpisodeWatched'].series-episode-watch-toggle"
+          );
+          if (!button || !this.container?.contains(button)) return;
+          // The card itself opens the stream picker. Claim the circle before
+          // the rail's card click sees it.
+          event.preventDefault();
+          event.stopPropagation();
+          const episode = this.getEpisodeByVideoId(button.dataset.videoId);
+          if (!episode) return;
+          void this.setEpisodeWatchedState(episode, !this.isEpisodeMarkedWatched(episode)).catch(
+            (error) => console.warn("Failed to toggle episode watched state", error)
+          );
+        };
+        this.container.addEventListener("click", this.boundEpisodeWatchActionHandler, true);
       }
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -10668,10 +10841,10 @@ export const MetaDetailsScreen = {
     if (!pending || !pending.streams.length) {
       return [];
     }
-    if (pending.addonFilter === "all") {
-      return pending.streams;
-    }
-    return pending.streams.filter((stream) => stream.addonName === pending.addonFilter);
+    const visible = filterFilenameStreams(pending.streams, PlayerSettingsStore.get());
+    return pending.addonFilter === "all"
+      ? visible
+      : visible.filter((stream) => stream.addonName === pending.addonFilter);
   },
 
   renderEpisodeStreamChooser() {
@@ -10714,6 +10887,7 @@ export const MetaDetailsScreen = {
               <span>${stream.addonName || "Addon"}${stream.sourceType ? ` - ${stream.sourceType}` : ""}</span>
             </div>
             <div class="series-stream-tags">
+              ${renderFilenamePlaybackBadge(stream, StreamBadgeSettingsStore.snapshot())}
               <span class="series-stream-tag">${detectQuality(stream.label || stream.description || "")}</span>
               <span class="series-stream-tag">${
                 String(stream.sourceType || "")
@@ -10797,6 +10971,7 @@ export const MetaDetailsScreen = {
               <span>${stream.addonName || "Addon"}${stream.sourceType ? ` - ${stream.sourceType}` : ""}</span>
             </div>
             <div class="series-stream-tags">
+              ${renderFilenamePlaybackBadge(stream, StreamBadgeSettingsStore.snapshot())}
               <span class="series-stream-tag">${detectQuality(stream.label || stream.description || "")}</span>
               <span class="series-stream-tag">${
                 String(stream.sourceType || "")
@@ -10849,6 +11024,10 @@ export const MetaDetailsScreen = {
   },
 
   consumeBackRequest(backContext = {}) {
+    if (this.routeHandoffPending) {
+      this.cancelRouteHandoff();
+      return true;
+    }
     if (this.seasonHoldMenu) {
       this.closeSeasonHoldMenu();
       return true;
@@ -10896,7 +11075,7 @@ export const MetaDetailsScreen = {
       return;
     }
     const selectedStream =
-      pending.streams.find((stream) => stream.id === streamId) ||
+      this.getFilteredEpisodeStreams().find((stream) => stream.id === streamId) ||
       this.getFilteredEpisodeStreams()[0];
     if (!selectedStream?.url) {
       return;
@@ -10913,6 +11092,8 @@ export const MetaDetailsScreen = {
     this.stopTrailerPlaybackForNavigation();
     Router.navigate("player", {
       streamUrl: selectedStream.url,
+      prepareSelectedSource: true,
+      automaticSourceSelection: false,
       itemId: this.params?.itemId,
       itemType: this.params?.itemType || "series",
       imdbId,
@@ -10928,6 +11109,7 @@ export const MetaDetailsScreen = {
         : null,
       playerTitle:
         this.meta?.name || this.params?.fallbackTitle || this.params?.itemId || "Untitled",
+      playerGenres: this.meta?.genres || [],
       playerReleaseYear: String(this.meta?.releaseInfo || "").match(/\b(19|20)\d{2}\b/)?.[0] || "",
       playerSubtitle: pending.episode
         ? `S${pending.episode.season}E${pending.episode.episode} - ${pending.episode.title || ""}`.replace(
@@ -10938,6 +11120,7 @@ export const MetaDetailsScreen = {
       playerEpisodeTitle: pending.episode?.title || "",
       playerBackdropUrl: this.meta?.background || this.meta?.poster || null,
       playerLogoUrl: this.meta?.logo || null,
+      castItems: this.castItems || [],
       parentalWarnings: this.meta?.parentalWarnings || null,
       parentalGuide: this.meta?.parentalGuide || null,
       episodes: this.episodes || [],
@@ -11003,6 +11186,7 @@ export const MetaDetailsScreen = {
         year: releaseYear,
         backdrop: streamBackdrop,
         poster: this.meta?.poster || null,
+        textlessPoster: this.meta?.textlessPoster || null,
         logo: this.meta?.logo || null,
         runtime: episode.runtimeMinutes || null,
         parentalWarnings: this.meta?.parentalWarnings || null,
@@ -11059,6 +11243,7 @@ export const MetaDetailsScreen = {
         year: releaseYear,
         backdrop: streamBackdrop,
         poster: this.meta?.poster || null,
+        textlessPoster: this.meta?.textlessPoster || null,
         logo: this.meta?.logo || null,
         parentalWarnings: this.meta?.parentalWarnings || null,
         parentalGuide: this.meta?.parentalGuide || null,
@@ -11084,7 +11269,7 @@ export const MetaDetailsScreen = {
       return;
     }
     const selectedStream =
-      pending.streams.find((stream) => stream.id === streamId) ||
+      this.getFilteredEpisodeStreams().find((stream) => stream.id === streamId) ||
       this.getFilteredEpisodeStreams()[0];
     if (!selectedStream?.url) {
       return;
@@ -11097,6 +11282,8 @@ export const MetaDetailsScreen = {
     this.stopTrailerPlaybackForNavigation();
     Router.navigate("player", {
       streamUrl: selectedStream.url,
+      prepareSelectedSource: true,
+      automaticSourceSelection: false,
       itemId: this.params?.itemId,
       itemType: this.params?.itemType || "movie",
       imdbId,
@@ -11109,9 +11296,11 @@ export const MetaDetailsScreen = {
       playerTitle:
         this.meta?.name || this.params?.fallbackTitle || this.params?.itemId || "Untitled",
       playerSubtitle: "",
+      playerGenres: this.meta?.genres || [],
       playerReleaseYear: String(this.meta?.releaseInfo || "").match(/\b(19|20)\d{2}\b/)?.[0] || "",
       playerBackdropUrl: this.meta?.background || this.meta?.poster || null,
       playerLogoUrl: this.meta?.logo || null,
+      castItems: this.castItems || [],
       parentalWarnings: this.meta?.parentalWarnings || null,
       parentalGuide: this.meta?.parentalGuide || null,
       episodes: [],
@@ -12786,6 +12975,7 @@ export const MetaDetailsScreen = {
         playerEpisodeTitle: this.nextEpisodeToWatch?.title || "",
         playerBackdropUrl: this.meta?.background || this.meta?.poster || null,
         playerLogoUrl: this.meta?.logo || null,
+        castItems: this.castItems || [],
         episodes: this.episodes || [],
         streamCandidates: this.streamItems || [],
         preferredStreamId: selectedStream?.id || null,
@@ -13036,6 +13226,10 @@ export const MetaDetailsScreen = {
     if (this.boundEpisodeSubtitleActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundEpisodeSubtitleActionHandler, true);
       this.boundEpisodeSubtitleActionHandler = null;
+    }
+    if (this.boundEpisodeWatchActionHandler && this.container) {
+      this.container.removeEventListener("click", this.boundEpisodeWatchActionHandler, true);
+      this.boundEpisodeWatchActionHandler = null;
     }
     if (this.boundDesktopInsightTabActionHandler && this.container) {
       this.container.removeEventListener("click", this.boundDesktopInsightTabActionHandler);

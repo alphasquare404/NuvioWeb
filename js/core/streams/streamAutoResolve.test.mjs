@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canSelectFromPartialList,
+  reportAutoPlaySelection,
+  streamSelectionDeadline,
+  withinStreamSelectionDeadline,
   normalizeSelectionWaitSeconds,
   resolveAutoPlayStream,
   resolveHandoffReturnRoute,
@@ -9,7 +12,7 @@ import {
   shouldPaintRouteHandoff
 } from "./streamAutoResolve.js";
 
-const FIRST_STREAM = { streamAutoPlayMode: "FIRST_STREAM", streamAutoPlayTimeoutSeconds: 0 };
+const FIRST_STREAM = { streamAutoPlayMode: "FIRST_STREAM", streamAutoPlayTimeoutSeconds: 5 };
 
 function stream(name, url) {
   return { name, title: name, url, addonName: "Addon" };
@@ -258,4 +261,303 @@ test("a handoff from the detail page returns to the detail page", () => {
     resolveHandoffReturnRoute({ handedOff: true, continueWatchingBackHome: false }),
     "detail"
   );
+});
+
+test("a stalled addon cannot keep Finding stream beyond its deadline", async () => {
+  let sendChunk;
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "tt1",
+    settings: FIRST_STREAM,
+    deadlineAt: Date.now() + 35,
+    repository: {
+      getStreamsFromAllAddons(type, id, options) {
+        sendChunk = options.onChunk;
+        options.onChunk({
+          status: "success",
+          data: groupFor([stream("Early", "https://a.test/early")])
+        });
+        return new Promise(() => {});
+      }
+    }
+  });
+  assert.equal(result.timedOut, false);
+  assert.equal(result.selected?.url, "https://a.test/early");
+  assert.equal(result.streams.length, 1);
+  sendChunk({ status: "success", data: groupFor([stream("Late", "https://a.test/late")]) });
+  assert.equal(result.streams.length, 1, "late chunks cannot mutate a finished attempt");
+});
+
+test("an eligible addon can start selection without waiting for a stalled addon", async () => {
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "tt1",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 0 },
+    returnOnFirstMatch: true,
+    deadlineAt: Date.now() + 1000,
+    repository: {
+      getStreamsFromAllAddons(type, id, options) {
+        options.onChunk({
+          status: "success",
+          data: groupFor([stream("First", "https://a.test/first")])
+        });
+        return new Promise(() => {});
+      }
+    }
+  });
+  assert.equal(result.selected.url, "https://a.test/first");
+  assert.equal(result.complete, false);
+});
+
+test("selection phases share a deadline; Instant has a bounded discovery budget", async () => {
+  assert.equal(streamSelectionDeadline(20, 1000), 21000);
+  assert.equal(streamSelectionDeadline(0, 1000), 46000);
+  assert.equal(streamSelectionDeadline(2147483647, 1000), Infinity);
+  let called = false;
+  const value = await withinStreamSelectionDeadline(
+    () => {
+      called = true;
+    },
+    Date.now() - 1,
+    () => "timeout"
+  );
+  assert.equal(value, "timeout");
+  assert.equal(called, false);
+});
+
+test("Instant starts source discovery rather than expiring at zero milliseconds", async () => {
+  let calls = 0;
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "instant",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 0 },
+    returnOnFirstMatch: true,
+    repository: {
+      async getStreamsFromAllAddons(_t, _v, options) {
+        calls++;
+        const data = groupFor([stream("ready", "https://fixture.test/ready")]);
+        options.onChunk({ status: "success", data });
+        return { status: "success", data };
+      }
+    }
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.selected.url, "https://fixture.test/ready");
+  assert.equal(result.timedOut, false);
+});
+
+test("Unlimited cannot release the initial page on a partial result even with returnOnFirstMatch", async () => {
+  let complete,
+    finished = false;
+  const pending = resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "unlimited",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 2147483647 },
+    returnOnFirstMatch: true,
+    repository: {
+      getStreamsFromAllAddons(_t, _v, options) {
+        options.onChunk({
+          status: "success",
+          data: groupFor([stream("first", "https://fixture.test/first")])
+        });
+        return new Promise((resolve) => {
+          complete = resolve;
+        });
+      }
+    }
+  }).then((result) => {
+    finished = true;
+    return result;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(finished, false);
+  complete({
+    status: "success",
+    data: groupFor([
+      stream("first", "https://fixture.test/first"),
+      stream("last", "https://fixture.test/last")
+    ])
+  });
+  const result = await pending;
+  assert.equal(result.complete, true);
+  assert.equal(result.streams.length, 2);
+});
+
+test("initial Instant compatibility selection keeps discovering after the first raw candidate is rejected", async () => {
+  let push,
+    complete,
+    finished = false;
+  const pending = resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "verified-partial",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 0 },
+    returnOnFirstMatch: true,
+    repository: {
+      getStreamsFromAllAddons(_t, _v, options) {
+        push = options.onChunk;
+        push({ status: "success", data: groupFor([stream("bad", "https://fixture.test/bad")]) });
+        return new Promise((resolve) => {
+          complete = resolve;
+        });
+      }
+    },
+    verifySelection: async (snapshot) => ({
+      ...snapshot,
+      selected: snapshot.streams.find((s) => s.url.endsWith("/good")) || null,
+      probes: []
+    })
+  }).then((result) => {
+    finished = true;
+    return result;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(finished, false);
+  push({ status: "success", data: groupFor([stream("good", "https://fixture.test/good")]) });
+  const result = await pending;
+  assert.equal(result.selected.url, "https://fixture.test/good");
+  assert.equal(result.complete, false);
+  complete({ status: "success", data: [] });
+});
+
+test("Unlimited waits for the compatible complete revision and retains metadata handoff", async () => {
+  let complete,
+    finished = false;
+  const pending = resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "verified-unlimited",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 2147483647 },
+    returnOnFirstMatch: true,
+    repository: {
+      getStreamsFromAllAddons(_t, _v, options) {
+        options.onChunk({
+          status: "success",
+          data: groupFor([stream("first", "https://fixture.test/first")])
+        });
+        return new Promise((resolve) => {
+          complete = resolve;
+        });
+      }
+    },
+    verifySelection: async (snapshot) => ({
+      ...snapshot,
+      selected: snapshot.streams.at(-1),
+      probes: [["file-facts", { container: "mp4", videoCodec: "h264" }]]
+    })
+  }).then((result) => {
+    finished = true;
+    return result;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(finished, false);
+  complete({
+    status: "success",
+    data: groupFor([
+      stream("first", "https://fixture.test/first"),
+      stream("last", "https://fixture.test/last")
+    ])
+  });
+  const result = await pending;
+  assert.equal(result.selected.url, "https://fixture.test/last");
+  assert.equal(result.complete, true);
+  assert.equal(result.probes.length, 1);
+});
+
+test("a failed compatibility verifier does not spin or fall back to an unverified raw candidate", async () => {
+  let calls = 0;
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "verification-failure",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 0 },
+    returnOnFirstMatch: true,
+    repository: fakeRepository([[stream("raw", "https://fixture.test/raw")]]),
+    verifySelection: async () => {
+      calls++;
+      throw Error("inspection failed");
+    }
+  });
+  assert.equal(result.selected, null);
+  assert.ok(calls <= 3);
+});
+
+test("Back aborts Unlimited selection promptly and late addon chunks cannot mutate the result", async () => {
+  const controller = new AbortController();
+  let push;
+  const pending = resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "cancel",
+    settings: { ...FIRST_STREAM, streamAutoPlayTimeoutSeconds: 2147483647 },
+    signal: controller.signal,
+    repository: {
+      getStreamsFromAllAddons(_t, _v, o) {
+        push = o.onChunk;
+        return new Promise(() => {});
+      }
+    }
+  });
+  await new Promise((r) => setImmediate(r));
+  controller.abort();
+  const result = await pending;
+  assert.equal(result.cancelled, true);
+  push({ status: "success", data: groupFor([stream("late", "https://fixture.test/late")]) });
+  assert.equal(result.streams.length, 0);
+});
+test("an already cancelled search never starts source discovery", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let calls = 0;
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "cancelled",
+    settings: FIRST_STREAM,
+    signal: controller.signal,
+    repository: {
+      getStreamsFromAllAddons() {
+        calls++;
+      }
+    }
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.cancelled, true);
+});
+test("fresh addon manifests preserve the allowed-addon scope when the initial cache was empty", async () => {
+  const result = await resolveAutoPlayStream({
+    itemType: "movie",
+    videoId: "fresh",
+    settings: {
+      ...FIRST_STREAM,
+      streamAutoPlaySource: "INSTALLED_ADDONS_ONLY",
+      streamAutoPlaySelectedAddons: ["A"]
+    },
+    installedAddonNames: new Set(),
+    repository: {
+      async getStreamsFromAllAddons(_t, _v, o) {
+        o.onAddon({ displayName: "A" });
+        o.onAddon({ displayName: "B" });
+        return {
+          status: "success",
+          data: [
+            { addonName: "B", streams: [{ url: "https://fixture.test/b" }] },
+            { addonName: "A", streams: [{ url: "https://fixture.test/a" }] }
+          ]
+        };
+      }
+    }
+  });
+  assert.equal(result.selected.addonName, "A");
+});
+test("selection diagnostics exclude source URLs, credentials, regex and raw exception text", (t) => {
+  const logs = [];
+  t.mock.method(console, "warn", (s) => logs.push(s));
+  reportAutoPlaySelection(
+    "detail",
+    {
+      reason: "error",
+      streams: [{ url: "https://secret.test/?token=private" }],
+      error: new Error("private")
+    },
+    { streamAutoPlayTimeoutSeconds: 3, streamAutoPlayRegex: "secret-regex" }
+  );
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /selection-finished/);
+  assert.doesNotMatch(logs[0], /secret|private|token/);
 });

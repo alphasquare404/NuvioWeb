@@ -1,3 +1,5 @@
+import { WatchedItemsStore } from "../local/watchedItemsStore.js";
+import { selectWatchedItemsForSource } from "./watchedItemsScope.js";
 import { WatchProgressStore } from "../local/watchProgressStore.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
 import { LocalStore } from "../../core/storage/localStore.js";
@@ -139,7 +141,13 @@ function patchOrInvalidateContinueWatchingDisplaySnapshot(progressItem) {
   const positionMs = Math.max(0, Math.trunc(Number(progressItem?.positionMs) || 0));
   const durationMs = Math.max(0, Math.trunc(Number(progressItem?.durationMs) || 0));
   const nextItems = entry.items.slice();
-  nextItems[index] = { ...nextItems[index], positionMs, durationMs };
+  nextItems[index] = {
+    ...nextItems[index],
+    positionMs,
+    durationMs,
+    updatedAt: Number(progressItem.updatedAt || nextItems[index].updatedAt || 0)
+  };
+  nextItems.sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
   const nextStore = { ...store, [sourceKey]: { ...entry, items: nextItems } };
   LocalStore.set(CW_DISPLAY_SNAPSHOT_KEY, nextStore);
 }
@@ -208,6 +216,18 @@ function selectedContinueWatchingSource() {
     return WatchProgressSource.MDBLIST;
   }
   return WatchProgressSource.NUVIO_SYNC;
+}
+
+function localCompletedProgress() {
+  return selectWatchedItemsForSource(
+    WatchedItemsStore.listForProfile(activeProfileId()),
+    selectedContinueWatchingSource()
+  ).map((item) => ({
+    ...item,
+    positionMs: 100,
+    durationMs: 100,
+    updatedAt: Number(item.watchedAt || 0)
+  }));
 }
 
 function selectedLocalProgressSource() {
@@ -604,16 +624,17 @@ class WatchProgressRepository {
         activeProfileId()
       );
     }
+    const updatedAt = progress.updatedAt || Date.now();
     WatchProgressStore.upsert(
       {
         ...progress,
         source: String(progress?.source || "").trim() || selectedLocalProgressSource(),
-        updatedAt: progress.updatedAt || Date.now()
+        updatedAt
       },
       activeProfileId(),
       { authoritative }
     );
-    patchOrInvalidateContinueWatchingDisplaySnapshot(progress);
+    patchOrInvalidateContinueWatchingDisplaySnapshot({ ...progress, updatedAt });
     queueWatchProgressCloudSync();
   }
 
@@ -655,9 +676,11 @@ class WatchProgressRepository {
     // watched from a poster menu, or un-watching a series, left its card
     // standing until something else forced a refresh.
     WatchProgressStore.remove(contentId, videoId, pid, { authoritative: true });
-    await deleteWatchProgressFromCloud(removedItems);
     invalidateContinueWatchingDisplaySnapshot();
     queueWatchProgressCloudSync();
+    void deleteWatchProgressFromCloud(removedItems).catch((error) => {
+      console.warn("Watch progress cloud delete failed", error);
+    });
   }
 
   async removePlaybackProgress(identity = {}) {
@@ -688,9 +711,11 @@ class WatchProgressRepository {
       pid,
       WatchProgressStore.listForProfile(pid).filter((item) => !removedItems.includes(item))
     );
-    await deleteWatchProgressFromCloud(removedItems);
     invalidateContinueWatchingDisplaySnapshot();
     queueWatchProgressCloudSync();
+    void deleteWatchProgressFromCloud(removedItems).catch((error) => {
+      console.warn("Watch progress cloud delete failed", error);
+    });
     return true;
   }
 
@@ -731,6 +756,7 @@ class WatchProgressRepository {
     const localItems = WatchProgressStore.listForProfile(activeProfileId());
     const allItems = [
       ...localItems,
+      ...localCompletedProgress(),
       ...traktHistoryItems,
       ...playbackItems,
       ...watchedShowSeedItems
@@ -764,7 +790,7 @@ class WatchProgressRepository {
   async getAllForContinueWatching() {
     const localItems = WatchProgressStore.listForProfile(activeProfileId());
     if (selectedContinueWatchingSource() === WatchProgressSource.NUVIO_SYNC) {
-      return filterForSelectedContinueWatchingSource(localItems);
+      return filterForSelectedContinueWatchingSource([...localItems, ...localCompletedProgress()]);
     }
     const selectedSource = selectedContinueWatchingSource();
     const snapshot =
@@ -785,6 +811,7 @@ class WatchProgressRepository {
     return continueWatchingRemovalSuppression.filterItems(
       filterForSelectedContinueWatchingSource([
         ...localItems,
+        ...localCompletedProgress(),
         ...snapshot.historyItems,
         ...snapshot.playbackItems,
         ...snapshot.watchedShowSeedItems

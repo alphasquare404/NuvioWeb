@@ -186,3 +186,144 @@ test("the gap before Advanced belongs to its group, not to the row inside the ca
   );
   assert.doesNotMatch(desktopCss, /\.settings-nav-item\[data-section="advanced"\] \{\s*margin-top/);
 });
+
+test("HDR card follows device capability and stores explicit toggle choices", async () => {
+  const { resolveHdrPreference } = await import("../../../core/streams/streamHdrPreference.js");
+  const source = await settingsScreenSource();
+  const start = source.indexOf('String(model.player.streamAutoPlayMode) === "FIRST_STREAM"');
+  const end = source.indexOf("${this.renderActionRow", start);
+  const expression = source
+    .slice(start, end)
+    .trim()
+    .replace(/\}\s*$/, "");
+  const render = new Function(
+    "model",
+    "hdrSupport",
+    "resolveHdrPreference",
+    `return (${expression});`
+  );
+  const callback = source.match(
+    /this\.actionMap\.set\("playback:autoStreamHdr", \(\) => \{([\s\S]*?)\n {4}\}\);/
+  )[1];
+  for (const [support, title, initiallyChecked] of [
+    [true, "Select HDR when available", true],
+    [false, "Don’t select HDR streams", true],
+    [null, "Prefer HDR streams", false]
+  ]) {
+    let player = { streamAutoPlayMode: "FIRST_STREAM", streamAutoPlayHdrPreference: "AUTO" };
+    const view = () =>
+      render.call({ renderToggleRow: (row) => row }, { player }, support, resolveHdrPreference);
+    assert.equal(view().title, title);
+    assert.equal(view().checked, initiallyChecked);
+    const toggle = new Function(
+      "PlayerSettingsStore",
+      "getHdrPlaybackSupport",
+      "resolveHdrPreference",
+      callback
+    );
+    toggle(
+      {
+        get: () => player,
+        set: (partial) => {
+          player = { ...player, ...partial };
+        }
+      },
+      () => support,
+      resolveHdrPreference
+    );
+    assert.equal(view().checked, !initiallyChecked);
+    assert.equal(
+      render.call(
+        { renderToggleRow: (row) => row },
+        { player: { ...player, streamAutoPlayMode: "MANUAL" } },
+        support,
+        resolveHdrPreference
+      ),
+      ""
+    );
+  }
+});
+
+test("Settings panels follow viewport width while TV and narrow browsers retain their layout", async () => {
+  const source = await settingsScreenSource();
+  const method = source.match(/ {2}usesSettingsPanels\(\) \{[\s\S]*?\n {2}\},/)[0];
+  const query = source.match(/const SETTINGS_PANELS_QUERY = "([^"]+)";/)[1];
+  for (const [browser, width, panels] of [
+    [true, 390, false],
+    [true, 1023, false],
+    [true, 1024, true],
+    [true, 1920, true],
+    [false, 1920, false]
+  ]) {
+    const usesPanels = new Function(
+      "Platform",
+      "globalThis",
+      "SETTINGS_PANELS_QUERY",
+      `return ({${method}}).usesSettingsPanels;`
+    )(
+      { isBrowser: () => browser },
+      {
+        matchMedia: (value) => {
+          assert.equal(value, query);
+          return { matches: width >= 1024 };
+        }
+      },
+      query
+    );
+    assert.equal(usesPanels(), panels);
+  }
+});
+
+test("panel resize listener only redraws its current route and never changes navigation", async () => {
+  const source = await settingsScreenSource();
+  const method = source.match(/ {2}bindSettingsPanelLayout\(\) \{[\s\S]*?\n {2}\},/)[0];
+  let listener,
+    bindings = 0,
+    renders = 0,
+    current = "settingsSection";
+  const bind = new Function(
+    "Platform",
+    "globalThis",
+    "Router",
+    "SETTINGS_PANELS_QUERY",
+    `return ({${method}}).bindSettingsPanelLayout;`
+  )(
+    { isBrowser: () => true },
+    {
+      matchMedia: () => ({
+        addEventListener(event, callback) {
+          assert.equal(event, "change");
+          listener = callback;
+          bindings++;
+        }
+      })
+    },
+    {
+      getCurrent: () => current,
+      navigate() {
+        assert.fail("Resize must not navigate");
+      },
+      back() {
+        assert.fail("Resize must not go Back");
+      }
+    },
+    "(min-width: 1024px)"
+  );
+  const screen = {
+    container: { id: "settings" },
+    render(options) {
+      assert.deepEqual(options, { refreshModel: false });
+      renders++;
+    }
+  };
+  bind.call(screen);
+  bind.call(screen);
+  assert.equal(bindings, 1);
+  listener();
+  assert.equal(renders, 0, "Suspended index must not redraw over a section");
+  current = "settings";
+  listener();
+  assert.equal(renders, 1);
+  assert.equal(screen.suppressNextContentFocusScroll, true);
+  assert.equal(screen.suppressNextRailFocusScroll, true);
+});

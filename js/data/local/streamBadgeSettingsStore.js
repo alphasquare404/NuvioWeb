@@ -1,5 +1,10 @@
 import { createProfileScopedStore } from "./profileScopedStore.js";
 import {
+  normalizeClientLabelLimit,
+  normalizePlaybackLabelSource,
+  normalizeFilenameCheckLimit
+} from "../../core/streams/streamLabelPolicy.js";
+import {
   normalizeStreamBadgeRules,
   parseStreamBadgeRulesFromPayload,
   STREAM_BADGE_IMPORT_LIMIT
@@ -10,6 +15,14 @@ const LEGACY_DEBRID_KEY = "debridSettings";
 
 const DEFAULT_STREAM_BADGE_SETTINGS = {
   rules: { imports: [] },
+  showPlaybackLabels: true,
+  compatibilityCheckEnabled: true,
+  filenameAllAddons: false,
+  metadataFilenameFallback: false,
+  filenameCheckLimit: 0,
+  labelAddons: [],
+  clientLabelLimit: 5,
+  playbackLabelSource: "FILE_METADATA",
   showFileSizeBadges: true,
   showAddonLogo: true,
   badgePlacement: "BOTTOM"
@@ -38,11 +51,28 @@ function normalizeStreamBadgeSettings(value = {}) {
     source.badge_placement ??
     source.streamBadgePlacement ??
     source.stream_badge_placement;
+  const labelAddonsSource = source.labelAddons ?? source.label_addons;
   return {
     rules: normalizeStreamBadgeRules(rulesSource),
     showFileSizeBadges: showFileSizeBadges !== false,
     showAddonLogo: showAddonLogo !== false,
-    badgePlacement: normalizeBadgePlacement(badgePlacement)
+    badgePlacement: normalizeBadgePlacement(badgePlacement),
+    // Everything this store returns must name every field it accepts, or a saved value is
+    // dropped on the way back out -- which is exactly why a chosen addon list kept reading
+    // as "All addons".
+    showPlaybackLabels: (source.showPlaybackLabels ?? source.show_playback_labels) !== false,
+    compatibilityCheckEnabled:
+      (source.compatibilityCheckEnabled ??
+        source.showPlaybackLabels ??
+        source.show_playback_labels) !== false,
+    filenameAllAddons: source.filenameAllAddons === true,
+    metadataFilenameFallback: source.metadataFilenameFallback === true,
+    filenameCheckLimit: normalizeFilenameCheckLimit(source.filenameCheckLimit ?? 0),
+    clientLabelLimit: normalizeClientLabelLimit(source.clientLabelLimit),
+    playbackLabelSource: normalizePlaybackLabelSource(source.playbackLabelSource),
+    labelAddons: Array.isArray(labelAddonsSource)
+      ? labelAddonsSource.map((name) => String(name || "").trim()).filter(Boolean)
+      : []
   };
 }
 
@@ -190,6 +220,10 @@ export const StreamBadgeSettingsStore = {
       )
     };
     store.set({ rules: normalizeStreamBadgeRules(nextRules) });
+  },
+
+  setShowPlaybackLabels(enabled) {
+    store.set({ showPlaybackLabels: Boolean(enabled) });
   },
 
   setShowFileSizeBadges(enabled) {

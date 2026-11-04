@@ -86,3 +86,41 @@ test("replaceForProfile() always notifies with reason replaceForProfile", async 
     values.clear();
   }
 });
+
+test("removal notifies the exact removed card identities for immediate CW updates", () => {
+  values.clear();
+  WatchProgressStore.upsert(
+    {
+      contentId: "series",
+      videoId: "e1",
+      season: 1,
+      episode: 1,
+      positionMs: 1000,
+      durationMs: 10000
+    },
+    "1"
+  );
+  WatchProgressStore.upsert(
+    {
+      contentId: "series",
+      videoId: "e2",
+      season: 1,
+      episode: 2,
+      positionMs: 1000,
+      durationMs: 10000
+    },
+    "1"
+  );
+  const { notifications, unsubscribe } = collectNotifications();
+  try {
+    WatchProgressStore.remove("series", "e1", "1", { authoritative: true });
+    assert.deepEqual(
+      notifications[0].removedItems.map((item) => item.videoId),
+      ["e1"]
+    );
+    assert.equal(WatchProgressStore.listForProfile("1").length, 1);
+  } finally {
+    unsubscribe();
+    values.clear();
+  }
+});

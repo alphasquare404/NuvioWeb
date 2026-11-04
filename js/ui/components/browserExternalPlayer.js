@@ -278,14 +278,30 @@ export function launchBrowserExternalPlayer({
 
 export async function copyBrowserExternalStreamLink({ runtime = globalThis, mediaUrl = "" } = {}) {
   if (!isTransferableExternalMediaUrl(mediaUrl)) return false;
+  let resolvedText;
+  const getText = () => resolvedText ||= (async () => {
+    const hit = clientMediaUrlResolver.cached(mediaUrl);
+    if (hit) return hit.url;
+    if (typeof runtime?.fetch !== "function") return String(mediaUrl);
+    const result = await clientMediaUrlResolver.resolve(mediaUrl, { fetchImpl: runtime.fetch.bind(runtime) });
+    // Copy remains usable for native players even when browser CORS blocks resolve.
+    return result.ok ? result.url : String(mediaUrl);
+  })();
   try {
-    await runtime?.navigator?.clipboard?.writeText?.(String(mediaUrl));
+    if (typeof runtime?.ClipboardItem === "function" && typeof runtime?.navigator?.clipboard?.write === "function") {
+      // Start the clipboard operation inside the tap, before network awaits.
+      const blob = getText().then((text) => new Blob([text], { type: "text/plain" }));
+      await runtime.navigator.clipboard.write([new runtime.ClipboardItem({ "text/plain": blob })]);
+    } else {
+      if (typeof runtime?.navigator?.clipboard?.writeText !== "function") throw new Error("clipboard-unavailable");
+      await runtime.navigator.clipboard.writeText(await getText());
+    }
     return true;
   } catch (_) {
     const document = runtime?.document;
     if (!document?.body || typeof document.createElement !== "function") return false;
     const input = document.createElement("textarea");
-    input.value = String(mediaUrl);
+    input.value = await getText();
     input.setAttribute("readonly", "");
     input.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
     document.body.appendChild(input);
@@ -298,3 +314,4 @@ export async function copyBrowserExternalStreamLink({ runtime = globalThis, medi
 }
 
 export { EXTERNAL_PLAYER_IDS };
+import { clientMediaUrlResolver } from "../../core/streams/clientMediaUrlResolver.js";

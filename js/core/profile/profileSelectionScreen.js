@@ -640,13 +640,15 @@ export const ProfileSelectionScreen = {
       "";
     const isDesktopActive =
       String(profile.id) === String(this.activeProfileId);
+    const profileColor = profile.avatarColorHex || getDefaultProfileColor();
     return `
       <div class="profile-card profile-focusable focusable${isDesktopActive ? " is-active-profile" : ""}"
            data-profile-id="${escapeHtml(profile.id)}"
            data-focus-key="profile:${escapeHtml(profile.id)}"
+           style="--profile-accent: ${escapeHtml(profileColor)}"
            tabindex="0">
         <div class="profile-avatar-ring">
-          <div class="profile-avatar" style="background:${escapeHtml(profile.avatarColorHex || getDefaultProfileColor())}">
+          <div class="profile-avatar" style="background:${escapeHtml(profileColor)}">
             ${
               avatarUrl
                 ? `<img class="profile-avatar-image" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(profile.name)}"/>`
@@ -654,6 +656,7 @@ export const ProfileSelectionScreen = {
             }
           </div>
           ${profile.isPrimary ? `<span class="profile-primary-dot" aria-hidden="true">&#9733;</span>` : ""}
+          ${this.isProfilePinEnabled(profile.id) ? `<span class="profile-pin-indicator" role="img" aria-label="${escapeHtml(t("profile_pin_badge", {}, "PIN protected"))}" title="${escapeHtml(t("profile_pin_badge", {}, "PIN protected"))}"><span class="material-icons" aria-hidden="true">lock</span></span>` : ""}
           ${isDesktopActive ? `<span class="profile-active-indicator" aria-label="${escapeHtml(t("profile_active", {}, "Active profile"))}">&#10003;</span>` : ""}
         </div>
         <div class="profile-name">${escapeHtml(profile.name)}</div>
@@ -1043,6 +1046,14 @@ export const ProfileSelectionScreen = {
     const gridCards = Array.from(this.container.querySelectorAll(".profile-card"));
     gridCards.forEach((card) => {
       card.addEventListener("focus", () => this.handleFocusableFocus(card));
+      card.addEventListener("mouseenter", () => {
+        this.updateBackground(this.profileBackgroundColor(card.dataset.profileId));
+      });
+      card.addEventListener("mouseleave", (event) => {
+        // Moving between cards is one hover, not a reset followed by another.
+        if (event.relatedTarget?.closest?.(".profile-card")) return;
+        this.restoreProfileBackground();
+      });
       card.addEventListener("click", async () => {
         await this.activateFocusedNode(card);
       });
@@ -1495,6 +1506,25 @@ export const ProfileSelectionScreen = {
       cards[nextIndex].focus();
     }
     return true;
+  },
+
+  profileBackgroundColor(profileId) {
+    if (String(profileId || "") === "add") return "#555555";
+    const profile = this.getProfileById(profileId);
+    return profile?.avatarColorHex || getDefaultProfileColor();
+  },
+
+  restoreProfileBackground() {
+    const focusedCard = this.container?.querySelector(".profile-card.focused");
+    if (focusedCard?.dataset?.profileId) {
+      this.updateBackground(this.profileBackgroundColor(focusedCard.dataset.profileId));
+      return;
+    }
+    const activeProfile =
+      this.getProfileById(this.activeProfileId) || this.getVisibleProfiles()[0];
+    if (activeProfile) {
+      this.updateBackground(activeProfile.avatarColorHex || getDefaultProfileColor());
+    }
   },
 
   updateBackground(colorHex) {
@@ -2068,16 +2098,33 @@ export const ProfileSelectionScreen = {
         "This will permanently delete this profile and all its data including library, watch history, and addon settings. This cannot be undone."
       ),
       widthVw: 43.75, // 420dp / 960dp screen = 43.75vw
+      panelClassName: "profile-delete-dialog",
+      actionsClassName: "profile-delete-actions",
       buttons: [
+        {
+          label: t("profile_cancel", {}, "Cancel"),
+          key: "cancel",
+          className: "profile-delete-cancel",
+          onAction: () => {
+            this.closeDeleteDialog();
+          }
+        },
         {
           label: t("profile_delete_btn", {}, "Delete Profile"),
           key: "confirm",
           danger: true,
+          className: "profile-delete-confirm",
           onAction: () => {
             const id = this.deleteProfileId;
+            const dialog = this._deleteDialog;
             this._deleteDialog = null;
             this.deleteProfileId = null;
-            this.deleteProfile(id);
+            // The delete confirmation was opened from the edit dialog. Close
+            // that editor before the profile row is removed, otherwise its
+            // overlay survives the deletion.
+            this.editorState = null;
+            dialog?.destroy();
+            void this.deleteProfile(id);
           }
         }
       ],

@@ -165,6 +165,15 @@ export const DebridApi = {
     });
   },
 
+  async torboxResolveAddonLink(apiKey, descriptor, { signal } = {}) {
+    return requestBridgeJson("/api/debrid/torbox/link/from-addon", {
+      method: "POST",
+      ...(signal ? { signal } : {}),
+      headers: { ...authHeaders(apiKey), "Content-Type": "application/json" },
+      body: JSON.stringify(descriptor)
+    });
+  },
+
   async torboxListCloudItems(apiKey, path) {
     return requestJson(TORBOX_BASE_URL, path, { headers: authHeaders(apiKey) });
   },

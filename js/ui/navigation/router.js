@@ -1,5 +1,9 @@
+import { StartupLoadingOverlay } from "../components/startupLoadingOverlay.js";
 import { HomeScreen } from "../screens/home/homeScreen.js";
 import { PlayerScreen } from "../screens/player/playerScreen.js";
+import { MoviPlayerScreen } from "../screens/player/movi/moviPlayerScreen.js";
+import { shouldRoutePlayerToMovi } from "../../core/player/movi/moviCapability.js";
+import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { AccountScreen } from "../screens/account/accountScreen.js";
 import { AuthQrSignInScreen } from "../screens/account/authQrSignInScreen.js";
 import { AuthSignInScreen } from "../screens/account/authSignInScreen.js";
@@ -119,10 +123,11 @@ const NUVIO_HISTORY_STATE_KEY = "__nuvioHistory";
 // entry, which is what that store is for.
 const MAX_SUSPENDED_LAYERS = 4;
 
-// The one screen never kept alive underneath another: its <video> holds decoder
-// and network resources that must be released when it is left, never retained
-// merely to preserve navigation state.
-const NEVER_SUSPEND_ROUTES = new Set(["player"]);
+// The screens never kept alive underneath another: their media elements hold
+// decoder and network resources that must be released when they are left, never
+// retained merely to preserve navigation state. The movi route owns a WASM
+// demuxer and its cache, so it belongs here for the same reason as `player`.
+const NEVER_SUSPEND_ROUTES = new Set(["player", "moviPlayer"]);
 
 // The inline styles the router owns on whichever screen is drawn as a layer.
 const LAYER_CHROME_PROPERTIES = [
@@ -205,6 +210,7 @@ export const Router = {
   routes: {
     home: HomeScreen,
     player: PlayerScreen,
+    moviPlayer: MoviPlayerScreen,
     account: AccountScreen,
     authQrSignIn: AuthQrSignInScreen,
     authSignIn: AuthSignInScreen,
@@ -362,13 +368,22 @@ export const Router = {
       const departingBrowserHistoryIndex = this.browserHistoryIndex;
       this.browserHistoryIndex = getNuvioHistoryIndex(state);
       this.browserHistoryProvenance = getNuvioHistoryProvenance(state);
-      const shouldSkipConsume = Boolean(this.skipConsumeNextPopstate);
+      const completingRequestedBack = Boolean(
+        this.pendingPreviousRouteBack &&
+        state?.route === this.pendingPreviousRouteBack.expectedRoute &&
+        getNuvioHistoryIndex(state) === this.pendingPreviousRouteBack.expectedIndex
+      );
+      const shouldSkipConsume = Boolean(this.skipConsumeNextPopstate || completingRequestedBack);
       this.skipConsumeNextPopstate = false;
       const currentScreen = this.getCurrentScreen();
+      const playerReturnRoute =
+        currentScreen?.shouldReturnToStreamOnBack?.() !== false
+          ? "stream"
+          : currentScreen?.params?.handoffReturnRoute;
       const shouldLetPlayerReturnToStream =
         this.current === "player" &&
-        state?.route === "stream" &&
-        currentScreen?.shouldReturnToStreamOnBack?.() !== false &&
+        ["stream", "detail", "home"].includes(playerReturnRoute) &&
+        state?.route === playerReturnRoute &&
         !currentScreen?.hasBackDismissableOverlay?.();
       // Home uses Back to open/dismiss its sidebar, but that local behavior
       // must not consume a valid Forward traversal into another Nuvio route.
@@ -545,6 +560,23 @@ export const Router = {
   // reused. A route reached from itself used to fail the second test for want
   // of a second container; a stackable route is given one, so Detail A stays
   // mounted under Detail B and Back reveals it rather than rebuilding it.
+  // Authentication routes share #account; their route names are not DOM ids.
+  // Resolve this before first mount too, otherwise a retained Settings layer
+  // can remain above a newly opened sign-in form.
+  getRouteContainer(routeName) {
+    const containerId = ["authSignIn", "authQrSignIn", "syncCode"].includes(routeName)
+      ? "account"
+      : routeName;
+    // FolderDetail inherits Home behavior, but before its first mount it also
+    // inherits Home's live container. Only a screen's own container belongs to
+    // this route; otherwise resolve the incoming route's shell element.
+    const screen = this.routes[routeName];
+    return (
+      (Object.prototype.hasOwnProperty.call(screen || {}, "container") && screen.container) ||
+      document?.getElementById?.(containerId)
+    );
+  },
+
   canSuspendOutgoingRoute(routeName, outgoingHistoryIndex, options = {}) {
     return Boolean(
       Platform.isBrowser() &&
@@ -562,8 +594,8 @@ export const Router = {
       return false;
     }
     const parentScreen = this.routes[this.current];
-    const parentContainer = parentScreen?.container || document?.getElementById?.(this.current);
-    const childContainer = options?.childContainer || document?.getElementById?.(routeName);
+    const parentContainer = this.getRouteContainer(this.current);
+    const childContainer = options?.childContainer || this.getRouteContainer(routeName);
     if (!parentScreen || !parentContainer || !childContainer) {
       return false;
     }
@@ -615,7 +647,7 @@ export const Router = {
     if (!top) {
       return false;
     }
-    const container = this.routes[routeName]?.container || document?.getElementById?.(routeName);
+    const container = this.getRouteContainer(routeName);
     if (!container || top.childContainer === container) {
       return false;
     }
@@ -658,7 +690,7 @@ export const Router = {
   // is re-stated after mount rather than trusted.
   reassertTopLayerChrome(routeName) {
     const top = this.suspendedRouteStack[this.suspendedRouteStack.length - 1];
-    const container = this.routes[routeName]?.container || document?.getElementById?.(routeName);
+    const container = this.getRouteContainer(routeName);
     if (!top || !container || top.childContainer !== container) {
       return;
     }
@@ -686,10 +718,7 @@ export const Router = {
   // layer holding it is cleaned up first to keep the stack honest about what
   // is actually still alive.
   releaseSuspendedLayersForRoute(routeName, incomingContainer = null) {
-    const container =
-      incomingContainer ||
-      this.routes[routeName]?.container ||
-      document?.getElementById?.(routeName);
+    const container = incomingContainer || this.getRouteContainer(routeName);
     for (let index = this.suspendedRouteStack.length - 1; index >= 0; index -= 1) {
       const layer = this.suspendedRouteStack[index];
       if (layer.route !== routeName) {
@@ -846,7 +875,44 @@ export const Router = {
   },
 
   async navigate(routeName, params = {}, options = {}) {
+    if (
+      options.isBackNavigation ||
+      !["stream", "player"].includes(routeName) ||
+      (routeName === "stream" && !params.autoResolvedStreamId)
+    ) {
+      StartupLoadingOverlay.finish();
+    }
+    if (routeName === "player" && Platform.isBrowser() && !params.externalFrameUrl) {
+      params.playerOrientationPreference ||= StartupLoadingOverlay.orientation;
+      StartupLoadingOverlay.begin(
+        {
+          itemKey: String(params.itemId || ""),
+          itemType: params.itemType,
+          internalPlayer: true,
+          orientation: params.playerOrientationPreference,
+          posterUrl: params.playerPosterUrl || params.poster || "",
+          textlessPoster: params.textlessPoster || "",
+          title: params.playerTitle || params.itemTitle || "Nuvio",
+          subtitle: params.playerSubtitle || "",
+          logoUrl: params.playerLogoUrl || "",
+          backdropUrl: params.playerBackdropUrl || ""
+        },
+        "opening"
+      );
+      StartupLoadingOverlay.setBackHandler(() => void this.back());
+    }
     const navigationStart = ROUTER_PERF_DEBUG ? routerPerfNow() : 0;
+
+    // Which engine draws the picture is a route decision, and the player route
+    // has six doorways (stream picker, detail, library, next episode...). Asking
+    // each caller to remember the choice means one of them forgets, so it is
+    // answered here instead, once, for whoever asked. The rule itself lives in
+    // moviCapability so it can be tested without a router.
+    // The source was prepared using the stream's playback verdict. Navigation must
+    // preserve it: a filename extension cannot override browser capability evidence.
+    if (routeName === "player" && shouldRoutePlayerToMovi(params, PlayerSettingsStore.get())) {
+      routeName = "moviPlayer";
+    }
 
     const fromHistory = Boolean(options?.fromHistory);
     const skipStackPush = Boolean(options?.skipStackPush);
@@ -972,7 +1038,12 @@ export const Router = {
       }
     } else if (this.current === routeName) {
       this.captureCurrentRouteState(routeName, options?.captureHistoryIndex);
-      this.routes[this.current].cleanup?.();
+      // The incoming browser player has already claimed the unified loading
+      // screen above. Outgoing playback must not dismiss that screen.
+      this.routes[this.current].cleanup?.({
+        preserveStartupLoading:
+          routeName === "player" && Platform.isBrowser() && !params.externalFrameUrl
+      });
     }
 
     // Resolved here rather than at the top: a stacked navigation has just

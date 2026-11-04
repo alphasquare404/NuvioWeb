@@ -46,6 +46,7 @@ function backdropStyle(backdrop) {
 export function renderRouteHandoffShell({ backdrop = "", label = "" } = {}) {
   return `
       <div class="route-handoff">
+        <button type="button" class="startup-loading-back focusable" data-startup-back aria-label="Back"><img class="player-desktop-back-icon" src="assets/icons/ic_player_back.svg" alt="" aria-hidden="true" /></button>
         <div class="route-handoff-backdrop"${backdropStyle(backdrop)}></div>
         <div class="route-handoff-dim"></div>
         <div class="route-handoff-status" role="status" aria-live="polite">

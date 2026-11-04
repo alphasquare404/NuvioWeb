@@ -143,7 +143,11 @@ test("browser native-file play rejections use the normal rejection path", async 
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       assert.equal(PlayerController.isPlaying, false);
-      assert.ok(warnings.some(([label, error]) => label === "Playback start rejected" && error === rejection));
+      assert.ok(
+        warnings.some(
+          ([label, error]) => label === "Playback start rejected" && error === rejection
+        )
+      );
     });
   } finally {
     console.warn = originalWarn;
@@ -167,15 +171,24 @@ test("browser engine selection preserves direct, HLS, DASH, and local playback p
     ["native-file"]
   );
   assert.deepEqual(
-    PlayerController.getPlaybackEngineCandidates("https://media.example/stream.m3u8", "application/vnd.apple.mpegurl"),
+    PlayerController.getPlaybackEngineCandidates(
+      "https://media.example/stream.m3u8",
+      "application/vnd.apple.mpegurl"
+    ),
     ["hls.js", "native-hls"]
   );
   assert.deepEqual(
-    PlayerController.getPlaybackEngineCandidates("https://media.example/stream.mpd", "application/dash+xml"),
+    PlayerController.getPlaybackEngineCandidates(
+      "https://media.example/stream.mpd",
+      "application/dash+xml"
+    ),
     ["native-dash", "dash.js"]
   );
   assert.deepEqual(
-    PlayerController.getPlaybackEngineCandidates("blob:https://nuvio.example/offline-copy", "video/mp4"),
+    PlayerController.getPlaybackEngineCandidates(
+      "blob:https://nuvio.example/offline-copy",
+      "video/mp4"
+    ),
     ["native-file"]
   );
 });
@@ -191,7 +204,10 @@ test("native-TV engines are absent from the browser PlayerController", () => {
   assert.equal("canUseAvPlay" in PlayerController, false);
   assert.equal("getPlatformAvplayEngineName" in PlayerController, false);
   assert.equal("shouldPreferTvNativePipeline" in PlayerController, false);
-  assert.equal(candidates.some((candidate) => candidate.includes("avplay")), false);
+  assert.equal(
+    candidates.some((candidate) => candidate.includes("avplay")),
+    false
+  );
 });
 
 test("browser HLS audio tracks are discovered and switched through hls.js", () => {
@@ -301,4 +317,199 @@ test("changing the adaptive playback source clears browser audio tracks", () => 
   assert.equal(PlayerController.getBrowserAudioTracks().length, 1);
   PlayerController.teardownAdaptiveInstances();
   assert.deepEqual(PlayerController.getBrowserAudioTracks(), []);
+});
+
+test("native subtitle switching leaves timed metadata enabled and uses original indices", () => {
+  const oldVideo = PlayerController.video;
+  const metadata = { kind: "metadata", mode: "hidden" };
+  const english = { kind: "subtitles", mode: "disabled" };
+  const french = { kind: "captions", mode: "showing" };
+  PlayerController.video = { textTracks: [metadata, english, french] };
+  try {
+    assert.equal(PlayerController.setNativeTextTrack(1), true);
+    assert.equal(metadata.mode, "hidden");
+    assert.equal(english.mode, "showing");
+    assert.equal(french.mode, "disabled");
+    PlayerController.setNativeTextTrack(-1);
+    assert.equal(metadata.mode, "hidden");
+    assert.equal(english.mode, "disabled");
+  } finally {
+    PlayerController.video = oldVideo;
+  }
+});
+
+test("Safari forced-kind subtitle is selectable without disabling metadata", () => {
+  const old = PlayerController.video;
+  const metadata = { kind: "metadata", mode: "hidden" },
+    standard = { kind: "subtitles", mode: "showing" },
+    forced = { kind: "forced", mode: "disabled" };
+  PlayerController.video = { textTracks: [metadata, standard, forced] };
+  try {
+    assert.equal(PlayerController.setNativeTextTrack(2), true);
+    assert.equal(forced.mode, "showing");
+    assert.equal(standard.mode, "disabled");
+    assert.equal(metadata.mode, "hidden");
+  } finally {
+    PlayerController.video = old;
+  }
+});
+
+test("client controller seeks through adapter, preserves logical timeline and suppresses restore completion", async () => {
+  const old = { video: PlayerController.video, clientRemux: PlayerController.clientRemux };
+  let seeks = [],
+    state = {
+      position: 45,
+      duration: 600,
+      restoring: true,
+      audioIndex: 1,
+      audioTracks: [{ supported: false }, { supported: true }]
+    };
+  try {
+    PlayerController.video = { currentTime: 0, duration: NaN, ended: true };
+    PlayerController.clientRemux = {
+      snapshot: () => state,
+      seek: async (t) => seeks.push(t),
+      selectAudio: async () => true
+    };
+    assert.equal(PlayerController.getCurrentTimeSeconds(), 45);
+    assert.equal(PlayerController.getDurationSeconds(), 600);
+    assert.equal(PlayerController.isPlaybackEnded(), false);
+    assert.equal(PlayerController.seekToSeconds(300), true);
+    assert.deepEqual(seeks, [300]);
+    assert.equal(PlayerController.video.currentTime, 0);
+    assert.equal(PlayerController.setBrowserAudioTrack(0), false);
+    assert.equal(PlayerController.getBrowserAudioTracks()[1].selected, true);
+    assert.equal(
+      await PlayerController.flushProgress(445000, 600000, false, { itemId: "restore-test" }),
+      false
+    );
+    state.restoring = false;
+    assert.equal(PlayerController.isPlaybackEnded(), true);
+  } finally {
+    Object.assign(PlayerController, old);
+  }
+});
+test("controller disposal awaits worker/cache cleanup without retaining the adapter", async () => {
+  const old = PlayerController.clientRemux;
+  let release,
+    finished = false;
+  const deferred = new Promise((r) => (release = r));
+  PlayerController.clientRemux = {
+    dispose: async () => {
+      await deferred;
+      finished = true;
+    }
+  };
+  try {
+    const cleanup = PlayerController.disposeClientRemux();
+    assert.equal(PlayerController.clientRemux, null);
+    assert.equal(finished, false);
+    release();
+    await cleanup;
+    assert.equal(finished, true);
+  } finally {
+    PlayerController.clientRemux = old;
+  }
+});
+
+test("client route offers no native/adaptive engine fallback", () => {
+  const old = PlayerController.clientRemux;
+  try {
+    PlayerController.clientRemux = {};
+    assert.equal(PlayerController.getAlternativePlaybackEngine("https://cdn.test/file.mkv"), null);
+    assert.ok(
+      PlayerController.getAttemptedPlaybackEngines("https://cdn.test/file.mkv") instanceof Set
+    );
+  } finally {
+    PlayerController.clientRemux = old;
+  }
+});
+
+test("client startup diagnostics retain bounded playback facts and exclude source data", () => {
+  const previous = { clientRemux: PlayerController.clientRemux, video: PlayerController.video };
+  try {
+    PlayerController.video = { paused: true, readyState: 2 };
+    PlayerController.clientRemux = {
+      snapshot: () => ({
+        state: "backpressure",
+        backpressureReason: "managed",
+        restoring: false,
+        position: 0,
+        duration: 120,
+        targetSourceBytes: 1024,
+        sourceUrl: "https://private.test/token",
+        reason: "https://private.test/token",
+        audioTracks: [{ label: "private" }]
+      })
+    };
+    const text = PlayerController.getClientRemuxStartupDiagnostic(),
+      facts = JSON.parse(text);
+    assert.equal(facts.state, "backpressure");
+    assert.equal(facts.readyState, 2);
+    assert.equal(facts.paused, true);
+    assert.equal(text.includes("private"), false);
+    assert.equal("sourceUrl" in facts, false);
+  } finally {
+    Object.assign(PlayerController, previous);
+  }
+});
+
+test("client remux diagnostics use the available Safari frame counter and report startup coverage", () => {
+  const video = PlayerController.video,
+    runtime = PlayerController.clientRemux;
+  try {
+    PlayerController.clientRemux = {
+      snapshot: () => ({
+        startupPhase: "buffering-startup",
+        startupBufferedAheadSeconds: 0.35,
+        startupRequiredAheadSeconds: 4
+      })
+    };
+    PlayerController.video = { getVideoPlaybackQuality: () => ({ totalVideoFrames: 92 }) };
+    const facts = JSON.parse(PlayerController.getClientRemuxStartupDiagnostic());
+    assert.equal(facts.decodedFrames, 92);
+    assert.equal(facts.startupRequiredAheadSeconds, 4);
+    assert.equal(facts.startupBufferedAheadSeconds, 0.35);
+    assert.equal(facts.startupPhase, "buffering-startup");
+    PlayerController.video = {};
+    assert.equal(
+      JSON.parse(PlayerController.getClientRemuxStartupDiagnostic()).decodedFrames,
+      null
+    );
+    PlayerController.video = { webkitDecodedFrameCount: 8 };
+    assert.equal(JSON.parse(PlayerController.getClientRemuxStartupDiagnostic()).decodedFrames, 8);
+  } finally {
+    PlayerController.video = video;
+    PlayerController.clientRemux = runtime;
+  }
+});
+
+test("server HLS duration uses source facts before ENDLIST and cannot leak into another URL", () => {
+  const controller = {
+    clientRemux: null,
+    currentPlaybackUrl: "/relay-a",
+    video: { duration: Infinity },
+    lastKnownDurationSeconds: 0
+  };
+  const setHint = PlayerController.setSourceDurationHint;
+  assert.equal(typeof setHint, "function");
+  setHint.call(controller, "/relay-a", 3119.104);
+  assert.equal(PlayerController.getDurationSeconds.call(controller), 3119.104);
+  controller.video.duration = 12;
+  assert.equal(PlayerController.getDurationSeconds.call(controller), 3119.104);
+  setHint.call(controller, "/relay-a", NaN);
+  assert.equal(PlayerController.getDurationSeconds.call(controller), 3119.104);
+  controller.currentPlaybackUrl = "/relay-b";
+  controller.video.duration = Infinity;
+  controller.lastKnownDurationSeconds = 0;
+  assert.equal(PlayerController.getDurationSeconds.call(controller), 0);
+});
+
+test("relative HLS with a nested MKV source loads the HLS engine libraries", () => {
+  assert.equal(
+    PlayerController.guessMediaMimeType(
+      "/api/transcode/hls/index.m3u8?u=https%3A%2F%2Fcdn.test%2Fmovie.mkv&v=copy&a=copy&audios=0%2C1"
+    ),
+    "application/vnd.apple.mpegurl"
+  );
 });

@@ -765,7 +765,7 @@ button:focus-visible {
   background: #ffb300;
   color: #ffffff;
   font-size: 28px;
-  border: 4px solid var(--bg-color);
+  border: 0;
 }
 
 .profile-grid-compact .profile-primary-dot {
@@ -11470,7 +11470,11 @@ button:focus-visible {
   font-size: var(--player-subtitle-font-size);
   font-weight: var(--player-subtitle-font-weight);
   text-shadow: var(--player-subtitle-shadow);
-  transform: translateY(var(--player-subtitle-offset));
+}
+
+/* Offset the native container without replacing the cue positioning transform. */
+#videoPlayer::-webkit-media-text-track-container {
+  translate: 0 var(--player-native-subtitle-offset, var(--player-subtitle-offset));
 }
 
 .player-html-subtitles {
@@ -16722,6 +16726,55 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   box-sizing: border-box;
 }
 
+/* The status circle is also the direct watched/unwatched control on browser
+   episode cards. It keeps the existing badge geometry and check glyph. */
+.series-episode-watch-toggle {
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease,
+    filter 140ms ease;
+}
+
+.series-episode-watch-toggle.complete {
+  border-color: transparent;
+  background: var(--secondary-color);
+  color: var(--on-secondary);
+}
+
+.series-episode-watch-toggle.idle {
+  border: 2px dashed rgba(179, 179, 179, 0.9);
+  background: transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .series-episode-watch-toggle:hover {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.14);
+    color: var(--detail-text-primary);
+  }
+
+  /* Watched keeps its Appearance accent fill on hover. Brightness plus the
+     same pale rim makes it interactive without looking unwatched. */
+  .series-episode-watch-toggle.complete:hover {
+    background: var(--secondary-color);
+    color: var(--on-secondary);
+    filter: brightness(1.14);
+  }
+}
+
+.series-episode-watch-toggle:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+}
+
 .series-episode-unavailable {
   position: absolute;
   top: 24px;
@@ -17440,6 +17493,7 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 }
 
 .stream-route-card {
+  position: relative;
   flex: 1 1 auto;
   width: 100%;
   min-height: 214px;
@@ -21664,3 +21718,98 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   outline: 2px solid rgba(255, 255, 255, 0.9);
   outline-offset: 2px;
 }
+
+
+.unified-startup-overlay.player-loading-overlay {
+  position: fixed;
+  z-index: 2000;
+  background: #080b10;
+}
+.unified-startup-overlay .unified-startup-spinner {
+  width: 32px;
+  height: 32px;
+  margin-top: 24px;
+}
+
+.unified-startup-overlay .player-loading-logo {
+  position: static;
+  transform: none;
+  width: auto;
+  height: auto;
+  max-width: min(64vw, 420px);
+  max-height: min(24vh, 170px);
+}
+
+/* Keep browser-native subtitle text inside the rotated player canvas. */
+#videoPlayer.player-native-subtitles-mirrored::cue {
+  color: transparent !important;
+  background: transparent !important;
+  text-shadow: none !important;
+}
+#videoPlayer.player-native-subtitles-mirrored::-webkit-media-text-track-container {
+  opacity: 0 !important;
+}
+.player-native-subtitle-lines {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  width: fit-content;
+  max-width: 90%;
+  margin-inline: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0.06em 0.28em;
+  background: var(--player-subtitle-background);
+}
+
+/* Loading always leaves a visible exit, including the shared route handoff. */
+.startup-loading-back {
+  position: absolute;
+  top: calc(var(--browser-safe-area-top, env(safe-area-inset-top)) + 17px);
+  left: calc(var(--browser-safe-area-left, env(safe-area-inset-left)) + 12px);
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: white;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.startup-loading-back .player-desktop-back-icon { display: block; width: 24px; height: 24px; }
+.startup-loading-back:focus-visible {
+  outline: 3px solid white;
+}
+
+/* Filename estimates share the badge row and always precede imported/size badges. */
+.filename-playback-badge { display: inline-flex; align-items: center; gap: .35em; padding: .25em .55em; border: 1px solid currentColor; border-radius: .4em; font-size: .75em; line-height: 1.2; white-space: nowrap; }
+.filename-playback-badge.tone-green { color: #73df9c; background: #102e20; }
+.filename-playback-badge.tone-yellow { color: #f3d56b; background: #332b11; }
+.filename-playback-badge.tone-orange { color: #ffb46b; background: #382413; }
+.filename-playback-badge.tone-red { color: #ff9999; background: #351c1c; }
+.filename-playback-badge.tone-neutral { color: #c1c7d0; background: #24272c; }
+.filename-playback-estimate { opacity: .8; }
+
+/* The loading canvas follows the requested player orientation from its first paint. */
+.unified-startup-overlay.browser-player-rotated {
+  inset: auto;
+  width: var(--player-canvas-width);
+  height: var(--player-canvas-height);
+  left: var(--player-canvas-left);
+  top: var(--player-canvas-top);
+  transform-origin: 0 0;
+  transform: rotate(var(--player-canvas-rotation));
+}
+.unified-startup-overlay .player-loading-center { width: 80%; max-width: 900px; }
+.unified-startup-overlay .player-loading-identity { opacity: 1; animation: none; }
+.unified-startup-overlay .player-loading-logo { max-width: 100%; max-height: min(24vh, 170px); }
+.unified-startup-overlay[data-player-orientation] .player-loading-logo { max-height: min(calc(var(--player-canvas-height) * .24), 170px); }
+.unified-startup-overlay .player-loading-title { max-width: 100%; font-size: clamp(22px, 3vw, 44px); }
+.unified-startup-overlay .player-loading-status { margin-top: 16px; font-size: clamp(13px, 1.2vw, 18px); }
+.unified-startup-overlay .player-loading-detail { margin-top: 8px; color: rgba(255,255,255,.7); font-size: clamp(12px, 1vw, 15px); }

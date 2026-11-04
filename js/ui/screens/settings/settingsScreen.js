@@ -1,3 +1,44 @@
+import { visibleAutoplayAddonSelection } from "./autoplayAddonSelection.js";
+import { renderFilenamePlaybackMethodBadge } from "../../components/filenamePlaybackBadge.js";
+import { normalizeAccentColor, accentTextColor } from "../../../core/theme/accentColor.js";
+import {
+  INTEGRATION_SERVICES,
+  activeIntegrationService,
+  integrationControlGroups,
+  debridRuleGroups
+} from "./integrationSettingsPresentation.js";
+import {
+  LAYOUT_SETTINGS_GROUPS,
+  activeLayoutSettingsGroup,
+  toggleLayoutSettingsGroup,
+  LAYOUT_DEPTH_FIELDS,
+  layoutDepthValue,
+  layoutPreviewDepth
+} from "./layoutSettingsPresentation.js";
+import {
+  visibleContentDiscoveryTopics,
+  activeContentDiscoveryTopic
+} from "./contentDiscoveryPresentation.js";
+import {
+  PLAYBACK_SETTINGS_GROUPS,
+  activePlaybackSettingsGroup,
+  togglePlaybackSettingsGroup,
+  subtitleSettingsPreviewStyle,
+  settingsStreamPreviewSources
+} from "./playbackSettingsPresentation.js";
+import {
+  normalizeSourceForDisplay,
+  renderBrowserSourceCardContent
+} from "../../components/browserStreamSourceCard.js";
+import {
+  filenameStreamDisplayMode,
+  FILENAME_ESTIMATE_NOTICE,
+  FILENAME_FILTER_NOTICE
+} from "../../../core/streams/filenameStreamPolicy.js";
+import { getHdrPlaybackSupport } from "../../../core/player/hdrSupport.js";
+import { probeMetadataCache } from "../../../core/player/probeMetadataCache.js";
+
+import { resolveHdrPreference } from "../../../core/streams/streamHdrPreference.js";
 import { deferWhileReordering } from "../../components/listReorderDrag.js";
 import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import { Router } from "../../navigation/router.js";
@@ -20,6 +61,7 @@ import { CollectionsStore, buildCollectionHomeKey } from "../../../data/local/co
 import { ThemeStore } from "../../../data/local/themeStore.js";
 import { ThemeManager } from "../../theme/themeManager.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
+import { hasWebCodecs } from "../../../core/player/movi/moviCapability.js";
 import {
   SUBTITLE_VERTICAL_OFFSET_DEFAULT,
   SUBTITLE_VERTICAL_OFFSET_MAX,
@@ -55,6 +97,7 @@ import {
   DebridSettingsStore
 } from "../../../data/local/debridSettingsStore.js";
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
+import { TranscodeSettingsStore } from "../../../data/local/transcodeSettingsStore.js";
 import { DebridApi } from "../../../data/remote/api/debridApi.js";
 import { DEBRID_AUTH_METHODS, DebridProviders } from "../../../core/debrid/debridProviders.js";
 import {
@@ -145,7 +188,11 @@ import { createDesktopCollectionManager } from "../../components/desktopCollecti
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { getLatestAppUpdate } from "../../../core/update/appUpdateService.js";
 import { showAppUpdatePrompt } from "../../components/appUpdatePrompt.js";
-import { DONATIONS_BASE_URL, UNIQUE_CONTRIBUTIONS_BASE_URL } from "../../../config.js";
+import {
+  DONATIONS_BASE_URL,
+  TRANSCODE_ENDPOINT,
+  UNIQUE_CONTRIBUTIONS_BASE_URL
+} from "../../../config.js";
 import {
   normalizeContributors,
   normalizeDonationProgress,
@@ -162,7 +209,9 @@ import {
   subscribeToOfflineDownloads
 } from "../../../core/offline/browserOfflineDownloads.js";
 
+let settingsPlaybackContentSequence = 0;
 const SETTINGS_UI_STATE_KEY = "settingsScreenUiState";
+const SETTINGS_PANELS_QUERY = "(min-width: 1024px)";
 const SETTINGS_RAIL_SCROLL_TARGET_RATIO = 0.42;
 const SETTINGS_RAIL_SCROLL_STIFFNESS = 180;
 const SETTINGS_RAIL_SCROLL_DAMPING_RATIO = 0.95;
@@ -482,7 +531,7 @@ const STREAM_AUTOPLAY_MODE_OPTIONS = [
     id: "FIRST_STREAM",
     labelKey: "autoplay_mode_first",
     captionKey: "autoplay_mode_first_desc",
-    label: "Auto-play first source"
+    label: "Automatic selection"
   },
   {
     id: "REGEX_MATCH",
@@ -2364,11 +2413,18 @@ function createDefaultExpandedState(sectionId) {
   if (sectionId === "playback") {
     return {
       general: false,
+      autoplay: false,
+      skipping: false,
+      external: false,
       stream: false,
       audio: false,
       subtitles: false,
       p2p: false
     };
+  }
+
+  if (sectionId === "integration") {
+    return { debridPreferences: false, debridFormatting: false, tmdbMore: false };
   }
 
   if (sectionId === "about") {
@@ -2399,6 +2455,7 @@ function normalizeExpandedSections(value) {
   return {
     layout: normalizeExpandedState("layout", source.layout),
     playback: normalizeExpandedState("playback", source.playback),
+    integration: normalizeExpandedState("integration", source.integration),
     about: normalizeExpandedState("about", source.about)
   };
 }
@@ -2421,7 +2478,71 @@ function isAppearanceThemeFocusKey(focusKey) {
   return String(focusKey || "").startsWith("appearance:theme:");
 }
 
+/**
+ * Rows the movi engine ignores, and so must not be offered while it is the one
+ * playing.
+ *
+ * Each of these is a real feature of the built-in player, not a mistake. But a
+ * switch that cannot do anything is worse than a missing switch: it reads as a
+ * broken feature rather than as the boundary of an engine.
+ *
+ * Module-level on purpose. `createScreenPrototype()` copies only functions from a
+ * screen onto the section screens it derives, leaving data properties behind, so
+ * a list kept on the object would be `undefined` the moment this screen is
+ * rendered as a section — and the settings page would crash on its first row.
+ */
+const MOVI_IGNORED_ROW_KEYS = [
+  // Player chrome and behaviour the movi route does not implement.
+  "playback:autoplay",
+  "playback:loadingOverlay",
+  "playback:loadingStatus",
+  "playback:pauseOverlay",
+  "playback:parentalGuide",
+  // The session belongs to the built-in player, which owns next-episode and
+  // still-watching prompts; the movi route ends when the file does.
+  "playback:nextEpisodeThresholdMode",
+  "playback:nextEpisodeThresholdValue",
+  "playback:stillWatching",
+  "playback:stillWatchingThreshold",
+  // Track selection: the route follows the profile's language and does not
+  // choose tracks by hand, so these have nothing to act on.
+  "playback:audioLanguage",
+  "playback:secondaryAudioLanguage",
+  "playback:secondarySubtitleLanguage",
+  "playback:useForcedSubtitles",
+  "playback:showOnlyPreferredSubtitleLanguages",
+  "playback:subtitleStartupMode",
+  "playback:renderMode",
+  // Subtitle appearance: the overlay draws with its own defaults for now, so
+  // these would be switches that change nothing.
+  "playback:subtitleSize",
+  "playback:subtitleOffset",
+  "playback:subtitleBold",
+  "playback:subtitleTextColor",
+  "playback:subtitleBackgroundColor",
+  "playback:subtitleOutline",
+  "playback:subtitleOutlineColor"
+];
+
 export const SettingsScreen = {
+  usesSettingsPanels() {
+    return Platform.isBrowser() && Boolean(globalThis.matchMedia?.(SETTINGS_PANELS_QUERY).matches);
+  },
+
+  bindSettingsPanelLayout() {
+    if (!Platform.isBrowser() || this.settingsPanelLayoutQuery || !globalThis.matchMedia) return;
+    this.settingsPanelLayoutQuery = globalThis.matchMedia(SETTINGS_PANELS_QUERY);
+    this.settingsPanelLayoutChanged = () => {
+      // Retained routes may still be mounted underneath the current page.
+      // Only redraw this route; never navigate or change history on resize.
+      if (this.container?.id !== Router.getCurrent?.()) return;
+      this.suppressNextContentFocusScroll = true;
+      this.suppressNextRailFocusScroll = true;
+      void this.render({ refreshModel: false });
+    };
+    this.settingsPanelLayoutQuery.addEventListener?.("change", this.settingsPanelLayoutChanged);
+  },
+
   getCurrentRailScrollTop() {
     const rail = this.container?.querySelector?.("[data-settings-nav]");
     if (rail) {
@@ -2438,7 +2559,7 @@ export const SettingsScreen = {
       return;
     }
     this.container.innerHTML = `
-      <div class="home-shell settings-shell">
+      <div class="home-shell settings-shell${isDesktopSettingsBrowser() ? " desktop-navigation-enabled" : ""}">
         <div class="settings-root-sidebar-slot" data-settings-root-sidebar></div>
         <div class="settings-workspace">
           <div class="settings-sidebar-frame">
@@ -2468,11 +2589,21 @@ export const SettingsScreen = {
     if (!this.container.__settingsListeners) {
       const listeners = {
         wheel: (event) => this.handleWheelEvent(event),
-        click: (event) => this.handleClickEvent(event)
+        click: (event) => this.handleClickEvent(event),
+        input: (event) => this.handleLayoutRangeInput(event),
+        change: (event) => {
+          if (event.target?.matches?.("[data-appearance-color]"))
+            void this.handleCustomAccentChange(event);
+          else void this.handleLayoutRangeChange(event);
+        },
+        pointercancel: (event) => this.handleLayoutRangeCancel(event)
       };
       this.container.__settingsListeners = listeners;
       this.container.addEventListener("wheel", listeners.wheel, { passive: false });
       this.container.addEventListener("click", listeners.click);
+      this.container.addEventListener("input", listeners.input);
+      this.container.addEventListener("change", listeners.change);
+      this.container.addEventListener("pointercancel", listeners.pointercancel);
     }
     if (Platform.isBrowser()) {
       this.browserHorizontalTabScrollCleanup?.();
@@ -2762,7 +2893,25 @@ export const SettingsScreen = {
 
   toggleExpandedSection(sectionId, groupId) {
     this.ensureExpandedState(sectionId);
-    this.expandedSections[sectionId][groupId] = !this.expandedSections[sectionId][groupId];
+    if (sectionId === "playback" && Platform.isBrowser()) {
+      this.expandedSections.playback = togglePlaybackSettingsGroup(
+        this.expandedSections.playback,
+        groupId,
+        this.isWidePlaybackSettings()
+      );
+    } else if (
+      sectionId === "layout" &&
+      Platform.isBrowser() &&
+      LAYOUT_SETTINGS_GROUPS.includes(groupId)
+    ) {
+      this.expandedSections.layout = toggleLayoutSettingsGroup(
+        this.expandedSections.layout,
+        groupId,
+        this.usesSettingsPanels()
+      );
+    } else {
+      this.expandedSections[sectionId][groupId] = !this.expandedSections[sectionId][groupId];
+    }
     this.persistUiState();
   },
 
@@ -2864,7 +3013,8 @@ export const SettingsScreen = {
     // The index page is a page, so it carries the screen's own title. The
     // rail beside the content is not, and each section's own header titles
     // it there.
-    const showsIndex = settingsUsesRoutePages() && this.activeSection === null;
+    const showsIndex =
+      settingsUsesRoutePages() && !this.usesSettingsPanels() && this.activeSection === null;
     const showRailReveal = showsIndex && Platform.isBrowser();
     const order = new Map(this.visibleSections.map((item, index) => [item.id, index]));
     if (!showsIndex) {
@@ -2957,7 +3107,7 @@ export const SettingsScreen = {
   renderNavItem(item, index) {
     const accent = SECTION_ACCENTS[item.id];
     return `
-      <button class="settings-nav-item focusable${this.activeSection === item.id ? " selected" : ""}"
+      <button class="settings-nav-item focusable${(this.presentedSectionId || this.activeSection) === item.id ? " selected" : ""}"
               data-zone="nav"
               data-nav-index="${index}"
               data-focus-key="nav:${item.id}"
@@ -3048,6 +3198,33 @@ export const SettingsScreen = {
     `;
   },
 
+  /**
+   * Is playback being handed to another app?
+   *
+   * `browserExternalPlayer` stores "disabled" for "inside Nuvio", so this is the
+   * one question the Play-with row and every external-only row below it ask.
+   */
+  /**
+   * Should this row be left out because the movi engine cannot honour it?
+   *
+   * Reads the module-level list, never `this`: this method is copied onto the
+   * section screens by prototype, and anything kept in a data property would not
+   * travel with it.
+   */
+  rowHiddenForEngine(focusKey) {
+    if (!MOVI_IGNORED_ROW_KEYS.includes(String(focusKey || ""))) return false;
+    if (!hasWebCodecs()) return false;
+    const settings = PlayerSettingsStore.get();
+    if (String(settings.playerEngine || "") !== "movi") return false;
+    // Handing playback to another app means no engine of ours plays at all.
+    return normalizeBrowserExternalPlayer(settings.browserExternalPlayer) === "disabled";
+  },
+
+  playWithUsesExternal(model = {}) {
+    const player = normalizeBrowserExternalPlayer(model.player?.browserExternalPlayer);
+    return player !== "disabled" && getBrowserExternalPlayerOptions().includes(player);
+  },
+
   renderActionRow({
     focusKey,
     title,
@@ -3061,8 +3238,12 @@ export const SettingsScreen = {
     disabled = false,
     planned = false
   }) {
+    if (this.rowHiddenForEngine(focusKey)) return "";
     const inert = disabled || planned;
-    const trailing = external ? "external" : icon;
+    // An unknown icon name used to crash the whole section: `ROW_ICONS[name]` was
+    // undefined and the renderer tried to draw it. Fall back to the chevron instead.
+    const iconName = external ? "external" : ROW_ICONS[icon] ? icon : "chevron";
+    const trailing = iconName;
     const tailContent = [
       planned ? `<span class="settings-row-badge">${escapeHtml(t("common.soon"))}</span>` : "",
       value ? `<span class="settings-row-value">${escapeHtml(value)}</span>` : "",
@@ -3076,7 +3257,7 @@ export const SettingsScreen = {
       <button class="settings-action-row settings-content-focusable focusable${classes ? ` ${classes}` : ""}${inert ? " is-disabled" : ""}${planned ? " is-planned" : ""}"
               data-zone="content"
               ${this.registerAction(focusKey, inert ? () => {} : this.actionMap.get(focusKey))}
-              data-role="action">
+              data-role="action"${inert ? ' aria-disabled="true"' : ""}>
         ${leadingIconSrc ? `<img class="settings-row-leading-image" src="${escapeHtml(leadingIconSrc)}" alt="" aria-hidden="true">` : leadingIcon ? `<span class="settings-row-leading-icon material-icons" aria-hidden="true">${escapeHtml(leadingIcon)}</span>` : ""}
         <span class="settings-row-copy">
           <span class="settings-row-title">${escapeHtml(title)}</span>
@@ -3095,12 +3276,13 @@ export const SettingsScreen = {
     disabled = false,
     planned = false
   }) {
+    if (this.rowHiddenForEngine(focusKey)) return "";
     const inert = disabled || planned;
     return `
       <button class="settings-action-row settings-toggle-row settings-content-focusable focusable${inert ? " is-disabled" : ""}${planned ? " is-planned" : ""}"
               data-zone="content"
               ${this.registerAction(focusKey, inert ? () => {} : this.actionMap.get(focusKey))}
-              data-role="toggle">
+              data-role="toggle"${Platform.isBrowser() ? ` role="switch" aria-checked="${Boolean(checked)}"` : ""}${inert ? ' aria-disabled="true"' : ""}>
         <span class="settings-row-copy">
           <span class="settings-row-title">${escapeHtml(title)}</span>
           ${subtitle ? `<span class="settings-row-subtitle">${escapeHtml(subtitle)}</span>` : ""}
@@ -4179,6 +4361,10 @@ export const SettingsScreen = {
       clearHeroArtworkCache();
       this.advancedHeroArtworkCacheCleared = true;
     });
+    this.actionMap.set("advanced:clearProbeCache", async () => {
+      const cleared = await probeMetadataCache.clear();
+      this.advancedProbeCacheCleared = cleared === true;
+    });
 
     if (isEssential) {
       return `
@@ -4256,6 +4442,23 @@ export const SettingsScreen = {
             disabled: Boolean(this.advancedCacheCleared)
           })}
           ${this.renderHeroArtworkCacheRow()}
+          ${this.renderActionRow({
+            focusKey: "advanced:clearProbeCache",
+            title: t("advanced_clear_probe_cache", {}, "Clear Probe Cache"),
+            subtitle: this.advancedProbeCacheCleared
+              ? t(
+                  "advanced_clear_probe_cache_done",
+                  {},
+                  "Cache cleared. Media information will be read again when needed."
+                )
+              : t(
+                  "advanced_clear_probe_cache_subtitle",
+                  {},
+                  "Remove saved metadata used when opening a stream"
+                ),
+            icon: null,
+            disabled: Boolean(this.advancedProbeCacheCleared)
+          })}
         </div>
       </div>
     `;
@@ -4286,6 +4489,51 @@ export const SettingsScreen = {
     });
   },
 
+  applyCustomAccent(value) {
+    const color = normalizeAccentColor(value);
+    if (!color) return false;
+    ThemeStore.set({ themeName: "CUSTOM", accentColor: color, customAccentColor: color });
+    ThemeManager.apply();
+    return true;
+  },
+
+  async handleCustomAccentChange(event) {
+    const input = event?.target;
+    if (
+      !input?.matches?.("[data-appearance-color]") ||
+      !this.container?.contains(input) ||
+      this.container.id !== Router.getCurrent?.()
+    )
+      return;
+    if (!this.applyCustomAccent(input.value)) return;
+    this.contentFocusKey = "appearance:customColor";
+    this.focusZone = "content";
+    await this.render();
+  },
+
+  renderBrowserAppearance(model) {
+    const custom = normalizeAccentColor(model.theme.customAccentColor) || "#1e88e5";
+    const surfaces =
+      this.renderToggleRow({
+        focusKey: "appearance:amoled",
+        title: t("appearance_amoled_mode"),
+        subtitle: t("appearance_amoled_mode_subtitle"),
+        checked: Boolean(model.theme.amoledMode)
+      }) +
+      (model.theme.amoledMode
+        ? this.renderToggleRow({
+            focusKey: "appearance:amoledSurfaces",
+            title: t("appearance_amoled_surfaces_mode"),
+            subtitle: t("appearance_amoled_surfaces_mode_subtitle"),
+            checked: Boolean(model.theme.amoledSurfacesMode)
+          })
+        : "");
+    return (
+      this.renderSectionHeader(SECTION_META.find((item) => item.id === "appearance")) +
+      `<div class="settings-appearance-content"><section class="settings-design-card settings-appearance-colors"><h2>${escapeHtml(t("appearance_color_theme"))}</h2><p class="settings-design-hint">${escapeHtml(t("appearance_color_theme_subtitle"))}</p><div class="settings-appearance-swatches">${[...THEME_OPTIONS, { id: "CUSTOM", label: t("settings_custom_color"), color: custom, onColor: accentTextColor(custom) }].map((theme) => this.renderThemeCard(theme, String(model.theme.themeName).toUpperCase() === theme.id, `appearance:theme:${theme.id}`)).join("")}</div><div class="settings-custom-color-row"><label><span>${escapeHtml(t("settings_custom_color_picker"))}</span><input type="color" value="${custom}" data-appearance-color data-focus-key="appearance:customColor" data-zone="content" class="settings-content-focusable focusable" aria-label="${escapeHtml(t("settings_custom_color_picker"))}"></label><button type="button" class="settings-custom-hex settings-content-focusable focusable" data-zone="content" ${this.registerAction("appearance:customHex", this.actionMap.get("appearance:customHex"))} aria-label="${escapeHtml(t("settings_custom_color_hex"))}">${custom.toUpperCase()}</button></div><p class="settings-design-hint">${escapeHtml(t("settings_custom_color_hint"))}</p></section><div class="settings-appearance-details"><section class="settings-design-card"><h2>${escapeHtml(t("settings_appearance_surfaces"))}</h2><div class="settings-stack">${surfaces}</div></section><section class="settings-design-card"><h2>${escapeHtml(t("appearance_font_and_language"))}</h2><div class="settings-stack">${this.renderActionRow({ focusKey: "appearance:font", title: t("appearance_font"), subtitle: t("appearance_font_subtitle"), value: labelForFont(model.theme.fontFamily) })}${this.renderActionRow({ focusKey: "appearance:language", title: t("appearance_language"), subtitle: t("appearance_language_subtitle"), value: labelForLanguage(model.theme.language) })}</div></section></div></div>`
+    );
+  },
+
   renderAppearanceSection(model) {
     const isDesktopBrowser = isDesktopSettingsBrowser();
     THEME_OPTIONS.forEach((theme) => {
@@ -4295,6 +4543,23 @@ export const SettingsScreen = {
       });
     });
 
+    this.actionMap.set("appearance:theme:CUSTOM", () =>
+      this.applyCustomAccent(ThemeStore.get().customAccentColor)
+    );
+    this.actionMap.set("appearance:customHex", () => {
+      this.openTextDialog({
+        title: t("settings_custom_color_hex"),
+        value: ThemeStore.get().customAccentColor,
+        placeholder: "#1E88E5",
+        returnFocusKey: "appearance:customHex",
+        onSubmit: (value) => {
+          if (this.applyCustomAccent(value)) return true;
+          this.textDialog.statusMessage = t("settings_custom_color_invalid");
+          this.textDialog.statusKind = "error";
+          return false;
+        }
+      });
+    });
     this.actionMap.set("appearance:font", () => {
       this.openOptionDialog({
         title: t("appearance_font_dialog_title", {}, "Choose Font"),
@@ -4350,6 +4615,7 @@ export const SettingsScreen = {
       });
     });
 
+    if (isDesktopBrowser) return this.renderBrowserAppearance(model);
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "appearance"))}
       <div class="settings-group-card settings-appearance-group-card settings-theme-grid-card">
@@ -4429,6 +4695,127 @@ export const SettingsScreen = {
         </div>
       </div>
     `;
+  },
+
+  renderLayoutRange(field, layout) {
+    const config = LAYOUT_DEPTH_FIELDS[field];
+    const value = layoutDepthValue(field, layout[field]);
+    this.layoutSettingsContentId ||= `settings-layout-${++settingsPlaybackContentSequence}`;
+    const id = `${this.layoutSettingsContentId}-${field}`;
+    return `<div class="settings-layout-range"><label for="${id}"><span>${escapeHtml(t(config.labelKey))}</span><output data-layout-range-output="${field}">${value}%</output></label><input id="${id}" type="range" min="0" max="100" step="1" value="${value}" data-layout-range="${field}" data-focus-key="${config.focusKey}" data-zone="content" class="settings-content-focusable focusable"></div>`;
+  },
+
+  handleLayoutRangeInput(event) {
+    const input = event?.target;
+    if (
+      !input?.matches?.("[data-layout-range]") ||
+      !this.container?.contains(input) ||
+      this.container.id !== Router.getCurrent?.()
+    )
+      return;
+    const field = input.dataset.layoutRange;
+    const value = layoutDepthValue(field, input.value);
+    if (value === null) return;
+    this.layoutRangeInteraction = true;
+    const output = this.container.querySelector(`[data-layout-range-output="${field}"]`);
+    if (output) output.textContent = `${value}%`;
+    const style = layoutPreviewDepth({ ...this.model.layout, [field]: value });
+    this.container.querySelectorAll(".settings-layout-live-preview").forEach((preview) => {
+      preview.style.setProperty("--preview-edge", style.edge);
+      preview.style.setProperty("--preview-sheen", style.sheen);
+      preview.style.setProperty("--preview-coverage", `${style.coverage}px`);
+    });
+  },
+
+  async handleLayoutRangeChange(event) {
+    const input = event?.target;
+    if (
+      !input?.matches?.("[data-layout-range]") ||
+      !this.container?.contains(input) ||
+      this.container.id !== Router.getCurrent?.()
+    )
+      return;
+    const field = input.dataset.layoutRange;
+    const value = layoutDepthValue(field, input.value);
+    if (value === null) return;
+    this.layoutRangeInteraction = false;
+    LayoutPreferences.set({ [field]: value });
+    this.contentFocusKey = input.dataset.focusKey;
+    this.focusZone = "content";
+    await this.render();
+  },
+
+  handleLayoutRangeCancel(event) {
+    if (!event?.target?.matches?.("[data-layout-range]") || !this.layoutRangeInteraction) return;
+    this.layoutRangeInteraction = false;
+    void this.render({ refreshModel: false });
+  },
+
+  renderLayoutLivePreview(group, layout) {
+    if (group === "navStyle") return "";
+    const depth = layoutPreviewDepth(layout);
+    const orientation = normalizeCatalogCardOrientation(layout.catalogCardOrientation);
+    const example = t("settings_layout_example_title", {}, "Example title");
+    const posters = `<div class="settings-layout-example-posters" data-orientation="${orientation}">${[1, 2, 3].map((i) => `<div class="settings-layout-example-poster" data-example-depth="${depth.enabled}"><span>${escapeHtml(example)} ${i}</span></div>`).join("")}</div>`;
+    let content = posters;
+    if (group === "homeContent")
+      content = `${layout.heroSectionEnabled ? `<div class="settings-layout-example-hero">${escapeHtml(t("settings_layout_example_featured", {}, "Featured title"))}</div>` : ""}<div class="settings-layout-example-caption">${escapeHtml(t("settings_layout_example_catalog", {}, "Example catalog"))}${layout.catalogTypeSuffixEnabled ? ` · ${escapeHtml(t("type_movies"))}` : ""}</div>${posters}`;
+    if (group === "continueWatching") {
+      const artwork = layout.useEpisodeThumbnailsInCw !== false;
+      content = `<div class="settings-layout-example-caption">${escapeHtml(t("settings_layout_example_artwork", {}, "Artwork preview"))}</div><div class="settings-layout-example-continue"><div class="settings-layout-example-art ${artwork ? "is-episode" : "is-poster"}"></div><div class="settings-layout-example-card-copy">${escapeHtml(example)} · S1 E3<div class="settings-layout-example-progress"><span></span></div></div></div>${layout.showUnairedNextUp !== false ? `<div class="settings-layout-example-continue"><div class="settings-layout-example-art${artwork && layout.blurContinueWatchingNextUp ? " is-blurred" : ""}"></div><div class="settings-layout-example-card-copy">${escapeHtml(t("cw_upcoming"))} · S1 E4</div></div>` : ""}`;
+    }
+    if (group === "detailPage")
+      content = `<div class="settings-layout-example-hero">${escapeHtml(example)}</div><div class="settings-layout-example-caption">${layout.showFullReleaseDate !== false ? "2 November 2026" : "2026"} · Series</div>${layout.detailPageTrailerButtonEnabled ? `<span class="settings-layout-example-trailer">${escapeHtml(t("settings.layout.showTrailerButton.title", {}, "Trailer"))}</span>` : ""}<div class="settings-layout-example-episode"><span class="settings-layout-example-episode-art"></span><span>E1 · ${escapeHtml(t("settings_layout_example_watched", {}, "Watched"))}</span></div><div class="settings-layout-example-episode"><span class="settings-layout-example-episode-art${layout.blurUnwatchedEpisodes ? " is-blurred" : ""}"></span><span>E2 · ${escapeHtml(t("settings_layout_example_unwatched", {}, "Unwatched"))}</span></div>`;
+    return `<aside class="settings-layout-live-preview" data-layout-preview="${group}" style="--preview-edge:${depth.edge};--preview-sheen:${depth.sheen};--preview-coverage:${depth.coverage}px"><div class="settings-layout-live-caption">${escapeHtml(t("settings_layout_preview", {}, "Appearance preview · example"))}</div>${content}</aside>`;
+  },
+
+  renderBrowserLayoutSections(model, bodies) {
+    const wide = this.usesSettingsPanels();
+    const active = activeLayoutSettingsGroup(this.expandedSections.layout, wide);
+    this.layoutSettingsContentId ||= `settings-layout-${++settingsPlaybackContentSequence}`;
+    const prefix = this.layoutSettingsContentId;
+    const titles = {
+      navStyle: t("settings_nav_placement_title", {}, "Navigation"),
+      homeContent: t("settings_layout_home_title", {}, "Home & Discovery"),
+      continueWatching: t("settings.layout.groups.continueWatching.title", {}, "Continue Watching"),
+      detailPage: t("settings.layout.groups.detailPage.title"),
+      cardAppearance: t("settings_card_customization_title", {}, "Card appearance")
+    };
+    const icons = {
+      navStyle: "navigation",
+      homeContent: "home",
+      continueWatching: "history",
+      detailPage: "movie",
+      cardAppearance: "view_carousel"
+    };
+    const onOff = (value) =>
+      value ? t("settings_state_on", {}, "On") : t("settings_state_off", {}, "Off");
+    const layout = model.layout;
+    const nav =
+      normalizeBrowserNavigationStyle(
+        layout.browserNavigationStyle,
+        layout.browserNavigationPlacement
+      ) || (String(document.documentElement.dataset.device) === "desktop" ? "top" : "bottom");
+    const summaries = {
+      navStyle: labelForOptionId(BROWSER_NAV_STYLE_OPTIONS, nav),
+      homeContent: `Hero ${onOff(layout.heroSectionEnabled)}`,
+      continueWatching:
+        layout.useEpisodeThumbnailsInCw !== false
+          ? t("settings_layout_episode_artwork", {}, "Episode artwork")
+          : t("settings_layout_poster_artwork", {}, "Poster artwork"),
+      detailPage: t("settings_layout_detail_summary", {}, "Metadata, trailers and episode artwork"),
+      cardAppearance: `${labelForOptionId(CARD_ORIENTATION_OPTIONS, normalizeCatalogCardOrientation(layout.catalogCardOrientation))} · ${t("settings_layout_depth", {}, "Depth")} ${onOff(layout.cardDepthEnabled)}`
+    };
+    const tabs = LAYOUT_SETTINGS_GROUPS.map((id) => {
+      const key = `layout:tab:${id}`;
+      this.actionMap.set(key, () => this.toggleExpandedSection("layout", id));
+      return `<button type="button" id="${prefix}-tab-${id}" role="tab" aria-controls="${prefix}-panel-${id}" aria-selected="${active === id}" tabindex="${active === id ? 0 : -1}" class="settings-layout-topic-tab settings-content-focusable focusable" data-zone="content" data-role="section-toggle" ${this.registerAction(key, this.actionMap.get(key))}>${escapeHtml(titles[id])}</button>`;
+    }).join("");
+    const panels = LAYOUT_SETTINGS_GROUPS.map((id) => {
+      const key = `layout:toggle:${id}`;
+      return `<section class="settings-layout-topic${active === id ? " is-open" : ""}" data-layout-topic="${id}"><button type="button" id="${prefix}-heading-${id}" class="settings-layout-topic-heading settings-content-focusable focusable" aria-expanded="${active === id}" aria-controls="${prefix}-panel-${id}" data-zone="content" data-role="section-toggle" ${this.registerAction(key, this.actionMap.get(key))}><span class="settings-layout-topic-icon material-icons" aria-hidden="true">${icons[id]}</span><span class="settings-layout-topic-copy"><span class="settings-layout-topic-title">${escapeHtml(titles[id])}</span><span class="settings-layout-topic-summary">${escapeHtml(summaries[id])}</span></span><span class="settings-layout-topic-chevron" aria-hidden="true">${iconSvg(ROW_ICONS.expand, "settings-row-icon")}</span></button><div class="settings-layout-topic-body" id="${prefix}-panel-${id}" role="${wide ? "tabpanel" : "region"}" aria-labelledby="${prefix}-${wide ? "tab" : "heading"}-${id}"${active === id ? "" : " hidden"}>${active === id ? `<div class="settings-layout-topic-controls">${bodies[id]}</div>${this.renderLayoutLivePreview(id, layout)}` : ""}</div></section>`;
+    }).join("");
+    return `<div class="settings-layout-content" data-layout-content-mode="${wide ? "tabs" : "accordion"}"><div class="settings-layout-topic-tabs" role="tablist" aria-label="${escapeHtml(t("settings_layout_topics", {}, "Layout sections"))}">${tabs}</div>${panels}</div>`;
   },
 
   renderLayoutSection(model) {
@@ -5287,9 +5674,17 @@ export const SettingsScreen = {
         ${
           model.layout.cardDepthEnabled
             ? `
+          ${
+            isDesktopBrowser
+              ? Object.keys(LAYOUT_DEPTH_FIELDS)
+                  .map((field) => this.renderLayoutRange(field, model.layout))
+                  .join("")
+              : `
           ${this.renderActionRow({ focusKey: "layout:cardDepthEdge", title: t("settings_card_depth_edge_value", {}, "Edge glow"), value: `${model.layout.cardDepthEdgeStrength}%` })}
           ${this.renderActionRow({ focusKey: "layout:cardDepthSheen", title: t("settings_card_depth_sheen_value", {}, "Sheen"), value: `${model.layout.cardDepthSheenStrength}%` })}
           ${this.renderActionRow({ focusKey: "layout:cardDepthCoverage", title: t("settings_card_depth_coverage_value", {}, "Edge coverage"), value: `${model.layout.cardDepthEdgeCoverage}%` })}
+          `
+          }
           ${[
             ["PostersEnabled", "settings_card_depth_surface_posters"],
             ["ContinueWatchingEnabled", "settings_card_depth_surface_continue_watching"],
@@ -5310,59 +5705,15 @@ export const SettingsScreen = {
         }
       </div>`;
 
-    const desktopLayoutGroups = `
-      <div class="settings-group-card settings-group-card-fill">
-        <div class="settings-stack">
-          ${this.renderCollapsibleRow({
-            focusKey: "layout:toggle:navStyle",
-            title: t("settings_nav_placement_title", {}, "Navigation"),
-            subtitle: t(
-              "settings_nav_placement_subtitle",
-              {},
-              "Where the navigation sits. The side rail stays hidden until you press the floating button."
-            ),
-            expanded: Boolean(expanded.navStyle),
-            bodyHtml: navStyleBody
-          })}
-          ${this.renderCollapsibleRow({
-            focusKey: "layout:toggle:homeContent",
-            title: "Home & Discovery",
-            subtitle: "Configure the Home hero, Discover entry, and catalog headings.",
-            expanded: Boolean(expanded.homeContent),
-            bodyHtml: homeContentBody
-          })}
-          ${this.renderCollapsibleRow({
-            focusKey: "layout:toggle:continueWatching",
-            title: t("settings.layout.groups.continueWatching.title", {}, "Continue Watching"),
-            subtitle: t(
-              "settings.layout.groups.continueWatching.subtitle",
-              {},
-              "Configure next episodes and ordering"
-            ),
-            expanded: Boolean(expanded.continueWatching),
-            bodyHtml: continueWatchingBody
-          })}
-          ${this.renderCollapsibleRow({
-            focusKey: "layout:toggle:detailPage",
-            title: t("settings.layout.groups.detailPage.title"),
-            subtitle: t("settings.layout.groups.detailPage.subtitle"),
-            expanded: Boolean(expanded.detailPage),
-            bodyHtml: detailPageBody
-          })}
-          ${this.renderCollapsibleRow({
-            focusKey: "layout:toggle:cardAppearance",
-            title: t("settings_card_customization_title", {}, "Card Customization"),
-            subtitle: t(
-              "settings_card_customization_subtitle",
-              {},
-              "Orientation, size, corners and depth surfaces"
-            ),
-            expanded: Boolean(expanded.cardAppearance),
-            bodyHtml: cardAppearanceBody
-          })}
-        </div>
-      </div>
-    `;
+    const desktopLayoutGroups = isDesktopBrowser
+      ? this.renderBrowserLayoutSections(model, {
+          navStyle: navStyleBody,
+          homeContent: homeContentBody,
+          continueWatching: continueWatchingBody,
+          detailPage: detailPageBody,
+          cardAppearance: cardAppearanceBody
+        })
+      : "";
 
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "layout"))}
@@ -5428,105 +5779,127 @@ export const SettingsScreen = {
     `;
   },
 
-  renderContentDiscoverySection() {
-    this.actionMap.set("contentDiscovery:addons", async () => {
-      if (Platform.isBrowser()) {
-        this.desktopAddonExpanded = !this.desktopAddonExpanded;
-        if (this.desktopAddonExpanded) {
-          await this.desktopAddonManager?.load();
-        }
-        return;
-      }
-      await Router.navigate("plugin");
-    });
-    this.actionMap.set("contentDiscovery:plugins", async () => {
-      if (Platform.isBrowser()) {
-        this.desktopPluginExpanded = !this.desktopPluginExpanded;
-        if (this.desktopPluginExpanded) {
-          await this.desktopPluginManager?.load();
-        }
-        return;
-      }
-      await Router.navigate("plugins");
-    });
-    this.actionMap.set("contentDiscovery:collections", async () => {
-      if (!Platform.isBrowser()) return;
-      this.desktopCollectionManager.toggle();
-      this.desktopCollectionExpanded = this.desktopCollectionManager.expanded;
-      if (this.desktopCollectionExpanded) {
-        await this.desktopCollectionManager.load();
-      }
-    });
+  async selectContentDiscoveryTopic(id) {
+    const wide = this.usesSettingsPanels();
+    const essential = ExperienceModeStore.isEssential();
+    if (!visibleContentDiscoveryTopics(essential).includes(id)) return;
+    const current = activeContentDiscoveryTopic(this.contentDiscoveryTopic, { wide, essential });
+    this.contentDiscoveryTopic = !wide && current === id ? null : id;
+    if (this.contentDiscoveryTopic) {
+      this.contentDiscoveryLoaded ||= new Set();
+      const refresh = !this.contentDiscoveryLoaded.has(id);
+      this.contentDiscoveryLoaded.add(id);
+      await this.contentDiscoveryManager(id)?.load({ refresh });
+    }
+  },
 
+  onRouteRevealed() {
+    // Back from the collection editor reveals an already-mounted Settings page.
+    // Refresh its local manager view without reloading addons or changing routes.
+    if (
+      !Platform.isBrowser() ||
+      this.container?.id !== Router.getCurrent?.() ||
+      this.presentedSectionId !== "contentDiscovery"
+    )
+      return;
+    void this.render({ refreshModel: false });
+  },
+
+  contentDiscoveryManager(id) {
+    return id === "addons"
+      ? this.desktopAddonManager
+      : id === "plugins"
+        ? this.desktopPluginManager
+        : id === "collections"
+          ? this.desktopCollectionManager
+          : null;
+  },
+
+  renderBrowserContentDiscovery() {
+    const wide = this.usesSettingsPanels();
+    const topics = visibleContentDiscoveryTopics(ExperienceModeStore.isEssential());
+    const active = activeContentDiscoveryTopic(this.contentDiscoveryTopic, {
+      wide,
+      essential: ExperienceModeStore.isEssential()
+    });
+    this.contentDiscoveryActiveTopic = active;
+    this.desktopAddonExpanded = active === "addons";
+    this.desktopPluginExpanded = active === "plugins";
+    this.desktopCollectionExpanded = active === "collections";
+    this.contentDiscoveryContentId ||= `settings-discovery-${++settingsPlaybackContentSequence}`;
+    const prefix = this.contentDiscoveryContentId;
+    const titles = {
+      addons: t("addon_title", {}, "Addons"),
+      plugins: t("plugin_title", {}, "Plugins"),
+      collections: t("settings_discovery_collections", {}, "Collections")
+    };
+    const icons = { addons: "view_module", plugins: "extension", collections: "folder" };
+    const counts = Object.fromEntries(
+      topics.map((id) => [id, this.contentDiscoveryManager(id)?.count || 0])
+    );
+    const summary = (id) =>
+      t(
+        `settings_discovery_count_${id}${counts[id] === 1 && id !== "addons" ? "_one" : ""}`,
+        { count: counts[id] },
+        "{{count}}"
+      );
+    const tabs = topics
+      .map((id) => {
+        const key = `contentDiscovery:tab:${id}`;
+        this.actionMap.set(key, () => this.selectContentDiscoveryTopic(id));
+        return `<button type="button" role="tab" id="${prefix}-tab-${id}" aria-controls="${prefix}-body-${id}" aria-selected="${active === id}" tabindex="${active === id ? 0 : -1}" class="settings-discovery-tab settings-content-focusable focusable" data-zone="content" data-role="section-toggle" ${this.registerAction(key, this.actionMap.get(key))}>${escapeHtml(titles[id])}<span class="settings-discovery-count">${counts[id]}</span></button>`;
+      })
+      .join("");
+    const panels = topics
+      .map((id) => {
+        const key = `contentDiscovery:${id}`;
+        this.actionMap.set(key, () => this.selectContentDiscoveryTopic(id));
+        return `<section class="settings-discovery-topic${active === id ? " is-open" : ""}" data-discovery-topic="${id}">
+        <button type="button" class="settings-discovery-heading settings-content-focusable focusable" id="${prefix}-heading-${id}" aria-controls="${prefix}-body-${id}" aria-expanded="${active === id}" data-zone="content" data-role="section-toggle" ${this.registerAction(key, this.actionMap.get(key))}>
+          <span class="settings-discovery-icon material-icons" aria-hidden="true">${icons[id]}</span><span class="settings-discovery-copy"><span class="settings-discovery-title">${escapeHtml(titles[id])}</span><span class="settings-discovery-summary">${escapeHtml(summary(id))}</span></span><span class="settings-discovery-chevron" aria-hidden="true">${iconSvg(ROW_ICONS.expand, "settings-row-icon")}</span>
+        </button>
+        <div class="settings-discovery-body" id="${prefix}-body-${id}" role="${wide ? "tabpanel" : "region"}" aria-labelledby="${prefix}-${wide ? "tab" : "heading"}-${id}"${active === id ? "" : " hidden"}>${active === id ? this.contentDiscoveryManager(id)?.render() || "" : ""}</div>
+      </section>`;
+      })
+      .join("");
+    return (
+      this.renderSectionHeader(SECTION_META.find((item) => item.id === "contentDiscovery")) +
+      `<div class="settings-discovery-content" data-discovery-layout="${wide ? "tabs" : "accordion"}"><div class="settings-discovery-tabs" role="tablist" aria-label="${escapeHtml(t("settings_discovery_topics", {}, "Content groups"))}">${tabs}</div>${panels}</div>`
+    );
+  },
+
+  renderContentDiscoverySection() {
+    if (Platform.isBrowser()) return this.renderBrowserContentDiscovery();
+    this.actionMap.set("contentDiscovery:addons", () => Router.navigate("plugin"));
+    this.actionMap.set("contentDiscovery:plugins", () => Router.navigate("plugins"));
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "contentDiscovery"))}
-      <div class="settings-group-card">
-        <div class="settings-stack">
-          ${
-            Platform.isBrowser()
-              ? this.renderCollapsibleRow({
-                  focusKey: "contentDiscovery:addons",
-                  title: t("addon_title", {}, "Addons"),
-                  subtitle: "Manage installed addons and sources.",
-                  expanded: Boolean(this.desktopAddonExpanded),
-                  bodyHtml: this.desktopAddonExpanded
-                    ? this.desktopAddonManager?.render() || ""
-                    : "",
-                  classes: "settings-collapsible-addon"
-                })
-              : this.renderActionRow({
-                  focusKey: "contentDiscovery:addons",
-                  title: t("addon_title", {}, "Addons"),
-                  subtitle: t(
-                    "settings.contentDiscovery.addonsSubtitle",
-                    {},
-                    "Manage add-ons, catalog order, and collections"
-                  ),
-                  leadingIcon: "grid_view"
-                })
-          }
-          ${
-            ExperienceModeStore.isEssential()
-              ? ""
-              : Platform.isBrowser()
-                ? this.renderCollapsibleRow({
-                    focusKey: "contentDiscovery:plugins",
-                    title: t("plugin_title", {}, "Plugins"),
-                    subtitle: "Add custom stream source URL templates.",
-                    expanded: Boolean(this.desktopPluginExpanded),
-                    bodyHtml: this.desktopPluginExpanded
-                      ? this.desktopPluginManager?.render() || ""
-                      : "",
-                    classes: "settings-collapsible-plugin"
-                  })
-                : this.renderActionRow({
-                    focusKey: "contentDiscovery:plugins",
-                    title: t("plugin_title", {}, "Plugins"),
-                    subtitle: t(
-                      "settings.contentDiscovery.pluginsSubtitle",
-                      {},
-                      "Manage repositories and stream providers"
-                    ),
-                    leadingIcon: "build"
-                  })
-          }
-          ${
-            Platform.isBrowser()
-              ? this.renderCollapsibleRow({
-                  focusKey: "contentDiscovery:collections",
-                  title: "Collections",
-                  subtitle: "Manage custom collections and folders shown on Home.",
-                  expanded: Boolean(this.desktopCollectionExpanded),
-                  bodyHtml: this.desktopCollectionExpanded
-                    ? this.desktopCollectionManager?.render() || ""
-                    : "",
-                  classes: "settings-collapsible-collections"
-                })
-              : ""
-          }
-        </div>
-      </div>
-    `;
+      <div class="settings-group-card"><div class="settings-stack">
+        ${this.renderActionRow({
+          focusKey: "contentDiscovery:addons",
+          title: t("addon_title", {}, "Addons"),
+          subtitle: t(
+            "settings.contentDiscovery.addonsSubtitle",
+            {},
+            "Manage add-ons, catalog order, and collections"
+          ),
+          leadingIcon: "grid_view"
+        })}
+        ${
+          ExperienceModeStore.isEssential()
+            ? ""
+            : this.renderActionRow({
+                focusKey: "contentDiscovery:plugins",
+                title: t("plugin_title", {}, "Plugins"),
+                subtitle: t(
+                  "settings.contentDiscovery.pluginsSubtitle",
+                  {},
+                  "Manage repositories and stream providers"
+                ),
+                leadingIcon: "build"
+              })
+        }
+      </div></div>`;
   },
 
   renderIntegrationHub() {
@@ -6506,14 +6879,208 @@ export const SettingsScreen = {
     `;
   },
 
+  renderBrowserIntegrationDetail(model, service) {
+    // Reuse native rows and their original handlers, credential/capability gates,
+    // masking, and dialogs. Only their grouping changes in the browser.
+    const template = document.createElement("template");
+    template.innerHTML = this.renderIntegrationDetail(model, service);
+    const rows = new Map(
+      Array.from(
+        template.content.querySelectorAll(".settings-action-row[data-focus-key]"),
+        (row) => [row.dataset.focusKey, row.outerHTML]
+      )
+    );
+    const groups = integrationControlGroups([...rows.keys()], service);
+    const titleKeys = {
+      accounts: "settings_integrations_accounts",
+      playback: "settings_integrations_playback",
+      preferences: "settings_integrations_preferences",
+      formatting: "settings_integrations_formatting",
+      connection: "settings_integrations_connection",
+      usage: "settings_integrations_usage",
+      information: "settings_integrations_information",
+      more: "settings_integrations_more",
+      ratings: "settings_integrations_ratings",
+      planned: "settings_integrations_planned",
+      additional: "settings_integrations_additional"
+    };
+    const hints = {
+      accounts: t("settings_integrations_accounts_hint"),
+      preferences: t("settings_integrations_preferences_hint"),
+      ratings: t("settings_integrations_ratings_hint"),
+      planned: t("settings_integrations_planned_hint")
+    };
+    const collapsible = {
+      "debrid:preferences": "debridPreferences",
+      "debrid:formatting": "debridFormatting",
+      "tmdb:more": "tmdbMore"
+    };
+    const rendered = new Map(
+      groups.map((group) => {
+        let controls = group.keys.map((key) => rows.get(key)).join("");
+        if (group.id === "preferences") {
+          const ruleKeys = group.keys.filter((key) => key.includes(":pref:"));
+          controls =
+            group.keys
+              .filter((key) => !key.includes(":pref:"))
+              .map((key) => rows.get(key))
+              .join("") +
+            debridRuleGroups(ruleKeys)
+              .map(
+                (rule) =>
+                  `<section class="settings-integration-rule"><h4>${escapeHtml(t(`settings_integrations_rule_${rule.attribute}`))}</h4><div class="settings-integration-rule-choices">${rule.keys.map((key) => rows.get(key)).join("")}</div></section>`
+              )
+              .join("");
+        }
+        const title = t(titleKeys[group.id]);
+        const hint = hints[group.id]
+          ? `<p class="settings-integration-hint">${escapeHtml(hints[group.id])}</p>`
+          : "";
+        const body = `${hint}<div class="settings-stack">${controls}</div>`;
+        const expandedKey = collapsible[`${service}:${group.id}`];
+        if (expandedKey) {
+          const focusKey = `integration:group:${expandedKey}`;
+          this.actionMap.set(focusKey, () =>
+            this.toggleExpandedSection("integration", expandedKey)
+          );
+          const open = Boolean(this.expandedSections.integration[expandedKey]);
+          const panelId = `${this.integrationSettingsContentId}-${expandedKey}`;
+          return [
+            group.id,
+            `<section class="settings-integration-group settings-integration-fold" data-integration-group="${group.id}"><button type="button" class="settings-integration-group-toggle settings-content-focusable focusable" data-zone="content" data-role="section-toggle" aria-expanded="${open}" aria-controls="${panelId}" ${this.registerAction(focusKey, this.actionMap.get(focusKey))}><span>${escapeHtml(title)}</span><span aria-hidden="true">${iconSvg(ROW_ICONS.expand, "settings-row-icon")}</span></button><div id="${panelId}" class="settings-integration-group-body"${open ? "" : " hidden"}>${body}</div></section>`
+          ];
+        }
+        return [
+          group.id,
+          `<section class="settings-integration-group" data-integration-group="${group.id}"><h3>${escapeHtml(title)}</h3>${body}</section>`
+        ];
+      })
+    );
+    if (service === "debrid")
+      return `${rendered.get("accounts") || ""}<div class="settings-integration-columns"><div>${rendered.get("playback") || ""}</div><div>${rendered.get("preferences") || ""}${rendered.get("formatting") || ""}</div></div>${rendered.get("additional") || ""}`;
+    if (service === "tmdb")
+      return `${rendered.get("connection") || ""}<div class="settings-integration-columns"><div>${rendered.get("usage") || ""}</div><div>${rendered.get("information") || ""}</div></div>${rendered.get("more") || ""}${rendered.get("additional") || ""}`;
+    return [...rendered.values()].join("");
+  },
+
+  renderBrowserIntegrations(model) {
+    this.ensureExpandedState("integration");
+    this.integrationSettingsContentId ||= `settings-integrations-${++settingsPlaybackContentSequence}`;
+    const wide = this.usesSettingsPanels();
+    const active = activeIntegrationService(this.integrationView, wide);
+    const titles = {
+      debrid: t("settings.integration.debrid.label"),
+      tmdb: "TMDB",
+      mdblist: "MDBList",
+      animeskip: "AnimeSkip"
+    };
+    const descriptions = {
+      debrid: t("settings.integration.debrid.subtitle"),
+      tmdb: t("settings.integration.tmdb.subtitle"),
+      mdblist: t("settings.integration.mdblist.subtitle"),
+      animeskip: t("settings.integration.animeskip.subtitle")
+    };
+    const icons = { debrid: "cloud", tmdb: "movie", mdblist: "star", animeskip: "skip_next" };
+    const onOff = (value) =>
+      t(value ? "settings_state_on" : "settings_state_off", {}, value ? "On" : "Off");
+    const credential = (value) =>
+      t(value ? "settings_integrations_key_set" : "settings_integrations_key_not_set");
+    const count = DebridProviders.configuredServices(model.debrid).length;
+    const summaries = {
+      debrid: t(
+        count === 1 ? "settings_integrations_account_one" : "settings_integrations_accounts_count",
+        { count }
+      ),
+      tmdb: `${onOff(model.tmdb.enabled)} · ${credential(model.tmdb.apiKey)}`,
+      mdblist: `${onOff(model.mdbList.enabled)} · ${credential(model.mdbList.apiKey)}`,
+      animeskip: t("settings_integrations_planned")
+    };
+    INTEGRATION_SERVICES.forEach((id) => {
+      const key = `integration:service:${id}`;
+      this.actionMap.set(key, () => {
+        this.integrationView =
+          !this.usesSettingsPanels() && activeIntegrationService(this.integrationView, false) === id
+            ? "hub"
+            : id;
+        this.contentFocusKey = key;
+      });
+    });
+    const card = (id, mobile) => {
+      const key = `integration:service:${id}`;
+      const bodyId = `${this.integrationSettingsContentId}-${id}`;
+      return `<button type="button" class="settings-integration-service${mobile ? " settings-integration-service-mobile" : ""} settings-content-focusable focusable" data-zone="content" data-role="section-toggle" ${mobile ? `aria-expanded="${active === id}"` : `aria-pressed="${active === id}"`} aria-controls="${bodyId}" ${this.registerAction(key, this.actionMap.get(key))}><span class="settings-integration-icon material-icons" aria-hidden="true">${icons[id]}</span><span class="settings-integration-copy"><span class="settings-integration-name">${escapeHtml(titles[id])}</span><span class="settings-integration-summary">${escapeHtml(summaries[id])}</span></span>${mobile ? `<span class="settings-integration-chevron" aria-hidden="true">${iconSvg(ROW_ICONS.expand, "settings-row-icon")}</span>` : ""}</button>`;
+    };
+    const panels = INTEGRATION_SERVICES.map(
+      (id) =>
+        `<section class="settings-integration-topic${active === id ? " is-open" : ""}" data-integration-service="${id}">${card(id, true)}<div class="settings-integration-service-body" role="region" aria-label="${escapeHtml(titles[id])}" id="${this.integrationSettingsContentId}-${id}"${active === id ? "" : " hidden"}>${active === id ? `<div class="settings-integration-detail-heading"><div><h2>${escapeHtml(titles[id])}</h2><p>${escapeHtml(descriptions[id])}</p></div>${id === "debrid" ? `<span class="settings-integration-status">${escapeHtml(t("debrid_experimental_notice"))}</span>` : ""}</div>${id === "debrid" ? `<p class="settings-integration-mobile-notice">${escapeHtml(t("debrid_experimental_notice"))}</p>` : ""}${this.renderBrowserIntegrationDetail(model, id)}` : ""}</div></section>`
+    ).join("");
+    return (
+      this.renderSectionHeader(SECTION_META.find((item) => item.id === "integration")) +
+      `<div class="settings-integration-content"><div class="settings-integration-services" aria-label="${escapeHtml(t("settings_integrations_services"))}">${INTEGRATION_SERVICES.map((id) => card(id, false)).join("")}</div>${panels}</div>`
+    );
+  },
+
   renderIntegrationSection(model) {
+    if (isDesktopSettingsBrowser()) return this.renderBrowserIntegrations(model);
     if (this.integrationView && this.integrationView !== "hub") {
       return this.renderIntegrationDetail(model, this.integrationView);
     }
     return this.renderIntegrationHub();
   },
 
+  renderBrowserFusion(model, sourcesHtml) {
+    const badges = model.streamBadgeSettings || StreamBadgeSettingsStore.get();
+    const placement = String(badges.badgePlacement).toUpperCase() === "TOP" ? "top" : "bottom";
+    const controls =
+      this.renderToggleRow({
+        focusKey: "streams:toggle:filenameLabels",
+        title: t("settings_fusion_filename_labels"),
+        subtitle: FILENAME_ESTIMATE_NOTICE + " " + t("settings_fusion_labels_first"),
+        checked: badges.showPlaybackLabels !== false
+      }) +
+      this.renderToggleRow({
+        focusKey: "streams:toggle:sizeBadges",
+        title: t("settings_stream_size_badges_title"),
+        subtitle: t("settings_stream_size_badges_description"),
+        checked: badges.showFileSizeBadges !== false
+      }) +
+      this.renderToggleRow({
+        focusKey: "streams:toggle:addonLogo",
+        title: t("settings_stream_addon_logo_title"),
+        subtitle: t("settings_stream_addon_logo_description"),
+        checked: badges.showAddonLogo === true
+      }) +
+      this.renderActionRow({
+        focusKey: "streams:badgePlacement",
+        title: t("settings_stream_badge_position_title"),
+        subtitle: t("settings_stream_badge_position_description"),
+        value: t(`settings_stream_badge_position_${placement}`)
+      });
+    return (
+      this.renderSectionHeader(SECTION_META.find((item) => item.id === "streams")) +
+      `<div class="settings-fusion-workspace"><section class="settings-design-card settings-fusion-display"><h2>${escapeHtml(t("settings_stream_appearance_group"))}</h2><p class="settings-design-hint">${escapeHtml(t("settings_fusion_display_hint"))}</p><div class="settings-stack">${controls}</div></section><div class="settings-fusion-live-example">${this.renderSettingsStreamPreview(model)}</div><section class="settings-design-card settings-fusion-sources">${sourcesHtml}</section></div>`
+    );
+  },
+
   renderStreamsSection(model) {
+    this.actionMap.set("streams:toggle:filenameLabels", () => {
+      const current = StreamBadgeSettingsStore.get();
+      StreamBadgeSettingsStore.set({ showPlaybackLabels: current.showPlaybackLabels === false });
+    });
+    // A section that throws leaves the shell mounted and the page blank, which is
+    // indistinguishable from a dead app. Say what broke instead, and keep the message in
+    // the console where it can be copied.
+    try {
+      return this.buildStreamsSection(model);
+    } catch (error) {
+      console.error("[Settings] streams section failed", error);
+      return `<p class="settings-row-subtitle">${escapeHtml(
+        t("settings_stream_section_failed", {}, "This section could not be shown.")
+      )}<br><code>${escapeHtml(String(error?.message || error || "unknown error"))}</code></p>`;
+    }
+  },
+
+  buildStreamsSection(model) {
     const isDesktopBrowser = isDesktopSettingsBrowser();
     const badgeSettings = model.streamBadgeSettings || StreamBadgeSettingsStore.get();
     const rules = badgeSettings.rules || { imports: [] };
@@ -6799,20 +7366,24 @@ export const SettingsScreen = {
       classes: "settings-collapsible-fusion"
     });
 
+    if (isDesktopBrowser) return this.renderBrowserFusion(model, desktopSourcesHtml);
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "streams"))}
-      <div class="settings-group-card settings-group-card-fill">
+      ${this.renderSettingsStreamPreview(model)}
+      <div class="settings-group-card settings-group-card-fill settings-fusion-content">
         <div class="settings-stack">
-          ${this.renderToggleRow({
-            focusKey: "streams:toggle:sizeBadges",
-            title: t("settings_stream_size_badges_title", {}, "Size badges"),
-            subtitle: t(
-              "settings_stream_size_badges_description",
-              {},
-              "Show file size badges in stream results and player source panels."
-            ),
-            checked: badgeSettings.showFileSizeBadges !== false
-          })}
+          <div class="settings-group-heading"><div class="settings-group-title">${escapeHtml(t("settings_stream_appearance_group", {}, "Card appearance"))}</div></div>
+          ${this.renderToggleRow({ focusKey: "streams:toggle:filenameLabels", title: "Filename playback labels", subtitle: FILENAME_ESTIMATE_NOTICE + " Labels appear first in the badge row.", checked: badgeSettings.showPlaybackLabels !== false })}
+        ${this.renderToggleRow({
+          focusKey: "streams:toggle:sizeBadges",
+          title: t("settings_stream_size_badges_title", {}, "Size badges"),
+          subtitle: t(
+            "settings_stream_size_badges_description",
+            {},
+            "Show file size badges in stream results and player source panels."
+          ),
+          checked: badgeSettings.showFileSizeBadges !== false
+        })}
           ${this.renderToggleRow({
             focusKey: "streams:toggle:addonLogo",
             title: t("settings_stream_addon_logo_title", {}, "Addon logo"),
@@ -6935,7 +7506,152 @@ export const SettingsScreen = {
     `;
   },
 
+  isWidePlaybackSettings() {
+    return Boolean(globalThis.matchMedia?.("(min-width: 960px)").matches);
+  },
+
+  bindPlaybackSettingsLayout() {
+    if (!Platform.isBrowser() || this.playbackSettingsLayoutQuery || !globalThis.matchMedia) return;
+    this.playbackSettingsLayoutQuery = globalThis.matchMedia("(min-width: 960px)");
+    this.playbackSettingsLayoutChanged = () => {
+      if (
+        this.container?.getClientRects().length &&
+        this.activeSection === "playback" &&
+        isSettingsPageCurrent()
+      ) {
+        this.contentFocusKey = null;
+        void this.render({ refreshModel: false });
+      }
+    };
+    this.playbackSettingsLayoutQuery.addEventListener?.(
+      "change",
+      this.playbackSettingsLayoutChanged
+    );
+  },
+
+  renderBrowserPlaybackSections(model, bodies) {
+    this.bindPlaybackSettingsLayout();
+    const wide = this.isWidePlaybackSettings();
+    const active = activePlaybackSettingsGroup(this.expandedSections.playback, wide);
+    this.playbackSettingsContentId ||= `settings-playback-${++settingsPlaybackContentSequence}`;
+    const id = this.playbackSettingsContentId;
+    const onOff = (value) =>
+      value ? t("settings_state_on", {}, "On") : t("settings_state_off", {}, "Off");
+    const player = model.player;
+    const titles = {
+      general: t("settings.playback.groups.general.title"),
+      autoplay: t("settings_playback_topic_autoplay", {}, "Autoplay"),
+      audio: t("settings.playback.groups.audio.title"),
+      subtitles: t("settings.playback.groups.subtitles.title"),
+      skipping: t("settings_playback_topic_skipping", {}, "Skip segments"),
+      external: t("settings_playback_topic_external", {}, "Player"),
+      p2p: t("settings_p2p_title")
+    };
+    const topicIcons = {
+      general: "tune",
+      autoplay: "playlist_play",
+      audio: "graphic_eq",
+      subtitles: "closed_caption",
+      skipping: "fast_forward",
+      external: "open_in_new",
+      p2p: "device_hub"
+    };
+    const filterLabels = {
+      ALL: t("settings_filter_all", {}, "All streams"),
+      DIRECT: "Direct",
+      DIRECT_REMUX: "Direct + Remux"
+    };
+    const summaries = {
+      general: t(
+        "settings_summary_player",
+        {
+          loading: onOff(player.loadingOverlayEnabled !== false),
+          clock: onOff(player.osdClockEnabled)
+        },
+        "Loading {{loading}} · Clock {{clock}}"
+      ),
+      autoplay:
+        labelForOptionId(STREAM_AUTOPLAY_MODE_OPTIONS, player.streamAutoPlayMode, "Manual") +
+        " · " +
+        t(
+          "settings_summary_next",
+          { state: onOff(player.autoplayNextEpisode) },
+          "Next episode {{state}}"
+        ),
+      audio:
+        labelForPlaybackLanguage(player.preferredAudioLanguage) +
+        " · " +
+        filterLabels[filenameStreamDisplayMode(player)],
+      subtitles:
+        labelForSubtitlePlaybackLanguage(player.subtitleLanguage) +
+        ` · ${clampSubtitleSize(player.subtitleStyle?.fontSize ?? 120)}%`,
+      skipping:
+        ["intro", "recap", "outro"]
+          .filter((type) => player.autoSkipSegmentTypes?.includes(type))
+          .map((type) => t(`auto_skip_${type}`, {}, type))
+          .join(" · ") || t("settings_summary_no_skip", {}, "Auto-skip off"),
+      external: this.playWithUsesExternal(model)
+        ? String(normalizeBrowserExternalPlayer(player.browserExternalPlayer))
+        : t("settings_internal_player", {}, "Internal player"),
+      p2p: onOff((model.torrent || TorrentSettingsStore.get()).p2pEnabled)
+    };
+    const tabs = PLAYBACK_SETTINGS_GROUPS.map((group) => {
+      const key = `playback:tab:${group}`;
+      this.actionMap.set(key, () => this.toggleExpandedSection("playback", group));
+      return `<button type="button" id="${id}-tab-${group}" role="tab" tabindex="${active === group ? "0" : "-1"}" aria-selected="${active === group}" aria-controls="${id}-panel-${group}" class="settings-playback-tab settings-content-focusable focusable" data-zone="content" data-role="section-toggle" ${this.registerAction(key, this.actionMap.get(key))}>${escapeHtml(titles[group])}</button>`;
+    }).join("");
+    const panels = PLAYBACK_SETTINGS_GROUPS.map((group) => {
+      const open = active === group;
+      const key = `playback:toggle:${group}`;
+      return `<section class="settings-playback-topic${open ? " is-open" : ""}" data-playback-group="${group}">
+        <button type="button" id="${id}-heading-${group}" class="settings-playback-topic-heading settings-content-focusable focusable" data-zone="content" data-role="section-toggle" aria-expanded="${open}" aria-controls="${id}-panel-${group}" ${this.registerAction(key, this.actionMap.get(key))}>
+          <span class="settings-playback-topic-icon material-icons" aria-hidden="true">${topicIcons[group]}</span>
+          <span class="settings-playback-topic-copy"><span class="settings-playback-topic-title">${escapeHtml(titles[group])}</span><span class="settings-playback-topic-summary">${escapeHtml(summaries[group])}</span></span>
+          <span class="settings-playback-topic-chevron" aria-hidden="true">${iconSvg(ROW_ICONS.expand, "settings-row-icon")}</span>
+        </button>
+        <div id="${id}-panel-${group}" class="settings-playback-topic-panel" role="${wide ? "tabpanel" : "region"}" aria-labelledby="${id}-${wide ? "tab" : "heading"}-${group}"${open ? "" : " hidden"}>${open ? bodies[group] : ""}</div>
+      </section>`;
+    }).join("");
+    return `<div class="settings-playback-content" data-playback-layout="${wide ? "tabs" : "accordion"}"><div class="settings-playback-tabs" role="tablist" aria-label="${escapeHtml(t("settings_playback_topics", {}, "Playback sections"))}">${tabs}</div><div class="settings-playback-topics">${panels}</div></div>`;
+  },
+
+  renderSettingsSubtitlePreview(style) {
+    if (!Platform.isBrowser()) return "";
+    const preview = subtitleSettingsPreviewStyle(style);
+    return `<div class="settings-subtitle-live-preview" aria-label="${escapeHtml(t("settings_preview_subtitles", {}, "Subtitle appearance preview"))}" style="--preview-size:${preview.size}px;--preview-bottom:${preview.bottom}%;--preview-weight:${preview.weight};--preview-text:${preview.color};--preview-background:${preview.background};--preview-outline:${preview.outline}">
+      <span class="settings-live-preview-caption">${escapeHtml(t("settings_preview_subtitles", {}, "Subtitle appearance preview"))}</span>
+      <span class="settings-subtitle-live-sample">${escapeHtml(t("settings_preview_subtitle_sample", {}, "This is how your subtitles will look."))}</span>
+      <span class="settings-live-preview-progress" aria-hidden="true"></span>
+    </div>`;
+  },
+
+  renderSettingsStreamPreview(model, applyFilter = false) {
+    if (!Platform.isBrowser()) return "";
+    const examples = settingsStreamPreviewSources(
+      applyFilter ? filenameStreamDisplayMode(model.player) : "ALL"
+    );
+    const badgeSettings = StreamBadgeSettingsStore.snapshot();
+    const renderExample = (source) => {
+      const display = normalizeSourceForDisplay(source, {
+        badgeSettings: { ...badgeSettings, showPlaybackLabels: false }
+      });
+      {
+        const exampleBadge = renderFilenamePlaybackMethodBadge(source.previewMethod, badgeSettings);
+        if (exampleBadge)
+          display.badges = display.badges
+            ? display.badges.replace(">", `>${exampleBadge}`)
+            : `<div class="stream-route-card-badges">${exampleBadge}</div>`;
+        const top = String(badgeSettings.badgePlacement).toUpperCase() === "TOP";
+        display.topBadges = top ? display.badges : "";
+        display.bottomBadges = top ? "" : display.badges;
+      }
+      return `<article class="stream-route-card" data-preview-source="${source.id}">${renderBrowserSourceCardContent(display)}</article>`;
+    };
+    return `<section class="settings-source-live-preview" aria-label="${escapeHtml(t("settings_preview_streams", {}, "Stream card preview"))}"><div class="settings-live-preview-caption">${escapeHtml(t("settings_preview_streams", {}, "Stream card preview"))}</div><p class="settings-live-preview-note">${escapeHtml(t("settings_preview_all_labels"))}</p>${examples.map(renderExample).join("") || `<p>${escapeHtml(t("settings_preview_no_matches", {}, "No examples match this device and filter."))}</p>`}</section>`;
+  },
+
   renderPlaybackSection(model) {
+    const hdrSupport = getHdrPlaybackSupport();
     const isDesktopBrowser = isDesktopSettingsBrowser();
     this.ensureExpandedState("playback");
     const expanded = this.expandedSections.playback;
@@ -6953,6 +7669,11 @@ export const SettingsScreen = {
     this.actionMap.set("playback:toggle:p2p", () => {
       this.toggleExpandedSection("playback", "p2p");
     });
+    for (const group of ["autoplay", "skipping", "external"]) {
+      this.actionMap.set(`playback:toggle:${group}`, () =>
+        this.toggleExpandedSection("playback", group)
+      );
+    }
 
     this.actionMap.set("playback:autoplay", () => {
       PlayerSettingsStore.set({
@@ -7015,6 +7736,31 @@ export const SettingsScreen = {
     togglePlayerSetting("playback:loadingStatus", "showPlayerLoadingStatus");
     togglePlayerSetting("playback:pauseOverlay", "pauseOverlayEnabled");
     togglePlayerSetting("playback:parentalGuide", "parentalGuideEnabled");
+    // The one relay that spends the deployment's CPU rather than its bandwidth, so
+    // a deployment in `token` mode asks for its secret before anything may call it.
+    // Per profile, and never synced: it unlocks a server, not an account.
+    this.actionMap.set("playback:transcodeToken", () => {
+      this.openTextDialog({
+        title: t("playback_transcode_token", {}, "Transcode token"),
+        value: TranscodeSettingsStore.get().token || "",
+        sensitive: true,
+        placeholder: t(
+          "playback_transcode_token_placeholder",
+          {},
+          "Paste the token this deployment gave you"
+        ),
+        returnFocusKey: "playback:transcodeToken",
+        clearLabel: t("common.clear", {}, "Clear"),
+        onClear: () => {
+          TranscodeSettingsStore.clearToken();
+          return true;
+        },
+        onSubmit: (value) => {
+          TranscodeSettingsStore.setToken(value);
+          return true;
+        }
+      });
+    });
     ["intro", "recap", "outro"].forEach((type) =>
       this.actionMap.set(`playback:autoSkip:${type}`, () => {
         const current = PlayerSettingsStore.get().autoSkipSegmentTypes || [];
@@ -7031,21 +7777,51 @@ export const SettingsScreen = {
       });
     });
     if (isDesktopBrowser) {
+      this.actionMap.set("playback:playWith", () => {
+        const externalIds = getBrowserExternalPlayerOptions().filter((id) => id !== "disabled");
+        const current = normalizeBrowserExternalPlayer(
+          PlayerSettingsStore.get().browserExternalPlayer
+        );
+        this.openOptionDialog({
+          title: "Play with",
+          message:
+            "Internal playback keeps Nuvio's own player. An external player opens the stream in another app and reports the position back when you return.",
+          options: [
+            { id: "internal", label: "Internal player" },
+            ...(externalIds.length ? [{ id: "external", label: "External player" }] : [])
+          ],
+          selectedId: current === "disabled" ? "internal" : "external",
+          returnFocusKey: "playback:playWith",
+          onSelect: (option) => {
+            if (option.id === "internal") {
+              PlayerSettingsStore.set({ browserExternalPlayer: "disabled" });
+              return;
+            }
+            // "External" has to name an app: keep the one already chosen, or fall
+            // back to the first the platform offers.
+            const next = current === "disabled" ? externalIds[0] : current;
+            if (!next) return;
+            PlayerSettingsStore.set({ browserExternalPlayer: next });
+          }
+        });
+      });
       this.actionMap.set("playback:externalPlayer", () => {
-        const options = getBrowserExternalPlayerOptions().map((id) => ({
-          id,
-          label:
-            id === "outplayer"
-              ? "Outplayer"
-              : id === "lenna"
-                ? "Lenna"
-                : id === "infuse"
-                  ? "Infuse"
-                  : id === "vlc"
-                    ? "VLC"
-                    : t("common.disabled", {}, "Disabled"),
-          subtitle: id === "lenna" ? "Recommended" : ""
-        }));
+        const options = getBrowserExternalPlayerOptions()
+          .filter((id) => id !== "disabled")
+          .map((id) => ({
+            id,
+            label:
+              id === "outplayer"
+                ? "Outplayer"
+                : id === "lenna"
+                  ? "Lenna"
+                  : id === "infuse"
+                    ? "Infuse"
+                    : id === "vlc"
+                      ? "VLC"
+                      : t("common.disabled", {}, "Disabled"),
+            subtitle: id === "lenna" ? "Recommended" : ""
+          }));
         this.openOptionDialog({
           title: "Play with external player",
           options,
@@ -7255,6 +8031,17 @@ export const SettingsScreen = {
         }
       });
     });
+    this.actionMap.set("playback:autoStreamHdr", () => {
+      const settings = PlayerSettingsStore.get();
+      const support = getHdrPlaybackSupport();
+      const target = support === false ? "AVOID" : "PREFER";
+      const next = resolveHdrPreference(settings, support) === target ? "ANY" : target;
+      const automatic = resolveHdrPreference(
+        { ...settings, streamAutoPlayHdrPreference: "AUTO" },
+        support
+      );
+      PlayerSettingsStore.set({ streamAutoPlayHdrPreference: next === automatic ? "AUTO" : next });
+    });
     this.actionMap.set("playback:autoStreamTimeout", () => {
       this.openOptionDialog({
         title: t("autoplay_timeout_title", {}, "Stream Selection Timeout"),
@@ -7300,7 +8087,9 @@ export const SettingsScreen = {
         selectedIds: PlayerSettingsStore.get().streamAutoPlaySelectedAddons,
         returnFocusKey: "playback:autoStreamAddons",
         onToggle: (selectedIds) =>
-          PlayerSettingsStore.set({ streamAutoPlaySelectedAddons: selectedIds })
+          PlayerSettingsStore.set({
+            streamAutoPlaySelectedAddons: visibleAutoplayAddonSelection(selectedIds, options)
+          })
       });
     });
     this.actionMap.set("playback:autoStreamPlugins", () => {
@@ -7638,10 +8427,21 @@ export const SettingsScreen = {
         </div></div>`;
     }
 
-    const generalBody = `
-      <div class="settings-stack">
+    const externalRows = `
         ${
           isDesktopBrowser
+            ? this.renderActionRow({
+                focusKey: "playback:playWith",
+                title: "Play with",
+                subtitle:
+                  "Play inside Nuvio, or hand the stream to another app when the built-in player cannot take it.",
+                value: this.playWithUsesExternal(model) ? "External player" : "Internal player",
+                classes: "settings-playback-play-with-row"
+              })
+            : ""
+        }
+        ${
+          isDesktopBrowser && this.playWithUsesExternal(model)
             ? this.renderActionRow({
                 focusKey: "playback:externalPlayer",
                 title: "Play with external player",
@@ -7698,7 +8498,7 @@ export const SettingsScreen = {
             : ""
         }
         ${
-          isDesktopBrowser
+          isDesktopBrowser && this.playWithUsesExternal(model)
             ? this.renderActionRow({
                 focusKey: "playback:externalPlayerProgress",
                 title: "External Player Progress",
@@ -7713,7 +8513,7 @@ export const SettingsScreen = {
             : ""
         }
         ${
-          isDesktopBrowser
+          isDesktopBrowser && this.playWithUsesExternal(model)
             ? this.renderActionRow({
                 focusKey: "playback:returnMethod",
                 title: "Return to NuvioWeb",
@@ -7730,6 +8530,7 @@ export const SettingsScreen = {
         }
         ${
           isDesktopBrowser &&
+          this.playWithUsesExternal(model) &&
           model.player.externalReturnMethod === "automation" &&
           getAutomationReturnAvailability() !== "unsupported"
             ? this.renderActionRow({
@@ -7741,12 +8542,14 @@ export const SettingsScreen = {
               })
             : ""
         }
-        ${this.renderToggleRow({
-          focusKey: "playback:autoplay",
-          title: t("settings.playback.autoplayNextEpisode.title"),
-          subtitle: t("settings.playback.autoplayNextEpisode.subtitle"),
-          checked: Boolean(model.player.autoplayNextEpisode)
-        })}
+`;
+
+    const nextEpisodeRows = `        ${this.renderToggleRow({
+      focusKey: "playback:autoplay",
+      title: t("settings.playback.autoplayNextEpisode.title"),
+      subtitle: t("settings.playback.autoplayNextEpisode.subtitle"),
+      checked: Boolean(model.player.autoplayNextEpisode)
+    })}
         ${this.renderToggleRow({
           focusKey: "playback:preferBingeGroup",
           title: t("autoplay_prefer_binge_group", {}, "Prefer Binge Group (Next Episode)"),
@@ -7771,51 +8574,58 @@ export const SettingsScreen = {
               })
             : ""
         }
-        ${this.renderToggleRow({
-          focusKey: "playback:skipIntro",
-          title: t("settings.playback.skipIntro.title", {}, "Skip Intro"),
-          subtitle: t(
-            "settings.playback.skipIntro.subtitle",
-            {},
-            "Use IntroDB to detect intro, recap and outro segments when available."
-          ),
-          checked: Boolean(model.player.skipIntroEnabled)
-        })}
-        ${this.renderToggleRow({ focusKey: "playback:loadingOverlay", title: t("playback_loading_overlay"), subtitle: t("playback_loading_overlay_sub"), checked: model.player.loadingOverlayEnabled !== false })}
+
+`;
+
+    const skipIntroRows = `        ${this.renderToggleRow({
+      focusKey: "playback:skipIntro",
+      title: t("settings.playback.skipIntro.title", {}, "Skip Intro"),
+      subtitle: t(
+        "settings.playback.skipIntro.subtitle",
+        {},
+        "Use IntroDB to detect intro, recap and outro segments when available."
+      ),
+      checked: Boolean(model.player.skipIntroEnabled)
+    })}
+`;
+
+    const playerInformationRows = `        ${this.renderToggleRow({ focusKey: "playback:loadingOverlay", title: t("playback_loading_overlay"), subtitle: t("playback_loading_overlay_sub"), checked: model.player.loadingOverlayEnabled !== false })}
         ${this.renderToggleRow({ focusKey: "playback:loadingStatus", title: t("playback_show_loading_status", {}, "Detailed loading status"), subtitle: t("playback_show_loading_status_sub", {}, "Show detailed player loading progress"), checked: model.player.showPlayerLoadingStatus !== false })}
         ${this.renderToggleRow({ focusKey: "playback:pauseOverlay", title: t("playback_pause_overlay"), subtitle: t("playback_pause_overlay_sub"), checked: model.player.pauseOverlayEnabled !== false })}
         ${this.renderToggleRow({ focusKey: "playback:parentalGuide", title: t("playback_parental_guide"), subtitle: t("playback_parental_guide_sub"), checked: model.player.parentalGuideEnabled !== false })}
-        ${["intro", "recap", "outro"].map((type) => this.renderToggleRow({ focusKey: `playback:autoSkip:${type}`, title: t(`auto_skip_${type}`, {}, `Auto-skip ${type}`), subtitle: t(`auto_skip_${type}_sub`, {}, `Skip ${type} segments automatically`), checked: model.player.autoSkipSegmentTypes?.includes(type) })).join("")}
-        ${this.renderToggleRow({
-          focusKey: "playback:osdClock",
-          title: isDesktopBrowser
-            ? "Show clock in player controls"
-            : t("playback_osd_clock", {}, "OSD Clock"),
-          subtitle: t(
-            "playback_show_clock_sub",
-            {},
-            "Show current time and end time while controls are visible."
-          ),
-          checked: Boolean(model.player.osdClockEnabled)
-        })}
-        ${this.renderActionRow({
-          focusKey: "playback:nextEpisodeThresholdMode",
-          title: t(
-            "settings.playback.nextEpisodeThresholdMode.title",
-            {},
-            "Next episode threshold"
-          ),
-          subtitle: t(
-            "settings.playback.nextEpisodeThresholdMode.subtitle",
-            {},
-            "Choose percentage or minutes before the end."
-          ),
-          value:
-            String(model.player.nextEpisodeThresholdMode || "PERCENTAGE").toUpperCase() ===
-            "MINUTES_BEFORE_END"
-              ? t("settings.playback.nextEpisodeThresholdMode.minutes", {}, "Minutes before end")
-              : t("settings.playback.nextEpisodeThresholdMode.percentage", {}, "Percentage")
-        })}
+`;
+
+    const autoSkipRows = `        ${["intro", "recap", "outro"].map((type) => this.renderToggleRow({ focusKey: `playback:autoSkip:${type}`, title: t(`auto_skip_${type}`, {}, `Auto-skip ${type}`), subtitle: t(`auto_skip_${type}_sub`, {}, `Skip ${type} segments automatically`), checked: model.player.autoSkipSegmentTypes?.includes(type) })).join("")}
+`;
+
+    const clockRows = `        ${this.renderToggleRow({
+      focusKey: "playback:osdClock",
+      title: isDesktopBrowser
+        ? "Show clock in player controls"
+        : t("playback_osd_clock", {}, "OSD Clock"),
+      subtitle: t(
+        "playback_show_clock_sub",
+        {},
+        "Show current time and end time while controls are visible."
+      ),
+      checked: Boolean(model.player.osdClockEnabled)
+    })}
+`;
+
+    const nextEpisodeDetailsRows = `        ${this.renderActionRow({
+      focusKey: "playback:nextEpisodeThresholdMode",
+      title: t("settings.playback.nextEpisodeThresholdMode.title", {}, "Next episode threshold"),
+      subtitle: t(
+        "settings.playback.nextEpisodeThresholdMode.subtitle",
+        {},
+        "Choose percentage or minutes before the end."
+      ),
+      value:
+        String(model.player.nextEpisodeThresholdMode || "PERCENTAGE").toUpperCase() ===
+        "MINUTES_BEFORE_END"
+          ? t("settings.playback.nextEpisodeThresholdMode.minutes", {}, "Minutes before end")
+          : t("settings.playback.nextEpisodeThresholdMode.percentage", {}, "Percentage")
+    })}
         ${this.renderActionRow({
           focusKey: "playback:nextEpisodeThresholdValue",
           title:
@@ -7887,16 +8697,18 @@ export const SettingsScreen = {
         `
             : ""
         }
-        ${this.renderToggleRow({
-          focusKey: "playback:reuseLastLink",
-          title: t("autoplay_reuse_last_link", {}, "Reuse Last Link"),
-          subtitle: t(
-            "autoplay_reuse_last_link_sub",
-            {},
-            "Auto-play your last working stream for this same movie or episode while the cache is valid."
-          ),
-          checked: Boolean(model.player.streamReuseLastLinkEnabled)
-        })}
+`;
+
+    const autoSelectionRows = `        ${this.renderToggleRow({
+      focusKey: "playback:reuseLastLink",
+      title: t("autoplay_reuse_last_link", {}, "Reuse Last Link"),
+      subtitle: t(
+        "autoplay_reuse_last_link_sub",
+        {},
+        "Auto-play your last working stream for this same movie or episode while the cache is valid."
+      ),
+      checked: Boolean(model.player.streamReuseLastLinkEnabled)
+    })}
         ${
           model.player.streamReuseLastLinkEnabled
             ? this.renderActionRow({
@@ -7926,10 +8738,36 @@ export const SettingsScreen = {
             "Manual (choose stream)"
           )
         })}
+        ${
+          String(model.player.streamAutoPlayMode) === "FIRST_STREAM"
+            ? this.renderToggleRow({
+                focusKey: "playback:autoStreamHdr",
+                title:
+                  hdrSupport === false
+                    ? "Don’t select HDR streams"
+                    : hdrSupport === true
+                      ? "Select HDR when available"
+                      : "Prefer HDR streams",
+                subtitle:
+                  hdrSupport === true
+                    ? "Your device supports HDR playback."
+                    : hdrSupport === false
+                      ? "Your browser reports SDR video output."
+                      : "HDR support couldn’t be verified.",
+                checked:
+                  resolveHdrPreference(model.player, hdrSupport) ===
+                  (hdrSupport === false ? "AVOID" : "PREFER")
+              })
+            : ""
+        }
         ${this.renderActionRow({
           focusKey: "playback:autoStreamTimeout",
           title: t("autoplay_timeout_title", {}, "Stream Selection Timeout"),
-          subtitle: t("autoplay_timeout_sub", {}, "Wait time for addons before selecting."),
+          subtitle: t(
+            "autoplay_selection_deadline_sub",
+            {},
+            "Maximum time to select a source before returning to the stream list."
+          ),
           value: labelForOptionId(
             STREAM_AUTOPLAY_TIMEOUT_OPTIONS,
             model.player.streamAutoPlayTimeoutSeconds,
@@ -7964,7 +8802,12 @@ export const SettingsScreen = {
                   "Auto-play only considers selected installed addons."
                 ),
                 value: model.player.streamAutoPlaySelectedAddons?.length
-                  ? String(model.player.streamAutoPlaySelectedAddons.length)
+                  ? String(
+                      visibleAutoplayAddonSelection(
+                        model.player.streamAutoPlaySelectedAddons,
+                        model.addons
+                      ).length
+                    )
                   : t("autoplay_all_addons", {}, "All installed addons")
               })
             : ""
@@ -8004,11 +8847,84 @@ export const SettingsScreen = {
         })}`
             : ""
         }
-      </div>
-    `;
+`;
+    const generalBody = `<div class="settings-stack">${externalRows}${nextEpisodeRows}${skipIntroRows}${playerInformationRows}${autoSkipRows}${clockRows}${nextEpisodeDetailsRows}${autoSelectionRows}</div>`;
 
+    this.actionMap.set("playback:filenameRouting", () =>
+      PlayerSettingsStore.set({
+        filenamePlaybackRoutingEnabled:
+          PlayerSettingsStore.get().filenamePlaybackRoutingEnabled === false
+      })
+    );
+    const filenameFilterOptions = [
+      { id: "ALL", label: "All streams" },
+      { id: "DIRECT", label: "Direct" },
+      { id: "DIRECT_REMUX", label: "Direct + Remux" }
+    ];
+    this.actionMap.set("playback:filenameStreamFilter", () =>
+      this.openOptionDialog({
+        title: "Stream filter (filename estimate)",
+        options: filenameFilterOptions,
+        selectedId: filenameStreamDisplayMode(PlayerSettingsStore.get()),
+        returnFocusKey: "playback:filenameStreamFilter",
+        onSelect: (option) => PlayerSettingsStore.set({ filenameStreamDisplayMode: option.id })
+      })
+    );
     const audioBody = `
+      <div class="settings-audio-language-group">${isDesktopBrowser ? `<div class="settings-group-heading"><div class="settings-group-title">${escapeHtml(t("settings_audio_languages", {}, "Audio languages"))}</div></div>` : ""}
+        ${this.renderActionRow({
+          focusKey: "playback:audioLanguage",
+          title: isDesktopBrowser
+            ? t("settings_audio_primary", {}, "Primary language")
+            : t("settings.playback.preferredAudio.title"),
+          subtitle: isDesktopBrowser ? "" : t("settings.playback.preferredAudio.subtitle"),
+          value: labelForPlaybackLanguage(model.player.preferredAudioLanguage)
+        })}
+        ${this.renderActionRow({
+          focusKey: "playback:secondaryAudioLanguage",
+          title: isDesktopBrowser
+            ? t("settings_audio_fallback", {}, "Fallback language")
+            : t("sub_secondary_lang", {}, "Secondary Preferred Language"),
+          subtitle: isDesktopBrowser
+            ? ""
+            : t(
+                "settings.playback.preferredAudio.subtitle",
+                {},
+                "Choose the audio language to prefer when it is available."
+              ),
+          value: labelForPlaybackLanguage(model.player.secondaryPreferredAudioLanguage)
+        })}
+</div>
+
+      ${this.renderToggleRow({ focusKey: "playback:filenameRouting", title: t("settings_filename_route_title", {}, "Determine stream processing based on filename"), subtitle: isDesktopBrowser ? t("settings_filename_route_short", {}, "Estimate how to play the stream from its filename. If playback fails, another supported method is tried automatically.") : "Start Direct, remux or server audio conversion using the filename estimate. If it fails or times out, try remaining supported routes once. Off: try Direct, then remux, then supported server audio conversion. Video is never re-encoded.", checked: model.player.filenamePlaybackRoutingEnabled !== false })}
+      <div class="settings-group-heading"><div class="settings-group-title">Stream filter</div></div>
+      ${this.renderActionRow({ focusKey: "playback:filenameStreamFilter", title: "Streams to show (filename estimate)", subtitle: isDesktopBrowser ? t("settings_filename_filter_short", {}, "Filename estimates. Also applies to autoplay and next episodes.") : FILENAME_FILTER_NOTICE, value: filenameFilterOptions.find((option) => option.id === filenameStreamDisplayMode(model.player)).label })}
+      ${isDesktopBrowser ? `<details class="settings-field-help"><summary>${escapeHtml(t("settings_filename_help_title", {}, "About estimates and fallback"))}</summary><p>${escapeHtml(FILENAME_FILTER_NOTICE)}</p><p>${escapeHtml(t("settings_filename_route_help", {}, "With filename routing off: Direct, then remux, then supported server audio conversion. Each automatic route is tried once. Video is never re-encoded."))}</p></details>${filenameStreamDisplayMode(model.player) !== "ALL" ? `<p class="settings-filename-filter-warning" role="note">${escapeHtml(t("settings_filename_filter_warning", {}, "Incorrect filenames can hide playable streams, including Unknown results."))}</p>` : ""}` : ""}
       <div class="settings-stack">
+        ${
+          // Only offered where the deployment runs the endpoint: a field that
+          // cannot do anything is worse than no field.
+          TRANSCODE_ENDPOINT
+            ? `<div class="settings-group-heading"><div class="settings-group-title">Server access</div></div>
+              <div class="settings-group-card settings-subsection-card">${this.renderActionRow({
+                focusKey: "playback:transcodeToken",
+                title: t("playback_transcode_token", {}, "Transcode token"),
+                subtitle: t(
+                  "playback_transcode_token_sub",
+                  {},
+                  "The secret this deployment's audio transcode endpoint asks for. Without it, a stream whose audio track cannot be decoded is not transcoded."
+                ),
+                value: TranscodeSettingsStore.get().token
+                  ? t("playback_transcode_token_set", {}, "Configured")
+                  : t(
+                      "playback_transcode_token_unset",
+                      {},
+                      "Not configured - every relay request will be refused until a token is set"
+                    ),
+                icon: "vpn_key"
+              })}</div>`
+            : ""
+        }
         ${
           !isDesktopBrowser
             ? this.renderToggleRow({
@@ -8029,22 +8945,7 @@ export const SettingsScreen = {
               })
             : ""
         }
-        ${this.renderActionRow({
-          focusKey: "playback:audioLanguage",
-          title: t("settings.playback.preferredAudio.title"),
-          subtitle: t("settings.playback.preferredAudio.subtitle"),
-          value: labelForPlaybackLanguage(model.player.preferredAudioLanguage)
-        })}
-        ${this.renderActionRow({
-          focusKey: "playback:secondaryAudioLanguage",
-          title: t("sub_secondary_lang", {}, "Secondary Preferred Language"),
-          subtitle: t(
-            "settings.playback.preferredAudio.subtitle",
-            {},
-            "Choose the audio language to prefer when it is available."
-          ),
-          value: labelForPlaybackLanguage(model.player.secondaryPreferredAudioLanguage)
-        })}
+
       </div>
     `;
 
@@ -8183,6 +9084,21 @@ export const SettingsScreen = {
       </div>
     `;
 
+    if (isDesktopBrowser) {
+      const stack = (body) => `<div class="settings-stack">${body}</div>`;
+      return (
+        this.renderSectionHeader(SECTION_META.find((item) => item.id === "playback")) +
+        this.renderBrowserPlaybackSections(model, {
+          general: stack(playerInformationRows + clockRows),
+          autoplay: stack(nextEpisodeRows + nextEpisodeDetailsRows + autoSelectionRows),
+          audio: `<div class="settings-playback-audio-controls">${audioBody}</div>${this.renderSettingsStreamPreview(model, true)}`,
+          subtitles: this.renderSettingsSubtitlePreview(model.player.subtitleStyle) + subtitleBody,
+          skipping: stack(skipIntroRows + autoSkipRows),
+          external: stack(externalRows),
+          p2p: p2pBody
+        })
+      );
+    }
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "playback"))}
       <div class="settings-group-card settings-group-card-fill">
@@ -8800,6 +9716,24 @@ export const SettingsScreen = {
     void poll();
   },
 
+  async copyTrackingDeviceCode(provider) {
+    const target = {
+      trakt: { service: TraktAuthService, prefix: "desktopTrakt" },
+      simkl: { service: SimklAuthService, prefix: "desktopSimkl" },
+      mdblist: { service: MdbListAuthService, prefix: "desktopMdbList" }
+    }[provider];
+    const code = String(target?.service.getCurrentAuthState().userCode || "").trim();
+    if (!code) return false;
+    const copied = await copyDeviceAuthorizationCode(code);
+    // Approval/polling may replace the code while the clipboard resolves.
+    if (String(target.service.getCurrentAuthState().userCode || "").trim() !== code) return copied;
+    this[`${target.prefix}StatusMessage`] = copied ? t("common.copied", {}, "Copied!") : null;
+    this[`${target.prefix}ErrorMessage`] = copied
+      ? null
+      : t("debug_console_copy_failed", {}, "Copy failed");
+    return copied;
+  },
+
   renderDesktopTrackingSection() {
     const settings = TraktSettingsStore.get();
     const trakt = TraktAuthService.getCurrentAuthState();
@@ -8846,6 +9780,11 @@ export const SettingsScreen = {
     this.actionMap.set("tracking:desktop:behavior", () =>
       this.toggleDesktopTrackingSection("behavior")
     );
+    for (const provider of ["trakt", "simkl", "mdblist"]) {
+      this.actionMap.set(`tracking:desktop:${provider}:copy`, () =>
+        this.copyTrackingDeviceCode(provider)
+      );
+    }
     this.actionMap.set("tracking:desktop:trakt:connect", async () => {
       this.desktopTraktErrorMessage = null;
       try {
@@ -9066,6 +10005,7 @@ export const SettingsScreen = {
              <code class="settings-tracking-activation-code">${escapeHtml(simkl.userCode || "-")}</code>
              <div class="settings-tracking-activation-url">${escapeHtml(activationUrl)}</div>
              <div class="settings-tracking-inline-actions">
+               ${inlineButton("tracking:desktop:simkl:copy", t("debrid_device_auth_copy_code", {}, "Copy Code"))}
                ${inlineButton("tracking:desktop:simkl:open", "Open Simkl PIN")}
                ${inlineButton("tracking:desktop:simkl:cancel", "Cancel", "is-secondary")}
              </div>
@@ -9088,6 +10028,7 @@ export const SettingsScreen = {
              <code class="settings-tracking-activation-code">${escapeHtml(mdbList.userCode || "-")}</code>
              <div class="settings-tracking-activation-url">${escapeHtml(mdbListActivationUrl)}</div>
              <div class="settings-tracking-inline-actions">
+               ${inlineButton("tracking:desktop:mdblist:copy", t("debrid_device_auth_copy_code", {}, "Copy Code"))}
                ${inlineButton("tracking:desktop:mdblist:open", "Open MDBList")}
                ${inlineButton("tracking:desktop:mdblist:cancel", "Cancel", "is-secondary")}
              </div>
@@ -9107,6 +10048,7 @@ export const SettingsScreen = {
              <code class="settings-tracking-activation-code">${escapeHtml(trakt.userCode || "-")}</code>
              <div class="settings-tracking-activation-url">${escapeHtml(trakt.verificationUrl || "https://trakt.tv/activate")}</div>
              <div class="settings-tracking-inline-actions">
+               ${inlineButton("tracking:desktop:trakt:copy", t("debrid_device_auth_copy_code", {}, "Copy Code"))}
                ${inlineButton("tracking:desktop:trakt:open", "Open Trakt")}
                ${inlineButton("tracking:desktop:trakt:cancel", "Cancel", "is-secondary")}
              </div>
@@ -9506,8 +10448,7 @@ export const SettingsScreen = {
         ${this.renderToggleRow({
           focusKey: "downloads:syncOfflineProgress",
           title: "Sync offline progress (experimental)",
-          subtitle:
-            "Experimental, and still has plenty of bugs. Off: watching a download records nothing at all â€” not your position, not that you finished it, and nothing reaches your account or tracking service. On: a download is treated like any other playback, and two devices can disagree about which position is newer. A tracking service is sent the position but not when you watched it, so an offline session arrives at Trakt or Simkl stamped with the time it got there; a finished title does carry its real time.",
+          subtitle: t("settings_offline_progress_description"),
           checked: Boolean(model.player?.syncOfflineProgress)
         })}
       </div></div>
@@ -9581,6 +10522,7 @@ export const SettingsScreen = {
   },
 
   async render({ refreshModel = true } = {}) {
+    if (this.layoutRangeInteraction) return;
     // Settings writes its markup again from the top, so a redraw lands on the
     // row somebody is dragging and destroys it mid-gesture. The usual cause is
     // a sync from the previous reorder reporting back a second or two later.
@@ -9603,6 +10545,7 @@ export const SettingsScreen = {
     // section is always open, so an unknown one falls back to the first rather
     // than leaving the content blank.
     const usesRoutePages = settingsUsesRoutePages();
+    const usesPanels = this.usesSettingsPanels();
     if (
       !this.visibleSections.some((section) => section.id === this.activeSection) &&
       !(usesRoutePages && this.activeSection === null)
@@ -9620,13 +10563,16 @@ export const SettingsScreen = {
       getSettingsSectionById(this.activeSection) ||
       this.visibleSections.find((item) => item.id === this.activeSection) ||
       this.visibleSections[0];
+    this.presentedSectionId = usesPanels || this.activeSection !== null ? section.id : null;
     this.ensureExpandedState(section.id);
     this.persistUiState();
 
     this.ensureShell();
+    this.bindSettingsPanelLayout();
 
     const shell = this.container.querySelector(".settings-shell");
     if (shell) {
+      shell.dataset.settingsLayout = usesPanels ? "panels" : "pages";
       shell.dataset.settingsStyle = String(
         this.model.theme.settingsUiStyle || "CLASSIC"
       ).toLowerCase();
@@ -9703,13 +10649,22 @@ export const SettingsScreen = {
     // On the index page nothing is open yet, so there is no section to build.
     // Rendering one anyway would cost a full section's markup on every visit
     // to a page that never shows it.
-    const showsSection = !usesRoutePages || this.activeSection !== null;
+    const showsSection = usesPanels || !usesRoutePages || this.activeSection !== null;
     const renderedId = showsSection ? section.id : null;
     const sectionChanged = this.renderedSectionId !== renderedId;
     const previousScrollState = !sectionChanged ? captureSettingsScrollState(contentSlot) : null;
     this.renderedSectionId = renderedId;
     if (contentSlot) {
       contentSlot.innerHTML = showsSection ? this.renderSection(section, this.model) : "";
+      if (usesPanels) {
+        const body = document.createElement("div");
+        body.className = "settings-panel-body";
+        Array.from(contentSlot.childNodes).forEach((node) => {
+          if (node.nodeType === 1 && node.classList.contains("settings-content-header")) return;
+          body.appendChild(node);
+        });
+        contentSlot.appendChild(body);
+      }
       if (previousScrollState) {
         restoreSettingsScrollState(contentSlot, previousScrollState);
       }
@@ -9764,6 +10719,22 @@ export const SettingsScreen = {
     syncLayoutPreviewMetricsSoon(this.container);
     updateSettingsRailIndicatorsSoon(navSlot);
     updateSettingsScrollIndicatorsSoon(contentSlot);
+    if (
+      isDesktopBrowser &&
+      this.presentedSectionId === "contentDiscovery" &&
+      this.contentDiscoveryActiveTopic
+    ) {
+      const topic = this.contentDiscoveryActiveTopic;
+      this.contentDiscoveryLoaded ||= new Set();
+      if (!this.contentDiscoveryLoaded.has(topic)) {
+        this.contentDiscoveryLoaded.add(topic);
+        void this.contentDiscoveryManager(topic)
+          ?.load()
+          .catch((error) => {
+            console.warn("Content manager load failed", error);
+          });
+      }
+    }
   },
 
   applyFocus() {
@@ -9839,8 +10810,16 @@ export const SettingsScreen = {
             focusKeySelector(".settings-content-focusable", this.contentFocusKey)
           )
         : null;
+      const visiblePlaybackNode = (node) => Boolean(node?.getClientRects?.().length);
       const fallbackContent =
-        contentNode || this.container.querySelector(".settings-content-focusable");
+        Platform.isBrowser() &&
+        ["playback", "contentDiscovery", "layout", "integration"].includes(this.activeSection)
+          ? visiblePlaybackNode(contentNode)
+            ? contentNode
+            : Array.from(this.container.querySelectorAll(".settings-content-focusable")).find(
+                visiblePlaybackNode
+              )
+          : contentNode || this.container.querySelector(".settings-content-focusable");
       if (fallbackContent) {
         fallbackContent.classList.add("focused");
         focusSettingsNode(fallbackContent);
@@ -10081,6 +11060,13 @@ export const SettingsScreen = {
   },
 
   async handleClickEvent(event) {
+    if (event?.target?.matches?.("[data-appearance-color]")) return;
+    const layoutRange = event?.target?.closest?.("[data-layout-range]");
+    if (layoutRange && this.container?.contains(layoutRange)) {
+      this.contentFocusKey = layoutRange.dataset.focusKey;
+      this.focusZone = "content";
+      return;
+    }
     const backControl = event?.target?.closest?.("[data-settings-back]");
     if (backControl && this.container?.contains?.(backControl)) {
       event?.preventDefault?.();
@@ -10296,6 +11282,79 @@ export const SettingsScreen = {
   },
 
   async onKeyDown(event) {
+    if (
+      event?.target?.matches?.("[data-layout-range], [data-appearance-color]") &&
+      !Platform.isBackEvent(event)
+    )
+      return;
+    const layoutTab = event?.target?.closest?.(".settings-layout-topic-tab");
+    if (
+      Platform.isBrowser() &&
+      layoutTab &&
+      ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+    ) {
+      event.preventDefault();
+      const current = LAYOUT_SETTINGS_GROUPS.indexOf(layoutTab.dataset.focusKey.split(":").at(-1));
+      const count = LAYOUT_SETTINGS_GROUPS.length;
+      const next =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? count - 1
+            : (current + (event.key === "ArrowLeft" ? -1 : 1) + count) % count;
+      this.toggleExpandedSection("layout", LAYOUT_SETTINGS_GROUPS[next]);
+      this.contentFocusKey = `layout:tab:${LAYOUT_SETTINGS_GROUPS[next]}`;
+      this.focusZone = "content";
+      await this.render({ refreshModel: false });
+      return;
+    }
+    const discoveryTab = event?.target?.closest?.(".settings-discovery-tab");
+    if (
+      Platform.isBrowser() &&
+      discoveryTab &&
+      ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+    ) {
+      event.preventDefault();
+      const topics = visibleContentDiscoveryTopics(ExperienceModeStore.isEssential());
+      const current = topics.indexOf(discoveryTab.dataset.focusKey.split(":").at(-1));
+      const next =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? topics.length - 1
+            : (current + (event.key === "ArrowLeft" ? -1 : 1) + topics.length) % topics.length;
+      await this.selectContentDiscoveryTopic(topics[next]);
+      this.contentFocusKey = `contentDiscovery:tab:${topics[next]}`;
+      this.focusZone = "content";
+      await this.render({ refreshModel: false });
+      return;
+    }
+    const playbackTab = event?.target?.closest?.(".settings-playback-tab");
+    if (
+      Platform.isBrowser() &&
+      playbackTab &&
+      ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+    ) {
+      event.preventDefault();
+      const current = PLAYBACK_SETTINGS_GROUPS.indexOf(
+        String(playbackTab.dataset.focusKey || "")
+          .split(":")
+          .at(-1)
+      );
+      const count = PLAYBACK_SETTINGS_GROUPS.length;
+      const next =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? count - 1
+            : (current + (event.key === "ArrowLeft" ? -1 : 1) + count) % count;
+      const group = PLAYBACK_SETTINGS_GROUPS[next];
+      this.toggleExpandedSection("playback", group);
+      this.contentFocusKey = `playback:tab:${group}`;
+      this.focusZone = "content";
+      await this.render({ refreshModel: false });
+      return;
+    }
     if (Platform.isBrowser() && event?.target?.closest?.(".desktop-navigation")) {
       return;
     }
@@ -10547,6 +11606,24 @@ export const SettingsScreen = {
   cleanup() {
     this.persistUiState();
     this.unbindHeaderCollapse();
+    this.settingsPanelLayoutQuery?.removeEventListener?.("change", this.settingsPanelLayoutChanged);
+    this.settingsPanelLayoutQuery = null;
+    this.settingsPanelLayoutChanged = null;
+    this.presentedSectionId = null;
+    this.layoutRangeInteraction = false;
+    this.layoutSettingsContentId = null;
+    this.integrationSettingsContentId = null;
+    this.contentDiscoveryTopic = undefined;
+    this.contentDiscoveryActiveTopic = null;
+    this.contentDiscoveryContentId = null;
+    this.contentDiscoveryLoaded = null;
+    this.playbackSettingsLayoutQuery?.removeEventListener?.(
+      "change",
+      this.playbackSettingsLayoutChanged
+    );
+    this.playbackSettingsLayoutQuery = null;
+    this.playbackSettingsLayoutChanged = null;
+    this.playbackSettingsContentId = null;
     this.offlineDownloadsUnsubscribe?.();
     this.offlineDownloadsUnsubscribe = null;
     this.browserHorizontalTabScrollCleanup?.();
@@ -10560,8 +11637,9 @@ export const SettingsScreen = {
     this.desktopAddonManager?.dispose?.();
     const containerListeners = this.container?.__settingsListeners;
     if (containerListeners) {
-      this.container.removeEventListener("wheel", containerListeners.wheel);
-      this.container.removeEventListener("click", containerListeners.click);
+      Object.entries(containerListeners).forEach(([event, handler]) =>
+        this.container.removeEventListener(event, handler)
+      );
       delete this.container.__settingsListeners;
     }
     const navSlot = this.container?.querySelector?.("[data-settings-nav]");

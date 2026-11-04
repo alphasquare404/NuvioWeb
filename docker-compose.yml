@@ -22,6 +22,17 @@ services:
       SIMKL_APP_NAME: ${SIMKL_APP_NAME:-nuvio}
       PREMIUMIZE_CLIENT_ID: ${PREMIUMIZE_CLIENT_ID:-}
       AUTOMATION_SHORTCUT_URL: ${AUTOMATION_SHORTCUT_URL:-}
+      # Relays the browser cannot reach by itself. Empty means the deployment
+      # does not offer one, and the app then never calls it.
+      PROBE_MODE: ${PROBE_MODE:-}
+      PROBE_CLIENT_CONCURRENCY: ${PROBE_CLIENT_CONCURRENCY:-1}
+      MEDIA_URL_HOST_RESOLVE_ENABLED: ${MEDIA_URL_HOST_RESOLVE_ENABLED:-false}
+      PROBE_ENABLED: ${PROBE_ENABLED:-true}
+      PROBE_ENDPOINT: ${PROBE_ENDPOINT:-}
+      REMUX_MODE: ${REMUX_MODE:-}
+      REMUX_CLIENT_CACHE_MAX_MIB: ${REMUX_CLIENT_CACHE_MAX_MIB:-512}
+      REMUX_ENDPOINT: ${REMUX_ENDPOINT:-}
+      TRANSCODE_ENDPOINT: ${TRANSCODE_ENDPOINT:-}
     ports:
       - "${NUVIO_PORT:-4173}:80"
     restart: unless-stopped
@@ -45,6 +56,8 @@ services:
   debrid-api-bridge:
     container_name: nuvioweb-debrid-api-bridge
     image: ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:stable
+    environment:
+      MEDIA_URL_HOST_RESOLVE_ENABLED: ${MEDIA_URL_HOST_RESOLVE_ENABLED:-false}
     restart: unless-stopped
 
   external-return-bridge:
@@ -55,3 +68,25 @@ services:
       NUVIO_WEB_PUSH_PUBLIC_KEY: ${NUVIO_WEB_PUSH_PUBLIC_KEY:-}
       NUVIO_WEB_PUSH_PRIVATE_KEY: ${NUVIO_WEB_PUSH_PRIVATE_KEY:-}
       NUVIO_WEB_PUSH_SUBJECT: ${NUVIO_WEB_PUSH_SUBJECT:-}
+
+  # Runs ffmpeg, so it is the one service whose work has to be rationed: which
+  # callers may ask is a deployment decision, and `token` fails closed when no
+  # token is configured. Reached only through nginx on /api/transcode.
+  transcode-bridge:
+    container_name: nuvioweb-transcode-bridge
+    image: ghcr.io/alphasquare404/nuvioweb-transcode-bridge:stable
+    restart: unless-stopped
+    environment:
+      # open (anyone), token (shared secret), lan (private addresses only).
+      TRANSCODE_ACCESS: ${TRANSCODE_ACCESS:-token}
+      TRANSCODE_TOKEN: ${TRANSCODE_TOKEN:-}
+      TRANSCODE_AUDIO_BITRATE: ${TRANSCODE_AUDIO_BITRATE:-192k}
+      # Optional executable path inside this container. The image includes FFmpeg.
+      FFMPEG_PATH: ${FFMPEG_PATH:-}
+    volumes:
+      # A finished transcode is what the next seek reads, so it outlives the
+      # container. The bridge sweeps its own files by age.
+      - transcode-work:/tmp/nuvio-transcode
+
+volumes:
+  transcode-work:

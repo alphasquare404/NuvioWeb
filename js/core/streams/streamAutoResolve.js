@@ -1,3 +1,4 @@
+import { reusableStreamPreference, matchesReusableStream } from "./streamReusePreference.js";
 // Picking a stream without a screen to pick it on.
 //
 // Auto stream selection used to happen on the stream screen: the app navigated
@@ -10,6 +11,9 @@
 // choice itself is still `selectAutoPlayStream`: nothing about which stream
 // wins is decided here.
 
+import { hdrFromText } from "./streamHdrPreference.js";
+import { filterAutoPlaySourceStreams } from "./streamAutoPlaySelector.js";
+import { resolveHdrPreference } from "./streamHdrPreference.js";
 import { streamRepository } from "../../data/repository/streamRepository.js";
 import { flattenStreams, mergeStreamItems } from "./streamList.js";
 import { isAutoPlayEffectivelyEnabled, selectAutoPlayStream } from "./streamAutoPlaySelector.js";
@@ -17,6 +21,7 @@ import { isAutoPlayEffectivelyEnabled, selectAutoPlayStream } from "./streamAuto
 // The stream screen's own sentinel for "never choose early": wait for every
 // addon before deciding, however long that takes.
 const WAIT_FOREVER_SECONDS = 2147483647;
+export const INSTANT_SELECTION_TIMEOUT_MS = 45000;
 
 // The stream route carries whatever type the catalog gave it. One place
 // decides what that means, so a caller cannot get it subtly wrong.
@@ -26,6 +31,35 @@ export function normalizeStreamType(itemType) {
 
 export function normalizeSelectionWaitSeconds(value) {
   return Math.max(0, Math.trunc(Number(value || 0)));
+}
+
+// One deadline belongs to the complete Finding stream attempt.
+export function streamSelectionDeadline(seconds, now = Date.now()) {
+  const wait = normalizeSelectionWaitSeconds(seconds);
+  return wait === WAIT_FOREVER_SECONDS
+    ? Infinity
+    : now + (wait === 0 ? INSTANT_SELECTION_TIMEOUT_MS : wait * 1000);
+}
+
+export async function withinStreamSelectionDeadline(task, deadlineAt, onTimeout, signal = null) {
+  if (signal?.aborted) return onTimeout();
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) return onTimeout();
+  if (!Number.isFinite(remaining) && !signal) return task();
+  let timer, abortListener;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((resolve) => {
+        if (Number.isFinite(remaining)) timer = setTimeout(() => resolve(onTimeout()), remaining);
+        abortListener = () => resolve(onTimeout());
+        signal?.addEventListener("abort", abortListener, { once: true });
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+    if (abortListener) signal?.removeEventListener("abort", abortListener);
+  }
 }
 
 // Whether a partial list may be chosen from yet. Zero means the first matching
@@ -108,6 +142,7 @@ export function resolveHandoffReturnRoute({
 // fetched on the way. The streams come back even when nothing was chosen, so
 // the caller can hand them to the stream screen rather than fetching twice.
 export async function resolveAutoPlayStream({
+  itemId,
   itemType,
   videoId,
   settings = {},
@@ -116,7 +151,11 @@ export async function resolveAutoPlayStream({
   shouldCancel = () => false,
   onProgress = null,
   repository = streamRepository,
-  now = () => Date.now()
+  now = () => Date.now(),
+  deadlineAt = streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds ?? 2147483647),
+  returnOnFirstMatch = false,
+  verifySelection = null,
+  signal = null
 } = {}) {
   if (!isAutoPlayEffectivelyEnabled(settings)) {
     return { streams: [], selected: null, cancelled: false, reason: "disabled" };
@@ -125,60 +164,208 @@ export async function resolveAutoPlayStream({
     return { streams: [], selected: null, cancelled: false, reason: "no-target" };
   }
 
+  const cancelled = () => Boolean(signal?.aborted || shouldCancel());
+  if (cancelled()) return { streams: [], selected: null, cancelled: true, reason: "cancelled" };
+  const knownAddonNames = new Set(installedAddonNames);
   const type = normalizeStreamType(itemType);
   const startedAt = now();
   const waitSeconds = normalizeSelectionWaitSeconds(settings.streamAutoPlayTimeoutSeconds);
+  const reusableStream = reusableStreamPreference(settings, itemId, videoId);
   let streams = [];
   let selected = null;
+  let finished = false;
+  let complete = false;
+  let timedOut = false;
+  let releaseCandidate;
+  const firstCandidate = new Promise((resolve) => {
+    releaseCandidate = resolve;
+  });
 
-  const choose = () =>
-    selectAutoPlayStream(streams, {
+  let revision = 0,
+    checkedRevision = -1,
+    verification = null,
+    bestVerified = null;
+  const verifiedProbes = new Map();
+  let verifiedHdrExcluded = false;
+  const verify = () => {
+    if (!verifySelection || selected || finished || cancelled() || Date.now() >= deadlineAt)
+      return Promise.resolve();
+    if (verification) return verification;
+    const atRevision = revision;
+    verification = Promise.resolve()
+      .then(() =>
+        verifySelection(
+          {
+            streams: [...streams],
+            selected: choose(),
+            preferredBingeGroup,
+            deadlineAt,
+            complete,
+            probes: [...verifiedProbes]
+          },
+          () => finished || cancelled() || Date.now() >= deadlineAt
+        )
+      )
+      .then((result) => {
+        if (finished || cancelled()) return;
+        checkedRevision = atRevision;
+        verifiedHdrExcluded = result?.hdrExcluded === true;
+        for (const [key, probe] of result?.probes || []) verifiedProbes.set(key, probe);
+        if (result?.streams) {
+          const byId = new Map(result.streams.map((stream) => [stream.id, stream]));
+          streams = streams.map((stream) => {
+            const updated = byId.get(stream.id);
+            return updated?.url && !stream.url
+              ? { ...stream, url: updated.url, externalUrl: null }
+              : stream;
+          });
+        }
+        if (result?.selected) {
+          bestVerified = result.selected;
+          if (
+            (complete && atRevision === revision) ||
+            (!complete && canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt }))
+          ) {
+            selected = bestVerified;
+            if (returnOnFirstMatch) releaseCandidate({ status: "success", data: [] });
+          }
+        }
+      })
+      .catch(() => {
+        checkedRevision = atRevision;
+      })
+      .finally(() => {
+        verification = null;
+        if (!selected && checkedRevision !== revision && !finished && Date.now() < deadlineAt)
+          void verify();
+      });
+    return verification;
+  };
+
+  const choose = ({ allowOther = false } = {}) => {
+    const candidate = selectAutoPlayStream(streams, {
+      reusableStream,
+      filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
       mode: settings.streamAutoPlayMode,
+      hdrPreference: resolveHdrPreference(settings),
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
-      installedAddonNames,
+      installedAddonNames: knownAddonNames,
       selectedAddons: settings.streamAutoPlaySelectedAddons,
       selectedPlugins: settings.streamAutoPlaySelectedPlugins,
       preferredBingeGroup,
       preferBingeGroupInSelection: Boolean(preferredBingeGroup)
     });
+    // A partial addon response must not beat a still-pending remembered source.
+    return reusableStream &&
+      !complete &&
+      !allowOther &&
+      !matchesReusableStream(candidate, reusableStream)
+      ? null
+      : candidate;
+  };
 
   const absorb = (groups) => {
     const incoming = flattenStreams({ status: "success", data: groups });
     if (!incoming.length) return;
     streams = mergeStreamItems(streams, incoming);
+    revision++;
     onProgress?.({ streams, count: streams.length });
   };
 
   const options = {
+    onAddon: (addon) => {
+      const name = String(addon?.displayName || addon?.name || "").trim();
+      if (name && !finished && !cancelled()) knownAddonNames.add(name);
+    },
     onChunk: (chunkResult) => {
-      if (selected || shouldCancel() || chunkResult?.status !== "success") return;
+      if (finished || cancelled() || chunkResult?.status !== "success") return;
       absorb(Array.isArray(chunkResult.data) ? chunkResult.data : []);
+      if (verifySelection) {
+        void verify();
+        return;
+      }
       // A chunk is a partial list, so it only counts once the grace period for
       // better sources has passed.
       if (!canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt })) return;
       const candidate = choose();
-      if (candidate?.id) selected = candidate;
+      if (candidate?.id) {
+        selected = candidate;
+        if (returnOnFirstMatch) releaseCandidate({ status: "success", data: [] });
+      }
     }
   };
 
+  let cancelListener;
+  const aborted = new Promise((resolve) => {
+    cancelListener = () => resolve({ status: "cancelled", data: [] });
+    if (signal?.aborted) cancelListener();
+    else signal?.addEventListener("abort", cancelListener, { once: true });
+  });
+  const cleanup = () => signal?.removeEventListener("abort", cancelListener);
   let result;
   try {
-    result = await repository.getStreamsFromAllAddons(type, videoId, options);
+    result = await withinStreamSelectionDeadline(
+      () => {
+        const all = Promise.resolve(
+          repository.getStreamsFromAllAddons(type, videoId, options)
+        ).then((value) => {
+          complete = true;
+          return value;
+        });
+        return Promise.race([
+          returnOnFirstMatch ? Promise.race([all, firstCandidate]) : all,
+          aborted
+        ]);
+      },
+      deadlineAt,
+      () => {
+        timedOut = true;
+        return { status: "success", data: [] };
+      }
+    );
   } catch (error) {
     // A failed fetch is not a failed feature: the caller falls back to the
     // stream screen, which reports the error the way it always has.
-    return { streams, selected: null, cancelled: false, reason: "error", error };
+    finished = true;
+    cleanup();
+    return {
+      streams,
+      selected: null,
+      cancelled: cancelled(),
+      reason: cancelled() ? "cancelled" : "error",
+      error
+    };
   }
 
-  if (shouldCancel()) return { streams, selected: null, cancelled: true, reason: "cancelled" };
+  if (cancelled()) {
+    finished = true;
+    cleanup();
+    return { streams, selected: null, cancelled: true, reason: "cancelled" };
+  }
 
   streams = mergeStreamItems(streams, flattenStreams(result));
+  revision++;
   onProgress?.({ streams, count: streams.length });
+  if (verifySelection && !selected && !timedOut) {
+    // A complete discovery waits for the corresponding compatibility pass.
+    // Earlier partial passes cannot finalize a different candidate revision.
+    while (checkedRevision !== revision && !cancelled() && Date.now() < deadlineAt) {
+      await withinStreamSelectionDeadline(
+        () => verify(),
+        deadlineAt,
+        () => null
+      );
+    }
+  }
+  finished = true;
+  cleanup();
+  if (cancelled()) return { streams, selected: null, cancelled: true, reason: "cancelled" };
+  if (verifySelection && !selected) selected = bestVerified;
 
-  if (!selected) {
+  if (!selected && !verifySelection) {
     // The list is complete now, so the grace period no longer applies.
-    const candidate = choose();
+    const candidate = choose({ allowOther: true });
     if (candidate?.id) selected = candidate;
   }
 
@@ -186,6 +373,48 @@ export async function resolveAutoPlayStream({
     streams,
     selected: selected || null,
     cancelled: false,
-    reason: selected ? "selected" : "no-match"
+    complete,
+    hdrExcluded:
+      verifiedHdrExcluded ||
+      (!selected &&
+        resolveHdrPreference(settings) === "AVOID" &&
+        filterAutoPlaySourceStreams(streams, {
+          source: settings.streamAutoPlaySource,
+          installedAddonNames: knownAddonNames,
+          selectedAddons: settings.streamAutoPlaySelectedAddons,
+          selectedPlugins: settings.streamAutoPlaySelectedPlugins
+        }).some((stream) => hdrFromText(stream) === true)),
+    timedOut: timedOut && !selected,
+    deadlineAt,
+    preferredBingeGroup,
+    ...(verifySelection ? { probes: [...verifiedProbes] } : {}),
+    reason: selected ? "selected" : timedOut ? "timeout" : "no-match"
   };
+}
+
+// Deliberately exclude source URLs, regex text, tokens and exception bodies.
+export function reportAutoPlaySelection(entry, result, settings = {}) {
+  const reasons = new Set([
+    "selected",
+    "timeout",
+    "no-match",
+    "cancelled",
+    "error",
+    "disabled",
+    "no-target",
+    "filtered-choice"
+  ]);
+  console.warn(
+    "[AutoPlay] " +
+      JSON.stringify({
+        entry,
+        event: "selection-finished",
+        reason: reasons.has(result.reason) ? result.reason : "no-match",
+        waitSeconds: normalizeSelectionWaitSeconds(settings.streamAutoPlayTimeoutSeconds),
+        received: Array.isArray(result.streams) ? result.streams.length : 0,
+        selected: Boolean(result.selected),
+        complete: result.complete === true,
+        timedOut: result.timedOut === true
+      })
+  );
 }

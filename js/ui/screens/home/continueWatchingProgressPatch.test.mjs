@@ -248,3 +248,36 @@ test("a film never collapses into an episode of the same title", () => {
     null
   );
 });
+
+test("a fresh position immediately moves its existing card first without losing artwork", () => {
+  const shown = [
+    { contentId: "a", updatedAt: 100, poster: "a.jpg" },
+    { contentId: "b", updatedAt: 200, poster: "b.jpg" }
+  ];
+  const result = patchContinueWatchingDisplayProgress(shown, {
+    contentId: "a",
+    updatedAt: 300,
+    positionMs: 5000,
+    durationMs: 10000
+  });
+  assert.deepEqual(
+    result.map((item) => item.contentId),
+    ["a", "b"]
+  );
+  assert.equal(result[0].updatedAt, 300);
+  assert.equal(result[0].poster, "a.jpg");
+  assert.equal(shown[0].updatedAt, 100);
+});
+
+test("Unwatched clears derived Next Up but preserves a different episode in progress", async () => {
+  const { resetContinueWatchingDisplayWatchedState: reset } =
+    await import("./continueWatchingProgressPatch.js");
+  const cards = [
+    { contentId: "s", season: 1, episode: 3, isNextUp: true },
+    { contentId: "s", season: 1, episode: 4, positionMs: 1000 },
+    { contentId: "other" }
+  ];
+  assert.deepEqual(reset(cards, { contentId: "s", season: 1, episode: 2 }), [cards[1], cards[2]]);
+  assert.deepEqual(reset(cards, { contentId: "s" }), [cards[2]]);
+  assert.equal(reset(cards, { contentId: "missing" }), null);
+});

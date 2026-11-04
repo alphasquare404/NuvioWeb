@@ -1,3 +1,4 @@
+import { remuxLibraryPolicy } from "./remuxLibraryPolicy.mjs";
 import { cp, mkdir, readFile, rm, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +17,7 @@ import { assetBuildId, versionAssetUrls } from "./assetVersions.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
+let remuxAssetId = "dev";
 const requireConfiguredRuntimeEnv = /^(1|true|yes|on)$/i.test(
   String(process.env.NUVIO_REQUIRE_LOCAL_PROPERTIES || "")
 );
@@ -466,6 +468,7 @@ async function buildBundle() {
     metafile: true,
     define: {
       "process.env.NODE_ENV": '"production"',
+      __NUVIO_REMUX_ASSET_ID__: JSON.stringify(remuxAssetId),
       __NUVIO_APP_VERSION__: JSON.stringify(version),
       __NUVIO_APP_IDENTITY__: JSON.stringify(identity),
       __NUVIO_BUILD_ENV__: JSON.stringify(buildEnv),
@@ -491,7 +494,7 @@ async function collectLocaleAssets(directory, relativeDirectory = "") {
     const relativePath = path.posix.join(relativeDirectory, entry.name);
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      assets.push(...await collectLocaleAssets(absolutePath, relativePath));
+      assets.push(...(await collectLocaleAssets(absolutePath, relativePath)));
     } else if (entry.isFile() && /^(?:strings|string)\.xml$/i.test(entry.name)) {
       assets.push(`./res/${relativePath}`);
     }
@@ -529,7 +532,10 @@ async function runBuild() {
       cp(path.join(rootDir, "assets"), path.join(distDir, "assets"), { recursive: true }),
       cp(path.join(rootDir, "res"), path.join(distDir, "res"), { recursive: true }),
       cp(path.join(rootDir, "boot-guard.js"), path.join(distDir, "boot-guard.js")),
-      cp(path.join(rootDir, "docs", "youtube-proxy.html"), path.join(distDir, "youtube-proxy.html")),
+      cp(
+        path.join(rootDir, "docs", "youtube-proxy.html"),
+        path.join(distDir, "youtube-proxy.html")
+      ),
       cp(path.join(rootDir, "manifest.webmanifest"), path.join(distDir, "manifest.webmanifest"))
     ]);
     await buildCoreJsBundle();
@@ -560,6 +566,79 @@ async function runBuild() {
       path.join(distDir, "assets", "libs", "libbitsub.LICENSE")
     );
 
+    // Lazy client probe assets: never add the 31 MiB core to app-shell precache.
+    const probeAssetDir = path.join(distDir, "assets", "libs", "ffprobe");
+    await mkdir(probeAssetDir, { recursive: true });
+    await Promise.all([
+      cp(
+        path.join(rootDir, "node_modules", "@ffmpeg", "core", "dist", "umd", "ffmpeg-core.js"),
+        path.join(probeAssetDir, "ffmpeg-core.js")
+      ),
+      cp(
+        path.join(rootDir, "node_modules", "@ffmpeg", "core", "dist", "umd", "ffmpeg-core.wasm"),
+        path.join(probeAssetDir, "ffmpeg-core.wasm")
+      ),
+      cp(
+        path.join(rootDir, "docs", "ffprobe-wasm-NOTICE.txt"),
+        path.join(probeAssetDir, "NOTICE.txt")
+      ),
+      cp(
+        path.join(rootDir, "docs", "ffprobe-wasm-COPYING.txt"),
+        path.join(probeAssetDir, "COPYING.txt")
+      ),
+      build({
+        entryPoints: [path.join(rootDir, "js", "core", "player", "ffprobeClientWorker.js")],
+        outfile: path.join(probeAssetDir, "ffprobe-worker.js"),
+        bundle: true,
+        format: "iife",
+        minify: true,
+        target: ["safari15", "chrome80"]
+      })
+    ]);
+
+    // Immutable directory binds the lazy runtime and both workers to one build.
+    const remuxSourceDir = path.join(rootDir, "js/core/player/clientRemux");
+    const remuxSources = (await readdir(remuxSourceDir))
+      .filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
+      .sort();
+    const remuxContents = await Promise.all(
+      remuxSources.map((name) => readFile(path.join(remuxSourceDir, name)))
+    );
+    remuxAssetId = assetBuildId(
+      Buffer.concat([
+        ...remuxContents,
+        await readFile(path.join(rootDir, "scripts/remuxLibraryPolicy.mjs")),
+        await readFile(path.join(rootDir, "package-lock.json"))
+      ])
+    );
+    const remuxDir = path.join(distDir, "assets/libs/remux", remuxAssetId);
+    await mkdir(remuxDir, { recursive: true });
+    for (const [entry, outfile, format] of [
+      ["clientRuntime.mjs", "client-runtime.js", "esm"],
+      ["cacheWorker.mjs", "cache-worker.js", "iife"],
+      ["subtitleWorker.mjs", "subtitle-worker.js", "iife"]
+    ]) {
+      await build({
+        entryPoints: [path.join(remuxSourceDir, entry)],
+        outfile: path.join(remuxDir, outfile),
+        bundle: true,
+        minify: true,
+        format,
+        target: ["safari15", "chrome80"],
+        define: { __NUVIO_REMUX_ASSET_ID__: JSON.stringify(remuxAssetId) },
+        plugins: [
+          remuxLibraryPolicy({
+            onModifiedSource: (contents) =>
+              writeFile(path.join(remuxDir, "mediabunny-matroska-demuxer.source.js"), contents)
+          })
+        ]
+      });
+    }
+    await cp(
+      path.join(rootDir, "node_modules/mediabunny/LICENSE"),
+      path.join(remuxDir, "mediabunny.LICENSE")
+    );
+
     // js bundle processing (final step to ensure all transformations are applied correctly and we end up with a single, minified bundle file)
     await buildBundle();
 
@@ -568,10 +647,7 @@ async function runBuild() {
     // files only this build has, and a frozen query can no longer hand a browser
     // the bundle it cached a week ago.
     const buildId = assetBuildId(await readFile(path.join(distDir, "app.bundle.js")));
-    await writeFile(
-      path.join(distDir, "index.html"),
-      versionAssetUrls(sourceIndex, buildId)
-    );
+    await writeFile(path.join(distDir, "index.html"), versionAssetUrls(sourceIndex, buildId));
     console.log(`asset build id: ${buildId}`);
 
     // After the shell it caches exists: the cache name is a hash of those files.

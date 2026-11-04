@@ -6,7 +6,7 @@ const VALID_MODES = new Set(["ESSENTIAL", "ADVANCED"]);
 // flag, so that a later step worth showing to people who have already been
 // through it once is a matter of raising this by one -- which is what the issue
 // means by "selected upgrades". A profile that has never seen it reads 0.
-export const QUICK_SETUP_VERSION = 2;
+export const QUICK_SETUP_VERSION = 3;
 
 function normalizeQuickSetupVersion(value) {
   const version = Number(value);
@@ -14,7 +14,9 @@ function normalizeQuickSetupVersion(value) {
 }
 
 function normalize(value = {}) {
-  const mode = String(value?.mode || "").trim().toUpperCase();
+  const mode = String(value?.mode || "")
+    .trim()
+    .toUpperCase();
   return {
     mode: VALID_MODES.has(mode) ? mode : null,
     addonSetupSkipped: Boolean(value?.addonSetupSkipped),

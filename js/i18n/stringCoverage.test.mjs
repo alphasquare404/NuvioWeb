@@ -100,8 +100,7 @@ const KNOWN_GAPS = [
   "settings.plugins.comingSoon",
   "stream_autoplay_countdown",
   "stream_autoplay_hint",
-  "stream_autoplay_title",
-  "subtitle_style_reset_action"
+  "stream_autoplay_title"
 ];
 
 test("the keys the logs caught are answered", async () => {

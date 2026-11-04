@@ -257,3 +257,72 @@ test("gesture binder defers single taps and cancels them for double seek, hold, 
     cleanup();
   });
 });
+
+test("long press suppresses the video context menu without blocking interactive controls", async () => {
+  await withGestureDom(() => {
+    const surface = new GestureTestElement();
+    const control = new GestureTestElement(surface);
+    const cleanup = bindBrowserPlayerGestures(surface, {
+      isInteractiveTarget: (t) => t === control
+    });
+    const videoMenu = createGestureEvent(surface);
+    surface.dispatch("contextmenu", videoMenu);
+    assert.equal(videoMenu.defaultPrevented, true);
+    const mouseMenu = createGestureEvent(surface, { pointerType: "mouse" });
+    surface.dispatch("contextmenu", mouseMenu);
+    assert.equal(mouseMenu.defaultPrevented, false);
+    const controlMenu = createGestureEvent(control);
+    surface.dispatch("contextmenu", controlMenu);
+    assert.equal(controlMenu.defaultPrevented, false);
+    cleanup();
+    const afterCleanup = createGestureEvent(surface);
+    surface.dispatch("contextmenu", afterCleanup);
+    assert.equal(afterCleanup.defaultPrevented, false);
+  });
+});
+
+test("touch swipe previews horizontally and commits once on release without a tap or hold", async () => {
+  await withGestureDom(()=>{
+    const surface=new GestureTestElement(); const timers=createFakeTimers(); const moves=[]; const ends=[]; let taps=0,holds=0;
+    const cleanup=bindBrowserPlayerGestures(surface,{schedule:timers.schedule,cancelScheduled:timers.cancel,getNow:timers.now,
+      onSwipeStart:()=>true,onSwipeMove:value=>moves.push(value),onSwipeEnd:value=>ends.push(value),onSingleTap:()=>taps++,onHoldChange:()=>holds++});
+    dispatchPointer(surface,"pointerdown",1,100);
+    dispatchPointer(surface,"pointermove",1,200);
+    assert.equal(moves.length,1);
+    assert.equal(moves[0].deltaX,100);
+    assert.equal(ends.length,0);
+    timers.advance(600);
+    dispatchPointer(surface,"pointerup",1,200);
+    assert.equal(ends.length,1); assert.equal(ends[0].cancelled,false);
+    timers.advance(600); assert.equal(taps,0); assert.equal(holds,0);
+    const click=createGestureEvent(surface);surface.dispatch("click",click);assert.equal(click.defaultPrevented,true);
+    cleanup();
+  });
+});
+test("vertical motion and mouse drags do not start touch seeking; pointer cancel never commits", async () => {
+  await withGestureDom(()=>{
+    const surface=new GestureTestElement();let started=0;const ends=[];
+    const cleanup=bindBrowserPlayerGestures(surface,{onSwipeStart:()=>{started++;return true},onSwipeEnd:value=>ends.push(value)});
+    surface.dispatch("pointerdown",createGestureEvent(surface,{clientX:100,clientY:100}));
+    surface.dispatch("pointermove",createGestureEvent(surface,{clientX:103,clientY:170}));
+    surface.dispatch("pointerup",createGestureEvent(surface,{clientX:103,clientY:170}));
+    assert.equal(started,0);
+    surface.dispatch("pointerdown",createGestureEvent(surface,{pointerType:"mouse",clientX:100}));
+    surface.dispatch("pointermove",createGestureEvent(surface,{pointerType:"mouse",clientX:200}));
+    surface.dispatch("pointerup",createGestureEvent(surface,{pointerType:"mouse",clientX:200}));
+    assert.equal(started,0);
+    dispatchPointer(surface,"pointerdown",2,100);dispatchPointer(surface,"pointermove",2,200);dispatchPointer(surface,"pointercancel",2,200);
+    assert.equal(started,1);assert.equal(ends[0].cancelled,true);cleanup();
+  });
+});
+
+test("a second touch on a control cancels an active swipe", async () => {
+  await withGestureDom(()=>{
+    const surface=new GestureTestElement();const control=new GestureTestElement(surface);const ends=[];
+    const cleanup=bindBrowserPlayerGestures(surface,{isInteractiveTarget:t=>t===control,onSwipeStart:()=>true,onSwipeEnd:e=>ends.push(e)});
+    dispatchPointer(surface,"pointerdown",1,100);dispatchPointer(surface,"pointermove",1,200);
+    const second=createGestureEvent(control,{pointerId:2});second.isPrimary=false;
+    surface.dispatch("pointerdown",second);dispatchPointer(surface,"pointerup",1,200);
+    assert.deepEqual(ends,[{cancelled:true}]);cleanup();
+  });
+});

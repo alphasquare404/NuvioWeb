@@ -1,3 +1,4 @@
+import { initializeDeviceCapabilitySession } from "./core/player/deviceCapabilitySession.js";
 import "./core/diagnostics/consoleDebugBuffer.js";
 import { detailWatchedEnrichmentService } from "./data/repository/detailWatchedEnrichmentService.js";
 import { Router } from "./ui/navigation/router.js";
@@ -301,6 +302,8 @@ async function bootstrapApp() {
   appShellRendered = true;
   markBootStage("Initializing platform");
   Platform.init();
+  markBootStage("Checking playback capabilities");
+  initializeDeviceCapabilitySession();
   const isDesktopBrowser = Platform.isBrowser();
   document.documentElement.classList.toggle("desktop-browser", isDesktopBrowser);
   document.body.classList.toggle("desktop-browser", isDesktopBrowser);
@@ -523,6 +526,35 @@ if (document.readyState === "loading") {
   });
 }
 
+// A phone that has crashed cannot open its own console, and the person holding it cannot
+// read one. Errors are therefore also posted to the server that served the page, where they
+// land in its log: enough to name the line, without asking anyone to plug in a cable.
+function reportErrorToServer(kind, value) {
+  try {
+    const error = value && typeof value === "object" ? value : { message: String(value ?? "") };
+    void fetch("/api/debug/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind,
+        message: String(error.message || error.name || ""),
+        stack: String(error.stack || "").slice(0, 4000),
+        url: location.href,
+        at: new Date().toISOString()
+      })
+    }).catch(() => {});
+  } catch {
+    // Nothing left to do: the console is the fallback.
+  }
+}
+
+window.addEventListener("error", (event) => {
+  reportErrorToServer("error", event?.error || event?.message);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  reportErrorToServer("rejection", event?.reason);
+});
 window.addEventListener("error", (event) => {
   if (!event?.error) {
     return;

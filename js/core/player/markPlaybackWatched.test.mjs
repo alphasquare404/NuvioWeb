@@ -155,3 +155,26 @@ test("season zero survives as zero", async () => {
   assert.equal(watched[0].season, 0);
   assert.equal(watched[0].episode, 3);
 });
+
+test("accepted episode completion starts Next Up preparation without waiting for metadata", async () => {
+  const calls = [];
+  const mark = createMarkPlaybackWatched({
+    watchedRepository: { mark: async () => calls.push("watched") },
+    progressRepository: {
+      removePlaybackProgress: async () => calls.push("removed"),
+      getContinueWatchingSourceKey: () => "profile:source"
+    },
+    completionPreparation: {
+      prepare: (context, scope) => {
+        calls.push([context.episode, scope]);
+        return new Promise(() => {});
+      }
+    },
+    seriesReconciliation: {
+      isSeriesType: () => true,
+      reconcile: async () => calls.push("reconciled")
+    }
+  });
+  assert.equal(await mark({ itemId: "show", itemType: "series", season: 1, episode: 2 }), true);
+  assert.deepEqual(calls, ["watched", "removed", [2, "profile:source"], "reconciled"]);
+});

@@ -135,3 +135,32 @@ test("the library button turns before the provider answers", async () => {
   // And it goes back if the write is refused.
   assert.match(toggle, /catch \(error\) \{[\s\S]*?this\.isSavedInLibrary = wasSaved;/);
 });
+
+test("Back releases the autoplay handoff before refreshing preserved Detail", async () => {
+  const source = await metaDetailsScreenSource();
+  const method = (name) => {
+    const match = source.match(new RegExp(name + "\\(\\) \\{[\\s\\S]*?\\n {2}\\},"));
+    assert.ok(match, name + " exists");
+    return new Function(
+      "setBrowserMediaTitle",
+      "StartupLoadingOverlay",
+      "return ({" + match[0] + "})." + name
+    )(() => {}, { finish() {} });
+  };
+  let renders = 0;
+  const screen = {
+    meta: { name: "Spider-Man" },
+    container: {},
+    isLoadingDetail: true,
+    routeHandoffPending: true,
+    renderedRouteHandoffMarkup: "Finding a stream",
+    releaseRouteHandoff: method("releaseRouteHandoff"),
+    render() {
+      renders += 1;
+    }
+  };
+  method("onRouteRevealed").call(screen);
+  assert.equal(screen.routeHandoffPending, false);
+  assert.equal(screen.renderedRouteHandoffMarkup, null);
+  assert.equal(renders, 1);
+});

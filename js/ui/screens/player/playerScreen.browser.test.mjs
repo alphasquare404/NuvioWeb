@@ -1,3 +1,4 @@
+import { playerStreamProbeKey } from "../../../core/streams/playerStreamPolicy.js";
 import vm from "node:vm";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -138,11 +139,14 @@ test("Player external launches bind the optional Push return subscription unless
   assert.doesNotMatch(source, /disableBrowserPushReturn/);
 });
 
-
 test("audio boost does not capture native cross-origin media", async () => {
   const source = await readFile(playerScreenUrl, "utf8");
   const declaration = source.match(/function supportsWebAudioAmplification\(\) \{[\s\S]*?\n\}/)[0];
-  const context = { URL, location: { origin: "https://nuvio.example" }, PlayerController: { video: {} } };
+  const context = {
+    URL,
+    location: { origin: "https://nuvio.example" },
+    PlayerController: { video: {} }
+  };
   vm.runInNewContext(declaration, context);
   const video = context.PlayerController.video;
   video.currentSrc = "https://cdn.example/movie.mp4";
@@ -153,4 +157,117 @@ test("audio boost does not capture native cross-origin media", async () => {
   assert.equal(context.supportsWebAudioAmplification(), true);
   video.currentSrc = "";
   assert.equal(context.supportsWebAudioAmplification(), false);
+});
+
+test("next episode First Source uses HDR preference without weakening Only Direct", async () => {
+  const { selectAutoPlayStream } = await import("../../../core/streams/streamAutoPlaySelector.js");
+  const { resolveHdrPreference } = await import("../../../core/streams/streamHdrPreference.js");
+  const source = await readFile(playerScreenUrl, "utf8");
+  const method = source.match(
+    /async selectNextEpisodeStreamByAutoPlayPolicy\([\s\S]*?\n {2}\},/
+  )[0];
+  const run = new Function(
+    "selectAutoPlayStream",
+    "resolveHdrPreference",
+    "nextEpisodeSelectionOptions",
+    "isOnlyDirectEnabled",
+    "StreamBadgeSettingsStore",
+    "playerStreamProbeKey",
+    `return ({${method}}).selectNextEpisodeStreamByAutoPlayPolicy;`
+  )(
+    selectAutoPlayStream,
+    resolveHdrPreference,
+    (await import("../../../core/streams/playerStreamPolicy.js")).nextEpisodeSelectionOptions,
+    (await import("../../../core/streams/streamLabelPolicy.js")).isOnlyDirectEnabled,
+    { snapshot: () => ({ labelAddons: ["Chosen"] }) },
+    playerStreamProbeKey
+  );
+  const rows = [
+    { id: "sdr", url: "https://cdn.test/sdr", addonName: "Chosen" },
+    { id: "hdr", url: "https://cdn.test/hdr", title: "HDR", addonName: "Chosen" }
+  ];
+  const screen = {
+    async selectDirectPlayableCandidates() {
+      return rows;
+    },
+    _nextEpisodeProbeResults: new Map()
+  };
+  const settings = { streamAutoPlayMode: "FIRST_STREAM", streamAutoPlayHdrPreference: "PREFER" };
+  const options = { installedAddonNames: new Set(["Chosen"]) };
+  assert.equal((await run.call(screen, rows, settings, options)).id, "hdr");
+  screen._nextEpisodeProbeResults = new Map([
+    [rows[0].url, { colorTransfer: "smpte2084" }],
+    [rows[1].url, { colorTransfer: "bt709" }]
+  ]);
+  assert.equal((await run.call(screen, rows, settings, options)).id, "sdr");
+  assert.equal(
+    (await run.call(screen, rows, { ...settings, showOnlyDirectStreams: true }, options)).id,
+    "sdr"
+  );
+  assert.equal(
+    (
+      await run.call(
+        screen,
+        rows,
+        { ...settings, streamAutoPlayHdrPreference: "AVOID", showOnlyDirectStreams: true },
+        options
+      )
+    ).id,
+    "hdr"
+  );
+});
+
+test("manual client startup retry is synchronous and restricted to live startup timeouts", async () => {
+  const source = await readFile(playerScreenUrl, "utf8"),
+    names = ["canManuallyStartClientRemux", "retryClientRemuxFromGesture"];
+  const methods = names.map((name) => {
+    const match = source.match(new RegExp("  " + name + "\\(\\) \\{[\\s\\S]*?\\n {2}\\},"));
+    assert.ok(match, name);
+    return match[0];
+  });
+  const calls = [],
+    runtime = { snapshot: () => ({ state: "backpressure" }) },
+    controller = {
+      clientRemux: runtime,
+      video: { readyState: 2 },
+      getLastPlaybackErrorCode: () => 0,
+      setStartupPresentationAudioMuted: () => calls.push("unmute"),
+      resume: () => calls.push("play")
+    };
+  const methodsObject = vm.runInNewContext("({" + methods.join("") + "})", {
+    PlayerController: controller,
+    console: { warn() {} },
+    Date
+  });
+  const screen = {
+    ...methodsObject,
+    startupReadiness: { timeoutError: true },
+    startupErrorMediaCode: 0,
+    clearStartupError() {
+      calls.push("clear");
+    },
+    getPlaybackCurrentSeconds: () => 91,
+    releaseStartupAudioGate() {
+      calls.push("gate");
+    },
+    applyAudioAmplification() {
+      calls.push("audio-context");
+    },
+    schedulePlaybackStallGuard() {
+      calls.push("timer");
+    },
+    updateLoadingVisibility() {}
+  };
+  assert.equal(screen.canManuallyStartClientRemux(), true);
+  assert.equal(screen.retryClientRemuxFromGesture(), true);
+  assert.ok(calls.indexOf("play") < calls.indexOf("timer"));
+  assert.equal(controller.clientRemux, runtime);
+  assert.equal(screen.startupReadiness.manualPlayAttempts, 1);
+  assert.equal(screen.retryClientRemuxFromGesture(), false);
+  screen.startupReadiness.timeoutError = true;
+  screen.startupErrorMediaCode = 4;
+  assert.equal(screen.canManuallyStartClientRemux(), false);
+  screen.startupErrorMediaCode = 0;
+  controller.clientRemux = null;
+  assert.equal(screen.canManuallyStartClientRemux(), false);
 });

@@ -11,7 +11,7 @@ async function readRepositoryFile(path) {
 function metadataTagBlocks(workflow) {
   return [
     ...workflow.matchAll(
-      /id: (?:frontend|trakt|mdblist|debrid|external-return)-meta[\s\S]*?tags: \|\r?\n((?:\s+type=.*\r?\n)+)/g
+      /id: (?:frontend|trakt|mdblist|debrid|external-return|transcode)-meta[\s\S]*?tags: \|\r?\n((?:\s+type=.*\r?\n)+)/g
     )
   ].map((match) =>
     match[1]
@@ -40,8 +40,9 @@ test("GHCR publishing separates web development and release channels consistentl
     "type=sha,format=short,prefix=sha-"
   ];
 
-  assert.equal(tagBlocks.length, 5);
+  assert.equal(tagBlocks.length, 6);
   assert.deepEqual(tagBlocks, [
+    expectedTags,
     expectedTags,
     expectedTags,
     expectedTags,

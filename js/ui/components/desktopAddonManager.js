@@ -22,11 +22,14 @@ function formatAddonHost(url) {
 
 function truncateText(value, maxLength = 220) {
   const text = String(value || "").trim();
-  return text.length <= maxLength ? text : `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+  return text.length <= maxLength
+    ? text
+    : `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
 export function createDesktopAddonManager({ requestRender, isActive } = {}) {
   const state = {
+    formOpen: false,
     isLoading: false,
     isAdding: false,
     addonUrl: "",
@@ -61,7 +64,10 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
     setStatus("Syncing…");
     await rerender();
     const synced = await StartupSyncService.requestAddonSync();
-    setStatus(synced ? "Synced" : "Sync failed — changes are still saved locally.", synced ? "success" : "error");
+    setStatus(
+      synced ? "Synced" : "Sync failed — changes are still saved locally.",
+      synced ? "success" : "error"
+    );
     await rerender();
     return synced;
   };
@@ -114,6 +120,7 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
         throw new Error("That addon is already installed.");
       }
       state.addonUrl = "";
+      state.formOpen = false;
       state.addons = addonRepository.getConfiguredAddons({ includeDisabled: true });
       setStatus(`${result.data?.displayName || result.data?.name || "Addon"} added locally.`);
       await rerender();
@@ -135,7 +142,9 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
     const enabled = !addonRepository.isAddonEnabled(url);
     addonRepository.setAddonEnabledStates([{ url, enabled }], { replace: false });
     state.addons = addonRepository.getConfiguredAddons({ includeDisabled: true });
-    setStatus(`${addon.displayName || addon.name || "Addon"} ${enabled ? "enabled" : "disabled"} locally.`);
+    setStatus(
+      `${addon.displayName || addon.name || "Addon"} ${enabled ? "enabled" : "disabled"} locally.`
+    );
     await rerender();
     await requestAutosync();
   };
@@ -269,8 +278,16 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
   };
 
   return {
-    async load() {
-      await loadAddons();
+    get count() {
+      return addonRepository.getConfiguredAddons({ includeDisabled: true }).length;
+    },
+
+    async load({ refresh = true } = {}) {
+      if (refresh) await loadAddons();
+      else {
+        state.addons = addonRepository.getConfiguredAddons({ includeDisabled: true });
+        await rerender();
+      }
     },
 
     render() {
@@ -291,6 +308,8 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
               <span class="desktop-addon-count">${state.addons.length} installed</span>
             </div>
             ${state.statusMessage ? `<p class="desktop-addon-inline-status${statusClass}" role="status">${escapeHtml(state.statusMessage)}</p>` : ""}
+            <details class="settings-manager-add" data-addon-add-disclosure ${state.formOpen || state.addError || state.isAdding ? "open" : ""}>
+            <summary class="settings-manager-add-trigger">+ Add Addon</summary>
             <form class="desktop-addon-form" data-addon-form>
               <label class="desktop-addon-input-label" for="desktop-addon-url">Manifest URL</label>
               <div class="desktop-addon-input-row">
@@ -299,6 +318,7 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
               </div>
               ${state.addError ? `<p class="desktop-addon-form-message is-error" role="alert">${escapeHtml(state.addError)}</p>` : ""}
             </form>
+            </details>
             <div class="desktop-addon-list">${cards}</div>
           </section>
           ${renderConfirmation()}
@@ -308,6 +328,14 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
 
     bind(container) {
       bindAddonStoreSubscription();
+      container
+        .querySelector("[data-addon-add-disclosure]")
+        ?.addEventListener("toggle", (event) => {
+          // Re-rendering a busy form also emits toggle; only retain the live,
+          // user-controlled disclosure state, not an old or temporarily open node.
+          if (event.currentTarget.isConnected === false || state.isAdding) return;
+          state.formOpen = event.currentTarget.open;
+        });
       container.querySelector("[data-addon-url]")?.addEventListener("input", (event) => {
         state.addonUrl = String(event.target?.value || "");
         state.addError = "";
@@ -317,10 +345,16 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
         void addAddon();
       });
       container.querySelectorAll("[data-addon-toggle]").forEach((node) => {
-        node.addEventListener("change", () => void toggleAddon(state.addons[Number(node.dataset.addonToggle || -1)]));
+        node.addEventListener(
+          "change",
+          () => void toggleAddon(state.addons[Number(node.dataset.addonToggle || -1)])
+        );
       });
       container.querySelectorAll("[data-addon-refresh]").forEach((node) => {
-        node.addEventListener("click", () => void refreshAddon(state.addons[Number(node.dataset.addonRefresh || -1)]));
+        node.addEventListener(
+          "click",
+          () => void refreshAddon(state.addons[Number(node.dataset.addonRefresh || -1)])
+        );
       });
       container.querySelectorAll("[data-addon-remove]").forEach((node) => {
         node.addEventListener("click", () => {
@@ -332,13 +366,17 @@ export function createDesktopAddonManager({ requestRender, isActive } = {}) {
         state.removeTarget = null;
         void rerender();
       });
-      container.querySelector("[data-addon-remove-confirm]")?.addEventListener("click", () => void confirmRemove());
-      container.querySelector("[data-addon-dialog-backdrop]")?.addEventListener("click", (event) => {
-        if (event.target === event.currentTarget) {
-          state.removeTarget = null;
-          void rerender();
-        }
-      });
+      container
+        .querySelector("[data-addon-remove-confirm]")
+        ?.addEventListener("click", () => void confirmRemove());
+      container
+        .querySelector("[data-addon-dialog-backdrop]")
+        ?.addEventListener("click", (event) => {
+          if (event.target === event.currentTarget) {
+            state.removeTarget = null;
+            void rerender();
+          }
+        });
       bindDrag(container);
     },
 

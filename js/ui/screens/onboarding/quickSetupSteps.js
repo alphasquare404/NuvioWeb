@@ -34,9 +34,12 @@ export function selectQuickSetupSteps({
   automaticProgress = false,
   pushState = "",
   automationAvailability = "unsupported",
-  progressMode = "automatic"
+  progressMode = "automatic",
+  internalProcessing = false,
+  includeReleaseIntro = false
 } = {}) {
-  const steps = ["player"];
+  const steps = [...(includeReleaseIntro ? ["release"] : []), "player"];
+  if (callbackMode === "none" && internalProcessing) steps.push("processing");
   if (automaticProgress) steps.push("progress");
   // Nothing to come back from when playback never leaves. The internal player
   // is the one choice with no callback mode at all.

@@ -1,3 +1,4 @@
+import { renderFilenamePlaybackBadge } from "./filenamePlaybackBadge.js";
 import { DebridSettingsStore } from "../../data/local/debridSettingsStore.js";
 import { StreamBadgeSettingsStore } from "../../data/local/streamBadgeSettingsStore.js";
 import {
@@ -5,7 +6,10 @@ import {
   normalizeAddonLogoUrl,
   resolveAddonLogo
 } from "../../core/media/addonLogoCache.js";
-import { matchStreamBadges, normalizeStreamBadgeChipColor } from "../../core/streams/streamBadgeRules.js";
+import {
+  matchStreamBadges,
+  normalizeStreamBadgeChipColor
+} from "../../core/streams/streamBadgeRules.js";
 import { I18n } from "../../i18n/index.js";
 
 const STREAM_BADGE_LIMIT = 9;
@@ -72,7 +76,15 @@ function normalizeStreamInput(stream = {}) {
     addonLogo: stream.addonLogo ?? raw.addonLogo ?? "",
     behaviorHints: stream.behaviorHints || raw.behaviorHints || {},
     sourceType:
-      stream.sourceType || stream.mimeType || stream.type || stream.source || raw.sourceType || raw.mimeType || raw.type || raw.source || ""
+      stream.sourceType ||
+      stream.mimeType ||
+      stream.type ||
+      stream.source ||
+      raw.sourceType ||
+      raw.mimeType ||
+      raw.type ||
+      raw.source ||
+      ""
   };
 }
 
@@ -100,7 +112,13 @@ function getSourceQuality(stream = {}) {
   );
   if (qualityCandidate) return detectQuality(qualityCandidate);
   return detectQuality(
-    [stream.name, stream.title, stream.description, stream.behaviorHints?.filename, stream.sourceType].join(" ")
+    [
+      stream.name,
+      stream.title,
+      stream.description,
+      stream.behaviorHints?.filename,
+      stream.sourceType
+    ].join(" ")
   );
 }
 
@@ -116,7 +134,9 @@ function getSourceDescriptionLines(stream = {}) {
 }
 
 function resolveBadgePlacement(settings = {}) {
-  return String(settings?.badgePlacement || "BOTTOM").trim().toUpperCase() === "TOP"
+  return String(settings?.badgePlacement || "BOTTOM")
+    .trim()
+    .toUpperCase() === "TOP"
     ? "TOP"
     : "BOTTOM";
 }
@@ -127,7 +147,10 @@ function renderBadgeImage(badge = {}) {
   const backgroundColor = normalizeStreamBadgeChipColor(badge.tagColor);
   const outlineColor = normalizeStreamBadgeChipColor(badge.borderColor);
   const textColor = normalizeStreamBadgeChipColor(badge.textColor);
-  const filled = String(badge.tagStyle || "").trim().toLowerCase() === "filled";
+  const filled =
+    String(badge.tagStyle || "")
+      .trim()
+      .toLowerCase() === "filled";
   const style = [
     filled && backgroundColor ? `background:${backgroundColor};` : "",
     outlineColor ? `border-color:${outlineColor};` : "",
@@ -137,15 +160,23 @@ function renderBadgeImage(badge = {}) {
 }
 
 function renderBadges(stream, settings, enabled) {
-  if (!enabled) return "";
-  const chips = matchStreamBadges(stream, settings?.rules)
+  const label = renderFilenamePlaybackBadge(stream, settings);
+  const chips = (enabled ? matchStreamBadges(stream, settings?.rules) : [])
     .slice(0, STREAM_BADGE_LIMIT)
     .map(renderBadgeImage)
     .filter(Boolean);
-  if (settings?.showFileSizeBadges !== false && stream.behaviorHints?.videoSize != null) {
+  if (
+    enabled &&
+    settings?.showFileSizeBadges !== false &&
+    stream.behaviorHints?.videoSize != null
+  ) {
     const size = formatBytes(stream.behaviorHints.videoSize);
-    if (size) chips.push(`<span class="stream-route-stream-badge size">${escapeHtml(t("streams_size", [size], `SIZE ${size}`))}</span>`);
+    if (size)
+      chips.push(
+        `<span class="stream-route-stream-badge size">${escapeHtml(t("streams_size", [size], `SIZE ${size}`))}</span>`
+      );
   }
+  if (label) chips.unshift(label);
   return chips.length
     ? `<div class="stream-route-card-badges" aria-label="${escapeHtml(t("settings_stream_badges_section", {}, "Fusion Style"))}">${chips.join("")}</div>`
     : "";
@@ -158,7 +189,11 @@ function renderBadges(stream, settings, enabled) {
  */
 export function normalizeSourceForDisplay(
   stream = {},
-  { badgeSettings = StreamBadgeSettingsStore.snapshot(), streamBadgesEnabled = DebridSettingsStore.get().streamBadgesEnabled !== false, addonLogoLookup = {} } = {}
+  {
+    badgeSettings = StreamBadgeSettingsStore.snapshot(),
+    streamBadgesEnabled = DebridSettingsStore.get().streamBadgesEnabled !== false,
+    addonLogoLookup = {}
+  } = {}
 ) {
   const source = normalizeStreamInput(stream);
   const headline = getSourceHeadline(source);

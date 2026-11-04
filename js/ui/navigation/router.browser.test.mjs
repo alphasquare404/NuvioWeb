@@ -111,9 +111,12 @@ Object.defineProperty(globalThis, "window", {
   value: testWindow
 });
 
+const originalRuntimeEnv = globalThis.__NUVIO_ENV__;
+globalThis.__NUVIO_ENV__ = { ...originalRuntimeEnv, REMUX_ENDPOINT: "/api/remux" };
 const { Platform } = await import("../../platform/index.js");
 Platform.current = null;
 const { Router } = await import("./router.js");
+globalThis.__NUVIO_ENV__ = originalRuntimeEnv;
 const { RouteStateStore } = await import("./routeStateStore.js");
 
 const originalRoutes = Router.routes;
@@ -1997,4 +2000,277 @@ test("an ordinary Player Back still lands on Stream", async () => {
 
   assert.equal(await pending.settled, true);
   assert.equal(Router.getCurrent(), "stream");
+});
+
+test("autoplay from Detail returns through Detail to Home without reopening Player", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ home, detail, stream, player });
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+  await Router.navigate("stream", { itemId: "movie-1", autoResolvedStreamId: "first" });
+  await Router.navigate(
+    "player",
+    {
+      itemId: "movie-1",
+      itemType: "movie",
+      returnToStreamOnBack: false,
+      handoffReturnRoute: "detail",
+      fromDetailRoute: true,
+      streamRouteParams: { itemId: "movie-1", fromDetailRoute: true }
+    },
+    stream.getPlayerNavigationOptions("detail")
+  );
+  player.navigateBackToStreamScreen();
+  await history.whenSettled();
+  await Promise.resolve();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(history.state.route, "detail", "visible Detail and browser history must agree");
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+});
+
+for (const parentRoute of ["search", "library"]) {
+  test(`autoplay Back returns to existing Detail then ${parentRoute}`, async () => {
+    const home = makeScreen("home");
+    const parent = makeScreen(parentRoute);
+    const detail = makeDetailScreen();
+    const stream = makeStreamScreen();
+    const player = makePlayerBackScreen();
+    resetRouter({ home, [parentRoute]: parent, detail, stream, player });
+    Router.init();
+    await Router.navigate("home");
+    await Router.navigate(parentRoute);
+    await Router.navigate("detail", { itemId: "movie-1", itemType: "movie" });
+    await Router.navigate("stream", { itemId: "movie-1", autoResolvedStreamId: "first" });
+    await Router.navigate(
+      "player",
+      {
+        itemId: "movie-1",
+        itemType: "movie",
+        returnToStreamOnBack: false,
+        handoffReturnRoute: "detail",
+        fromDetailRoute: true
+      },
+      stream.getPlayerNavigationOptions("detail")
+    );
+    assert.deepEqual(historyRoutes(), ["home", parentRoute, "detail", "player"]);
+    player.navigateBackToStreamScreen();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), "detail");
+    await Router.back();
+    await history.whenSettled();
+    assert.equal(Router.getCurrent(), parentRoute);
+  });
+}
+
+test("Continue Watching autoplay Back returns directly to its existing Home entry", async () => {
+  const home = makeScreen("home");
+  const detail = makeDeferredContinueWatchingDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ home, detail, stream, player });
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("detail", {
+    itemId: "movie-1",
+    itemType: "movie",
+    autoOpenContinueWatching: true
+  });
+  await Promise.resolve();
+  await Router.navigate(
+    "player",
+    { itemId: "movie-1", handoffReturnRoute: "home", returnToStreamOnBack: false },
+    stream.getPlayerNavigationOptions("home")
+  );
+  assert.deepEqual(historyRoutes(), ["home", "player"]);
+  player.navigateBackToStreamScreen();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(history.state.route, "home");
+});
+
+test("an accepted autoplay Back is not consumed again by a late player overlay", async () => {
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ home, detail, stream, player });
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1" });
+  await Router.navigate("stream", { itemId: "movie-1" });
+  await Router.navigate(
+    "player",
+    { itemId: "movie-1", handoffReturnRoute: "detail", returnToStreamOnBack: false },
+    stream.getPlayerNavigationOptions("detail")
+  );
+  // A native pause/track event can change overlay state after the app has
+  // accepted Back and stopped playback, but before popstate is delivered.
+  player.hasBackDismissableOverlay = () => true;
+  player.consumeBackRequest = () => {
+    throw new Error("accepted Back must not be consumed twice");
+  };
+  player.navigateBackToStreamScreen();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(history.index, 1);
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+});
+
+test("keyboard Back preserves the player history traversal instead of suppressing its popstate", async () => {
+  const { FocusEngine } = await import("./focusEngine.js");
+  const home = makeScreen("home");
+  const detail = makeDetailScreen();
+  const stream = makeStreamScreen();
+  const player = makePlayerBackScreen();
+  resetRouter({ home, detail, stream, player });
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("detail", { itemId: "movie-1" });
+  await Router.navigate("stream", { itemId: "movie-1" });
+  await Router.navigate(
+    "player",
+    { itemId: "movie-1", handoffReturnRoute: "detail", returnToStreamOnBack: false },
+    stream.getPlayerNavigationOptions("detail")
+  );
+  FocusEngine.lastBackHandledAt = 0;
+  FocusEngine.handleBack(
+    {},
+    { repeat: false, preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {} }
+  );
+  assert.equal(
+    Router.suppressPopstateUntil,
+    0,
+    "a requested history Back must not be suppressed by FocusEngine"
+  );
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "detail");
+  assert.equal(history.index, 1);
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "home");
+});
+
+test("player navigation preserves the selected source even with remux configured", async () => {
+  const { REMUX_ENDPOINT } = await import("../../config.js");
+  assert.equal(REMUX_ENDPOINT, "/api/remux");
+  for (const streamUrl of [
+    "https://cdn.test/direct.mkv?token=test",
+    "https://cdn.test/direct.mp4",
+    "/api/remux?u=https%3A%2F%2Fcdn.test%2Fneeds-remux.mkv&ai=1"
+  ]) {
+    const player = makeScreen("player");
+    resetRouter({ player });
+    Router.init();
+    await Router.navigate("player", { itemId: "movie-1", streamUrl });
+    assert.equal(player.params.streamUrl, streamUrl);
+    assert.equal(Router.currentParams.streamUrl, streamUrl);
+  }
+});
+
+test("first Sign In from retained Settings layers above Settings using the shared account container", async () => {
+  const home = makeScreen("home"),
+    settings = makeScreen("settings"),
+    section = makeScreen("settingsSection"),
+    auth = makeScreen("authSignIn");
+  resetRouter({ home, settings, settingsSection: section, authSignIn: auth });
+  for (const [name, screen] of [
+    ["home", home],
+    ["settings", settings],
+    ["settingsSection", section]
+  ]) {
+    screen.container = makeContainer();
+    screenContainers.set(name, screen.container);
+  }
+  const account = makeContainer();
+  screenContainers.set("account", account);
+  auth.mount = async function () {
+    this.container = account;
+  };
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("settings");
+  await Router.navigate("settingsSection", { section: "account" });
+  assert.equal(auth.container, undefined);
+  await Router.navigate("authSignIn");
+  assert.equal(Router.getCurrent(), "authSignIn");
+  assert.equal(Router.suspendedRouteStack.at(-1).childContainer, account);
+  assert.equal(account.style.getPropertyValue("position"), "fixed");
+  assert.ok(
+    Number(account.style.getPropertyValue("z-index")) >
+      Number(section.container.style.getPropertyValue("z-index"))
+  );
+  assert.equal(section.container.inert, true);
+  await Router.back();
+  await history.whenSettled();
+  assert.equal(Router.getCurrent(), "settingsSection");
+  assert.equal(section.container.inert, false);
+});
+test("unmounted authentication routes resolve the account container before navigation", () => {
+  resetRouter({
+    authSignIn: makeScreen("authSignIn"),
+    authQrSignIn: makeScreen("authQrSignIn"),
+    syncCode: makeScreen("syncCode")
+  });
+  const account = makeContainer();
+  screenContainers.set("account", account);
+  for (const route of ["authSignIn", "authQrSignIn", "syncCode"])
+    assert.equal(Router.getRouteContainer(route), account);
+});
+
+test("replacing a browser player preserves the incoming loading surface only for internal playback", async () => {
+  const player = makeScreen("player");
+  const cleanupOptions = [];
+  player.cleanup = (options) => cleanupOptions.push(options);
+  resetRouter({ player });
+  Router.init();
+  await Router.navigate("player", {
+    itemId: "series",
+    videoId: "e1",
+    streamUrl: "https://media.test/e1"
+  });
+  await Router.navigate(
+    "player",
+    { itemId: "series", videoId: "e2", streamUrl: "https://media.test/e2" },
+    { replaceHistory: true }
+  );
+  assert.equal(cleanupOptions.at(-1).preserveStartupLoading, true);
+  await Router.navigate(
+    "player",
+    { itemId: "series", externalFrameUrl: "https://media.test/embed" },
+    { replaceHistory: true }
+  );
+  assert.equal(cleanupOptions.at(-1).preserveStartupLoading, false);
+});
+
+test("first Collection mount layers its own shell instead of the inherited Home container", async () => {
+  const home = makeScreen("home");
+  home.container = makeContainer();
+  const folderContainer = makeContainer();
+  const folderDetail = Object.assign(Object.create(home), makeScreen("folderDetail"));
+  folderDetail.mount = async function () {
+    this.container = folderContainer;
+  };
+  resetRouter({ home, folderDetail });
+  screenContainers.set("home", home.container);
+  screenContainers.set("folderDetail", folderContainer);
+  Router.init();
+  await Router.navigate("home");
+  await Router.navigate("folderDetail", { collectionId: "streaming", folderId: "netflix" });
+  assert.equal(Router.suspendedRouteStack.at(-1).childContainer, folderContainer);
+  assert.equal(folderContainer.style.getPropertyValue("z-index"), "1000");
+  assert.equal(home.container.style.getPropertyValue("z-index"), "");
+  assert.equal(home.container.inert, true);
+  history.back();
+  await history.whenSettled();
+  assert.equal(Router.current, "home");
+  assert.equal(home.container.inert, false);
+  assert.equal(folderContainer.style.getPropertyValue("z-index"), "");
 });

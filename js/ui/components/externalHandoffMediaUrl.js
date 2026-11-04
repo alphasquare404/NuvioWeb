@@ -20,9 +20,9 @@ function playableUrl(stream) {
  * A magnet is not a link either. It is a torrent an external player cannot
  * fetch, so it is treated as absent and resolved like any other.
  *
- * Failure returns "" rather than an error. Falling back to the internal player
- * asks this same resolver, and that path already owns the message for every way
- * this can fail -- not cached, no API key, the provider degraded.
+ * Failure returns "" rather than an error. The caller keeps the external-player
+ * preference: autoplay can try another eligible source, while manual playback
+ * leaves the stream picker available.
  */
 export async function resolveExternalHandoffMediaUrl(
   stream,

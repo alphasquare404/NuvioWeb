@@ -1,0 +1,9 @@
+Client ffprobe uses @ffmpeg/core 0.12.10, single-thread FFmpeg.wasm.
+License: GPL-2.0-or-later. See COPYING.txt.
+Upstream project, source and build instructions:
+https://github.com/ffmpegwasm/ffmpeg.wasm
+https://github.com/ffmpegwasm/ffmpeg.wasm/tree/main/packages/core
+https://github.com/ffmpegwasm/ffmpeg.wasm/releases
+FFmpeg upstream source: https://git.ffmpeg.org/ffmpeg.git
+The published core is copied unchanged from the pinned npm package.
+Nuvio's own worker and byte-range adapter are in js/core/player/.

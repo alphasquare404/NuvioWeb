@@ -27,6 +27,7 @@ const APP_SHELL = `
     <div id="player" class="screen">
       <video id="videoPlayer" autoplay playsinline webkit-playsinline preload="auto"></video>
     </div>
+    <div id="moviPlayer" class="screen"></div>
   </div>
 `;
 

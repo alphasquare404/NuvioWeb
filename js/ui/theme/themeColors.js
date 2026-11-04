@@ -1,3 +1,4 @@
+import { normalizeAccentColor, accentTextColor } from "../../core/theme/accentColor.js";
 const palettes = {
   WHITE: {
     "--bg-color": "#0d0d0d",
@@ -103,7 +104,31 @@ export const ThemeColors = {
   dark: palettes.WHITE,
   palettes,
 
-  getPalette(themeName = "WHITE") {
+  getPalette(themeName = "WHITE", customAccent = "#1e88e5") {
+    if (String(themeName).toUpperCase() === "CUSTOM") {
+      const accent = normalizeAccentColor(customAccent) || "#1e88e5";
+      const mix = (base, ratio) =>
+        "#" +
+        [1, 3, 5]
+          .map((i) =>
+            Math.round(
+              parseInt(base.slice(i, i + 2), 16) * (1 - ratio) +
+                parseInt(accent.slice(i, i + 2), 16) * ratio
+            )
+              .toString(16)
+              .padStart(2, "0")
+          )
+          .join("");
+      return {
+        ...palettes.WHITE,
+        "--secondary-color": accent,
+        "--secondary-variant": mix("#000000", 0.8),
+        "--on-secondary": accentTextColor(accent),
+        "--focus-color": mix("#ffffff", 0.65),
+        "--focus-bg": mix("#1a1a1a", 0.2),
+        "--card-bg": mix("#222222", 0.08)
+      };
+    }
     return palettes[String(themeName || "WHITE").toUpperCase()] || palettes.WHITE;
   }
 };

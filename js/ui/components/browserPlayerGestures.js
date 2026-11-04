@@ -19,24 +19,41 @@ export function isBrowserPlayerGesturePointer(event) {
   return pointerType === "touch" || pointerType === "pen";
 }
 
-export function isWithinGestureTolerance(start, end, tolerance = PLAYER_GESTURE_SPATIAL_TOLERANCE_PX) {
-  return Math.hypot(Number(end?.x || 0) - Number(start?.x || 0), Number(end?.y || 0) - Number(start?.y || 0)) <= tolerance;
+export function isWithinGestureTolerance(
+  start,
+  end,
+  tolerance = PLAYER_GESTURE_SPATIAL_TOLERANCE_PX
+) {
+  return (
+    Math.hypot(
+      Number(end?.x || 0) - Number(start?.x || 0),
+      Number(end?.y || 0) - Number(start?.y || 0)
+    ) <= tolerance
+  );
 }
 
 export function getBrowserPlayerVideoTapAction(controlsVisible) {
   return controlsVisible ? "toggle-playback" : "reveal-controls";
 }
 
-export function bindBrowserPlayerGestures(surface, {
-  isInteractiveTarget = () => false,
-  onSeek = () => {},
-  onHoldChange = () => {},
-  getSingleTapContext = () => null,
-  onSingleTap = () => {},
-  schedule = setTimeout,
-  cancelScheduled = clearTimeout,
-  getNow = Date.now
-} = {}) {
+export function bindBrowserPlayerGestures(
+  surface,
+  {
+    isInteractiveTarget = () => false,
+    onSeek = () => {},
+    onHoldChange = () => {},
+    onSwipeStart = () => false,
+    onSwipeMove = () => {},
+    onSwipeEnd = () => {},
+    getSingleTapContext = () => null,
+    onSingleTap = () => {},
+    schedule = setTimeout,
+    cancelScheduled = clearTimeout,
+    getPoint = (event) => ({ x: Number(event?.clientX || 0), y: Number(event?.clientY || 0) }),
+    getSurfaceRect = () => surface.getBoundingClientRect(),
+    getNow = Date.now
+  } = {}
+) {
   if (!(surface instanceof HTMLElement)) return () => {};
 
   let active = null;
@@ -69,25 +86,31 @@ export function bindBrowserPlayerGestures(surface, {
   const cancelActive = () => {
     const current = clearActive();
     if (current?.holdTimer) cancelScheduled(current.holdTimer);
+    if (current?.swiping) onSwipeEnd({ cancelled: true });
     clearPendingTap();
   };
-  const targetIsValid = (target) => target instanceof Element && surface.contains(target) && !isInteractiveTarget(target);
-  const pointFor = (event) => ({ x: Number(event?.clientX || 0), y: Number(event?.clientY || 0) });
+  const targetIsValid = (target, event) =>
+    target instanceof Element && surface.contains(target) && !isInteractiveTarget(target, event);
+  const pointFor = getPoint;
 
   const onPointerDown = (event) => {
-    if (!isBrowserPlayerGesturePointer(event) || !targetIsValid(event.target) || event.isPrimary === false) return;
+    if (!isBrowserPlayerGesturePointer(event)) return;
     if (active) {
       // A second touch is a system multi-touch gesture, not a player gesture.
       cancelActive();
       return;
     }
+    if (event.isPrimary === false || !targetIsValid(event.target, event)) return;
     const point = pointFor(event);
     const current = {
       pointerId: event.pointerId,
       pointerType: String(event.pointerType || ""),
       point,
-      zone: getBrowserPlayerGestureZone(surface.getBoundingClientRect(), point.x),
+      zone: getBrowserPlayerGestureZone(getSurfaceRect(), point.x),
       moved: false,
+      swiping: false,
+      axis: null,
+      width: getSurfaceRect().width,
       holdActive: false,
       holdTimer: null,
       singleTapContext: getSingleTapContext()
@@ -108,10 +131,23 @@ export function bindBrowserPlayerGestures(surface, {
 
   const onPointerMove = (event) => {
     if (!active || active.pointerId !== event.pointerId || active.holdActive) return;
-    if (!isWithinGestureTolerance(active.point, pointFor(event), PLAYER_GESTURE_HOLD_MOVE_TOLERANCE_PX)) {
+    const point = pointFor(event);
+    const deltaX = point.x - active.point.x;
+    const deltaY = point.y - active.point.y;
+    if (!active.axis && Math.hypot(deltaX, deltaY) > PLAYER_GESTURE_HOLD_MOVE_TOLERANCE_PX) {
       active.moved = true;
+      clearPendingTap();
       cancelScheduled(active.holdTimer);
       active.holdTimer = null;
+      active.axis = Math.abs(deltaX) > Math.abs(deltaY) * 1.2 ? "horizontal" : "vertical";
+      if (active.axis === "horizontal" && active.pointerType !== "mouse") {
+        clearPendingTap();
+        active.swiping = onSwipeStart() !== false;
+      }
+    }
+    if (active.swiping) {
+      event.preventDefault();
+      onSwipeMove({ deltaX, width: active.width });
     }
   };
 
@@ -123,6 +159,12 @@ export function bindBrowserPlayerGestures(surface, {
       surface.releasePointerCapture?.(event.pointerId);
     } catch (_) {
       // Capture may already have ended in the browser.
+    }
+    if (current.swiping) {
+      suppressClick();
+      ignoreDoubleClickUntil = getNow() + 700;
+      onSwipeEnd({ cancelled });
+      return;
     }
     if (current.holdActive) {
       suppressClick();
@@ -167,8 +209,13 @@ export function bindBrowserPlayerGestures(surface, {
   };
 
   const onDoubleClick = (event) => {
-    if (getNow() < ignoreDoubleClickUntil || event.button !== 0 || !targetIsValid(event.target)) return;
-    const zone = getBrowserPlayerGestureZone(surface.getBoundingClientRect(), Number(event.clientX || 0));
+    if (
+      getNow() < ignoreDoubleClickUntil ||
+      event.button !== 0 ||
+      !targetIsValid(event.target, event)
+    )
+      return;
+    const zone = getBrowserPlayerGestureZone(getSurfaceRect(), pointFor(event).x);
     if (zone === "center") return;
     clearPendingTap();
     onSeek(zone);
@@ -176,11 +223,18 @@ export function bindBrowserPlayerGestures(surface, {
     event.stopPropagation();
   };
   const onClick = (event) => {
-    if (!suppressNextClick || !targetIsValid(event.target)) return;
+    if (!suppressNextClick || !targetIsValid(event.target, event)) return;
     clearClickSuppression();
     event.preventDefault();
     event.stopImmediatePropagation?.();
     event.stopPropagation();
+  };
+  const onContextMenu = (event) => {
+    const touchMenu =
+      event.pointerType === "touch" ||
+      event.pointerType === "pen" ||
+      (!event.pointerType && window.matchMedia?.("(pointer: coarse)").matches);
+    if (touchMenu && targetIsValid(event.target, event)) event.preventDefault();
   };
   const onWindowBlur = () => cancelActive();
   const onVisibilityChange = () => {
@@ -194,6 +248,7 @@ export function bindBrowserPlayerGestures(surface, {
   surface.addEventListener("pointerup", finishPointer, true);
   surface.addEventListener("pointercancel", onPointerCancel, true);
   surface.addEventListener("lostpointercapture", onLostPointerCapture, true);
+  surface.addEventListener("contextmenu", onContextMenu);
   surface.addEventListener("dblclick", onDoubleClick, true);
   surface.addEventListener("click", onClick, true);
   window.addEventListener("blur", onWindowBlur);
@@ -207,6 +262,7 @@ export function bindBrowserPlayerGestures(surface, {
     surface.removeEventListener("pointerup", finishPointer, true);
     surface.removeEventListener("pointercancel", onPointerCancel, true);
     surface.removeEventListener("lostpointercapture", onLostPointerCapture, true);
+    surface.removeEventListener("contextmenu", onContextMenu);
     surface.removeEventListener("dblclick", onDoubleClick, true);
     surface.removeEventListener("click", onClick, true);
     window.removeEventListener("blur", onWindowBlur);

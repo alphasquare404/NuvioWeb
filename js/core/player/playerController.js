@@ -10,6 +10,9 @@ import { dashJsEngine } from "./engines/dashJsEngine.js";
 import { isTerminalHlsHttpStatus } from "./hlsNetworkErrorPolicy.js";
 import { loadStreamingLibs } from "../../runtime/loadStreamingLibs.js";
 
+import { loadClientRemux } from "./remuxClient.js";
+import { REMUX_CLIENT_CACHE_MAX_MIB } from "../../config.js";
+
 const MIN_PROGRESS_SYNC_DURATION_MS = 1000;
 const HLS_TRANSIENT_LEVEL_404_RETRY_LIMIT = 2;
 const HLS_TRANSIENT_LEVEL_404_RETRY_BASE_DELAY_MS = 1500;
@@ -37,6 +40,7 @@ export const PlayerController = {
   currentPlaybackMediaSourceType: null,
   lastProgressSnapshot: null,
   lastKnownDurationSeconds: 0,
+  sourceDurationHint: null,
   playbackEngineAttempts: new Map(),
   playRequestToken: 0,
   playbackSessionActive: false,
@@ -47,6 +51,8 @@ export const PlayerController = {
   videoElementListeners: [],
   markPlaybackWatched,
   externalProgressHandoff: null,
+  clientRemux: null,
+  clientRemuxDisposal: Promise.resolve(),
 
   isExpectedPlayInterruption(error) {
     const message = String(error?.message || "").toLowerCase();
@@ -197,7 +203,7 @@ export const PlayerController = {
     };
 
     try {
-      const parsed = new URL(raw);
+      const parsed = new URL(raw, globalThis.location?.href || "http://localhost/");
       return inferByPath(parsed.pathname, parsed.searchParams);
     } catch (_) {
       return inferByPath(raw, null);
@@ -280,6 +286,13 @@ export const PlayerController = {
   },
 
   getBrowserAudioTracks() {
+    if (this.clientRemux)
+      return this.clientRemux.snapshot().audioTracks.map((track, index) => ({
+        ...track,
+        index,
+        selected: index === this.clientRemux.snapshot().audioIndex,
+        engine: "client-remux"
+      }));
     if (this.playbackEngine === "hls.js") {
       const selectedIndex = this.getSelectedHlsAudioTrackIndex();
       return this.getHlsAudioTracks().map((track, index) => ({
@@ -313,6 +326,14 @@ export const PlayerController = {
     const tracks = this.getBrowserAudioTracks();
     if (!Number.isFinite(targetIndex) || targetIndex < 0 || targetIndex >= tracks.length) {
       return false;
+    }
+    if (this.clientRemux) {
+      if (tracks[targetIndex]?.supported === false) return false;
+      const runtime = this.clientRemux;
+      void runtime.selectAudio(targetIndex).catch(() => {
+        if (this.clientRemux === runtime) this.reportClientRemuxError("audio-change-failed");
+      });
+      return true;
     }
     const engine = tracks[targetIndex]?.engine;
     if (engine === "hls.js") {
@@ -467,10 +488,19 @@ export const PlayerController = {
   },
 
   getCurrentTimeSeconds() {
+    if (this.clientRemux) return this.clientRemux.snapshot().position;
     return Math.max(0, Number(this.video?.currentTime || 0));
   },
 
+  setSourceDurationHint(url, duration) {
+    const seconds = Number(duration);
+    if (!String(url || "").trim() || !Number.isFinite(seconds) || seconds <= 0) return false;
+    this.sourceDurationHint = { url: String(url).trim(), seconds };
+    return true;
+  },
+
   getDurationSeconds() {
+    if (this.clientRemux) return this.clientRemux.snapshot().duration;
     const durationSeconds = Number(this.video?.duration || 0);
     if (
       Number.isFinite(durationSeconds) &&
@@ -478,7 +508,13 @@ export const PlayerController = {
     ) {
       this.lastKnownDurationSeconds = durationSeconds;
     }
-    return Math.max(0, Number(this.lastKnownDurationSeconds || 0));
+    // An EVENT playlist can remain live/Infinity until production finishes.
+    // Source metadata supplies total duration only for the URL it describes.
+    const sourceSeconds =
+      this.sourceDurationHint?.url === this.currentPlaybackUrl
+        ? this.sourceDurationHint.seconds
+        : 0;
+    return Math.max(0, Number(this.lastKnownDurationSeconds || 0), Number(sourceSeconds || 0));
   },
 
   getBufferedTimeSeconds() {
@@ -531,6 +567,13 @@ export const PlayerController = {
     if (!this.video) {
       return false;
     }
+    if (this.clientRemux) {
+      const runtime = this.clientRemux;
+      void runtime.seek(seconds).catch(() => {
+        if (this.clientRemux === runtime) this.reportClientRemuxError("seek-failed");
+      });
+      return true;
+    }
     try {
       this.video.currentTime = seconds;
       return true;
@@ -539,7 +582,86 @@ export const PlayerController = {
     }
   },
 
+  isClientRemuxRestoring() {
+    return Boolean(this.clientRemux?.snapshot().restoring);
+  },
+  getClientSubtitleTracks() {
+    return this.clientRemux?.getSubtitleTracks() || [];
+  },
+  selectClientSubtitle(id) {
+    return this.clientRemux?.selectSubtitle(id) ?? false;
+  },
+  getClientRemuxStartupDiagnostic() {
+    if (!this.clientRemux) return "";
+    let decodedFrames = null;
+    try {
+      const count =
+        this.video?.getVideoPlaybackQuality?.().totalVideoFrames ??
+        this.video?.webkitDecodedFrameCount;
+      if (Number.isFinite(count)) decodedFrames = count;
+    } catch {}
+    const state = this.clientRemux.snapshot(),
+      facts = {
+        paused: Boolean(this.video?.paused),
+        readyState: Number(this.video?.readyState || 0),
+        audioGate: Boolean(this.startupAudioGateActive),
+        gatePauses: Boolean(this.startupAudioGatePausesPlayback),
+        muted: Boolean(this.video?.muted),
+        width: Number(this.video?.videoWidth || 0),
+        height: Number(this.video?.videoHeight || 0),
+        decodedFrames
+      };
+    for (const key of [
+      "state",
+      "reason",
+      "requested",
+      "position",
+      "duration",
+      "restoring",
+      "backpressureReason",
+      "managedStreaming",
+      "autoplayBlocked",
+      "startupPhase",
+      "startupBufferedAheadSeconds",
+      "startupRequiredAheadSeconds",
+      "targetSourceBytes",
+      "retainedCompressedBytes",
+      "bufferStart",
+      "bufferEnd",
+      "bufferedAheadSeconds",
+      "start",
+      "firstAudioTimestamp",
+      "audioIndex",
+      "video",
+      "audio",
+      "channels"
+    ]) {
+      const value = state[key];
+      if (
+        typeof value === "boolean" ||
+        (typeof value === "number" && Number.isFinite(value)) ||
+        (typeof value === "string" && /^[a-z0-9-]{1,64}$/.test(value))
+      )
+        facts[key] = value;
+    }
+    return JSON.stringify(facts);
+  },
+  reportClientRemuxError(reason) {
+    this.lastPlaybackErrorCode = 4;
+    this.emitVideoEvent("error", { mediaErrorCode: 4, reason });
+  },
+  disposeClientRemux() {
+    const runtime = this.clientRemux;
+    this.clientRemux = null;
+    if (runtime)
+      this.clientRemuxDisposal = this.clientRemuxDisposal
+        .catch(() => {})
+        .then(() => runtime.dispose());
+    return this.clientRemuxDisposal;
+  },
+
   isPlaybackEnded() {
+    if (this.isClientRemuxRestoring()) return false;
     return Boolean(this.video?.ended);
   },
 
@@ -737,6 +859,7 @@ export const PlayerController = {
     sourceType = this.currentPlaybackMediaSourceType,
     itemType = this.currentItemType
   ) {
+    if (this.clientRemux || this.playbackEngine === "client-remux") return null;
     const normalizedUrl = String(url || "").trim();
     if (!normalizedUrl) {
       return null;
@@ -1454,6 +1577,7 @@ export const PlayerController = {
       return false;
     }
     this.desiredPlaybackRate = targetSpeed;
+    this.clientRemux?.setRate(targetSpeed);
 
     return true;
   },
@@ -1518,6 +1642,7 @@ export const PlayerController = {
     }
 
     tracks.forEach((track, trackIndex) => {
+      if (track.kind && !["subtitles", "captions", "forced"].includes(track.kind)) return;
       try {
         track.mode = targetIndex >= 0 && trackIndex === targetIndex ? "showing" : "disabled";
       } catch (_) {
@@ -1574,6 +1699,7 @@ export const PlayerController = {
     };
 
     listen("ended", () => {
+      if (this.isClientRemuxRestoring()) return;
       this.isPlaying = false;
       const context = this.createProgressContext();
       const durationMs = Math.floor(this.getDurationSeconds() * 1000);
@@ -1603,6 +1729,10 @@ export const PlayerController = {
       return null;
     }
     const oldVideo = this.video;
+    if (this.clientRemux) {
+      void this.flushCurrentProgress({ allowCloudSync: false });
+      void this.disposeClientRemux();
+    }
     const preservedState = {
       autoplay: Boolean(oldVideo.autoplay),
       defaultMuted: Boolean(oldVideo.defaultMuted),
@@ -1681,7 +1811,8 @@ export const PlayerController = {
       mediaSourceType = null,
       forceEngine = null,
       streamIdentity = null,
-      offlinePlayback = false
+      offlinePlayback = false,
+      playbackPlan = null
     } = {}
   ) {
     if (!this.video) return;
@@ -1694,6 +1825,9 @@ export const PlayerController = {
     if (!this.isPlaybackRequestActive(playToken)) {
       return;
     }
+
+    await this.disposeClientRemux();
+    if (!this.isPlaybackRequestActive(playToken)) return;
 
     // Starting a new built-in playback session is an intentional local-player
     // action. Any stale protection left by an earlier external handoff must
@@ -1723,6 +1857,56 @@ export const PlayerController = {
     this.currentPlaybackMediaSourceType = this.resolveRuntimeSourceType(mediaSourceType);
     this.lastPlaybackErrorCode = 0;
     this.lastHlsErrorDiagnostic = null;
+
+    if (playbackPlan?.route === "client" && playbackPlan.sourceUrl === requestedUrl) {
+      this.teardownAdaptiveInstances();
+      this.playbackEngine = "client-remux";
+      const runtime = await loadClientRemux({
+        video: this.video,
+        requestHeaders,
+        expectedAudio: playbackPlan.expectedAudio,
+        cacheMaxMiB: REMUX_CLIENT_CACHE_MAX_MIB,
+        onError: (reason) => {
+          if (this.isPlaybackRequestActive(playToken, requestedUrl))
+            this.reportClientRemuxError(reason);
+        },
+        onTracks: () => {
+          if (this.isPlaybackRequestActive(playToken, requestedUrl))
+            this.emitVideoEvent("audiotrackschanged", { playbackEngine: "client-remux" });
+        },
+        onCues: () => {
+          if (this.isPlaybackRequestActive(playToken, requestedUrl))
+            this.emitVideoEvent("remuxsubtitlecues");
+        },
+        onStatus: () => {
+          if (this.isPlaybackRequestActive(playToken, requestedUrl))
+            this.emitVideoEvent("remuxstatus");
+        }
+      });
+      if (!this.isPlaybackRequestActive(playToken, requestedUrl)) {
+        await runtime.dispose();
+        return;
+      }
+      this.clientRemux = runtime;
+      try {
+        await runtime.start({
+          url: requestedUrl,
+          audioIndex: playbackPlan.audioIndex,
+          start: Number(playbackPlan.startSeconds) || 0,
+          autoplay: !(this.startupAudioGateActive && this.startupAudioGatePausesPlayback),
+          playbackRate: this.desiredPlaybackRate
+        });
+      } catch (error) {
+        if (this.clientRemux === runtime) await this.disposeClientRemux();
+        else await runtime.dispose();
+        throw error;
+      }
+      if (this.isPlaybackRequestActive(playToken, requestedUrl)) {
+        this.isPlaying = true;
+        this.startProgressSaveTimer();
+      }
+      return;
+    }
 
     const sourceType =
       this.currentPlaybackMediaSourceType ||
@@ -1834,7 +2018,8 @@ export const PlayerController = {
 
     this.flushCurrentProgress({ forceCloudSync: true });
 
-    this.video.pause();
+    if (this.clientRemux) this.clientRemux.pause();
+    else this.video.pause();
     this.isPlaying = false;
   },
 
@@ -1851,7 +2036,7 @@ export const PlayerController = {
       return;
     }
 
-    const playPromise = this.video.play();
+    const playPromise = this.clientRemux ? this.clientRemux.resume() : this.video.play();
     if (playPromise && typeof playPromise.catch === "function") {
       playPromise.catch((error) => {
         if (this.isExpectedPlayInterruption(error)) {
@@ -1884,6 +2069,7 @@ export const PlayerController = {
     // actually changes -- so a report left to route cleanup runs after
     // video.load() has reset currentTime, and has no position left to send.
     this.scrobbleTerminalReport();
+    const disposal = this.disposeClientRemux();
 
     try {
       this.video.pause();
@@ -1919,6 +2105,7 @@ export const PlayerController = {
     this.currentEpisodeTitle = null;
     this.currentStreamIdentity = null;
     this.currentPlaybackUrl = "";
+    this.sourceDurationHint = null;
     this.currentPlaybackHeaders = {};
     this.currentPlaybackMediaSourceType = null;
     this.lastKnownDurationSeconds = 0;
@@ -1928,7 +2115,7 @@ export const PlayerController = {
 
     this.stopProgressSaveTimer();
 
-    return flushPromise;
+    return Promise.all([flushPromise, disposal]).then(([flushed]) => flushed);
   },
 
   // Watching a downloaded file with Sync offline progress off records nothing
@@ -2040,7 +2227,8 @@ export const PlayerController = {
         : Number(snapshot?.durationMs || 0);
 
     await this.flushProgress(positionMs, durationMs, false, context, {
-      allowCloudSync: allowCloudSync && !forceCloudSync
+      allowCloudSync: allowCloudSync && !forceCloudSync,
+      allowRestoringSnapshot: this.isClientRemuxRestoring()
     });
     if (forceCloudSync) {
       await this.pushProgressIfDue(true);
@@ -2161,10 +2349,11 @@ export const PlayerController = {
     const active = context || this.createProgressContext();
     if (!active?.itemId) return false;
     if (this.shouldSuppressOfflineProgress?.()) return true;
+    if (!externalAuthoritative && this.isClientRemuxRestoring?.()) return false;
     if (!externalAuthoritative && this.shouldSuppressStaleInternalProgress(active, 0)) return true;
     const scrobbled = Boolean(externalAuthoritative && this.scrobbleExternalCompletion?.(active));
     await this.markPlaybackWatched(active, {
-      authoritative: externalAuthoritative,
+      authoritative: true,
       skipTrackingWrite: scrobbled
     });
     if (externalAuthoritative) this.acceptExternalPlaybackCompletion(active);
@@ -2224,13 +2413,15 @@ export const PlayerController = {
     durationMs,
     clear = false,
     context = null,
-    { allowCloudSync = true, externalAuthoritative = false } = {}
+    { allowCloudSync = true, externalAuthoritative = false, allowRestoringSnapshot = false } = {}
   ) {
     const active = context || this.createProgressContext();
     if (!active?.itemId) {
       return;
     }
     if (this.shouldSuppressOfflineProgress?.()) return true;
+    if (!externalAuthoritative && this.isClientRemuxRestoring?.() && !allowRestoringSnapshot)
+      return false;
 
     const safePosition = Number(positionMs || 0);
     const safeDuration = Number(durationMs || 0);
