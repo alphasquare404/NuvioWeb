@@ -3609,6 +3609,8 @@ export const StreamScreen = {
     this.streamRailDragCleanup = null;
     this.streamContextMenuCleanup?.();
     this.streamContextMenuCleanup = null;
+    // Cleanup removes delegated listeners; the next mount must bind them again.
+    this.streamContextBoundContainer = null;
     this.streamTouchIntentCleanup?.();
     this.streamTouchIntentCleanup = null;
     this.streamContextMenu?.destroy?.();
