@@ -23977,3 +23977,32 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 .desktop-browser .settings-shell .settings-fusion-live-example .stream-route-card-side { flex:0 0 44px; max-width:44px; }
 .desktop-browser .settings-shell .settings-fusion-live-example .stream-route-addon-badge { width:32px; height:32px; font-size:12px; }
 .desktop-browser .settings-shell .settings-fusion-live-example .stream-route-addon-name { font-size:10px; overflow-wrap:anywhere; }
+
+/* Match Home's card protection on other media cards only. Page copy,
+   action sheets and editable controls retain normal selection. Preserve the
+   explicit Safari declaration through the Chromium-targeted build. */
+.desktop-browser .library-grid-card,
+.desktop-browser .library-grid-card *,
+.desktop-browser .search-result-card,
+.desktop-browser .search-result-card *,
+.desktop-browser .seeall-card,
+.desktop-browser .seeall-card *,
+.desktop-browser .discover-card,
+.desktop-browser .discover-card *,
+.desktop-browser .cast-credit-card,
+.desktop-browser .cast-credit-card *,
+.desktop-browser .movie-cast-card,
+.desktop-browser .movie-cast-card *,
+.desktop-browser .series-episode-card,
+.desktop-browser .series-episode-card *,
+.desktop-browser .detail-trailer-card,
+.desktop-browser .detail-trailer-card *,
+.desktop-browser .detail-morelike-card,
+.desktop-browser .detail-morelike-card *,
+.desktop-browser .stream-route-card,
+.desktop-browser .stream-route-card * {
+  /* autoprefixer: off */
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
