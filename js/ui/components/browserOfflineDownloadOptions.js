@@ -3,15 +3,15 @@ import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { subtitleReleaseName } from "../../domain/model/subtitle.js";
 import {
   createOfflineSubtitleFingerprint,
-  getOfflineSubtitleIdentityParts,
-  getSafeOfflineSubtitleDescriptors
+  getOfflineSubtitleIdentityParts
 } from "../../core/offline/browserOfflineDownloads.js";
 import { enqueueBrowserOfflineDownload } from "../../core/offline/browserOfflineDownloadQueue.js";
 import { NuvioDialog } from "./nuvioDialog.js";
-import { normalizeSubtitleForDisplay } from "./browserSubtitleDisplay.js";
 import {
   createBrowserOfflineSubtitlePicker,
-  createBrowserOfflineSubtitleSnapshot
+  createBrowserOfflineSubtitleSnapshot,
+  createBrowserOfflineSubtitleSelection,
+  getPreferredOfflineDownloadSubtitles
 } from "./browserOfflineSubtitlePicker.js";
 import { normalizeSourceForDisplay } from "./browserStreamSourceCard.js";
 const escapeHtml = (value) =>
@@ -56,22 +56,6 @@ export const BrowserOfflineDownloadOptions = {
     });
   },
 
-  getPreferredOfflineDownloadSubtitle(subtitles = []) {
-    const settings = PlayerSettingsStore.get();
-    const preferred = String(
-      settings.subtitleStyle?.preferredLanguage || settings.subtitleLanguage || "off"
-    )
-      .trim()
-      .toLowerCase();
-    if (!preferred || preferred === "off") return null;
-    return (
-      (subtitles || []).find((subtitle) => {
-        const language = String(subtitle.lang || subtitle.language || "").toLowerCase();
-        return language === preferred || language.startsWith(`${preferred}-`);
-      }) || null
-    );
-  },
-
   createOfflineSubtitleDescriptor(subtitle = null) {
     if (!subtitle) return null;
     const identity = getOfflineSubtitleIdentityParts(subtitle);
@@ -84,19 +68,6 @@ export const BrowserOfflineDownloadOptions = {
       fileName: subtitleReleaseName(subtitle),
       forced: subtitle.forced === true,
       sdh: subtitle.sdh === true || subtitle.hearingImpaired === true
-    };
-  },
-
-  createOfflineSubtitleSelection(mode = "none", subtitles = []) {
-    const descriptors = getSafeOfflineSubtitleDescriptors(
-      (Array.isArray(subtitles) ? subtitles : [subtitles]).map((subtitle) =>
-        this.createOfflineSubtitleDescriptor(subtitle)
-      )
-    );
-    return {
-      offlineSubtitleMode: mode,
-      offlineSubtitleDescriptors: mode === "none" ? [] : descriptors,
-      offlineSubtitle: mode === "specific" ? descriptors[0] || null : null
     };
   },
 
@@ -117,7 +88,7 @@ export const BrowserOfflineDownloadOptions = {
     const picker = createBrowserOfflineSubtitlePicker({
       snapshot,
       selection: state,
-      preferredLabel: state.preferredLabel,
+      preferred: state.preferred,
       loading: state.loading,
       onSelect: (next) => {
         Object.assign(state, next);
@@ -166,8 +137,8 @@ export const BrowserOfflineDownloadOptions = {
       subtitles: [],
       subtitleSnapshot: [],
       selectedMode: "none",
-      selectedIndex: null,
-      preferredLabel: "",
+      selectedIndexes: [],
+      preferred: [],
       selectedLanguage: "",
       loading: true,
       error: false
@@ -179,10 +150,10 @@ export const BrowserOfflineDownloadOptions = {
       state.subtitleSnapshot = createBrowserOfflineSubtitleSnapshot(state.subtitles, (subtitle) =>
         this.createOfflineSubtitleDescriptor(subtitle)
       );
-      const preferred = this.getPreferredOfflineDownloadSubtitle(
-        state.subtitleSnapshot.map((entry) => entry.subtitle)
+      state.preferred = getPreferredOfflineDownloadSubtitles(
+        state.subtitleSnapshot.map((entry) => entry.subtitle),
+        PlayerSettingsStore.get()
       );
-      state.preferredLabel = preferred ? normalizeSubtitleForDisplay(preferred).language : "";
     } catch (_) {
       state.error = true;
     } finally {
@@ -193,32 +164,7 @@ export const BrowserOfflineDownloadOptions = {
 
   async confirmOfflineDownloadOptions(state = this.offlineDownloadOptionsState) {
     if (!state?.context) return;
-    const snapshot = state.subtitleSnapshot || [];
-    const selectedSubtitle = Number.isInteger(state.selectedIndex)
-      ? snapshot[state.selectedIndex]?.subtitle
-      : null;
-    const preferredSubtitle = this.getPreferredOfflineDownloadSubtitle(
-      snapshot.map((entry) => entry.subtitle)
-    );
-    const languageSubtitles = snapshot
-      .filter((entry) => entry.language === state.selectedLanguage)
-      .map((entry) => entry.subtitle);
-    const selection =
-      state.selectedMode === "all"
-        ? this.createOfflineSubtitleSelection(
-            "all",
-            snapshot.map((entry) => entry.subtitle)
-          )
-        : state.selectedMode === "language"
-          ? {
-              ...this.createOfflineSubtitleSelection("language", languageSubtitles),
-              offlineSubtitleLanguage: state.selectedLanguage
-            }
-          : state.selectedMode === "preferred"
-            ? this.createOfflineSubtitleSelection("preferred", preferredSubtitle)
-            : state.selectedMode === "specific"
-              ? this.createOfflineSubtitleSelection("specific", selectedSubtitle)
-              : this.createOfflineSubtitleSelection("none");
+    const selection = createBrowserOfflineSubtitleSelection(state.subtitleSnapshot, state);
     try {
       const queued = await enqueueBrowserOfflineDownload({
         ...state.context,

@@ -6077,6 +6077,7 @@ html.is-hero-stream-hold * {
 
 .desktop-browser .season-download-dialog .season-download-source-option {
   position: relative;
+  flex-shrink: 0;
   min-height: 0;
   overflow: hidden;
   padding: 0;
