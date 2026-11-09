@@ -64,6 +64,7 @@ export async function remux({
     };
   stats.packetBudgetBytes = MAX_PENDING_PACKET_BYTES;
   stats.outputWriteBudgetBytes = MAX_COMPRESSED_BYTES;
+  stats.pipelinePhase = "source-open";
   await readRange(url, 0, 1, signal, stats, fetcher);
   const input = new Input({
     formats: ALL_FORMATS,
@@ -76,8 +77,10 @@ export async function remux({
   });
   let output;
   try {
+    stats.pipelinePhase = "track-discovery";
     const video = await input.getPrimaryVideoTrack();
     const audioTracks = await input.getAudioTracks();
+    stats.audioTrackCount = audioTracks.length;
     if (audioTracks.length > 32) throw Error("audio-track-limit");
     if (
       !Number.isInteger(audioIndex) ||
@@ -86,6 +89,9 @@ export async function remux({
     )
       throw Error("audio-track-unavailable");
     const audio = audioTracks[audioIndex];
+    stats.pipelinePhase = "codec-check";
+    stats.video = video?.codec || null;
+    stats.audio = audio?.codec || null;
     const format = new Mp4OutputFormat({ fastStart: "fragmented" });
     if (!video?.codec || !format.getSupportedVideoCodecs().includes(video.codec))
       throw Error("client-output-video-codec-unsupported");
@@ -131,6 +137,7 @@ export async function remux({
     if (!(duration > 0) || !Number.isFinite(duration)) throw Error("duration-unavailable");
     if (start >= duration) throw Error("seek-outside-duration");
     stamp("tracksReadyMs");
+    stats.pipelinePhase = "key-packets";
     const vs = new EncodedPacketSink(video),
       as = audio ? new EncodedPacketSink(audio) : null;
     let vp = (await vs.getKeyPacket(start)) || (await vs.getFirstKeyPacket());
@@ -144,6 +151,7 @@ export async function remux({
         ? await as.getFirstPacket()
         : (await as.getPacket(audioAnchor)) || (await as.getFirstPacket());
     stamp("keyPacketsReadyMs");
+    stats.pipelinePhase = "output-metadata";
     await metadata({
       audioIndex,
       audioTracks: availableAudio,
@@ -243,6 +251,7 @@ export async function remux({
     });
     output.addVideoTrack(vout);
     if (aout) output.addAudioTrack(aout);
+    stats.pipelinePhase = "mux-output";
     await output.start();
     let firstV = true,
       firstA = true;

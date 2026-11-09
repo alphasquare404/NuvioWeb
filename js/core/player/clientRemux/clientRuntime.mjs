@@ -9,7 +9,7 @@ import { createNativeSeekRecovery, isTimeBuffered } from "./nativeSeekRecovery.m
 import { OpfsCache, removeOwned } from "./opfsCache.mjs";
 import { IO_BYTES } from "./mediaFragments.mjs";
 import { createStartupPlayback } from "./startupPlayback.mjs";
-import { runStartupStep } from "./startupFailure.mjs";
+import { clientRemuxFailureFacts, runStartupStep } from "./startupFailure.mjs";
 import { createEmbeddedSubtitles } from "./embeddedSubtitles.mjs";
 import { holdStaging, cleanOrphanStaging } from "./stagingLease.mjs";
 export function createClientRemux({
@@ -19,6 +19,8 @@ export function createClientRemux({
   cacheMaxMiB = 512,
   requestHeaders = {},
   expectedAudio = null,
+  canResolveSource = () => false,
+  resolveSource = async () => null,
   onStatus = () => {},
   onError = () => {},
   onTracks = () => {},
@@ -102,6 +104,12 @@ export function createClientRemux({
     render();
     onError(latest.reason);
   }
+  function logFailure(phase, error) {
+    console.warn(
+      "[ClientRemux] failure",
+      JSON.stringify(clientRemuxFailureFacts(phase, error, latest, video))
+    );
+  }
   async function clean(name) {
     if (!name) return;
     const root = await navigator.storage.getDirectory();
@@ -142,6 +150,7 @@ export function createClientRemux({
     const old = producer;
     producer = null;
     if (!old) return;
+    old.resolveAbort.abort();
     old.worker.terminate();
     await old.owner.cache.finishRun(old.id);
     try {
@@ -332,8 +341,9 @@ export function createClientRemux({
   }
   function metadata(s, info) {
     if (!active(s)) return;
-    if (!Source.isTypeSupported(info.mime)) throw Error("output-codecs-unsupported");
-    latest = { ...latest, ...info, requested: s.target, state: "remuxing" };
+    const outputMimeSupported = Source.isTypeSupported(info.mime);
+    latest = { ...latest, ...info, outputMimeSupported, requested: s.target, state: "remuxing" };
+    if (!outputMimeSupported) throw Error("output-codecs-unsupported");
     if (film) {
       film.audioTracks = (info.audioTracks || []).map((track) => ({
         ...track,
@@ -506,6 +516,7 @@ export function createClientRemux({
           latest.prefetchFailed = true;
           await abortProducer();
         } else {
+          logFailure("output-append", e);
           await stop();
           fail(e.message);
         }
@@ -545,6 +556,7 @@ export function createClientRemux({
       owner,
       worker,
       lease,
+      resolveAbort: new AbortController(),
       prefetch,
       info: null,
       init: null,
@@ -559,8 +571,12 @@ export function createClientRemux({
     worker.onmessage = ({ data }) => {
       if (producer !== job || data.jobId !== id) return;
       observe(job, data.stats);
+      let phase = "producer";
       void (async () => {
-        if (data.type === "reserve") {
+        if (data.type === "resolve-source") {
+          const resolved = await resolveSource(owner.sourceUrl, job.resolveAbort.signal);
+          reply(job, data, resolved);
+        } else if (data.type === "reserve") {
           const accepted = await owner.cache.reserve(data.entry);
           if (producer !== job) {
             if (accepted) await owner.cache.discard(data.entry.id);
@@ -574,6 +590,7 @@ export function createClientRemux({
           await owner.cache.evictUnpinned();
           reply(job, data, true);
         } else if (data.type === "metadata") {
+          phase = "output-setup";
           if (owner.size != null && owner.size !== data.stats.size) throw Error("source-changed");
           owner.size = data.stats.size;
           job.info = data.info;
@@ -633,18 +650,22 @@ export function createClientRemux({
           latest.prefetchFailed = true;
           await abortProducer();
         } else {
+          logFailure(phase, e);
           await stop();
           fail(e.message);
         }
       });
     };
     worker.onerror = () => {
-      if (producer === job) void stop().then(() => fail("worker-error"));
+      if (producer !== job) return;
+      logFailure("media-worker", Error("worker-error"));
+      void stop().then(() => fail("worker-error"));
     };
     worker.postMessage({
       type: "start",
       requestHeaders,
       expectedAudio,
+      hostResolveAvailable: canResolveSource(owner.sourceUrl),
       version,
       audioIndex,
       jobId: id,
@@ -847,10 +868,12 @@ export function createClientRemux({
 
   const errorHandler = (event) => {
     if (event.detail) return; // Controller reports must not recursively become native failures.
-    if (session)
+    if (session) {
+      logFailure("native-media", Error("client-media-error"));
       void stop()
         .then(() => fail("client-media-error"))
         .catch(() => fail("client-cleanup-failed"));
+    }
   };
   const playHandler = () => {
     desiredPaused = false;

@@ -44,3 +44,138 @@ export async function runStartupStep(
     throw failure;
   }
 }
+
+const playbackReasons = new Set([
+  "AbortError",
+  "DataError",
+  "InvalidStateError",
+  "NetworkError",
+  "NotSupportedError",
+  "OperationError",
+  "QuotaExceededError",
+  "SecurityError",
+  "TypeError",
+  "audio-probe-mismatch",
+  "audio-track-limit",
+  "audio-track-unavailable",
+  "buffer-budget-cannot-progress",
+  "cache-capacity-unavailable",
+  "cache-file-invalid",
+  "cache-file-missing",
+  "cache-media-invalid",
+  "client-media-error",
+  "client-output-audio-codec-unsupported",
+  "client-output-video-codec-unsupported",
+  "decoder-not-ready-within-buffer-budget",
+  "duration-unavailable",
+  "fragment-packet-budget",
+  "output-box-invalid",
+  "output-codecs-unsupported",
+  "output-timing-invalid",
+  "output-write-exceeds-buffer-budget",
+  "range-body-too-large",
+  "range-body-truncated",
+  "range-head-invalid",
+  "range-read-limit",
+  "range-response-invalid",
+  "remux-version-mismatch",
+  "seek-outside-duration",
+  "short-opfs-write",
+  "source-changed",
+  "sourcebuffer-compressed-byte-budget",
+  "sourcebuffer-error",
+  "staging-write-failed",
+  "startup-window-exceeds-buffer-budget",
+  "video-keyframe-unavailable",
+  "worker-error"
+]);
+
+const codecNames = new Set([
+  "avc",
+  "hevc",
+  "vp8",
+  "vp9",
+  "av1",
+  "aac",
+  "mp3",
+  "opus",
+  "vorbis",
+  "flac",
+  "ac3",
+  "eac3",
+  "ac-3",
+  "ec-3",
+  "alac",
+  "dts",
+  "truehd"
+]);
+
+export function clientRemuxFailureFacts(phase, error, stats, video) {
+  const reason = [error?.message, error?.name].find((value) => playbackReasons.has(value));
+  const facts = {
+    phase,
+    reason: reason || "operation-failed",
+    nativeMediaErrorCode: video.error?.code || 0,
+    readyState: video.readyState,
+    networkState: video.networkState
+  };
+  for (const [key, allowed] of Object.entries({
+    pipelinePhase: [
+      "worker-storage",
+      "source-open",
+      "track-discovery",
+      "codec-check",
+      "key-packets",
+      "output-metadata",
+      "mux-output"
+    ],
+    rangeStep: ["request", "headers", "head-fallback", "body", "complete"],
+    video: codecNames,
+    audio: codecNames
+  })) {
+    const value = stats[key];
+    if (allowed instanceof Set ? allowed.has(value) : allowed.includes(value)) facts[key] = value;
+  }
+  for (const key of [
+    "sourceOpenMs",
+    "rangeAttempts",
+    "rangeSuccesses",
+    "lastRangeMs",
+    "lastRangeStatus",
+    "lastHeadStatus",
+    "lastRangeBodyBytes",
+    "bytes",
+    "audioTrackCount",
+    "audioIndex",
+    "outputBytes",
+    "hostResolveAttempted",
+    "hostResolveSucceeded",
+    "rangeRedirected",
+    "rangeRedirectRetry",
+    "rangeContentRangeVisible",
+    "outputMimeSupported"
+  ]) {
+    const value = stats[key];
+    if (Number.isFinite(value) || typeof value === "boolean") facts[key] = value;
+  }
+  if (stats.lastRangeStatus && stats.lastRangeStatus !== 206) {
+    if (/^(?:[a-z0-9-]+\.)+[a-z0-9-]+$/i.test(stats.invalidRangeHost || ""))
+      facts.responseHost = stats.invalidRangeHost;
+    const contentType = stats.invalidRangeContentType;
+    if (
+      [
+        "text/html",
+        "text/plain",
+        "application/json",
+        "application/octet-stream",
+        "video/mp4",
+        "video/x-matroska",
+        "video/webm"
+      ].includes(contentType)
+    )
+      facts.responseContentType = contentType;
+    if (Number.isSafeInteger(stats.invalidRangeContentLength))
+      facts.responseContentLength = stats.invalidRangeContentLength;
+  }
+  return facts;
+}

@@ -1,3 +1,4 @@
+import { clientMediaUrlResolver } from "../streams/clientMediaUrlResolver.js";
 import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
 import { markPlaybackWatched } from "./markPlaybackWatched.js";
@@ -1716,7 +1717,10 @@ export const PlayerController = {
       const diagnostic = {
         event: e?.type || "error",
         mediaErrorCode,
-        playbackEngine: this.playbackEngine
+        playbackEngine: this.playbackEngine,
+        errorSource: customErrorCode ? "controller" : nativeErrorCode ? "browser" : "unknown",
+        readyState: this.video?.readyState,
+        networkState: this.video?.networkState
       };
       console.error("Video error:", diagnostic);
     });
@@ -1865,6 +1869,17 @@ export const PlayerController = {
         video: this.video,
         requestHeaders,
         expectedAudio: playbackPlan.expectedAudio,
+        canResolveSource: (sourceUrl) =>
+          Boolean(
+            clientMediaUrlResolver.cached(sourceUrl) || clientMediaUrlResolver.canUseHost(sourceUrl)
+          ),
+        resolveSource: async (sourceUrl, signal) => {
+          const link = await clientMediaUrlResolver.resolve(sourceUrl, {
+            signal,
+            skipDirect: true
+          });
+          return link.ok && link.url !== sourceUrl ? link.url : null;
+        },
         cacheMaxMiB: REMUX_CLIENT_CACHE_MAX_MIB,
         onError: (reason) => {
           if (this.isPlaybackRequestActive(playToken, requestedUrl))

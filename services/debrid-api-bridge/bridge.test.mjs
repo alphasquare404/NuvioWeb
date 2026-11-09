@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createDebridApiBridgeServer } from "./bridge.mjs";
+import { requestPublicAddonHeaders } from "./publicAddonRedirect.mjs";
+import { EventEmitter } from "node:events";
 
 async function withBridge(options, run) {
   const server = createDebridApiBridgeServer(options);
@@ -622,4 +624,140 @@ test("host resolution failures identify the failing hop without exposing credent
       assert.equal(text.includes("private provider"), false);
     }
   );
+});
+
+const publicV4 = { address: "1.1.1.1", family: 4 };
+const publicV6 = { address: "2606:4700::1111", family: 6 };
+
+test("host assistance resolves multiple public addon hosts and checks each redirect destination", async () => {
+  const dns = [];
+  const calls = [];
+  await withBridge(
+    {
+      addonResolveEnabled: true,
+      addonLookup: async (host, options) => {
+        assert.equal(options.all, true);
+        dns.push(host);
+        return [publicV4, publicV6];
+      },
+      publicAddonRequest: async (url, addresses) => {
+        calls.push(url.href);
+        assert.deepEqual(addresses, [publicV4, publicV6]);
+        if (url.hostname === "aio.example")
+          return { status: 307, location: "https://other.example/file" };
+        if (url.hostname === "other.example")
+          return { status: 302, location: "https://cdn.example/video" };
+        return { status: 206, type: "application/octet-stream" };
+      }
+    },
+    async (base) => {
+      const response = await fetch(base + "/api/debrid/link/from-addon", {
+        method: "POST",
+        body: JSON.stringify({ url: "https://aio.example/play/one" })
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.equal((await response.json()).data, "https://cdn.example/video");
+      assert.deepEqual(dns, ["aio.example", "other.example", "cdn.example"]);
+      assert.deepEqual(calls, [
+        "https://aio.example/play/one",
+        "https://other.example/file",
+        "https://cdn.example/video"
+      ]);
+    }
+  );
+});
+
+test("the host resolver blocks local DNS, mixed public/private answers, and private redirect targets", async () => {
+  const calls = [];
+  await withBridge(
+    {
+      addonResolveEnabled: true,
+      addonLookup: async (host) => {
+        if (host === "mixed.example") return [publicV4, { address: "::ffff:127.0.0.1", family: 6 }];
+        if (host === "lan.example") return [{ address: "192.168.2.1", family: 4 }];
+        if (host === "shared.example") return [{ address: "100.100.100.100", family: 4 }];
+        if (host === "metadata.example") return [{ address: "169.254.169.254", family: 4 }];
+        return [publicV6];
+      },
+      publicAddonRequest: async (url) => {
+        calls.push(url.hostname);
+        return { status: 302, location: "https://lan.example/private" };
+      }
+    },
+    async (base) => {
+      for (const host of [
+        "mixed.example",
+        "lan.example",
+        "shared.example",
+        "metadata.example",
+        "127.0.0.1",
+        "0x7f000001",
+        "[::1]",
+        "public.example"
+      ]) {
+        const response = await fetch(base + "/api/debrid/link/from-addon", {
+          method: "POST",
+          body: JSON.stringify({ url: "https://" + host + "/play" })
+        });
+        assert.equal(response.status, 403);
+      }
+      assert.deepEqual(calls, ["public.example"]);
+    }
+  );
+});
+
+test("disabled generic host assistance never reaches DNS or HTTP", async () => {
+  await withBridge(
+    {
+      addonResolveEnabled: false,
+      addonLookup: () => assert.fail("unexpected DNS"),
+      publicAddonRequest: () => assert.fail("unexpected request")
+    },
+    async (base) => {
+      const response = await fetch(base + "/api/debrid/link/from-addon", {
+        method: "POST",
+        body: JSON.stringify({ url: "https://addon.example/play/one" })
+      });
+      assert.equal(response.status, 404);
+    }
+  );
+});
+
+test("the HTTPS socket lookup returns only checked addresses and response data is discarded", async () => {
+  const url = new URL("https://addon.example/play");
+  const signal = new AbortController().signal;
+  let destroyed = false;
+  const info = await requestPublicAddonHeaders(
+    url,
+    [publicV4, publicV6],
+    signal,
+    (target, options, onResponse) => {
+      assert.equal(target.hostname, "addon.example");
+      assert.equal(options.agent, false);
+      assert.equal(options.signal, signal);
+      assert.equal(options.headers.Range, "bytes=0-0");
+      options.lookup(target.hostname, { all: true }, (error, result) => {
+        assert.ifError(error);
+        assert.deepEqual(result, [publicV4, publicV6]);
+      });
+      options.lookup(target.hostname, { family: 6 }, (error, address, family) => {
+        assert.ifError(error);
+        assert.equal(address, publicV6.address);
+        assert.equal(family, 6);
+      });
+      const req = new EventEmitter();
+      req.end = () =>
+        onResponse({
+          statusCode: 206,
+          headers: { "content-type": "application/octet-stream" },
+          destroy: () => {
+            destroyed = true;
+          }
+        });
+      return req;
+    }
+  );
+  assert.equal(info.status, 206);
+  assert.equal(destroyed, true);
 });

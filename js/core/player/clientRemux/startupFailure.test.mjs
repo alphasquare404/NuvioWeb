@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runStartupStep } from "./startupFailure.mjs";
+import { clientRemuxFailureFacts, runStartupStep } from "./startupFailure.mjs";
 test("a storage UnknownError is attributed without exposing browser messages or claiming memory exhaustion", async () => {
   const events = [];
   await assert.rejects(
@@ -83,4 +83,63 @@ test("invalid stage and reporting failure cannot expose or replace the original 
     ),
     /client-startup-renderer-open-unknown-error/
   );
+});
+
+test("remux failure exports playback and Range facts without arbitrary error text or source credentials", () => {
+  const video = { error: { code: 4 }, readyState: 0, networkState: 2 };
+  const error = new TypeError("https://source.example/private-token/video");
+  assert.deepEqual(
+    clientRemuxFailureFacts(
+      "producer",
+      error,
+      {
+        pipelinePhase: "source-open",
+        rangeStep: "request",
+        lastRangeStatus: 0,
+        sourceUrl: error.message,
+        video: "private-token"
+      },
+      video
+    ),
+    {
+      phase: "producer",
+      reason: "TypeError",
+      nativeMediaErrorCode: 4,
+      readyState: 0,
+      networkState: 2,
+      pipelinePhase: "source-open",
+      rangeStep: "request",
+      lastRangeStatus: 0
+    }
+  );
+  assert.equal(
+    clientRemuxFailureFacts("producer", new Error("private-token"), {}, video).reason,
+    "operation-failed"
+  );
+});
+
+test("invalid Range response logs only safe response metadata", () => {
+  const video = { readyState: 0, networkState: 2 };
+  const stats = {
+    lastRangeStatus: 200,
+    invalidRangeHost: "cdn.example",
+    invalidRangeContentType: "video/mp4",
+    invalidRangeContentLength: 123
+  };
+  const facts = clientRemuxFailureFacts("producer", Error("range-response-invalid"), stats, video);
+  assert.equal(facts.responseHost, "cdn.example");
+  assert.equal(facts.responseContentType, "video/mp4");
+  assert.equal(facts.responseContentLength, 123);
+  const unsafe = clientRemuxFailureFacts(
+    "producer",
+    Error("range-response-invalid"),
+    {
+      ...stats,
+      invalidRangeHost: "https://cdn.example/private",
+      invalidRangeContentType: "private"
+    },
+    video
+  );
+  assert.equal(unsafe.responseHost, undefined);
+  assert.equal(unsafe.responseContentType, undefined);
 });

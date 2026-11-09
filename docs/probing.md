@@ -126,10 +126,10 @@ resolver. Existing credential-based debrid descriptor resolution is separate.
 
 `MEDIA_URL_HOST_RESOLVE_ENABLED=false` is the default, independent of
 `PROBE_MODE`. Enable it explicitly to let the instance's backend resolve supported
-Torrentio/TorBox source links for on-demand CORS consumers. With `PROBE_MODE=client`,
+add-on source links for browser probing, offline downloads, copying stream links, and client remux. With `PROBE_MODE=client`,
 ffprobe still runs in the browser and the server probe endpoint remains disabled.
 
-The browser sends a fixed same-origin POST with credentials in Authorization and
+For Torrentio/TorBox, the browser sends a fixed same-origin POST with credentials in Authorization and
 only the source descriptor in JSON. The backend reconstructs one known Torrentio
 route, reads its redirect headers without following to media, validates that the
 redirect is the same account's fixed TorBox requestdl endpoint, and reads that
@@ -138,6 +138,14 @@ video or directly calling torrent creation/account-list APIs. Unsupported provid
 closed; this is not an arbitrary URL proxy. Responses use Cache-Control: no-store.
 The endpoint is also disabled server-side unless explicitly enabled. Docker Compose
 passes the flag to both the web container and the debrid API bridge container.
+
+Other add-ons can use the same flag without individual entries. The host only
+connects to public HTTPS destinations on port 443. It checks all DNS answers
+at each hop and pins the connection to those checked IPs while retaining TLS
+verification for the hostname. The resolver follows at most four redirects
+and discards response bodies. It returns the final URL to the browser.
+The browser still needs CORS and byte ranges on the media server. Client
+remux requests host assistance after its original Range fetch fails.
 
 The host necessarily receives the credential and file descriptor. This resolver
 adds no database writes, telemetry or credential/request-body logging. That does

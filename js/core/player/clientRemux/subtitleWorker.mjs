@@ -1,5 +1,6 @@
 /* global __NUVIO_REMUX_ASSET_ID__ */
 import { MkvTextSubtitles, SUBTITLE_LIMITS } from "./mkvTextSubtitles.mjs";
+import { createRangeFetcher } from "./range.mjs";
 let reader,
   sourceId,
   abort,
@@ -15,8 +16,7 @@ self.onmessage = ({ data }) => {
     sourceId = data.sourceId;
     reader = new MkvTextSubtitles({
       url: data.url,
-      fetcher: (url, options) =>
-        fetch(url, { ...options, headers: { ...data.requestHeaders, ...options?.headers } })
+      fetcher: createRangeFetcher(data.url, data.requestHeaders)
     });
     abort = new AbortController();
     serial = reader

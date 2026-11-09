@@ -7035,7 +7035,22 @@ export const PlayerScreen = {
         remuxAvailable: REMUX_POLICY.mode !== "off" && !this._processingUnavailable,
         audioAvailable: Boolean(TRANSCODE_ENDPOINT) && !this._processingUnavailable
       });
-      return next ? this.runUnverifiedPlaybackAttempt(next) : false;
+      if (!next) return false;
+      console.warn(
+        "[Playback] route-failed",
+        JSON.stringify({
+          route: attempt.route,
+          next,
+          trigger: failure.startupStall
+            ? "startup-timeout"
+            : failure.preparationFailed
+              ? "preparation"
+              : "playback-error",
+          mediaErrorCode: Number(failure.mediaErrorCode) || 0,
+          httpStatus: Number(failure.httpStatus) || 0
+        })
+      );
+      return this.runUnverifiedPlaybackAttempt(next);
     }
     if (this._processingUnavailable) return false;
     if (!attempt || this.hasPresentedPlaybackFrame || attempt.mediaUrl !== this.activePlaybackUrl)

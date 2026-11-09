@@ -1,3 +1,4 @@
+import { parseHttpsPlaybackUrl } from "../../../services/debrid-api-bridge/addonPlaybackPolicy.mjs";
 import { secureMediaUrl } from "./secureMediaUrl.js";
 import {
   resolveTorboxAddonUrl,
@@ -11,7 +12,8 @@ export function createClientMediaUrlResolver({
   ttlMs = 60000,
   maxEntries = 100,
   allowHostResolve = false,
-  hostResolve = resolveTorboxAddonUrl
+  hostResolve = resolveTorboxAddonUrl,
+  supportsHostUrl = parseTorrentioTorboxUrl
 } = {}) {
   const cache = new Map(),
     pending = new Map();
@@ -48,6 +50,9 @@ export function createClientMediaUrlResolver({
     cached,
     remember,
     canUseHost(url) {
+      return Boolean(hostAllowed() && supportsHostUrl(url));
+    },
+    canPreResolve(url) {
       return Boolean(hostAllowed() && parseTorrentioTorboxUrl(url));
     },
     invalidate(url) {
@@ -133,7 +138,29 @@ export function createClientMediaUrlResolver({
   };
 }
 
+async function resolveConfiguredAddonUrl(url, { signal, onFailure }) {
+  const response = await fetch("/api/debrid/link/from-addon", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+    signal
+  });
+  if (!response.ok) {
+    onFailure({ status: response.status, stage: "host", reason: "request-failed" });
+    return null;
+  }
+  const target = parseHttpsPlaybackUrl((await response.json()).data);
+  return target ? { url: target.href } : null;
+}
+
 export const clientMediaUrlResolver = createClientMediaUrlResolver({
+  supportsHostUrl: (url) => Boolean(parseHttpsPlaybackUrl(url)),
+  hostResolve: (url, options) =>
+    parseTorrentioTorboxUrl(url)
+      ? resolveTorboxAddonUrl(url, options)
+      : parseHttpsPlaybackUrl(url)
+        ? resolveConfiguredAddonUrl(url, options)
+        : Promise.resolve(null),
   allowHostResolve: () =>
     ["1", "true"].includes(
       String(globalThis.__NUVIO_ENV__?.MEDIA_URL_HOST_RESOLVE_ENABLED || "")

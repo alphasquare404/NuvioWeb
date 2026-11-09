@@ -1,6 +1,7 @@
 /* global __NUVIO_REMUX_ASSET_ID__ */
 import { remux } from "./pipeline.mjs";
 import { OutputFragments, IO_BYTES } from "./mediaFragments.mjs";
+import { createRangeFetcher } from "./range.mjs";
 let jobId = null,
   sequence = 0,
   stats,
@@ -109,7 +110,7 @@ async function store(unit) {
 }
 async function start(data) {
   options = data;
-  stats = { opfsBytes: 0, peakOpfsBytes: 0, chunks: 0 };
+  stats = { opfsBytes: 0, peakOpfsBytes: 0, chunks: 0, pipelinePhase: "worker-storage" };
   const ticker = setInterval(() => send("stats"), 2000),
     splitter = new OutputFragments();
   try {
@@ -150,8 +151,19 @@ async function start(data) {
       expectedAudio: data.expectedAudio,
       signal: new AbortController().signal,
       stats,
-      fetcher: (url, options) =>
-        fetch(url, { ...options, headers: { ...data.requestHeaders, ...options?.headers } }),
+      fetcher: createRangeFetcher(
+        data.url,
+        data.requestHeaders,
+        fetch,
+        data.hostResolveAvailable
+          ? async () => {
+              stats.hostResolveAttempted = true;
+              const url = await request("resolve-source");
+              stats.hostResolveSucceeded = Boolean(url);
+              return url;
+            }
+          : undefined
+      ),
       metadata: (info) => request("metadata", { info }),
       beforePacket: async () => {
         if (cacheMode) await credit();

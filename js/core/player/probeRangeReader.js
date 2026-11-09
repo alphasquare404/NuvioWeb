@@ -46,7 +46,8 @@ export function createProbeRangeReader(
     async prepare() {
       if (prepared) return;
       prepared = true;
-      if (!urlResolver.cached(originalUrl) && urlResolver.canUseHost?.(originalUrl)) {
+      const canPreResolve = urlResolver.canPreResolve || urlResolver.canUseHost;
+      if (!urlResolver.cached(originalUrl) && canPreResolve?.call(urlResolver, originalUrl)) {
         diagnostics = { request: "host-resolve" };
         const started = Date.now();
         const resolved = await urlResolver.resolve(originalUrl, {
