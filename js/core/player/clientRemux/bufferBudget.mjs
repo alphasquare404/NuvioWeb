@@ -1,7 +1,14 @@
 // Time buffering is a playback optimization, not permission to starve a decoder
 // still requesting future data. The independent compressed byte ledger remains hard.
-export function shouldThrottleAhead({ aheadSeconds, readyState, paused }) {
-  return aheadSeconds > 12 && (paused || readyState >= 3);
+const PLAYBACK_AHEAD_SECONDS = 120;
+
+export function shouldThrottleAhead({
+  aheadSeconds,
+  readyState,
+  paused,
+  limitSeconds = PLAYBACK_AHEAD_SECONDS
+}) {
+  return aheadSeconds >= limitSeconds && (paused || readyState >= 3);
 }
 
 // An observed MMS endstreaming is authoritative even before canplay. Permit
@@ -10,21 +17,36 @@ export function isManagedBufferBlocked({ signalSeen, allowed, seekApplied, hasBu
   return Boolean(signalSeen && !allowed && seekApplied && hasBufferedData);
 }
 
-export const MAX_COMPRESSED_BYTES = 50 * 1024 * 1024;
-export const MAX_PLAYBACK_COMPRESSED_BYTES = 100 * 1024 * 1024;
+const MIB = 1024 * 1024;
+export const MAX_COMPRESSED_BYTES = 50 * MIB;
+export const MAX_PLAYBACK_COMPRESSED_BYTES = 400 * MIB;
+
+export function playbackBufferLimits(deviceMemory) {
+  if (Number.isFinite(deviceMemory) && deviceMemory >= 8) {
+    const bytes = deviceMemory >= 16 ? MAX_PLAYBACK_COMPRESSED_BYTES : 300 * MIB;
+    return { baseBytes: bytes, maxBytes: bytes };
+  }
+  return { baseBytes: MAX_COMPRESSED_BYTES, maxBytes: 100 * MIB };
+}
 
 // Account a complete muxer write before appending its first OPFS piece. Pieces
 // already admitted must be allowed to finish, even if MSE exposes samples early.
 export class BufferBudget {
-  constructor({ maxBytes = MAX_COMPRESSED_BYTES, requireRandomAccessPoints = false } = {}) {
+  constructor({
+    baseBytes = MAX_COMPRESSED_BYTES,
+    maxBytes = MAX_COMPRESSED_BYTES,
+    requireRandomAccessPoints = false
+  } = {}) {
     if (
+      !Number.isSafeInteger(baseBytes) ||
       !Number.isSafeInteger(maxBytes) ||
-      maxBytes < MAX_COMPRESSED_BYTES ||
+      baseBytes < MAX_COMPRESSED_BYTES ||
+      baseBytes > maxBytes ||
       maxBytes > MAX_PLAYBACK_COMPRESSED_BYTES
     )
       throw Error("invalid-buffer-budget");
     this.maxBytes = maxBytes;
-    this.limitBytes = MAX_COMPRESSED_BYTES;
+    this.limitBytes = baseBytes;
     this.requireRandomAccessPoints = requireRandomAccessPoints;
     // Physical WebKit removal advanced 0.47625s past the MP4 RAP. Keep an
     // additional 0.5s dependency guard, or more if output reordering requires it.
@@ -58,7 +80,7 @@ export class BufferBudget {
       throw Error("output-write-exceeds-buffer-budget");
     // Keep room for the playing GOP and its successor. A one-GOP window can
     // deadlock before the final frame, since safe eviction waits past its end.
-    // Small writes retain the 50 MiB limit; growth is capped per session.
+    // Small writes retain the base limit; growth is capped per session.
     this.limitBytes = Math.min(
       this.maxBytes,
       Math.max(this.limitBytes, 2 * writeBytes + 64 * 1024)
