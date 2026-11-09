@@ -2869,8 +2869,7 @@ export const StreamScreen = {
       options.push({
         action: "openExternal",
         label: t("stream_open_external", {}, "Open in external player"),
-        icon: "open_in_new",
-        player: externalOptions[0]
+        icon: "open_in_new"
       });
     }
     return options;
@@ -2883,9 +2882,28 @@ export const StreamScreen = {
     if (!stream) {
       return false;
     }
-    const options = this.getStreamContextMenuOptions();
-    const onSelect = (option) => {
-      void this.activateStreamContextMenuOption(stream, option);
+    const header = {
+      title: getStreamHeadline(stream) || "Stream",
+      subtitle: [stream.addonName, getStreamQuality(stream)].filter(Boolean).join(" • ")
+    };
+    const showMenu = (items, menuHeader, onSelect) => {
+      if (invocation.type === "touch") {
+        this.streamActionSheet = openTouchActionSheet({
+          header: menuHeader,
+          items,
+          onSelect,
+          onDismiss
+        });
+      } else {
+        this.streamContextMenu = openDesktopContextMenu({
+          x: Number(invocation.x || 0),
+          y: Number(invocation.y || 0),
+          anchorRect: invocation.type === "pointer" ? null : node.getBoundingClientRect(),
+          items,
+          onSelect,
+          onDismiss
+        });
+      }
     };
     const onDismiss = () => {
       node.focus?.({ preventScroll: true });
@@ -2894,26 +2912,24 @@ export const StreamScreen = {
     this.streamActionSheet = null;
     this.streamContextMenu?.destroy?.();
     this.streamContextMenu = null;
-    if (invocation.type === "touch") {
-      this.streamActionSheet = openTouchActionSheet({
-        header: {
-          title: getStreamHeadline(stream) || "Stream",
-          subtitle: [stream.addonName, getStreamQuality(stream)].filter(Boolean).join(" • ")
-        },
-        items: options,
-        onSelect,
-        onDismiss
+    showMenu(this.getStreamContextMenuOptions(), header, (option) => {
+      if (option.action !== "openExternal") {
+        void this.activateStreamContextMenuOption(stream, option);
+        return;
+      }
+      const playerNames = { lenna: "Lenna", outplayer: "Outplayer", infuse: "Infuse", vlc: "VLC" };
+      const players = getBrowserExternalPlayerOptions()
+        .filter((player) => player !== "disabled")
+        .map((player) => ({
+          action: "openExternal",
+          player,
+          label: playerNames[player],
+          icon: "open_in_new"
+        }));
+      showMenu(players, { title: option.label, subtitle: header.title }, (choice) => {
+        void this.activateStreamContextMenuOption(stream, choice);
       });
-    } else {
-      this.streamContextMenu = openDesktopContextMenu({
-        x: Number(invocation.x || 0),
-        y: Number(invocation.y || 0),
-        anchorRect: invocation.type === "pointer" ? null : node.getBoundingClientRect(),
-        items: options,
-        onSelect,
-        onDismiss
-      });
-    }
+    });
     return true;
   },
 
@@ -2928,11 +2944,8 @@ export const StreamScreen = {
       await this.playStream(stream.id, { skipExternalRoute: true });
       return true;
     }
-    if (option.action === "openExternal") {
-      await this.playStream(stream.id, {
-        playerOverride:
-          option.player || getBrowserExternalPlayerOptions().find((id) => id !== "disabled")
-      });
+    if (option.action === "openExternal" && option.player) {
+      await this.playStream(stream.id, { playerOverride: option.player });
       return true;
     }
     return false;

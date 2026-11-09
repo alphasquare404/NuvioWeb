@@ -1799,11 +1799,14 @@ test("a playback error prevents a delayed pause screen from reopening", () => {
 
 test("manual episode switching carries cast photos and roles to the next player", async () => {
   let navigation;
-  const run = method("async playEpisodeFromPanel(selectedStream = null)", {
-    PlayerController: { flushCurrentProgress: async () => {}, pushProgressIfDue() {} },
-    Router: { navigate: async (_route, params) => (navigation = params) },
-    streamDirectPlaybackUrl: (stream) => stream.url
-  }).playEpisodeFromPanel;
+  const run = method(
+    "async playEpisodeFromPanel(selectedStream = null, { automatic = false, complete } = {})",
+    {
+      PlayerController: { flushCurrentProgress: async () => {}, pushProgressIfDue() {} },
+      Router: { navigate: async (_route, params) => (navigation = params) },
+      streamDirectPlaybackUrl: (stream) => stream.url
+    }
+  ).playEpisodeFromPanel;
   const stream = { id: "source", url: "https://media.test/episode" };
   const cast = [{ name: "Actor", photo: "https://image.test/actor.jpg", character: "Pilot" }];
   const ctx = {
@@ -1868,4 +1871,51 @@ test("visible controls restore the header mask across repeated pause and error t
   ctx.isStartupErrorVisible = () => true;
   sync.call(ctx);
   assert.equal(overlayClasses.has("pause-overlay-active"), false);
+});
+
+test("episode drawer selects an autoplay match and keeps manual selection in the drawer", async () => {
+  const stream = { id: "eligible" };
+  let mode = "FIRST_STREAM";
+  const launches = [];
+  const run = method(
+    "async openEpisodeStreamsView({ forceReload = true, automatic = false } = {})",
+    {
+      PlayerSettingsStore: { get: () => ({ streamAutoPlayMode: mode }) },
+      isAutoPlayEffectivelyEnabled: (settings) => settings.streamAutoPlayMode !== "MANUAL",
+      normalizeItemType: (type) => type
+    }
+  ).openEpisodeStreamsView;
+  const ctx = {
+    episodes: [{ id: "e2", season: 1, episode: 2 }],
+    episodePanelIndex: 0,
+    episodePanelVisible: true,
+    renderEpisodePanel() {},
+    getStreamCacheKey: (id) => id,
+    getPlayableStreamsForVideo: async () => [stream],
+    resolveNextEpisodeStreamByAutoPlayPolicy: async () => ({
+      streamItems: [stream],
+      selectedStream: stream,
+      complete: false
+    }),
+    playEpisodeFromPanel: async (...args) => launches.push(args)
+  };
+  await run.call(ctx, { automatic: true });
+  assert.equal(launches.length, 1);
+  assert.equal(launches[0][0], stream);
+  assert.equal(launches[0][1].automatic, true);
+  assert.equal(launches[0][1].complete, false);
+
+  mode = "MANUAL";
+  await run.call(ctx, { automatic: true });
+  assert.equal(launches.length, 1);
+  assert.equal(ctx.episodePanelStreams[0], stream);
+  assert.equal(ctx.episodePanelMode, "streams");
+
+  mode = "FIRST_STREAM";
+  ctx.resolveNextEpisodeStreamByAutoPlayPolicy = async () => {
+    ctx.episodePanelStreamLoadToken++;
+    return { streamItems: [stream], selectedStream: stream };
+  };
+  await run.call(ctx, { automatic: true });
+  assert.equal(launches.length, 1);
 });

@@ -65,9 +65,10 @@ import {
 } from "../../components/browserStreamSourceCard.js";
 import {
   createBrowserOfflineSubtitlePicker,
-  createBrowserOfflineSubtitleSnapshot
+  createBrowserOfflineSubtitleSnapshot,
+  createBrowserOfflineSubtitleSelection,
+  getPreferredOfflineDownloadSubtitles
 } from "../../components/browserOfflineSubtitlePicker.js";
-import { normalizeSubtitleForDisplay } from "../../components/browserSubtitleDisplay.js";
 import {
   bindDesktopNavigationEvents,
   renderDesktopNavigation,
@@ -5800,7 +5801,9 @@ export const MetaDetailsScreen = {
               await this.discoverSeasonEpisodeSubtitles(selection.episode)
             );
             const chosen =
-              subtitleMode === "all" ? subtitles : this.getPreferredSeasonSubtitle(subtitles);
+              subtitleMode === "all"
+                ? subtitles
+                : getPreferredOfflineDownloadSubtitles(subtitles, PlayerSettingsStore.get());
             Object.assign(
               selection.context,
               this.createSeasonOfflineSubtitleSelection(subtitleMode, chosen)
@@ -5945,8 +5948,11 @@ export const MetaDetailsScreen = {
     const snapshot = createBrowserOfflineSubtitleSnapshot(subtitles, (subtitle) =>
       this.createSeasonOfflineSubtitleDescriptor(subtitle)
     );
-    const preferred = this.getPreferredSeasonSubtitle(snapshot.map((entry) => entry.subtitle));
-    const pickerState = { selectedMode: "none", selectedIndex: null, selectedLanguage: "" };
+    const preferred = getPreferredOfflineDownloadSubtitles(
+      snapshot.map((entry) => entry.subtitle),
+      PlayerSettingsStore.get()
+    );
+    const pickerState = { selectedMode: "none", selectedIndexes: [], selectedLanguage: "" };
     const showPicker = () => {
       const sourceDisplay = normalizeSourceForDisplay(selected.stream || {});
       const content = document.createElement("div");
@@ -5959,7 +5965,7 @@ export const MetaDetailsScreen = {
         createBrowserOfflineSubtitlePicker({
           snapshot,
           selection: pickerState,
-          preferredLabel: preferred ? normalizeSubtitleForDisplay(preferred).language : "",
+          preferred,
           onSelect: (next) => {
             Object.assign(pickerState, next);
             showPicker();
@@ -5977,36 +5983,16 @@ export const MetaDetailsScreen = {
             label: "Use Selection",
             className: "stream-download-primary-action",
             onAction: () => {
-              const selectedSubtitle = Number.isInteger(pickerState.selectedIndex)
-                ? snapshot[pickerState.selectedIndex]?.subtitle
-                : null;
-              const languageSubtitles = snapshot
-                .filter((entry) => entry.language === pickerState.selectedLanguage)
-                .map((entry) => entry.subtitle);
-              const chosen =
-                pickerState.selectedMode === "all"
-                  ? snapshot.map((entry) => entry.subtitle)
-                  : pickerState.selectedMode === "language"
-                    ? languageSubtitles
-                    : pickerState.selectedMode === "preferred"
-                      ? preferred
-                      : selectedSubtitle;
-              const subtitleSelection = this.createSeasonOfflineSubtitleSelection(
-                pickerState.selectedMode,
-                chosen
+              const subtitleSelection = createBrowserOfflineSubtitleSelection(
+                snapshot,
+                pickerState
               );
               flow.selections.set(String(episode.id || ""), {
                 episode,
                 ...selected,
-                subtitleMode: pickerState.selectedMode,
-                context: {
-                  ...selected.context,
-                  ...subtitleSelection,
-                  ...(pickerState.selectedMode === "language"
-                    ? { offlineSubtitleLanguage: pickerState.selectedLanguage }
-                    : {})
-                },
-                subtitle: selectedSubtitle
+                subtitleMode: subtitleSelection.offlineSubtitleMode,
+                context: { ...selected.context, ...subtitleSelection },
+                subtitle: subtitleSelection.offlineSubtitle
               });
               this.showManualSeasonDownloadDialog(flow);
             }

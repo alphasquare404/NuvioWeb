@@ -89,6 +89,7 @@ import { matchStreamBadges } from "../../../core/streams/streamBadgeRules.js";
 import { hasReleaseToken } from "../../../core/streams/releaseToken.js";
 import {
   autoPlayCandidates,
+  isAutoPlayEffectivelyEnabled,
   selectAutoPlayStream
 } from "../../../core/streams/streamAutoPlaySelector.js";
 import {
@@ -7034,7 +7035,22 @@ export const PlayerScreen = {
         remuxAvailable: REMUX_POLICY.mode !== "off" && !this._processingUnavailable,
         audioAvailable: Boolean(TRANSCODE_ENDPOINT) && !this._processingUnavailable
       });
-      return next ? this.runUnverifiedPlaybackAttempt(next) : false;
+      if (!next) return false;
+      console.warn(
+        "[Playback] route-failed",
+        JSON.stringify({
+          route: attempt.route,
+          next,
+          trigger: failure.startupStall
+            ? "startup-timeout"
+            : failure.preparationFailed
+              ? "preparation"
+              : "playback-error",
+          mediaErrorCode: Number(failure.mediaErrorCode) || 0,
+          httpStatus: Number(failure.httpStatus) || 0
+        })
+      );
+      return this.runUnverifiedPlaybackAttempt(next);
     }
     if (this._processingUnavailable) return false;
     if (!attempt || this.hasPresentedPlaybackFrame || attempt.mediaUrl !== this.activePlaybackUrl)
@@ -17978,7 +17994,7 @@ export const PlayerScreen = {
     this.renderEpisodePanel();
   },
 
-  async openEpisodeStreamsView({ forceReload = true } = {}) {
+  async openEpisodeStreamsView({ forceReload = true, automatic = false } = {}) {
     const selected = this.episodes[this.episodePanelIndex] || null;
     if (!selected?.id) {
       return;
@@ -17999,10 +18015,21 @@ export const PlayerScreen = {
     const token = Number(this.episodePanelStreamLoadToken || 0) + 1;
     this.episodePanelStreamLoadToken = token;
     try {
-      const streams = await this.getPlayableStreamsForVideo(selected.id, itemType, {
-        season: selected.season,
-        episode: selected.episode
-      });
+      const settings = PlayerSettingsStore.get();
+      const selection =
+        automatic && isAutoPlayEffectivelyEnabled(settings)
+          ? await this.resolveNextEpisodeStreamByAutoPlayPolicy(
+              { videoId: selected.id, season: selected.season, episode: selected.episode },
+              itemType,
+              settings
+            )
+          : null;
+      const streams =
+        selection?.streamItems ??
+        (await this.getPlayableStreamsForVideo(selected.id, itemType, {
+          season: selected.season,
+          episode: selected.episode
+        }));
       if (
         token !== this.episodePanelStreamLoadToken ||
         !this.episodePanelVisible ||
@@ -18013,6 +18040,13 @@ export const PlayerScreen = {
       }
       this.episodePanelStreams = streams;
       this.episodePanelStreamsLoading = false;
+      if (selection?.selectedStream) {
+        await this.playEpisodeFromPanel(selection.selectedStream, {
+          automatic: true,
+          complete: selection.complete
+        });
+        return;
+      }
       this.episodePanelStreamFocus = streams.length
         ? { zone: "streams", index: 0 }
         : { zone: "actions", index: 0 };
@@ -18554,7 +18588,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     this.resetControlsAutoHide();
   },
 
-  async playEpisodeFromPanel(selectedStream = null) {
+  async playEpisodeFromPanel(selectedStream = null, { automatic = false, complete } = {}) {
     if (this.switchingEpisode || !this.episodes.length) {
       return;
     }
@@ -18564,14 +18598,16 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     }
     if (this.offlineDownloadId) return this.playOfflinePlayerEpisode(selected);
     if (!selectedStream && this.episodePanelMode !== "streams") {
-      await this.openEpisodeStreamsView({ forceReload: true });
+      await this.openEpisodeStreamsView({ forceReload: true, automatic: true });
       return;
     }
     this.switchingEpisode = true;
     try {
       const itemType = this.params?.itemType || "series";
       const streamItems = selectedStream
-        ? this.getFilteredEpisodePanelStreams()
+        ? automatic
+          ? this.episodePanelStreams
+          : this.getFilteredEpisodePanelStreams()
         : await this.getPlayableStreamsForVideo(selected.id, itemType, {
             season: selected.season,
             episode: selected.episode
@@ -18590,8 +18626,8 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
         {
           streamUrl: bestStream,
           prepareSelectedSource: true,
-          automaticSourceSelection: false,
-          streamCandidatesComplete: !this.episodePanelStreamsLoading,
+          automaticSourceSelection: automatic,
+          streamCandidatesComplete: complete ?? !this.episodePanelStreamsLoading,
           itemId: this.params?.itemId,
           itemType,
           imdbId: this.params?.imdbId || null,

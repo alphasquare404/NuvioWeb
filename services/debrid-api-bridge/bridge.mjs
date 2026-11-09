@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { parseHttpsPlaybackUrl } from "./addonPlaybackPolicy.mjs";
+import { requestPublicAddonHeaders, resolvePublicAddonRedirect } from "./publicAddonRedirect.mjs";
 
 const PROVIDERS = Object.freeze({
   torbox: "https://api.torbox.app",
@@ -441,10 +443,40 @@ export function createDebridApiBridgeHandler({
       .trim()
       .toLowerCase()
   ),
+  publicAddonRequest = requestPublicAddonHeaders,
+  addonLookup,
   requestTimeoutMs = REQUEST_TIMEOUT_MS
 } = {}) {
+  let addonResolvesInFlight = 0;
   return async function handleDebridApiBridge(request, response) {
     const url = new URL(request.url || "/", "http://bridge.local");
+    if (url.pathname === "/api/debrid/link/from-addon") {
+      if (!addonResolveEnabled) return bridgeFailure(response, 404, "not_enabled");
+      if (request.method !== "POST") return bridgeFailure(response, 405, "method_not_allowed");
+      if (addonResolvesInFlight >= 8) return bridgeFailure(response, 429, "resolver_busy");
+      addonResolvesInFlight++;
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      response.once("close", abort);
+      try {
+        const body = await readJsonBody(request);
+        const source = parseHttpsPlaybackUrl(body.url);
+        if (!source) return bridgeFailure(response, 403, "untrusted_addon_url");
+        const resolved = await resolvePublicAddonRedirect(source, {
+          requestHeaders: publicAddonRequest,
+          lookup: addonLookup,
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(requestTimeoutMs)])
+        });
+        if (!resolved) return bridgeFailure(response, 502, "addon_resolve_failed");
+        return json(response, 200, { success: true, data: resolved });
+      } catch (error) {
+        if (!response.destroyed)
+          return bridgeFailure(response, error?.statusCode || 502, "addon_resolve_failed");
+      } finally {
+        response.removeListener("close", abort);
+        addonResolvesInFlight--;
+      }
+    }
     const match =
       /^\/api\/debrid\/(torbox|premiumize)\/(device\/start|device\/redeem|account|cache\/check|torrent\/create|torrent\/lookup|link\/resolve|link\/from-addon)$/.exec(
         url.pathname

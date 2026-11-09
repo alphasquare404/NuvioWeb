@@ -97,7 +97,14 @@ const mediaServerPorts = [2710, 2711, 2712, 2713, 2714];
 const mediaProbeTimeoutMs = 1200;
 let mediaRuntimeProcess = null;
 let cachedMediaServerPort = mediaServerPorts[0];
-const debridApiBridgeHandler = createDebridApiBridgeHandler();
+const hostResolveEnabled = /^(1|true)$/i.test(
+  String(
+    process.env.MEDIA_URL_HOST_RESOLVE_ENABLED ?? deploymentEnv.MEDIA_URL_HOST_RESOLVE_ENABLED ?? ""
+  ).trim()
+);
+const debridApiBridgeHandler = createDebridApiBridgeHandler({
+  addonResolveEnabled: hostResolveEnabled
+});
 const externalReturnHandler = createExternalReturnHandler();
 // The third bridge, mounted like the other two. It was the only one missing,
 // so Trakt sign-in could be exercised in a container and nowhere else -- which
@@ -458,15 +465,7 @@ const server = http.createServer(async (request, response) => {
           )
         )
       };
-      resolved.MEDIA_URL_HOST_RESOLVE_ENABLED = ["1", "true"].includes(
-        String(
-          process.env.MEDIA_URL_HOST_RESOLVE_ENABLED ?? env.MEDIA_URL_HOST_RESOLVE_ENABLED ?? ""
-        )
-          .trim()
-          .toLowerCase()
-      )
-        ? "true"
-        : "false";
+      resolved.MEDIA_URL_HOST_RESOLVE_ENABLED = String(hostResolveEnabled);
       resolved.PROBE_CLIENT_CONCURRENCY = String(
         normalizeClientProbeConcurrency(
           process.env.PROBE_CLIENT_CONCURRENCY ?? env.PROBE_CLIENT_CONCURRENCY

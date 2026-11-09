@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   shouldThrottleAhead,
+  playbackBufferLimits,
   BufferBudget,
   MAX_PLAYBACK_COMPRESSED_BYTES
 } from "./bufferBudget.mjs";
@@ -9,20 +10,39 @@ test("a playing decoder that needs more future data can fill beyond the normal t
   let buffered = 0,
     readyState = 2,
     appends = 0;
-  while (readyState < 3 && appends < 10) {
+  while (readyState < 3 && appends < 40) {
     if (shouldThrottleAhead({ aheadSeconds: buffered, readyState, paused: false })) break;
     buffered += 4;
     appends++;
-    if (buffered >= 20) readyState = 3;
+    if (buffered >= 128) readyState = 3;
   }
   assert.equal(readyState, 3);
-  assert.equal(buffered, 20);
+  assert.equal(buffered, 128);
   assert.equal(shouldThrottleAhead({ aheadSeconds: buffered, readyState, paused: false }), true);
 });
-test("paused playback and a ready decoder keep the existing ahead limit", () => {
-  assert.equal(shouldThrottleAhead({ aheadSeconds: 16, readyState: 2, paused: true }), true);
-  assert.equal(shouldThrottleAhead({ aheadSeconds: 16, readyState: 3, paused: false }), true);
-  assert.equal(shouldThrottleAhead({ aheadSeconds: 12, readyState: 4, paused: false }), false);
+test("paused playback and a ready decoder aim for two minutes ahead", () => {
+  assert.equal(shouldThrottleAhead({ aheadSeconds: 120, readyState: 2, paused: true }), true);
+  assert.equal(shouldThrottleAhead({ aheadSeconds: 120, readyState: 3, paused: false }), true);
+  assert.equal(shouldThrottleAhead({ aheadSeconds: 119, readyState: 4, paused: false }), false);
+  assert.equal(
+    shouldThrottleAhead({ aheadSeconds: 48, readyState: 4, paused: false, limitSeconds: 48 }),
+    true
+  );
+});
+
+test("large buffer budgets require the browser to report sufficient device memory", () => {
+  const mib = 1024 * 1024;
+  for (const memory of [undefined, 2, 4, Infinity]) {
+    assert.deepEqual(playbackBufferLimits(memory), { baseBytes: 50 * mib, maxBytes: 100 * mib });
+  }
+  assert.deepEqual(playbackBufferLimits(8), { baseBytes: 300 * mib, maxBytes: 300 * mib });
+  assert.deepEqual(playbackBufferLimits(16), { baseBytes: 400 * mib, maxBytes: 400 * mib });
+  const budget = new BufferBudget(playbackBufferLimits(16));
+  for (let index = 1; index <= 8; index++) {
+    budget.reserve(50 * mib);
+    budget.append(50 * mib, index * 10, true);
+  }
+  assert.throws(() => budget.reserve(1), /compressed-byte-budget/);
 });
 
 test("readiness buffering still refuses output that exceeds the hard compressed-byte budget", () => {
@@ -32,7 +52,7 @@ test("readiness buffering still refuses output that exceeds the hard compressed-
   budget.append(unit, 20, true);
   budget.reserve(unit);
   budget.append(unit, 40, true);
-  assert.equal(shouldThrottleAhead({ aheadSeconds: 40, readyState: 2, paused: false }), false);
+  assert.equal(shouldThrottleAhead({ aheadSeconds: 130, readyState: 2, paused: false }), false);
   assert.equal(budget.plan(8 * 1024 * 1024, 0).bytePressure, true);
   assert.throws(() => budget.reserve(8 * 1024 * 1024), /compressed-byte-budget/);
   assert.ok(budget.heldBytes <= budget.limitBytes);

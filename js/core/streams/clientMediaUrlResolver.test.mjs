@@ -232,3 +232,36 @@ test("a failed helper and blocked source do not repeat the same host request", a
   await assert.rejects(reader.read(0), TypeError);
   assert.equal(calls, 1);
 });
+
+test("public add-on URLs can request host assistance with one flag and do not pre-resolve", async (t) => {
+  const previous = globalThis.__NUVIO_ENV__;
+  globalThis.__NUVIO_ENV__ = {
+    MEDIA_URL_HOST_RESOLVE_ENABLED: "true"
+  };
+  t.after(() => {
+    globalThis.__NUVIO_ENV__ = previous;
+  });
+  const { clientMediaUrlResolver } = await import("./clientMediaUrlResolver.js");
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    assert.equal(url, "/api/debrid/link/from-addon");
+    assert.equal(options.method, "POST");
+    assert.equal(JSON.parse(options.body).url, "https://service.example/api/play/movie-1");
+    return Response.json({ data: "https://media.example/movie-1" });
+  });
+  assert.equal(clientMediaUrlResolver.canUseHost("https://service.example/api/play/movie-1"), true);
+  assert.equal(clientMediaUrlResolver.canUseHost("https://service.example/api/play/movie-2"), true);
+  assert.equal(clientMediaUrlResolver.canUseHost("https://other-addon.example/player/video"), true);
+  assert.equal(clientMediaUrlResolver.canUseHost("https://127.0.0.1/video"), false);
+  assert.equal(
+    clientMediaUrlResolver.canPreResolve("https://service.example/api/play/movie-1"),
+    false
+  );
+  assert.equal(
+    (
+      await clientMediaUrlResolver.resolve("https://service.example/api/play/movie-1", {
+        skipDirect: true
+      })
+    ).url,
+    "https://media.example/movie-1"
+  );
+});

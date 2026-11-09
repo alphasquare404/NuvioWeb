@@ -1,7 +1,7 @@
 import { attachRemuxMediaSources } from "./airplaySource.mjs";
 import {
   BufferBudget,
-  MAX_PLAYBACK_COMPRESSED_BYTES,
+  playbackBufferLimits,
   shouldThrottleAhead,
   isManagedBufferBlocked
 } from "./bufferBudget.mjs";
@@ -9,7 +9,7 @@ import { createNativeSeekRecovery, isTimeBuffered } from "./nativeSeekRecovery.m
 import { OpfsCache, removeOwned } from "./opfsCache.mjs";
 import { IO_BYTES } from "./mediaFragments.mjs";
 import { createStartupPlayback } from "./startupPlayback.mjs";
-import { runStartupStep } from "./startupFailure.mjs";
+import { clientRemuxFailureFacts, runStartupStep } from "./startupFailure.mjs";
 import { createEmbeddedSubtitles } from "./embeddedSubtitles.mjs";
 import { holdStaging, cleanOrphanStaging } from "./stagingLease.mjs";
 export function createClientRemux({
@@ -19,6 +19,8 @@ export function createClientRemux({
   cacheMaxMiB = 512,
   requestHeaders = {},
   expectedAudio = null,
+  canResolveSource = () => false,
+  resolveSource = async () => null,
   onStatus = () => {},
   onError = () => {},
   onTracks = () => {},
@@ -102,6 +104,12 @@ export function createClientRemux({
     render();
     onError(latest.reason);
   }
+  function logFailure(phase, error) {
+    console.warn(
+      "[ClientRemux] failure",
+      JSON.stringify(clientRemuxFailureFacts(phase, error, latest, video))
+    );
+  }
   async function clean(name) {
     if (!name) return;
     const root = await navigator.storage.getDirectory();
@@ -142,6 +150,7 @@ export function createClientRemux({
     const old = producer;
     producer = null;
     if (!old) return;
+    old.resolveAbort.abort();
     old.worker.terminate();
     await old.owner.cache.finishRun(old.id);
     try {
@@ -241,7 +250,7 @@ export function createClientRemux({
         managedAllowed: !globalThis.ManagedMediaSource,
         managedSignalSeen: false,
         budget: new BufferBudget({
-          maxBytes: MAX_PLAYBACK_COMPRESSED_BYTES,
+          ...playbackBufferLimits(globalThis.navigator?.deviceMemory),
           requireRandomAccessPoints: true
         }),
         sb: null,
@@ -332,8 +341,9 @@ export function createClientRemux({
   }
   function metadata(s, info) {
     if (!active(s)) return;
-    if (!Source.isTypeSupported(info.mime)) throw Error("output-codecs-unsupported");
-    latest = { ...latest, ...info, requested: s.target, state: "remuxing" };
+    const outputMimeSupported = Source.isTypeSupported(info.mime);
+    latest = { ...latest, ...info, outputMimeSupported, requested: s.target, state: "remuxing" };
+    if (!outputMimeSupported) throw Error("output-codecs-unsupported");
     if (film) {
       film.audioTracks = (info.audioTracks || []).map((track) => ({
         ...track,
@@ -353,6 +363,53 @@ export function createClientRemux({
         return video.buffered.end(i) - video.currentTime;
     return 0;
   }
+  async function trimBufferedBehind(s, cutoff) {
+    const sb = s.sb;
+    const cut = s.budget.trimPoint(cutoff);
+    if (sb.buffered.length && sb.buffered.start(0) < cut) {
+      latest.lastRemovalDependencyEnd = s.budget.removalDependencyEnd(cut);
+      latest.removalCurrentTime = video.currentTime;
+      await update(sb, () => sb.remove(0, cut));
+      if (!active(s)) return;
+      latest.lastRemovalEnd = cut;
+      latest.bufferStartAfterRemoval = sb.buffered.length ? sb.buffered.start(0) : null;
+    }
+    s.budget.forgetBefore(cut);
+  }
+
+  async function appendBytes(s, bytes) {
+    const sb = s.sb;
+    let retryUntil = 0;
+    while (active(s)) {
+      try {
+        await update(sb, () => sb.appendBuffer(bytes));
+        return;
+      } catch (error) {
+        const bufferedAhead = ahead();
+        if (error?.name !== "QuotaExceededError" || !s.seekApplied || bufferedAhead <= 4) {
+          throw error;
+        }
+        if (!retryUntil) {
+          // The browser can have a lower quota than our compressed-byte cap.
+          // Leave headroom in subsequent appends and retry only unaccepted bytes.
+          s.quotaAheadSeconds = Math.min(
+            s.quotaAheadSeconds ?? Infinity,
+            Math.max(4, bufferedAhead - 4)
+          );
+          retryUntil = performance.now() + 5000;
+        } else if (performance.now() >= retryUntil) {
+          throw error;
+        }
+        await trimBufferedBehind(s, video.currentTime - 0.25);
+        while (active(s) && video.paused && !video.ended) {
+          await sleep(100);
+          retryUntil = performance.now() + 5000;
+        }
+        await sleep(100);
+      }
+    }
+  }
+
   async function appendFile(s, file, boundary) {
     const sb = s.sb;
     if (!sb || !active(s)) return;
@@ -362,18 +419,10 @@ export function createClientRemux({
         boundary.randomAccessGuardSeconds || 0
       );
       while (active(s)) {
-        let plan = s.budget.plan(boundary.writeBytes, video.currentTime),
-          cut = s.budget.trimPoint(plan.trimBefore);
-        if (sb.buffered.length && sb.buffered.start(0) < cut) {
-          latest.lastRemovalDependencyEnd = s.budget.removalDependencyEnd(cut);
-          latest.removalCurrentTime = video.currentTime;
-          await update(sb, () => sb.remove(0, cut));
-          latest.lastRemovalEnd = cut;
-          latest.bufferStartAfterRemoval = sb.buffered.length ? sb.buffered.start(0) : null;
-        }
+        const { trimBefore } = s.budget.plan(boundary.writeBytes, video.currentTime);
+        await trimBufferedBehind(s, trimBefore);
         if (!active(s)) return;
-        s.budget.forgetBefore(cut);
-        plan = s.budget.plan(boundary.writeBytes, video.currentTime);
+        const plan = s.budget.plan(boundary.writeBytes, video.currentTime);
         latest.compressedByteBudget = s.budget.limitBytes;
         latest.maxCompressedByteBudget = s.budget.maxBytes;
         latest.videoRemovalGuardSeconds = s.budget.reorderGuardSeconds;
@@ -389,7 +438,8 @@ export function createClientRemux({
         const timeBlocked = shouldThrottleAhead({
           aheadSeconds: bufferedAhead,
           readyState: video.readyState,
-          paused: video.paused
+          paused: video.paused,
+          limitSeconds: s.quotaAheadSeconds
         });
         if (!plan.bytePressure && !timeBlocked && !managedBlocked && !seekBlocked) break;
         if (plan.bytePressure && !s.seekApplied)
@@ -416,7 +466,7 @@ export function createClientRemux({
     for (let at = 0; at < file.size && active(s); at += IO_BYTES) {
       const bytes = await file.slice(at, at + IO_BYTES).arrayBuffer();
       if (!active(s)) return;
-      await update(sb, () => sb.appendBuffer(bytes));
+      await appendBytes(s, bytes);
       if (!active(s)) return;
       latest.firstAppendMs ??= Math.round(performance.now() - s.began);
       const end = sb.buffered.length ? sb.buffered.end(sb.buffered.length - 1) : 0;
@@ -466,6 +516,7 @@ export function createClientRemux({
           latest.prefetchFailed = true;
           await abortProducer();
         } else {
+          logFailure("output-append", e);
           await stop();
           fail(e.message);
         }
@@ -505,6 +556,7 @@ export function createClientRemux({
       owner,
       worker,
       lease,
+      resolveAbort: new AbortController(),
       prefetch,
       info: null,
       init: null,
@@ -519,8 +571,12 @@ export function createClientRemux({
     worker.onmessage = ({ data }) => {
       if (producer !== job || data.jobId !== id) return;
       observe(job, data.stats);
+      let phase = "producer";
       void (async () => {
-        if (data.type === "reserve") {
+        if (data.type === "resolve-source") {
+          const resolved = await resolveSource(owner.sourceUrl, job.resolveAbort.signal);
+          reply(job, data, resolved);
+        } else if (data.type === "reserve") {
           const accepted = await owner.cache.reserve(data.entry);
           if (producer !== job) {
             if (accepted) await owner.cache.discard(data.entry.id);
@@ -534,6 +590,7 @@ export function createClientRemux({
           await owner.cache.evictUnpinned();
           reply(job, data, true);
         } else if (data.type === "metadata") {
+          phase = "output-setup";
           if (owner.size != null && owner.size !== data.stats.size) throw Error("source-changed");
           owner.size = data.stats.size;
           job.info = data.info;
@@ -593,18 +650,22 @@ export function createClientRemux({
           latest.prefetchFailed = true;
           await abortProducer();
         } else {
+          logFailure(phase, e);
           await stop();
           fail(e.message);
         }
       });
     };
     worker.onerror = () => {
-      if (producer === job) void stop().then(() => fail("worker-error"));
+      if (producer !== job) return;
+      logFailure("media-worker", Error("worker-error"));
+      void stop().then(() => fail("worker-error"));
     };
     worker.postMessage({
       type: "start",
       requestHeaders,
       expectedAudio,
+      hostResolveAvailable: canResolveSource(owner.sourceUrl),
       version,
       audioIndex,
       jobId: id,
@@ -807,10 +868,12 @@ export function createClientRemux({
 
   const errorHandler = (event) => {
     if (event.detail) return; // Controller reports must not recursively become native failures.
-    if (session)
+    if (session) {
+      logFailure("native-media", Error("client-media-error"));
       void stop()
         .then(() => fail("client-media-error"))
         .catch(() => fail("client-cleanup-failed"));
+    }
   };
   const playHandler = () => {
     desiredPaused = false;
