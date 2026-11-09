@@ -15,6 +15,18 @@ async function loadStreamScreen(instance = "") {
       {
         name: "stream-screen-browser-mocks",
         setup(buildApi) {
+          if (instance === "context-menu") {
+            for (const [filter, name] of [
+              [/touchActionSheet\.js$/, "openTouchActionSheet"],
+              [/desktopContextMenu\.js$/, "openDesktopContextMenu"]
+            ]) {
+              buildApi.onResolve({ filter }, () => ({ path: name, namespace: "menu-test" }));
+            }
+            buildApi.onLoad({ filter: /.*/, namespace: "menu-test" }, ({ path }) => ({
+              contents:
+                "export const " + path + " = (menu) => globalThis.__NUVIO_TEST_MENU__(menu);"
+            }));
+          }
           if (instance.startsWith("external-")) {
             buildApi.onResolve({ filter: /startupLoadingOverlay\.js$/ }, () => ({
               path: "startup",
@@ -325,6 +337,61 @@ test("stream page waits for the remembered source during partial discovery", asy
     assert.equal(played, "early");
   } finally {
     delete globalThis.__NUVIO_TEST_REUSABLE_STREAM__;
+  }
+});
+
+test("the stream menu only offers the alternate route and asks which external app to use", async () => {
+  const { StreamScreen } = await loadStreamScreen("context-menu");
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { userAgent: "iPhone" }
+  });
+  const node = { dataset: { streamId: "stream-a" } };
+  const menus = [];
+  const plays = [];
+  globalThis.__NUVIO_TEST_MENU__ = (menu) => {
+    menus.push(menu);
+    return { destroy() {} };
+  };
+  StreamScreen.streams = [{ id: "stream-a", name: "Stream A" }];
+  StreamScreen.playStream = async (...args) => plays.push(args);
+  try {
+    globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = { browserExternalPlayer: "disabled" };
+    for (const type of ["touch", "pointer"]) {
+      assert.equal(StreamScreen.openStreamCardContextMenu(node, { type }), true);
+      const firstMenu = menus.at(-1);
+      assert.deepEqual(
+        firstMenu.items.map(({ action }) => action),
+        ["copyLink", "openExternal"]
+      );
+      firstMenu.onSelect(firstMenu.items[1]);
+      assert.notEqual(menus.at(-1), firstMenu);
+      assert.equal(plays.length, 0);
+      const appMenu = menus.at(-1);
+      assert.deepEqual(
+        appMenu.items.map(({ player }) => player),
+        ["lenna", "outplayer", "infuse", "vlc"]
+      );
+      appMenu.onSelect(appMenu.items.find(({ player }) => player === "vlc"));
+      assert.deepEqual(plays.splice(0), [["stream-a", { playerOverride: "vlc" }]]);
+      assert.equal(globalThis.__NUVIO_TEST_PLAYER_SETTINGS__.browserExternalPlayer, "disabled");
+    }
+
+    globalThis.__NUVIO_TEST_PLAYER_SETTINGS__ = { browserExternalPlayer: "lenna" };
+    StreamScreen.openStreamCardContextMenu(node, { type: "touch" });
+    const menu = menus.at(-1);
+    assert.deepEqual(
+      menu.items.map(({ action }) => action),
+      ["copyLink", "openInternal"]
+    );
+    menu.onSelect(menu.items[1]);
+    assert.deepEqual(plays, [["stream-a", { skipExternalRoute: true }]]);
+  } finally {
+    if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+    else delete globalThis.navigator;
+    delete globalThis.__NUVIO_TEST_MENU__;
+    delete globalThis.__NUVIO_TEST_PLAYER_SETTINGS__;
   }
 });
 
