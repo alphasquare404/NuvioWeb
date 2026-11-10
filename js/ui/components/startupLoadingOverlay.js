@@ -244,7 +244,7 @@ export const StartupLoadingOverlay = {
     relayText = String(text || "");
     this.setStage(stage);
   },
-  finish(reason = "finished") {
+  finish(_reason = "finished") {
     if (artworkResize) globalThis.removeEventListener?.("resize", artworkResize);
     artworkResize = null;
     orientation?.destroy();

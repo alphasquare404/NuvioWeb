@@ -153,3 +153,62 @@ test("runtime remux mode controls local mounting and public endpoints independen
     }
   }
 });
+
+test("static serving blocks private paths and encoded aliases while preserving public assets", async () => {
+  const port = await unusedPort();
+  const baseUrl = "http://127.0.0.1:" + port;
+  const child = spawn(process.execPath, ["scripts/serve.mjs"], {
+    cwd: process.cwd(),
+    env: { ...process.env, HOST: "0.0.0.0", PORT: String(port), NUVIO_DISABLE_MEDIA_RUNTIME: "1" },
+    stdio: "ignore"
+  });
+  try {
+    await waitForServer(baseUrl);
+    for (const pathname of [
+      "/package.json",
+      "/pack%61ge.json",
+      "/PACKAGE.JSON",
+      "/package.json%20",
+      "/local.properties",
+      "/local%2eproperties",
+      "/.env",
+      "/%2eenv",
+      "/.git/HEAD",
+      "/%2egit%2fHEAD",
+      "/scripts/serve.mjs",
+      "/scripts%2fserve.mjs",
+      "/services/remux-bridge/bridge.mjs",
+      "/HANDOFF-CLAUDE-CODE.md",
+      "/js/%2e%2e%2fpackage.json",
+      "/js/%2e%2e%5cpackage.json",
+      "/js/../package.json",
+      "/package.json%3A%3A%24DATA",
+      "/%zz"
+    ]) {
+      const response = await fetch(baseUrl + pathname);
+      await response.arrayBuffer();
+      assert.equal(response.status, 404, pathname);
+    }
+    for (const pathname of [
+      "/",
+      "/index.html",
+      "/boot-guard.js",
+      "/css/base.css",
+      "/css/b%61se.css",
+      "/assets/brand/nuvio-favicon.png",
+      "/js/app.js",
+      "/res/values/strings.xml",
+      "/manifest.webmanifest",
+      "/sw.js",
+      "/nuvio.env.js",
+      "/api/external-return/health"
+    ]) {
+      const response = await fetch(baseUrl + pathname);
+      await response.arrayBuffer();
+      assert.equal(response.status, 200, pathname);
+    }
+  } finally {
+    child.kill("SIGTERM");
+    await once(child, "exit");
+  }
+});

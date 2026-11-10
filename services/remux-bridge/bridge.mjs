@@ -69,21 +69,6 @@ function clientAddress(request) {
   return String(request?.socket?.remoteAddress || "unknown");
 }
 
-/** How many bytes the source says it has, or 0 when it will not say. */
-async function fetchSourceSize(url) {
-  const controller = typeof AbortController === "function" ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), 5000) : null;
-  try {
-    const response = await fetch(url, { method: "HEAD", signal: controller?.signal });
-    const length = Number(response.headers.get("content-length"));
-    return Number.isFinite(length) && length > 0 ? length : 0;
-  } catch {
-    return 0;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
 /** Only what can actually be fetched, and nothing that pretends to be local. */
 export function parseRemuxSource(raw, { allowHosts = null, audioIndex = 0 } = {}) {
   const track = Number(audioIndex);

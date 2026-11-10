@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   PLAYBACK_METHODS,
   classifyPlayback,
-  detectAudioChannels,
   detectAudioCodec,
   detectContainer,
   detectVideoCodec,

@@ -74,8 +74,8 @@ const AUDIO_HINTS = [
  */
 export function detectAudioChannels(text = "") {
   const value = String(text || "");
-  const glued = /(?:aac|ddp|eac3|ac3|dd)\s*([1-8])[.\-]([01])/i.exec(value);
-  const layout = glued || /\b([1-8])[.\-]([01])\b/.exec(value);
+  const glued = /(?:aac|ddp|eac3|ac3|dd)\s*([1-8])[.-]([01])/i.exec(value);
+  const layout = glued || /\b([1-8])[.-]([01])\b/.exec(value);
   if (layout) {
     const channels = Number(layout[1]) + Number(layout[2]);
     return Number.isFinite(channels) && channels > 0 ? channels : 0;

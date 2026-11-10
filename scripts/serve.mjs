@@ -218,7 +218,7 @@ function getLanUrls() {
 }
 
 function resolveRequestPath(urlPathname) {
-  let pathname = decodeURIComponent(String(urlPathname || "/"));
+  let pathname = urlPathname || "/";
   if (pathname === "/") {
     pathname = "/index.html";
   }
@@ -234,33 +234,36 @@ function resolveDistPathForRootFile(rootFilePath) {
   return path.join(distDir, relativePath);
 }
 
-/**
- * Files that must never be served, whatever is on disk.
- *
- * The repository is the web root, so gitignore protects the repo but not the server:
- * `local.properties` holds the Supabase key and answered 200 over HTTP, as did
- * `package.json`. A denylist is the only thing standing between a config file and a
- * stranger with a browser.
- */
-const PRIVATE_PATHS = [
-  "/local.properties",
-  "/local.example.properties",
-  "/package.json",
-  "/package-lock.json",
-  "/pnpm-lock.yaml",
-  "/yarn.lock",
-  "/.env",
-  "/.env.example"
-];
-const PRIVATE_PREFIXES = ["/node_modules/", "/scripts/", "/services/", "/docker/", "/.git/"];
+// Decode once, then authorize the same path that is resolved on disk.
+// Only web assets are public; repository configuration and tooling are not.
+const PUBLIC_FILES = new Set([
+  "/",
+  "/index.html",
+  "/app.bundle.js",
+  "/core-js.bundle.js",
+  "/boot-guard.js",
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/youtube-proxy.html",
+  "/docs/youtube-proxy.html"
+]);
+const PUBLIC_PREFIXES = ["/assets/", "/css/", "/js/", "/res/"];
 
-function isPrivatePath(pathname = "") {
-  const value = String(pathname || "");
-  if (PRIVATE_PATHS.includes(value)) return true;
-  if (PRIVATE_PREFIXES.some((prefix) => value.startsWith(prefix))) return true;
-  if (value.startsWith("/.")) return true;
-  if (value.includes("/.")) return true;
-  return false;
+function publicStaticPath(pathname) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  // Reject hidden/traversal segments and Windows path aliases before resolution.
+  if (/[\\:]/.test(decoded) || [...decoded].some((char) => char.charCodeAt(0) < 32)) return null;
+  if (decoded.split("/").some((part) => part.startsWith(".") || /[. ]$/.test(part))) {
+    return null;
+  }
+  return PUBLIC_FILES.has(decoded) || PUBLIC_PREFIXES.some((prefix) => decoded.startsWith(prefix))
+    ? decoded
+    : null;
 }
 async function resolveRequestFile(pathname) {
   const rootPath = resolveRequestPath(pathname);
@@ -518,7 +521,8 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    if (isPrivatePath(requestUrl.pathname)) {
+    const staticPath = publicStaticPath(requestUrl.pathname);
+    if (staticPath === null) {
       response.writeHead(404, {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-store"
@@ -527,7 +531,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    let { filePath, fileStat } = await resolveRequestFile(requestUrl.pathname);
+    let { filePath, fileStat } = await resolveRequestFile(staticPath);
 
     if (fileStat?.isDirectory()) {
       filePath = path.join(filePath, "index.html");
