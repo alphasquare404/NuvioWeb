@@ -758,19 +758,22 @@ test("addon identity cannot also appear as selected Built in after a boundary ra
   const native = { kind: "subtitles", language: "en", mode: "disabled" };
   const mounted = { kind: "subtitles", language: "en", mode: "showing" };
   const tracks = [native, mounted];
+  const subtitle = { id: "aio-en", url: "https://subtitles.test/en.vtt", lang: "en" };
+  const selectionId = (track) => JSON.stringify([track.id, track.url, track.lang]);
   const ctx = {
     getTextTracks: () => tracks,
     resolveBuiltInSubtitleBoundary: () => 2,
     externalTrackNodes: [{ track: mounted }],
-    subtitles: [{ id: "aio-en", lang: "en" }],
+    subtitles: [subtitle],
     isCurrentSourceAdaptiveManifest: () => false,
     isSubtitleOffEntrySelected: () => false,
     manifestSubtitleTracks: [],
     selectedSubtitleTrackIndex: 1,
-    selectedAddonSubtitleId: "aio-en"
+    selectedAddonSubtitleId: selectionId(subtitle)
   };
   const run = method("getSubtitleEntries(tab = this.subtitleDialogTab)", {
     PlayerController: {},
+    addonSubtitleSelectionId: selectionId,
     t: (_k, _v, text) => text,
     formatSubtitleTrackDisplay: () => ({ label: "English", language: "en", languageKey: "en" }),
     isForcedSubtitleTrack: () => false,

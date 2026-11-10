@@ -1614,6 +1614,14 @@ function formatHtmlSubtitleFontSize(value = 120) {
   return `${Math.round(basePx * scale)}px`;
 }
 
+function addonSubtitleSelectionId(subtitle) {
+  return JSON.stringify([
+    subtitle.id || "",
+    subtitle.url,
+    subtitle.lang || subtitle.language || ""
+  ]);
+}
+
 function normalizeSubtitleLanguageKey(value) {
   const code = normalizeTrackLanguageCode(value) || inferTrackLanguageCodeFromText(value);
   if (code) {
@@ -2271,6 +2279,7 @@ export const PlayerScreen = {
     this.subtitlePointerScrollTransaction = null;
     this.selectedSubtitleTrackIndex = -1;
     this.selectedAddonSubtitleId = null;
+    this.subtitleExplicitlyOff = false;
     this.subtitleLayoutDiagnosticKeys = new Set();
     this.startupSubtitlePreferenceApplied = false;
     this.startupSubtitlePreferenceApplying = false;
@@ -3805,25 +3814,27 @@ export const PlayerScreen = {
 
   mergeSubtitleCandidates(primary = [], secondary = []) {
     const merged = [];
-    const seen = new Set();
-    [...(primary || []), ...(secondary || [])].forEach((subtitle) => {
-      if (!subtitle?.url) {
-        return;
-      }
-      const key = String(
-        subtitle.offlineSubtitleId ||
-          subtitle.offlineFingerprint ||
-          createOfflineSubtitleFingerprint(subtitle) ||
-          `${String(subtitle.url).trim()}::${String(subtitle.lang || "")
-            .trim()
-            .toLowerCase()}`
-      );
-      if (seen.has(key)) {
-        return;
-      }
-      seen.add(key);
+    const seenUrls = new Set();
+    const seenOfflineIds = new Set();
+    const offlineFingerprints = new Set();
+    for (const subtitle of [...(primary || []), ...(secondary || [])]) {
+      if (!subtitle?.url) continue;
+      const url = String(subtitle.url).trim();
+      const language = normalizeSubtitleLanguageKey(subtitle.lang || subtitle.language);
+      const urlKey = JSON.stringify([url, language]);
+      const offlineId = subtitle.offlineSubtitleId;
+      const fingerprint = subtitle.offlineFingerprint || createOfflineSubtitleFingerprint(subtitle);
+      if (
+        seenUrls.has(urlKey) ||
+        (offlineId && seenOfflineIds.has(offlineId)) ||
+        offlineFingerprints.has(fingerprint)
+      )
+        continue;
+      seenUrls.add(urlKey);
+      if (offlineId) seenOfflineIds.add(offlineId);
+      if (subtitle.isOffline) offlineFingerprints.add(fingerprint);
       merged.push(subtitle);
-    });
+    }
     return merged;
   },
 
@@ -4991,8 +5002,7 @@ export const PlayerScreen = {
     ).trim();
     if (!isTransferableExternalMediaUrl(mediaUrl)) return null;
     const selectedSubtitle = (this.subtitles || []).find((subtitle) => {
-      const id = subtitle?.id || subtitle?.url || "";
-      return id && id === this.selectedAddonSubtitleId;
+      return addonSubtitleSelectionId(subtitle) === this.selectedAddonSubtitleId;
     });
     const uiState = this.getPlayerUiState();
     return {
@@ -13808,6 +13818,16 @@ export const PlayerScreen = {
 
   syncTrackState() {
     const textTracks = this.getTextTracks();
+    if (
+      this.subtitleExplicitlyOff &&
+      textTracks.some(
+        (track) =>
+          track.mode !== "disabled" &&
+          (!track.kind || ["subtitles", "captions", "forced"].includes(track.kind))
+      )
+    ) {
+      PlayerController.setNativeTextTrack(-1);
+    }
     const audioTracks = this.getAudioTracks();
     const dashSubtitleTracks =
       typeof PlayerController.getDashTextTracks === "function"
@@ -13827,7 +13847,9 @@ export const PlayerScreen = {
       this.builtInSubtitleCount = textTracks.length - this.externalTrackNodes.length;
     }
 
-    if (dashSubtitleTracks.length) {
+    if (this.subtitleExplicitlyOff) {
+      this.selectedSubtitleTrackIndex = -1;
+    } else if (dashSubtitleTracks.length) {
       const selectedDashSubtitleTrack =
         typeof PlayerController.getSelectedDashTextTrackIndex === "function"
           ? PlayerController.getSelectedDashTextTrackIndex()
@@ -13869,9 +13891,10 @@ export const PlayerScreen = {
 
   isSubtitleOffEntrySelected(nativeTrackIndex = this.selectedSubtitleTrackIndex) {
     return (
-      Number(nativeTrackIndex) < 0 &&
-      !this.selectedAddonSubtitleId &&
-      !this.selectedManifestSubtitleTrackId
+      this.subtitleExplicitlyOff ||
+      (Number(nativeTrackIndex) < 0 &&
+        !this.selectedAddonSubtitleId &&
+        !this.selectedManifestSubtitleTrackId)
     );
   },
 
@@ -13897,7 +13920,9 @@ export const PlayerScreen = {
       (this.externalTrackNodes || []).map((node) => node.track).filter(Boolean)
     );
     const nativeSelectionActive =
-      !this.selectedAddonSubtitleId && !this.selectedManifestSubtitleTrackId;
+      !this.subtitleExplicitlyOff &&
+      !this.selectedAddonSubtitleId &&
+      !this.selectedManifestSubtitleTrackId;
     const builtInTracks = textTracks.filter((track) => !addonTextTracks.has(track));
     const addonTracks = textTracks.filter((track) => addonTextTracks.has(track));
     const trackDiscoveryPending =
@@ -13914,7 +13939,9 @@ export const PlayerScreen = {
           {
             id: "subtitle-off",
             label: t("subtitle_none", {}, "None"),
-            selected: !embedded.some((t) => t.selected),
+            selected: this.isSubtitleOffEntrySelected(
+              embedded.some((track) => track.selected) ? 0 : -1
+            ),
             trackIndex: -1,
             clientSubtitleId: null
           },
@@ -14045,7 +14072,9 @@ export const PlayerScreen = {
             track,
             isForced: isForcedSubtitleTrack(track),
             selected:
-              !this.selectedAddonSubtitleId && this.selectedManifestSubtitleTrackId === track.id,
+              !this.subtitleExplicitlyOff &&
+              !this.selectedAddonSubtitleId &&
+              this.selectedManifestSubtitleTrackId === track.id,
             trackIndex: null,
             manifestSubtitleTrackId: track.id
           };
@@ -14072,7 +14101,7 @@ export const PlayerScreen = {
     if (tab === "addons") {
       if (this.subtitles.length) {
         return this.subtitles.map((subtitle, index) => {
-          const subtitleId = subtitle.id || subtitle.url || `subtitle-${index}`;
+          const subtitleId = addonSubtitleSelectionId(subtitle);
           const display = formatSubtitleTrackDisplay(subtitle, index);
           return {
             id: `subtitle-addon-fallback-${subtitleId}`,
@@ -15116,7 +15145,11 @@ export const PlayerScreen = {
   },
 
   applyStartupSubtitlePreference() {
-    if (this.startupSubtitlePreferenceApplied || this.startupSubtitlePreferenceApplying) {
+    if (
+      this.subtitleExplicitlyOff ||
+      this.startupSubtitlePreferenceApplied ||
+      this.startupSubtitlePreferenceApplying
+    ) {
       return false;
     }
 
@@ -15480,6 +15513,32 @@ export const PlayerScreen = {
       pointerScrollTransaction.selectionToken = selectionToken;
     }
     const previousSubtitleSelectionKey = this.getActiveSubtitleSelectionKey();
+    const off = entry.id === "subtitle-off" || entry.trackIndex === -1;
+    if (!this.startupSubtitlePreferenceApplying) {
+      this.subtitleExplicitlyOff = off;
+      this.startupSubtitlePreferenceApplied = true;
+    }
+    if (off) {
+      this.selectedSubtitleTrackIndex = -1;
+      this.selectedAddonSubtitleId = null;
+      this.selectedManifestSubtitleTrackId = null;
+      clearTimeout(this.subtitleSelectionTimer);
+      this.subtitleSelectionTimer = null;
+      this.clearMountedExternalSubtitleTracks();
+      this.clearHtmlSubtitleOverlay();
+      if (this.relayTextSubtitles) this.relayTextSubtitles.select(null);
+      if (PlayerController.clientRemux) PlayerController.selectClientSubtitle(null);
+      if (PlayerController.dashInstance) PlayerController.setDashTextTrack(-1);
+      if (PlayerController.hlsInstance) PlayerController.setHlsSubtitleTrack(-1);
+      PlayerController.setNativeTextTrack(-1);
+      this.syncRotatedNativeSubtitles?.();
+      this.resetSubtitleDelayAfterSelectionChange(previousSubtitleSelectionKey);
+      this.invalidateTrackDialogCaches();
+      this.renderControlButtons();
+      this.renderSubtitleDialog();
+      this.settleSubtitlePointerScrollTransaction(selectionToken);
+      return;
+    }
 
     if (!entry.fallbackAddonSubtitle && this.externalTrackNodes.length) {
       this.clearMountedExternalSubtitleTracks();
@@ -15572,7 +15631,7 @@ export const PlayerScreen = {
         this.subtitleSelectionTimer = null;
       }
       const subtitle = this.subtitles[entry.subtitleIndex];
-      const subtitleId = subtitle?.id || subtitle?.url || `subtitle-${entry.subtitleIndex}`;
+      const subtitleId = subtitle ? addonSubtitleSelectionId(subtitle) : null;
       this.selectedAddonSubtitleId = subtitleId;
       this.selectedSubtitleTrackIndex = -1;
       this.selectedManifestSubtitleTrackId = null;
@@ -15591,13 +15650,7 @@ export const PlayerScreen = {
 
     const textTracks = this.getTextTracks();
     const targetIndex = Number(entry.trackIndex);
-
-    if (targetIndex < 0 && this.selectedManifestSubtitleTrackId) {
-      this.applyManifestTrackSelection({ subtitleTrackId: null });
-      this.selectedManifestSubtitleTrackId = null;
-    } else if (this.selectedManifestSubtitleTrackId) {
-      this.selectedManifestSubtitleTrackId = null;
-    }
+    this.selectedManifestSubtitleTrackId = null;
 
     const appliedByController =
       typeof PlayerController.setNativeTextTrack === "function"
@@ -15623,16 +15676,6 @@ export const PlayerScreen = {
       }
     });
 
-    if (targetIndex < 0) {
-      textTracks.forEach((track) => {
-        try {
-          track.mode = "disabled";
-        } catch (_) {
-          // Best effort.
-        }
-      });
-    }
-
     this.selectedAddonSubtitleId = null;
     this.selectedSubtitleTrackIndex = targetIndex;
     this.resetSubtitleDelayAfterSelectionChange(previousSubtitleSelectionKey);
@@ -15649,7 +15692,7 @@ export const PlayerScreen = {
       this.settleSubtitlePointerScrollTransaction(selectionToken);
       return;
     }
-    const subtitleId = subtitle.id || subtitle.url || `subtitle-${subtitleIndex}`;
+    const subtitleId = addonSubtitleSelectionId(subtitle);
     const isCurrentSelection = () => Number(selectionToken) === Number(this.subtitleSelectionToken);
     if (!isCurrentSelection()) {
       this.settleSubtitlePointerScrollTransaction(selectionToken);
@@ -18708,6 +18751,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
     const subtitleLookup = this.buildSubtitleLookupContext();
     try {
       const offlineSubtitles = await this.loadOfflineSubtitleTracks().catch(() => []);
+      if (requestToken !== this.subtitleLoadToken) return;
       this.subtitles = this.mergeSubtitleCandidates(offlineSubtitles, sidecarSubtitles);
       this.refreshTrackDialogs();
 
@@ -18779,6 +18823,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       }
       this.refreshTrackDialogs();
     } catch (error) {
+      if (requestToken !== this.subtitleLoadToken) return;
       console.error("Subtitle attach failed", error);
       this.remoteSubtitleCandidates = this.mergeSubtitleCandidates(sidecarSubtitles, []);
       this.subtitles = this.mergeSubtitleCandidates(
@@ -18808,7 +18853,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       if (!subtitle.url) {
         return;
       }
-      const subtitleId = subtitle.id || subtitle.url || `subtitle-${index}`;
+      const subtitleId = addonSubtitleSelectionId(subtitle);
       const track = document.createElement("track");
       track.kind = "subtitles";
       track.label = subtitle.lang || subtitleLabel(index);

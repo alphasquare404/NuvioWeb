@@ -271,3 +271,99 @@ test("manual client startup retry is synchronous and restricted to live startup 
   controller.clientRemux = null;
   assert.equal(screen.canManuallyStartClientRemux(), false);
 });
+
+async function loadPlayerMethods(names, globals) {
+  const source = await readFile(playerScreenUrl, "utf8");
+  const methods = names.map((name) => {
+    const match = source.match(new RegExp("  " + name + "\\([^\\n]*\\n[\\s\\S]*?\\n {2}\\},"));
+    assert.ok(match, name);
+    return match[0];
+  });
+  return vm.runInNewContext("({" + methods.join("") + "})", globals);
+}
+
+test("subtitle merge collapses the same URL across providers but keeps distinct releases", async () => {
+  const { createOfflineSubtitleFingerprint } =
+    await import("../../../core/offline/offlineSubtitleIdentity.js");
+  const screen = await loadPlayerMethods(["mergeSubtitleCandidates"], {
+    createOfflineSubtitleFingerprint,
+    normalizeSubtitleLanguageKey: (lang) => (lang === "eng" ? "en" : lang)
+  });
+  const stream = {
+    id: "sidecar",
+    addonName: "Stream",
+    url: "https://example.test/sub?id=1",
+    lang: "eng"
+  };
+  const addon = { id: "addon", addonName: "Subtitles", url: stream.url, lang: "en" };
+  const second = { ...addon, url: "https://example.test/sub?id=2" };
+  const offline = {
+    ...addon,
+    isOffline: true,
+    url: "blob:offline",
+    offlineFingerprint: createOfflineSubtitleFingerprint(addon)
+  };
+  assert.deepEqual(Array.from(screen.mergeSubtitleCandidates([stream], [addon, second])), [
+    stream,
+    second
+  ]);
+  const otherRelease = { ...second, id: "other-release" };
+  assert.deepEqual(Array.from(screen.mergeSubtitleCandidates([offline], [addon, otherRelease])), [
+    offline,
+    otherRelease
+  ]);
+});
+
+test("None clears all subtitle paths and late discovery cannot auto-select another track", async () => {
+  const calls = [];
+  const controller = {
+    clientRemux: {},
+    dashInstance: {},
+    hlsInstance: {},
+    selectClientSubtitle: (value) => calls.push(["remux", value]),
+    setDashTextTrack: (value) => calls.push(["dash", value]),
+    setHlsSubtitleTrack: (value) => calls.push(["hls", value]),
+    setNativeTextTrack: (value) => calls.push(["native", value])
+  };
+  const screen = {
+    ...(await loadPlayerMethods(
+      ["applySubtitleEntry", "applyStartupSubtitlePreference", "isSubtitleOffEntrySelected"],
+      {
+        PlayerController: controller,
+        clearTimeout
+      }
+    )),
+    relayTextSubtitles: { select: (value) => calls.push(["relay", value]) },
+    selectedSubtitleTrackIndex: 0,
+    selectedAddonSubtitleId: "addon",
+    selectedManifestSubtitleTrackId: "manifest",
+    subtitleSelectionToken: 3,
+    getActiveSubtitleSelectionKey: () => "addon",
+    clearMountedExternalSubtitleTracks: () => calls.push(["addon"]),
+    clearHtmlSubtitleOverlay: () => calls.push(["overlay"]),
+    syncRotatedNativeSubtitles: () => calls.push(["rotated"]),
+    resetSubtitleDelayAfterSelectionChange() {},
+    invalidateTrackDialogCaches() {},
+    renderControlButtons() {},
+    renderSubtitleDialog() {},
+    settleSubtitlePointerScrollTransaction() {}
+  };
+  screen.applySubtitleEntry({ id: "subtitle-off", trackIndex: -1, clientSubtitleId: null });
+  assert.deepEqual(calls, [
+    ["addon"],
+    ["overlay"],
+    ["relay", null],
+    ["remux", null],
+    ["dash", -1],
+    ["hls", -1],
+    ["native", -1],
+    ["rotated"]
+  ]);
+  assert.equal(screen.subtitleSelectionToken, 4);
+  assert.equal(screen.selectedAddonSubtitleId, null);
+  assert.equal(screen.selectedManifestSubtitleTrackId, null);
+  assert.equal(screen.selectedSubtitleTrackIndex, -1);
+  assert.equal(screen.isSubtitleOffEntrySelected(0), true);
+  screen.startupSubtitlePreferenceApplied = false;
+  assert.equal(screen.applyStartupSubtitlePreference(), false);
+});
