@@ -1440,6 +1440,14 @@
   flex: 1 1 auto;
   touch-action: pan-y;
 }
+/* The rotated player maps touch drags to the panel’s local scroll axis. */
+.desktop-browser
+  #player.browser-player-rotated
+  #playerUiRoot.player-presentation
+  #playerSubtitleDialog
+  .nv-panel-body {
+  touch-action: none;
+}
 .desktop-browser
   #player
   #playerUiRoot.player-presentation
