@@ -201,7 +201,26 @@ export const BrowserPlayerPresentationScreen = {
     const video = this.getDesktopPlaybackVideo();
     const source = this.getCurrentStreamCandidate();
     const audio = this.getAudioEntries().find((entry) => entry.selected);
-    const remux = PlayerController.clientRemux?.snapshot();
+    const client = PlayerController.clientRemux?.snapshot();
+    const attempt = this.params?.unverifiedPlayback;
+    const server = attempt?.mediaUrl === this.activePlaybackUrl ? attempt?.output : null;
+    const output = client || server;
+    const processing = output?.processing;
+    const videoEncoded = processing === "transcode";
+    const audioEncoded = videoEncoded || processing === "audio-transcode";
+    const container = {
+      fmp4: t("player_fragmented_mp4", "Fragmented MP4 (fMP4)"),
+      "hls-fmp4": "HLS · fMP4",
+      mp4: "MP4"
+    }[output?.outputContainer];
+    const method = {
+      remux: "Remux",
+      "audio-transcode": t("settings_filter_audio_transcode", "Audio Transcode"),
+      transcode: t("settings_filter_full_transcode", "Full Transcode")
+    }[processing];
+    const location = client
+      ? t("player_processing_client", "Client")
+      : t("player_processing_server", "Server");
     const probe = this.offlineDownloadId
       ? null
       : this.directTrackProbe ||
@@ -209,27 +228,38 @@ export const BrowserPlayerPresentationScreen = {
         (source && this.getPlayerStreamProbe(source));
     const knownText = (value) =>
       typeof value === "string" && value.toLowerCase() !== "unknown" ? value : "";
-    const width = video?.videoWidth || probe?.width;
-    const height = video?.videoHeight || probe?.height;
-    const codec = knownText(remux?.video || probe?.videoCodec).toUpperCase();
-    const frameRate = Number(probe?.frameRate);
-    const videoBitrate = Number(probe?.videoBitrate);
-    const size = Number(remux?.sourceSizeBytes);
+    const width = video?.videoWidth || (!videoEncoded && probe?.width);
+    const height = video?.videoHeight || (!videoEncoded && probe?.height);
+    const codec = knownText(output?.video || (!videoEncoded && probe?.videoCodec)).toUpperCase();
+    const frameRate = Number(!videoEncoded && probe?.frameRate);
+    const videoBitrate = Number(!videoEncoded && probe?.videoBitrate);
+    const size = Number(client?.sourceSizeBytes);
     const fileSize =
       size > 0
         ? size >= 1073741824
           ? (size / 1073741824).toFixed(2) + " GiB"
           : (size / 1048576).toFixed(1) + " MiB"
         : "";
-    const file = [knownText(remux?.sourceContainer || probe?.container), fileSize]
+    const file = [knownText(client?.sourceContainer || probe?.container), fileSize]
       .filter(Boolean)
       .join(" · ");
+    const selectedAudio = [audio?.label, audio?.secondary].filter(Boolean).join(" · ");
+    const outputAudio = output?.audio
+      ? [
+          knownText(output.audio).toUpperCase(),
+          output.channels > 0 ? output.channels + " ch" : "",
+          output.sampleRate > 0 ? output.sampleRate / 1000 + " kHz" : ""
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
     return [
       [
         t("sources_title", "Source"),
         this.offlineDownloadId ? t("player_local_file", "Local file") : source?.addonName
       ],
       ...(file ? [[t("player_source_file", "Source file"), file]] : []),
+      ...(container ? [[t("player_playback_container", "Playback container"), container]] : []),
       [
         t("player_video", "Video"),
         [
@@ -245,14 +275,21 @@ export const BrowserPlayerPresentationScreen = {
       ],
       [
         t("audio_dialog_title", "Audio"),
-        [audio?.label, audio?.secondary].filter(Boolean).join(" · ") ||
-          t("player_audio_direct_default", "Player default audio")
+        audioEncoded
+          ? outputAudio
+          : output?.audio === null
+            ? ""
+            : selectedAudio ||
+              outputAudio ||
+              t("player_audio_direct_default", "Player default audio")
       ],
       [
         t("player_processing", "Playback"),
         this.offlineDownloadId
           ? t("player_local_file", "Local file")
-          : PlayerController.playbackEngine
+          : method
+            ? method + " · " + location
+            : PlayerController.playbackEngine
       ]
     ];
   },

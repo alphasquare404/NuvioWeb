@@ -9,7 +9,12 @@ const ffmpegRuntime = await inspectFFmpegRuntime();
 console.log(
   `[ffmpeg] source=${ffmpegRuntime.source} available=${ffmpegRuntime.available} remux=${ffmpegRuntime.remux} audio=${ffmpegRuntime.audioTranscoding}`
 );
-const server = createTranscodeBridgeServer({ ffmpegPath: ffmpegRuntime.path, ffmpegRuntime });
+const server = createTranscodeBridgeServer({
+  ffmpegPath: ffmpegRuntime.path,
+  ffmpegRuntime,
+  maxConcurrent: Math.max(1, Number(process.env.TRANSCODE_MAX_CONCURRENT) || 1),
+  perIpConcurrent: Math.max(1, Number(process.env.TRANSCODE_PER_IP_CONCURRENT) || 1)
+});
 
 server.listen(port, "0.0.0.0", () => {
   const access = String(process.env.TRANSCODE_ACCESS || "token")

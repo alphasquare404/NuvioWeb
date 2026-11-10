@@ -92,6 +92,7 @@ EOF
   write_value REMUX_MODE "$remux_mode"; printf ',\n'
   write_value REMUX_CLIENT_CACHE_MAX_MIB "$remux_cache"; printf ',\n'
   write_value REMUX_ENDPOINT "$remux_endpoint"; printf ',\n'
+  write_value TRANSCODE_MODE "${TRANSCODE_MODE:-}"; printf ',\n'
   write_value TRANSCODE_ENDPOINT "${TRANSCODE_ENDPOINT:-}"; printf ',\n'
   write_value AUTOMATION_SHORTCUT_URL "${AUTOMATION_SHORTCUT_URL:-}"
   cat <<'EOF'

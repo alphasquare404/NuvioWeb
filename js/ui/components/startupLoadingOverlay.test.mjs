@@ -58,6 +58,9 @@ async function fixture(run) {
     children: {
       ".player-loading-status": child(),
       ".player-loading-detail": child(),
+      ".startup-probe-actions": child(),
+      ".startup-probe-skip": child(),
+      ".startup-probe-choose": child(),
       ".player-loading-backdrop": child(),
       ".player-loading-title": child(),
       ".player-loading-subtitle": child(),
@@ -393,6 +396,57 @@ test("preparation aliases share one honest phase while known processing is a sep
     assert.equal(nodes[0].children[".player-loading-detail"].textContent, "");
     assert.doesNotMatch(nodes[0].innerHTML, />‹ Back/);
     assert.match(nodes[0].innerHTML, /assets\/icons\/ic_player_back\.svg/);
+  });
+});
+
+test("a selected probe has a distinct status until a playback route starts", async () => {
+  await fixture(({ overlay, nodes }) => {
+    overlay.begin({ title: "Film" }, "opening");
+    const status = nodes[0].children[".player-loading-status"];
+    overlay.setPlaybackAttempt({ route: "direct" });
+    overlay.setStage("probing");
+    assert.equal(status.textContent, "Checking stream metadata…");
+    overlay.setStage("opening");
+    overlay.setPlaybackAttempt({ route: "remux" });
+    assert.equal(status.textContent, "Preparing remux playback…");
+  });
+});
+
+test("probe timeout appears alongside the fallback route and yields to later failures", async () => {
+  await fixture(({ overlay, nodes }) => {
+    overlay.begin({ title: "Film" }, "probing");
+    const { children } = nodes[0];
+    const detail = children[".player-loading-detail"];
+    overlay.setStage("loading");
+    overlay.setPlaybackAttempt({ route: "direct", failedRoute: "probe" });
+    assert.equal(children[".player-loading-status"].textContent, "Opening directly…");
+    assert.equal(detail.textContent, "Probe timed out. Trying another method.");
+    overlay.setPlaybackAttempt({ route: "remux", failedRoute: "direct" });
+    assert.equal(detail.textContent, "Direct playback did not start. Trying another method.");
+    overlay.setPlaybackAttempt({ route: "", failedRoute: "" });
+    assert.equal(detail.textContent, "");
+  });
+});
+
+test("an interactive probe keeps its controls reachable when regular loading is disabled", async () => {
+  await fixture(({ overlay, nodes, settings }) => {
+    settings.loadingOverlayEnabled = false;
+    const actions = [];
+    const close = overlay.setProbeActions({
+      onSkip: () => actions.push("skip"),
+      onChooseStream: () => actions.push("choose")
+    });
+    assert.equal(overlay.begin({ internalPlayer: true, title: "Film" }, "probing"), true);
+    const { children } = nodes[0];
+    assert.equal(children[".startup-probe-actions"].hidden, false);
+    overlay.setStage("loading");
+    assert.equal(children[".player-loading-status"].textContent, "Checking stream metadata…");
+    children[".startup-probe-skip"].onclick();
+    children[".startup-probe-choose"].onclick();
+    assert.deepEqual(actions, ["skip", "choose"]);
+    close();
+    assert.equal(overlay.active, false);
+    assert.equal(overlay.probing, false);
   });
 });
 

@@ -1,3 +1,5 @@
+import { classifyPlayback } from "../../../core/player/playbackMethod.js";
+import { classifyStreamFilename } from "../../../core/streams/streamCompatibilityFilter.js";
 import { selectFilenamePlaybackAttempt } from "../../../core/player/unverifiedPlayback.js";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -32,11 +34,19 @@ function methods(names, deps) {
 function selected({
   facts = null,
   enabled = true,
-  copy = async (url) => ({ url, plan: { route: "client", method: "remux" } })
+  probeStream = "unknown-or-transcode",
+  probeResult = null,
+  convert = async () => null,
+  copy = async (url) => ({ url, plan: { route: "client", method: "remux" } }),
+  measuredRemuxPlan = { route: "client", method: "remux" }
 } = {}) {
   const probes = [],
+    probeOptions = [],
     routes = [],
-    stages = [];
+    stages = [],
+    playbackAttempts = [];
+  let cancellations = 0;
+  let actions = null;
   const caps = {
     h264: true,
     hevc: false,
@@ -45,44 +55,90 @@ function selected({
     containers: { mp4: true, mkv: false }
   };
   const ctx = Object.assign(
-    methods(["prepareResolvedCandidatePlayback"], {
-      selectFilenamePlaybackAttempt: (options) =>
-        selectFilenamePlaybackAttempt({
-          ...options,
-          policy: { mode: "client" },
-          audioEndpoint: "/api/transcode"
+    methods(
+      [
+        "prepareResolvedCandidatePlayback",
+        "readSelectedPlaybackProbe",
+        "prepareProbedPlaybackTranscode"
+      ],
+      {
+        PROBE_MODE: "client",
+        PROBE_ENDPOINT: "",
+        PROBE_CLIENT_CONCURRENCY: 1,
+        isTranscodeEnabled: () => true,
+        createStreamProber: () => ({
+          probe: async (url, options) => {
+            probes.push(url);
+            probeOptions.push(options);
+            return probeResult;
+          },
+          failureReason: () => "timeout",
+          cancelAll: () => cancellations++
         }),
-      PlayerSettingsStore: { get: () => ({ filenamePlaybackRoutingEnabled: enabled }) },
-      StartupLoadingOverlay: { setStage: (stage) => stages.push(stage) },
-      getDeviceCapabilities: () => caps,
-      prepareUnverifiedRemux: async (url) => {
-        routes.push("remux");
-        return copy(url);
-      },
-      prepareUnverifiedAudioTranscode: async (_url) => {
-        routes.push("audio-transcode");
-        return { url: "/api/transcode/hls/index.m3u8?v=copy&a=aac", plan: null };
-      },
-      SelectedStreamDelivery: {
-        resolvePlayerSource: async (stream) => {
-          routes.push("cached-remux");
-          return stream.url;
-        }
-      },
-      clientRemuxPlan: () => ({ route: "client", method: "remux" }),
-      selectedPlaybackTask,
-      extractPlaybackHttpStatus: () => 0,
-      REMUX_POLICY: { mode: "client" },
-      traceHost: () => "media.test"
-    }),
+        assessPlaybackCapabilities: (probe) => probe,
+        classifyPlayback,
+        classifyStreamFilename,
+        streamProbeIdentity: (stream) => stream.id,
+        playerStreamProbeKey,
+        prepareMeasuredTranscode: convert,
+        selectFilenamePlaybackAttempt: (options) =>
+          selectFilenamePlaybackAttempt({
+            ...options,
+            policy: { mode: "client" },
+            audioEndpoint: options.audioEndpoint
+          }),
+        PlayerSettingsStore: {
+          get: () => ({ filenamePlaybackRoutingEnabled: enabled, probeStream })
+        },
+        StartupLoadingOverlay: {
+          setStage: (stage) => stages.push(stage),
+
+          setBackHandler() {},
+          setProbeActions: (value) => {
+            actions = value;
+            stages.push("probing");
+            return () => {
+              actions = null;
+            };
+          },
+          setPlaybackAttempt: (attempt) => playbackAttempts.push(attempt)
+        },
+        getDeviceCapabilities: () => caps,
+        prepareUnverifiedRemux: async (url) => {
+          routes.push("remux");
+          return copy(url);
+        },
+        SelectedStreamDelivery: {
+          resolvePlayerSource: async (stream) => {
+            routes.push("cached-remux");
+            return stream.url;
+          }
+        },
+        clientRemuxPlan: () => measuredRemuxPlan,
+        selectedPlaybackTask,
+        extractPlaybackHttpStatus: () => 0,
+        REMUX_POLICY: { mode: "client" },
+        traceHost: () => "media.test"
+      }
+    ),
     {
       params: { prepareSelectedSource: true },
       _playerListProbeResults: new Map(),
       getPlayerStreamProbe: () => facts,
+      getLoadingOverlayMeta: () => ({}),
       tryUnverifiedRemuxAfterFailure: async () => false
     }
   );
-  return { ctx, probes, routes, stages };
+  return {
+    ctx,
+    probes,
+    probeOptions,
+    routes,
+    stages,
+    playbackAttempts,
+    cancellations: () => cancellations,
+    actions: () => actions
+  };
 }
 test("filename remux starts immediately without a separate metadata read", async () => {
   const h = selected(),
@@ -97,13 +153,14 @@ test("disabling filename routing starts Direct even when cached facts indicate r
       enabled: false,
       facts: { container: "mkv", videoCodec: "h264", audioCodec: "aac" }
     }),
-    a = row("a");
+    a = { ...row("a"), name: "Movie H264 AAC.mp4" };
   const result = await h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true);
   assert.equal(result.url, a.url);
+  assert.deepEqual(h.probes, []);
   assert.equal(h.ctx.params.unverifiedPlayback.route, "direct");
   assert.deepEqual(h.routes, []);
 });
-test("ready HLS and unsupported-video filename estimates never request a video encoder", async () => {
+test("ready HLS skips probing and a transcode hint with no metadata falls back to Direct", async () => {
   const h = selected(),
     a = { ...row("a"), name: "Movie HEVC AAC.mkv" };
   assert.equal(
@@ -111,7 +168,204 @@ test("ready HLS and unsupported-video filename estimates never request a video e
       .url,
     "https://media.test/movie.m3u8"
   );
+  assert.deepEqual(h.probes, []);
   assert.equal((await h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true)).url, a.url);
+  assert.deepEqual(h.routes, []);
+  assert.deepEqual(h.probes, [a.url]);
+});
+test("Unknown waits for probe even with filename routing disabled, then follows the measured route", async () => {
+  const a = row("unknown");
+  const facts = { container: "mkv", videoCodec: "h264", audioCodec: "aac" };
+  for (const cached of [true, false]) {
+    let release;
+    const probeResult = new Promise((resolve) => {
+      release = resolve;
+    });
+    const h = selected({ enabled: false, facts: cached ? facts : null, probeResult });
+    const pending = h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true);
+    if (!cached) {
+      await Promise.resolve();
+      assert.deepEqual(h.probes, [a.url]);
+      assert.equal(h.probeOptions[0].timeoutMs, Infinity);
+      assert.deepEqual(h.stages, ["probing"]);
+      assert.deepEqual(h.routes, []);
+      release(facts);
+    }
+    assert.equal((await pending).plan.method, "remux");
+    assert.deepEqual(h.routes, ["cached-remux"]);
+    assert.deepEqual(h.probes, cached ? [] : [a.url]);
+    assert.deepEqual(h.stages, cached ? ["opening", "loading"] : ["probing", "opening", "loading"]);
+  }
+});
+test("a selected probe can wait indefinitely and Skip cancels only that probe", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let releaseProbe;
+  const h = selected({
+    probeResult: new Promise((resolve) => {
+      releaseProbe = resolve;
+    })
+  });
+  const a = row("unknown");
+  h.ctx._selectedSourceAbort = new AbortController();
+  const pending = h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true);
+  await Promise.resolve();
+  t.mock.timers.tick(60000);
+  assert.deepEqual(h.probes, [a.url]);
+  assert.deepEqual(h.playbackAttempts, []);
+  assert.equal(h.cancellations(), 0);
+  h.actions().onSkip();
+  assert.equal((await pending).url, a.url);
+  assert.equal(h.cancellations(), 1);
+  assert.equal(h.ctx._selectedSourceAbort.signal.aborted, false);
+  assert.equal(h.playbackAttempts[0].route, "direct");
+  assert.equal(h.playbackAttempts[0].failedRoute, undefined);
+  assert.equal(h.actions(), null);
+  releaseProbe({ container: "mkv", videoCodec: "h264", audioCodec: "aac" });
+  await Promise.resolve();
+  assert.deepEqual(h.routes, []);
+  assert.equal(h.ctx._playerListProbeResults.size, 0);
+});
+
+test("Choose Stream cancels preparation before playback can start", async () => {
+  const h = selected({ probeResult: new Promise(() => {}) });
+  const a = row("unknown");
+  h.ctx._selectedSourceAbort = new AbortController();
+  h.ctx.navigateBackToStreamScreen = (options) => {
+    assert.equal(options.chooseStream, true);
+    h.ctx._selectedSourceAbort.abort();
+  };
+  const pending = h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true);
+  await Promise.resolve();
+  h.actions().onChooseStream();
+  assert.equal(await pending, null);
+  assert.equal(h.cancellations(), 1);
+  assert.deepEqual(h.playbackAttempts, []);
+});
+
+test("Choose Stream returns to the loaded list in manual mode even when Back normally goes Home", () => {
+  const stream = row("source");
+  const abort = new AbortController();
+  const ctx = Object.assign(
+    methods(["navigateBackToStreamScreen"], {
+      Router: { getCurrent: () => "player" },
+      StartupLoadingOverlay: { finish() {} },
+      PlayerController: { stop() {} }
+    }),
+    {
+      params: {
+        returnToStreamOnBack: false,
+        handoffReturnRoute: "home",
+        streamCandidatesComplete: false
+      },
+      streamCandidates: [stream],
+      _selectedSourceAbort: abort,
+      buildReturnStreamRouteParamsFromPlayer: () => ({
+        itemId: "movie",
+        autoResolvedStreamId: stream.id
+      }),
+      navigateToPlayerBackFallback({ shouldReturnToStream, streamParams }) {
+        assert.equal(shouldReturnToStream, true);
+        assert.equal(streamParams.manualSelection, true);
+        assert.equal(streamParams.autoSelectionFinished, true);
+        assert.equal(streamParams.autoResolvedStreamId, null);
+        assert.equal(streamParams.autoResolvedStreams[0], stream);
+        assert.equal(streamParams.autoResolvedStreamsComplete, false);
+      }
+    }
+  );
+  assert.equal(ctx.navigateBackToStreamScreen({ chooseStream: true }), true);
+  assert.equal(abort.signal.aborted, true);
+});
+
+test("an Unknown source starts verified Direct or the selected transcode route", async () => {
+  const a = row("unknown");
+  for (const [probe, method] of [
+    [{ container: "mp4", videoCodec: "h264", audioCodec: "aac" }, "direct"],
+    [{ container: "mkv", videoCodec: "h264", audioCodec: "dts" }, "audio-transcode"],
+    [{ container: "mkv", videoCodec: "hevc", audioCodec: "aac" }, "transcode"]
+  ]) {
+    const h = selected({
+      facts: probe,
+      convert: async ({ sourceUrl }) => {
+        assert.notEqual(method, "direct");
+        return { url: sourceUrl, route: "client-" + method, plan: { method } };
+      }
+    });
+    const delivery = await h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true);
+    assert.deepEqual(h.probes, []);
+    assert.equal(
+      h.ctx.params.unverifiedPlayback.route,
+      method === "direct" ? method : "client-" + method
+    );
+    if (method !== "direct") {
+      assert.equal(delivery.plan.method, method);
+      assert.equal(h.ctx.params.unverifiedPlayback.routeFallbackEnabled, true);
+      assert.equal(h.ctx.params.unverifiedPlayback.rawTried, false);
+      assert.equal(h.ctx.params.unverifiedPlayback.remuxTried, false);
+    }
+  }
+});
+
+test("an Unknown stream reuses probe facts keyed by its original URL", async () => {
+  const a = { ...row("unknown"), url: "http://media.test/unknown" };
+  const h = selected();
+  h.ctx.getPlayerStreamProbe = (candidate) =>
+    candidate.url === a.url ? { container: "mkv", videoCodec: "h264", audioCodec: "aac" } : null;
+  const target = "https://media.test/unknown";
+  const delivery = await h.ctx.prepareResolvedCandidatePlayback(a, target, () => true);
+  assert.equal(delivery.plan.method, "remux");
+  assert.deepEqual(h.probes, []);
+});
+
+test("a verified Remux refuses an unchanged URL without a Remux plan", async () => {
+  const a = row("unknown");
+  const h = selected({
+    facts: { container: "mkv", videoCodec: "h264", audioCodec: "aac" },
+    measuredRemuxPlan: null
+  });
+  await assert.rejects(
+    h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true),
+    /Verified Remux is unavailable/
+  );
+  assert.deepEqual(h.routes, ["cached-remux"]);
+});
+
+test("Unknown keeps probe priority after a resolver adds a known name, and falls back to Direct if probe fails", async () => {
+  const a = { ...row("resolved"), name: "Movie H264 AAC.mp4" };
+  const h = selected();
+  const result = await h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true, true);
+  assert.deepEqual(h.probes, [a.url]);
+  assert.equal(result.url, a.url);
+  assert.equal(h.ctx.params.unverifiedPlayback.route, "direct");
+  assert.deepEqual(h.routes, []);
+});
+test("Always reads metadata before a filename-based Direct attempt, unless it is already cached", async () => {
+  const a = { ...row("a"), name: "Movie H264 AAC.mp4" };
+  const facts = { container: "mkv", videoCodec: "h264", audioCodec: "aac" };
+  for (const cached of [true, false]) {
+    const h = selected({ probeStream: "always", facts: cached ? facts : null, probeResult: facts });
+    await h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true);
+    assert.deepEqual(h.probes, cached ? [] : [a.url]);
+    assert.deepEqual(h.routes, ["cached-remux"]);
+  }
+});
+test("audio transcode filename hints wait for metadata before handing a plan to the player", async () => {
+  const a = { ...row("a"), name: "Movie H264 DTS.mkv" };
+  const facts = { container: "mkv", videoCodec: "h264", audioCodec: "dts" };
+  const h = selected({
+    probeResult: facts,
+    convert: async ({ sourceUrl, probe }) => {
+      assert.equal(probe, facts);
+      return {
+        url: sourceUrl,
+        plan: { route: "client", method: "audio-transcode" },
+        route: "client-audio-transcode"
+      };
+    }
+  });
+  const result = await h.ctx.prepareResolvedCandidatePlayback(a, a.url, () => true);
+  assert.equal(result.plan.method, "audio-transcode");
+  assert.deepEqual(h.probes, [a.url]);
   assert.deepEqual(h.routes, []);
 });
 test("late filename route preparation cannot replace a stream after Back", async () => {
@@ -369,4 +623,81 @@ test("remux metadata and frame waits share the preparation deadline", (t) => {
   );
   t.mock.timers.tick(8000);
   assert.equal(ctx.getPlaybackStallTimeoutMs({ startup: true }), 1);
+});
+
+test("transcode mode chooses audio and video locally, or uses only the server", async () => {
+  const { prepareMeasuredTranscode } =
+    await import("../../../core/player/selectedStreamDelivery.js");
+  const codec = function () {};
+  const scope = {
+    isSecureContext: true,
+    MediaSource: { isTypeSupported: () => true },
+    navigator: { storage: { getDirectory() {} } },
+    Worker: codec,
+    VideoEncoder: codec
+  };
+  const options = {
+    sourceUrl: "https://media.test/video.mkv",
+    probe: { container: "mkv", videoCodec: "hevc", audioCodec: "aac" },
+    capabilities: {
+      hevc: false,
+      h264: true,
+      aac: true,
+      dts: false,
+      containers: { mkv: false, mp4: true }
+    },
+    mode: "client",
+    scope,
+    endpoint: "/api/transcode"
+  };
+  const local = await prepareMeasuredTranscode(options);
+  assert.equal(local.plan.method, "transcode");
+  assert.equal(local.url, options.sourceUrl);
+  const audio = await prepareMeasuredTranscode({
+    ...options,
+    probe: { container: "mkv", videoCodec: "h264", audioCodec: "dts" }
+  });
+  assert.equal(audio.plan.method, "audio-transcode");
+  assert.equal(audio.route, "client-audio-transcode");
+  const pcm = {
+    ...options,
+    probe: { container: "mkv", videoCodec: "h264", audioCodec: "pcm_s24le" }
+  };
+  assert.equal(await prepareMeasuredTranscode(pcm), null);
+  assert.equal(
+    (await prepareMeasuredTranscode({ ...pcm, afterPlaybackFailure: true })).plan.method,
+    "audio-transcode"
+  );
+  const server = await prepareMeasuredTranscode({
+    ...options,
+    mode: "server",
+    token: "test",
+    access: {
+      resolve: async () => ({ reachable: true, hls: true, fullVideo: true, mode: "token" })
+    }
+  });
+  assert.equal(server.plan, null);
+  assert.equal(server.waitForPlaylist, true);
+  assert.deepEqual(server.output, {
+    processing: "transcode",
+    outputContainer: "hls-fmp4",
+    video: "h264",
+    audio: "aac",
+    channels: 2
+  });
+  const serverFile = await prepareMeasuredTranscode({
+    ...options,
+    probe: { container: "mkv", videoCodec: "h264", audioCodec: "dts" },
+    mode: "server",
+    token: "test",
+    access: {
+      resolve: async () => ({ reachable: true, hls: false, fullVideo: false, mode: "token" })
+    }
+  });
+  assert.equal(serverFile.route, "audio-transcode");
+  assert.equal(serverFile.waitForPlaylist, false);
+  assert.doesNotMatch(serverFile.url, /\/hls\//);
+  assert.match(server.url, /\/hls\/index\.m3u8.*v=h264&a=aac/);
+  assert.equal(await prepareMeasuredTranscode({ ...options, mode: "none" }), null);
+  assert.equal(await prepareMeasuredTranscode({ ...options, probe: null }), null);
 });

@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterFilenameStreams, filenameStreamDisplayMode } from "./filenameStreamPolicy.js";
+import {
+  filterFilenameStreams,
+  filenameStreamDisplayMode,
+  filenameStreamFilter,
+  toggleFilenameStreamFilter
+} from "./filenameStreamPolicy.js";
 import { filterPlayerStreams, nextEpisodeSelectionOptions } from "./playerStreamPolicy.js";
 import { autoPlayCandidates, selectAutoPlayStream } from "./streamAutoPlaySelector.js";
 import { setDeviceCapabilitiesForTests } from "../player/deviceCapabilities.js";
@@ -83,6 +88,68 @@ test("All, Direct and Direct + Remux have identical policy for lists and automat
       );
     }
 });
+test("transcode filters add categories without changing saved Direct or Remux choices", () => {
+  const settings = normalizePlayerSettings({
+    filenameStreamDisplayMode: "DIRECT_REMUX",
+    filenameTranscodeFilter: { audio: true, full: true }
+  });
+  assert.equal(settings.filenameStreamDisplayMode, "DIRECT_REMUX");
+  assert.deepEqual(ids(filterFilenameStreams(rows, settings, caps)), [
+    "remux",
+    "audio",
+    "video",
+    "direct"
+  ]);
+  const options = nextEpisodeSelectionOptions({ ...settings, streamAutoPlayMode: "FIRST_STREAM" });
+  assert.deepEqual(ids(autoPlayCandidates(rows, { ...options, capabilities: caps })), [
+    "remux",
+    "audio",
+    "video",
+    "direct"
+  ]);
+  assert.equal(normalizePlayerSettings({}).probeStream, "unknown-or-transcode");
+  assert.equal(
+    normalizePlayerSettings({ probeStream: "when-transcoding" }).probeStream,
+    "unknown-or-transcode"
+  );
+  assert.equal(normalizePlayerSettings({ probeStream: "always" }).probeStream, "always");
+});
+
+test("legacy filters retain their exact selections while any new category can stand alone", () => {
+  assert.deepEqual(
+    filenameStreamFilter(normalizePlayerSettings({ filenameStreamDisplayMode: "DIRECT" })),
+    ["direct"]
+  );
+  const legacy = normalizePlayerSettings({ filenameStreamDisplayMode: "DIRECT_REMUX" });
+  assert.deepEqual(filenameStreamFilter(legacy), ["direct", "remux"]);
+  assert.deepEqual(
+    filenameStreamFilter({
+      ...legacy,
+      filenameTranscodeFilter: { audio: true, full: true }
+    }),
+    ["direct", "remux", "audio-transcode", "transcode"]
+  );
+  const settings = normalizePlayerSettings({
+    ...legacy,
+    filenameStreamFilter: ["transcode", "invalid", "audio-transcode", "transcode"],
+    streamAutoPlayMode: "FIRST_STREAM"
+  });
+  assert.equal(settings.filenameStreamDisplayMode, "DIRECT_REMUX");
+  assert.deepEqual(filenameStreamFilter(settings), ["audio-transcode", "transcode"]);
+  assert.deepEqual(ids(filterPlayerStreams(rows, { settings, capabilities: caps })), [
+    "audio",
+    "video"
+  ]);
+  assert.deepEqual(
+    ids(autoPlayCandidates(rows, { ...nextEpisodeSelectionOptions(settings), capabilities: caps })),
+    ["audio", "video"]
+  );
+  assert.deepEqual(toggleFilenameStreamFilter(["all"], "remux"), ["remux"]);
+  assert.deepEqual(toggleFilenameStreamFilter(["remux"], "remux"), ["all"]);
+  assert.deepEqual(toggleFilenameStreamFilter(["direct", "transcode"], "all"), ["all"]);
+  assert.equal(filterFilenameStreams(rows, { filenameStreamFilter: ["all"] }, caps), rows);
+});
+
 test("filter compares the same filename against this device rather than applying an MKV rule", () => {
   assert.deepEqual(
     filterFilenameStreams([remux], { filenameStreamDisplayMode: "DIRECT" }, caps),

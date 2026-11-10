@@ -118,6 +118,28 @@ test("remux failure exports playback and Range facts without arbitrary error tex
   );
 });
 
+test("software decoder failure logs its allowlisted operation and numeric error code", () => {
+  const video = { readyState: 0, networkState: 2 };
+  const error = Error("client-transcode-software-video-decode-failed");
+  const facts = clientRemuxFailureFacts(
+    "producer",
+    error,
+    { softwareVideoStage: "receive", softwareVideoCode: -1094995529 },
+    video
+  );
+  assert.equal(facts.reason, error.message);
+  assert.equal(facts.softwareVideoStage, "receive");
+  assert.equal(facts.softwareVideoCode, -1094995529);
+  const unsafe = clientRemuxFailureFacts(
+    "producer",
+    error,
+    { softwareVideoStage: "private-token", softwareVideoCode: "private-token" },
+    video
+  );
+  assert.equal(unsafe.softwareVideoStage, undefined);
+  assert.equal(unsafe.softwareVideoCode, undefined);
+});
+
 test("invalid Range response logs only safe response metadata", () => {
   const video = { readyState: 0, networkState: 2 };
   const stats = {

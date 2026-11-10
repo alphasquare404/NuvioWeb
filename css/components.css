@@ -21787,6 +21787,30 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   outline: 3px solid white;
 }
 
+.startup-probe-actions:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  pointer-events: auto;
+}
+.startup-probe-actions button {
+  min-height: 44px;
+  padding: 6px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
+  background: rgba(18, 22, 30, 0.85);
+  color: white;
+  font: inherit;
+  font-size: clamp(14px, 1.2vw, 18px);
+  cursor: pointer;
+}
+.startup-probe-actions button:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 2px;
+}
+
 /* Filename estimates share the badge row and always precede imported/size badges. */
 .filename-playback-badge { display: inline-flex; align-items: center; gap: .35em; padding: .25em .55em; border: 1px solid currentColor; border-radius: .4em; font-size: .75em; line-height: 1.2; white-space: nowrap; }
 .filename-playback-badge.tone-green { color: #73df9c; background: #102e20; }

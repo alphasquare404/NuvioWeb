@@ -56,10 +56,14 @@ const remuxPolicy = normalizeRemuxPolicy({
   mode: rawRemuxMode,
   endpoint: envFlag("REMUX_ENABLED", FEATURE_DEFAULTS.REMUX_ENABLED) ? "/api/remux" : ""
 });
+const transcodeMode = String(process.env.TRANSCODE_MODE ?? deploymentEnv.TRANSCODE_MODE ?? "")
+  .trim()
+  .toLowerCase();
 const featureEnabled = {
   probe: probeMode === "server",
   remux: remuxPolicy.mode === "server",
-  transcode: envFlag("TRANSCODE_ENABLED", FEATURE_DEFAULTS.TRANSCODE_ENABLED)
+  transcode:
+    transcodeMode === "server" || envFlag("TRANSCODE_ENABLED", FEATURE_DEFAULTS.TRANSCODE_ENABLED)
 };
 const configuredFeatures = { ...featureEnabled };
 const ffmpegRuntime =
@@ -148,6 +152,9 @@ const remuxBridgeHandler = createRemuxBridgeHandler({
 // is the default and it refuses everything until the deployment sets a token, and
 // `lan` judges the caller by the address a tunnel forwards, not by the socket.
 const transcodeBridgeHandler = createTranscodeBridgeHandler({
+  fullVideoEnabled:
+    transcodeMode === "server" ||
+    /^(1|true)$/i.test(process.env.TRANSCODE_FULL_VIDEO_ENABLED || ""),
   ffmpegPath,
   ffmpegRuntime,
   access: process.env.TRANSCODE_ACCESS || "token",
@@ -460,6 +467,7 @@ const server = http.createServer(async (request, response) => {
       // endpoint gets the path this server actually mounts.
       const resolved = {
         ...env,
+        TRANSCODE_MODE: transcodeMode,
         PROBE_MODE: probeMode,
         REMUX_MODE: String(rawRemuxMode).trim().toLowerCase(),
         REMUX_CLIENT_CACHE_MAX_MIB: String(
@@ -489,7 +497,8 @@ const server = http.createServer(async (request, response) => {
             ? probeMode === "server"
             : switchKey === "REMUX_ENABLED"
               ? configuredFeatures.remux && (externalEndpoint || featureEnabled.remux)
-              : isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey]) &&
+              : (transcodeMode === "server" ||
+                  isFeatureEnabled(raw || env[switchKey], FEATURE_DEFAULTS[switchKey])) &&
                 (externalEndpoint || ffmpegRuntime?.audioTranscoding === true);
         resolved[endpointKey] = on
           ? String(env[endpointKey] || "").trim() || FEATURE_PATHS[endpointKey]

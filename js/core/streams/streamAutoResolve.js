@@ -246,6 +246,8 @@ export async function resolveAutoPlayStream({
     const candidate = selectAutoPlayStream(streams, {
       reusableStream,
       filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
+      filenameStreamFilter: settings.filenameStreamFilter,
+      filenameTranscodeFilter: settings.filenameTranscodeFilter,
       mode: settings.streamAutoPlayMode,
       hdrPreference: resolveHdrPreference(settings),
       source: settings.streamAutoPlaySource,

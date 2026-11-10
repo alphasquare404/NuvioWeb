@@ -237,7 +237,8 @@ export function parseTranscodePlan(searchParams) {
  * a caller that asked for a re-encode and received a copy would ship the very file
  * the device already refused.
  */
-export function isPlanOffered(plan) {
+export function isPlanOffered(plan, fullVideoEnabled = false) {
+  if (plan?.video === "h264") return fullVideoEnabled && plan.audio === "aac";
   if (plan?.video !== "copy") return false;
   // `audio: copy` is the remux shape: the container needs fixing, the audio does not.
   // Delivering it as HLS is what lets a film start playing in seconds instead of after
@@ -255,8 +256,6 @@ function codecArgs(chosen, { bitrate, videoTag = "" }) {
   if (chosen.video === "copy") {
     args.push("-c:v", "copy");
   } else {
-    // Not offered yet (see isPlanOffered), but the arguments stay honest for the
-    // day a device that cannot decode the picture is worth the minutes it costs.
     args.push(
       "-c:v",
       "libx264",
@@ -265,7 +264,7 @@ function codecArgs(chosen, { bitrate, videoTag = "" }) {
       "-pix_fmt",
       "yuv420p",
       "-vf",
-      `scale=-2:'min(${TRANSCODE_PLAN_LIMITS.maxHeight},ih)'`
+      `scale=w='min(1920,iw)':h='min(${chosen.height || TRANSCODE_PLAN_LIMITS.maxHeight},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`
     );
   }
   if (chosen.audio === "aac") {
@@ -322,6 +321,14 @@ export function hlsArgs(source, dir, { bitrate = "192k", videoTag = "", plan = n
   const chosen = plan || { video: "copy", audio: "aac", height: 0, channels: 2 };
   const args = ["-hide_banner", "-loglevel", "error", "-y", "-i", source];
   args.push(...codecArgs(chosen, { bitrate, videoTag }));
+  if (chosen.video === "h264") {
+    args.push(
+      "-flags",
+      "+cgop",
+      "-force_key_frames",
+      `expr:gte(t,n_forced*${HLS_SEGMENT_SECONDS})`
+    );
+  }
   args.push(
     "-f",
     "hls",
@@ -413,13 +420,17 @@ export function hlsJobIsIdle(job, { at = Date.now(), idleMs = 0 } = {}) {
 export function createTranscodeBridgeHandler({
   ffmpegPath = resolveFFmpegPath(),
   ffmpegRuntime = null,
+  fullVideoEnabled = String(process.env.TRANSCODE_MODE || "")
+    .trim()
+    .toLowerCase() === "server" ||
+    /^(1|true)$/i.test(String(process.env.TRANSCODE_FULL_VIDEO_ENABLED || "").trim()),
   workDir = process.env.TRANSCODE_WORK_DIR || path.join(tmpdir(), "nuvio-transcode"),
   access = process.env.TRANSCODE_ACCESS || ACCESS.TOKEN,
   token = process.env.TRANSCODE_TOKEN || "",
   bitrate = process.env.TRANSCODE_AUDIO_BITRATE || "192k",
   ttlMs = DEFAULT_TTL_MS,
   finishedTtlMs = DEFAULT_FINISHED_TTL_MS,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
+  timeoutMs = Number(process.env.TRANSCODE_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS,
   maxTotalBytes = DEFAULT_MAX_BYTES,
   sweepIntervalMs = DEFAULT_SWEEP_MS,
   // Deployment policy, permissive by default; the server reads these from the
@@ -752,7 +763,7 @@ export function createTranscodeBridgeHandler({
     job.promise = mkdir(dir, { recursive: true })
       .then(async () => {
         const playlistPath = path.join(dir, "index.m3u8");
-        for (const videoTag of ["hvc1", ""]) {
+        for (const videoTag of plan.video === "h264" ? [""] : ["hvc1", ""]) {
           const ok = await runFfmpeg(hlsArgs(source, dir, { bitrate, plan, videoTag }), {
             cwd: dir,
             key
@@ -974,7 +985,7 @@ export function createTranscodeBridgeHandler({
       json(response, 400, { ok: false, error: planResult.reason });
       return null;
     }
-    if (!isPlanOffered(planResult.plan)) {
+    if (!isPlanOffered(planResult.plan, fullVideoEnabled)) {
       // Refused by name rather than approximated: a caller that asked for a
       // re-encode and received a copy would ship the file the device already
       // rejected, and the failure would look like ours.
@@ -988,7 +999,9 @@ export function createTranscodeBridgeHandler({
     }
     if (
       ffmpegRuntime &&
-      (!ffmpegRuntime.remux || (planResult.plan.audio === "aac" && !ffmpegRuntime.audioTranscoding))
+      (!ffmpegRuntime.remux ||
+        (planResult.plan.audio === "aac" && !ffmpegRuntime.audioTranscoding) ||
+        (planResult.plan.video === "h264" && !ffmpegRuntime.videoTranscoding))
     ) {
       json(response, 503, { ok: false, error: "ffmpeg-capability-unavailable" });
       return null;
@@ -1044,7 +1057,7 @@ export function createTranscodeBridgeHandler({
    * server answers 429 (retry in seconds) and a spent budget 503 (retry tomorrow),
    * because those are different instructions to a client.
    */
-  async function admit(url, address) {
+  function capacityRefusal(address) {
     const used = budgetUsedToday();
     if (dailyBudgetBytes > 0 && used >= dailyBudgetBytes) {
       return {
@@ -1073,6 +1086,12 @@ export function createTranscodeBridgeHandler({
         headers: { "Retry-After": "5" }
       };
     }
+    return null;
+  }
+
+  async function admit(url, address) {
+    const refusal = capacityRefusal(address);
+    if (refusal) return refusal;
     if (maxSourceBytes > 0) {
       const size = typeof sourceSize === "function" ? await sourceSize(url) : 0;
       if (size > maxSourceBytes) {
@@ -1118,6 +1137,10 @@ export function createTranscodeBridgeHandler({
         ffmpeg: publicFFmpegCapabilities(ffmpegRuntime),
         access: normalizeAccess(access),
         hls: !ffmpegRuntime || ffmpegRuntime.hls,
+        fullVideo:
+          fullVideoEnabled &&
+          ffmpegRuntime?.videoTranscoding === true &&
+          ffmpegRuntime?.hls === true,
         embeddedText: true,
         alternateAudio: true,
         offered: {
@@ -1217,52 +1240,58 @@ export function createTranscodeBridgeHandler({
     // requests, rewritten to carry the key and the token this caller presented.
     if (isPlaylist) {
       // HLS jobs live in hlsJobs; jobs belongs to whole-file delivery.
-      const cached = hlsJobs.get(parsed.key);
-      const known = Boolean(
-        cached && (!cached.done || existsSync(path.join(cached.dir, "index.m3u8")))
-      );
+      const existingJob = () => {
+        const cached = hlsJobs.get(parsed.key);
+        return cached && (!cached.done || existsSync(path.join(cached.dir, "index.m3u8")))
+          ? cached
+          : null;
+      };
       const address = clientAddress(request.headers, request.socket?.remoteAddress);
-      if (!known) {
-        const refusal = await admit(parsed.url, address);
-        if (refusal) {
-          json(response, refusal.status, refusal.payload, refusal.headers);
-          return;
-        }
-      }
-      const didWork = known ? false : beginWork(parsed.key, address);
-      let job;
-      try {
-        job = ensureHlsJob(parsed.url, parsed.key, plan);
-        const text = await readHlsPlaylist(job);
-        if (!text) {
-          if (!job.failed && !job.done) {
-            log.log(`[transcode] pending ${parsed.key.slice(0, 8)} hls-no-playlist ${host}`);
-            json(response, 503, { ok: false, error: "playlist-not-ready" }, { "Retry-After": "1" });
+      let job = existingJob();
+      if (!job) {
+        const admission = await admit(parsed.url, address);
+        job = existingJob();
+        if (!job) {
+          const refusal = admission || capacityRefusal(address);
+          if (refusal) {
+            json(response, refusal.status, refusal.payload, refusal.headers);
             return;
           }
-          log.warn(`[transcode] failed ${parsed.key.slice(0, 8)} hls-no-playlist ${host}`);
-          json(response, 502, { ok: false, error: "transcode-failed" });
+          const didWork = beginWork(parsed.key, address);
+          job = ensureHlsJob(parsed.url, parsed.key, plan);
+          // The encoder keeps running after the first playlist response.
+          if (didWork) void job.promise.finally(() => endWork(parsed.key, address));
+        }
+      }
+      job.lastUsed = now();
+      job.lastRequestAt = now();
+      const text = await readHlsPlaylist(job);
+      if (!text) {
+        if (!job.failed && !job.done) {
+          log.log(`[transcode] pending ${parsed.key.slice(0, 8)} hls-no-playlist ${host}`);
+          json(response, 503, { ok: false, error: "playlist-not-ready" }, { "Retry-After": "1" });
           return;
         }
-        log.log(
-          `[transcode] hls ${parsed.key.slice(0, 8)} video=${plan.video} audio=${plan.audio} ai=${plan.audioIndex} segments=${(text.match(/#EXTINF/g) || []).length} ${host}`
-        );
-        response.writeHead(200, {
-          "Content-Type": "application/vnd.apple.mpegurl",
-          "Cache-Control": "no-store",
-          "Access-Control-Allow-Origin": "*"
-        });
-        response.end(
-          rewriteHlsPlaylist(
-            plan.audioIndices
-              ? selectDefaultRendition(text, plan.audioIndices, plan.audioIndex)
-              : text,
-            { key: parsed.key, token: auth.presented }
-          )
-        );
-      } finally {
-        if (didWork) endWork(parsed.key, address);
+        log.warn(`[transcode] failed ${parsed.key.slice(0, 8)} hls-no-playlist ${host}`);
+        json(response, 502, { ok: false, error: "transcode-failed" });
+        return;
       }
+      log.log(
+        `[transcode] hls ${parsed.key.slice(0, 8)} video=${plan.video} audio=${plan.audio} ai=${plan.audioIndex} segments=${(text.match(/#EXTINF/g) || []).length} ${host}`
+      );
+      response.writeHead(200, {
+        "Content-Type": "application/vnd.apple.mpegurl",
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*"
+      });
+      response.end(
+        rewriteHlsPlaylist(
+          plan.audioIndices
+            ? selectDefaultRendition(text, plan.audioIndices, plan.audioIndex)
+            : text,
+          { key: parsed.key, token: auth.presented }
+        )
+      );
       return;
     }
 

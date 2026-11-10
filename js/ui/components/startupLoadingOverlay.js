@@ -8,6 +8,7 @@ import { resolveDetailPortraitBackdrop } from "../screens/detail/detailPortraitP
 const STAGES = {
   finding: ["startup_loading_finding", "Finding a stream…"],
   checking: ["startup_loading_preparing", "Preparing video…"],
+  probing: ["startup_loading_checking", "Checking stream metadata…"],
   opening: ["startup_loading_preparing", "Preparing video…"],
   loading: ["startup_loading_preparing", "Preparing video…"],
   metadata: ["startup_loading_preparing", "Preparing video…"],
@@ -33,6 +34,7 @@ let relayText = "";
 let playbackAttempt = null;
 let presentation = {};
 let backHandler = null;
+let probeActions = null;
 let orientation = null;
 let artworkResize = null;
 
@@ -42,6 +44,27 @@ export const StartupLoadingOverlay = {
   },
   get active() {
     return Boolean(host);
+  },
+  get probing() {
+    return Boolean(probeActions);
+  },
+  setProbeActions(actions, meta) {
+    if (meta?.itemKey && presentation.itemKey && meta.itemKey !== presentation.itemKey)
+      this.finish("replaced");
+    probeActions = actions;
+    this.begin(meta, "probing");
+    return () => {
+      if (probeActions !== actions) return;
+      probeActions = null;
+      if (
+        !usesUnifiedStartup(undefined, { internalPlayer: true }) ||
+        PlayerSettingsStore.get().loadingOverlayEnabled === false
+      ) {
+        this.finish();
+      } else {
+        this.setStage("opening");
+      }
+    };
   },
   setBackHandler(handler) {
     backHandler = handler;
@@ -55,8 +78,9 @@ export const StartupLoadingOverlay = {
   begin(meta = {}, nextStage = "finding") {
     const settings = PlayerSettingsStore.get();
     if (
-      !usesUnifiedStartup(settings, { internalPlayer: meta.internalPlayer === true }) ||
-      settings.loadingOverlayEnabled === false
+      !probeActions &&
+      (!usesUnifiedStartup(settings, { internalPlayer: meta.internalPlayer === true }) ||
+        settings.loadingOverlayEnabled === false)
     ) {
       this.finish();
       return false;
@@ -84,9 +108,23 @@ export const StartupLoadingOverlay = {
           ${renderLoadingIndicator({ className: "unified-startup-spinner" })}
           <div class="player-loading-status" role="status" aria-live="polite"></div>
           <div class="player-loading-detail hidden"></div>
+          <div class="startup-probe-actions" hidden>
+            <button type="button" class="focusable startup-probe-skip"></button>
+            <button type="button" class="focusable startup-probe-choose"></button>
+          </div>
         </div>`;
       const back = host.querySelector(".startup-loading-back");
       if (back) back.onclick = () => this.back();
+      const skip = host.querySelector(".startup-probe-skip");
+      if (skip) {
+        skip.textContent = I18n.t("skip_generic", {}, { fallback: "Skip" });
+        skip.onclick = () => probeActions?.onSkip();
+      }
+      const choose = host.querySelector(".startup-probe-choose");
+      if (choose) {
+        choose.textContent = I18n.t("player_choose_stream", {}, { fallback: "Choose Stream" });
+        choose.onclick = () => probeActions?.onChooseStream();
+      }
       document.body.appendChild(host);
       orientation = createPlayerOrientation(host, {
         preference: meta.orientation || "landscape",
@@ -162,7 +200,10 @@ export const StartupLoadingOverlay = {
         : "";
   },
   setStage(nextStage) {
-    if (STAGES[nextStage]) stage = nextStage;
+    if (probeActions) stage = "probing";
+    else if (STAGES[nextStage]) stage = nextStage;
+    const actions = host?.querySelector(".startup-probe-actions");
+    if (actions) actions.hidden = !probeActions;
     if (stage === "frame" || stage === "restoring") relayText = "";
     const node = host?.querySelector(".player-loading-status");
     if (!node) return;
@@ -172,9 +213,15 @@ export const StartupLoadingOverlay = {
     const routes = {
       direct: ["startup_loading_direct", "Opening directly…"],
       remux: ["startup_loading_remux", "Preparing remux playback…"],
-      "audio-transcode": ["startup_loading_audio_conversion", "Converting audio…"]
+      "audio-transcode": ["startup_loading_audio_conversion", "Converting audio…"],
+      "client-audio-transcode": [
+        "startup_loading_client_audio_conversion",
+        "Converting audio on this device…"
+      ],
+      "client-transcode": ["startup_loading_video_conversion", "Converting video on this device…"],
+      "server-transcode": ["startup_loading_video_conversion_server", "Converting video on server…"]
     };
-    if (playbackAttempt && !["finding", "frame", "restoring"].includes(stage)) {
+    if (playbackAttempt && !["finding", "probing", "frame", "restoring"].includes(stage)) {
       const route = routes[playbackAttempt.route];
       if (route) status = I18n.t(route[0], {}, { fallback: route[1] });
     }
@@ -189,8 +236,10 @@ export const StartupLoadingOverlay = {
     const detail = host.querySelector(".player-loading-detail");
     if (detail) {
       let failure = "";
-      if (playbackAttempt?.failedRoute && routes[playbackAttempt.failedRoute]) {
+      const failedRoute = playbackAttempt?.failedRoute;
+      if (failedRoute === "probe" || routes[failedRoute]) {
         const labels = {
+          probe: ["startup_loading_probe_timeout", "Probe timed out. Trying another method."],
           direct: [
             "startup_loading_direct_failed",
             "Direct playback did not start. Trying another method."
@@ -199,12 +248,24 @@ export const StartupLoadingOverlay = {
             "startup_loading_remux_failed",
             "Remux playback did not start. Trying another method."
           ],
+          "client-audio-transcode": [
+            "startup_loading_video_conversion_failed",
+            "Device conversion failed"
+          ],
+          "client-transcode": [
+            "startup_loading_video_conversion_failed",
+            "Device conversion failed"
+          ],
+          "server-transcode": [
+            "startup_loading_video_conversion_server_failed",
+            "Server conversion failed"
+          ],
           "audio-transcode": [
             "startup_loading_audio_failed",
             "Audio conversion did not start. Trying another method."
           ]
         };
-        const label = labels[playbackAttempt.failedRoute];
+        const label = labels[failedRoute];
         failure = I18n.t(label[0], {}, { fallback: label[1] });
       } else if (playbackAttempt?.failedSourceNumber) {
         const number = playbackAttempt.failedSourceNumber;
@@ -233,9 +294,26 @@ export const StartupLoadingOverlay = {
       };
     }
     if (route !== undefined)
-      playbackAttempt.route = ["direct", "remux", "audio-transcode"].includes(route) ? route : "";
+      playbackAttempt.route = [
+        "direct",
+        "remux",
+        "audio-transcode",
+        "client-audio-transcode",
+        "client-transcode",
+        "server-transcode"
+      ].includes(route)
+        ? route
+        : "";
     if (failedRoute !== undefined)
-      playbackAttempt.failedRoute = ["direct", "remux", "audio-transcode"].includes(failedRoute)
+      playbackAttempt.failedRoute = [
+        "probe",
+        "direct",
+        "remux",
+        "audio-transcode",
+        "client-audio-transcode",
+        "client-transcode",
+        "server-transcode"
+      ].includes(failedRoute)
         ? failedRoute
         : "";
     this.setStage(stage);
@@ -256,5 +334,6 @@ export const StartupLoadingOverlay = {
     stage = "finding";
     presentation = {};
     backHandler = null;
+    probeActions = null;
   }
 };

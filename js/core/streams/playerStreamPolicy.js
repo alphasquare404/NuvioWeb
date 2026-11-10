@@ -31,6 +31,8 @@ export function nextEpisodeSelectionOptions(
   const manualAutoNext = mode === "MANUAL" && Boolean(settings.autoplayNextEpisode);
   return {
     filenameStreamDisplayMode: filenameStreamDisplayMode(settings),
+    filenameStreamFilter: settings.filenameStreamFilter,
+    filenameTranscodeFilter: settings.filenameTranscodeFilter,
     hdrPreference: resolveHdrPreference(settings),
     probeOnly: false,
     probeForStream,

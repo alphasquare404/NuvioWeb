@@ -483,6 +483,35 @@ test("a stuck background initialization has its own finite timeout", async () =>
   assert.equal(events.at(-1).reason, "wasm-initialization-timeout");
 });
 
+test("an unlimited foreground probe can be cancelled during cold WASM startup", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const controller = new AbortController();
+  let started;
+  const ready = new Promise((resolve) => {
+    started = resolve;
+  });
+  let terminated = false;
+  const runner = createBrowserProbeRunner({
+    fetchImpl: fetchRange,
+    makeWorker: () => ({
+      postMessage: started,
+      terminate: () => {
+        terminated = true;
+      }
+    })
+  });
+  const pending = runner.probe("https://cdn.test/foreground", {
+    timeoutMs: Infinity,
+    signal: controller.signal
+  });
+  await ready;
+  t.mock.timers.tick(60000);
+  assert.equal(terminated, false);
+  controller.abort();
+  assert.equal(await pending, null);
+  assert.equal(terminated, true);
+});
+
 test("auto-selection cannot extend its hard deadline for cold WASM", async () => {
   const runner = createBrowserProbeRunner({
     fetchImpl: fetchRange,

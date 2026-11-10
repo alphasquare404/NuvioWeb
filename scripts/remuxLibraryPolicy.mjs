@@ -29,7 +29,7 @@ export function remuxLibraryPolicy({ onModifiedSource } = {}) {
       build.onLoad({ filter: /matroska-demuxer\.js$/ }, async ({ path: file }) => {
         if (!file.replaceAll("\\", "/").includes("/node_modules/mediabunny/")) return;
         const packageFile = path.resolve(path.dirname(file), "../../../../package.json");
-        if (JSON.parse(await readFile(packageFile, "utf8")).version !== "1.62.1")
+        if (JSON.parse(await readFile(packageFile, "utf8")).version !== "1.65.2")
           throw Error("Review MediaBunny attachment policy for this version.");
         const contents = omitRemuxAttachments(await readFile(file, "utf8"));
         await onModifiedSource?.(contents);

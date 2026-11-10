@@ -1,4 +1,7 @@
-import { filenameStreamDisplayMode } from "../../core/streams/filenameStreamPolicy.js";
+import {
+  filenameStreamDisplayMode,
+  normalizeFilenameStreamFilter
+} from "../../core/streams/filenameStreamPolicy.js";
 import { createProfileScopedStore } from "./profileScopedStore.js";
 import {
   OFFLINE_PLAYBACK_TARGETS,
@@ -91,7 +94,9 @@ const DEFAULTS = {
   showOnlyDirectStreams: false,
   streamCompatibilityFilter: "OFF",
   filenameStreamDisplayMode: "ALL",
+  filenameTranscodeFilter: { audio: false, full: false },
   filenamePlaybackRoutingEnabled: true,
+  probeStream: "unknown-or-transcode",
   // Which assisted way back from an external player the person set up. Empty
   // until they choose: an existing profile may already have a Push
   // subscription, and that subscription is the only record the notification
@@ -402,7 +407,13 @@ export function normalizePlayerSettings(settings = {}) {
     streamDisplayMode: streamDisplayMode(persistentSettings),
     streamCompatibilityFilter: "OFF",
     filenameStreamDisplayMode: filenameStreamDisplayMode(persistentSettings),
+    filenameStreamFilter: normalizeFilenameStreamFilter(persistentSettings.filenameStreamFilter),
+    filenameTranscodeFilter: {
+      audio: persistentSettings.filenameTranscodeFilter?.audio === true,
+      full: persistentSettings.filenameTranscodeFilter?.full === true
+    },
     filenamePlaybackRoutingEnabled: persistentSettings.filenamePlaybackRoutingEnabled !== false,
+    probeStream: persistentSettings.probeStream === "always" ? "always" : DEFAULTS.probeStream,
     externalReturnMethod: normalizeExternalReturnMethod(
       persistentSettings.externalReturnMethod ?? DEFAULTS.externalReturnMethod
     ),

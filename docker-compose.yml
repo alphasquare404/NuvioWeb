@@ -33,6 +33,7 @@ services:
       REMUX_CLIENT_CACHE_MAX_MIB: ${REMUX_CLIENT_CACHE_MAX_MIB:-512}
       REMUX_ENDPOINT: ${REMUX_ENDPOINT:-}
       TRANSCODE_ENDPOINT: ${TRANSCODE_ENDPOINT:-}
+      TRANSCODE_MODE: ${TRANSCODE_MODE:-}
     ports:
       - "${NUVIO_PORT:-4173}:80"
     restart: unless-stopped
@@ -79,7 +80,11 @@ services:
     environment:
       # open (anyone), token (shared secret), lan (private addresses only).
       TRANSCODE_ACCESS: ${TRANSCODE_ACCESS:-token}
+      TRANSCODE_MODE: ${TRANSCODE_MODE:-}
       TRANSCODE_TOKEN: ${TRANSCODE_TOKEN:-}
+      TRANSCODE_TIMEOUT_MS: ${TRANSCODE_TIMEOUT_MS:-3600000}
+      TRANSCODE_MAX_CONCURRENT: ${TRANSCODE_MAX_CONCURRENT:-1}
+      TRANSCODE_PER_IP_CONCURRENT: ${TRANSCODE_PER_IP_CONCURRENT:-1}
       TRANSCODE_AUDIO_BITRATE: ${TRANSCODE_AUDIO_BITRATE:-192k}
       # Optional executable path inside this container. The image includes FFmpeg.
       FFMPEG_PATH: ${FFMPEG_PATH:-}

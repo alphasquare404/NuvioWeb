@@ -149,6 +149,7 @@ async function start(data) {
       start: data.start,
       audioIndex: data.audioIndex,
       expectedAudio: data.expectedAudio,
+      transcode: data.transcode,
       signal: new AbortController().signal,
       stats,
       fetcher: createRangeFetcher(
@@ -165,6 +166,8 @@ async function start(data) {
           : undefined
       ),
       metadata: (info) => request("metadata", { info }),
+      supportsOutput: (output) => request("supports-output", { output }),
+      beforeEncode: () => request("transcode-credit"),
       beforePacket: async () => {
         if (cacheMode) await credit();
       },
@@ -206,6 +209,10 @@ async function start(data) {
     if (cacheMode) await credit(true);
     send("done");
   } catch (error) {
+    if (error.message === "client-transcode-software-video-decode-failed") {
+      stats.softwareVideoStage = error.softwareVideoStage;
+      stats.softwareVideoCode = error.softwareVideoCode;
+    }
     send("error", { reason: /^[a-z0-9-]+$/.test(error.message) ? error.message : error.name });
   } finally {
     clearInterval(ticker);

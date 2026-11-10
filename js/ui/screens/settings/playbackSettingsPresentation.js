@@ -1,3 +1,5 @@
+import { filenameStreamFilter } from "../../../core/streams/filenameStreamPolicy.js";
+
 export const PLAYBACK_SETTINGS_GROUPS = [
   "general",
   "autoplay",
@@ -67,6 +69,14 @@ export const SETTINGS_STREAM_PREVIEW_SOURCES = [
     behaviorHints: { filename: "Sample.1080p.H264.DTS.mkv", videoSize: 3400000000 }
   },
   {
+    id: "example-video",
+    previewMethod: "transcode",
+    name: "Sample.2160p.HEVC.AAC.mkv",
+    description: "HEVC · AAC · MKV",
+    addonName: "Preview",
+    behaviorHints: { filename: "Sample.2160p.HEVC.AAC.mkv", videoSize: 7000000000 }
+  },
+  {
     id: "example-unknown",
     previewMethod: "unknown",
     name: "Sample.media",
@@ -76,13 +86,29 @@ export const SETTINGS_STREAM_PREVIEW_SOURCES = [
   }
 ];
 
+export function filenameStreamFilterOptions(t) {
+  return [
+    { id: "all", label: t("settings_filter_all", {}, "All Streams") },
+    { id: "direct", label: t("settings_filter_direct", {}, "Direct") },
+    { id: "remux", label: t("settings_filter_remux", {}, "Remux") },
+    { id: "audio-transcode", label: t("settings_filter_audio_transcode", {}, "Audio Transcode") },
+    { id: "transcode", label: t("settings_filter_full_transcode", {}, "Full Transcode") }
+  ];
+}
+
+export function filenameStreamFilterSummary(settings, t) {
+  const selection = filenameStreamFilter(settings);
+  return filenameStreamFilterOptions(t)
+    .filter(({ id }) => selection.includes(id))
+    .map(({ label }) => label)
+    .join(" + ");
+}
+
 // These are illustrative label categories, not compatibility claims about a file.
-export function settingsStreamPreviewSources(mode = "ALL") {
-  if (mode === "DIRECT")
-    return SETTINGS_STREAM_PREVIEW_SOURCES.filter((source) => source.previewMethod === "direct");
-  if (mode === "DIRECT_REMUX")
-    return SETTINGS_STREAM_PREVIEW_SOURCES.filter((source) =>
-      ["direct", "remux"].includes(source.previewMethod)
-    );
-  return SETTINGS_STREAM_PREVIEW_SOURCES;
+export function settingsStreamPreviewSources(settings = {}) {
+  const selected = filenameStreamFilter(settings);
+  if (selected.includes("all")) return SETTINGS_STREAM_PREVIEW_SOURCES;
+  return SETTINGS_STREAM_PREVIEW_SOURCES.filter((source) =>
+    selected.includes(source.previewMethod)
+  );
 }

@@ -60,6 +60,14 @@ export const REMUX_ENDPOINT =
 // CPU on the machine that runs ffmpeg, so a deployment says whether it may be
 // asked at all. Empty means the app never calls it.
 export const TRANSCODE_ENDPOINT = String(runtimeEnv.TRANSCODE_ENDPOINT || "").trim();
+const configuredTranscodeMode = String(runtimeEnv.TRANSCODE_MODE || "")
+  .trim()
+  .toLowerCase();
+export const TRANSCODE_MODE = ["client", "server"].includes(configuredTranscodeMode)
+  ? configuredTranscodeMode
+  : !configuredTranscodeMode && TRANSCODE_ENDPOINT
+    ? "server"
+    : "none";
 export const IMDB_RATINGS_API_BASE_URL = String(runtimeEnv.IMDB_RATINGS_API_BASE_URL || "").trim();
 export const IMDB_TAPFRAME_API_BASE_URL = String(
   runtimeEnv.IMDB_TAPFRAME_API_BASE_URL || ""

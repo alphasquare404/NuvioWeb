@@ -511,7 +511,13 @@ test("playback information uses runtime and probed metadata and omits unavailabl
   const controller = {
     playbackEngine: "client-remux",
     clientRemux: {
-      snapshot: () => ({ video: "hevc", sourceContainer: "Matroska", sourceSizeBytes: 1610612736 })
+      snapshot: () => ({
+        processing: "remux",
+        outputContainer: "fmp4",
+        video: "hevc",
+        sourceContainer: "Matroska",
+        sourceSizeBytes: 1610612736
+      })
     }
   };
   const rows = method(
@@ -531,9 +537,10 @@ test("playback information uses runtime and probed metadata and omits unavailabl
   assert.deepEqual(Object.fromEntries(rows.call(ctx)), {
     Source: "Addon",
     "Source file": "Matroska · 1.50 GiB",
+    "Playback container": "Fragmented MP4 (fMP4)",
     Video: "1920 × 960 · HEVC",
     Audio: "English (EAC3 5.1) · 48 kHz",
-    Playback: "client-remux"
+    Playback: "Remux · Client"
   });
   controller.clientRemux = null;
   controller.playbackEngine = "native-file";
@@ -552,6 +559,84 @@ test("playback information uses runtime and probed metadata and omits unavailabl
   ctx.offlineDownloadId = "saved";
   assert.equal(Object.fromEntries(rows.call(ctx)).Video, "1920 × 960");
 });
+test("playback information shows converted output independently of source metadata", () => {
+  const mixin = readFileSync(
+    new URL("./browserPlayerPresentationScreen.js", import.meta.url),
+    "utf8"
+  );
+  let output;
+  const controller = { playbackEngine: "client-remux", clientRemux: { snapshot: () => output } };
+  const rows = method(
+    "getProposalPlaybackInfoRows()",
+    {
+      t: (_key, fallback) => fallback,
+      PlayerController: controller
+    },
+    mixin
+  ).getProposalPlaybackInfoRows;
+  const ctx = {
+    getDesktopPlaybackVideo: () => ({ videoWidth: 1280, videoHeight: 720 }),
+    getCurrentStreamCandidate: () => ({ addonName: "Addon" }),
+    getAudioEntries: () => [{ selected: true, label: "English (EAC3 5.1)" }],
+    getPlayerStreamProbe: () => ({
+      container: "mkv",
+      videoCodec: "hevc",
+      audioCodec: "eac3",
+      frameRate: 24,
+      videoBitrate: 6000000
+    })
+  };
+  output = { processing: "transcode" };
+  const pending = Object.fromEntries(rows.call(ctx));
+  assert.equal(pending.Video, "1280 × 720");
+  assert.equal(pending.Audio, "");
+  assert.equal(pending["Playback container"], undefined);
+  output = {
+    ...output,
+    outputContainer: "fmp4",
+    video: "vp9",
+    audio: "opus",
+    channels: 2,
+    sampleRate: 48000
+  };
+  assert.deepEqual(Object.fromEntries(rows.call(ctx)), {
+    Source: "Addon",
+    "Source file": "mkv",
+    "Playback container": "Fragmented MP4 (fMP4)",
+    Video: "1280 × 720 · VP9",
+    Audio: "OPUS · 2 ch · 48 kHz",
+    Playback: "Full Transcode · Client"
+  });
+  output = { ...output, processing: "audio-transcode", video: "hevc", audio: "aac" };
+  const audioOnly = Object.fromEntries(rows.call(ctx));
+  assert.equal(audioOnly.Video, "1280 × 720 · HEVC · 24 fps · 6.00 Mbps");
+  assert.equal(audioOnly.Audio, "AAC · 2 ch · 48 kHz");
+  assert.equal(audioOnly.Playback, "Audio Transcode · Client");
+
+  controller.clientRemux = null;
+  controller.playbackEngine = "hls.js";
+  ctx.activePlaybackUrl = "/api/transcode/hls/index.m3u8";
+  ctx.params = {
+    unverifiedPlayback: {
+      mediaUrl: ctx.activePlaybackUrl,
+      output: {
+        processing: "transcode",
+        outputContainer: "hls-fmp4",
+        video: "h264",
+        audio: "aac",
+        channels: 2
+      }
+    }
+  };
+  const server = Object.fromEntries(rows.call(ctx));
+  assert.equal(server.Video, "1280 × 720 · H264");
+  assert.equal(server.Audio, "AAC · 2 ch");
+  assert.equal(server["Playback container"], "HLS · fMP4");
+  assert.equal(server.Playback, "Full Transcode · Server");
+  ctx.activePlaybackUrl = "https://media.test/replaced";
+  assert.equal(Object.fromEntries(rows.call(ctx)).Playback, "hls.js");
+});
+
 test("AirPlay accepts Safari original network sources alongside remux, excluding local-only sources", () => {
   const mixin = readFileSync(
     new URL("./browserPlayerPresentationScreen.js", import.meta.url),

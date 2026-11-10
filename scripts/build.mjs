@@ -601,12 +601,17 @@ async function runBuild() {
     const remuxSources = (await readdir(remuxSourceDir))
       .filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
       .sort();
+    const softwareVideoDir = path.join(rootDir, "vendor/browser-video-decoder");
+    const softwareVideoAssets = ["software-video.js", "software-video.wasm"];
     const remuxContents = await Promise.all(
       remuxSources.map((name) => readFile(path.join(remuxSourceDir, name)))
     );
     remuxAssetId = assetBuildId(
       Buffer.concat([
         ...remuxContents,
+        ...(await Promise.all(
+          softwareVideoAssets.map((name) => readFile(path.join(softwareVideoDir, name)))
+        )),
         await readFile(path.join(rootDir, "scripts/remuxLibraryPolicy.mjs")),
         await readFile(path.join(rootDir, "package-lock.json"))
       ])
@@ -615,15 +620,17 @@ async function runBuild() {
     await mkdir(remuxDir, { recursive: true });
     for (const [entry, outfile, format] of [
       ["clientRuntime.mjs", "client-runtime.js", "esm"],
-      ["cacheWorker.mjs", "cache-worker.js", "iife"],
+      ["cacheWorker.mjs", "cache-worker.js", "esm"],
       ["subtitleWorker.mjs", "subtitle-worker.js", "iife"]
     ]) {
       await build({
         entryPoints: [path.join(remuxSourceDir, entry)],
-        outfile: path.join(remuxDir, outfile),
+        entryNames: outfile.replace(/\.js$/, ""),
+        outdir: remuxDir,
         bundle: true,
         minify: true,
         format,
+        splitting: entry === "cacheWorker.mjs",
         target: ["safari15", "chrome80"],
         define: { __NUVIO_REMUX_ASSET_ID__: JSON.stringify(remuxAssetId) },
         plugins: [
@@ -638,6 +645,57 @@ async function runBuild() {
       path.join(rootDir, "node_modules/mediabunny/LICENSE"),
       path.join(remuxDir, "mediabunny.LICENSE")
     );
+
+    for (const extension of ["ac3", "dts", "truehd", "aac-encoder", "prores"]) {
+      for (const [file, suffix] of [
+        ["LICENSE", "LICENSE"],
+        ["README.md", "NOTICE.md"]
+      ]) {
+        await cp(
+          path.join(rootDir, "node_modules/@mediabunny", extension, file),
+          path.join(remuxDir, "mediabunny-" + extension + "." + suffix)
+        );
+      }
+    }
+
+    for (const name of [...softwareVideoAssets, "FFmpeg.LICENSE", "dav1d.LICENSE", "README.md"]) {
+      await cp(
+        path.join(softwareVideoDir, name),
+        path.join(remuxDir, name === "README.md" ? "software-video.NOTICE.md" : name)
+      );
+    }
+    const softwareVideoSources = path.join(remuxDir, "software-video-source");
+    await mkdir(softwareVideoSources);
+    for (const name of ["decoder.c", "build.sh", "emscripten.ini"]) {
+      await cp(path.join(softwareVideoDir, name), path.join(softwareVideoSources, name));
+    }
+    const libavAudio = path.join(rootDir, "node_modules/@libav.js/variant-obsolete/dist");
+    await Promise.all([
+      cp(
+        path.join(rootDir, "docs/browser-audio-wasm-NOTICE.txt"),
+        path.join(remuxDir, "browser-audio-wasm-NOTICE.txt")
+      ),
+      cp(
+        path.join(rootDir, "docs/browser-audio-wasm-LGPL-2.1.txt"),
+        path.join(remuxDir, "browser-audio-wasm-LGPL-2.1.txt")
+      ),
+      cp(
+        path.join(rootDir, "docs/ffprobe-wasm-COPYING.txt"),
+        path.join(remuxDir, "browser-audio-wasm-GPL-2.0.txt")
+      ),
+      cp(
+        path.join(libavAudio, "libav-6.10.9.0-obsolete.wasm.mjs"),
+        path.join(remuxDir, "libav-audio-factory.js")
+      ),
+      cp(
+        path.join(libavAudio, "libav-6.10.9.0-obsolete.wasm.wasm"),
+        path.join(remuxDir, "libav-audio.wasm")
+      ),
+      cp(
+        path.join(rootDir, "node_modules/@wasm-audio-decoders/aac/README.md"),
+        path.join(remuxDir, "aac-decoder.README.md")
+      )
+    ]);
 
     // js bundle processing (final step to ensure all transformations are applied correctly and we end up with a single, minified bundle file)
     await buildBundle();

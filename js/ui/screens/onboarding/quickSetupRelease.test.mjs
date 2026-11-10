@@ -187,8 +187,8 @@ function commitHarness() {
     initialLabels: false,
     filenameRouting: false,
     initialFilenameRouting: false,
-    streamFilter: "DIRECT_REMUX",
-    initialStreamFilter: "DIRECT_REMUX",
+    streamFilter: ["direct", "remux"],
+    initialStreamFilter: ["direct", "remux"],
     offlineSync: true,
     initialOfflineSync: true
   };
@@ -205,11 +205,11 @@ test("reviewing existing internal and offline choices never rewrites them", () =
 
 test("processing commits only changed fields and is idempotent", () => {
   const h = commitHarness();
-  Object.assign(h.ctx, { labels: true, filenameRouting: true, streamFilter: "ALL" });
+  Object.assign(h.ctx, { labels: true, filenameRouting: true, streamFilter: ["all"] });
   h.commit.call(h.ctx, "processing");
   h.commit.call(h.ctx, "processing");
   assert.deepEqual(h.playerWrites, [
-    { filenamePlaybackRoutingEnabled: true, filenameStreamDisplayMode: "ALL" }
+    { filenamePlaybackRoutingEnabled: true, filenameStreamFilter: ["all"] }
   ]);
   assert.deepEqual(h.badgeWrites, [{ showPlaybackLabels: true }]);
   assert.equal(h.ctx.offlineSync, true);
@@ -251,16 +251,16 @@ test("preview filters actual shared card models without opening a stream", async
     String,
     (key, params, fallback) => fallback
   ).renderStreamPreview;
-  const html = preview.call({ labels: true, streamFilter: "ALL" });
+  const html = preview.call({ labels: true, streamFilter: ["all"] });
   assert.deepEqual(
     models.map((m) => m.source.previewMethod),
-    ["direct", "remux", "audio-transcode", "unknown"]
+    ["direct", "remux", "audio-transcode", "transcode", "unknown"]
   );
   assert.ok(html.includes("stream-route-card-action"));
   assert.ok(html.includes("stream-route-offline-actions"));
   assert.ok(!html.includes('data-action="playStream"'));
   models.length = 0;
-  preview.call({ labels: false, streamFilter: "DIRECT_REMUX" });
+  preview.call({ labels: false, streamFilter: ["direct", "remux"] });
   assert.deepEqual(
     models.map((m) => m.source.previewMethod),
     ["direct", "remux"]

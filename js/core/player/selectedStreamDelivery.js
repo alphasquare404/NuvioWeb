@@ -10,9 +10,9 @@ import {
   isTranscodeAccessGranted,
   shouldTranscodeSource
 } from "./transcodeSource.js";
-import { REMUX_ENDPOINT, REMUX_POLICY, TRANSCODE_ENDPOINT } from "../../config.js";
+import { TRANSCODE_MODE, REMUX_ENDPOINT, REMUX_POLICY, TRANSCODE_ENDPOINT } from "../../config.js";
 import { assertConfiguredRemuxRoute, isConfiguredCopyRelayUrl } from "./remuxPolicy.js";
-import { clientRemuxPlan } from "./remuxClient.js";
+import { clientRemuxAvailable, clientRemuxPlan } from "./remuxClient.js";
 import { buildRemuxUrl } from "./remuxSource.js";
 import { classifyPlayback, PLAYBACK_METHODS } from "./playbackMethod.js";
 import { TranscodeSettingsStore } from "../../data/local/transcodeSettingsStore.js";
@@ -22,6 +22,101 @@ function unavailable(message) {
   return error;
 }
 const transcodeAccess = createTranscodeAccess({ endpoint: TRANSCODE_ENDPOINT });
+export function isTranscodeEnabled() {
+  return (
+    TRANSCODE_MODE === "client" || (TRANSCODE_MODE === "server" && Boolean(TRANSCODE_ENDPOINT))
+  );
+}
+
+// Audio and full video conversion follow the same deployment mode.
+export async function prepareMeasuredTranscode({
+  sourceUrl,
+  probe,
+  capabilities = getDeviceCapabilities(),
+  mode = TRANSCODE_MODE,
+  scope = globalThis,
+  afterPlaybackFailure = false,
+  endpoint = TRANSCODE_ENDPOINT,
+  access = transcodeAccess,
+  token
+} = {}) {
+  if (
+    mode === "none" ||
+    !probe?.videoCodec ||
+    probe.videoCodec === "unknown" ||
+    !/^https?:\/\//i.test(sourceUrl || "")
+  )
+    return null;
+  const verdict = classifyPlayback({ url: sourceUrl, probe, capabilities });
+  // Some measured audio codecs (for example PCM in MKV) have no useful native
+  // capability query. After the normal paths refuse playback, let the worker
+  // test the real track and output. The label alone cannot authorize encoding.
+  const tryMeasuredAudio =
+    afterPlaybackFailure &&
+    verdict.reason === "audio-capability-unknown" &&
+    verdict.audioCodec !== "unknown" &&
+    probe.playbackCapabilities?.relayVideo !== false;
+  const method = tryMeasuredAudio ? PLAYBACK_METHODS.AUDIO_TRANSCODE : verdict.method;
+  const audioOnly = method === PLAYBACK_METHODS.AUDIO_TRANSCODE;
+  if (!audioOnly && method !== PLAYBACK_METHODS.TRANSCODE) return null;
+  const index = Number(verdict.audioIndex) || 0;
+  if (mode === "client") {
+    const needed = audioOnly ? [] : ["VideoEncoder"];
+    if (
+      !clientRemuxAvailable(scope) ||
+      !needed.every((name) => typeof scope[name] === "function")
+    ) {
+      throw unavailable(
+        "This browser does not provide the WebCodecs APIs required for client conversion."
+      );
+    }
+    return {
+      url: sourceUrl,
+      plan: { sourceUrl, route: "client", method, delivery: "mse", audioIndex: index },
+      route: audioOnly ? "client-audio-transcode" : "client-transcode"
+    };
+  }
+  if (mode !== "server" || !endpoint) return null;
+  if ((!audioOnly && capabilities.h264 === false) || capabilities.aac === false) return null;
+  const service = await access.resolve();
+  if (!service?.reachable || (!audioOnly && (!service.hls || !service.fullVideo))) return null;
+  const serverToken = token ?? TranscodeSettingsStore.get().token;
+  if (!isTranscodeAccessGranted({ mode: service.mode, token: serverToken })) {
+    throw unavailable(
+      "Enter the Transcode token in Settings → Playback → Audio & Video to use server conversion."
+    );
+  }
+  const options = {
+    endpoint,
+    token: serverToken,
+    plan: {
+      video: audioOnly ? "copy" : "h264",
+      audio: "aac",
+      height: audioOnly ? 0 : 1080,
+      channels: 2,
+      audioIndex: index
+    }
+  };
+  const url = service.hls
+    ? buildTranscodePlaylistUrl(sourceUrl, options)
+    : buildTranscodeUrl(sourceUrl, options);
+  return url
+    ? {
+        url,
+        plan: null,
+        waitForPlaylist: service.hls,
+        output: {
+          processing: method,
+          outputContainer: service.hls ? "hls-fmp4" : "mp4",
+          video: audioOnly ? verdict.videoCodec : options.plan.video,
+          audio: probe.hasAudio === false ? null : options.plan.audio,
+          channels: probe.hasAudio === false ? 0 : options.plan.channels
+        },
+        route: audioOnly ? "audio-transcode" : "server-transcode"
+      }
+    : null;
+}
+
 // Shared selected-file delivery. Keep the established HLS producer and alternate audio renditions.
 export const SelectedStreamDelivery = {
   async remuxPlaylistUrl(
@@ -197,7 +292,10 @@ export const SelectedStreamDelivery = {
       });
     if (verdict.method === PLAYBACK_METHODS.AUDIO_TRANSCODE && !TRANSCODE_ENDPOINT)
       throw new Error("This audio needs server conversion, which is unavailable on this host.");
-    if (!shouldTranscodeSource({ url, verdict, endpoint: TRANSCODE_ENDPOINT })) {
+    if (
+      TRANSCODE_MODE !== "server" ||
+      !shouldTranscodeSource({ url, verdict, endpoint: TRANSCODE_ENDPOINT })
+    ) {
       // Only the playback verdict can request a container/tag or audio-track copy.
       // A filename extension alone must not send a supported source to the relay.
       if (verdict.method === PLAYBACK_METHODS.REMUX && REMUX_ENDPOINT) {

@@ -1864,6 +1864,8 @@ export const PlayerController = {
         video: this.video,
         requestHeaders,
         expectedAudio: playbackPlan.expectedAudio,
+        transcode:
+          playbackPlan.method === "audio-transcode" ? "audio" : playbackPlan.method === "transcode",
         canResolveSource: (sourceUrl) =>
           Boolean(
             clientMediaUrlResolver.cached(sourceUrl) || clientMediaUrlResolver.canUseHost(sourceUrl)

@@ -232,9 +232,10 @@ export function createStreamProber({
     const abort = () => controller?.abort();
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
-    const timer = controller
-      ? setTimeout(() => controller.abort(), Math.max(1, requestTimeoutMs))
-      : null;
+    const timer =
+      controller && Number.isFinite(requestTimeoutMs)
+        ? setTimeout(() => controller.abort(), Math.max(1, requestTimeoutMs))
+        : null;
     try {
       const response = await fetchImpl(target, { signal: controller?.signal });
       if (!response?.ok) {
@@ -368,12 +369,14 @@ export function createStreamProber({
           requestTimeoutMs + resolveTimeoutMs + (resolveTimeoutMs ? 20000 : 0)
         );
         const timedOut = Symbol("timeout");
-        const result = await Promise.race([
-          shared.promise,
-          new Promise((resolve) => {
-            timer = setTimeout(() => resolve(timedOut), budget);
-          })
-        ]);
+        const result = Number.isFinite(budget)
+          ? await Promise.race([
+              shared.promise,
+              new Promise((resolve) => {
+                timer = setTimeout(() => resolve(timedOut), budget);
+              })
+            ])
+          : await shared.promise;
         clearTimeout(timer);
         if (result === timedOut) return null;
         if (result || shared.source === source) return assessResult(result);

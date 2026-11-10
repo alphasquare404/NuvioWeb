@@ -10,6 +10,7 @@ import {
   EncodedAudioPacketSource
 } from "mediabunny";
 import { readRange } from "./range.mjs";
+import { transcodeInput } from "./transcodePipeline.mjs";
 import { createSourceReader, LIBRARY_CACHE_BYTES } from "./sourceReader.mjs";
 import { MAX_COMPRESSED_BYTES } from "./bufferBudget.mjs";
 import {
@@ -50,11 +51,14 @@ export async function remux({
   start = 0,
   audioIndex = 0,
   expectedAudio = null,
+  transcode = false,
   signal,
   stats = {},
   write,
   writeOutput,
   beforePacket,
+  supportsOutput,
+  beforeEncode,
   metadata,
   fetcher = fetch
 }) {
@@ -77,6 +81,19 @@ export async function remux({
   });
   let output;
   try {
+    if (transcode)
+      return await transcodeInput({
+        input,
+        start,
+        audioIndex,
+        signal,
+        stats,
+        metadata,
+        write,
+        supportsOutput,
+        beforeEncode,
+        audioOnly: transcode === "audio"
+      });
     stats.pipelinePhase = "track-discovery";
     const video = await input.getPrimaryVideoTrack();
     const audioTracks = await input.getAudioTracks();
@@ -165,6 +182,7 @@ export async function remux({
       video: video.codec,
       audio: audio?.codec || null,
       channels: ac?.numberOfChannels,
+      sampleRate: ac?.sampleRate,
       firstAudioTimestamp: ap?.timestamp
     });
     stamp("metadataAckMs");

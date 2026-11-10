@@ -15,8 +15,16 @@ import { ExperienceModeStore } from "../../../data/local/experienceModeStore.js"
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
 import { StreamBadgeSettingsStore } from "../../../data/local/streamBadgeSettingsStore.js";
 import { REMUX_MODE, REMUX_ENDPOINT, TRANSCODE_ENDPOINT } from "../../../config.js";
-import { filenameStreamDisplayMode } from "../../../core/streams/filenameStreamPolicy.js";
-import { settingsStreamPreviewSources } from "../settings/playbackSettingsPresentation.js";
+import {
+  filenameStreamFilter,
+  toggleFilenameStreamFilter
+} from "../../../core/streams/filenameStreamPolicy.js";
+import { NuvioDialog } from "../../components/nuvioDialog.js";
+import {
+  filenameStreamFilterOptions,
+  filenameStreamFilterSummary,
+  settingsStreamPreviewSources
+} from "../settings/playbackSettingsPresentation.js";
 import {
   normalizeSourceForDisplay,
   renderBrowserSourceCardContent
@@ -110,7 +118,7 @@ export const QuickSetupScreen = {
     this.includeReleaseIntro = ExperienceModeStore.get().quickSetupVersion > 0;
     this.labels = StreamBadgeSettingsStore.get().showPlaybackLabels !== false;
     this.filenameRouting = settings.filenamePlaybackRoutingEnabled !== false;
-    this.streamFilter = filenameStreamDisplayMode(settings);
+    this.streamFilter = filenameStreamFilter(settings);
     this.initialLabels = this.labels;
     this.initialFilenameRouting = this.filenameRouting;
     this.initialStreamFilter = this.streamFilter;
@@ -131,8 +139,7 @@ export const QuickSetupScreen = {
     ScreenUtils.show(this.container);
     this.onClickBound = this.onClick.bind(this);
     this.container.addEventListener("click", this.onClickBound);
-    this.onChangeBound = this.onChange.bind(this);
-    this.container.addEventListener("change", this.onChangeBound);
+
     this.render();
   },
 
@@ -488,16 +495,7 @@ export const QuickSetupScreen = {
       <div class="quick-setup-processing-fields">
         ${field("labels", t("quick_setup_labels", {}, "Labels"), t("quick_setup_labels_body", {}, "Show Direct, Remux, Transcoding, or Unknown estimates on stream cards."), this.labels)}
         ${field("filenameRouting", t("settings_filename_route_title", {}, "Determine stream processing based on filename"), t("settings_filename_route_short", {}, "Estimate how to play the stream from its filename. If playback fails, another supported method is tried automatically."), this.filenameRouting)}
-        <label class="quick-setup-processing-field"><span><strong>${escapeHtml(t("quick_setup_filter", {}, "Stream filter"))}</strong><small>${escapeHtml(t("settings_filename_filter_short", {}, "Filename estimates. Also applies to autoplay and next episodes."))}</small></span><select class="focusable" data-processing-field="streamFilter">${[
-          ["ALL", "All streams"],
-          ["DIRECT", "Direct"],
-          ["DIRECT_REMUX", "Direct + Remux"]
-        ]
-          .map(
-            ([value, label]) =>
-              `<option value="${value}" ${this.streamFilter === value ? "selected" : ""}>${escapeHtml(label)}</option>`
-          )
-          .join("")}</select></label>
+        <button type="button" class="quick-setup-processing-field quick-setup-processing-toggle focusable" data-action="streamFilter" aria-haspopup="dialog"><span><strong>${escapeHtml(t("quick_setup_filter", {}, "Stream filter"))}</strong><small>${escapeHtml(t("settings_filename_filter_short", {}, "Filename estimates. Also applies to autoplay and next episodes."))}</small></span><span class="quick-setup-processing-value">${escapeHtml(filenameStreamFilterSummary({ filenameStreamFilter: this.streamFilter }, t))}</span></button>
       </div>
       ${this.renderStreamPreview()}
       <p class="quick-setup-preview-note">${escapeHtml(t("quick_setup_filter_warning", {}, "Filename estimates are not compatibility checks. Incorrect filenames can hide playable streams, including Unknown results."))}</p>`;
@@ -508,7 +506,7 @@ export const QuickSetupScreen = {
       ...StreamBadgeSettingsStore.snapshot(),
       showPlaybackLabels: this.labels
     };
-    const cards = settingsStreamPreviewSources(this.streamFilter)
+    const cards = settingsStreamPreviewSources({ filenameStreamFilter: this.streamFilter })
       .map((source) => {
         const display = normalizeSourceForDisplay(source, {
           badgeSettings: { ...badgeSettings, showPlaybackLabels: false }
@@ -527,13 +525,47 @@ export const QuickSetupScreen = {
     return `<section class="quick-setup-stream-preview" aria-label="${escapeHtml(t("settings_preview_streams", {}, "Stream card preview"))}"><h2>${escapeHtml(t("settings_preview_streams", {}, "Stream card preview"))}</h2><p class="quick-setup-preview-note">${escapeHtml(t("quick_setup_preview_note", {}, "Example filenames only. No stream is fetched or checked."))}</p>${cards}</section>`;
   },
 
-  onChange(event) {
-    const field = event.target.dataset.processingField;
-    if (field !== "streamFilter" || !["ALL", "DIRECT", "DIRECT_REMUX"].includes(event.target.value))
-      return;
-    this.streamFilter = event.target.value;
+  openStreamFilterDialog() {
+    const options = filenameStreamFilterOptions(t);
+    const syncSelection = () => {
+      for (const { id } of options) {
+        const selected = this.streamFilter.includes(id);
+        this.streamFilterDialog.setButtonSelected(id, selected);
+        this.container.querySelector(`[data-key="${id}"]`)?.setAttribute("aria-pressed", selected);
+      }
+    };
+    this.streamFilterDialog = new NuvioDialog({
+      title: t("quick_setup_filter", {}, "Stream filter"),
+      widthVw: 90,
+      panelClassName: "quick-setup-stream-filter-dialog",
+      suppressEnterUntilKeyUp: true,
+      onDismiss: () => this.closeStreamFilterDialog(),
+      buttons: [
+        ...options.map(({ id, label }) => ({
+          key: id,
+          label,
+          onAction: () => {
+            this.streamFilter = toggleFilenameStreamFilter(this.streamFilter, id);
+            syncSelection();
+          }
+        })),
+        {
+          key: "done",
+          label: t("quick_setup_finish", {}, "Done"),
+          onAction: () => this.closeStreamFilterDialog()
+        }
+      ]
+    });
+    this.streamFilterDialog.mount(this.container);
+    syncSelection();
+  },
+
+  closeStreamFilterDialog() {
+    const dialog = this.streamFilterDialog;
+    this.streamFilterDialog = null;
+    dialog?.destroy();
     this.render();
-    this.container.querySelector(`[data-processing-field="${field}"]`)?.focus();
+    this.container.querySelector('[data-action="streamFilter"]')?.focus();
   },
 
   // A figure belongs to the answer it illustrates, so each one lives inside its
@@ -870,6 +902,11 @@ export const QuickSetupScreen = {
       return;
     }
 
+    if (action === "streamFilter") {
+      this.openStreamFilterDialog();
+      return;
+    }
+
     if (action === "choosePlayer") {
       this.player = normalizeBrowserExternalPlayer(node.dataset.player);
       this.render();
@@ -957,8 +994,8 @@ export const QuickSetupScreen = {
       const changes = {};
       if (this.filenameRouting !== this.initialFilenameRouting)
         changes.filenamePlaybackRoutingEnabled = this.filenameRouting;
-      if (this.streamFilter !== this.initialStreamFilter)
-        changes.filenameStreamDisplayMode = this.streamFilter;
+      if (this.streamFilter.join() !== this.initialStreamFilter.join())
+        changes.filenameStreamFilter = this.streamFilter;
       if (Object.keys(changes).length) PlayerSettingsStore.set(changes);
       this.initialFilenameRouting = this.filenameRouting;
       this.initialStreamFilter = this.streamFilter;
@@ -987,6 +1024,10 @@ export const QuickSetupScreen = {
   },
 
   consumeBackRequest() {
+    if (this.streamFilterDialog) {
+      this.closeStreamFilterDialog();
+      return true;
+    }
     if (this.stepIndex > 0) {
       this.stepIndex -= 1;
       this.render();
@@ -997,7 +1038,8 @@ export const QuickSetupScreen = {
 
   cleanup() {
     this.container?.removeEventListener("click", this.onClickBound);
-    this.container?.removeEventListener("change", this.onChangeBound);
+    this.streamFilterDialog?.destroy();
+    this.streamFilterDialog = null;
     ScreenUtils.hide(this.container);
   }
 };

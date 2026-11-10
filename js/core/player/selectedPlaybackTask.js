@@ -9,10 +9,10 @@ export function selectedPlaybackTask(operation, { signal, timeoutMs = 15000 } = 
       callback(value);
     };
     const aborted = () => finish(reject, new DOMException("Playback cancelled", "AbortError"));
-    const timer = setTimeout(
-      () => finish(reject, new Error("Stream preparation timed out.")),
-      timeoutMs
-    );
+    const timer =
+      timeoutMs === Infinity
+        ? null
+        : setTimeout(() => finish(reject, new Error("Stream preparation timed out.")), timeoutMs);
     if (signal?.aborted) {
       aborted();
       return;

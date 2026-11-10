@@ -51,7 +51,7 @@ export function createBrowserProbeRunner({
       const id = ++nextId;
       const submittedAt = Date.now();
       const resolveBudget = Math.max(0, Math.min(15000, Number(resolveTimeoutMs) || 0));
-      // Only background callers reserve extra phases. Selection keeps its hard deadline.
+      // Callers can reserve time for cold initialization separately from media reads.
       const initializationBudget = resolveBudget
         ? Math.max(1, Math.min(30000, Number(initializationTimeoutMs) || 20000))
         : 0;
@@ -132,7 +132,9 @@ export function createBrowserProbeRunner({
           finish(result);
         };
         const onAbort = () => done(null, true, "cancelled");
-        let timer = setTimeout(() => done(null, true, "timeout"), remaining);
+        let timer = Number.isFinite(remaining)
+          ? setTimeout(() => done(null, true, "timeout"), remaining)
+          : null;
         signal?.addEventListener("abort", onAbort, { once: true });
         if (signal?.aborted) {
           onAbort();
@@ -140,10 +142,10 @@ export function createBrowserProbeRunner({
         }
         const arm = (at, reason = "timeout") => {
           clearTimeout(timer);
-          timer = setTimeout(
-            () => done(null, true, reason),
-            Math.max(1, Math.min(at, deadline) - Date.now())
-          );
+          const delay = Math.min(at, deadline) - Date.now();
+          timer = Number.isFinite(delay)
+            ? setTimeout(() => done(null, true, reason), Math.max(1, delay))
+            : null;
         };
         try {
           reader = createProbeRangeReader(url, {

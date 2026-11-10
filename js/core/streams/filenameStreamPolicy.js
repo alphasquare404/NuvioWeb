@@ -12,12 +12,41 @@ export function filenameStreamDisplayMode(settings = {}) {
     ? settings.filenameStreamDisplayMode
     : "ALL";
 }
-export function filterFilenameStreams(streams = [], settings = {}, capabilities = null) {
+export const FILENAME_STREAM_METHODS = ["direct", "remux", "audio-transcode", "transcode"];
+
+export function normalizeFilenameStreamFilter(value) {
+  if (!Array.isArray(value)) return null;
+  if (value.includes("all")) return ["all"];
+  const methods = FILENAME_STREAM_METHODS.filter((method) => value.includes(method));
+  return methods.length ? methods : null;
+}
+
+export function filenameStreamFilter(settings = {}) {
+  const selection = normalizeFilenameStreamFilter(settings.filenameStreamFilter);
+  if (selection) return selection;
   const mode = filenameStreamDisplayMode(settings);
-  if (mode === "ALL") return streams;
+  if (mode === "ALL") return ["all"];
+  return [
+    "direct",
+    ...(mode === "DIRECT_REMUX" ? ["remux"] : []),
+    ...(settings.filenameTranscodeFilter?.audio === true ? ["audio-transcode"] : []),
+    ...(settings.filenameTranscodeFilter?.full === true ? ["transcode"] : [])
+  ];
+}
+
+export function toggleFilenameStreamFilter(selected, method) {
+  if (method === "all") return ["all"];
+  const next = selected.includes(method)
+    ? selected.filter((id) => id !== method)
+    : [...selected.filter((id) => id !== "all"), method];
+  return normalizeFilenameStreamFilter(next) || ["all"];
+}
+
+export function filterFilenameStreams(streams = [], settings = {}, capabilities = null) {
+  const selected = filenameStreamFilter(settings);
+  if (selected.includes("all")) return streams;
   const device = capabilities || getDeviceCapabilities();
-  return streams.filter((stream) => {
-    const method = classifyStreamFilename(stream, device).method;
-    return method === "direct" || (mode === "DIRECT_REMUX" && method === "remux");
-  });
+  return streams.filter((stream) =>
+    selected.includes(classifyStreamFilename(stream, device).method)
+  );
 }

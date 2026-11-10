@@ -152,11 +152,109 @@ test("adaptive, client-remux and offline sources do not launch Direct discovery"
     assert.equal(f.counts().probes, 0);
   }
 });
+test("background Direct probe starts after the first frame and switches once to the preferred language", async () => {
+  const f = fixture({ pending: true });
+  const notices = [];
+  const switches = [];
+  let probe;
+  f.controller.playbackEngine = "native-file";
+  f.ctx.applyDirectAudioPreferenceAfterStart = method(
+    "  applyDirectAudioPreferenceAfterStart() {",
+    "  async switchDirectAudioTrack(",
+    { ...f.globals, t: (key) => key }
+  ).applyDirectAudioPreferenceAfterStart;
+  f.ctx.showAspectToast = (message) => notices.push(message);
+  f.ctx.loadDirectTrackData = () => (probe = f.load.call(f.ctx));
+  f.ctx.findRememberedAudioOption = () => null;
+  f.ctx.findStartupPreferredAudioOption = () => ({
+    languageLabel: "Chinese",
+    entry: { supported: true, track: f.ctx.directAudioTracks[1] }
+  });
+  f.ctx.switchDirectAudioTrack = (entry, options) => switches.push([entry.track.index, options]);
+
+  f.ctx.applyDirectAudioPreferenceAfterStart();
+  assert.equal(f.counts().probes, 0);
+  f.ctx.hasPresentedPlaybackFrame = true;
+  f.ctx.applyDirectAudioPreferenceAfterStart();
+  f.ctx.applyDirectAudioPreferenceAfterStart();
+  assert.equal(f.counts().probes, 1);
+  assert.deepEqual(notices, ["player_audio_preference_checking"]);
+  assert.deepEqual(switches, []);
+  f.resolve();
+  await probe;
+  f.ctx.applyDirectAudioPreferenceAfterStart();
+  assert.equal(switches.length, 1);
+  assert.equal(switches[0][0], 1);
+  assert.equal(switches[0][1].automatic, true);
+  assert.equal(switches[0][1].language, "Chinese");
+});
+
+test("already-default and manual audio choices avoid automatic remux", async () => {
+  const f = fixture();
+  f.controller.playbackEngine = "native-file";
+  f.ctx.hasPresentedPlaybackFrame = true;
+  f.ctx.showAspectToast = () => {};
+  f.ctx.applyDirectAudioPreferenceAfterStart = method(
+    "  applyDirectAudioPreferenceAfterStart() {",
+    "  async switchDirectAudioTrack(",
+    f.globals
+  ).applyDirectAudioPreferenceAfterStart;
+  f.ctx.findRememberedAudioOption = () => null;
+  f.ctx.findStartupPreferredAudioOption = () => ({
+    entry: { supported: true, track: f.ctx.directAudioTracks[0] }
+  });
+  f.ctx.switchDirectAudioTrack = () => assert.fail("default track must keep Direct");
+  await f.load.call(f.ctx);
+  assert.equal(f.ctx.directAudioPreferenceState.attempted, true);
+  const manual = method("  applyAudioTrack(index,", "  renderAudioDialog() {").applyAudioTrack;
+  f.ctx.getAudioEntries = () => [{ track: { engine: "direct-default" } }];
+  f.ctx.directAudioSwitching = { automatic: true, started: false };
+  manual.call(f.ctx, 0, { rememberSelection: true });
+  assert.equal(f.ctx.directAudioSwitching, null);
+  assert.equal(f.ctx.directAudioPreferenceState.attempted, true);
+});
+
+test("automatic audio transition announces the switch and restores Direct on startup failure", async () => {
+  const f = fixture();
+  await f.load.call(f.ctx);
+  const calls = [];
+  const notices = [];
+  Object.assign(
+    f.ctx,
+    method("  async switchDirectAudioTrack(", "  clearRelayTrackData() {", {
+      prepareUnverifiedRemux: async () => ({
+        url: "https://relay.test/audio",
+        plan: { route: "server" }
+      }),
+      t: (key) => key
+    })
+  );
+  f.ctx.showAspectToast = (message) => notices.push(message);
+  f.ctx.playStreamByUrl = async (url, options) => {
+    f.ctx.activePlaybackUrl = url;
+    calls.push({ url, options });
+  };
+  const original = f.ctx.activePlaybackUrl;
+  await f.ctx.switchDirectAudioTrack(
+    { supported: true, track: { index: 1 } },
+    { automatic: true, language: "Chinese" }
+  );
+  assert.deepEqual(notices, ["player_audio_preference_switching"]);
+  assert.equal(calls[0].options.rememberRequestedAudio, false);
+  assert.equal(calls[0].options.preservePlaybackState, true);
+  assert.equal(await f.ctx.restoreDefaultAfterAutomaticAudioFailure(), true);
+  assert.equal(calls[1].url, original);
+  assert.equal(calls[1].options.preservePendingRestore, true);
+  assert.equal(f.ctx.params.playbackPlan, null);
+  assert.equal(notices[1], "player_audio_preference_default");
+  assert.equal(await f.ctx.restoreDefaultAfterAutomaticAudioFailure(), false);
+});
+
 test("Direct audio selection reuses copy remux and preserves playback position/state", async () => {
   const f = fixture();
   await f.load.call(f.ctx);
   let prepared, played;
-  const fn = method("  async switchDirectAudioTrack(entry) {", "  clearRelayTrackData() {", {
+  const fn = method("  async switchDirectAudioTrack(", "  clearRelayTrackData() {", {
     prepareUnverifiedRemux: async (url, options) => {
       prepared = { url, options };
       return { url, plan: { route: "client", sourceUrl: url, audioIndex: options.audioIndex } };
@@ -177,7 +275,7 @@ test("a late remux preparation cannot replace a different source", async () => {
   const f = fixture();
   await f.load.call(f.ctx);
   let finish;
-  const fn = method("  async switchDirectAudioTrack(entry) {", "  clearRelayTrackData() {", {
+  const fn = method("  async switchDirectAudioTrack(", "  clearRelayTrackData() {", {
     prepareUnverifiedRemux: () =>
       new Promise((r) => {
         finish = r;

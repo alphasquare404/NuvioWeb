@@ -168,13 +168,23 @@ docker compose up -d --force-recreate
 Keep all four Docker `image:` tags in `docker-compose.yml` aligned when
 switching between `stable`, `nightly`, `latest`, or a pinned `X.Y.Z` release.
 
-### Remux client/server and audio conversion
+### Remux and transcoding
 
 `REMUX_MODE=off|client|server` selects container-copy delivery. An empty value retains legacy endpoint-based selection. Node deployments also enable the existing relay with `REMUX_ENABLED=true`; Docker deployments set the public endpoint URLs explicitly. Server mode uses the existing copy/HLS relay; it does not require a separate remux-session service.
 
-- Client: MediaBunny reads its supported source formats and copies encoded packets into fragmented MP4. The output format and the browser's actual MediaSource/ManagedMediaSource codec support decide eligibility. There is no client encoder. The pinned remux worker skips Matroska font/artwork attachment payloads, which are unused by the text-only subtitle path. This avoids whole-attachment allocations without raising source-read/cache budgets; the modified module source is shipped beside the MediaBunny license. HTTPS, workers, byte-range/CORS access and OPFS are required. Unsupported source/output combinations fail explicitly.
+- Client: MediaBunny reads its supported source formats and copies encoded packets into fragmented MP4. The output format and the browser's actual MediaSource/ManagedMediaSource codec support decide eligibility. The remux path leaves the encoded tracks intact. The pinned remux worker skips Matroska font/artwork attachment payloads, which are unused by the text-only subtitle path. This avoids whole-attachment allocations without raising source-read/cache budgets; the modified module source is shipped beside the MediaBunny license. HTTPS, workers, byte-range/CORS access and OPFS are required. Unsupported source/output combinations fail explicitly.
 - Server: FFmpeg copies video and audio on the existing HLS path. No codec-family whitelist is imposed on alternate audio; device refusals and actual codec-transition support still govern selection. A format unsupported by the HLS/MP4 muxer can still fail; FFmpeg recognition alone does not guarantee browser playback.
-- Audio conversion: the separate `TRANSCODE_ENDPOINT` path may copy video and encode audio to AAC. Its label is orange Transcoding. Video encoding/full transcoding is not offered.
+- Audio conversion: the separate `TRANSCODE_ENDPOINT` path may copy video and encode audio to AAC. Its label is orange Transcoding.
+
+Full video conversion is opt-in and requires a successful probe showing a video incompatibility.
+
+Set `TRANSCODE_MODE` in `local.properties` for Node preview or in the Compose environment:
+
+- `none`: Do not transcode audio or video.
+- `client`: Mediabunny and WebCodecs produce fragmented MP4. Audio-only conversion keeps the video packets and encodes audio to AAC. Full conversion encodes H.264/AAC up to 4K UHD when supported, without upscaling. The device must support decoding the source tracks it converts.
+- `server`: FFmpeg converts audio or full video. Full output is H.264/AAC HLS up to 1080p. Compose requires `TRANSCODE_ENDPOINT`; Node preview uses its local bridge. Access mode, token, concurrency, cache, and `TRANSCODE_TIMEOUT_MS` apply.
+
+An unset mode preserves legacy server audio delivery when an endpoint is configured. Explicit modes keep conversion in the selected location.
 
 `REMUX_CLIENT_CACHE_MAX_MIB` controls the bounded OPFS disk cache (128–512 MiB), independently of the compressed RAM buffer limits. Neither path loads an entire movie into browser RAM. Server segments use the existing bounded disk-cache lifecycle.
 
@@ -203,7 +213,7 @@ manager, so no separate host installation is needed. In Compose, `FFMPEG_PATH`
 refers to an executable **inside that container**.
 
 At startup the Node server and standalone transcode bridge check the executable,
-MP4/HLS muxers, HTTP/HTTPS protocols, and AAC encoder with bounded local commands.
+MP4/HLS muxers, HTTP/HTTPS protocols, and AAC and libx264 encoders with bounded local commands.
 No media URL is fetched for these checks. Health responses expose verified
 capability booleans without executable paths. Missing FFmpeg capabilities return 503
 instead of starting a job. The Node preview omits unavailable local processing
@@ -215,4 +225,4 @@ transcoding. An older bridge without verified capability fields, an unreachable
 service, or a missing binary does not advertise those features in onboarding.
 Existing playback policy is unchanged for older bridge responses. Installing
 FFmpeg does not enable remux or audio transcoding automatically: host switches,
-access rules, and budgets still apply. Full video transcoding is not offered.
+access rules, and budgets still apply.

@@ -24,14 +24,17 @@ import {
   activePlaybackSettingsGroup,
   togglePlaybackSettingsGroup,
   subtitleSettingsPreviewStyle,
-  settingsStreamPreviewSources
+  settingsStreamPreviewSources,
+  filenameStreamFilterOptions,
+  filenameStreamFilterSummary
 } from "./playbackSettingsPresentation.js";
 import {
   normalizeSourceForDisplay,
   renderBrowserSourceCardContent
 } from "../../components/browserStreamSourceCard.js";
 import {
-  filenameStreamDisplayMode,
+  filenameStreamFilter,
+  toggleFilenameStreamFilter,
   FILENAME_ESTIMATE_NOTICE,
   FILENAME_FILTER_NOTICE
 } from "../../../core/streams/filenameStreamPolicy.js";
@@ -3577,7 +3580,7 @@ export const SettingsScreen = {
               <button class="settings-dialog-option settings-content-focusable focusable${useLanguageRenderer ? " settings-language-option" : ""}${useHeroCatalogRenderer ? " settings-hero-catalog-option" : ""}${useSingleChoiceRenderer ? " settings-single-choice-option" : ""}${isSelected ? " is-selected" : ""}"
                       data-zone="dialog"
                       data-dialog-index="${index}"
-                      data-dialog-option-id="${escapeHtml(option.id)}">
+                      data-dialog-option-id="${escapeHtml(option.id)}"${this.optionDialog.multiChoice ? ` aria-pressed="${Boolean(isSelected)}"` : ""}>
                 ${
                   useHeroCatalogRenderer
                     ? `<span class="settings-hero-catalog-copy">
@@ -7556,11 +7559,7 @@ export const SettingsScreen = {
       external: "open_in_new",
       p2p: "device_hub"
     };
-    const filterLabels = {
-      ALL: t("settings_filter_all", {}, "All streams"),
-      DIRECT: "Direct",
-      DIRECT_REMUX: "Direct + Remux"
-    };
+
     const summaries = {
       general: t(
         "settings_summary_player",
@@ -7581,7 +7580,7 @@ export const SettingsScreen = {
       audio:
         labelForPlaybackLanguage(player.preferredAudioLanguage) +
         " · " +
-        filterLabels[filenameStreamDisplayMode(player)],
+        filenameStreamFilterSummary(player, t),
       subtitles:
         labelForSubtitlePlaybackLanguage(player.subtitleLanguage) +
         ` · ${clampSubtitleSize(player.subtitleStyle?.fontSize ?? 120)}%`,
@@ -7627,9 +7626,7 @@ export const SettingsScreen = {
 
   renderSettingsStreamPreview(model, applyFilter = false) {
     if (!Platform.isBrowser()) return "";
-    const examples = settingsStreamPreviewSources(
-      applyFilter ? filenameStreamDisplayMode(model.player) : "ALL"
-    );
+    const examples = settingsStreamPreviewSources(applyFilter ? model.player : {});
     const badgeSettings = StreamBadgeSettingsStore.snapshot();
     const renderExample = (source) => {
       const display = normalizeSourceForDisplay(source, {
@@ -8856,18 +8853,37 @@ export const SettingsScreen = {
           PlayerSettingsStore.get().filenamePlaybackRoutingEnabled === false
       })
     );
-    const filenameFilterOptions = [
-      { id: "ALL", label: "All streams" },
-      { id: "DIRECT", label: "Direct" },
-      { id: "DIRECT_REMUX", label: "Direct + Remux" }
+    const probeStreamTitle = t("settings_probe_stream_title", {}, "Probe Stream");
+    const probeStreamOptions = [
+      {
+        id: "unknown-or-transcode",
+        label: t("settings_probe_stream_transcoding", {}, "Unknown or Transcode")
+      },
+      { id: "always", label: t("settings_probe_stream_always", {}, "Always") }
     ];
-    this.actionMap.set("playback:filenameStreamFilter", () =>
+    this.actionMap.set("playback:probeStream", () =>
       this.openOptionDialog({
-        title: "Stream filter (filename estimate)",
-        options: filenameFilterOptions,
-        selectedId: filenameStreamDisplayMode(PlayerSettingsStore.get()),
+        title: probeStreamTitle,
+        options: probeStreamOptions,
+        selectedId: PlayerSettingsStore.get().probeStream,
+        returnFocusKey: "playback:probeStream",
+        onSelect: (option) => PlayerSettingsStore.set({ probeStream: option.id })
+      })
+    );
+    const filenameFilterTitle = t("quick_setup_filter", {}, "Stream filter");
+    this.actionMap.set("playback:filenameStreamFilter", () =>
+      this.openMultiChoiceDialog({
+        title: filenameFilterTitle,
+        options: filenameStreamFilterOptions(t),
+        selectedIds: filenameStreamFilter(PlayerSettingsStore.get()),
         returnFocusKey: "playback:filenameStreamFilter",
-        onSelect: (option) => PlayerSettingsStore.set({ filenameStreamDisplayMode: option.id })
+        onToggle: (_selectedIds, option) => {
+          const current = filenameStreamFilter(PlayerSettingsStore.get());
+          const selection = toggleFilenameStreamFilter(current, option.id);
+          if (selection.join() !== current.join())
+            PlayerSettingsStore.set({ filenameStreamFilter: selection });
+          this.optionDialog.selectedIds = new Set(selection);
+        }
       })
     );
     const audioBody = `
@@ -8896,10 +8912,12 @@ export const SettingsScreen = {
         })}
 </div>
 
-      ${this.renderToggleRow({ focusKey: "playback:filenameRouting", title: t("settings_filename_route_title", {}, "Determine stream processing based on filename"), subtitle: isDesktopBrowser ? t("settings_filename_route_short", {}, "Estimate how to play the stream from its filename. If playback fails, another supported method is tried automatically.") : "Start Direct, remux or server audio conversion using the filename estimate. If it fails or times out, try remaining supported routes once. Off: try Direct, then remux, then supported server audio conversion. Video is never re-encoded.", checked: model.player.filenamePlaybackRoutingEnabled !== false })}
+      ${this.renderToggleRow({ focusKey: "playback:filenameRouting", title: t("settings_filename_route_title", {}, "Determine stream processing based on filename"), subtitle: isDesktopBrowser ? t("settings_filename_route_short", {}, "Estimate how to play the stream from its filename. If playback fails, another supported method is tried automatically.") : "Use the filename to choose a first playback route when metadata has not been verified.", checked: model.player.filenamePlaybackRoutingEnabled !== false })}
+      ${this.renderActionRow({ focusKey: "playback:probeStream", title: probeStreamTitle, subtitle: t("settings_probe_stream_subtitle", {}, "Read stream metadata to choose how to play it. Check Unknown streams and filename estimates that indicate transcoding, or check every stream with Always."), value: probeStreamOptions.find((option) => option.id === model.player.probeStream)?.label || probeStreamOptions[0].label })}
       <div class="settings-group-heading"><div class="settings-group-title">Stream filter</div></div>
-      ${this.renderActionRow({ focusKey: "playback:filenameStreamFilter", title: "Streams to show (filename estimate)", subtitle: isDesktopBrowser ? t("settings_filename_filter_short", {}, "Filename estimates. Also applies to autoplay and next episodes.") : FILENAME_FILTER_NOTICE, value: filenameFilterOptions.find((option) => option.id === filenameStreamDisplayMode(model.player)).label })}
-      ${isDesktopBrowser ? `<details class="settings-field-help"><summary>${escapeHtml(t("settings_filename_help_title", {}, "About estimates and fallback"))}</summary><p>${escapeHtml(FILENAME_FILTER_NOTICE)}</p><p>${escapeHtml(t("settings_filename_route_help", {}, "With filename routing off: Direct, then remux, then supported server audio conversion. Each automatic route is tried once. Video is never re-encoded."))}</p></details>${filenameStreamDisplayMode(model.player) !== "ALL" ? `<p class="settings-filename-filter-warning" role="note">${escapeHtml(t("settings_filename_filter_warning", {}, "Incorrect filenames can hide playable streams, including Unknown results."))}</p>` : ""}` : ""}
+      ${this.renderActionRow({ focusKey: "playback:filenameStreamFilter", title: t("settings_filter_streams_to_show", {}, "Streams to show"), subtitle: isDesktopBrowser ? t("settings_filename_filter_short", {}, "Filename estimates. Also applies to autoplay and next episodes.") : FILENAME_FILTER_NOTICE, value: filenameStreamFilterSummary(model.player, t) })}
+
+      ${isDesktopBrowser ? `<details class="settings-field-help"><summary>${escapeHtml(t("settings_filename_help_title", {}, "About estimates and fallback"))}</summary><p>${escapeHtml(FILENAME_FILTER_NOTICE)}</p><p>${escapeHtml(t("settings_filename_route_help", {}, "When there is no verified route and filename routing is off, try Direct first. Transcoding uses verified stream metadata."))}</p></details>${!filenameStreamFilter(model.player).includes("all") ? `<p class="settings-filename-filter-warning" role="note">${escapeHtml(t("settings_filename_filter_warning", {}, "Incorrect filenames can hide playable streams, including Unknown results."))}</p>` : ""}` : ""}
       <div class="settings-stack">
         ${
           // Only offered where the deployment runs the endpoint: a field that

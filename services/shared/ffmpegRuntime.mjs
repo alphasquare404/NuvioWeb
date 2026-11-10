@@ -56,6 +56,7 @@ export async function inspectFFmpegRuntime({
         /^\s*https\s*$/m.test(protocols.stdout) && /^\s*http\s*$/m.test(protocols.stdout);
       const mp4 = /^\s*E\s+mp4\s/m.test(muxers.stdout);
       const hls = /^\s*E\s+hls\s/m.test(muxers.stdout);
+      const h264 = /^\s*V[A-Z.]{5}\s+libx264\s/m.test(encoders.stdout);
       const aac = /^\s*A[A-Z.]{5}\s+aac\s/m.test(encoders.stdout);
       return {
         path: candidate.path,
@@ -64,6 +65,7 @@ export async function inspectFFmpegRuntime({
         available: true,
         remux: network && mp4,
         audioTranscoding: network && mp4 && aac,
+        videoTranscoding: network && mp4 && aac && h264,
         hls: network && mp4 && hls,
         reason: network && mp4 ? null : "required-formats-unavailable"
       };
@@ -79,6 +81,7 @@ export async function inspectFFmpegRuntime({
     available: false,
     remux: false,
     audioTranscoding: false,
+    videoTranscoding: false,
     hls: false,
     reason: "ffmpeg-unavailable"
   };
@@ -91,6 +94,7 @@ export function publicFFmpegCapabilities(runtime) {
     available: runtime?.available === true,
     remux: runtime?.remux === true,
     audioTranscoding: runtime?.audioTranscoding === true,
+    videoTranscoding: runtime?.videoTranscoding === true,
     hls: runtime?.hls === true
   };
 }

@@ -9,7 +9,14 @@ import {
 import { createRemuxBridgeHandler } from "../remux-bridge/bridge.mjs";
 import { createTranscodeBridgeHandler } from "../transcode-bridge/bridge.mjs";
 
-function fakeRun({ aac = true, mp4 = true, hls = true, https = true, fail = [] } = {}) {
+function fakeRun({
+  aac = true,
+  x264 = true,
+  mp4 = true,
+  hls = true,
+  https = true,
+  fail = []
+} = {}) {
   return async (file, args, options) => {
     assert.ok(options.timeout > 0);
     assert.equal(options.windowsHide, true);
@@ -17,7 +24,7 @@ function fakeRun({ aac = true, mp4 = true, hls = true, https = true, fail = [] }
     const outputs = {
       "-version": "ffmpeg version 6.1.1",
       "-muxers": `${mp4 ? " E mp4 MP4 format\n" : ""}${hls ? " E hls HLS format\n" : ""}`,
-      "-encoders": aac ? " A..... aac AAC audio" : "",
+      "-encoders": `${aac ? " A..... aac AAC audio\n" : ""}${x264 ? " V....D libx264 H.264 encoder\n" : ""}`,
       "-protocols": `http\n${https ? "https\n" : ""}`
     };
     return { stdout: outputs[args[1]] };
@@ -42,6 +49,10 @@ test("capability check confirms MP4, HLS, HTTPS and AAC independently", async ()
   const runtime = await inspectFFmpegRuntime({ candidates: bundled, run: fakeRun() });
   assert.equal(runtime.remux, true);
   assert.equal(runtime.audioTranscoding, true);
+  assert.equal(runtime.videoTranscoding, true);
+  const noX264 = await inspectFFmpegRuntime({ candidates: bundled, run: fakeRun({ x264: false }) });
+  assert.equal(noX264.audioTranscoding, true);
+  assert.equal(noX264.videoTranscoding, false);
   assert.equal(runtime.hls, true);
   const noAAC = await inspectFFmpegRuntime({ candidates: bundled, run: fakeRun({ aac: false }) });
   assert.equal(noAAC.remux, true);
@@ -83,6 +94,7 @@ test("execution failure or timeout never advertises features or private paths", 
     available: false,
     remux: false,
     audioTranscoding: false,
+    videoTranscoding: false,
     hls: false
   });
   assert.ok(!JSON.stringify(publicFFmpegCapabilities(runtime)).includes("/package"));

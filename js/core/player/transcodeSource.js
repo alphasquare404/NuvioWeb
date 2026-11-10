@@ -212,6 +212,7 @@ export function createTranscodeAccess({
         mode,
         reachable: true,
         hls,
+        ...(data?.fullVideo === true ? { fullVideo: true } : {}),
         ...(data?.alternateAudio === true ? { alternateAudio: true } : {})
       };
     } catch {

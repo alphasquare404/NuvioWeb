@@ -145,6 +145,8 @@ test("the bridge only performs the plans it advertises", () => {
   // a copy is exactly the file the device already said it cannot play.
   assert.equal(isPlanOffered({ video: "copy", audio: "aac" }), true);
   assert.equal(isPlanOffered({ video: "h264", audio: "aac" }), false);
+  assert.equal(isPlanOffered({ video: "h264", audio: "aac" }, true), true);
+  assert.equal(isPlanOffered({ video: "h264", audio: "copy" }, true), false);
   // `audio: copy` used to be refused; it is the remux shape and is now offered as\n  // HLS, so it must be accepted here while a re-encode stays refused.\n  assert.equal(isPlanOffered({ video: "copy", audio: "copy" }), true);
 });
 
@@ -245,7 +247,10 @@ test("a re-encoded picture is H.264 and never tagged as HEVC", () => {
   });
   assert.equal(full[full.indexOf("-c:v") + 1], "libx264");
   assert.equal(full.includes("-tag:v"), false);
-  assert.equal(full[full.indexOf("-vf") + 1], "scale=-2:'min(1080,ih)'");
+  assert.equal(
+    full[full.indexOf("-vf") + 1],
+    "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2"
+  );
 
   // The copied-HEVC case still asks for the tag.
   const copied = transcodeArgs("https://cdn/a.mkv", "/tmp/out.mp4", { videoTag: "hvc1" });

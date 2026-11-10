@@ -244,6 +244,7 @@ function routedHarness({
     AbortController,
     REMUX_POLICY: { mode: "client" },
     TRANSCODE_ENDPOINT: "/api/transcode",
+    isTranscodeEnabled: () => true,
     nextPlaybackFallbackRoute,
     canTryUnverifiedRemux,
     canTryUnverifiedAudioTranscode,
@@ -251,10 +252,6 @@ function routedHarness({
     prepareUnverifiedRemux: async (url) => {
       records.copy++;
       return copy(url);
-    },
-    prepareUnverifiedAudioTranscode: async () => {
-      records.audio++;
-      return { url: "https://app.test/audio?v=copy&a=aac", plan: null };
     },
     getDeviceCapabilities: () => ({ aac: true }),
     extractPlaybackHttpStatus: () => 0,
@@ -279,6 +276,14 @@ function routedHarness({
     isActiveMountToken: () => true,
     clearPlaybackStallGuard() {},
     getPlayerStreamProbe: () => null,
+    readSelectedPlaybackProbe: async () => {
+      records.audio++;
+      return { container: "mkv", videoCodec: "h264", audioCodec: "dts" };
+    },
+    prepareProbedPlaybackTranscode: async (_url, probe) => {
+      assert.equal(probe.audioCodec, "dts");
+      return { url: "https://app.test/audio?v=copy&a=aac", plan: null, route: "audio-transcode" };
+    },
     playStreamByUrl: async (url) => {
       ctx.activePlaybackUrl = url;
       records.plays.push(url);
@@ -300,6 +305,36 @@ test("new Direct-first fallback runs copy then audio once and coalesces duplicat
   assert.equal(h.records.plays.length, 2);
   assert.equal(await h.ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 }), false);
 });
+test("software video decode failure is reported after Direct and Remux fail for the same stream", async () => {
+  const { ctx } = routedHarness({ initial: "client-transcode" });
+  const attempt = ctx.params.unverifiedPlayback;
+  attempt.measuredTranscode = true;
+  attempt.audioTranscodeTried = true;
+  assert.equal(
+    await ctx.tryUnverifiedRemuxAfterFailure({
+      mediaErrorCode: 4,
+      reason: "client-transcode-software-video-decode-failed"
+    }),
+    true
+  );
+  assert.equal(attempt.route, "direct");
+  assert.equal(await ctx.tryUnverifiedRemuxAfterFailure({ startupStall: true }), true);
+  assert.equal(attempt.route, "remux");
+  assert.equal(await ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 }), false);
+
+  const start = source.indexOf("  showStartupError(");
+  const end = source.indexOf("    if (this.startupReadiness) {", start);
+  const { showStartupError } = vm.runInNewContext("({" + source.slice(start, end) + "}})", {
+    t: (key) => key
+  });
+  const messages = [];
+  ctx.params.prepareSelectedSource = true;
+  ctx.advanceAfterSelectedSourceFailure = (message) => messages.push(message);
+  showStartupError.call(ctx, "Playback error");
+  showStartupError.call(ctx, "Playback error", { playbackUrl: "https://media.test/another" });
+  assert.deepEqual(messages, ["player_error_software_video_decode", "Playback error"]);
+});
+
 test("wrong initial remux estimate falls back to original URL without trying remux twice", async () => {
   const h = routedHarness({ initial: "remux" });
   await h.ctx.tryUnverifiedRemuxAfterFailure({ mediaErrorCode: 4 });

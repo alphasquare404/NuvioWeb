@@ -75,7 +75,7 @@ function fakeStreamingFfmpeg(calls, { fragments = 3, size = 1024, hang = false }
  * The HLS shape: writes an event playlist and one fragment into the directory the
  * command was pointed at, the way ffmpeg does as it goes.
  */
-function fakeHlsFfmpeg(calls) {
+function fakeHlsFfmpeg(calls, { closeDelay = 0 } = {}) {
   return (_binary, args, options = {}) => {
     calls.push({ args, cwd: options.cwd });
     // The command now uses bare names and relies on the working directory, exactly
@@ -97,7 +97,7 @@ function fakeHlsFfmpeg(calls) {
       ].join("\n")
     );
     const handlers = new Map();
-    setTimeout(() => handlers.get("close")?.(0), 0);
+    setTimeout(() => handlers.get("close")?.(0), closeDelay);
     return {
       on(event, handler) {
         handlers.set(event, handler);
@@ -669,4 +669,32 @@ test("a completed HLS job whose cache directory disappeared is produced again", 
     assert.match(await second.text(), /#EXTINF/);
     assert.equal(calls.length, 2);
   });
+});
+
+test("full video HLS holds its concurrency slot after publishing the first segment", async () => {
+  const calls = [];
+  const ffmpegRuntime = { remux: true, audioTranscoding: true, videoTranscoding: true, hls: true };
+  await withServer(
+    {
+      ffmpegRuntime,
+      fullVideoEnabled: true,
+      maxConcurrent: 1,
+      spawnImpl: fakeHlsFfmpeg(calls, { closeDelay: 750 })
+    },
+    async ({ base }) => {
+      const playlist = (file) =>
+        base +
+        "/api/transcode/hls/index.m3u8?u=" +
+        encodeURIComponent("https://cdn.test/" + file) +
+        "&v=h264&a=aac";
+      const first = await fetch(playlist("first.mkv"));
+      assert.equal(first.status, 200);
+      assert.match(await first.text(), /#EXTINF/);
+      const second = await fetch(playlist("second.mkv"));
+      assert.equal(second.status, 429);
+      assert.equal((await second.json()).error, "busy");
+      assert.equal(calls.length, 1);
+      assert.ok(calls[0].args.includes("libx264"));
+    }
+  );
 });

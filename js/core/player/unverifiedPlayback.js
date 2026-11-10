@@ -2,7 +2,7 @@ import { chooseHlsAudioIndices } from "./relayTracks.js";
 import { classifyStreamFilename } from "../streams/streamCompatibilityFilter.js";
 import { classifyPlayback } from "./playbackMethod.js";
 
-import { REMUX_POLICY, REMUX_ENDPOINT, TRANSCODE_ENDPOINT } from "../../config.js";
+import { REMUX_POLICY, REMUX_ENDPOINT, TRANSCODE_ENDPOINT, TRANSCODE_MODE } from "../../config.js";
 import { clientRemuxPlan } from "./remuxClient.js";
 import { buildRemuxUrl } from "./remuxSource.js";
 import {
@@ -41,7 +41,7 @@ export function selectFilenamePlaybackAttempt({
   capabilities = {},
   enabled = true,
   policy = REMUX_POLICY,
-  audioEndpoint = TRANSCODE_ENDPOINT
+  audioEndpoint = TRANSCODE_MODE === "server" ? TRANSCODE_ENDPOINT : ""
 } = {}) {
   const attempt = selectUnverifiedPlayback({ stream, capabilities });
   if (!attempt) return null;
@@ -73,7 +73,7 @@ export function nextPlaybackFallbackRoute(
   failure = {},
   {
     remuxAvailable = REMUX_POLICY.mode !== "off",
-    audioAvailable = Boolean(TRANSCODE_ENDPOINT)
+    audioAvailable = TRANSCODE_MODE === "server" && Boolean(TRANSCODE_ENDPOINT)
   } = {}
 ) {
   if (!attempt || attempt.busy) return null;
@@ -164,7 +164,11 @@ export async function prepareUnverifiedRemux(
   throw error;
 }
 
-export function canTryUnverifiedAudioTranscode(attempt, failure, endpoint = TRANSCODE_ENDPOINT) {
+export function canTryUnverifiedAudioTranscode(
+  attempt,
+  failure,
+  endpoint = TRANSCODE_MODE === "server" ? TRANSCODE_ENDPOINT : ""
+) {
   if (
     !endpoint ||
     !attempt ||
@@ -186,7 +190,7 @@ export async function prepareUnverifiedAudioTranscode(
     filenameVerdict = null,
     allowFilenameEstimate = false,
     capabilities = {},
-    transcodeEndpoint = TRANSCODE_ENDPOINT,
+    transcodeEndpoint = TRANSCODE_MODE === "server" ? TRANSCODE_ENDPOINT : "",
     access = copyAccess,
     token = TranscodeSettingsStore.get().token || ""
   } = {}

@@ -2,8 +2,13 @@ import { installStartupPlaybackDiagnostics } from "../../../core/player/startupP
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
+import { classifyStreamFilename } from "../../../core/streams/streamCompatibilityFilter.js";
 import { selectedPlaybackTask } from "../../../core/player/selectedPlaybackTask.js";
-import { SelectedStreamDelivery } from "../../../core/player/selectedStreamDelivery.js";
+import {
+  isTranscodeEnabled,
+  prepareMeasuredTranscode,
+  SelectedStreamDelivery
+} from "../../../core/player/selectedStreamDelivery.js";
 
 import {
   selectFilenamePlaybackAttempt,
@@ -2449,6 +2454,9 @@ export const PlayerScreen = {
     this.startupReadiness = null;
     this.lastPlaybackProgressAt = Date.now();
     this.playbackTransitionLightweight = false;
+    this.directAudioPreferenceState = null;
+    this.pendingAutomaticDirectAudio = null;
+    this.directAudioSwitching = null;
     this.hasPresentedPlaybackFrame = false;
     this.startupErrorMessage = "";
     this.startupErrorMediaCode = 0;
@@ -4246,10 +4254,13 @@ export const PlayerScreen = {
     }));
     try {
       this.loadDirectSubtitleData();
-      const probe = await prober.probe(url, {
-        reason: "tracks",
-        identity: streamProbeIdentity(candidate)
-      });
+      const cached = candidate ? this.getPlayerStreamProbe?.(candidate) : null;
+      const probe =
+        cached ||
+        (await prober.probe(url, {
+          reason: "tracks",
+          identity: streamProbeIdentity(candidate)
+        }));
       if (!active()) return;
       this.directTrackProbe = probe;
       const nativeTracks = PlayerController.getBrowserAudioTracks();
@@ -4273,46 +4284,158 @@ export const PlayerScreen = {
       if (active()) {
         this.directTrackLoading = false;
         this.refreshTrackDialogs();
+        this.applyDirectAudioPreferenceAfterStart?.();
+        if (globalThis.__NUVIO_PLAYBACK_STARTUP_DEBUG__ === true) {
+          const probe = this.directTrackProbe;
+          const failure = probe ? "" : prober.failureReason(url);
+          const facts = {
+            mode: PROBE_MODE,
+            result: probe ? "metadata" : "unavailable",
+            reason: /^(?:[a-z0-9-]{1,80}|HTTP [1-5][0-9]{2})$/.test(failure) ? failure : "",
+            elapsedMs: Date.now() - this.directTrackAttemptAt,
+            nativeTrackCount: PlayerController.getBrowserAudioTracks().length,
+            sourceTrackCount: probe?.audioStreams?.length || 0,
+            displayedTrackCount: this.directAudioTracks?.length || 0
+          };
+          const detail = JSON.stringify(facts);
+          console.warn("[DirectAudioProbe] " + detail);
+          void fetch("/api/debug/log", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              kind: "direct-audio-probe",
+              message: facts.result,
+              stack: detail,
+              at: new Date().toISOString()
+            })
+          }).catch(() => {});
+        }
       }
     }
   },
 
-  async switchDirectAudioTrack(entry) {
-    if (this.directAudioSwitching || !this.directTrackProbe || entry.supported === false) return;
+  applyDirectAudioPreferenceAfterStart() {
+    const url = this.activePlaybackUrl;
+    if (
+      !Environment.isBrowser() ||
+      !this.hasPresentedPlaybackFrame ||
+      this.playerBackNavigationInProgress ||
+      PROBE_MODE === "off" ||
+      !/^https?:/i.test(url || "") ||
+      PlayerController.playbackEngine !== "native-file" ||
+      !PlayerController.video ||
+      PlayerController.video.paused ||
+      PlayerController.getBrowserAudioTracks().length ||
+      this.relayTrackContext ||
+      this.isCurrentSourceAdaptiveManifest()
+    )
+      return;
+
+    if (this.directAudioPreferenceState?.url !== url)
+      this.directAudioPreferenceState = { url, probing: false, attempted: false };
+    const state = this.directAudioPreferenceState;
+    if (state.attempted) return;
+    if (!this.directTrackProbe) {
+      if (!state.probing && !this.directTrackLoading) {
+        state.probing = true;
+        this.showAspectToast(
+          t(
+            "player_audio_preference_checking",
+            {},
+            "Checking audio tracks. Playing default audio."
+          ),
+          { durationMs: 2400 }
+        );
+        void this.loadDirectTrackData();
+      }
+      return;
+    }
+
+    state.attempted = true;
+    const preferred = this.findRememberedAudioOption() || this.findStartupPreferredAudioOption();
+    const entry = preferred?.entry;
+    if (!entry?.supported || entry.track?.engine !== "direct-source") return;
+    const tracks = this.directTrackProbe.audioStreams || [];
+    const defaultTrack = tracks.find((track) => track.default) || tracks[0];
+    if (entry.track.index === defaultTrack?.index) return;
+    void this.switchDirectAudioTrack(entry, {
+      automatic: true,
+      language: preferred.languageLabel || preferred.label
+    });
+  },
+
+  async switchDirectAudioTrack(entry, { automatic = false, language = "" } = {}) {
+    const previous = this.directAudioSwitching;
+    if (
+      (previous && (automatic || !previous.automatic || previous.started)) ||
+      !this.directTrackProbe ||
+      entry.supported === false
+    )
+      return;
     const url = this.activePlaybackUrl;
     const token = this.relayTrackToken;
     const mountToken = this.playerMountToken;
     const candidate = this.getCurrentStreamCandidate();
-    this.directAudioSwitching = true;
+    const request = (this.directAudioSwitching = { automatic, started: false });
     try {
       const delivery = await prepareUnverifiedRemux(url, {
         probe: this.directTrackProbe,
         audioIndex: entry.track.index
       });
       if (
+        this.directAudioSwitching !== request ||
         this.activePlaybackUrl !== url ||
         token !== this.relayTrackToken ||
         !this.isActiveMountToken(mountToken) ||
         this.playerBackNavigationInProgress
       )
         return;
+      request.started = true;
+      if (automatic) {
+        this.pendingAutomaticDirectAudio = { url, mediaUrl: delivery.url, candidate, mountToken };
+        this.showAspectToast(
+          t("player_audio_preference_switching", { language }, "Switching audio to {{language}}"),
+          { durationMs: 3000 }
+        );
+      }
       this.params.playbackPlan = delivery.plan;
       const attempt = this.params.unverifiedPlayback;
       if (attempt) {
         attempt.route = "remux";
         attempt.remuxTried = true;
+        attempt.routeStartedAt = Date.now();
         attempt.mediaUrl = delivery.url;
       }
+      this.relayPrepareDone = false;
+      this.relayPrepareUrl = "";
       await this.playStreamByUrl(delivery.url, {
         preservePanel: true,
         preservePlaybackState: true,
         resetSilentAudioState: false,
         sourceCandidate: candidate,
         requestedAudioIndex: entry.track.index,
+        rememberRequestedAudio: !automatic,
         mountToken
       });
     } catch (_) {
-      if (this.activePlaybackUrl === url && this.isActiveMountToken(mountToken))
+      if (automatic && request.started && (await this.restoreDefaultAfterAutomaticAudioFailure()))
+        return;
+      if (
+        this.directAudioSwitching === request &&
+        this.activePlaybackUrl === url &&
+        this.isActiveMountToken(mountToken)
+      ) {
+        if (automatic && this.pendingAutomaticDirectAudio) {
+          this.pendingAutomaticDirectAudio = null;
+          this.params.playbackPlan = null;
+          const attempt = this.params.unverifiedPlayback;
+          if (attempt) {
+            attempt.route = "direct";
+            attempt.mediaUrl = url;
+          }
+          this.relayPrepareDone = false;
+          this.relayPrepareUrl = "";
+        }
         this.showAspectToast(
           t(
             "player_audio_switch_failed",
@@ -4320,8 +4443,56 @@ export const PlayerScreen = {
             "Unable to switch audio with the available stream processing."
           )
         );
+      }
     } finally {
-      this.directAudioSwitching = false;
+      if (this.directAudioSwitching === request) this.directAudioSwitching = null;
+    }
+  },
+
+  async restoreDefaultAfterAutomaticAudioFailure() {
+    const transition = this.pendingAutomaticDirectAudio;
+    if (
+      !transition ||
+      transition.mediaUrl !== this.activePlaybackUrl ||
+      this.hasPresentedPlaybackFrame ||
+      this.playerBackNavigationInProgress ||
+      !this.isActiveMountToken(transition.mountToken)
+    )
+      return false;
+
+    this.pendingAutomaticDirectAudio = null;
+    this.params.playbackPlan = null;
+    const attempt = this.params.unverifiedPlayback;
+    if (attempt) {
+      attempt.route = "direct";
+      attempt.mediaUrl = transition.url;
+      attempt.rawTried = true;
+      attempt.busy = true;
+    }
+    this.showAspectToast(
+      t(
+        "player_audio_preference_default",
+        {},
+        "Preferred audio unavailable. Continuing with default audio."
+      ),
+      { durationMs: 3000 }
+    );
+    this.relayPrepareDone = false;
+    this.relayPrepareUrl = "";
+    try {
+      await this.playStreamByUrl(transition.url, {
+        preservePanel: true,
+        preservePlaybackState: true,
+        preservePendingRestore: true,
+        resetSilentAudioState: false,
+        sourceCandidate: transition.candidate,
+        mountToken: transition.mountToken
+      });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      if (attempt) attempt.busy = false;
     }
   },
 
@@ -4850,7 +5021,7 @@ export const PlayerScreen = {
         <div id="playerParentalGuide" class="player-parental-guide hidden"></div>
         <div id="playerSkipIntro" class="player-skip-intro hidden"></div>
 
-        <div id="playerAspectToast" class="player-aspect-toast hidden"></div>
+        <div id="playerAspectToast" class="player-aspect-toast hidden" role="status" aria-live="polite"></div>
         <div id="playerGestureFeedback" class="player-gesture-feedback hidden" aria-live="polite"></div>
 
         <div id="playerHtmlSubtitles" class="player-html-subtitles hidden" aria-hidden="true"></div>
@@ -6482,6 +6653,7 @@ export const PlayerScreen = {
       detail.hlsErrorDetails,
       hlsResponseCode >= 400 && hlsResponseCode <= 599 ? `HTTP ${hlsResponseCode}` : "",
       detail.dashError,
+      /^client-transcode-[a-z-]+$/.test(detail.reason || "") ? detail.reason : "",
       detail.playbackEngine
     ]
       .map((value) => String(value || "").trim())
@@ -6698,6 +6870,19 @@ export const PlayerScreen = {
       details = null
     } = {}
   ) {
+    const attempt = this.params?.unverifiedPlayback;
+    if (
+      !this.hasPresentedPlaybackFrame &&
+      (eventDetail?.reason === "client-transcode-software-video-decode-failed" ||
+        (attempt?.softwareVideoDecodeFailed &&
+          attempt.mediaUrl === (playbackUrl || this.activePlaybackUrl)))
+    ) {
+      message = t(
+        "player_error_software_video_decode",
+        {},
+        "This device could not decode the video for Full Transcode. Choose another stream."
+      );
+    }
     if (
       this.params?.prepareSelectedSource &&
       (this._preparingSelectedSource || !this.hasPresentedPlaybackFrame) &&
@@ -6734,7 +6919,6 @@ export const PlayerScreen = {
           resolverStatus,
           resolverDetail
         });
-    const attempt = this.params?.unverifiedPlayback;
     if (attempt && attempt.mediaUrl === (playbackUrl || this.activePlaybackUrl)) {
       this.startupErrorDetails.push(
         "Playback attempt: " + attempt.route + (attempt.remuxTried ? "; remux tried" : "")
@@ -6884,12 +7068,17 @@ export const PlayerScreen = {
   async runUnverifiedPlaybackAttempt(route, { manual = false } = {}) {
     const attempt = this.params?.unverifiedPlayback;
     if (this.playerBackNavigationInProgress) return true;
-    if (!attempt || attempt.busy || !["direct", "remux", "audio-transcode"].includes(route))
+    if (
+      !attempt ||
+      attempt.busy ||
+      !["direct", "remux", "audio-transcode", "transcode"].includes(route)
+    )
       return false;
     const triedKey = {
       direct: "rawTried",
       remux: "remuxTried",
-      "audio-transcode": "audioTranscodeTried"
+      "audio-transcode": "audioTranscodeTried",
+      transcode: "audioTranscodeTried"
     }[route];
     // Automatic failures can arrive from both media events and the startup timer.
     // Only an explicit user retry may run a route that has already been attempted.
@@ -6898,6 +7087,7 @@ export const PlayerScreen = {
     const previousUrl = this.activePlaybackUrl;
     const candidate = this.getStreamCandidateByUrl(previousUrl) || this.getCurrentStreamCandidate();
     attempt.busy = true;
+    if (manual) attempt.softwareVideoDecodeFailed = false;
     const previousRoute = attempt.route;
     if (attempt.routeFallbackEnabled) {
       this._selectedSourceAbort?.abort();
@@ -6905,16 +7095,21 @@ export const PlayerScreen = {
       this._playbackUrlGeneration = (this._playbackUrlGeneration || 0) + 1;
     }
     attempt.route = route;
-    StartupLoadingOverlay.setPlaybackAttempt?.({ route, failedRoute: previousRoute });
+    if (route === "transcode") StartupLoadingOverlay.setStage?.("opening");
+    else StartupLoadingOverlay.setPlaybackAttempt?.({ route, failedRoute: previousRoute });
     attempt.routeStartedAt = Date.now();
-    if (route === "remux") attempt.remuxTried = true;
-    else if (route === "audio-transcode") attempt.audioTranscodeTried = true;
-    else attempt.rawTried = true;
+    attempt[triedKey] = true;
     this.clearPlaybackStallGuard();
     this.loadingVisible = true;
     try {
-      const prepare = async () =>
-        route === "remux"
+      const signal = this._selectedSourceAbort?.signal;
+      const source = { ...candidate, url: attempt.sourceUrl, externalUrl: null };
+      const probe = route === "transcode" ? await this.readSelectedPlaybackProbe(source) : null;
+      if (signal?.aborted || attempt !== this.params?.unverifiedPlayback) return true;
+      const prepare = async () => {
+        if (route === "transcode")
+          return this.prepareProbedPlaybackTranscode(attempt.sourceUrl, probe, signal, true);
+        return route === "remux"
           ? await prepareUnverifiedRemux(attempt.sourceUrl, {
               probe: this.getPlayerStreamProbe?.(candidate),
               audioIndex: this.getPlayerStreamProbe?.(candidate)
@@ -6958,10 +7153,18 @@ export const PlayerScreen = {
                 }
               })
             : { url: attempt.sourceUrl, plan: null };
+      };
       let delivery = attempt.routeFallbackEnabled
         ? await selectedPlaybackTask(prepare, {
             signal: this._selectedSourceAbort?.signal,
-            timeoutMs: route === "remux" ? 17000 : route === "direct" ? 13000 : 30000
+            timeoutMs:
+              route === "remux"
+                ? 17000
+                : route === "direct"
+                  ? 13000
+                  : route === "transcode"
+                    ? 75000
+                    : 30000
           })
         : await prepare();
       if (!delivery && attempt.routeFallbackEnabled && route === "audio-transcode") {
@@ -6980,7 +7183,7 @@ export const PlayerScreen = {
           });
       }
       if (!delivery && attempt.routeFallbackEnabled)
-        throw new Error("Audio conversion is unavailable for this stream.");
+        throw new Error("Verified conversion is unavailable for this stream.");
       if (!delivery) {
         attempt.route = previousRoute;
         return false;
@@ -6997,6 +7200,14 @@ export const PlayerScreen = {
         (delivery.plan?.method === "remux" || /[?&]a=copy(?:&|$)/.test(delivery.url))
       )
         attempt.route = "remux";
+      if (route === "transcode") {
+        attempt.route = delivery.route;
+        attempt.measuredTranscode = true;
+        attempt.output = delivery.output;
+      } else {
+        attempt.measuredTranscode = false;
+        attempt.output = null;
+      }
       attempt.mediaUrl = delivery.url;
       this.params.playbackPlan = delivery.plan;
       console.warn(
@@ -7045,7 +7256,10 @@ export const PlayerScreen = {
   },
 
   async tryUnverifiedRemuxAfterFailure(failure = {}) {
+    if (this.pendingAutomaticDirectAudio && (await this.restoreDefaultAfterAutomaticAudioFailure()))
+      return true;
     const attempt = this.params?.unverifiedPlayback;
+    if (attempt?.measuredTranscode && !attempt.routeFallbackEnabled) return false;
     if (attempt?.routeFallbackEnabled) {
       if (
         this.playerBackNavigationInProgress ||
@@ -7054,6 +7268,8 @@ export const PlayerScreen = {
       )
         return false;
       if (attempt.busy) return true;
+      if (failure.reason === "client-transcode-software-video-decode-failed")
+        attempt.softwareVideoDecodeFailed = true;
       if (
         attempt.route !== "direct" &&
         [401, 403, 429, 502, 503].includes(Number(failure.httpStatus))
@@ -7063,7 +7279,7 @@ export const PlayerScreen = {
       }
       const next = nextPlaybackFallbackRoute(attempt, failure, {
         remuxAvailable: REMUX_POLICY.mode !== "off" && !this._processingUnavailable,
-        audioAvailable: Boolean(TRANSCODE_ENDPOINT) && !this._processingUnavailable
+        audioAvailable: isTranscodeEnabled() && !this._processingUnavailable
       });
       if (!next) return false;
       console.warn(
@@ -7080,7 +7296,7 @@ export const PlayerScreen = {
           httpStatus: Number(failure.httpStatus) || 0
         })
       );
-      return this.runUnverifiedPlaybackAttempt(next);
+      return this.runUnverifiedPlaybackAttempt(next === "audio-transcode" ? "transcode" : next);
     }
     if (this._processingUnavailable) return false;
     if (!attempt || this.hasPresentedPlaybackFrame || attempt.mediaUrl !== this.activePlaybackUrl)
@@ -8357,7 +8573,7 @@ export const PlayerScreen = {
     };
   },
 
-  navigateBackToStreamScreen({ forceDetail = false } = {}) {
+  navigateBackToStreamScreen({ forceDetail = false, chooseStream = false } = {}) {
     if (
       this.playerBackNavigationInProgress ||
       (Router.getCurrent?.() && Router.getCurrent() !== "player")
@@ -8377,6 +8593,20 @@ export const PlayerScreen = {
       PlayerController.stop();
     } catch (_) {
       // Route cleanup will make a second best-effort stop if native teardown throws.
+    }
+    if (chooseStream) {
+      this.navigateToPlayerBackFallback({
+        shouldReturnToStream: true,
+        streamParams: {
+          ...streamParams,
+          manualSelection: true,
+          autoSelectionFinished: true,
+          autoResolvedStreamId: null,
+          autoResolvedStreams: this.streamCandidates,
+          autoResolvedStreamsComplete: this.params.streamCandidatesComplete !== false
+        }
+      });
+      return true;
     }
     const shouldReturnToStream = !forceDetail && this.shouldReturnToStreamOnBack();
     const handoffReturn = String(this.params?.handoffReturnRoute || "").trim();
@@ -9940,6 +10170,7 @@ export const PlayerScreen = {
       this.attemptPendingPlaybackRestore();
       this.setLoadingLogoFillTarget(1);
       this.markPlaybackPresentedAfterAdvance();
+      this.applyDirectAudioPreferenceAfterStart?.();
       this.updateLoadingVisibility();
       this.updateUiTick();
       this.scheduleLoadingCompletionCheck(900);
@@ -10110,6 +10341,7 @@ export const PlayerScreen = {
         await this.tryUnverifiedRemuxAfterFailure?.({
           mediaErrorCode,
           detail: playbackErrorDetail,
+          reason: eventDetail.reason,
           httpStatus: eventDetail.hlsResponseCode
         })
       )
@@ -11056,6 +11288,8 @@ export const PlayerScreen = {
       return false;
     }
     this.hasPresentedPlaybackFrame = true;
+    this.pendingAutomaticDirectAudio = null;
+    this.applyDirectAudioPreferenceAfterStart?.();
     this.rememberSelectedStreamPreference?.(this.getCurrentStreamCandidate?.());
     if (!this.startupTrackPreferenceReady) {
       // Tracks may arrive before the first real frame is presented. Re-run the
@@ -11426,7 +11660,7 @@ export const PlayerScreen = {
     );
     if (
       unified &&
-      (this.isStartupLoadingVisible() || nextEpisodeLoading) &&
+      (StartupLoadingOverlay.probing || this.isStartupLoadingVisible() || nextEpisodeLoading) &&
       !this.isStartupErrorVisible()
     ) {
       StartupLoadingOverlay.begin(
@@ -12098,6 +12332,7 @@ export const PlayerScreen = {
       preservePendingRestore = false,
       forceEngine = null,
       requestedAudioIndex = null,
+      rememberRequestedAudio = true,
       sourceCandidate: explicitSourceCandidate = null,
       mountToken = null
     } = {}
@@ -12212,7 +12447,7 @@ export const PlayerScreen = {
     this.startupSubtitlePreferenceApplied = false;
     this.startupSubtitlePreferenceApplying = false;
     this.pendingDirectAudioSelection = Number.isInteger(requestedAudioIndex)
-      ? { url: streamUrl, index: requestedAudioIndex }
+      ? { url: streamUrl, index: requestedAudioIndex, remember: rememberRequestedAudio }
       : null;
     this.startupAudioPreferenceApplied = Boolean(this.pendingDirectAudioSelection);
     this.startupAudioPreferenceApplying = false;
@@ -12267,7 +12502,94 @@ export const PlayerScreen = {
     this.schedulePlaybackStallGuard();
   },
 
-  async prepareResolvedCandidatePlayback(streamCandidate, sourceUrl, isCurrent) {
+  async prepareServerVideoPlaylist(url, signal) {
+    const delivery = { ...SelectedStreamDelivery, signal };
+    if (!url || !(await delivery.isPlayableHlsPlaylist(url))) {
+      throw new Error(
+        "Server video conversion could not start. Check access or choose another stream."
+      );
+    }
+    return { url, plan: null };
+  },
+
+  async readSelectedPlaybackProbe(candidate, onFailure) {
+    const cached = this.getPlayerStreamProbe(candidate);
+    if (cached) return cached;
+    if (PROBE_MODE === "off" || !/^https?:\/\//i.test(candidate.url || "")) {
+      onFailure?.(PROBE_MODE === "off" ? "probe-disabled" : "unsupported-url");
+      return null;
+    }
+    const selectionSignal = this._selectedSourceAbort?.signal;
+    if (selectionSignal?.aborted) return null;
+    const controller = new AbortController();
+    const prober = (this._selectedSourceProber ||= createStreamProber({
+      endpoint: PROBE_ENDPOINT,
+      mode: PROBE_MODE,
+      clientConcurrency: PROBE_CLIENT_CONCURRENCY,
+      timeoutMs: Infinity,
+      assess: (facts) => assessPlaybackCapabilities(facts)
+    }));
+    const cancel = () => {
+      if (controller.signal.aborted) return;
+      controller.abort();
+      prober.cancelAll();
+    };
+    selectionSignal?.addEventListener("abort", cancel, { once: true });
+    const releaseActions = StartupLoadingOverlay.setProbeActions(
+      {
+        onSkip: () => {
+          if (controller.signal.aborted) return;
+          onFailure?.("skipped");
+          cancel();
+        },
+        onChooseStream: () => this.navigateBackToStreamScreen({ chooseStream: true })
+      },
+      { ...this.getLoadingOverlayMeta(), itemKey: String(this.params?.itemId || "") }
+    );
+    StartupLoadingOverlay.setBackHandler(() => this.navigateBackToStreamScreen());
+    try {
+      const probe = await selectedPlaybackTask(
+        () =>
+          prober.probe(candidate.url, {
+            reason: "selected-playback",
+            identity: streamProbeIdentity(candidate),
+            timeoutMs: Infinity
+          }),
+        { signal: controller.signal, timeoutMs: Infinity }
+      );
+      if (controller.signal.aborted) return null;
+      if (probe)
+        (this._playerListProbeResults ||= new Map()).set(playerStreamProbeKey(candidate), probe);
+      else onFailure?.(prober.failureReason(candidate.url));
+      return probe;
+    } catch (error) {
+      if (controller.signal.aborted) return null;
+      throw error;
+    } finally {
+      selectionSignal?.removeEventListener("abort", cancel);
+      releaseActions();
+    }
+  },
+
+  async prepareProbedPlaybackTranscode(sourceUrl, probe, signal, afterPlaybackFailure = false) {
+    if (!probe || this._processingUnavailable) return null;
+    const delivery = await prepareMeasuredTranscode({ sourceUrl, probe, afterPlaybackFailure });
+    if (!delivery || signal?.aborted) return null;
+    StartupLoadingOverlay.setPlaybackAttempt?.({ route: delivery.route });
+    if (delivery.waitForPlaylist)
+      await selectedPlaybackTask(() => this.prepareServerVideoPlaylist(delivery.url, signal), {
+        signal,
+        timeoutMs: 60000
+      });
+    return delivery;
+  },
+
+  async prepareResolvedCandidatePlayback(
+    streamCandidate,
+    sourceUrl,
+    isCurrent,
+    filenameWasUnknown
+  ) {
     const candidate = { ...streamCandidate, url: sourceUrl, externalUrl: null };
     const signal = this._selectedSourceAbort?.signal;
     const active = () => isCurrent() && !signal?.aborted && !this.playerBackNavigationInProgress;
@@ -12285,17 +12607,98 @@ export const PlayerScreen = {
       this.params.unverifiedPlayback = null;
       return { url: sourceUrl, plan: null };
     }
-    const probe = this.getPlayerStreamProbe(candidate);
+    const settings = PlayerSettingsStore.get();
     const capabilities = getDeviceCapabilities();
-    const attempt = selectFilenamePlaybackAttempt({
-      stream: candidate,
-      probe,
-      capabilities,
-      enabled: PlayerSettingsStore.get().filenamePlaybackRoutingEnabled !== false
-    });
+    const choose = (probe = null) =>
+      selectFilenamePlaybackAttempt({
+        stream: candidate,
+        probe,
+        capabilities,
+        enabled: Boolean(probe) || settings.filenamePlaybackRoutingEnabled !== false,
+        audioEndpoint: ""
+      });
+    let attempt = choose();
+    const transcodeHint = ["audio-transcode", "transcode"].includes(
+      attempt?.filenameVerdict?.method
+    );
+    let probe = null;
+    const filenameUnknown =
+      filenameWasUnknown === true ||
+      classifyStreamFilename(streamCandidate, capabilities).method === "unknown";
+    const shouldProbe = settings.probeStream === "always" || filenameUnknown || transcodeHint;
+    let measuredVerdict = null;
+    let probeFailure = "";
+    const probeStartedAt = Date.now();
+    let probeElapsedMs = 0;
+    const reportProbeDecision = (route) => {
+      if (!shouldProbe || globalThis.__NUVIO_PLAYBACK_STARTUP_DEBUG__ !== true) return;
+      const reason = measuredVerdict?.reason || probeFailure;
+      const detail = JSON.stringify({
+        result: probe ? "metadata" : "unavailable",
+        method: measuredVerdict?.method || "unknown",
+        route,
+        reason:
+          /^[a-z0-9-]{1,80}$/i.test(reason) || /^HTTP [45][0-9]{2}$/.test(reason)
+            ? reason
+            : "metadata-unavailable",
+        elapsedMs: probeElapsedMs
+      });
+      console.warn("[SelectedProbe] " + detail);
+      void fetch("/api/debug/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "selected-probe",
+          message: "Selected stream probe",
+          stack: detail
+        })
+      }).catch(() => {});
+    };
+    if (shouldProbe) {
+      if (!active()) return null;
+      probe = this.getPlayerStreamProbe(streamCandidate);
+      if (!probe) {
+        probe = await this.readSelectedPlaybackProbe(candidate, (reason) => {
+          probeFailure = reason;
+        });
+      }
+      if (!active()) return null;
+      probeElapsedMs = Date.now() - probeStartedAt;
+      StartupLoadingOverlay.setStage("opening");
+      measuredVerdict = probe ? classifyPlayback({ url: sourceUrl, probe, capabilities }) : null;
+      const measuredMethod = measuredVerdict?.method;
+      const delivery = ["audio-transcode", "transcode"].includes(measuredMethod)
+        ? await this.prepareProbedPlaybackTranscode(sourceUrl, probe, signal)
+        : null;
+      if (!active()) return null;
+      if (delivery) {
+        this.params.playbackPlan = delivery.plan;
+        this.params.unverifiedPlayback = {
+          ...attempt,
+          sourceUrl,
+          route: delivery.route,
+          mediaUrl: delivery.url,
+          rawTried: false,
+          remuxTried: false,
+          audioTranscodeTried: true,
+          measuredTranscode: true,
+          output: delivery.output
+        };
+        reportProbeDecision(delivery.route);
+        return delivery;
+      }
+      if (measuredMethod && measuredMethod !== "unknown") {
+        attempt = choose(probe);
+        if (attempt) attempt.audioTranscodeTried = true;
+      }
+    }
     if (!attempt) return { url: sourceUrl, plan: null };
     this.params.unverifiedPlayback = attempt;
-    StartupLoadingOverlay.setPlaybackAttempt?.({ route: attempt.route });
+    reportProbeDecision(attempt.route);
+    StartupLoadingOverlay.setPlaybackAttempt?.({
+      route: attempt.route,
+      failedRoute: /(?:^|-)timeout$/.test(probeFailure) ? "probe" : undefined
+    });
     attempt.routeStartedAt = Date.now();
     this.activePlaybackUrl = sourceUrl;
     attempt.busy = true;
@@ -12304,7 +12707,7 @@ export const PlayerScreen = {
       if (this._processingUnavailable && attempt.route !== "direct")
         throw new Error("The processing service is unavailable.");
       if (attempt.route === "remux") {
-        if (probe) {
+        if (measuredVerdict?.method === "remux") {
           const owner = { ...SelectedStreamDelivery, signal, getStreamProbe: () => probe };
           delivery = {
             url: await selectedPlaybackTask(() => owner.resolvePlayerSource(candidate), {
@@ -12313,23 +12716,13 @@ export const PlayerScreen = {
             }),
             plan: clientRemuxPlan(candidate, probe)
           };
+          if (!delivery.plan && (!delivery.url || delivery.url === sourceUrl))
+            throw new Error("Verified Remux is unavailable for this stream.");
         } else
           delivery = await selectedPlaybackTask(() => prepareUnverifiedRemux(sourceUrl), {
             signal,
             timeoutMs: 17000
           });
-      } else if (attempt.route === "audio-transcode") {
-        delivery = await selectedPlaybackTask(
-          () =>
-            prepareUnverifiedAudioTranscode(sourceUrl, {
-              probe,
-              capabilities,
-              filenameVerdict: attempt.filenameVerdict,
-              allowFilenameEstimate: attempt.filenameRouting
-            }),
-          { signal, timeoutMs: 30000 }
-        );
-        if (!delivery) throw new Error("Audio conversion is unavailable for this stream.");
       }
     } catch (error) {
       if (!active()) return null;
@@ -12350,7 +12743,7 @@ export const PlayerScreen = {
     this.params.playbackPlan = delivery.plan;
     StartupLoadingOverlay.setStage("loading");
     console.warn(
-      `[Playback] resolved route=${attempt.route === "remux" ? REMUX_POLICY.mode + "-remux" : attempt.route} estimate=${attempt.filenameRouting ? "filename" : "off"} host=${traceHost(sourceUrl)}`
+      `[Playback] resolved route=${attempt.route === "remux" ? REMUX_POLICY.mode + "-remux" : attempt.route} basis=${measuredVerdict?.method === attempt.route ? "probe" : attempt.filenameRouting ? "filename" : "off"} host=${traceHost(sourceUrl)}`
     );
     return delivery;
   },
@@ -12482,6 +12875,9 @@ export const PlayerScreen = {
   },
   async playStreamCandidate(streamCandidate, options = {}) {
     const mountToken = options?.mountToken ?? null;
+    this.directAudioPreferenceState = null;
+    this.pendingAutomaticDirectAudio = null;
+    this.directAudioSwitching = null;
     this._preparingSelectedSource = this.params?.prepareSelectedSource === true;
     this._selectedSourceAbort?.abort();
     this._selectedSourceProber?.cancelAll();
@@ -12516,7 +12912,9 @@ export const PlayerScreen = {
       }
     }
     let targetUrl = streamDirectPlaybackUrl(streamCandidate);
+    let filenameWasUnknown;
     if (!targetUrl) {
+      filenameWasUnknown = classifyStreamFilename(streamCandidate).method === "unknown";
       const resolveContext = {
         season: this.params?.season == null ? null : Number(this.params.season),
         episode: this.params?.episode == null ? null : Number(this.params.episode)
@@ -12629,7 +13027,12 @@ export const PlayerScreen = {
     }
     let delivery;
     try {
-      delivery = await this.prepareResolvedCandidatePlayback(streamCandidate, targetUrl, isCurrent);
+      delivery = await this.prepareResolvedCandidatePlayback(
+        streamCandidate,
+        targetUrl,
+        isCurrent,
+        filenameWasUnknown
+      );
     } catch (error) {
       if (isCurrent())
         this.showStartupError(error?.message || "Unable to prepare this stream.", {
@@ -13000,6 +13403,13 @@ export const PlayerScreen = {
     if (!state) return 18000;
     const metadataPending = state.metadataAt == null;
     const attempt = this.params?.unverifiedPlayback;
+    if (attempt?.measuredTranscode && attempt.mediaUrl === this.activePlaybackUrl) {
+      const budget = metadataPending ? 60000 : 18000;
+      return Math.max(
+        1,
+        budget - Math.max(0, Date.now() - (metadataPending ? state.startedAt : state.metadataAt))
+      );
+    }
     if (attempt?.routeFallbackEnabled && attempt.mediaUrl === this.activePlaybackUrl)
       return Math.max(
         1,
@@ -13180,7 +13590,8 @@ export const PlayerScreen = {
           entry.track?.index === requestedAudio.index
       );
       if (selected) {
-        this.rememberAudioTrackSelection(this.getAudioTrackPreference(selected));
+        if (requestedAudio.remember !== false)
+          this.rememberAudioTrackSelection(this.getAudioTrackPreference(selected));
         this.pendingDirectAudioSelection = null;
       }
     }
@@ -13199,6 +13610,7 @@ export const PlayerScreen = {
     if (this.audioDialogVisible) {
       this.renderAudioDialog();
     }
+    if (this.playbackInfoVisible && this.moreActionsVisible) this.renderCompactBrowserMorePanel();
   },
 
   invalidateTrackDialogCaches() {
@@ -16348,7 +16760,13 @@ export const PlayerScreen = {
   applyAudioTrack(index, { automaticFallback = false, rememberSelection = false } = {}) {
     const entries = this.getAudioEntries();
     const selectedEntry = entries[index] || null;
-    if (!selectedEntry || selectedEntry.track?.engine === "direct-default") {
+    if (!selectedEntry) return;
+    if (selectedEntry.track?.engine === "direct-default") {
+      if (rememberSelection) {
+        this.directAudioPreferenceState = { url: this.activePlaybackUrl, attempted: true };
+        if (this.directAudioSwitching?.automatic && !this.directAudioSwitching.started)
+          this.directAudioSwitching = null;
+      }
       return;
     }
     if (!automaticFallback) {
@@ -16371,6 +16789,7 @@ export const PlayerScreen = {
     if (selectedEntry.track?.engine === "direct-source") {
       // Discovering tracks in a dialog must not restart working Direct playback.
       if (!rememberSelection) return;
+      this.directAudioPreferenceState = { url: this.activePlaybackUrl, attempted: true };
       void this.switchDirectAudioTrack(selectedEntry);
       return;
     }

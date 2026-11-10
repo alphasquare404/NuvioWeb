@@ -64,6 +64,18 @@ const playbackReasons = new Set([
   "cache-file-missing",
   "cache-media-invalid",
   "client-media-error",
+  "client-transcode-audio-decode-unsupported",
+  "client-transcode-software-audio-decode-failed",
+  "client-transcode-audio-output-unavailable",
+  "client-transcode-video-decode-unsupported",
+  "client-transcode-software-video-decode-failed",
+  "client-transcode-software-video-decoder-unavailable",
+  "client-transcode-aac-encode-unsupported",
+  "client-transcode-video-copy-unsupported",
+  "client-transcode-codec-unsupported",
+  "client-transcode-output-unavailable",
+  "transcode-init-too-large",
+  "transcode-track-unavailable",
   "client-output-audio-codec-unsupported",
   "client-output-video-codec-unsupported",
   "decoder-not-ready-within-buffer-budget",
@@ -107,7 +119,21 @@ const codecNames = new Set([
   "ec-3",
   "alac",
   "dts",
-  "truehd"
+  "truehd",
+  "pcm-u8",
+  "pcm-s8",
+  "pcm-s16",
+  "pcm-s16be",
+  "pcm-s24",
+  "pcm-s24be",
+  "pcm-s32",
+  "pcm-s32be",
+  "pcm-f32",
+  "pcm-f32be",
+  "pcm-f64",
+  "pcm-f64be",
+  "ulaw",
+  "alaw"
 ]);
 
 export function clientRemuxFailureFacts(phase, error, stats, video) {
@@ -127,11 +153,29 @@ export function clientRemuxFailureFacts(phase, error, stats, video) {
       "codec-check",
       "key-packets",
       "output-metadata",
-      "mux-output"
+      "mux-output",
+      "transcode-track-discovery",
+      "transcode-codec-check",
+      "transcode-output"
     ],
     rangeStep: ["request", "headers", "head-fallback", "body", "complete"],
     video: codecNames,
-    audio: codecNames
+    audio: codecNames,
+    videoDecoder: ["native", "software"],
+    softwareVideoStage: [
+      "config-allocation",
+      "open",
+      "packet-allocation",
+      "send",
+      "timestamp",
+      "receive",
+      "decode-frame",
+      "convert-pixels",
+      "copy-pixels",
+      "drain"
+    ],
+    sourceVideo: codecNames,
+    sourceAudio: codecNames
   })) {
     const value = stats[key];
     if (allowed instanceof Set ? allowed.has(value) : allowed.includes(value)) facts[key] = value;
@@ -158,6 +202,8 @@ export function clientRemuxFailureFacts(phase, error, stats, video) {
     const value = stats[key];
     if (Number.isFinite(value) || typeof value === "boolean") facts[key] = value;
   }
+  if (facts.softwareVideoStage && Number.isSafeInteger(stats.softwareVideoCode))
+    facts.softwareVideoCode = stats.softwareVideoCode;
   if (stats.lastRangeStatus && stats.lastRangeStatus !== 206) {
     if (/^(?:[a-z0-9-]+\.)+[a-z0-9-]+$/i.test(stats.invalidRangeHost || ""))
       facts.responseHost = stats.invalidRangeHost;

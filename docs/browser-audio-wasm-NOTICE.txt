@@ -1,0 +1,16 @@
+Client playback software audio decoders
+
+libav.js 6.10.9.0, obsolete variant, distributed unmodified as WebAssembly
+and its module factory. See browser-audio-wasm-LGPL-2.1.txt and the
+copyright and component notices in the upstream build.
+Source, dependencies and build instructions:
+https://github.com/Yahweasel/libav.js/tree/c80e885c3461f7bb7ea565c9631b34243ae0dbf1
+Build configuration:
+https://github.com/Yahweasel/libav.js/tree/c80e885c3461f7bb7ea565c9631b34243ae0dbf1/configs/configs/obsolete
+
+@wasm-audio-decoders/aac 0.0.1 by Ethan Halsall (MIT package metadata)
+uses FAAD2. See browser-audio-wasm-GPL-2.0.txt and the FAAD2 source notice.
+Decoder and build sources:
+https://github.com/eshaz/wasm-audio-decoders/tree/826e2d079e744697a2cfcde406db7ffd894447af/src/aac
+FAAD2 corresponding source:
+https://github.com/knik0/faad2/tree/673a22a3c7c33e96e2ff7aae7c4d2bc190dfbf92

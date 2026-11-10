@@ -18,3 +18,6 @@ services/**/runtime
 # change from arriving with a whole-file rewrite attached.
 css/desktop.css
 
+
+# Generated Emscripten module.
+vendor/browser-video-decoder/software-video.js

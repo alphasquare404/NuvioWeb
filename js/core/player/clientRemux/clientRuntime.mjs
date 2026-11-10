@@ -17,6 +17,7 @@ export function createClientRemux({
   assetBase,
   version,
   cacheMaxMiB = 512,
+  transcode = false,
   requestHeaders = {},
   expectedAudio = null,
   canResolveSource = () => false,
@@ -90,6 +91,8 @@ export function createClientRemux({
       bufferEnd,
       ...latest,
       ...film?.cache.stats(),
+      processing: transcode === "audio" ? "audio-transcode" : transcode ? "transcode" : "remux",
+      outputContainer: latest.mime ? "fmp4" : "",
       position: isRestoring() ? position : Math.max(0, video.currentTime),
       duration: logicalDuration,
       restoring: isRestoring(),
@@ -105,10 +108,24 @@ export function createClientRemux({
     onError(latest.reason);
   }
   function logFailure(phase, error) {
-    console.warn(
-      "[ClientRemux] failure",
-      JSON.stringify(clientRemuxFailureFacts(phase, error, latest, video))
-    );
+    const facts = clientRemuxFailureFacts(phase, error, latest, video);
+    const detail = JSON.stringify({
+      ...facts,
+      conversion: transcode === "audio" ? "audio" : transcode ? "full" : "copy"
+    });
+    console.warn("[ClientRemux] failure", detail);
+    if (globalThis.__NUVIO_PLAYBACK_STARTUP_DEBUG__ === true) {
+      void fetch("/api/debug/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "media-worker",
+          message: facts.reason,
+          stack: detail,
+          at: new Date().toISOString()
+        })
+      }).catch(() => {});
+    }
   }
   async function clean(name) {
     if (!name) return;
@@ -348,11 +365,14 @@ export function createClientRemux({
     if (film) {
       film.audioTracks = (info.audioTracks || []).map((track) => ({
         ...track,
-        supported: track.supported && Boolean(track.mime && Source.isTypeSupported(track.mime))
+        supported:
+          track.supported &&
+          (Boolean(transcode) || Boolean(track.mime && Source.isTypeSupported(track.mime)))
       }));
       onTracks();
     }
     s.sb = s.media.addSourceBuffer(info.mime);
+    if (info.timestampOffset) s.sb.timestampOffset = info.timestampOffset;
     s.media.duration = info.duration;
   }
   function ahead() {
@@ -529,7 +549,7 @@ export function createClientRemux({
     const owner = film,
       expectedIntent = intent,
       id = crypto.randomUUID(),
-      cached = await runStartupStep("cache-run", () => owner.cache.createRun(id));
+      cached = !transcode && (await runStartupStep("cache-run", () => owner.cache.createRun(id)));
     if (film !== owner || expectedIntent !== intent || producer) {
       await owner.cache.finishRun(id);
       return null;
@@ -544,7 +564,7 @@ export function createClientRemux({
     try {
       worker = await runStartupStep(
         "media-worker",
-        () => new Worker(new URL("cache-worker.js", assetBase))
+        () => new Worker(new URL("cache-worker.js", assetBase), { type: "module" })
       );
     } catch (error) {
       lease.release();
@@ -577,6 +597,34 @@ export function createClientRemux({
         if (data.type === "resolve-source") {
           const resolved = await resolveSource(owner.sourceUrl, job.resolveAbort.signal);
           reply(job, data, resolved);
+        } else if (data.type === "supports-output") {
+          const { mime, audio } = data.output;
+          let supported = Source.isTypeSupported(mime);
+          if (supported && audio?.channels > 2) {
+            try {
+              const answer = await Promise.race([
+                navigator.mediaCapabilities?.decodingInfo({ type: "media-source", audio }),
+                sleep(750)
+              ]);
+              supported = answer?.supported === true;
+            } catch {
+              supported = false;
+            }
+          }
+          reply(job, data, supported);
+        } else if (data.type === "transcode-credit") {
+          while (
+            producer === job &&
+            session?.runId === id &&
+            shouldThrottleAhead({
+              aheadSeconds: ahead(),
+              readyState: video.readyState,
+              paused: video.paused,
+              limitSeconds: Math.min(session.quotaAheadSeconds ?? Infinity, video.paused ? 12 : 24)
+            })
+          )
+            await sleep(100);
+          reply(job, data, true);
         } else if (data.type === "reserve") {
           const accepted = await owner.cache.reserve(data.entry);
           if (producer !== job) {
@@ -666,6 +714,7 @@ export function createClientRemux({
       type: "start",
       requestHeaders,
       expectedAudio,
+      transcode,
       hostResolveAvailable: canResolveSource(owner.sourceUrl),
       version,
       audioIndex,

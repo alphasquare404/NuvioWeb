@@ -1460,6 +1460,8 @@ export const StreamScreen = {
       const allowed = filterFilenameStreams([match], settings);
       const selected = selectAutoPlayStream(allowed, {
         filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
+        filenameStreamFilter: settings.filenameStreamFilter,
+        filenameTranscodeFilter: settings.filenameTranscodeFilter,
         mode: settings.streamAutoPlayMode,
         source: settings.streamAutoPlaySource,
         regexPattern: settings.streamAutoPlayRegex,
@@ -1557,6 +1559,8 @@ export const StreamScreen = {
     return selectAutoPlayStream(streams, {
       reusableStream,
       filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
+      filenameStreamFilter: settings.filenameStreamFilter,
+      filenameTranscodeFilter: settings.filenameTranscodeFilter,
       mode: settings.streamAutoPlayMode,
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
