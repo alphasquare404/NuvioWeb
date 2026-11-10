@@ -1,3 +1,4 @@
+import { installStartupPlaybackDiagnostics } from "../../../core/player/startupPlaybackDiagnostics.js";
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
@@ -6767,7 +6768,7 @@ export const PlayerScreen = {
     this.focusStartupErrorButton();
   },
 
-  startPlaybackStartupDiagnostics(url) {
+  startPlaybackStartupDiagnostics() {
     this.playbackStartupDiagnosticCleanup?.();
     this.playbackStartupDiagnosticCleanup = null;
     this.playbackStartupDiagnostic = null;
@@ -6776,7 +6777,6 @@ export const PlayerScreen = {
     if (!video?.addEventListener) return;
     const state = {
       startedAt: Date.now(),
-      host: traceHost(url),
       events: [],
       reported: new Set(),
       standalone: isAppInstalled()
@@ -6815,8 +6815,27 @@ export const PlayerScreen = {
         this.reportPlaybackStartupDiagnostics(event.type);
     };
     names.forEach((name) => video.addEventListener(name, record));
-    this.playbackStartupDiagnosticCleanup = () =>
+    const cleanupPlaybackTrace = installStartupPlaybackDiagnostics({
+      controller: PlayerController,
+      screen: this,
+      emit: (detail) => {
+        console.warn("[playback-state]", JSON.stringify(detail));
+        void fetch("/api/debug/log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "playback-state",
+            message: detail.event,
+            stack: JSON.stringify(detail),
+            at: new Date().toISOString()
+          })
+        }).catch(() => {});
+      }
+    });
+    this.playbackStartupDiagnosticCleanup = () => {
       names.forEach((name) => video.removeEventListener(name, record));
+      cleanupPlaybackTrace();
+    };
   },
 
   reportPlaybackStartupDiagnostics(reason) {
@@ -6832,7 +6851,6 @@ export const PlayerScreen = {
     const video = this.getDesktopPlaybackVideo();
     const detail = {
       reason,
-      host: state.host,
       startedAt: state.startedAt,
       elapsedMs: Date.now() - state.startedAt,
       standalone: state.standalone,
@@ -7114,7 +7132,7 @@ export const PlayerScreen = {
           allowPlayback: Boolean(this.startupAudioGateAllowsPlayback)
         }
       : null;
-    this.startPlaybackStartupDiagnostics?.(playbackUrl);
+    this.startPlaybackStartupDiagnostics?.();
     PlayerController.setStartupPresentationAudioMuted?.(true);
     return Promise.resolve(PlayerController.play(playbackUrl, context)).catch(async (error) => {
       if (!this.isActiveMountToken(mountToken) || this.isExternalFrameMode()) {

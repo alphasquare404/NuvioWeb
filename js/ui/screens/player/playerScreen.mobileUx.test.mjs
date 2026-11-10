@@ -1317,16 +1317,14 @@ test("startup timing diagnostics are opt-in, bounded, preserve media state and o
         return now;
       }
     },
-    traceHost: (url) => new URL(url).hostname,
+    PlayerController: { video },
+    installStartupPlaybackDiagnostics: () => () => {},
     fetch: (_url, options) => {
       sent.push(JSON.parse(options.body));
       return Promise.resolve();
     }
   };
-  const start = method(
-    "startPlaybackStartupDiagnostics(url)",
-    deps
-  ).startPlaybackStartupDiagnostics;
+  const start = method("startPlaybackStartupDiagnostics()", deps).startPlaybackStartupDiagnostics;
   const report = method(
     "reportPlaybackStartupDiagnostics(reason)",
     deps
