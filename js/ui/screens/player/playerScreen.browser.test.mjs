@@ -367,3 +367,61 @@ test("None clears all subtitle paths and late discovery cannot auto-select anoth
   screen.startupSubtitlePreferenceApplied = false;
   assert.equal(screen.applyStartupSubtitlePreference(), false);
 });
+
+test("blocked remux autoplay exposes Play and the first tap lifts mute before resuming", async () => {
+  const calls = [];
+  const controller = {
+    video: {
+      paused: true,
+      readyState: 4,
+      classList: { add: () => calls.push(["hideVideo"]), remove: () => calls.push(["showVideo"]) }
+    },
+    clientRemux: { snapshot: () => ({ state: "remuxing" }) },
+    setStartupPresentationAudioMuted: (muted) => calls.push(["muted", muted]),
+    resume: () => calls.push(["play"])
+  };
+  const screen = {
+    ...(await loadPlayerMethods(
+      [
+        "showClientRemuxPlayAfterAutoplayBlock",
+        "canManuallyStartClientRemux",
+        "retryClientRemuxFromGesture",
+        "togglePause",
+        "finalizePendingPlaybackRestore"
+      ],
+      { PlayerController: controller, console: { warn() {} } }
+    )),
+    startupReadiness: {},
+    loadingVisible: true,
+    paused: false,
+    isStartupErrorVisible: () => false,
+    isExternalFrameMode: () => false,
+    clearPlaybackStallGuard() {},
+    clearLoadingCompletionTimer() {},
+    releaseStartupAudioGate: ({ resume }) => calls.push(["releaseGate", resume]),
+    updateLoadingVisibility() {},
+    updateMediaSessionPlaybackState() {},
+    setControlsVisible: (visible) => calls.push(["controls", visible]),
+    renderControlButtons() {},
+    clearStartupError() {},
+    getPlaybackCurrentSeconds: () => 73.495,
+    applyAudioAmplification: () => calls.push(["audio"]),
+    schedulePlaybackStallGuard() {}
+  };
+  screen.showClientRemuxPlayAfterAutoplayBlock({ autoplayBlocked: true });
+  assert.equal(screen.loadingVisible, false);
+  assert.equal(screen.paused, true);
+  screen.pendingPlaybackRestore = { paused: false };
+  screen.finalizePendingPlaybackRestore();
+  assert.equal(screen.paused, true);
+  assert.deepEqual(calls, [["hideVideo"], ["releaseGate", false], ["controls", true]]);
+  screen.togglePause();
+  assert.equal(screen.startupReadiness.autoplayBlocked, false);
+  assert.deepEqual(calls.slice(3), [
+    ["showVideo"],
+    ["releaseGate", false],
+    ["muted", false],
+    ["audio"],
+    ["play"]
+  ]);
+});

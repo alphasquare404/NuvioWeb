@@ -387,25 +387,14 @@ export const PlayerController = {
   },
 
   resumePlaybackAfterStartupGate() {
-    if (!this.video) {
-      return;
-    }
-    try {
-      const playPromise = this.video.play();
-      if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch((error) => {
-          if (this.isExpectedPlayInterruption(error)) {
-            return;
-          }
-          console.warn("Playback start after startup gate rejected", error);
-        });
-      }
-      this.isPlaying = true;
-    } catch (error) {
-      if (!this.isExpectedPlayInterruption(error)) {
-        console.warn("Playback start after startup gate rejected", error);
-      }
-    }
+    if (!this.video || this.clientRemux?.snapshot().autoplayBlocked) return;
+    const playToken = this.playRequestToken;
+    void this.attemptBrowserVideoPlay({
+      warningLabel: "Playback start after startup gate rejected",
+      playToken
+    }).then((played) => {
+      if (this.isPlaybackRequestActive(playToken)) this.isPlaying = played && !this.video.paused;
+    });
   },
 
   handlePlaybackStartedUnderStartupGate(playPromise = null) {
@@ -1699,6 +1688,12 @@ export const PlayerController = {
       this.videoElementListeners.push({ target: video, eventName, handler });
     };
 
+    listen("playing", () => {
+      this.isPlaying = true;
+    });
+    listen("pause", () => {
+      if (!this.isClientRemuxRestoring()) this.isPlaying = false;
+    });
     listen("ended", () => {
       if (this.isClientRemuxRestoring()) return;
       this.isPlaying = false;
@@ -1917,7 +1912,7 @@ export const PlayerController = {
         throw error;
       }
       if (this.isPlaybackRequestActive(playToken, requestedUrl)) {
-        this.isPlaying = true;
+        this.isPlaying = !this.video.paused;
         this.startProgressSaveTimer();
       }
       return;
@@ -2051,16 +2046,25 @@ export const PlayerController = {
       return;
     }
 
-    const playPromise = this.clientRemux ? this.clientRemux.resume() : this.video.play();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch((error) => {
-        if (this.isExpectedPlayInterruption(error)) {
-          return;
-        }
-        console.warn("Playback resume rejected", error);
+    const video = this.video;
+    const playToken = this.playRequestToken;
+    const syncPlaying = () => {
+      if (this.video === video && this.isPlaybackRequestActive(playToken)) {
+        this.isPlaying = !video.paused;
+      }
+    };
+    try {
+      const result = this.clientRemux ? this.clientRemux.resume() : video.play();
+      syncPlaying();
+      result?.then(syncPlaying, (error) => {
+        syncPlaying();
+        if (!this.isExpectedPlayInterruption(error))
+          console.warn("Playback resume rejected", error);
       });
+    } catch (error) {
+      syncPlaying();
+      if (!this.isExpectedPlayInterruption(error)) console.warn("Playback resume rejected", error);
     }
-    this.isPlaying = true;
   },
 
   stop({ forceCloudSync = true, allowCloudSync = true, flushProgress = true } = {}) {

@@ -7132,6 +7132,7 @@ export const PlayerScreen = {
           startSeconds: Number(this.pendingPlaybackRestore?.timeSeconds) || 0
         }
       };
+    PlayerController.video?.classList?.remove("player-awaiting-autoplay");
     this.startupReadiness = Environment.isBrowser()
       ? {
           url: playbackUrl,
@@ -7238,11 +7239,41 @@ export const PlayerScreen = {
     button?.classList?.add("focused");
   },
 
+  showClientRemuxPlayAfterAutoplayBlock(status) {
+    const state = this.startupReadiness;
+    const video = PlayerController.video;
+    if (
+      !status?.autoplayBlocked ||
+      !state ||
+      state.autoplayBlocked ||
+      this.hasPresentedPlaybackFrame ||
+      !video?.paused ||
+      video.readyState < 2 ||
+      video.error ||
+      this.isStartupErrorVisible() ||
+      this.isExternalFrameMode()
+    ) {
+      return;
+    }
+
+    state.autoplayBlocked = true;
+    video.classList?.add("player-awaiting-autoplay");
+    this.clearPlaybackStallGuard();
+    this.clearLoadingCompletionTimer();
+    this.releaseStartupAudioGate({ resume: false });
+    this.loadingVisible = false;
+    this.paused = true;
+    this.updateLoadingVisibility();
+    this.updateMediaSessionPlaybackState();
+    this.setControlsVisible(true, { focus: false });
+    this.renderControlButtons();
+  },
+
   canManuallyStartClientRemux() {
     const runtime = PlayerController.clientRemux;
     return Boolean(
       runtime &&
-      this.startupReadiness?.timeoutError &&
+      (this.startupReadiness?.timeoutError || this.startupReadiness?.autoplayBlocked) &&
       !this.startupErrorMediaCode &&
       !PlayerController.video?.error &&
       !PlayerController.getLastPlaybackErrorCode?.() &&
@@ -7255,6 +7286,8 @@ export const PlayerScreen = {
     if (!this.canManuallyStartClientRemux()) return false;
     const state = this.startupReadiness;
     state.timeoutError = false;
+    state.autoplayBlocked = false;
+    PlayerController.video?.classList?.remove("player-awaiting-autoplay");
     state.metadataAt = Date.now();
     state.manualPlayAttempts = Number(state.manualPlayAttempts || 0) + 1;
     this.clearStartupError();
@@ -9855,7 +9888,7 @@ export const PlayerScreen = {
       }
     };
     const onWaiting = () => {
-      if (this.isStartupErrorVisible()) {
+      if (this.isStartupErrorVisible() || this.startupReadiness?.autoplayBlocked) {
         return;
       }
       this.dismissPauseOverlay();
@@ -9868,6 +9901,8 @@ export const PlayerScreen = {
     };
 
     const onPlaying = () => {
+      if (this.startupReadiness) this.startupReadiness.autoplayBlocked = false;
+      video.classList?.remove("player-awaiting-autoplay");
       this.noteStartupReadiness(video);
       if (this.isStartupErrorVisible()) {
         return;
@@ -9997,6 +10032,7 @@ export const PlayerScreen = {
     };
 
     const onPlayable = () => {
+      this.showClientRemuxPlayAfterAutoplayBlock(PlayerController.clientRemux?.snapshot());
       this.noteStartupReadiness(video);
       setStartupStage(this.pendingPlaybackRestore ? "restoring" : "frame");
       if (this.isStartupErrorVisible()) {
@@ -10193,7 +10229,9 @@ export const PlayerScreen = {
         () => {
           this.updateUiTick();
           this.updateLoadingVisibility();
-          const status = PlayerController.clientRemux?.snapshot().subtitle;
+          const snapshot = PlayerController.clientRemux?.snapshot();
+          this.showClientRemuxPlayAfterAutoplayBlock(snapshot);
+          const status = snapshot?.subtitle;
           const key = [status?.state, status?.selectedTrack, status?.reason].join(":");
           if (this.clientSubtitleStatusKey !== key) {
             this.clientSubtitleStatusKey = key;
@@ -10224,6 +10262,7 @@ export const PlayerScreen = {
   },
 
   unbindVideoEvents() {
+    PlayerController.video?.classList?.remove("player-awaiting-autoplay");
     this.startupReadiness = null;
     this.playbackStartupDiagnosticCleanup?.();
     this.playbackStartupDiagnosticCleanup = null;
@@ -11306,8 +11345,10 @@ export const PlayerScreen = {
       this.paused = true;
       return;
     }
-    this.paused = false;
-    if (!this.startupAudioGateActive && PlayerController.video?.paused) PlayerController.resume();
+    this.paused = Boolean(this.startupReadiness?.autoplayBlocked);
+    if (!this.paused && !this.startupAudioGateActive && PlayerController.video?.paused) {
+      PlayerController.resume();
+    }
   },
 
   attemptPendingPlaybackRestore({ force = false } = {}) {
@@ -11829,6 +11870,10 @@ export const PlayerScreen = {
   togglePause({ focusControls = true } = {}) {
     const preserveProgressFocus = this.controlFocusZone === "progress";
     if (this.isExternalFrameMode()) {
+      return;
+    }
+    if (this.startupReadiness?.autoplayBlocked) {
+      this.retryClientRemuxFromGesture();
       return;
     }
     if (this.paused) {

@@ -1586,6 +1586,11 @@
   z-index: 5;
 }
 
+/* Keep Safari's own start affordance behind the custom Play control. */
+#player video.player-awaiting-autoplay {
+  visibility: hidden;
+}
+
 /* Inline video has one custom transport, including during Safari startup. */
 .desktop-browser #player video::-webkit-media-controls-start-playback-button {
   display: none;

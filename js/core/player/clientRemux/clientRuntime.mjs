@@ -287,7 +287,8 @@ export function createClientRemux({
           latest.startupRequiredAheadSeconds = window.required;
         }
       },
-      onBlocked: () => {
+      onBlocked: (error) => {
+        if (error?.name !== "NotAllowedError") return;
         latest.autoplayBlocked = true;
         render();
       }
@@ -900,7 +901,15 @@ export function createClientRemux({
       desiredPaused = false;
       // A resume during loading records intent; it must not start an empty source.
       if (session && !session.startup.ready) return Promise.resolve();
-      return video.play();
+      latest.autoplayBlocked = false;
+      const current = session;
+      const result = video.play();
+      result?.catch((error) => {
+        if (disposed || current !== session || error?.name !== "NotAllowedError") return;
+        latest.autoplayBlocked = true;
+        render();
+      });
+      return result;
     },
     setRate(rate) {
       desiredRate = rate;

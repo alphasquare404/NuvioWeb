@@ -30,11 +30,11 @@ export function createStartupPlayback({
     if (disposed || !isActive() || !prepared || !settled || !wantsPlay()) return;
     onPhase("play-requested");
     try {
-      video.play()?.catch(() => {
-        if (!disposed && isActive()) onBlocked();
+      video.play()?.catch((error) => {
+        if (!disposed && isActive()) onBlocked(error);
       });
-    } catch {
-      onBlocked();
+    } catch (error) {
+      onBlocked(error);
     }
   };
   const seeked = () => {
