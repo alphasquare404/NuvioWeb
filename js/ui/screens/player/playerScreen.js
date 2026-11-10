@@ -4318,6 +4318,7 @@ export const PlayerScreen = {
     this.relayTextSubtitles?.destroy();
     this.relayTextSubtitles = null;
     this.relayAudioTracks = [];
+    this.relayTrackProbe = null;
     this.relayTrackContext = null;
     this.relayTrackPlaybackUrl = null;
     this.relayTrackVideo = null;
@@ -4355,6 +4356,7 @@ export const PlayerScreen = {
     }));
     const probe = await prober.probe(context.source, { reason: "tracks" });
     if (!active()) return;
+    this.relayTrackProbe = probe;
     PlayerController.setSourceDurationHint?.(playbackUrl, probe?.durationSeconds);
     this.relayAudioTracks = (probe?.audioStreams || []).map((track) => ({
       ...track,

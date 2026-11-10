@@ -197,6 +197,66 @@ export const BrowserPlayerPresentationScreen = {
       return false;
     }
   },
+  getProposalPlaybackInfoRows() {
+    const video = this.getDesktopPlaybackVideo();
+    const source = this.getCurrentStreamCandidate();
+    const audio = this.getAudioEntries().find((entry) => entry.selected);
+    const remux = PlayerController.clientRemux?.snapshot();
+    const probe = this.offlineDownloadId
+      ? null
+      : this.directTrackProbe ||
+        this.relayTrackProbe ||
+        (source && this.getPlayerStreamProbe(source));
+    const knownText = (value) =>
+      typeof value === "string" && value.toLowerCase() !== "unknown" ? value : "";
+    const width = video?.videoWidth || probe?.width;
+    const height = video?.videoHeight || probe?.height;
+    const codec = knownText(remux?.video || probe?.videoCodec).toUpperCase();
+    const frameRate = Number(probe?.frameRate);
+    const videoBitrate = Number(probe?.videoBitrate);
+    const size = Number(remux?.sourceSizeBytes);
+    const fileSize =
+      size > 0
+        ? size >= 1073741824
+          ? (size / 1073741824).toFixed(2) + " GiB"
+          : (size / 1048576).toFixed(1) + " MiB"
+        : "";
+    const file = [knownText(remux?.sourceContainer || probe?.container), fileSize]
+      .filter(Boolean)
+      .join(" · ");
+    return [
+      [
+        t("sources_title", "Source"),
+        this.offlineDownloadId ? t("player_local_file", "Local file") : source?.addonName
+      ],
+      ...(file ? [[t("player_source_file", "Source file"), file]] : []),
+      [
+        t("player_video", "Video"),
+        [
+          width && height ? width + " × " + height : "",
+          codec,
+          Number.isFinite(frameRate) && frameRate > 0 ? Number(frameRate.toFixed(2)) + " fps" : "",
+          Number.isFinite(videoBitrate) && videoBitrate > 0
+            ? (videoBitrate / 1000000).toFixed(2) + " Mbps"
+            : ""
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      ],
+      [
+        t("audio_dialog_title", "Audio"),
+        [audio?.label, audio?.secondary].filter(Boolean).join(" · ") ||
+          t("player_audio_direct_default", "Player default audio")
+      ],
+      [
+        t("player_processing", "Playback"),
+        this.offlineDownloadId
+          ? t("player_local_file", "Local file")
+          : PlayerController.playbackEngine
+      ]
+    ];
+  },
+
   renderProposalMore() {
     const panel = this.uiRefs?.mobileMorePanel;
     if (!panel) return;
@@ -209,29 +269,7 @@ export const BrowserPlayerPresentationScreen = {
     const row = (action, label, value = "", icon = "") =>
       `<button type="button" class="nv-choice player-control-btn" data-action="${action}">${icon ? playerDesignIcon(icon) : ""}<span class="nv-copy">${playerText(label)}</span>${value ? `<span class="nv-value">${playerText(value)}</span>` : ""}</button>`;
     if (this.playbackInfoVisible) {
-      const video = this.getDesktopPlaybackVideo(),
-        audio = this.getAudioEntries().find((e) => e.selected),
-        source = this.getCurrentStreamCandidate();
-      const rows = [
-        [
-          t("sources_title", "Source"),
-          this.offlineDownloadId ? t("player_local_file", "Local file") : source?.addonName
-        ],
-        [
-          t("player_video", "Video"),
-          video?.videoWidth ? `${video.videoWidth} × ${video.videoHeight}` : "—"
-        ],
-        [
-          t("audio_dialog_title", "Audio"),
-          audio?.label || t("player_audio_direct_default", "Player default audio")
-        ],
-        [
-          t("player_processing", "Playback"),
-          this.offlineDownloadId
-            ? t("player_local_file", "Local file")
-            : PlayerController.playbackEngine
-        ]
-      ];
+      const rows = this.getProposalPlaybackInfoRows();
       panel.innerHTML =
         playerPanelHead(t("player_playback_information", "Playback information"), "backFromMore") +
         `<div class="nv-panel-body">${rows.map(([label, value]) => `<div class="nv-mini-row"><span>${playerText(label)}</span><span class="nv-value">${playerText(value || "—")}</span></div>`).join("")}<button type="button" class="nv-choice nv-subtle-action player-control-btn" data-action="moreInfoBack">${playerDesignIcon("chevron-left")} ${playerText(t("common.back", "Back"))}</button></div>`;

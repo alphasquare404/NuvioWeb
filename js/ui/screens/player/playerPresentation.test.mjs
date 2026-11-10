@@ -503,6 +503,55 @@ test("episode seasons use an in-player menu and retain the real season values", 
   assert.equal(ctx.episodeSeasonPickerOpen, false);
 });
 
+test("playback information uses runtime and probed metadata and omits unavailable facts", () => {
+  const mixin = readFileSync(
+    new URL("./browserPlayerPresentationScreen.js", import.meta.url),
+    "utf8"
+  );
+  const controller = {
+    playbackEngine: "client-remux",
+    clientRemux: {
+      snapshot: () => ({ video: "hevc", sourceContainer: "Matroska", sourceSizeBytes: 1610612736 })
+    }
+  };
+  const rows = method(
+    "getProposalPlaybackInfoRows()",
+    {
+      t: (_key, fallback) => fallback,
+      PlayerController: controller
+    },
+    mixin
+  ).getProposalPlaybackInfoRows;
+  const ctx = {
+    getDesktopPlaybackVideo: () => ({ videoWidth: 1920, videoHeight: 960 }),
+    getCurrentStreamCandidate: () => ({ addonName: "Addon", name: "Title WEB-DL H264" }),
+    getPlayerStreamProbe: () => null,
+    getAudioEntries: () => [{ selected: true, label: "English (EAC3 5.1)", secondary: "48 kHz" }]
+  };
+  assert.deepEqual(Object.fromEntries(rows.call(ctx)), {
+    Source: "Addon",
+    "Source file": "Matroska · 1.50 GiB",
+    Video: "1920 × 960 · HEVC",
+    Audio: "English (EAC3 5.1) · 48 kHz",
+    Playback: "client-remux"
+  });
+  controller.clientRemux = null;
+  controller.playbackEngine = "native-file";
+  assert.equal(Object.fromEntries(rows.call(ctx)).Video, "1920 × 960");
+  assert.equal(Object.fromEntries(rows.call(ctx))["Source file"], undefined);
+  ctx.directTrackProbe = {
+    container: "mp4",
+    videoCodec: "h264",
+    frameRate: 23.976,
+    videoBitrate: 4700000
+  };
+  assert.equal(
+    Object.fromEntries(rows.call(ctx)).Video,
+    "1920 × 960 · H264 · 23.98 fps · 4.70 Mbps"
+  );
+  ctx.offlineDownloadId = "saved";
+  assert.equal(Object.fromEntries(rows.call(ctx)).Video, "1920 × 960");
+});
 test("AirPlay accepts Safari original network sources alongside remux, excluding local-only sources", () => {
   const mixin = readFileSync(
     new URL("./browserPlayerPresentationScreen.js", import.meta.url),
