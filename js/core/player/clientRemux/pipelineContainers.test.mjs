@@ -5,10 +5,10 @@ import { createHash } from "node:crypto";
 import { Input, BufferSource, ALL_FORMATS, EncodedPacketSink } from "mediabunny";
 import { remux } from "./pipeline.mjs";
 
-for (const [file, videoCodec, audioCodec, channels] of [
-  ["probe-dual-audio.mp4", "avc", "aac", 6],
-  ["remux-hevc-eac3.mkv", "hevc", "eac3", 6],
-  ["remux-vp9-opus.webm", "vp9", "opus", 2]
+for (const [file, container, videoCodec, audioCodec, channels] of [
+  ["probe-dual-audio.mp4", "MP4", "avc", "aac", 6],
+  ["remux-hevc-eac3.mkv", "Matroska", "hevc", "eac3", 6],
+  ["remux-vp9-opus.webm", "WebM", "vp9", "opus", 2]
 ])
   test(`client copy preserves packets from ${file}`, async () => {
     const bytes = await readFile(new URL("../fixtures/" + file, import.meta.url));
@@ -29,6 +29,8 @@ for (const [file, videoCodec, audioCodec, channels] of [
       },
       write: async (bytes) => chunks.push(bytes.slice())
     });
+    assert.equal(info.sourceContainer, container);
+    assert.equal(info.sourceSizeBytes, bytes.length);
     assert.equal(info.video, videoCodec);
     assert.equal(info.audio, audioCodec);
     assert.equal(info.channels, channels);

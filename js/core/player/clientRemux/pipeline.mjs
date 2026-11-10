@@ -124,6 +124,7 @@ export async function remux({
           language: track.languageCode,
           codec: track.codec,
           channels: config?.numberOfChannels || 0,
+          sampleRate: config?.sampleRate || 0,
           mime: codecString
             ? `video/mp4; codecs="${await video.getCodecParameterString()},${codecString}"`
             : "",
@@ -155,6 +156,8 @@ export async function remux({
     await metadata({
       audioIndex,
       audioTracks: availableAudio,
+      sourceContainer: (await input.getFormat()).name,
+      sourceSizeBytes: stats.size,
       duration,
       start: vp.timestamp,
       requested: start,

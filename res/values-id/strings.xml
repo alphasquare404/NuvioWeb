@@ -2497,6 +2497,7 @@
     <string name="player_no_downloaded_episode">Episode berikutnya belum diunduh</string>
     <string name="player_offline_file_unavailable">File unduhan tidak tersedia</string>
     <string name="player_playback_information">Informasi pemutaran</string>
+    <string name="player_source_file">File sumber</string>
     <string name="player_rotate">Putar layar</string>
     <string name="player_seek_back_10">Mundur 10 detik</string>
     <string name="player_seek_forward_10">Maju 10 detik</string>

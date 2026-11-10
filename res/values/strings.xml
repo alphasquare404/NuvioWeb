@@ -3117,6 +3117,7 @@
     <string name="player_no_downloaded_episode">No next episode downloaded</string>
     <string name="player_offline_file_unavailable">Downloaded file is unavailable</string>
     <string name="player_playback_information">Playback information</string>
+    <string name="player_source_file">Source file</string>
     <string name="player_rotate">Rotate</string>
     <string name="player_seek_back_10">Back 10 seconds</string>
     <string name="player_seek_forward_10">Forward 10 seconds</string>
