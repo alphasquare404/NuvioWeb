@@ -37,6 +37,31 @@ async function loadStreamScreen(instance = "") {
                 "export const usesUnifiedStartup = () => false; export const StartupLoadingOverlay = { begin() {}, setBackHandler() {}, finish() {}, setStage() {} };"
             }));
           }
+          buildApi.onResolve({ filter: /pluginManager\.js$/ }, () => ({
+            path: "plugin-sources",
+            namespace: "plugin-picker-test"
+          }));
+          if (instance === "plugin-source-picker") {
+            buildApi.onResolve({ filter: /streamRepository\.js$/ }, () => ({
+              path: "plugin-results",
+              namespace: "plugin-picker-test"
+            }));
+          }
+          buildApi.onLoad({ filter: /.*/, namespace: "plugin-picker-test" }, ({ path }) => {
+            if (path === "plugin-sources") {
+              const names = instance === "plugin-source-picker" ? ["Fixture Repository"] : [];
+              return {
+                contents:
+                  "export const PluginManager = { repositories: { listStreamSourceNames: () => " +
+                  JSON.stringify(names) +
+                  " } };"
+              };
+            }
+            return {
+              contents:
+                "export const streamRepository = { getStreamsFromAllAddons: (...args) => globalThis.__NUVIO_TEST_PLUGIN_RESULTS__(...args) };"
+            };
+          });
           const mockPaths = new Map([
             [
               "router",
@@ -448,3 +473,42 @@ for (const scenario of ["next", "exhausted", "manual", "cancelled", "throw"]) {
     }
   });
 }
+
+test("Source picker exposes the plugin repository before and after an empty search", async () => {
+  const { StreamScreen } = await loadStreamScreen("plugin-source-picker");
+  let finish;
+  const completion = new Promise((resolve) => {
+    finish = resolve;
+  });
+  globalThis.__NUVIO_TEST_PLUGIN_RESULTS__ = (type, id, options) => {
+    assert.equal(type, "movie");
+    assert.equal(id, "tt1234567");
+    assert.equal(options.tmdbId, "123");
+    return completion;
+  };
+  const screen = Object.assign(Object.create(StreamScreen), {
+    params: { itemType: "movie", itemId: "tt1234567", tmdbId: "123" },
+    loadToken: 1,
+    requestRender() {},
+    refreshOfflineDownloadMetadata() {},
+    scheduleDebridPreparation() {},
+    maybeAutoResumeStream() {},
+    maybeAutoPlayStream() {}
+  });
+  try {
+    const loading = screen.loadStreams();
+    assert.ok(screen.hasPendingSourceLoads("Fixture Repository"));
+    assert.deepEqual(
+      screen.getAddonFilterOptions().map((option) => option.value),
+      ["all", "Fixture Repository"]
+    );
+    finish({ status: "success", data: [] });
+    await loading;
+    assert.equal(screen.hasPendingSourceLoads("Fixture Repository"), false);
+    assert.equal(screen.getAddonFilterOptions()[1]?.value, "Fixture Repository");
+    assert.deepEqual(screen.getFilteredStreams("Fixture Repository"), []);
+  } finally {
+    finish({ status: "success", data: [] });
+    delete globalThis.__NUVIO_TEST_PLUGIN_RESULTS__;
+  }
+});

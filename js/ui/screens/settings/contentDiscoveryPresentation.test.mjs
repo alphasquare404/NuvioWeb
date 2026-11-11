@@ -101,6 +101,7 @@ test("plugin manager preserves its local source draft and uses existing add beha
       { isAuthenticated: false },
       {
         pluginsEnabled: false,
+        repositories: { listRepositories: () => [], canEdit: () => true },
         listPluginSources: () => sources,
         addPluginSource: (s) => sources.push(s)
       },

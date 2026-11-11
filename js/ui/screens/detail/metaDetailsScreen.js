@@ -3381,6 +3381,10 @@ export const MetaDetailsScreen = {
 
     let resolution = await resolveAutoPlayStream({
       itemId: params?.itemId,
+      tmdbId: params?.tmdbId,
+      imdbId: params?.imdbId,
+      season: params?.season,
+      episode: params?.episode,
       labelSettings: StreamBadgeSettingsStore.snapshot(),
       itemType: params?.itemType,
       videoId: params?.videoId || params?.itemId,

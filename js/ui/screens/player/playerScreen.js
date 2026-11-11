@@ -86,6 +86,8 @@ import {
 } from "../../../core/media/addonLogoCache.js";
 import { subtitleRepository } from "../../../data/repository/subtitleRepository.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
+import { PluginProviderPlaysStore } from "../../../data/local/pluginProviderPlaysStore.js";
+import { scraperIdFromPluginBingeGroup } from "../../../core/streams/pluginBingeGroup.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { parentalGuideRepository } from "../../../data/repository/parentalGuideRepository.js";
 import { skipIntroRepository } from "../../../data/repository/skipIntroRepository.js";
@@ -8786,7 +8788,8 @@ export const PlayerScreen = {
     }
     void this.getPlayableStreamsForVideo(nextEpisode.videoId, itemType, {
       season: nextEpisode.season,
-      episode: nextEpisode.episode
+      episode: nextEpisode.episode,
+      priorityBingeGroup: this.getCurrentStreamBingeGroup()
     })
       .then(() => this.renderNextEpisodeCard())
       .catch((error) => console.warn("Next episode stream prefetch failed", error));
@@ -8974,8 +8977,11 @@ export const PlayerScreen = {
     const loadPromise = streamRepository
       .getStreamsFromAllAddons(normalizedType, normalizedVideoId, {
         itemId: String(this.params?.itemId || ""),
+        tmdbId: this.params?.tmdbId ?? this.params?.tmdb_id,
+        imdbId: this.params?.imdbId,
         season: options.season ?? null,
         episode: options.episode ?? null,
+        priorityBingeGroup: options.priorityBingeGroup,
         onChunk: (chunkResult) => {
           const chunkItems = flattenStreamGroups(chunkResult);
           if (!chunkItems.length) {
@@ -9095,6 +9101,7 @@ export const PlayerScreen = {
             const rows = await this.getPlayableStreamsForVideo(videoId, type, {
               season: nextEpisode.season,
               episode: nextEpisode.episode,
+              priorityBingeGroup: options.priorityBingeGroup,
               onChunk: (rows) => options.onChunk?.(wrap(rows))
             });
             return wrap(rows);
@@ -10147,6 +10154,19 @@ export const PlayerScreen = {
         this.applyAspectMode({ showToast: false });
         this.scheduleLoadingCompletionCheck(250);
         return;
+      }
+      const bingeGroup = this.getCurrentStreamBingeGroup();
+      const scraperId = scraperIdFromPluginBingeGroup(bingeGroup);
+      if (scraperId) {
+        const playIdentity = JSON.stringify([
+          this.params?.videoId,
+          this.activePlaybackUrl,
+          bingeGroup
+        ]);
+        if (this._lastRecordedPluginPlayback !== playIdentity) {
+          this._lastRecordedPluginPlayback = playIdentity;
+          PluginProviderPlaysStore.record(scraperId);
+        }
       }
       // Fire-and-forget scrobble start (debounced internally)
       if (
@@ -17394,6 +17414,8 @@ export const PlayerScreen = {
 
     const options = {
       itemId: String(this.params?.itemId || ""),
+      tmdbId: this.params?.tmdbId ?? this.params?.tmdb_id,
+      imdbId: this.params?.imdbId,
       season: this.params?.season ?? null,
       episode: this.params?.episode ?? null,
       onChunk: (chunkResult) => {

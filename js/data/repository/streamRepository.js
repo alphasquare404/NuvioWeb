@@ -4,6 +4,12 @@ import { addonRepository } from "./addonRepository.js";
 import { StreamApi } from "../remote/api/streamApi.js";
 import { MetaApi } from "../remote/api/metaApi.js";
 import { PluginManager } from "../../core/player/pluginManager.js";
+import {
+  cleanLocalPluginVideoId,
+  isLocalPluginVideoId,
+  resolvePluginSeasonEpisode
+} from "../../core/player/pluginModels.js";
+import { PLUGIN_LIMITS } from "../../core/player/pluginWorkerRuntime.js";
 import { TmdbService } from "../../core/tmdb/tmdbService.js";
 import { LocalDebridAvailabilityService } from "../../core/debrid/localDebridAvailabilityService.js";
 import { DebridStreamPresentation } from "../../core/debrid/directDebridStreamPresentation.js";
@@ -66,7 +72,8 @@ class StreamRepository {
       return presentedGroup;
     };
 
-    const addonTasks = installedAddons.map(async (addon) => {
+    const sourceAddons = options.preferredPluginOnly ? [] : installedAddons;
+    const addonTasks = sourceAddons.map(async (addon) => {
       try {
         // Secondary/aggregator catalogs sometimes expose a channel row while
         // the original addon owns the ID under `tv`. Exact type remains the
@@ -170,17 +177,33 @@ class StreamRepository {
     });
 
     const pluginTask = (async () => {
+      const prepared = [];
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      options.signal?.addEventListener("abort", abort, { once: true });
+      if (options.signal?.aborted) abort();
+      const timeout = setTimeout(abort, PLUGIN_LIMITS.globalTimeoutMs);
       try {
-        const pluginStreams = await this.getPluginStreams(type, videoId, options);
-        const preparedPluginStreams = [];
-        for (const group of pluginStreams) {
-          preparedPluginStreams.push(await prepareDebridGroup(group));
-        }
-        return preparedPluginStreams;
+        await this.getPluginStreams(type, videoId, {
+          ...options,
+          signal: controller.signal,
+          onGroup: (group) => prepared.push(prepareDebridGroup(group).catch(() => group))
+        });
       } catch (error) {
-        console.warn("Plugin stream fetch failed", error);
-        return [];
+        if (!controller.signal.aborted) console.warn("Plugin stream fetch failed", error);
+      } finally {
+        clearTimeout(timeout);
+        options.signal?.removeEventListener("abort", abort);
       }
+      const grouped = new Map();
+      for (const group of await Promise.all(prepared)) {
+        const previous = grouped.get(group.sourceProviderId);
+        grouped.set(
+          group.sourceProviderId,
+          previous ? { ...previous, streams: [...previous.streams, ...group.streams] } : group
+        );
+      }
+      return [...grouped.values()];
     })();
 
     const results = await Promise.all(addonTasks);
@@ -194,21 +217,22 @@ class StreamRepository {
   }
 
   async getPluginStreams(type, videoId, options = {}) {
-    const mediaType = type === "series" ? "tv" : type;
-    const tmdbLookupId = String(options?.itemId || videoId || "").trim();
-    const tmdbId = await TmdbService.ensureTmdbId(tmdbLookupId, type);
-    if (!tmdbId) {
-      return [];
-    }
-
-    const pluginResults = await PluginManager.executeScrapersStreaming({
-      tmdbId,
-      mediaType,
-      season: options?.season ?? null,
-      episode: options?.episode ?? null
+    if (!PluginManager.pluginsEnabled || options.signal?.aborted) return [];
+    const rawVideoId = String(videoId || "").trim();
+    const localId = isLocalPluginVideoId(rawVideoId);
+    const knownTmdbId = [options.tmdbId, options.itemId, rawVideoId]
+      .map((id) => /^(?:(?:tmdb|movie|series):)*(\d+)(?::|$)/i.exec(String(id ?? "").trim())?.[1])
+      .find(Boolean);
+    const tmdbLookupId = localId
+      ? rawVideoId
+      : String(knownTmdbId || options.imdbId || options.itemId || rawVideoId).trim();
+    const tmdbId = await TmdbService.ensureTmdbId(tmdbLookupId, type, {
+      requireEnabled: false,
+      signal: options.signal
     });
-
-    return pluginResults.map((result) => ({
+    const pluginId = tmdbId || (localId ? cleanLocalPluginVideoId(rawVideoId) : null);
+    if (!pluginId) return [];
+    const mapGroup = (result) => ({
       sourceProviderId: result.sourceId || result.sourceName || null,
       addonName: result.sourceName,
       addonLogo: null,
@@ -229,7 +253,17 @@ class StreamRepository {
           addonName: result.sourceName || null
         }
       }))
-    }));
+    });
+    const pluginResults = await PluginManager.executeScrapersStreaming({
+      ...resolvePluginSeasonEpisode(rawVideoId, options.season, options.episode),
+      tmdbId: pluginId,
+      mediaType: tmdbId && (type === "series" || type === "show") ? "tv" : type,
+      signal: options.signal,
+      priorityBingeGroup: options.priorityBingeGroup,
+      preferredPluginOnly: options.preferredPluginOnly,
+      onGroup: options.onGroup ? (group) => options.onGroup(mapGroup(group)) : undefined
+    });
+    return pluginResults.map(mapGroup);
   }
 
   buildStreamUrl(baseUrl, type, videoId) {

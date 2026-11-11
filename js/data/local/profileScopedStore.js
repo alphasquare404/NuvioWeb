@@ -81,7 +81,12 @@ function readEnvelope(key, normalize, { legacyMigration = "all" } = {}) {
     return createEmptyEnvelope();
   }
 
-  const profileIds = legacyMigration === "active" ? [normalizeProfileId()] : getKnownProfileIds();
+  const profileIds =
+    legacyMigration === "primary"
+      ? ["1"]
+      : legacyMigration === "active"
+        ? [normalizeProfileId()]
+        : getKnownProfileIds();
   const normalizedLegacy = normalize(cloneValue(raw) || {});
   const migrated = createEmptyEnvelope();
   profileIds.forEach((profileId) => {

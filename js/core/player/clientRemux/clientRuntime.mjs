@@ -22,6 +22,7 @@ export function createClientRemux({
   expectedAudio = null,
   canResolveSource = () => false,
   resolveSource = async () => null,
+  resolveMediaHead,
   onStatus = () => {},
   onError = () => {},
   onTracks = () => {},
@@ -597,6 +598,14 @@ export function createClientRemux({
         if (data.type === "resolve-source") {
           const resolved = await resolveSource(owner.sourceUrl, job.resolveAbort.signal);
           reply(job, data, resolved);
+        } else if (data.type === "resolve-media-head") {
+          const sameOrigin = new URL(data.url).origin === new URL(owner.sourceUrl).origin;
+          const size = await resolveMediaHead?.(
+            data.url,
+            sameOrigin ? requestHeaders : {},
+            job.resolveAbort.signal
+          );
+          reply(job, data, size);
         } else if (data.type === "supports-output") {
           const { mime, audio } = data.output;
           let supported = Source.isTypeSupported(mime);
@@ -716,6 +725,7 @@ export function createClientRemux({
       expectedAudio,
       transcode,
       hostResolveAvailable: canResolveSource(owner.sourceUrl),
+      hostMediaHeadAvailable: typeof resolveMediaHead === "function",
       version,
       audioIndex,
       jobId: id,

@@ -144,6 +144,37 @@ async function start(data) {
           typeof FileSystemFileHandle.prototype.createSyncAccessHandle === "function"
       }
     });
+    const fetchRange = createRangeFetcher(
+      data.url,
+      data.requestHeaders,
+      data.hostMediaHeadAvailable
+        ? async (url, requestOptions) => {
+            try {
+              return await fetch(url, requestOptions);
+            } catch (error) {
+              if (
+                requestOptions.method !== "HEAD" ||
+                error?.name !== "TypeError" ||
+                requestOptions.signal?.aborted
+              )
+                throw error;
+              const length = await request("resolve-media-head", { url });
+              requestOptions.signal?.throwIfAborted();
+              if (!length) throw error;
+              stats.rangeHostHeadUsed = true;
+              return new Response(null, { status: 200, headers: { "Content-Length": length } });
+            }
+          }
+        : fetch,
+      data.hostResolveAvailable
+        ? async () => {
+            stats.hostResolveAttempted = true;
+            const url = await request("resolve-source");
+            stats.hostResolveSucceeded = Boolean(url);
+            return url;
+          }
+        : undefined
+    );
     await remux({
       url: data.url,
       start: data.start,
@@ -152,19 +183,7 @@ async function start(data) {
       transcode: data.transcode,
       signal: new AbortController().signal,
       stats,
-      fetcher: createRangeFetcher(
-        data.url,
-        data.requestHeaders,
-        fetch,
-        data.hostResolveAvailable
-          ? async () => {
-              stats.hostResolveAttempted = true;
-              const url = await request("resolve-source");
-              stats.hostResolveSucceeded = Boolean(url);
-              return url;
-            }
-          : undefined
-      ),
+      fetcher: fetchRange,
       metadata: (info) => request("metadata", { info }),
       supportsOutput: (output) => request("supports-output", { output }),
       beforeEncode: () => request("transcode-credit"),

@@ -35,6 +35,7 @@ const ACCOUNT_LOCAL_STORAGE_KEYS = new Set([
   "manualSyncCode",
   "pluginSources",
   "pluginsEnabled",
+  "pluginProviderPlays",
   "pluginState:migrationComplete",
   "nuvioSyncBackoffState"
 ]);

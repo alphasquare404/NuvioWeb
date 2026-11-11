@@ -18,6 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
 let remuxAssetId = "dev";
+let pluginWorkerPath = "";
 const requireConfiguredRuntimeEnv = /^(1|true|yes|on)$/i.test(
   String(process.env.NUVIO_REQUIRE_LOCAL_PROPERTIES || "")
 );
@@ -444,6 +445,39 @@ async function buildCoreJsBundle() {
   });
 }
 
+async function buildPluginWorker() {
+  const dependencies = path.join(rootDir, "node_modules");
+  const quickJsPath = path.join(dependencies, "quickjs-emscripten", "dist", "index.global.js");
+  const quickJs = await readFile(quickJsPath);
+  const cryptoJs = await readFile(path.join(dependencies, "crypto-js", "crypto-js.js"), "utf8");
+  const result = await build({
+    entryPoints: [path.join(rootDir, "js", "core", "player", "pluginWorker.js")],
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    write: false,
+    minify: !debugBundle,
+    target: [`chrome${browserCompatibilityPolicy.chromiumVersion}`],
+    define: { __NUVIO_CRYPTO_JS_SOURCE__: JSON.stringify(cryptoJs) }
+  });
+  const worker = result.outputFiles[0].contents;
+  const assetId = assetBuildId(Buffer.concat([worker, quickJs]));
+  const directory = `assets/plugins/${assetId}`;
+  pluginWorkerPath = `${directory}/runtime/plugin-worker.js`;
+  const libs = path.join(distDir, directory, "libs");
+  await mkdir(path.join(distDir, directory, "runtime"), { recursive: true });
+  await mkdir(libs, { recursive: true });
+  await Promise.all([
+    writeFile(path.join(distDir, pluginWorkerPath), worker),
+    writeFile(path.join(libs, "quickjs-emscripten.global.js"), quickJs),
+    cp(
+      path.join(dependencies, "quickjs-emscripten", "LICENSE"),
+      path.join(libs, "quickjs-emscripten.LICENSE")
+    ),
+    cp(path.join(dependencies, "crypto-js", "LICENSE"), path.join(libs, "crypto-js.LICENSE"))
+  ]);
+}
+
 async function buildBundle() {
   const { version, identity } = await readAppMetadata();
   // The same values nuvio.env.js will carry, baked in as a fallback. That file
@@ -469,6 +503,7 @@ async function buildBundle() {
     define: {
       "process.env.NODE_ENV": '"production"',
       __NUVIO_REMUX_ASSET_ID__: JSON.stringify(remuxAssetId),
+      __NUVIO_PLUGIN_WORKER_PATH__: JSON.stringify(pluginWorkerPath),
       __NUVIO_APP_VERSION__: JSON.stringify(version),
       __NUVIO_APP_IDENTITY__: JSON.stringify(identity),
       __NUVIO_BUILD_ENV__: JSON.stringify(buildEnv),
@@ -698,6 +733,7 @@ async function runBuild() {
     ]);
 
     // js bundle processing (final step to ensure all transformations are applied correctly and we end up with a single, minified bundle file)
+    await buildPluginWorker();
     await buildBundle();
 
     const sourceIndex = await readFile(path.join(rootDir, "index.html"), "utf8");

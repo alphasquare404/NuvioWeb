@@ -34,6 +34,7 @@ test("addon candidates are available to autoplay before badge images finish load
     params: { itemType: "movie", videoId: "tt1" },
     loadToken: 1,
     hasRenderedStreamRouteShell: true,
+    buildPluginSourceChips: () => [],
     applyAddonLogos: (v) => v,
     maybeAutoResumeStream() {},
     maybeAutoPlayStream() {

@@ -1,15 +1,20 @@
-import { LocalStore } from "../storage/localStore.js";
+import { PluginStore } from "../../data/local/pluginStore.js";
 import { PluginRuntime } from "./pluginRuntime.js";
-
-const PLUGINS_ENABLED_KEY = "pluginsEnabled";
+import { PluginRepositoryManager } from "./pluginRepositoryManager.js";
 
 export const PluginManager = {
+  repositories: PluginRepositoryManager,
   get pluginsEnabled() {
-    return Boolean(LocalStore.get(PLUGINS_ENABLED_KEY, false));
+    return PluginStore.get().settings.pluginsEnabled;
   },
 
   setPluginsEnabled(enabled) {
-    LocalStore.set(PLUGINS_ENABLED_KEY, Boolean(enabled));
+    if (!PluginStore.canEdit()) return;
+    const state = PluginStore.get();
+    PluginStore.replace({
+      ...state,
+      settings: { ...state.settings, pluginsEnabled: Boolean(enabled) }
+    });
   },
 
   listPluginSources() {
@@ -17,21 +22,21 @@ export const PluginManager = {
   },
 
   addPluginSource(source) {
-    PluginRuntime.addSource(source);
+    if (PluginStore.canEdit()) PluginRuntime.addSource(source);
   },
 
   removePluginSource(sourceId) {
-    PluginRuntime.removeSource(sourceId);
+    if (PluginStore.canEdit()) PluginRuntime.removeSource(sourceId);
   },
 
   setPluginSourceEnabled(sourceId, enabled) {
-    PluginRuntime.setSourceEnabled(sourceId, enabled);
+    if (PluginStore.canEdit()) PluginRuntime.setSourceEnabled(sourceId, enabled);
   },
 
-  async executeScrapersStreaming({ tmdbId, mediaType, season = null, episode = null } = {}) {
-    if (!this.pluginsEnabled) {
-      return [];
-    }
-    return PluginRuntime.execute({ tmdbId, mediaType, season, episode });
+  async executeScrapersStreaming(options = {}) {
+    if (!this.pluginsEnabled || options.signal?.aborted) return [];
+    const legacy = PluginRuntime.execute(options);
+    for (const group of legacy) options.onGroup?.(group);
+    return [...legacy, ...(await PluginRepositoryManager.search(options))];
   }
 };

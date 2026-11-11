@@ -160,3 +160,54 @@ test("a source fetch TypeError requests a host URL and only reuses it after a va
   assert.equal(resolveCalls, 1);
   assert.deepEqual(calls, [source, cdn, cdn]);
 });
+
+test("a transient network failure retries the same bounded range before consuming data", async () => {
+  const calls = [];
+  const stats = {};
+  const actual = await readRange(source, 32, 34, undefined, stats, async (url, options) => {
+    calls.push([url, options.headers.Range]);
+    if (calls.length === 1) throw new TypeError("Failed to fetch");
+    return response(url, 206, { "Content-Range": "bytes 32-33/100" }, Uint8Array.of(4, 5));
+  });
+  assert.deepEqual(calls, [
+    [source, "bytes=32-33"],
+    [source, "bytes=32-33"]
+  ]);
+  assert.deepEqual(actual, Uint8Array.of(4, 5));
+  assert.equal(stats.rangeNetworkRetries, 1);
+  assert.equal(stats.rangeSuccesses, 1);
+});
+
+test("a cancelled range is never retried after a network failure", async () => {
+  const controller = new AbortController();
+  const stats = {};
+  let calls = 0;
+  await assert.rejects(
+    readRange(source, 0, 1, controller.signal, stats, async () => {
+      calls++;
+      controller.abort();
+      throw new TypeError("Failed to fetch");
+    }),
+    { name: "AbortError" }
+  );
+  assert.equal(calls, 1);
+  assert.equal(stats.rangeNetworkRetries, undefined);
+});
+
+test("a failed response body is discarded before the range is fetched again", async () => {
+  const stats = {};
+  let calls = 0;
+  const actual = await readRange(source, 0, 2, undefined, stats, async (url) => {
+    calls++;
+    const body =
+      calls === 1
+        ? new ReadableStream({
+            start: (controller) => controller.error(new TypeError("Network error"))
+          })
+        : Uint8Array.of(7, 8);
+    return response(url, 206, { "Content-Range": "bytes 0-1/100" }, body);
+  });
+  assert.deepEqual(actual, Uint8Array.of(7, 8));
+  assert.equal(calls, 2);
+  assert.equal(stats.rangeNetworkRetries, 1);
+});

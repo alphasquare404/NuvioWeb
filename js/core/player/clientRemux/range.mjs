@@ -1,4 +1,5 @@
 export const MAX_READ = 8 * 1024 * 1024;
+const NETWORK_RETRY_DELAYS_MS = [150, 400];
 const headSizes = new WeakMap();
 const rangeSources = new WeakMap();
 const positiveSize = (value) =>
@@ -96,6 +97,21 @@ function headSize(url, signal, stats, fetcher) {
 }
 
 export async function readRange(url, start, end, signal, stats, fetcher = fetch) {
+  for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted();
+    try {
+      return await readRangeAttempt(url, start, end, signal, stats, fetcher);
+    } catch (error) {
+      signal?.throwIfAborted();
+      const transient = error?.name === "TypeError" || error?.message === "range-body-truncated";
+      if (!transient || attempt >= NETWORK_RETRY_DELAYS_MS.length) throw error;
+      stats.rangeNetworkRetries = (stats.rangeNetworkRetries || 0) + 1;
+      await new Promise((resolve) => setTimeout(resolve, NETWORK_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+}
+
+async function readRangeAttempt(url, start, end, signal, stats, fetcher) {
   if (
     !Number.isSafeInteger(start) ||
     !Number.isSafeInteger(end) ||

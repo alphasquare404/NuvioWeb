@@ -54,11 +54,14 @@
     "@mediabunny/prores": "1.65.2",
     "@mediabunny/truehd": "1.65.2",
     "@wasm-audio-decoders/aac": "0.0.1",
+    "cheerio": "1.2.0",
+    "crypto-js": "4.2.0",
     "dashjs": "4.7.4",
     "hls.js": "1.5.20",
     "jszip": "^3.10.1",
     "libbitsub": "^1.10.1",
     "mediabunny": "1.65.2",
+    "quickjs-emscripten": "0.32.0",
     "web-push": "^3.6.7"
   },
   "optionalDependencies": {

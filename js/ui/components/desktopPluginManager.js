@@ -28,7 +28,10 @@ export function createDesktopPluginManager({ requestRender } = {}) {
     statusMessage: "",
     statusTone: "",
     syncInFlight: null,
-    syncPending: false
+    syncPending: false,
+    repositoryDraft: "",
+    repositoryBusy: false,
+    scraperTest: null
   };
 
   const rerender = async () => {
@@ -108,8 +111,8 @@ export function createDesktopPluginManager({ requestRender } = {}) {
       state.sourceUrlTemplate = "";
       loadSources();
       setStatus(`${name} saved locally.`);
-      await rerender();
       PluginSyncService.recordLocalMutation(null, before, PluginManager.listPluginSources());
+      await rerender();
       await syncSources(before);
     } catch (error) {
       console.warn("Desktop plugin source add failed", error);
@@ -145,19 +148,129 @@ export function createDesktopPluginManager({ requestRender } = {}) {
     const sourceId = String(source?.id || "");
     if (!sourceId) return;
     state.removeTarget = null;
+    if (source.repository) {
+      await editRepository(
+        async () => {
+          await repositories.removeRepository(sourceId);
+          return "Repository removed.";
+        },
+        { sync: true }
+      );
+      return;
+    }
     try {
       const before = PluginManager.listPluginSources();
       PluginManager.removePluginSource(sourceId);
       loadSources();
       setStatus(`${source.name || "Plugin source"} removed locally.`);
-      await rerender();
       PluginSyncService.recordLocalMutation(null, before, PluginManager.listPluginSources());
+      await rerender();
       await syncSources(before);
     } catch (error) {
       console.warn("Desktop plugin source removal failed", error);
       setStatus(String(error?.message || "Unable to remove that plugin source."), "error");
       await rerender();
     }
+  };
+
+  const repositories = PluginManager.repositories;
+
+  const editRepository = async (action, { sync = false } = {}) => {
+    if (state.repositoryBusy) return;
+    const before = PluginSyncService.snapshot();
+    state.repositoryBusy = true;
+    setStatus("");
+    await rerender();
+    try {
+      const message = await action();
+      if (sync) {
+        const after = PluginSyncService.snapshot();
+        if (JSON.stringify(before) !== JSON.stringify(after)) {
+          PluginSyncService.recordLocalMutation(null, before, after);
+          if (AuthManager.isAuthenticated) void PluginSyncService.push({ automatic: true });
+        }
+      }
+      setStatus(message, "success");
+    } catch (error) {
+      setStatus(error?.message || "Plugin operation failed.", "error");
+    } finally {
+      state.repositoryBusy = false;
+      await rerender();
+    }
+  };
+
+  const renderRepository = (repository) => {
+    const id = escapeHtml(repository.id);
+    const editable = repositories.canEdit() && !state.repositoryBusy;
+    const scrapers = repositories.listScrapers(repository.id);
+    const external = repository.type === "EXTERNAL_DEX";
+    const providers =
+      external && Array.isArray(repository.metadata?.plugins) ? repository.metadata.plugins : [];
+    const enableAll = !scrapers.some((scraper) => scraper.enabled);
+    return `
+      <article class="desktop-plugin-source">
+        <div class="desktop-plugin-source-copy">
+          <h3>${escapeHtml(repository.name)}</h3>
+          <p>${escapeHtml(repository.description || repository.url)}</p>
+          ${external ? "<p>CloudStream metadata</p>" : ""}
+          ${providers.length ? `<ul>${providers.map((provider) => `<li>${escapeHtml(provider.name || provider.internalName || "Provider")}</li>`).join("")}</ul>` : ""}
+          <div class="desktop-plugin-source-list">
+            ${scrapers
+              .map(
+                (scraper) => `
+              <div class="desktop-plugin-source">
+                <div class="desktop-plugin-source-copy">
+                  <strong>${escapeHtml(scraper.name)}</strong>
+                  <p>${escapeHtml(scraper.supportedTypes.join(", "))}</p>
+                  ${
+                    state.scraperTest?.id === scraper.id
+                      ? `
+                    <p>${escapeHtml(state.scraperTest.media)} · ${state.scraperTest.count} streams found</p>
+                    ${
+                      state.scraperTest.failures.length
+                        ? `
+                      <details open>
+                        <summary>Request failures</summary>
+                        <ul>${state.scraperTest.failures.map((failure) => `<li>${escapeHtml(failure)}</li>`).join("")}</ul>
+                      </details>
+                    `
+                        : ""
+                    }
+                    <ul>${state.scraperTest.titles.map((title) => `<li>${escapeHtml(title)}</li>`).join("")}</ul>
+                  `
+                      : ""
+                  }
+                  ${
+                    scraper.settings
+                      ? `
+                    <details>
+                      <summary>Scraper settings</summary>
+                      <form data-plugin-scraper-settings="${escapeHtml(scraper.id)}">
+                        <label>Settings JSON <textarea name="settings" class="desktop-plugin-input">${escapeHtml(JSON.stringify(repositories.getScraperSettings(scraper.id), null, 2))}</textarea></label>
+                        <button type="submit" class="desktop-plugin-action"${editable ? "" : " disabled"}>Save</button>
+                      </form>
+                    </details>
+                  `
+                      : ""
+                  }
+                </div>
+                <div class="desktop-plugin-source-actions">
+                  <label><input type="checkbox" data-plugin-scraper-enabled="${escapeHtml(scraper.id)}"${scraper.enabled ? " checked" : ""}${editable ? "" : " disabled"}> Enabled</label>
+                  <button type="button" class="desktop-plugin-action" data-plugin-scraper-test="${escapeHtml(scraper.id)}"${state.repositoryBusy || !repository.enabled || !scraper.enabled ? " disabled" : ""}>Test</button>
+                </div>
+              </div>
+            `
+              )
+              .join("")}
+          </div>
+        </div>
+        <div class="desktop-plugin-source-actions">
+          <label><input type="checkbox" data-plugin-repository-enabled="${id}"${repository.enabled ? " checked" : ""}${editable ? "" : " disabled"}> Enabled</label>
+          ${scrapers.length ? `<button type="button" class="desktop-plugin-action" data-plugin-scrapers-toggle-all="${id}" data-enabled="${enableAll}"${editable ? "" : " disabled"}>${enableAll ? "Enable all" : "Disable all"}</button>` : ""}
+          <button type="button" class="desktop-plugin-action" data-plugin-repository-refresh="${id}"${editable ? "" : " disabled"}>Refresh</button>
+          <button type="button" class="desktop-plugin-action desktop-plugin-action-danger" data-plugin-repository-remove="${id}"${editable ? "" : " disabled"}>Remove</button>
+        </div>
+      </article>`;
   };
 
   const renderSource = (source, index) => {
@@ -201,7 +314,7 @@ export function createDesktopPluginManager({ requestRender } = {}) {
 
   return {
     get count() {
-      return PluginManager.listPluginSources().length;
+      return PluginManager.listPluginSources().length + repositories.listRepositories().length;
     },
 
     async load() {
@@ -231,13 +344,31 @@ export function createDesktopPluginManager({ requestRender } = {}) {
           <section class="desktop-plugin-master">
             <div>
               <h2>Enable Plugins</h2>
-              <p>Controls custom stream sources on this device.</p>
+              <p>Controls plugin scraper and custom stream discovery.</p>
             </div>
             <label class="desktop-plugin-toggle desktop-plugin-master-toggle">
               <input type="checkbox" data-plugins-enabled ${state.pluginsEnabled ? "checked" : ""} />
               <span class="desktop-plugin-toggle-track" aria-hidden="true"><span></span></span>
               <span class="desktop-plugin-toggle-label">${state.pluginsEnabled ? "Enabled" : "Disabled"}</span>
             </label>
+          </section>
+            ${state.statusMessage ? `<p class="desktop-plugin-status${statusClass}" role="status">${escapeHtml(state.statusMessage)}</p>` : ""}
+          <section class="desktop-plugin-section" aria-labelledby="desktop-plugin-repositories-title">
+            <div class="desktop-plugin-section-heading">
+              <h2 id="desktop-plugin-repositories-title">Plugin Repositories</h2>
+              <label><input type="checkbox" data-plugin-group-repositories${repositories.groupStreamsByRepository ? " checked" : ""}${repositories.canEdit() ? "" : " disabled"}> Group streams by repository</label>
+            </div>
+            <form class="desktop-plugin-form" data-plugin-repository-form>
+              <div class="desktop-plugin-field">
+                <label class="desktop-plugin-input-label" for="desktop-plugin-repository-url">Repository URL or short code</label>
+                <div class="desktop-plugin-input-row">
+                  <input id="desktop-plugin-repository-url" class="desktop-plugin-input" data-plugin-repository-url type="text" required autocomplete="off" value="${escapeHtml(state.repositoryDraft)}">
+                  <button class="desktop-plugin-primary-action" type="submit"${repositories.canEdit() && !state.repositoryBusy ? "" : " disabled"}>Add Repository</button>
+                </div>
+              </div>
+            </form>
+            ${state.repositoryBusy ? '<p class="desktop-plugin-status" role="status">Working…</p>' : ""}
+            <div class="desktop-plugin-source-list">${repositories.listRepositories().map(renderRepository).join("")}</div>
           </section>
           <section class="desktop-plugin-section" aria-labelledby="desktop-plugin-sources-title">
             <div class="desktop-plugin-section-heading">
@@ -247,7 +378,6 @@ export function createDesktopPluginManager({ requestRender } = {}) {
               </div>
               <span class="desktop-plugin-count">${state.sources.length} sources</span>
             </div>
-            ${state.statusMessage ? `<p class="desktop-plugin-status${statusClass}" role="status">${escapeHtml(state.statusMessage)}</p>` : ""}
             <details class="settings-manager-add" data-plugin-add-disclosure ${state.formOpen || state.addError ? "open" : ""}>
             <summary class="settings-manager-add-trigger">+ Add Source</summary>
             <form class="desktop-plugin-form" data-plugin-form>
@@ -276,6 +406,140 @@ export function createDesktopPluginManager({ requestRender } = {}) {
     },
 
     bind(container) {
+      container
+        .querySelector("[data-plugin-repository-url]")
+        ?.addEventListener("input", (event) => {
+          state.repositoryDraft = event.target.value;
+        });
+      container
+        .querySelector("[data-plugin-repository-form]")
+        ?.addEventListener("submit", (event) => {
+          event.preventDefault();
+          void editRepository(
+            async () => {
+              const repository = await repositories.addRepository(state.repositoryDraft);
+              state.repositoryDraft = "";
+              return repository.name + " added.";
+            },
+            { sync: true }
+          );
+        });
+      container
+        .querySelector("[data-plugin-group-repositories]")
+        ?.addEventListener("change", (event) => {
+          repositories.setGroupStreamsByRepository(event.target.checked);
+        });
+      container.querySelectorAll("[data-plugin-repository-enabled]").forEach((node) => {
+        node.addEventListener(
+          "change",
+          () =>
+            void editRepository(
+              () => {
+                repositories.setRepositoryEnabled(
+                  node.dataset.pluginRepositoryEnabled,
+                  node.checked
+                );
+                return "Repository updated.";
+              },
+              { sync: true }
+            )
+        );
+      });
+      container.querySelectorAll("[data-plugin-repository-refresh]").forEach((node) => {
+        node.addEventListener(
+          "click",
+          () =>
+            void editRepository(async () => {
+              await repositories.refreshRepository(node.dataset.pluginRepositoryRefresh);
+              return "Repository refreshed.";
+            })
+        );
+      });
+      container.querySelectorAll("[data-plugin-repository-remove]").forEach((node) => {
+        node.addEventListener("click", () => {
+          const repository = repositories
+            .listRepositories()
+            .find((entry) => entry.id === node.dataset.pluginRepositoryRemove);
+          if (!repository) return;
+          state.removeTarget = { ...repository, repository: true };
+          void rerender();
+        });
+      });
+      container.querySelectorAll("[data-plugin-scrapers-toggle-all]").forEach((node) => {
+        node.addEventListener(
+          "click",
+          () =>
+            void editRepository(() => {
+              repositories.setRepositoryScrapersEnabled(
+                node.dataset.pluginScrapersToggleAll,
+                node.dataset.enabled === "true"
+              );
+              return "Scrapers updated.";
+            })
+        );
+      });
+      container.querySelectorAll("[data-plugin-scraper-enabled]").forEach((node) => {
+        node.addEventListener(
+          "change",
+          () =>
+            void editRepository(() => {
+              repositories.setScraperEnabled(node.dataset.pluginScraperEnabled, node.checked);
+              return "Scraper updated.";
+            })
+        );
+      });
+      container.querySelectorAll("[data-plugin-scraper-test]").forEach((node) => {
+        node.addEventListener(
+          "click",
+          () =>
+            void editRepository(async () => {
+              const id = node.dataset.pluginScraperTest;
+              state.scraperTest = null;
+              const failures = new Set();
+              const results = await repositories.testScraper(id, {
+                onRequestFailure: ({ host, status, truncated }) => {
+                  if (failures.size >= 12) return;
+                  const reason = truncated
+                    ? "Response exceeded the size limit"
+                    : status
+                      ? "HTTP " + status
+                      : "Browser request failed (CORS or network)";
+                  failures.add((host || "Unknown host") + " · " + reason);
+                }
+              });
+              const scraper = repositories.listScrapers().find((entry) => entry.id === id);
+              const media = scraper?.supportedTypes.includes("movie")
+                ? "The Matrix (1999) · TMDB 603"
+                : "Series test · TMDB 603 · S1 E1";
+              state.scraperTest = {
+                id,
+                media,
+                failures: [...failures],
+                count: results.length,
+                titles: results
+                  .slice(0, 3)
+                  .map((result) =>
+                    String(result.title || result.name || result.quality || "Stream")
+                  )
+              };
+              return results.length + " streams found in the test.";
+            })
+        );
+      });
+      container.querySelectorAll("[data-plugin-scraper-settings]").forEach((form) => {
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const input = form.elements.settings.value;
+          void editRepository(() => {
+            const settings = JSON.parse(input);
+            if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+              throw new Error("Enter a JSON object for scraper settings.");
+            }
+            repositories.setScraperSettings(form.dataset.pluginScraperSettings, settings);
+            return "Scraper settings saved.";
+          });
+        });
+      });
       container
         .querySelector("[data-plugin-add-disclosure]")
         ?.addEventListener("toggle", (event) => {

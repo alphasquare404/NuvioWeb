@@ -3120,7 +3120,7 @@ export const SettingsScreen = {
           ${renderSectionNavIcon(item.id)}
           <span class="settings-nav-label-wrap">
             <span class="settings-nav-label">${escapeHtml(translateSectionCopy(item).label)}</span>
-            ${item.id === "plugins" ? `<span class="settings-nav-badge">${escapeHtml(t("common.soon", {}, "Soon"))}</span>` : ""}
+
             <span class="settings-nav-subtitle">${escapeHtml(translateSectionCopy(item).subtitle)}</span>
           </span>
         </span>
@@ -5774,11 +5774,7 @@ export const SettingsScreen = {
   renderPluginsSection() {
     return `
       ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "plugins"))}
-      <div class="settings-group-card settings-group-card-fill">
-        <div class="settings-empty-state settings-empty-state-plugins">
-          <p class="settings-plugin-soon-text">Plugin support is coming soon.</p>
-        </div>
-      </div>
+      ${this.desktopPluginManager.render()}
     `;
   },
 
@@ -8090,7 +8086,17 @@ export const SettingsScreen = {
       });
     });
     this.actionMap.set("playback:autoStreamPlugins", () => {
-      const options = PluginManager.listPluginSources()
+      const repositories = PluginManager.repositories;
+      const pluginNames = repositories
+        .listRepositories()
+        .filter((repo) => repo.enabled !== false)
+        .flatMap((repo) => {
+          const names = repositories
+            .listScrapers(repo.id)
+            .filter((scraper) => scraper.enabled !== false);
+          return repositories.groupStreamsByRepository && names.length ? [repo] : names;
+        });
+      const options = [...PluginManager.listPluginSources(), ...pluginNames]
         .filter((source) => source?.enabled !== false)
         .map((source) => String(source?.name || "").trim())
         .filter(Boolean)

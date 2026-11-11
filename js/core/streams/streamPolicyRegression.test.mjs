@@ -129,3 +129,19 @@ test("remembered links cannot bypass current source, regex or compatibility cons
     assert.equal(plays, 0);
   }
 });
+
+test("next episode matches the saved plugin variant when episode names change", () => {
+  const withGroup = (id, group) => ({ ...row(id), behaviorHints: { bingeGroup: group } });
+  const rows = [
+    withGroup("720p", "local-plugin-provider|720 ep2 english"),
+    withGroup("1080p", "local-plugin-provider|1080 ep2 english"),
+    withGroup("other", "local-plugin-other|1080 ep2 english")
+  ];
+  const selected = selectAutoPlayStream(rows, {
+    mode: "FIRST_STREAM",
+    preferredBingeGroup: "local-plugin-provider|1080 ep1 english",
+    preferBingeGroupInSelection: true,
+    bingeGroupOnly: true
+  });
+  assert.equal(selected?.id, "1080p");
+});

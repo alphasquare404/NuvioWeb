@@ -200,7 +200,12 @@ test("range diagnostics distinguish HTTP status, hidden headers and fetch reject
     }
   });
   await assert.rejects(blocked.read(0), TypeError);
-  assert.deepEqual(blocked.diagnostics, { request: "range", start: 0, end: 262143 });
+  assert.deepEqual(blocked.diagnostics, {
+    request: "range",
+    start: 0,
+    end: 262143,
+    rangeNetworkRetry: true
+  });
 });
 test("HEAD fallback rejects unknown sizes, CORS errors and a different final resource", async () => {
   for (const kind of ["missing", "zero", "unsafe", "cors", "redirect", "status"]) {
@@ -318,4 +323,28 @@ test("CDN HTTP 400 is categorized without confusing it with a CORS denial", asyn
   assert.equal(reader.diagnostics.rangeStatus, 400);
   assert.equal(reader.diagnostics.errorCategory, "bad-request");
   assert.equal(JSON.stringify(reader.diagnostics).includes("private-secret"), false);
+});
+
+test("a selected probe can recover from a blocked HEAD using host metadata", async () => {
+  const url = "https://cdn.test/file";
+  const sizes = [];
+  const reader = createProbeRangeReader(url, {
+    resolveHead: async (target) => {
+      sizes.push(target);
+      return "300000";
+    },
+    fetchImpl: async (_url, options) => {
+      if (options.method === "HEAD") throw new TypeError("Failed to fetch");
+      const [, start, end] = /bytes=(\d+)-(\d+)/.exec(options.headers.Range);
+      const length = Number(end) - Number(start) + 1;
+      return new Response(new Uint8Array(length), {
+        status: 206,
+        headers: { "Content-Length": String(length) }
+      });
+    }
+  });
+  assert.equal((await reader.read(0)).bytes.length, PROBE_CHUNK_BYTES);
+  assert.equal((await reader.read(PROBE_CHUNK_BYTES)).bytes.length, 300000 - PROBE_CHUNK_BYTES);
+  assert.deepEqual(sizes, [url]);
+  assert.equal(reader.diagnostics.headViaHost, true);
 });

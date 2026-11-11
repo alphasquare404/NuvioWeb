@@ -52,6 +52,26 @@ function lookupWithAbort(hostname, lookup, signal) {
   });
 }
 
+export async function resolvePublicAddresses(url, lookup = systemLookup, signal) {
+  const addresses = await lookupWithAbort(url.hostname, lookup, signal);
+  if (!addresses.length || !addresses.every(isPublicAddress)) {
+    throw Object.assign(Error("non-public-address"), { statusCode: 403 });
+  }
+  signal.throwIfAborted();
+  return addresses;
+}
+
+export function checkedAddressLookup(addresses) {
+  return (_hostname, options, done) => {
+    const approved = options.family
+      ? addresses.filter(({ family }) => family === options.family)
+      : addresses;
+    if (!approved.length) return done(Error("no-checked-address"));
+    if (options.all) return done(null, approved);
+    return done(null, approved[0].address, approved[0].family);
+  };
+}
+
 export function requestPublicAddonHeaders(url, addresses, signal, requestImpl = request) {
   return new Promise((resolve, reject) => {
     const upstream = requestImpl(
@@ -62,14 +82,7 @@ export function requestPublicAddonHeaders(url, addresses, signal, requestImpl = 
         signal,
         headers: { Range: "bytes=0-0", "Accept-Encoding": "identity" },
         // Do not let the socket resolve the hostname again after validation.
-        lookup: (_hostname, options, done) => {
-          const approved = options.family
-            ? addresses.filter(({ family }) => family === options.family)
-            : addresses;
-          if (!approved.length) return done(Error("no-checked-address"));
-          if (options.all) return done(null, approved);
-          return done(null, approved[0].address, approved[0].family);
-        }
+        lookup: checkedAddressLookup(addresses)
       },
       (response) => {
         resolve({
@@ -94,11 +107,7 @@ export async function resolvePublicAddonRedirect(
   for (let hop = 0; hop <= 4; hop++) {
     if (visited.has(url.href)) return null;
     visited.add(url.href);
-    const addresses = await lookupWithAbort(url.hostname, lookup, signal);
-    if (!addresses.length || !addresses.every(isPublicAddress)) {
-      throw Object.assign(Error("non-public-address"), { statusCode: 403 });
-    }
-    signal.throwIfAborted();
+    const addresses = await resolvePublicAddresses(url, lookup, signal);
     const upstream = await requestHeaders(url, addresses, signal);
     if ([200, 206].includes(upstream.status)) {
       const type = upstream.type || "";

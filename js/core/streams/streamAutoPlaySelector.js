@@ -1,4 +1,5 @@
 import { matchesReusableStream } from "./streamReusePreference.js";
+import { indexOfPluginBingeMatch } from "./pluginBingeGroup.js";
 import { filterFilenameStreams } from "./filenameStreamPolicy.js";
 import { streamHdrStatus } from "./streamHdrPreference.js";
 import { applyHdrPreference } from "./streamHdrPreference.js";
@@ -226,12 +227,16 @@ export function autoPlayCandidates(streams, options = {}) {
     mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM &&
     options.hdrPreference === "PREFER" &&
     candidates.some((stream) => streamHdrStatus(stream, options) === true);
-  const matches = (stream) =>
-    streamBingeGroup(stream) === group &&
-    (!preferredHdr || streamHdrStatus(stream, options) === true);
+  const eligible = preferredHdr
+    ? candidates.filter((stream) => streamHdrStatus(stream, options) === true)
+    : candidates;
+  const groups = eligible.map(streamBingeGroup);
+  const exact = eligible.filter((_, index) => groups[index] === group);
+  const variantIndex = exact.length ? null : indexOfPluginBingeMatch(group, groups);
+  const matches = variantIndex == null ? exact : [eligible[variantIndex]];
   return options.bingeGroupOnly
-    ? candidates.filter(matches)
-    : [...candidates.filter(matches), ...candidates.filter((stream) => !matches(stream))];
+    ? matches
+    : [...matches, ...candidates.filter((stream) => !matches.includes(stream))];
 }
 
 export function selectAutoPlayStream(streams, options = {}) {

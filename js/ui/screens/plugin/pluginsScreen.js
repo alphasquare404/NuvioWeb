@@ -2,6 +2,7 @@ import { ScreenUtils } from "../../navigation/screen.js";
 import { Router } from "../../navigation/router.js";
 import { Platform } from "../../../platform/index.js";
 import { I18n } from "../../../i18n/index.js";
+import { createDesktopPluginManager } from "../../components/desktopPluginManager.js";
 
 function t(key, params = {}, fallback = key) {
   return I18n.t(key, params, { fallback });
@@ -20,7 +21,12 @@ export const PluginsScreen = {
     this.container = document.getElementById("plugins");
     ScreenUtils.show(this.container);
     this.routeEnterPending = true;
-    await this.render();
+    this.manager = createDesktopPluginManager({
+      requestRender: () => {
+        if (Router.getCurrent() === "plugins") return this.render();
+      }
+    });
+    await this.manager.load();
   },
 
   async render() {
@@ -32,19 +38,17 @@ export const PluginsScreen = {
             <h1 class="settings-title">${escapeHtml(t("plugin_title", {}, "Plugins"))}</h1>
             <p class="settings-subtitle">${escapeHtml(t("settings.sections.plugins.subtitle", {}, "Manage repositories, providers, and plugin states"))}</p>
           </header>
-          <div class="settings-group-card settings-group-card-fill">
-            <div class="settings-empty-state settings-empty-state-plugins">
-              <p class="settings-plugin-soon-text">${escapeHtml(t("settings.plugins.comingSoon", {}, "Plugin support is coming soon."))}</p>
-            </div>
-          </div>
+          ${this.manager.render()}
         </div>
       </div>
     `;
     this.routeEnterPending = false;
+    this.manager.bind(this.container);
     ScreenUtils.indexFocusables(this.container);
   },
 
   async onKeyDown(event) {
+    if (await this.manager?.handleKeyDown(event)) return;
     if (Platform.isBackEvent(event)) {
       event?.preventDefault?.();
       await Router.back();

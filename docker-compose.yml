@@ -58,6 +58,8 @@ services:
     container_name: nuvioweb-debrid-api-bridge
     image: ghcr.io/alphasquare404/nuvioweb-debrid-api-bridge:stable
     environment:
+      NUVIO_SUPABASE_URL: ${NUVIO_SUPABASE_URL:-}
+      NUVIO_SUPABASE_ANON_KEY: ${NUVIO_SUPABASE_ANON_KEY:-}
       MEDIA_URL_HOST_RESOLVE_ENABLED: ${MEDIA_URL_HOST_RESOLVE_ENABLED:-false}
     restart: unless-stopped
 

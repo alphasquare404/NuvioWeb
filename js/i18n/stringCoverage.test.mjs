@@ -97,7 +97,6 @@ const KNOWN_GAPS = [
   "person_upcoming",
   "player_engine_switch_unavailable",
   "profile_pin",
-  "settings.plugins.comingSoon",
   "stream_autoplay_countdown",
   "stream_autoplay_hint",
   "stream_autoplay_title"

@@ -1,3 +1,4 @@
+import { createPluginFetchHandler } from "./pluginFetch.mjs";
 import { createServer } from "node:http";
 import { parseHttpsPlaybackUrl } from "./addonPlaybackPolicy.mjs";
 import { requestPublicAddonHeaders, resolvePublicAddonRedirect } from "./publicAddonRedirect.mjs";
@@ -443,13 +444,18 @@ export function createDebridApiBridgeHandler({
       .trim()
       .toLowerCase()
   ),
+  pluginRelay,
   publicAddonRequest = requestPublicAddonHeaders,
   addonLookup,
   requestTimeoutMs = REQUEST_TIMEOUT_MS
 } = {}) {
+  const pluginFetch = createPluginFetchHandler(pluginRelay);
   let addonResolvesInFlight = 0;
   return async function handleDebridApiBridge(request, response) {
     const url = new URL(request.url || "/", "http://bridge.local");
+    if (url.pathname === "/api/debrid/plugin/fetch") {
+      return pluginFetch(request, response);
+    }
     if (url.pathname === "/api/debrid/link/from-addon") {
       if (!addonResolveEnabled) return bridgeFailure(response, 404, "not_enabled");
       if (request.method !== "POST") return bridgeFailure(response, 405, "method_not_allowed");

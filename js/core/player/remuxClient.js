@@ -1,4 +1,5 @@
 import { runStartupStep } from "./clientRemux/startupFailure.mjs";
+import { resolveMediaHead } from "./mediaHeadResolver.js";
 /* global __NUVIO_REMUX_ASSET_ID__ */
 import { classifyPlayback } from "./playbackMethod.js";
 import { REMUX_POLICY, PROBE_MODE, TRANSCODE_ENDPOINT } from "../../config.js";
@@ -88,6 +89,6 @@ export async function loadClientRemux(options) {
     () => import(new URL("client-runtime.js", assetBase).href)
   );
   return runStartupStep("runtime-create", () =>
-    module.createClientRemux({ ...options, assetBase, version })
+    module.createClientRemux({ ...options, assetBase, version, resolveMediaHead })
   );
 }

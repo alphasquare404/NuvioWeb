@@ -15,7 +15,7 @@ export const TmdbService = {
     const settings = TmdbSettingsStore.get();
     const requireEnabled = options?.requireEnabled !== false;
     const apiKey = getEffectiveTmdbApiKey();
-    if ((requireEnabled && !settings.enabled) || !apiKey) {
+    if (requireEnabled && !settings.enabled) {
       return null;
     }
 
@@ -35,13 +35,13 @@ export const TmdbService = {
       return normalizedIdPart;
     }
 
-    if (!normalizedIdPart.startsWith("tt")) {
+    if (!normalizedIdPart.startsWith("tt") || !apiKey) {
       return null;
     }
 
     const contentType = getContentType(type);
     const url = `${TMDB_BASE_URL}/find/${encodeURIComponent(normalizedIdPart)}?external_source=imdb_id&api_key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: options.signal });
     if (!response.ok) {
       return null;
     }

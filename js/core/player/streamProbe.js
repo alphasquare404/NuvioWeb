@@ -210,6 +210,7 @@ export function createStreamProber({
           timeoutMs: requestTimeoutMs,
           resolveTimeoutMs,
           concurrency: clientConcurrency,
+          allowHostHead: reason === "selected-playback" || reason === "audio-fallback",
           signal,
           onFailure: (reason) => failures.set(url, reason)
         });

@@ -183,6 +183,8 @@ export function clientRemuxFailureFacts(phase, error, stats, video) {
   for (const key of [
     "sourceOpenMs",
     "rangeAttempts",
+    "rangeNetworkRetries",
+    "rangeHostHeadUsed",
     "rangeSuccesses",
     "lastRangeMs",
     "lastRangeStatus",

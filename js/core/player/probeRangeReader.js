@@ -13,6 +13,7 @@ export function createProbeRangeReader(
     fetchImpl = globalThis.fetch,
     signal,
     maxBytes = PROBE_MAX_BYTES,
+    resolveHead,
     urlResolver = clientMediaUrlResolver
   } = {}
 ) {
@@ -104,9 +105,16 @@ export function createProbeRangeReader(
           prepared && diagnostics.hostResolveStatus === "failed"
             ? { ok: false }
             : await urlResolver.resolve(originalUrl, { signal, skipDirect: true });
-        if (!resolved.ok || resolved.url === target || signal?.aborted) throw error;
-        target = resolved.url;
-        usedHostResolve = true;
+        if (signal?.aborted) throw error;
+        if (resolved.ok && resolved.url !== target) {
+          target = resolved.url;
+          usedHostResolve = true;
+        } else {
+          if (error?.name !== "TypeError") throw error;
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          signal?.throwIfAborted();
+          diagnostics.rangeNetworkRetry = true;
+        }
         response = await fetchImpl(target, requestOptions);
       }
       // A redirected request can arrive at the CDN as a full GET. Cancel it
@@ -145,13 +153,24 @@ export function createProbeRangeReader(
       if (response.status === 206 && rangeHeader == null && totalSize == null) {
         try {
           diagnostics.request = "head";
-          const head = await fetchImpl(response.url || target, {
-            method: "HEAD",
-            mode: "cors",
-            credentials: "omit",
-            cache: "no-store",
-            signal
-          });
+          const headUrl = response.url || target;
+          let head;
+          try {
+            head = await fetchImpl(headUrl, {
+              method: "HEAD",
+              mode: "cors",
+              credentials: "omit",
+              cache: "no-store",
+              signal
+            });
+          } catch (error) {
+            if (error?.name !== "TypeError" || !resolveHead || signal?.aborted) throw error;
+            const length = await resolveHead(headUrl, {}, signal);
+            signal?.throwIfAborted();
+            if (!length) throw error;
+            head = new Response(null, { status: 200, headers: { "Content-Length": length } });
+            diagnostics.headViaHost = true;
+          }
           const length = head.headers.get("Content-Length");
           Object.assign(diagnostics, {
             headStatus: head.status,
@@ -163,7 +182,7 @@ export function createProbeRangeReader(
             head.status !== 200 ||
             !Number.isSafeInteger(size) ||
             size <= 0 ||
-            (head.url && response.url && head.url !== response.url)
+            (head.url && head.url !== headUrl)
           )
             throw new Error("probe-head-size-unavailable");
           totalSize = size;

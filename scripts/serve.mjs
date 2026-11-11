@@ -107,7 +107,11 @@ const hostResolveEnabled = /^(1|true)$/i.test(
   ).trim()
 );
 const debridApiBridgeHandler = createDebridApiBridgeHandler({
-  addonResolveEnabled: hostResolveEnabled
+  addonResolveEnabled: hostResolveEnabled,
+  pluginRelay: {
+    supabaseUrl: process.env.NUVIO_SUPABASE_URL || deploymentEnv.NUVIO_SUPABASE_URL,
+    anonKey: process.env.NUVIO_SUPABASE_ANON_KEY || deploymentEnv.NUVIO_SUPABASE_ANON_KEY
+  }
 });
 const externalReturnHandler = createExternalReturnHandler();
 // The third bridge, mounted like the other two. It was the only one missing,

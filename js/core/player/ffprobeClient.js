@@ -1,5 +1,6 @@
 import { probeSourceId } from "./probeDiagnostics.js";
 import { createProbeRangeReader } from "./probeRangeReader.js";
+import { resolveMediaHead } from "./mediaHeadResolver.js";
 import { normalizeClientProbeConcurrency } from "./probeMode.js";
 
 function debugProbe(event, facts) {
@@ -44,6 +45,7 @@ export function createBrowserProbeRunner({
         timeoutMs = 15000,
         resolveTimeoutMs = 0,
         initializationTimeoutMs = 20000,
+        allowHostHead = false,
         signal,
         onFailure
       } = {}
@@ -151,6 +153,7 @@ export function createBrowserProbeRunner({
           reader = createProbeRangeReader(url, {
             fetchImpl,
             signal: controller.signal,
+            resolveHead: allowHostHead ? resolveMediaHead : undefined,
             ...(urlResolver ? { urlResolver } : {})
           });
           if (resolveBudget) {

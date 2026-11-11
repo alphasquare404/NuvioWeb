@@ -1,6 +1,4 @@
-import { LocalStore } from "../storage/localStore.js";
-
-const KEY = "pluginSources";
+import { PluginStore } from "../../data/local/pluginStore.js";
 
 function normalizeSources(input) {
   if (!Array.isArray(input)) {
@@ -26,12 +24,13 @@ function applyTemplate(template, vars) {
 }
 
 export const PluginRuntime = {
-  listSources() {
-    return normalizeSources(LocalStore.get(KEY, []));
+  listSources(profileId) {
+    return normalizeSources(PluginStore.get(profileId).legacySources);
   },
 
-  saveSources(sources) {
-    LocalStore.set(KEY, normalizeSources(sources));
+  saveSources(sources, profileId) {
+    const state = PluginStore.get(profileId);
+    PluginStore.replace({ ...state, legacySources: normalizeSources(sources) }, profileId);
   },
 
   addSource(source) {

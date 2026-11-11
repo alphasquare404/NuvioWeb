@@ -25,6 +25,7 @@ import { REMUX_ENDPOINT } from "../../../config.js";
 
 import { ScreenUtils } from "../../navigation/screen.js";
 import { streamRepository } from "../../../data/repository/streamRepository.js";
+import { PluginManager } from "../../../core/player/pluginManager.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
 import { isWatchProgressInProgress } from "../../../domain/model/watchProgress.js";
@@ -950,6 +951,12 @@ export const StreamScreen = {
     this.loading = false;
     this.autoPlaySelectionReady = true;
     this.sourceChips = this.buildSourceChipsFromStreams(this.streams);
+    const found = new Set(this.sourceChips.map((chip) => chip.name));
+    this.sourceChips.push(
+      ...this.buildPluginSourceChips(normalizeType(this.params?.itemType), "empty").filter(
+        (chip) => !found.has(chip.name)
+      )
+    );
     void this.refreshOfflineDownloadMetadata();
     this.scheduleDebridPreparation();
 
@@ -1118,6 +1125,15 @@ export const StreamScreen = {
     );
   },
 
+  buildPluginSourceChips(itemType, status = "loading") {
+    return PluginManager.repositories.listStreamSourceNames(itemType).map((name) => ({
+      name,
+      status,
+      orderIndex: Number.MAX_SAFE_INTEGER,
+      plugin: true
+    }));
+  },
+
   async loadStreams() {
     const token = this.loadToken;
     const itemType = normalizeType(this.params?.itemType);
@@ -1136,8 +1152,8 @@ export const StreamScreen = {
     this.appliedFocusKey = null;
     this.addonLogoLookup = {};
 
-    this.sourceChips = [];
-    if (!this.hasRenderedStreamRouteShell) {
+    this.sourceChips = this.buildPluginSourceChips(itemType);
+    if (!this.hasRenderedStreamRouteShell || this.sourceChips.length) {
       this.requestRender();
     }
     const pendingChunkTasks = new Set();
@@ -1271,6 +1287,8 @@ export const StreamScreen = {
 
     const options = {
       itemId: String(this.params?.itemId || ""),
+      tmdbId: this.params?.tmdbId ?? this.params?.tmdb_id,
+      imdbId: this.params?.imdbId,
       season: this.params?.season ?? null,
       episode: this.params?.episode ?? null,
       onAddon: (addon) => {
@@ -1330,7 +1348,7 @@ export const StreamScreen = {
         await preloadAddonLogoImages(this.streams, this.addonLogoLookup);
       }
       this.sourceChips = this.sourceChips.map((chip) =>
-        chip.status === "loading" ? { ...chip, status: "error" } : chip
+        chip.status === "loading" ? { ...chip, status: chip.plugin ? "empty" : "error" } : chip
       );
       this.loading = false;
       if (this.streams.length) {
@@ -1366,7 +1384,7 @@ export const StreamScreen = {
       this.autoResumeUiActive = false;
       this.error = error?.message || "Failed to load streams.";
       this.sourceChips = this.sourceChips.map((chip) =>
-        chip.status === "loading" ? { ...chip, status: "error" } : chip
+        chip.status === "loading" ? { ...chip, status: chip.plugin ? "empty" : "error" } : chip
       );
       this.requestRender();
       this.scheduleErrorChipCleanup();

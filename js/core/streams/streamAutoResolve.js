@@ -145,6 +145,10 @@ export async function resolveAutoPlayStream({
   itemId,
   itemType,
   videoId,
+  tmdbId,
+  imdbId,
+  season,
+  episode,
   settings = {},
   installedAddonNames = new Set(),
   preferredBingeGroup = "",
@@ -276,6 +280,13 @@ export async function resolveAutoPlayStream({
   };
 
   const options = {
+    itemId,
+    tmdbId,
+    imdbId,
+    season,
+    episode,
+    signal,
+    priorityBingeGroup: preferredBingeGroup,
     onAddon: (addon) => {
       const name = String(addon?.displayName || addon?.name || "").trim();
       if (name && !finished && !cancelled()) knownAddonNames.add(name);
