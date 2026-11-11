@@ -54,6 +54,9 @@ jobs:
       - name: Lint source
         run: npm run lint
 
+      - name: Build frontend for regression tests
+        run: npm run build
+
       - name: Run regression tests
         run: npm test
 
