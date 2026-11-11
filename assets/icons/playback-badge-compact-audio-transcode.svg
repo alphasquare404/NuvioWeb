@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="166" height="38" viewBox="0 0 166 38" role="img" aria-label="Transcode transparent stream badge">
+ <title>Transcode stream badge — transparent</title>
+ <rect x="1.2" y="1.2" width="163.6" height="35.6" rx="9.6" fill="none" stroke="#FF7900" stroke-width="2.4"/>
+  <g transform="translate(11 7)"><g stroke="#FF7900" stroke-width="2.8" stroke-linecap="round" fill="none"><path d="M3 10.5 V13.5 M7.5 6.5 V17.5 M12 2.5 V21.5 M16.5 6.5 V17.5 M21 10.5 V13.5"/></g></g>
+  <path d="M43 9.5 V28.5" stroke="#FF7900" stroke-width="1.5" opacity=".82" stroke-linecap="round" />
+  <text x="54" y="25.7" fill="#FF7900" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" letter-spacing="-0.38">Transcode</text>
+</svg>

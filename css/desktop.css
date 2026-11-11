@@ -3112,6 +3112,10 @@ html.is-hero-stream-hold * {
   font-size: 12px;
 }
 
+.desktop-browser .filename-playback-badge.has-artwork img {
+  height: 24px;
+}
+
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-stream-badge.image,
 .desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-stream-badge.image {
   min-width: 40px;
@@ -20960,6 +20964,8 @@ html[data-layout="mobile"]
   box-sizing: border-box;
 }
 .desktop-browser #player .player-pause-badges .stream-route-stream-badge img { height: 1em; max-height: 1em; width: auto; max-width: 7em; }
+.desktop-browser #player .player-pause-badges .filename-playback-badge.has-artwork { font-size: inherit; }
+.desktop-browser #player .player-pause-badges .filename-playback-badge.has-artwork img { height: 1.5em; }
 .desktop-browser #player .player-pause-overlay-top { top: calc(26px + var(--browser-safe-area-top)); right: max(16px, calc(var(--browser-safe-area-right) + 16px)); }
 .desktop-browser #player .player-pause-overlay-clock { font-size: clamp(16px, calc(var(--pause-stage-width) * .015), 30px); }
 /* Popovers open above the toolbar, leaving their trigger buttons accessible. */

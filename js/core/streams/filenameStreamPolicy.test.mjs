@@ -246,13 +246,13 @@ test("manual Auto Next carries the filename filter without weakening addon const
 test("filename labels are always estimated and disappear independently of filtering", () => {
   for (const [stream, label, tone] of [
     [direct, "Direct", "green"],
-    [remux, "Remux", "yellow"],
-    [audio, "Transcoding", "orange"],
+    [remux, "Repackage", "blue"],
+    [audio, "Transcode", "orange"],
     [video, "Unsupported", "red"],
     [unknown, "Unknown", "neutral"]
   ]) {
     const html = renderFilenamePlaybackBadge(stream, {}, caps);
-    assert.match(html, new RegExp(label));
+    assert.match(html, new RegExp(`(?:alt="${label}"|>${label}</span)`));
     assert.match(html, new RegExp("tone-" + tone));
     assert.match(html, /Estimates only/);
     assert.match(html, /File contents have not been checked/);

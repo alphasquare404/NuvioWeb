@@ -10,11 +10,11 @@ function escape(value) {
     .replaceAll(">", "&gt;");
 }
 const LABELS = {
-  direct: ["Direct", "green"],
-  remux: ["Remux", "yellow"],
-  "audio-transcode": ["Transcoding", "orange"],
+  direct: ["Direct", "green", "direct"],
+  remux: ["Repackage", "blue", "repackage"],
+  "audio-transcode": ["Transcode", "orange", "audio-transcode"],
   transcode: ["Unsupported", "red"],
-  unknown: ["Unknown", "neutral"]
+  unknown: ["Unknown", "neutral", "unknown"]
 };
 export function renderFilenamePlaybackBadge(stream, settings = {}, capabilities = null) {
   const { method } = classifyStreamFilename(stream, capabilities);
@@ -25,10 +25,18 @@ export function renderFilenamePlaybackBadge(stream, settings = {}, capabilities 
 // needs that method on the current device.
 export function renderFilenamePlaybackMethodBadge(method, settings = {}) {
   if (settings?.showPlaybackLabels === false) return "";
-  const [label, tone] =
-    method === "transcode" && isTranscodeEnabled()
-      ? [I18n.t("settings_filter_full_transcode", {}, { fallback: "Full Transcode" }), "orange"]
-      : LABELS[method] || LABELS.unknown;
-  const description = label + ". " + FILENAME_ESTIMATE_NOTICE;
-  return `<span class="stream-route-stream-badge filename-playback-badge tone-${tone}" title="${escape(description)}" aria-label="${escape(description)}">${escape(label)} <span class="filename-playback-estimate">≈</span></span>`;
+  const fullTranscode = method === "transcode" && isTranscodeEnabled();
+  const [label, tone, artwork] = fullTranscode
+    ? ["Transcode", "red", "full-transcode"]
+    : LABELS[method] || LABELS.unknown;
+  const descriptionLabel = fullTranscode
+    ? I18n.t("settings_filter_full_transcode", {}, { fallback: "Full Transcode" })
+    : method === "audio-transcode"
+      ? I18n.t("settings_filter_audio_transcode", {}, { fallback: "Audio Transcode" })
+      : label;
+  const description = descriptionLabel + ". " + FILENAME_ESTIMATE_NOTICE;
+  const content = artwork
+    ? `<img src="assets/icons/playback-badge-compact-${artwork}.svg" alt="${escape(label)}">`
+    : escape(label);
+  return `<span class="filename-playback-badge tone-${tone} ${artwork ? "has-artwork" : "stream-route-stream-badge"}" role="img" title="${escape(description)}" aria-label="${escape(description)}">${content}</span>`;
 }

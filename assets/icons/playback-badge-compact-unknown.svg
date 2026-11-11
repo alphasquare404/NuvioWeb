@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="155" height="38" viewBox="0 0 155 38" role="img" aria-label="Unknown transparent stream badge">
+ <title>Unknown stream badge — transparent</title>
+ <rect x="1.2" y="1.2" width="152.6" height="35.6" rx="9.6" fill="none" stroke="#737D8C" stroke-width="2.4"/>
+  <g transform="translate(11 7)"><circle cx="12" cy="12" r="9.1" fill="none" stroke="#737D8C" stroke-width="2.2"/><path d="M9.2 9 C9.2 7.3 10.5 6.5 12.1 6.5 C14 6.5 15.1 7.7 15.1 9.3 C15.1 11 12.2 11.9 12.2 13.6" fill="none" stroke="#737D8C" stroke-width="2.3" stroke-linecap="round"/><circle cx="12.2" cy="17.5" r="1.25" fill="#737D8C"/></g>
+  <path d="M43 9.5 V28.5" stroke="#737D8C" stroke-width="1.5" opacity=".82" stroke-linecap="round" />
+  <text x="54" y="25.7" fill="#737D8C" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" letter-spacing="-0.38">Unknown</text>
+</svg>
