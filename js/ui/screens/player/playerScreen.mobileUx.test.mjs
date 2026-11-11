@@ -1320,8 +1320,6 @@ test("startup timing diagnostics are opt-in, bounded, preserve media state and o
         return now;
       }
     },
-    PlayerController: { video },
-    installStartupPlaybackDiagnostics: () => () => {},
     fetch: (_url, options) => {
       sent.push(JSON.parse(options.body));
       return Promise.resolve();

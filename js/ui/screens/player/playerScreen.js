@@ -1,4 +1,3 @@
-import { installStartupPlaybackDiagnostics } from "../../../core/player/startupPlaybackDiagnostics.js";
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
@@ -7011,27 +7010,8 @@ export const PlayerScreen = {
         this.reportPlaybackStartupDiagnostics(event.type);
     };
     names.forEach((name) => video.addEventListener(name, record));
-    const cleanupPlaybackTrace = installStartupPlaybackDiagnostics({
-      controller: PlayerController,
-      screen: this,
-      emit: (detail) => {
-        console.warn("[playback-state]", JSON.stringify(detail));
-        void fetch("/api/debug/log", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kind: "playback-state",
-            message: detail.event,
-            stack: JSON.stringify(detail),
-            at: new Date().toISOString()
-          })
-        }).catch(() => {});
-      }
-    });
-    this.playbackStartupDiagnosticCleanup = () => {
+    this.playbackStartupDiagnosticCleanup = () =>
       names.forEach((name) => video.removeEventListener(name, record));
-      cleanupPlaybackTrace();
-    };
   },
 
   reportPlaybackStartupDiagnostics(reason) {
