@@ -1,17 +1,13 @@
-export function shouldShowProfileSelectionAtStartup({
+export function getProfileStartupAction({
   profiles = [],
   activeProfileHasPin = false,
   hasSelectedProfileThisSession = false,
   rememberLastProfileEnabled = false,
   hasEverSelectedProfile = false
 } = {}) {
-  if (hasSelectedProfileThisSession) {
-    return false;
+  if (hasSelectedProfileThisSession) return "enter";
+  if (rememberLastProfileEnabled && hasEverSelectedProfile) {
+    return activeProfileHasPin ? "unlock" : "enter";
   }
-
-  if (rememberLastProfileEnabled && hasEverSelectedProfile && !activeProfileHasPin) {
-    return false;
-  }
-
-  return !hasEverSelectedProfile || profiles.length > 1 || activeProfileHasPin;
+  return !hasEverSelectedProfile || profiles.length > 1 || activeProfileHasPin ? "select" : "enter";
 }

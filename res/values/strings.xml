@@ -1954,6 +1954,7 @@
     <string name="profile_selection_title">Who\'s watching?</string>
     <string name="profile_selection_subtitle">Select a profile to continue</string>
     <string name="profile_selection_hint">Hold to manage profile</string>
+    <string name="profile_pin_choose_profile">Choose another profile</string>
     <string name="profile_selection_empty">No profiles found</string>
     <string name="profile_selection_primary_badge">PRIMARY</string>
     <string name="profile_selection_options_title">Profile Options</string>

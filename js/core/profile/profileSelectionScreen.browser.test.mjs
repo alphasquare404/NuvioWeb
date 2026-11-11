@@ -59,7 +59,7 @@ test("ProfileSelectionScreen mounts in the browser without a Platform global", a
   const originalHydrateAvatars = ProfileSelectionScreen.hydrateBrowserAvatarUrls;
   const originalLoadAvatarCatalog = ProfileSelectionScreen.loadAvatarCatalog;
   const container = { style: { display: "none" } };
-  let renders = 0;
+  const renders = [];
 
   globalThis.document = {
     getElementById(id) {
@@ -70,7 +70,10 @@ test("ProfileSelectionScreen mounts in the browser without a Platform global", a
   ProfileSelectionScreen.hydrateBrowserAvatarUrls = async () => {};
   ProfileSelectionScreen.loadAvatarCatalog = async () => {};
   ProfileSelectionScreen.render = () => {
-    renders += 1;
+    renders.push({
+      phase: ProfileSelectionScreen.pinOverlayPhase,
+      profileId: ProfileSelectionScreen.pinOverlayState?.profileId
+    });
   };
 
   try {
@@ -79,7 +82,16 @@ test("ProfileSelectionScreen mounts in the browser without a Platform global", a
       profilePinEnabled: {}
     });
     assert.equal(container.style.display, "block");
-    assert.equal(renders, 1);
+    assert.deepEqual(renders, [{ phase: "closed", profileId: undefined }]);
+
+    renders.length = 0;
+    await ProfileSelectionScreen.mount({
+      skipInitialProfileSync: true,
+      profilePinEnabled: { 1: true },
+      startupPinProfileId: "1"
+    });
+    assert.deepEqual(renders, [{ phase: "open", profileId: "1" }]);
+    assert.match(ProfileSelectionScreen.renderPinOverlay(), /data-action="choose-profile"/);
   } finally {
     ProfileSelectionScreen.render = originalRender;
     ProfileSelectionScreen.hydrateBrowserAvatarUrls = originalHydrateAvatars;
@@ -198,6 +210,32 @@ test("Profile PIN verify and set flows pass the unchanged string PIN to ProfileS
     ProfileSelectionScreen.activateProfile = originalActivateProfile;
     ProfileSelectionScreen.setPinActionMessage = originalToast;
     ProfileSelectionScreen.closePinOverlay = originalClose;
+  }
+});
+
+test("cancelling the startup PIN prevents a pending verification from activating the profile", async () => {
+  let finishVerification;
+  globalThis.__profileSyncService = {
+    verifyProfilePin: () => new Promise((resolve) => {
+      finishVerification = resolve;
+    })
+  };
+  const { ProfileSelectionScreen } = await loadProfileSelectionScreen();
+  preparePinEntry(ProfileSelectionScreen);
+  ProfileSelectionScreen.pinOverlayState.startup = true;
+  const activateProfile = ProfileSelectionScreen.activateProfile;
+  ProfileSelectionScreen.activateProfile = async () => assert.fail("Activated after cancellation");
+
+  try {
+    const pending = ProfileSelectionScreen.submitCompletedPin("0123");
+    assert.equal(ProfileSelectionScreen.consumeBackRequest(), true);
+    finishVerification({ unlocked: true });
+    await pending;
+    assert.equal(ProfileSelectionScreen.pinOverlayState, null);
+    assert.equal(ProfileSelectionScreen.isPinOperationInProgress, false);
+  } finally {
+    clearTimeout(ProfileSelectionScreen.pinTransitionTimer);
+    ProfileSelectionScreen.activateProfile = activateProfile;
   }
 });
 

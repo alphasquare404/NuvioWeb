@@ -436,7 +436,12 @@ export const ProfileSelectionScreen = {
     globalThis.NuvioBootGuard?.stage?.("Loading profile avatars");
     // Avatar artwork is optional. Do not delay the local-first picker; the
     // catalog still warms in the background for later use.
-    this.render();
+    const startupProfile = this.getProfileById(params?.startupPinProfileId);
+    if (!this.isManagementMode && startupProfile && this.isProfilePinEnabled(startupProfile.id)) {
+      this.openPinOverlay("unlock", startupProfile, null, { startup: true });
+    } else {
+      this.render();
+    }
     void this.hydrateBrowserAvatarUrls({ allowNetwork: true }).then(() => {
       if (Router.getCurrentScreen() === this) this.render();
     });
@@ -558,7 +563,7 @@ export const ProfileSelectionScreen = {
               )}">${renderBackButtonIcon()}</button>`
             : ""
         }
-        <div class="profile-main-layer"${isPinActive ? ' aria-hidden="true"' : ""}>
+        <div class="profile-main-layer"${isPinActive ? ' aria-hidden="true" inert' : ""}>
           ${
             this.isManagementMode
               ? ""
@@ -1019,7 +1024,11 @@ export const ProfileSelectionScreen = {
             </div>
             <div class="profile-pin-support${this.pinOverlayError ? " is-error" : ""}">${escapeHtml(support)}</div>
             ${isSingleEntryMode ? `<div class="profile-pin-forgot">${escapeHtml(PROFILE_PIN_TEXT.forgot)}</div>` : ""}
-            <div class="profile-pin-back-hint">${escapeHtml(PROFILE_PIN_TEXT.back)}</div>
+            ${
+              state.startup
+                ? `<button type="button" class="profile-pin-choose-profile" data-action="choose-profile">${escapeHtml(t("profile_pin_choose_profile", {}, "Choose another profile"))}</button>`
+                : `<div class="profile-pin-back-hint">${escapeHtml(PROFILE_PIN_TEXT.back)}</div>`
+            }
           </div>
         </div>
       </div>
@@ -1094,6 +1103,13 @@ export const ProfileSelectionScreen = {
         pinOverlay.focus();
       });
     }
+
+    this.container
+      .querySelector("[data-action='choose-profile']")
+      ?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (!this.isActivatingProfile) this.closePinOverlay();
+      });
 
     const nativePinInput = this.container.querySelector("[data-role='native-pin-input']");
     if (nativePinInput) {
@@ -1773,7 +1789,7 @@ export const ProfileSelectionScreen = {
     return true;
   },
 
-  openPinOverlay(type, profile, currentPin = null) {
+  openPinOverlay(type, profile, currentPin = null, { startup = false } = {}) {
     if (!profile) {
       return;
     }
@@ -1787,16 +1803,18 @@ export const ProfileSelectionScreen = {
     this.pinOverlayState = {
       type,
       profileId: String(profile.id),
-      currentPin: currentPin ? String(currentPin) : null
+      currentPin: currentPin ? String(currentPin) : null,
+      startup
     };
     this.pinOverlayRenderState = this.pinOverlayState;
-    this.pinOverlayPhase = "opening";
+    this.pinOverlayPhase = startup ? "open" : "opening";
     this.pinOverlayError = "";
     this.pinEntryStage = "create";
     this.pinValue = "";
     this.pinDraftValue = "";
     this.pendingFocusKey = "pin:1";
     this.render();
+    if (startup) return;
     this.pinTransitionTimer = setTimeout(() => {
       this.pinTransitionTimer = null;
       if (!this.pinOverlayState) {
@@ -1925,6 +1943,7 @@ export const ProfileSelectionScreen = {
     }
 
     const verification = await ProfileSyncService.verifyProfilePin(profile.id, pin);
+    if (this.pinOverlayState !== state) return;
     this.isPinOperationInProgress = false;
     if (!verification) {
       // The PIN is checked on the server, so without a connection there is
@@ -2063,6 +2082,10 @@ export const ProfileSelectionScreen = {
     }
     if (code === 13) {
       event?.preventDefault?.();
+      if (document.activeElement?.matches?.("[data-action='choose-profile']")) {
+        this.closePinOverlay();
+        return true;
+      }
       const focused =
         this.container?.querySelector(".profile-pin-key.focused") ||
         (document.activeElement?.matches?.(".profile-pin-key") ? document.activeElement : null);
@@ -2559,6 +2582,8 @@ export const ProfileSelectionScreen = {
       this.pinTransitionTimer = null;
     }
     this.pinTransitionCallback = null;
+    this.pinOverlayState = null;
+    this.pinOverlayRenderState = null;
     this.suppressedFocusClick = null;
     const container = document.getElementById("profileSelection");
     if (!container) {

@@ -9,7 +9,7 @@ import { AuthState } from "./core/auth/authState.js";
 import { DeviceSessionRegistration } from "./core/auth/deviceSessionRegistration.js";
 import { ProfileManager } from "./core/profile/profileManager.js";
 import { ProfileSyncService } from "./core/profile/profileSyncService.js";
-import { shouldShowProfileSelectionAtStartup } from "./core/profile/profileStartupSelectionPolicy.js";
+import { getProfileStartupAction } from "./core/profile/profileStartupSelectionPolicy.js";
 import { StartupSyncService } from "./core/profile/startupSyncService.js";
 import { ProviderCredentialSyncService } from "./core/profile/providerCredentialSyncService.js";
 import { ThemeManager } from "./ui/theme/themeManager.js";
@@ -169,7 +169,7 @@ function isAddonRemoteMode() {
   }
 }
 
-async function shouldShowProfileSelection() {
+async function resolveProfileStartup() {
   const startedAt = startupNow();
   const [, pinStates] = await Promise.all([
     ProfileSyncService.pull(),
@@ -177,18 +177,20 @@ async function shouldShowProfileSelection() {
   ]);
   const profiles = await ProfileManager.getProfiles();
   const activeProfileId = ProfileManager.getActiveProfileId();
-  const activeProfileHasPin = Boolean(
-    pinStates?.[String(activeProfileId)] || pinStates?.[Number(activeProfileId)]
-  );
+  const activeProfile = profiles.find((profile) => String(profile.id) === String(activeProfileId));
+  const entryProfileId = activeProfile?.id ?? profiles[0]?.id;
+  const activeProfileHasPin = Boolean(pinStates?.[entryProfileId]);
 
   const result = {
-    show: shouldShowProfileSelectionAtStartup({
+    action: getProfileStartupAction({
       profiles,
       activeProfileHasPin,
       hasSelectedProfileThisSession,
-      rememberLastProfileEnabled: ProfileManager.isRememberLastProfileEnabled(),
+      rememberLastProfileEnabled:
+        Boolean(activeProfile) && ProfileManager.isRememberLastProfileEnabled(),
       hasEverSelectedProfile: ProfileManager.hasEverSelectedProfile()
     }),
+    activeProfileId: activeProfile?.id,
     pinStates
   };
   logStartupTiming("profile-selection-ready", startedAt, { profiles: profiles.length });
@@ -243,11 +245,12 @@ async function enterWithLastProfile() {
 
 async function routeAfterAuthentication() {
   const startedAt = startupNow();
-  const profileRoute = await shouldShowProfileSelection();
-  if (profileRoute.show) {
+  const profileRoute = await resolveProfileStartup();
+  if (profileRoute.action !== "enter") {
     await Router.navigate("profileSelection", {
       skipInitialProfileSync: true,
-      profilePinEnabled: profileRoute.pinStates
+      profilePinEnabled: profileRoute.pinStates,
+      startupPinProfileId: profileRoute.action === "unlock" ? profileRoute.activeProfileId : null
     });
     logStartupTiming("route-profile-selection-mounted", startedAt);
     return;

@@ -1157,6 +1157,19 @@ button:focus-visible {
   margin-top: min(1.46vw, 28px);
 }
 
+.profile-pin-choose-profile {
+  margin-top: min(1.46vw, 28px);
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-size: clamp(14px, 1.46vw, 22px);
+  cursor: pointer;
+}
+
 .profile-pin-toast {
   position: fixed;
   left: 50%;

@@ -1635,6 +1635,7 @@
     <string name="profile_selection_title">Siapa yang menonton?</string>
     <string name="profile_selection_subtitle">Pilih profil untuk melanjutkan</string>
     <string name="profile_selection_hint">Tahan untuk mengelola profil</string>
+    <string name="profile_pin_choose_profile">Pilih profil lain</string>
     <string name="profile_selection_empty">Tidak ada profil ditemukan</string>
     <string name="profile_selection_primary_badge">UTAMA</string>
     <string name="profile_selection_options_title">Opsi Profil</string>
