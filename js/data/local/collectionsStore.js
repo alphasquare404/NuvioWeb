@@ -62,18 +62,40 @@ function normalizeFolderViewMode(value) {
   return CollectionFolderViewMode.TABBED_GRID;
 }
 
+// Number(null) is 0 and Number("") is 0, so the old Number.isFinite(Number(value))
+// guard turned "unset" into a real filter. That matters twice: it made
+// normalization non-idempotent (a null written on the first pass became 0 on the
+// next read, which readEnvelope persists), and 0 is not a harmless value for the
+// TMDB bounds -- vote_average.lte=0 hides every title with a rating above zero,
+// so collection folders opened up empty.
+function nullableNumber(value) {
+  if (value == null || (typeof value === "string" && value.trim() === "")) {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+// Zero is the stored spelling of "no rating bound": normalization used to turn a
+// null bound into 0, and a real filter at 0 is meaningless (TMDB ratings start at
+// zero). Treating it as unset also repairs profiles already written with the bad
+// value instead of only fixing imports made from now on.
+function nullableRatingBound(value) {
+  const number = nullableNumber(value);
+  return number !== null && number > 0 ? number : null;
+}
+
 function normalizeTmdbFilters(value = {}) {
   const raw = value && typeof value === "object" ? value : {};
+  const voteCountGte = nullableNumber(raw.voteCountGte);
   return {
     withGenres: stringOrNull(raw.withGenres),
     withoutGenres: stringOrNull(raw.withoutGenres),
     releaseDateGte: stringOrNull(raw.releaseDateGte),
     releaseDateLte: stringOrNull(raw.releaseDateLte),
-    voteAverageGte: Number.isFinite(Number(raw.voteAverageGte)) ? Number(raw.voteAverageGte) : null,
-    voteAverageLte: Number.isFinite(Number(raw.voteAverageLte)) ? Number(raw.voteAverageLte) : null,
-    voteCountGte: Number.isFinite(Number(raw.voteCountGte))
-      ? Math.trunc(Number(raw.voteCountGte))
-      : null,
+    voteAverageGte: nullableRatingBound(raw.voteAverageGte),
+    voteAverageLte: nullableRatingBound(raw.voteAverageLte),
+    voteCountGte: voteCountGte === null ? null : Math.trunc(voteCountGte),
     withOriginalLanguage: stringOrNull(raw.withOriginalLanguage),
     withOriginCountry: stringOrNull(raw.withOriginCountry),
     withKeywords: stringOrNull(raw.withKeywords),
