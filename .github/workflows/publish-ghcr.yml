@@ -54,6 +54,15 @@ jobs:
       - name: Lint source
         run: npm run lint
 
+      # The bundle check asserts that a configured backend URL is baked into
+      # app.bundle.js. CI has no local.properties, so the build would bake empty
+      # values and the check could never pass. This file is only for the test
+      # bundle: .dockerignore keeps it out of the image context, and the release
+      # image still reads its configuration from nuvio.env.js at run time.
+      - name: Provide test configuration for the bundle check
+        run: |
+          printf 'NUVIO_SUPABASE_URL=https://ci.invalid\nNUVIO_SUPABASE_ANON_KEY=ci-test-anon-key\n' > local.properties
+
       - name: Build frontend for regression tests
         run: npm run build
 
