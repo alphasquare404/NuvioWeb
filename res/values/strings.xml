@@ -2991,6 +2991,7 @@
     <string name="autoplay_selection_deadline_sub">Maximum time to select a source before returning to the stream list.</string>
     <string name="stream_selection_direct_timeout_notice">No Direct stream found within {{seconds}} seconds. Choose a stream below.</string>
     <string name="stream_selection_timeout_notice">No stream selected within {{seconds}} seconds. Choose a stream below.</string>
+    <string name="startup_loading_reopening">Opening last stream…</string>
     <string name="startup_loading_finding">Finding a stream…</string>
     <string name="startup_loading_checking">Checking stream metadata…</string>
     <string name="startup_loading_opening">Opening player…</string>

@@ -164,3 +164,83 @@ test("Back releases the autoplay handoff before refreshing preserved Detail", as
   assert.equal(screen.renderedRouteHandoffMarkup, null);
   assert.equal(renders, 1);
 });
+
+test("Continue Watching prepares before showing a real add-on search", async () => {
+  const source = await metaDetailsScreenSource();
+  const method = source.match(/renderRouteHandoff\(stage = "checking"\) \{[\s\S]*?\n {2}\},/)?.[0];
+  assert.ok(method);
+  const stages = [];
+  const overlay = {
+    active: false,
+    begin(_metadata, stage) {
+      this.active = true;
+      stages.push(stage);
+    },
+    updateMetadata() {},
+    setStage(stage) {
+      stages.push(stage);
+    }
+  };
+  const run = new Function(
+    "Platform",
+    "usesUnifiedStartup",
+    "isAutoPlayEffectivelyEnabled",
+    "PlayerSettingsStore",
+    "StartupLoadingOverlay",
+    "return ({" + method + "}).renderRouteHandoff"
+  )(
+    { isBrowser: () => true },
+    () => true,
+    () => true,
+    { get: () => ({}) },
+    overlay
+  );
+  const screen = { container: {}, params: {}, getStartupOverlayMeta: () => ({}) };
+  run.call(screen);
+  run.call(screen, "finding");
+  assert.deepEqual(stages, ["checking", "finding"]);
+
+  const open = source.match(/async openStreamRoute\(params, options\) \{[\s\S]*?\n {2}\},/)?.[0];
+  assert.ok(open);
+  const saved = {
+    streamId: "old",
+    resumeIdentity: "file:episode",
+    candidate: { id: "old", url: "https://media.example/old" }
+  };
+  const next = new Function(
+    "PlayerSettingsStore",
+    "isAutoPlayEffectivelyEnabled",
+    "reusableStreamPreference",
+    "collectInstalledAddonNames",
+    "addonRepository",
+    "Platform",
+    "reusablePlaybackUrl",
+    "autoPlayCandidates",
+    "nextEpisodeSelectionOptions",
+    "StartupLoadingOverlay",
+    "Router",
+    "resolveAutoPlayStream",
+    "return ({" + open + "}).openStreamRoute"
+  )(
+    { get: () => ({ browserExternalPlayer: "lenna" }) },
+    () => true,
+    () => saved,
+    () => new Set(),
+    { getCachedInstalledAddons: () => [] },
+    { isBrowser: () => true },
+    (url) => url,
+    (candidates) => candidates,
+    () => ({}),
+    overlay,
+    { navigate: (_route, params) => params },
+    () => assert.fail("Cached link must be handed off before discovery")
+  );
+  const params = await next.call(screen, {
+    itemId: "tt1",
+    videoId: "tt1:1:2",
+    resumePositionMs: 140000
+  });
+  assert.equal(params.autoResolvedStreamId, "old");
+  assert.equal(params.resumePositionMs, 140000);
+  assert.equal(stages.at(-1), "reopening");
+});

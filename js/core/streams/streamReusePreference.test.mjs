@@ -1,8 +1,14 @@
+import { buildStreamResumeIdentity } from "./streamResumeIdentity.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { StreamPreferencesStore as store } from "../../data/local/streamPreferencesStore.js";
 import { ProfileManager } from "../profile/profileManager.js";
-import { reusableStreamPreference } from "./streamReusePreference.js";
+import {
+  rememberableStreamCandidate,
+  rememberedAttemptKey,
+  reusableStreamPreference,
+  selectRememberedRetry
+} from "./streamReusePreference.js";
 import { selectAutoPlayStream } from "./streamAutoPlaySelector.js";
 import { resolveAutoPlayStream } from "./streamAutoResolve.js";
 
@@ -83,3 +89,36 @@ for (const includeSaved of [true, false]) {
     assert.equal(result.selected.id, includeSaved ? saved.id : first.id);
   });
 }
+
+test("reuse preserves the confirmed URL without persisting request headers", () => {
+  values.clear();
+  const candidate = rememberableStreamCandidate(saved);
+  store.set("tt1", "tt1", saved.id, { playbackConfirmed: true, candidate });
+  assert.equal(reusableStreamPreference(settings, "tt1", "tt1").candidate.url, saved.url);
+  store.forgetLink("tt1", "tt1", first.url);
+  assert.equal(reusableStreamPreference(settings, "tt1", "tt1").candidate.url, saved.url);
+  store.forgetLink("tt1", "tt1", saved.url);
+  assert.equal(reusableStreamPreference(settings, "tt1", "tt1").candidate, undefined);
+  assert.equal(reusableStreamPreference(settings, "tt1", "tt1").streamId, saved.id);
+  assert.equal(rememberableStreamCandidate({ ...saved, url: "blob:movie" }), null);
+  assert.equal(
+    rememberableStreamCandidate({
+      ...saved,
+      behaviorHints: { proxyHeaders: { request: { Authorization: "test" } } }
+    }),
+    null
+  );
+});
+
+test("retry accepts a fresh URL for the same identity ahead of other sources", () => {
+  const remembered = { ...saved, behaviorHints: { filename: "Episode.mkv" } };
+  const updated = { ...remembered, id: "new-id", url: "https://example.com/fresh" };
+  const preference = {
+    streamId: remembered.id,
+    resumeIdentity: buildStreamResumeIdentity(remembered)
+  };
+  const failed = new Set([rememberedAttemptKey(remembered)]);
+  assert.equal(selectRememberedRetry([first, remembered, updated], preference, failed), updated);
+  failed.add(rememberedAttemptKey(updated));
+  assert.equal(selectRememberedRetry([first, remembered, updated], preference, failed), first);
+});

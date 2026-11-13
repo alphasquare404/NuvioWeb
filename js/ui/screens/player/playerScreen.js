@@ -1,3 +1,8 @@
+import {
+  rememberableStreamCandidate,
+  rememberedAttemptKey,
+  selectRememberedRetry
+} from "../../../core/streams/streamReusePreference.js";
 import { clientMediaUrlResolver } from "../../../core/streams/clientMediaUrlResolver.js";
 import { resolveMediaHead } from "../../../core/player/mediaHeadResolver.js";
 import { shouldRouteToDecodePlayback } from "../../../core/player/mediabunnySettings.js";
@@ -2067,6 +2072,7 @@ export const PlayerScreen = {
     this._selectedSourceProber?.cancelAll();
     this._selectedSourceAbort = null;
     this._startupSourceFailures = new Set();
+    this._reuseFailedAttempts = new Set();
     this._startupSourceAdvancing = false;
     this._preparingSelectedSource = false;
     this._startupDiscoveryCompleted = false;
@@ -2606,7 +2612,10 @@ export const PlayerScreen = {
         streamCandidate?.behaviorHints?.bingeGroup ||
         streamCandidate?.raw?.behaviorHints?.bingeGroup ||
         "",
-      resumeIdentity: buildStreamResumeIdentity(streamCandidate)
+      resumeIdentity: buildStreamResumeIdentity(streamCandidate),
+      candidate: PlayerSettingsStore.get().streamReuseLastLinkEnabled
+        ? rememberableStreamCandidate(streamCandidate)
+        : null
     });
   },
 
@@ -8891,7 +8900,7 @@ export const PlayerScreen = {
     }
     const cacheKey = this.getStreamCacheKey(normalizedVideoId, normalizedType);
     const cache = this.streamCandidatesByVideoId || (this.streamCandidatesByVideoId = new Map());
-    if (cache.has(cacheKey)) {
+    if (!options.refresh && cache.has(cacheKey)) {
       const cached = cache.get(cacheKey);
       const cachedStreams = Array.isArray(cached) ? cached.map((stream) => ({ ...stream })) : [];
       options.onChunk?.(cachedStreams);
@@ -8899,7 +8908,7 @@ export const PlayerScreen = {
     }
     const loadPromises =
       this.streamCandidatesLoadPromises || (this.streamCandidatesLoadPromises = new Map());
-    if (loadPromises.has(cacheKey)) {
+    if (!options.refresh && loadPromises.has(cacheKey)) {
       const loaded = await loadPromises.get(cacheKey);
       const loadedStreams = Array.isArray(loaded) ? loaded.map((stream) => ({ ...stream })) : [];
       options.onChunk?.(loadedStreams);
@@ -8914,6 +8923,7 @@ export const PlayerScreen = {
         imdbId: this.params?.imdbId,
         season: options.season ?? null,
         episode: options.episode ?? null,
+        signal: options.signal,
         priorityBingeGroup: options.priorityBingeGroup,
         onChunk: (chunkResult) => {
           const chunkItems = flattenStreamGroups(chunkResult);
@@ -11299,6 +11309,7 @@ export const PlayerScreen = {
       return false;
     }
     this.hasPresentedPlaybackFrame = true;
+    if (this.params?.reuseLastLink) this.params.reuseLastLink = null;
     this.pendingAutomaticDirectAudio = null;
     this.applyDirectAudioPreferenceAfterStart?.();
     this.rememberSelectedStreamPreference?.(this.getCurrentStreamCandidate?.());
@@ -12805,6 +12816,16 @@ export const PlayerScreen = {
     // accessor may still point at another source, so retain the failed attempt.
     const current = failure.streamCandidate || this.getCurrentStreamCandidate();
     (this._startupSourceFailures ||= new Set()).add(playerStreamProbeKey(current || {}));
+    const reuse = this.params.reuseLastLink;
+    if (reuse) {
+      const failedKey = rememberedAttemptKey(current);
+      (this._reuseFailedAttempts ||= new Set()).add(failedKey);
+      StreamPreferencesStore.forgetLink(
+        this.params.itemId,
+        this.params.videoId || this.params.itemId,
+        failedKey
+      );
+    }
     const detail = String(failure.detail || failure.error?.message || "");
     const processingUrl = /\/api\/(?:remux|transcode)/.test(
       failure.playbackUrl || this.activePlaybackUrl || ""
@@ -12817,6 +12838,7 @@ export const PlayerScreen = {
     this._selectedSourceAbort?.abort();
     this.activePlaybackUrl = null;
     this.params.unverifiedPlayback = null;
+    if (reuse) this.params.playbackPlan = null;
     try {
       PlayerController.stop();
     } catch {
@@ -12838,28 +12860,40 @@ export const PlayerScreen = {
             ? "FIRST_STREAM"
             : settings.streamAutoPlayMode
       });
-      let next = candidates.find(
-        (stream) => !this._startupSourceFailures.has(playerStreamProbeKey(stream))
-      );
+      let next = reuse
+        ? selectRememberedRetry(candidates, reuse, this._reuseFailedAttempts)
+        : candidates.find(
+            (stream) => !this._startupSourceFailures.has(playerStreamProbeKey(stream))
+          );
       if (
         !next &&
         this.params.streamCandidatesComplete === false &&
         !this._startupDiscoveryCompleted
       ) {
         this._startupDiscoveryCompleted = true;
+        if (reuse) {
+          this.startupLoadingStage = "finding";
+          StartupLoadingOverlay.setStage("finding");
+        }
         const controller = (this._selectedSourceAbort = new AbortController());
         try {
           const rows = await selectedPlaybackTask(
             () =>
               this.getPlayableStreamsForVideo(
                 this.params.videoId || this.params.itemId,
-                normalizeItemType(this.params.itemType || "movie")
+                normalizeItemType(this.params.itemType || "movie"),
+                {
+                  season: this.params.season,
+                  episode: this.params.episode,
+                  signal: controller.signal,
+                  refresh: Boolean(reuse)
+                }
               ),
             { signal: controller.signal, timeoutMs: 45000 }
           );
           if (!this.isActiveMountToken(token) || this.playerBackNavigationInProgress) return;
           this.streamCandidates = this.normalizeStreamCandidates([
-            ...this.streamCandidates,
+            ...(reuse ? [] : this.streamCandidates),
             ...rows
           ]);
           this.params.streamCandidatesComplete = true;
@@ -12883,6 +12917,7 @@ export const PlayerScreen = {
         if (!this.isActiveMountToken(token) || this.playerBackNavigationInProgress) return;
         this._startupSourceAdvancing = false;
         this.loadingVisible = true;
+        this.startupLoadingStage = "opening";
         StartupLoadingOverlay.setStage("opening");
         await this.playStreamCandidate(next, { mountToken: token, preservePendingRestore: true });
         return;
@@ -12900,6 +12935,7 @@ export const PlayerScreen = {
         autoResolvedStreams: this.streamCandidates,
         autoResolvedStreamsComplete: this.params.streamCandidatesComplete !== false,
         autoResolvedStreamId: null,
+        reuseLastLink: null,
         playbackFailureMessage: this.params.automaticSourceSelection
           ? "None of the permitted streams could be played. Choose another stream."
           : String(message || "This stream could not be played. Choose another stream.")

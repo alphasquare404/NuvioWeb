@@ -7,6 +7,7 @@ import { resolveDetailPortraitBackdrop } from "../screens/detail/detailPortraitP
 import { createWakeLock } from "../../core/player/movi/wakeLock.js";
 
 const STAGES = {
+  reopening: ["startup_loading_reopening", "Opening last stream…"],
   finding: ["startup_loading_finding", "Finding a stream…"],
   checking: ["startup_loading_preparing", "Preparing video…"],
   probing: ["startup_loading_checking", "Checking stream metadata…"],
@@ -205,7 +206,11 @@ export const StartupLoadingOverlay = {
   },
   setStage(nextStage) {
     if (probeActions) stage = "probing";
-    else if (STAGES[nextStage]) stage = nextStage;
+    else if (
+      STAGES[nextStage] &&
+      !(stage === "reopening" && ["opening", "loading", "metadata"].includes(nextStage))
+    )
+      stage = nextStage;
     const actions = host?.querySelector(".startup-probe-actions");
     if (actions) actions.hidden = !probeActions;
     if (stage === "frame" || stage === "restoring") relayText = "";

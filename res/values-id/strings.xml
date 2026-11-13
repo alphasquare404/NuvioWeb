@@ -2371,6 +2371,7 @@
     <string name="autoplay_selection_deadline_sub">Batas waktu memilih sumber sebelum kembali ke daftar stream.</string>
     <string name="stream_selection_direct_timeout_notice">Belum menemukan stream Direct dalam {{seconds}} detik. Pilih stream di bawah.</string>
     <string name="stream_selection_timeout_notice">Belum memilih stream dalam {{seconds}} detik. Pilih stream di bawah.</string>
+    <string name="startup_loading_reopening">Membuka stream terakhir…</string>
     <string name="startup_loading_finding">Mencari stream…</string>
     <string name="startup_loading_checking">Memeriksa metadata stream…</string>
     <string name="startup_loading_opening">Membuka player…</string>

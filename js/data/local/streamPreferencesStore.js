@@ -74,6 +74,15 @@ export const StreamPreferencesStore = {
     return { ...entry, streamId: String(entry.streamId || "") || null };
   },
 
+  forgetLink(contentId, videoId, url, profileId = activeProfileId()) {
+    const key = buildContentKey(contentId, videoId);
+    const entries = readEntries(profileId);
+    const entry = entries.find((item) => item.key === key && item.candidate?.url === url);
+    if (!entry) return;
+    delete entry.candidate;
+    writeEntries(profileId, entries);
+  },
+
   set(contentId, videoId, streamId, metadata = {}, profileId = activeProfileId()) {
     const key = buildContentKey(contentId, videoId);
     const sid = String(streamId || "").trim();
@@ -88,7 +97,8 @@ export const StreamPreferencesStore = {
       cachedAtMs: Date.now(),
       playbackConfirmed: metadata?.playbackConfirmed === true,
       bingeGroup: String(metadata?.bingeGroup || "").trim() || null,
-      resumeIdentity: String(metadata?.resumeIdentity || "").trim() || null
+      resumeIdentity: String(metadata?.resumeIdentity || "").trim() || null,
+      ...(metadata?.candidate ? { candidate: metadata.candidate } : {})
     });
     if (entries.length > MAX_ENTRIES) {
       entries.length = MAX_ENTRIES;

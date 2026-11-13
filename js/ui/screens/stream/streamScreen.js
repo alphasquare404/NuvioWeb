@@ -1,5 +1,6 @@
 import {
   matchesReusableStream,
+  rememberedAttemptKey,
   reusableStreamPreference
 } from "../../../core/streams/streamReusePreference.js";
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
@@ -15,6 +16,7 @@ import {
 import { Router } from "../../navigation/router.js";
 import {
   streamSelectionDeadline,
+  resolveAutoPlayStream,
   reportAutoPlaySelection
 } from "../../../core/streams/streamAutoResolve.js";
 
@@ -3213,7 +3215,8 @@ export const StreamScreen = {
       skipExternalRoute = false,
       playerOverride = "",
       automatic = false,
-      failedExternalStreamIds = []
+      failedExternalStreamIds = [],
+      failedExternalAttempts = new Set()
     } = {}
   ) {
     this.cancelAutoPlayCountdown();
@@ -3230,7 +3233,12 @@ export const StreamScreen = {
       (this._playSelectionGeneration || 0) + 1);
     const selectionCurrent = () =>
       selectionGeneration === this._playSelectionGeneration && Router.getCurrent() === "stream";
-    StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "opening");
+    StartupLoadingOverlay.begin(
+      this.getStartupOverlayMeta(),
+      this.params?.reuseLastLink && this.params.autoResolvedStreamsComplete === false
+        ? "reopening"
+        : "opening"
+    );
     StartupLoadingOverlay.setBackHandler(() => {
       this._playSelectionGeneration++;
       this._labelProbePaused = false;
@@ -3332,6 +3340,51 @@ export const StreamScreen = {
       return;
     }
     if (externalRequested) {
+      if (automatic && this.params?.reuseLastLink) {
+        const target = this.params;
+        const failedKey = rememberedAttemptKey(selected);
+        failedExternalAttempts.add(failedKey);
+        StreamPreferencesStore.forgetLink(
+          target.itemId,
+          target.videoId || target.itemId,
+          failedKey
+        );
+        if (target.autoResolvedStreamsComplete === false) {
+          StartupLoadingOverlay.setStage("finding");
+          const resolution = await resolveAutoPlayStream({
+            ...target,
+            videoId: target.videoId || target.itemId,
+            settings: PlayerSettingsStore.get(),
+            installedAddonNames: collectInstalledAddonNames(
+              addonRepository.getCachedInstalledAddons()
+            ),
+            shouldCancel: () => !selectionCurrent()
+          });
+          if (!selectionCurrent()) return;
+          this.streams = mergeStreamItems([], this.applyAddonLogos(resolution.streams));
+          this._filteredStreamsCache = null;
+          target.autoResolvedStreamsComplete = true;
+        }
+        const available = this.getFilteredStreams().filter(
+          (stream) => !failedExternalAttempts.has(rememberedAttemptKey(stream))
+        );
+        const next = this.selectStreamForAutoPlay(available);
+        if (next?.id) {
+          StartupLoadingOverlay.setStage("opening");
+          return this.playStream(next.id, {
+            automatic,
+            playerOverride: externalPlayer,
+            failedExternalAttempts
+          });
+        }
+        target.reuseLastLink = null;
+        this.autoPlayAttempted = true;
+        this._labelProbePaused = false;
+        this.autoResolvedPlaybackPending = false;
+        StartupLoadingOverlay.finish();
+        this.requestRender({ delayMs: 0 });
+        return;
+      }
       const failedIds = [...failedExternalStreamIds, selected.id];
       const next = automatic
         ? this.selectStreamForAutoPlay(
@@ -3373,8 +3426,13 @@ export const StreamScreen = {
     const playerSource = offlineObjectUrl || selected.url || selected.externalUrl || null;
     const playbackPlan = null;
     const unverifiedPlayback = null;
-    StartupLoadingOverlay.setStage("opening");
+    StartupLoadingOverlay.setStage(
+      this.params?.reuseLastLink && this.params.autoResolvedStreamsComplete === false
+        ? "reopening"
+        : "opening"
+    );
     const playbackParams = {
+      reuseLastLink: this.params?.reuseLastLink || null,
       unverifiedPlayback,
       prepareSelectedSource: !offlineObjectUrl,
       automaticSourceSelection: !offlineObjectUrl && automatic && !this.params?.manualSelection,

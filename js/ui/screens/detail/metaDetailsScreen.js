@@ -1,4 +1,10 @@
+import {
+  reusableStreamPreference,
+  reusablePlaybackUrl
+} from "../../../core/streams/streamReusePreference.js";
+import { autoPlayCandidates } from "../../../core/streams/streamAutoPlaySelector.js";
 import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioContext.js";
+import { nextEpisodeSelectionOptions } from "../../../core/streams/playerStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import {
@@ -3268,7 +3274,7 @@ export const MetaDetailsScreen = {
     };
   },
 
-  renderRouteHandoff() {
+  renderRouteHandoff(stage = "checking") {
     if (!this.container) {
       return;
     }
@@ -3283,8 +3289,9 @@ export const MetaDetailsScreen = {
       }
       if (StartupLoadingOverlay.active) {
         StartupLoadingOverlay.updateMetadata(this.getStartupOverlayMeta());
+        StartupLoadingOverlay.setStage(stage);
       } else {
-        StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "finding");
+        StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), stage);
       }
       this.routeHandoffPending = PlayerSettingsStore.get().loadingOverlayEnabled !== false;
       if (this.routeHandoffPending) this.container.innerHTML = "";
@@ -3301,7 +3308,10 @@ export const MetaDetailsScreen = {
         this.meta?.landscapePoster ||
         this.meta?.poster ||
         "",
-      label: t("detail_finding_stream", {}, "Finding a stream…")
+      label:
+        stage === "finding"
+          ? t("detail_finding_stream", {}, "Finding a stream…")
+          : t("startup_loading_preparing", {}, "Preparing video…")
     });
     if (this.renderedRouteHandoffMarkup !== markup) {
       this.container.innerHTML = markup;
@@ -3355,6 +3365,32 @@ export const MetaDetailsScreen = {
     }
 
     this.autoStreamResolveAbort?.abort();
+    const saved = reusableStreamPreference(settings, params.itemId, params.videoId);
+    const candidate = saved?.candidate;
+    const addonNames = collectInstalledAddonNames(addonRepository.getCachedInstalledAddons());
+    if (
+      Platform.isBrowser() &&
+      reusablePlaybackUrl(candidate?.url) &&
+      autoPlayCandidates(
+        [candidate],
+        nextEpisodeSelectionOptions(settings, { installedAddonNames: addonNames })
+      ).length
+    ) {
+      this.autoStreamResolveToken = (this.autoStreamResolveToken || 0) + 1;
+      StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "reopening");
+      return Router.navigate(
+        "stream",
+        {
+          ...params,
+          reuseLastLink: { streamId: saved.streamId, resumeIdentity: saved.resumeIdentity },
+          autoResolvedStreams: [candidate],
+          autoResolvedStreamId: candidate.id,
+          autoResolvedStreamsComplete: false
+        },
+        options
+      );
+    }
+
     const controller = (this.autoStreamResolveAbort = new AbortController());
     const deadlineAt = streamSelectionDeadline(settings.streamAutoPlayTimeoutSeconds);
     const token = (this.autoStreamResolveToken || 0) + 1;
@@ -3377,7 +3413,7 @@ export const MetaDetailsScreen = {
     // styles live behind `.desktop-browser`, which a television does not carry.
     if (Platform.isBrowser()) {
       this.routeHandoffPending = true;
-      this.renderRouteHandoff();
+      this.renderRouteHandoff("finding");
     }
 
     let resolution = await resolveAutoPlayStream({
@@ -3390,7 +3426,7 @@ export const MetaDetailsScreen = {
       itemType: params?.itemType,
       videoId: params?.videoId || params?.itemId,
       settings,
-      installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
+      installedAddonNames: addonNames,
       preferredBingeGroup: resolvePreferredBingeGroup(settings, () =>
         StreamPreferencesStore.getEntry(params?.itemId, params?.videoId || params?.itemId)
       ),
