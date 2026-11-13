@@ -26,7 +26,8 @@ export function createClientRemux({
   onStatus = () => {},
   onError = () => {},
   onTracks = () => {},
-  onCues = () => {}
+  onCues = () => {},
+  onDecodedCues
 }) {
   const Source = globalThis.ManagedMediaSource || globalThis.MediaSource;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -53,6 +54,14 @@ export function createClientRemux({
     requestHeaders,
     onTracks,
     onCues,
+    onDecodedCues,
+    resolveSource: (url, signal) => (canResolveSource(url) ? resolveSource(url, signal) : null),
+    resolveHead: (url, signal) =>
+      resolveMediaHead?.(
+        url,
+        new URL(url).origin === new URL(film.sourceUrl).origin ? requestHeaders : {},
+        signal
+      ),
     onStatus,
     getTime: () => (isRestoring() ? session?.target || position : video.currentTime)
   });
@@ -868,8 +877,7 @@ export function createClientRemux({
           return;
         }
         film = { sourceUrl, cache, size: null, sourceBytes: 0, replayBytes: 0, transitions: 0 };
-        if (!old || old.sourceUrl !== sourceUrl)
-          await runStartupStep("subtitle-worker", () => subtitles.setSource(sourceUrl));
+        if (!old || old.sourceUrl !== sourceUrl) subtitles.setSource(sourceUrl);
       }
       if (targetIntent !== intent) return;
       const s = await runStartupStep("renderer-open", () =>

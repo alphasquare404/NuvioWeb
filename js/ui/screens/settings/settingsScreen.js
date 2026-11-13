@@ -64,7 +64,7 @@ import { CollectionsStore, buildCollectionHomeKey } from "../../../data/local/co
 import { ThemeStore } from "../../../data/local/themeStore.js";
 import { ThemeManager } from "../../theme/themeManager.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
-import { hasWebCodecs } from "../../../core/player/movi/moviCapability.js";
+import { canUseDecodePlayback } from "../../../core/player/mediabunnySettings.js";
 import {
   SUBTITLE_VERTICAL_OFFSET_DEFAULT,
   SUBTITLE_VERTICAL_OFFSET_MAX,
@@ -2481,52 +2481,6 @@ function isAppearanceThemeFocusKey(focusKey) {
   return String(focusKey || "").startsWith("appearance:theme:");
 }
 
-/**
- * Rows the movi engine ignores, and so must not be offered while it is the one
- * playing.
- *
- * Each of these is a real feature of the built-in player, not a mistake. But a
- * switch that cannot do anything is worse than a missing switch: it reads as a
- * broken feature rather than as the boundary of an engine.
- *
- * Module-level on purpose. `createScreenPrototype()` copies only functions from a
- * screen onto the section screens it derives, leaving data properties behind, so
- * a list kept on the object would be `undefined` the moment this screen is
- * rendered as a section — and the settings page would crash on its first row.
- */
-const MOVI_IGNORED_ROW_KEYS = [
-  // Player chrome and behaviour the movi route does not implement.
-  "playback:autoplay",
-  "playback:loadingOverlay",
-  "playback:loadingStatus",
-  "playback:pauseOverlay",
-  "playback:parentalGuide",
-  // The session belongs to the built-in player, which owns next-episode and
-  // still-watching prompts; the movi route ends when the file does.
-  "playback:nextEpisodeThresholdMode",
-  "playback:nextEpisodeThresholdValue",
-  "playback:stillWatching",
-  "playback:stillWatchingThreshold",
-  // Track selection: the route follows the profile's language and does not
-  // choose tracks by hand, so these have nothing to act on.
-  "playback:audioLanguage",
-  "playback:secondaryAudioLanguage",
-  "playback:secondarySubtitleLanguage",
-  "playback:useForcedSubtitles",
-  "playback:showOnlyPreferredSubtitleLanguages",
-  "playback:subtitleStartupMode",
-  "playback:renderMode",
-  // Subtitle appearance: the overlay draws with its own defaults for now, so
-  // these would be switches that change nothing.
-  "playback:subtitleSize",
-  "playback:subtitleOffset",
-  "playback:subtitleBold",
-  "playback:subtitleTextColor",
-  "playback:subtitleBackgroundColor",
-  "playback:subtitleOutline",
-  "playback:subtitleOutlineColor"
-];
-
 export const SettingsScreen = {
   usesSettingsPanels() {
     return Platform.isBrowser() && Boolean(globalThis.matchMedia?.(SETTINGS_PANELS_QUERY).matches);
@@ -3207,22 +3161,6 @@ export const SettingsScreen = {
    * `browserExternalPlayer` stores "disabled" for "inside Nuvio", so this is the
    * one question the Play-with row and every external-only row below it ask.
    */
-  /**
-   * Should this row be left out because the movi engine cannot honour it?
-   *
-   * Reads the module-level list, never `this`: this method is copied onto the
-   * section screens by prototype, and anything kept in a data property would not
-   * travel with it.
-   */
-  rowHiddenForEngine(focusKey) {
-    if (!MOVI_IGNORED_ROW_KEYS.includes(String(focusKey || ""))) return false;
-    if (!hasWebCodecs()) return false;
-    const settings = PlayerSettingsStore.get();
-    if (String(settings.playerEngine || "") !== "movi") return false;
-    // Handing playback to another app means no engine of ours plays at all.
-    return normalizeBrowserExternalPlayer(settings.browserExternalPlayer) === "disabled";
-  },
-
   playWithUsesExternal(model = {}) {
     const player = normalizeBrowserExternalPlayer(model.player?.browserExternalPlayer);
     return player !== "disabled" && getBrowserExternalPlayerOptions().includes(player);
@@ -3241,7 +3179,6 @@ export const SettingsScreen = {
     disabled = false,
     planned = false
   }) {
-    if (this.rowHiddenForEngine(focusKey)) return "";
     const inert = disabled || planned;
     // An unknown icon name used to crash the whole section: `ROW_ICONS[name]` was
     // undefined and the renderer tried to draw it. Fall back to the chevron instead.
@@ -3279,7 +3216,6 @@ export const SettingsScreen = {
     disabled = false,
     planned = false
   }) {
-    if (this.rowHiddenForEngine(focusKey)) return "";
     const inert = disabled || planned;
     return `
       <button class="settings-action-row settings-toggle-row settings-content-focusable focusable${inert ? " is-disabled" : ""}${planned ? " is-planned" : ""}"
@@ -8892,7 +8828,45 @@ export const SettingsScreen = {
         }
       })
     );
+    const mediabunnyModes = [
+      { id: "decode", label: "Decode & Play", disabled: !canUseDecodePlayback() },
+      { id: "process", label: "Remux & Transcode" }
+    ];
+    this.actionMap.set("playback:mediabunnyEnabled", () =>
+      PlayerSettingsStore.set({
+        mediabunnyEnabled: PlayerSettingsStore.get().mediabunnyEnabled === false
+      })
+    );
+    this.actionMap.set("playback:mediabunnyMode", () =>
+      this.openOptionDialog({
+        title: "Mediabunny",
+        options: mediabunnyModes,
+        selectedId: PlayerSettingsStore.get().mediabunnyMode,
+        returnFocusKey: "playback:mediabunnyMode",
+        onSelect: (option) => {
+          if (!option.disabled) PlayerSettingsStore.set({ mediabunnyMode: option.id });
+        }
+      })
+    );
+    const mediabunnyRows = Platform.isBrowser()
+      ? `
+      ${this.renderToggleRow({ focusKey: "playback:mediabunnyEnabled", title: "Mediabunny", subtitle: "Process compatible streams on this device.", checked: model.player.mediabunnyEnabled !== false })}
+      ${
+        model.player.mediabunnyEnabled !== false
+          ? this.renderActionRow({
+              focusKey: "playback:mediabunnyMode",
+              title: "Playback mode",
+              subtitle:
+                "Decode & Play renders the decoded stream directly. Remux & Transcode uses the browser player.",
+              value: mediabunnyModes.find((option) => option.id === model.player.mediabunnyMode)
+                ?.label
+            })
+          : ""
+      }
+    `
+      : "";
     const audioBody = `
+      ${mediabunnyRows}
       <div class="settings-audio-language-group">${isDesktopBrowser ? `<div class="settings-group-heading"><div class="settings-group-title">${escapeHtml(t("settings_audio_languages", {}, "Audio languages"))}</div></div>` : ""}
         ${this.renderActionRow({
           focusKey: "playback:audioLanguage",

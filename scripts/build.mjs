@@ -656,6 +656,7 @@ async function runBuild() {
     for (const [entry, outfile, format] of [
       ["clientRuntime.mjs", "client-runtime.js", "esm"],
       ["cacheWorker.mjs", "cache-worker.js", "esm"],
+      ["decodeRuntime.mjs", "decode-runtime.js", "esm"],
       ["subtitleWorker.mjs", "subtitle-worker.js", "iife"]
     ]) {
       await build({
@@ -665,7 +666,7 @@ async function runBuild() {
         bundle: true,
         minify: true,
         format,
-        splitting: entry === "cacheWorker.mjs",
+        splitting: entry === "cacheWorker.mjs" || entry === "decodeRuntime.mjs",
         target: ["safari15", "chrome80"],
         define: { __NUVIO_REMUX_ASSET_ID__: JSON.stringify(remuxAssetId) },
         plugins: [

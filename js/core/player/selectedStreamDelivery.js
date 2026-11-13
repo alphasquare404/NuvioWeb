@@ -1,3 +1,4 @@
+import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { prepareUnverifiedRemux } from "./unverifiedPlayback.js";
 import { chooseHlsAudioIndices, canSwitchHlsAudioCodecs } from "./relayTracks.js";
 import { tracePlayback, traceUrlKind, traceHost } from "../util/playbackTrace.js";
@@ -24,7 +25,8 @@ function unavailable(message) {
 const transcodeAccess = createTranscodeAccess({ endpoint: TRANSCODE_ENDPOINT });
 export function isTranscodeEnabled() {
   return (
-    TRANSCODE_MODE === "client" || (TRANSCODE_MODE === "server" && Boolean(TRANSCODE_ENDPOINT))
+    (TRANSCODE_MODE === "client" && PlayerSettingsStore.get().mediabunnyEnabled !== false) ||
+    (TRANSCODE_MODE === "server" && Boolean(TRANSCODE_ENDPOINT))
   );
 }
 
@@ -42,6 +44,7 @@ export async function prepareMeasuredTranscode({
 } = {}) {
   if (
     mode === "none" ||
+    (mode === "client" && PlayerSettingsStore.get().mediabunnyEnabled === false) ||
     !probe?.videoCodec ||
     probe.videoCodec === "unknown" ||
     !/^https?:\/\//i.test(sourceUrl || "")

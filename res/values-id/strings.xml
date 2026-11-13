@@ -1381,6 +1381,7 @@
     <string name="audio_maintain_original_audio_on_downmix_title">Pertahankan audio asli saat downmix</string>
     <string name="audio_maintain_original_audio_on_downmix_subtitle">Jika dinonaktifkan, normalisasi downmix dapat menurunkan volume keseluruhan.</string>
     <string name="subtitle_dialog_title">Subtitle</string>
+    <string name="subtitle_builtin_read_failed">Subtitle bawaan tidak bisa dibaca.</string>
     <string name="subtitle_no_builtin">Tidak ada subtitle bawaan tersedia</string>
     <string name="subtitle_loading_addon">Memuat subtitle dari addon\u2026</string>
     <string name="subtitle_no_addon">Tidak ada subtitle addon tersedia</string>

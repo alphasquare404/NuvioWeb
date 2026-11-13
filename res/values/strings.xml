@@ -2680,6 +2680,7 @@
     <string name="player_playback_speed">Playback speed</string>
     <string name="player_aspect_fill">Fill</string>
     <string name="subtitle_loading_builtin">Loading subtitle tracks…</string>
+    <string name="subtitle_builtin_read_failed">Could not read built-in subtitles.</string>
     <string name="subtitle_none_forced_only">None (forced only)</string>
     <string name="subtitle_style_outline_color">Outline Color</string>
     <string name="library_message_synced">Library synced</string>

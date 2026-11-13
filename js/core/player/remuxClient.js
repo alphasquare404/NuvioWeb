@@ -1,3 +1,4 @@
+import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { runStartupStep } from "./clientRemux/startupFailure.mjs";
 import { resolveMediaHead } from "./mediaHeadResolver.js";
 /* global __NUVIO_REMUX_ASSET_ID__ */
@@ -24,10 +25,11 @@ export function clientRemuxPlan(
     capabilities = getDeviceCapabilities(),
     baseUrl = globalThis.location?.href || "http://localhost/",
     transcodeEndpoint = TRANSCODE_ENDPOINT,
-    attemptCopy = false
+    attemptCopy = false,
+    clientEnabled = PlayerSettingsStore.get().mediabunnyEnabled !== false
   } = {}
 ) {
-  if (!policy.explicit || policy.mode !== "client") return null;
+  if (!clientEnabled || !policy.explicit || policy.mode !== "client") return null;
   let sourceUrl = String(stream?.url || stream?.externalUrl || "").trim(),
     audioIndex = null;
   try {

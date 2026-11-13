@@ -462,18 +462,29 @@ export const BrowserPlayerPresentationScreen = {
           .filter(Boolean)
           .join(" · "),
         selected: Boolean(option.selected),
+        disabled: Boolean(option.entry?.disabled),
         attributes: `data-proposal-subtitle-language="${playerText(option.languageKey)}" data-proposal-subtitle-index="${option.index}"`,
         classes: "player-dialog-item"
       });
+    const embedded = this.getEmbeddedSubtitleStatus?.();
     const internal = options.filter((o) => o.sourceType === "internal"),
       addons = options.filter((o) => o.sourceType === "addon");
     const group = (label, items) =>
       items.length
         ? `<div class="nv-group">${playerText(label)}</div>${items.map(choice).join("")}`
         : "";
+    const embeddedMessage =
+      !internal.length && embedded?.state === "error"
+        ? t("subtitle_builtin_read_failed", "Could not read built-in subtitles.")
+        : embedded?.state === "opening"
+          ? t("subtitle_loading_builtin", "Loading subtitle tracks…")
+          : "";
+    const embeddedStatus = embeddedMessage
+      ? `<div class="nv-group" role="status">${playerText(embeddedMessage)}</div>`
+      : "";
     dialog.innerHTML =
       playerPanelHead(t("player_caption_subtitle", "Subtitle"), "subtitleDialog") +
-      `<div class="nv-panel-body nv-subtitle-options"><div class="nv-language-filter"><span>${playerText(t("subtitle_tab_language", "Language"))}</span><button type="button" class="nv-choice player-control-btn nv-language-anchor" data-action="proposalSubtitleLanguageToggle" aria-expanded="${Boolean(this.proposalSubtitleLanguagePickerOpen)}"><span class="nv-copy">${playerText(filter === "all" ? t("player_all_languages", "All languages") : languages.find((l) => l.key === filter)?.label)}</span>${playerDesignIcon(this.proposalSubtitleLanguagePickerOpen ? "chevron-up" : "chevron-down")}</button>${this.proposalSubtitleLanguagePickerOpen ? `<div class="nv-language-options" role="group" aria-label="${playerText(t("subtitle_tab_language", "Language"))}">${[{ key: "all", label: t("player_all_languages", "All languages") }, ...languages.filter((l) => l.key !== "__off__")].map((l) => playerChoice({ label: l.label, selected: l.key === filter, attributes: `data-action="proposalSubtitleLanguageFilter" data-proposal-subtitle-filter="${playerText(l.key)}"`, classes: "player-control-btn" })).join("")}</div>` : ""}</div>${playerChoice({ label: t("subtitle_none", "Off"), selected: this.getSelectedSubtitleLanguageKey() === "__off__", attributes: 'data-action="proposalSubtitleOff"', classes: "player-control-btn" })}${group(t("player_subtitles_inside", "Built-in"), internal)}${group(this.offlineDownloadId ? t("player_subtitles_saved", "Saved on device") : t("player_subtitles_addon", "Add-ons"), addons)}${this.subtitleLoading || this.manifestLoading || this.trackDiscoveryInProgress ? `<div class="nv-group">${playerText(t("subtitle_loading_builtin", "Loading subtitle tracks…"))}</div>` : ""}<button type="button" class="nv-choice nv-subtle-action player-control-btn" data-action="proposalSubtitleStyle"><span class="nv-copy">${playerText(t("player_subtitle_appearance_sync", "Appearance & synchronization"))}</span>${playerDesignIcon("chevron-right")}</button></div>`;
+      `<div class="nv-panel-body nv-subtitle-options"><div class="nv-language-filter"><span>${playerText(t("subtitle_tab_language", "Language"))}</span><button type="button" class="nv-choice player-control-btn nv-language-anchor" data-action="proposalSubtitleLanguageToggle" aria-expanded="${Boolean(this.proposalSubtitleLanguagePickerOpen)}"><span class="nv-copy">${playerText(filter === "all" ? t("player_all_languages", "All languages") : languages.find((l) => l.key === filter)?.label)}</span>${playerDesignIcon(this.proposalSubtitleLanguagePickerOpen ? "chevron-up" : "chevron-down")}</button>${this.proposalSubtitleLanguagePickerOpen ? `<div class="nv-language-options" role="group" aria-label="${playerText(t("subtitle_tab_language", "Language"))}">${[{ key: "all", label: t("player_all_languages", "All languages") }, ...languages.filter((l) => l.key !== "__off__")].map((l) => playerChoice({ label: l.label, selected: l.key === filter, attributes: `data-action="proposalSubtitleLanguageFilter" data-proposal-subtitle-filter="${playerText(l.key)}"`, classes: "player-control-btn" })).join("")}</div>` : ""}</div>${playerChoice({ label: t("subtitle_none", "Off"), selected: this.getSelectedSubtitleLanguageKey() === "__off__", attributes: 'data-action="proposalSubtitleOff"', classes: "player-control-btn" })}${group(t("player_subtitles_inside", "Built-in"), internal)}${embeddedStatus}${group(this.offlineDownloadId ? t("player_subtitles_saved", "Saved on device") : t("player_subtitles_addon", "Add-ons"), addons)}${this.subtitleLoading || this.manifestLoading || this.trackDiscoveryInProgress ? `<div class="nv-group">${playerText(t("subtitle_loading_builtin", "Loading subtitle tracks…"))}</div>` : ""}<button type="button" class="nv-choice nv-subtle-action player-control-btn" data-action="proposalSubtitleStyle"><span class="nv-copy">${playerText(t("player_subtitle_appearance_sync", "Appearance & synchronization"))}</span>${playerDesignIcon("chevron-right")}</button></div>`;
     dialog.querySelector(".nv-panel-body").scrollTop = scroll;
     return true;
   },

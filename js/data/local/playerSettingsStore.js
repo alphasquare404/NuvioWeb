@@ -1,3 +1,4 @@
+import { normalizeMediabunnyMode } from "../../core/player/mediabunnySettings.js";
 import {
   filenameStreamDisplayMode,
   normalizeFilenameStreamFilter
@@ -78,6 +79,8 @@ const DEFAULTS = {
   // the movi engine needs WebCodecs and a CORS-readable source, so a profile
   // that never asked for it must keep the built-in player.
   playerEngine: "native",
+  mediabunnyEnabled: true,
+  mediabunnyMode: "process",
   // Apple browser users without a stored preference receive the verified
   // Lenna path; platform-specific consumers keep Android on its own options.
   browserExternalPlayer: "lenna",
@@ -399,6 +402,11 @@ export function normalizePlayerSettings(settings = {}) {
       persistentSettings.externalPlayerProgress ?? DEFAULTS.externalPlayerProgress
     ),
     playerEngine: normalizePlayerEngine(persistentSettings.playerEngine ?? DEFAULTS.playerEngine),
+    mediabunnyEnabled: persistentSettings.mediabunnyEnabled !== false,
+    mediabunnyMode: normalizeMediabunnyMode(
+      persistentSettings.mediabunnyMode,
+      normalizePlayerEngine(persistentSettings.playerEngine)
+    ),
     offlinePlaybackTarget: normalizeOfflinePlaybackTarget(
       persistentSettings.offlinePlaybackTarget ?? DEFAULTS.offlinePlaybackTarget
     ),

@@ -12,23 +12,11 @@ import {
 import { MAX_COMPRESSED_BYTES } from "./bufferBudget.mjs";
 import { boxes, IO_BYTES, MAX_INIT_BYTES } from "./mediaFragments.mjs";
 import { readVideoFragmentTiming, readVideoTrackTiming } from "./fragmentTiming.mjs";
-
-const loadSoftwareAudioDecoder = () =>
-  import("./softwareAudioDecoder.mjs").then(({ registerSoftwareAudioDecoder }) =>
-    registerSoftwareAudioDecoder()
-  );
-const decoderExtensions = {
-  aac: loadSoftwareAudioDecoder,
-  opus: loadSoftwareAudioDecoder,
-  mp3: loadSoftwareAudioDecoder,
-  vorbis: loadSoftwareAudioDecoder,
-  flac: loadSoftwareAudioDecoder,
-  ac3: () => import("@mediabunny/ac3").then(({ registerAc3Decoder }) => registerAc3Decoder()),
-  eac3: () => import("@mediabunny/ac3").then(({ registerAc3Decoder }) => registerAc3Decoder()),
-  dts: () => import("@mediabunny/dts").then(({ registerDtsDecoder }) => registerDtsDecoder()),
-  truehd: () =>
-    import("@mediabunny/truehd").then(({ registerTrueHdDecoder }) => registerTrueHdDecoder())
-};
+import {
+  ensureAudioDecoder,
+  ensureVideoDecoder,
+  hasSoftwareAudioDecoder
+} from "./decoderSupport.mjs";
 
 const videoCodecParameters = {
   avc: "avc1.4d401f",
@@ -141,17 +129,12 @@ export async function transcodeInput({
 
   if (!audioOnly) {
     stats.videoDecoder = "native";
-    if (!(await video.canDecode())) {
-      stats.videoDecoder = "software";
-      if (stats.sourceVideo === "prores") {
-        const { registerProresDecoder } = await import("@mediabunny/prores");
-        registerProresDecoder();
-      } else if (stats.sourceVideo) {
-        const { registerSoftwareVideoDecoder } = await import("./softwareVideoDecoder.mjs");
-        await registerSoftwareVideoDecoder(stats.sourceVideo);
-      }
-      if (!(await video.canDecode())) throw Error("client-transcode-video-decode-unsupported");
-    }
+    if (
+      !(await ensureVideoDecoder(video, () => {
+        stats.videoDecoder = "software";
+      }))
+    )
+      throw Error("client-transcode-video-decode-unsupported");
   }
 
   const format = new Mp4OutputFormat({ fastStart: "fragmented", minimumFragmentDuration: 1 });
@@ -181,10 +164,8 @@ export async function transcodeInput({
   }
   const prepareAudioEncoding = async () => {
     if (!audio) return null;
-    if (!(await audio.canDecode())) {
-      await decoderExtensions[stats.sourceAudio]?.();
-      if (!(await audio.canDecode())) throw Error("client-transcode-audio-decode-unsupported");
-    }
+    if (!(await ensureAudioDecoder(audio)))
+      throw Error("client-transcode-audio-decode-unsupported");
     const selected = await chooseClientAudioEncoding(audio, videoParameter, supportsOutput);
     if (!selected) throw Error("client-transcode-audio-output-unavailable");
     return selected;
@@ -241,7 +222,7 @@ export async function transcodeInput({
           codec,
           channels: await track.getNumberOfChannels(),
           sampleRate: await track.getSampleRate(),
-          supported: Boolean(decoderExtensions[codec] || (await track.canDecode()))
+          supported: Boolean(hasSoftwareAudioDecoder(codec) || (await track.canDecode()))
         };
       } catch {
         return { id: String(track.id), index, label: "Audio " + (index + 1), supported: false };

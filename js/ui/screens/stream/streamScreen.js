@@ -17,8 +17,6 @@ import {
   streamSelectionDeadline,
   reportAutoPlaySelection
 } from "../../../core/streams/streamAutoResolve.js";
-import { loadMoviModule } from "../../../core/player/movi/moviEngine.js";
-import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
 
 import { buildPlayerSubtitle } from "../../../core/util/runtimeLabel.js";
 import { REMUX_ENDPOINT } from "../../../config.js";
@@ -723,24 +721,6 @@ export const StreamScreen = {
     };
   },
 
-  /**
-   * Warm the movi runtime while the user is still choosing a link.
-   *
-   * Deliberately fire-and-forget: if it fails, the player route loads the module
-   * itself and reports the failure where it belongs, rather than this screen
-   * showing an error about a player nobody has opened yet.
-   */
-  prefetchMoviEngine() {
-    let wanted = false;
-    try {
-      wanted = shouldUseMovi(PlayerSettingsStore.get());
-    } catch {
-      return;
-    }
-    if (!wanted) return;
-    void loadMoviModule().catch(() => {});
-  },
-
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("stream");
     ScreenUtils.show(this.container);
@@ -749,11 +729,6 @@ export const StreamScreen = {
     this._labelProbePaused = false;
     this._labelProbePaused = false;
     this._playSelectionGeneration = (this._playSelectionGeneration || 0) + 1;
-    // The movi runtime is ~23 MB (element.js plus its wasm) and is fetched when the
-    // player route opens. Fetching it while the user is still choosing a link moves
-    // that wait somewhere it is not felt: this screen is usually up for several
-    // seconds before a tap, and the download runs in the background.
-    void this.prefetchMoviEngine();
     if (this.hasAutoResolvedChoice(params)) {
       this.autoResolvedPlaybackPending = true;
       this.renderAutoResolvedHandoff(params?.backdrop || "");

@@ -28,7 +28,7 @@ export function createRangeFetcher(sourceUrl, requestHeaders, fetchImpl = fetch,
         options.signal?.aborted
       )
         throw error;
-      const resolved = await resolveSource();
+      const resolved = await resolveSource(options.signal);
       options.signal?.throwIfAborted();
       if (!resolved || resolved === url) throw error;
       return request(resolved, options);
