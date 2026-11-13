@@ -2,6 +2,7 @@ import {
   ALL_FORMATS,
   AudioBufferSink,
   BlobSource,
+  CanvasSink,
   CustomSource,
   Input,
   VideoSampleSink
@@ -14,13 +15,13 @@ const AUDIO_AHEAD = 0.5;
 const START_LEAD = 0.1;
 const BUFFER_TIMEOUT_MS = 15000;
 
-export async function openDecodeSource({ url, headers, signal }) {
+export async function openDecodeSource({ url, headers, signal, resolveSource }) {
   let source;
   if (url.startsWith("blob:")) {
     source = new BlobSource(await (await fetch(url, { signal })).blob());
   } else {
     const stats = {};
-    const fetcher = createRangeFetcher(url, headers);
+    const fetcher = createRangeFetcher(url, headers, fetch, resolveSource);
     await readRange(url, 0, 1, signal, stats, fetcher);
     source = new CustomSource({
       getSize: () => stats.size,
@@ -30,6 +31,27 @@ export async function openDecodeSource({ url, headers, signal }) {
     });
   }
   return new Input({ source, formats: ALL_FORMATS });
+}
+
+export async function openSeekThumbnailSource(options) {
+  const input = await openDecodeSource(options);
+  try {
+    const video = await input.getPrimaryVideoTrack();
+    if (!video || !(await ensureVideoDecoder(video)) || (await video.isLive())) {
+      throw Error("Seek thumbnail decoder unavailable");
+    }
+    const first = await video.getFirstTimestamp();
+    const sink = new CanvasSink(video, { width: 160, height: 90, fit: "contain" });
+    return {
+      async frame(seconds) {
+        return (await sink.getCanvas(first + seconds))?.canvas || null;
+      },
+      dispose: () => input.dispose()
+    };
+  } catch (error) {
+    input.dispose();
+    throw error;
+  }
 }
 
 export async function createDecodePlayback({

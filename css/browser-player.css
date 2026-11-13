@@ -919,6 +919,18 @@
   min-width: 0;
   margin: 0;
   white-space: nowrap;
+  z-index: 2;
+  text-align: center;
+}
+.desktop-browser #player .nv-seek-preview canvas:not([hidden]) {
+  display: block;
+  width: min(160px, 42vw);
+  height: auto;
+  margin: 0 auto 4px;
+  border-radius: 4px;
+}
+.desktop-browser #player .nv-seek-preview canvas[hidden] {
+  display: none;
 }
 .desktop-browser #player #playerUiRoot.player-presentation .nv-portrait-summary {
   display: none;

@@ -12,13 +12,14 @@ function method(signature, deps = {}) {
     ...Object.values(deps)
   );
 }
-test("mouse hover previews time without seeking, touch hides the preview", () => {
+test("mouse hover and active touch preview time without seeking", () => {
   const hidden = new Set(["hidden"]);
   const preview = {
-    textContent: "",
+    querySelector: (selector) => (selector === ".player-progress-hover-time" ? time : null),
     style: {},
     classList: { toggle: (c, on) => (on ? hidden.add(c) : hidden.delete(c)) }
   };
+  const time = { textContent: "" };
   const shell = {
     getBoundingClientRect: () => ({ left: 10, width: 200 }),
     querySelector: () => preview
@@ -28,16 +29,83 @@ test("mouse hover previews time without seeking, touch hides the preview", () =>
     container: { querySelector: () => preview, contains: () => true },
     getPlaybackDurationSeconds: () => 120
   };
+  Object.assign(
+    ctx,
+    method("getProgressPointerPosition(event, shell)", {
+      clamp: (x, a, b) => Math.max(a, Math.min(b, x))
+    })
+  );
   const run = method("updateProgressHover(event)", {
     clamp: (x, a, b) => Math.max(a, Math.min(b, x)),
     formatTime: (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`
   }).updateProgressHover;
   run.call(ctx, { pointerType: "mouse", clientX: 110, target });
-  assert.equal(preview.textContent, "1:00");
+  assert.equal(time.textContent, "1:00");
   assert.equal(hidden.has("hidden"), false);
   run.call(ctx, { pointerType: "touch", clientX: 110, target });
   assert.equal(hidden.has("hidden"), true);
+  ctx.desktopProgressPointer = { pointerId: 3, touch: true, shell };
+  run.call(ctx, { pointerId: 3, pointerType: "touch", clientX: 160, target });
+  assert.equal(time.textContent, "1:30");
+  assert.equal(ctx.touchSeekPreviewSeconds, 90);
+  assert.equal(hidden.has("hidden"), false);
+  run.call(ctx, null);
+  assert.equal(ctx.touchSeekPreviewSeconds, null);
+  assert.equal(hidden.has("hidden"), true);
 });
+test("touch drag seeks once on release while mouse drag seeks during movement", () => {
+  const handlers = new Map();
+  const seeks = [];
+  class Shell {
+    closest() {
+      return this;
+    }
+  }
+  const shell = new Shell();
+  const noCleanup = () => {};
+  const ctx = {
+    container: {
+      contains: () => true,
+      addEventListener: (type, handler) => handlers.set(type, handler)
+    },
+    getDesktopPlaybackVideo: () => null,
+    updateProgressHover: () => {},
+    updateUiTick: () => {},
+    revealDesktopPlayerControls: () => {},
+    clearControlsAutoHide: () => {},
+    resetControlsAutoHide: () => {},
+    seekProgressFromPointer: ({ clientX }) => seeks.push(clientX)
+  };
+  const bind = method("bindDesktopPlayerPointerBridge()", {
+    Environment: { isBrowser: () => true },
+    Element: Shell,
+    HTMLElement: Shell,
+    document: { addEventListener: () => {} },
+    window: { addEventListener: () => {} },
+    bindBrowserPlayerGestures: noCleanup,
+    bindHorizontalRailDragScroll: noCleanup,
+    setTimeout: () => 1,
+    clearTimeout: () => {}
+  }).bindDesktopPlayerPointerBridge;
+  bind.call(ctx);
+  const send = (type, pointerType, clientX) =>
+    handlers.get(type)({ pointerType, clientX, button: 0, pointerId: 1, target: shell });
+  send("pointerdown", "touch", 30);
+  send("pointermove", "touch", 60);
+  assert.deepEqual(seeks, []);
+  send("pointerup", "touch", 80);
+  assert.deepEqual(seeks, [80]);
+  send("pointerdown", "touch", 90);
+  send("pointermove", "touch", 100);
+  send("pointercancel", "touch", 110);
+  assert.deepEqual(seeks, [80]);
+  send("pointerdown", "mouse", 30);
+  send("pointermove", "mouse", 60);
+  assert.deepEqual(seeks, [80, 60]);
+  send("pointerup", "mouse", 70);
+  assert.deepEqual(seeks, [80, 60, 70]);
+});
+
 test("visible controls protect misses below the timeline without blocking taps above it", () => {
   const ctx = {
     container: { contains: () => true },

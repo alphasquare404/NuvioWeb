@@ -28,6 +28,7 @@ import {
   prepareUnverifiedRemux
 } from "../../../core/player/unverifiedPlayback.js";
 import { clientRemuxPlan, clientRemuxAssets } from "../../../core/player/remuxClient.js";
+import { createSeekThumbnails } from "../../../core/player/seekThumbnails.js";
 import {
   relayTrackContext,
   relayAudioUrl,
@@ -5469,21 +5470,25 @@ export const PlayerScreen = {
     }
 
     this.boundDesktopPlayerPointerMoveHandler = (event) => {
-      this.updateProgressHover(event);
       const activePointer = this.desktopProgressPointer;
       if (activePointer && Number(event.pointerId) === Number(activePointer.pointerId)) {
+        this.updateProgressHover(event);
         const deltaX = playerLocalPoint(event, this.browserOrientation).x - activePointer.startX;
         const deltaY = playerLocalPoint(event, this.browserOrientation).y - activePointer.startY;
         if (!activePointer.dragging && Math.hypot(deltaX, deltaY) > 2) {
           activePointer.dragging = true;
         }
-        if (activePointer.dragging) {
+        if (activePointer.touch) {
+          event.preventDefault?.();
+          this.updateUiTick();
+        } else if (activePointer.dragging) {
           event.preventDefault?.();
           this.seekProgressFromPointer(event, activePointer.shell);
         }
         return;
       }
 
+      this.updateProgressHover(event);
       this.revealDesktopPlayerControls();
     };
 
@@ -5504,6 +5509,7 @@ export const PlayerScreen = {
         startX: playerLocalPoint(event, this.browserOrientation).x,
         startY: playerLocalPoint(event, this.browserOrientation).y,
         shell,
+        touch: event.pointerType === "touch" || event.pointerType === "pen",
         dragging: false
       };
       try {
@@ -5512,6 +5518,11 @@ export const PlayerScreen = {
         // Pointer capture is best effort; a click still follows the existing path.
       }
       this.revealDesktopPlayerControls();
+      if (this.desktopProgressPointer.touch) {
+        this.clearControlsAutoHide();
+        this.updateProgressHover(event);
+        this.updateUiTick();
+      }
     };
 
     const finishProgressPointer = (event, { cancelled = false } = {}) => {
@@ -5519,7 +5530,7 @@ export const PlayerScreen = {
       if (!activePointer || Number(event.pointerId) !== Number(activePointer.pointerId)) {
         return;
       }
-      if (activePointer.dragging && !cancelled) {
+      if ((activePointer.touch || activePointer.dragging) && !cancelled) {
         event.preventDefault?.();
         this.seekProgressFromPointer(event, activePointer.shell);
         // Only the native click emitted by this completed drag is ignored. A
@@ -5539,6 +5550,11 @@ export const PlayerScreen = {
         // Capture may already have been released by the browser.
       }
       this.desktopProgressPointer = null;
+      if (activePointer.touch || cancelled) {
+        this.updateProgressHover(null);
+        this.updateUiTick();
+        this.resetControlsAutoHide();
+      }
       this.revealDesktopPlayerControls();
     };
 
@@ -5705,6 +5721,7 @@ export const PlayerScreen = {
   },
 
   unbindDesktopPlayerPointerBridge() {
+    this.disposeSeekThumbnails();
     this.playerRailDragCleanup?.();
     this.playerRailDragCleanup = null;
     if (!this.container || !this.boundDesktopPlayerClickHandler) {
@@ -7264,6 +7281,7 @@ export const PlayerScreen = {
     { mountToken = null, sourceCandidate = null } = {}
   ) {
     const playbackUrl = String(url || "").trim();
+    this.disposeSeekThumbnails();
     if (this.params?.playbackPlan?.sourceUrl === playbackUrl)
       context = { ...context, playbackPlan: this.params.playbackPlan };
     if (!playbackUrl) {
@@ -11026,6 +11044,7 @@ export const PlayerScreen = {
   setControlsVisible(visible, { focus = false } = {}) {
     this.controlsVisible = Boolean(visible);
     if (Environment.isBrowser()) {
+      if (!this.controlsVisible) this.updateProgressHover(null);
       this.container?.classList.toggle(
         "desktop-player-cursor-hidden",
         !this.controlsVisible && !this.paused
@@ -11486,6 +11505,7 @@ export const PlayerScreen = {
   },
 
   getDisplayedPlaybackSeconds(current = this.getPlaybackCurrentSeconds()) {
+    if (Number.isFinite(this.touchSeekPreviewSeconds)) return this.touchSeekPreviewSeconds;
     if (
       this.controlsVisible &&
       this.controlFocusZone === "progress" &&
@@ -19835,41 +19855,85 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   updateProgressHover(event) {
     const preview = this.container?.querySelector("#playerProgressHover");
     if (!preview) return;
-    const shell = event?.target?.closest?.(".player-progress-shell");
-    const duration = this.getPlaybackDurationSeconds();
+    const pointer = this.desktopProgressPointer;
+    const captured = event && pointer?.pointerId === event.pointerId ? pointer : null;
+    const shell = captured?.shell || event?.target?.closest?.(".player-progress-shell");
+    const hover = event && (!event.pointerType || event.pointerType === "mouse");
+    const point =
+      shell && this.container.contains(shell) && (hover || captured?.touch)
+        ? this.getProgressPointerPosition(event, shell)
+        : null;
+    const canvas = preview.querySelector("canvas");
+    this.touchSeekPreviewSeconds = captured?.touch ? (point?.seconds ?? null) : null;
+    preview.classList.toggle("hidden", !point);
+    if (!point) {
+      this.seekThumbnails?.clear();
+      if (canvas) canvas.hidden = true;
+      return;
+    }
+    preview.querySelector(".player-progress-hover-time").textContent = formatTime(point.seconds);
+    const inset = Math.min(86, point.width / 2);
+    preview.style.left = clamp(point.x, inset, point.width - inset) + "px";
+    if (!canvas) return;
+
+    const url = PlayerController.currentPlaybackUrl;
+    const mediaType = PlayerController.currentPlaybackMediaSourceType;
+    if (
+      !url ||
+      !/^(https?:|blob:)/i.test(url) ||
+      this.isCurrentSourceAdaptiveManifest() ||
+      PlayerController.isLikelyHlsMimeType(mediaType) ||
+      PlayerController.isLikelyDashMimeType(mediaType)
+    ) {
+      canvas.hidden = true;
+      return;
+    }
+    if (this.seekThumbnailUrl !== url) {
+      this.seekThumbnails?.dispose();
+      canvas.hidden = true;
+      this.seekThumbnailUrl = url;
+      this.seekThumbnails = createSeekThumbnails(url, PlayerController.currentPlaybackHeaders);
+    }
+    if (Math.abs(Number(canvas.dataset.time ?? Infinity) - point.seconds) > 10) {
+      canvas.hidden = true;
+    }
+    this.seekThumbnails.request(point.seconds, (frame, time) => {
+      if (!preview.isConnected || preview.classList.contains("hidden")) return;
+      if (!canvas.hidden && canvas.dataset.time === String(time)) return;
+      const context = canvas.getContext("2d");
+      canvas.hidden = !frame || !context;
+      if (!canvas.hidden) {
+        context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+        canvas.dataset.time = String(time);
+      }
+    });
+  },
+
+  disposeSeekThumbnails() {
+    this.updateProgressHover(null);
+    this.touchSeekPreviewSeconds = null;
+    this.seekThumbnails?.dispose();
+    this.seekThumbnails = null;
+    this.seekThumbnailUrl = null;
+  },
+
+  getProgressPointerPosition(event, shell) {
     const rect = playerLocalRect(shell, this.browserOrientation);
-    const visible = Boolean(
-      event &&
-      (!event.pointerType || event.pointerType === "mouse") &&
-      shell &&
-      this.container.contains(shell) &&
-      rect?.width > 0 &&
-      Number.isFinite(duration) &&
-      duration > 0
-    );
-    preview.classList.toggle("hidden", !visible);
-    if (!visible) return;
-    const ratio = clamp(
-      (playerLocalPoint(event, this.browserOrientation).x - rect.left) / rect.width,
-      0,
-      1
-    );
-    preview.textContent = formatTime(duration * ratio);
-    preview.style.left = clamp(ratio * rect.width, 28, Math.max(28, rect.width - 28)) + "px";
+    const duration = this.getPlaybackDurationSeconds();
+    if (!rect || rect.width <= 0 || !Number.isFinite(duration) || duration <= 0) {
+      return null;
+    }
+    const x = clamp(playerLocalPoint(event, this.browserOrientation).x - rect.left, 0, rect.width);
+    return { x, width: rect.width, seconds: (x / rect.width) * duration };
   },
 
   seekProgressFromPointer(event, target) {
     const shell = target?.closest?.(".player-progress-shell") || this.uiRefs?.progressShell;
-    const rect = playerLocalRect(shell, this.browserOrientation);
-    const duration = this.getPlaybackDurationSeconds();
-    if (!rect || rect.width <= 0 || !Number.isFinite(duration) || duration <= 0) {
-      return false;
-    }
-    const x = playerLocalPoint(event, this.browserOrientation).x;
-    const ratio = clamp((x - rect.left) / rect.width, 0, 1);
+    const point = this.getProgressPointerPosition(event, shell);
+    if (!point) return false;
     this.seekPreviewSeconds = null;
     this.seekRepeatCount = 0;
-    this.seekPlaybackSeconds(duration * ratio);
+    this.seekPlaybackSeconds(point.seconds);
     this.updateUiTick();
     this.resetControlsAutoHide();
     return true;
