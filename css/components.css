@@ -1758,6 +1758,37 @@ button:focus-visible {
 }
 
 /* Title — titleLarge: 20sp=40px, Medium(500) */
+.nuvio-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nuvio-dialog-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.nuvio-dialog-close:hover,
+.nuvio-dialog-close:focus-visible {
+  background: rgb(255 255 255 / 0.14);
+}
+
+.nuvio-dialog-close svg {
+  width: 20px;
+  height: 20px;
+}
+
 .nuvio-dialog-title {
   font-size: 40px;
   line-height: 1.2;

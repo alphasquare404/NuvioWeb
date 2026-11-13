@@ -2526,26 +2526,6 @@ html.desktop-browser {
   margin-bottom: 14px;
 }
 
-.desktop-browser #detail .detail-offline-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid rgba(118, 224, 164, 0.38);
-  border-radius: 999px;
-  background: rgb(20 72 45 / 0.72);
-  color: #d8ffe7;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
-  pointer-events: none;
-}
-
-.desktop-browser #detail .detail-offline-indicator .material-icons {
-  font-size: 17px;
-}
-
 .desktop-browser #detail .series-primary-btn {
   box-sizing: border-box;
   width: auto;
@@ -2608,6 +2588,11 @@ html.is-hero-stream-hold * {
 .desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"]:focus-visible,
 .desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"].focused {
   color: var(--detail-text-primary);
+}
+
+.desktop-browser #detail .series-circle-btn[data-action="downloadMovie"].is-downloaded {
+  border-color: rgb(118 224 164 / 0.38);
+  color: #d8ffe7;
 }
 
 /* The watched button keeps its dark action tile when it is both selected and
@@ -5936,13 +5921,35 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser .nuvio-dialog-panel.season-download-dialog {
-  width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
-  max-width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
-  max-height: min(74dvh, 600px);
-  padding: 20px;
-  gap: 10px;
-  border-radius: 16px;
+  width: min(460px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+  max-width: min(460px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+  max-height: min(82dvh, 580px);
+  padding: 16px;
+  gap: 8px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 20px;
+  background: #1a1d23;
   overflow: hidden;
+}
+
+.desktop-browser :is(.season-download-dialog, .stream-download-options-dialog) .nuvio-dialog-header {
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.desktop-browser :is(.season-download-dialog, .stream-download-options-dialog) .nuvio-dialog-header .nuvio-dialog-title {
+  margin: 0;
+  font-size: 19px;
+}
+
+.desktop-browser :is(.season-download-dialog, .stream-download-options-dialog) .nuvio-dialog-close {
+  margin: -5px -5px -5px 0;
+  background: rgb(255 255 255 / 0.065);
+  color: var(--detail-text-primary, #fff);
+}
+
+.desktop-browser :is(.season-download-dialog, .stream-download-options-dialog) .nuvio-dialog-close:is(:hover, :focus-visible) {
+  background: rgb(255 255 255 / 0.16);
 }
 
 .desktop-browser .season-download-dialog .nuvio-dialog-title {
@@ -5968,7 +5975,7 @@ html.is-hero-stream-hold * {
 
 .desktop-browser .season-download-summary,
 .desktop-browser .season-download-progress {
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.4;
@@ -6029,7 +6036,15 @@ html.is-hero-stream-hold * {
 
 .desktop-browser .season-download-dialog .nuvio-dialog-actions {
   flex: 0 0 auto;
-  gap: 7px;
+  gap: 5px;
+}
+
+.desktop-browser .season-download-dialog .season-download-mode-actions {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
 }
 
 .desktop-browser .season-download-dialog .season-download-source-picker-actions {
@@ -6061,6 +6076,22 @@ html.is-hero-stream-hold * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.desktop-browser .season-download-dialog .season-download-mode-action {
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.desktop-browser .season-download-dialog .season-download-mode-action .nuvio-dialog-button-label {
+  overflow: visible;
+  white-space: normal;
+}
+
+.desktop-browser .season-download-dialog .season-download-manual-action {
+  margin-top: 4px;
+  border-color: rgb(var(--secondary-color-rgb) / 0.48);
+  background: rgb(var(--secondary-color-rgb) / 0.12);
 }
 
 .desktop-browser .season-download-dialog .nuvio-dialog-button.focused,
@@ -6107,8 +6138,8 @@ html.is-hero-stream-hold * {
   display: grid;
   min-width: 0;
   align-content: center;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 3px;
+  padding: 8px 10px;
 }
 
 .desktop-browser .season-download-source-card .stream-route-card-heading {
@@ -6126,7 +6157,7 @@ html.is-hero-stream-hold * {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin: 4px 0;
+  margin: 2px 0;
   min-width: 0;
 }
 
@@ -6247,9 +6278,7 @@ html.is-hero-stream-hold * {
   }
 
   .desktop-browser .nuvio-dialog-panel.season-download-dialog {
-    max-height: min(78dvh, 560px);
-    padding: 16px;
-    gap: 9px;
+    padding: 14px;
   }
 
   .desktop-browser .season-download-dialog .nuvio-dialog-title {

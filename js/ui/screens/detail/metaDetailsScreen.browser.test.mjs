@@ -8,6 +8,91 @@ async function metaDetailsScreenSource() {
   return readFile(metaDetailsScreenUrl, "utf8");
 }
 
+test("movie download opens a source and subtitle dialog from Detail", async () => {
+  const source = await metaDetailsScreenSource();
+  const method = source.match(/async openMovieDownloadDialog\([\s\S]*?\n {2}\},/)?.[0];
+  const picker = source.match(/  createDownloadSourcePicker\([\s\S]*?\n {2}\},/)?.[0];
+  assert.ok(method);
+  assert.ok(picker);
+  const stream = { id: "downloadable", addonName: "Addon" };
+  let finishDiscovery;
+  const discovery = new Promise((resolve) => {
+    finishDiscovery = resolve;
+  });
+  const services = {
+    Platform: { isBrowser: () => true },
+    isBrowserOfflineDownloadSupported: () => true,
+    resolveMovieStreamIdentity: () => ({ itemId: "movie", videoId: "video" }),
+    resolvePlayableDetailType: (type) => type,
+    resolveMetaImdbId: () => "tt1",
+    resolveMetaTmdbId: () => "1",
+    parseEpisodeRuntimeMinutes: () => 100,
+    t: (_key, _params, fallback) => fallback,
+    createOfflineDisplaySnapshot: () => ({}),
+    listOfflineDownloads: async () => [],
+    createOfflineMediaId: () => "movie",
+    createOfflineDownloadId: ({ stream }) => stream.id,
+    streamRepository: {
+      async getStreamsFromAllAddons(type, id, options) {
+        assert.equal(type, "movie");
+        assert.equal(id, "video");
+        assert.equal(options.itemId, "movie");
+        options.onChunk([stream]);
+        return discovery;
+      }
+    },
+    filterFilenameStreams: (streams) => streams,
+    flattenSeasonDownloadStreams: (result) => result,
+    PlayerSettingsStore: { get: () => ({}) },
+    canQueueBrowserOfflineDownload: ({ stream }) => stream.id === "downloadable",
+    normalizeSourceForDisplay: ({ id }) => ({ accessibleLabel: id })
+  };
+  const methods = new Function(...Object.keys(services), "return ({" + method + picker + "})")(
+    ...Object.values(services)
+  );
+  const detail = {
+    meta: { name: "Movie", type: "movie" },
+    ...methods,
+    getHeroOfflineDownloadId: () => "",
+    showSeasonDownloadDialog(options) {
+      this.seasonDownloadDialog = {
+        ...options,
+        buttons: options.buttons || [],
+        appendButtons(buttons) {
+          this.buttons.push(...buttons);
+        },
+        setSubtitle(subtitle) {
+          this.subtitle = subtitle;
+        }
+      };
+    },
+    closeSeasonDownloadDialog() {
+      this.seasonDownloadDialog = null;
+    },
+    openOfflineDownloadOptions(selected, context, callbacks) {
+      assert.equal(selected, stream);
+      assert.equal(context.mediaId, "movie");
+      callbacks.onQueued({ status: "queued" });
+    }
+  };
+  await detail.openMovieDownloadDialog();
+  assert.ok(detail.seasonDownloadDialog.buttons.some(({ label }) => label === "Choose Source"));
+  assert.ok(detail.seasonDownloadDialog.buttons.some(({ label }) => label === "Automatic"));
+  const pending = detail.openMovieDownloadDialog({ chooseSource: true });
+  assert.deepEqual(
+    detail.seasonDownloadDialog.buttons.map(({ label }) => label),
+    ["downloadable"]
+  );
+  finishDiscovery([stream, { id: "unsupported" }]);
+  await pending;
+  assert.deepEqual(
+    detail.seasonDownloadDialog.buttons.map(({ label }) => label),
+    ["downloadable"]
+  );
+  detail.seasonDownloadDialog.buttons[0].onAction();
+  assert.equal(detail.seasonDownloadDialog.subtitle, "Download queued.");
+});
+
 test("choosing a season redraws only what the season changes", async () => {
   // A full render restored the scroll from a value captured elsewhere -- zero --
   // so the page jumped to the top, and rebuilding the dropdown under the finger

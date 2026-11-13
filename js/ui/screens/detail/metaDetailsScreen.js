@@ -4,6 +4,7 @@ import {
 } from "../../../core/streams/streamReusePreference.js";
 import { autoPlayCandidates } from "../../../core/streams/streamAutoPlaySelector.js";
 import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioContext.js";
+import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { nextEpisodeSelectionOptions } from "../../../core/streams/playerStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
@@ -115,6 +116,7 @@ import { renderRouteHandoffShell } from "../../components/routeHandoffShell.js";
 import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
 import {
   createOfflineMediaId,
+  createOfflineDownloadId,
   canQueueBrowserOfflineDownload,
   createOfflineSubtitleFingerprint,
   getOfflineSubtitleIdentityParts,
@@ -123,6 +125,7 @@ import {
   isBrowserOfflineDownloadSupported,
   getBrowserOfflineFile,
   enrichBrowserOfflineDownloadDisplay,
+  deleteBrowserOfflineDownload,
   getOfflineDownload,
   listOfflineDownloads,
   listOfflineSubtitles,
@@ -151,7 +154,6 @@ import {
 import { enqueueBrowserOfflineDownload } from "../../../core/offline/browserOfflineDownloadQueue.js";
 import {
   enqueueSeasonDownloadSelections,
-  firstEligibleSeasonDownloadStream,
   flattenSeasonDownloadStreams,
   getMissingSeasonEpisodes,
   prepareAutomaticSeasonDownloads
@@ -1602,6 +1604,8 @@ function buildDetailBackdropStyleAttribute(backdrop, portraitBackdrop) {
 }
 
 export const MetaDetailsScreen = {
+  ...BrowserOfflineDownloadOptions,
+
   getRouteStateKey(params = {}) {
     const itemId = String(params?.itemId || "").trim();
     if (!itemId) {
@@ -4045,6 +4049,7 @@ export const MetaDetailsScreen = {
   showOfflineSubtitleError(message) {
     this.showSeasonDownloadDialog({
       title: t("offline.sendSubtitle", {}, "Send subtitle to another app"),
+      closeLabel: "",
       subtitle: message,
       buttons: [
         { label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }
@@ -4144,42 +4149,33 @@ export const MetaDetailsScreen = {
     }
     const requestToken = (this.offlineDownloadStatusRefreshToken || 0) + 1;
     this.offlineDownloadStatusRefreshToken = requestToken;
-    const downloads = await listOfflineDownloads().catch(() => []);
-    if (requestToken !== this.offlineDownloadStatusRefreshToken || !this.container) {
+    const downloads = await listOfflineDownloads().catch(() => null);
+    if (!downloads || requestToken !== this.offlineDownloadStatusRefreshToken || !this.container) {
       return;
     }
 
-    const completedDownloads = (downloads || []).filter(
-      (download) => download?.status === "completed"
-    );
+    const completedDownloads = downloads.filter((download) => download?.status === "completed");
     const movieMediaId = this.getOfflineMovieMediaId();
-    const nextMovieDownloaded = Boolean(
-      this.offlineMovieDownload ||
-      (movieMediaId &&
-        completedDownloads.some(
-          (download) =>
-            download?.contentType === "movie" &&
-            String(download?.mediaIdentity || createOfflineMediaId(download)).trim() ===
-              movieMediaId
-        ))
-    );
+    const verifiedMovieId = this.offlineMovieDownload?.downloadId;
+    const verifiedMovie = verifiedMovieId
+      ? completedDownloads.find((download) => download.downloadId === verifiedMovieId)
+      : null;
+    const completedMovie =
+      verifiedMovie ||
+      completedDownloads.find(
+        (download) =>
+          download.contentType === "movie" &&
+          movieMediaId &&
+          String(download.mediaIdentity || createOfflineMediaId(download)).trim() === movieMediaId
+      );
+    const nextMovieDownloaded = Boolean(completedMovie);
     const seriesId = this.getOfflineSeriesId();
     const nextEpisodeMediaIds = new Set();
     // An episode card only carries a download id when the offline list has been
     // merged into it, which happens when remote data is missing. Keeping the
     // mapping here means a downloaded episode can be acted on either way.
     const nextDownloadIdByEpisodeMedia = new Map();
-    const nextMovieDownloadId = String(
-      this.offlineMovieDownload?.downloadId ||
-        completedDownloads.find(
-          (download) =>
-            download?.contentType === "movie" &&
-            movieMediaId &&
-            String(download?.mediaIdentity || createOfflineMediaId(download)).trim() ===
-              movieMediaId
-        )?.downloadId ||
-        ""
-    );
+    const nextMovieDownloadId = String(completedMovie?.downloadId || "");
     if (seriesId) {
       completedDownloads.forEach((download) => {
         if (
@@ -4224,9 +4220,14 @@ export const MetaDetailsScreen = {
     // even when nothing on screen needs redrawing.
     this.offlineDownloadIdByEpisodeMedia = nextDownloadIdByEpisodeMedia;
     this.offlineMovieDownloadId = nextMovieDownloadId;
+    const verifiedMovieRemoved = Boolean(verifiedMovieId && !verifiedMovie);
+    if (verifiedMovieRemoved) {
+      this.offlineMovieDownload = null;
+    }
     if (
       !episodeStatusChanged &&
       !subtitleStatusChanged &&
+      !verifiedMovieRemoved &&
       nextMovieDownloaded === this.offlineMovieDownloaded
     ) {
       return;
@@ -4586,11 +4587,14 @@ export const MetaDetailsScreen = {
           </button>
         `
         : "";
-    const isMovie = !isSeriesDetailMeta(meta, this.episodes);
-    const downloadedIndicator =
-      Platform.isBrowser() && isMovie && this.offlineMovieDownloaded
-        ? `<span class="detail-offline-indicator" role="status"><span class="material-icons" aria-hidden="true">download</span>${escapeHtml(t("offline.downloaded", {}, "Downloaded"))}</span>`
-        : "";
+    const showMovieDownload =
+      Platform.isBrowser() &&
+      resolvePlayableDetailType(this.params?.itemType || meta?.type, meta) === "movie" &&
+      !isSeriesDetailMeta(meta, this.episodes) &&
+      isBrowserOfflineDownloadSupported();
+    const downloadLabel = this.offlineMovieDownloaded
+      ? t("detail_manage_download", {}, "Downloaded · Manage download")
+      : t("downloads_download", {}, "Download");
     // Under a finger the artwork is portrait and the copy is the full width, so
     // everything but the title and the buttons would sit on top of the picture.
     // It moves below the artwork instead. A mouse keeps the cinema framing, and
@@ -4629,10 +4633,16 @@ export const MetaDetailsScreen = {
             <button class="series-circle-btn focusable${this.isSavedInLibrary ? " is-library-selected" : ""}" data-action="toggleLibrary">
               ${renderLibraryGlyph(this.isSavedInLibrary)}
             </button>
+            ${
+              showMovieDownload
+                ? `<button type="button" class="series-circle-btn focusable${this.offlineMovieDownloaded ? " is-downloaded" : ""}" data-action="downloadMovie" title="${escapeAttribute(downloadLabel)}" aria-label="${escapeAttribute(downloadLabel)}">
+              ${this.offlineMovieDownloaded ? renderWatchedBadgeGlyph("series-btn-svg") : '<svg class="series-btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'}
+            </button>`
+                : ""
+            }
             ${showWatchedButton ? `<button class="series-circle-btn focusable${this.isMarkedWatched ? " is-selected" : ""}" data-action="toggleWatched" aria-label="${escapeAttribute(this.isMarkedWatched ? t("common.markUnwatched", {}, "Mark Unwatched") : t("common.markWatched", {}, "Mark Watched"))}">${renderWatchedGlyph(this.isMarkedWatched)}</button>` : ""}
             ${trailerButton}
             ${this.renderHeroOfflineSubtitleButton()}
-            ${downloadedIndicator}
           </div>
           ${heroMetaBelowArtwork ? "" : heroMeta}
         </div>
@@ -5473,6 +5483,307 @@ export const MetaDetailsScreen = {
     });
   },
 
+  async openMovieDownloadDialog({ chooseSource = false, automaticSubtitleMode = "" } = {}) {
+    if (!Platform.isBrowser() || !isBrowserOfflineDownloadSupported()) return;
+    const meta = this.meta || {};
+    const { itemId, videoId } = resolveMovieStreamIdentity(meta, this.params);
+    if (!videoId || resolvePlayableDetailType(this.params?.itemType || meta.type, meta) !== "movie")
+      return;
+
+    const title = t("downloads_download", {}, "Download");
+    const movieTitle = meta.name || this.params?.fallbackTitle || itemId;
+    const showMessage = (message) => this.showSeasonDownloadDialog({ title, subtitle: message });
+    const findSources = () => void this.openMovieDownloadDialog({ chooseSource: true });
+    const showQueued = (queued) =>
+      showMessage(
+        queued.status === "existing"
+          ? t("detail_download_existing", {}, "Already in Downloads.")
+          : t("detail_download_queued", {}, "Download queued.")
+      );
+    const showQueueError = () =>
+      showMessage(t("detail_download_failed", {}, "Could not download this source."));
+    const offline = globalThis.navigator?.onLine === false;
+    const context = {
+      contentType: "movie",
+      itemType: "movie",
+      itemId,
+      mediaId: itemId,
+      videoId,
+      imdbId: resolveMetaImdbId(meta, this.params),
+      tmdbId: resolveMetaTmdbId(meta, this.params),
+      title: movieTitle,
+      year: meta.releaseInfo || meta.year || "",
+      poster: meta.poster || "",
+      backdrop: meta.background || meta.landscapePoster || meta.poster || "",
+      description: meta.description || "",
+      genres: meta.genres || [],
+      runtimeMinutes: parseEpisodeRuntimeMinutes(meta.runtimeMinutes || meta.runtime) || 0,
+      displaySnapshot: createOfflineDisplaySnapshot(meta)
+    };
+
+    if (!chooseSource) {
+      this.showSeasonDownloadDialog({ title, subtitle: movieTitle });
+      const dialog = this.seasonDownloadDialog;
+      let downloads;
+      try {
+        downloads = await listOfflineDownloads();
+      } catch (_) {
+        if (dialog === this.seasonDownloadDialog)
+          showMessage(t("detail_download_unavailable", {}, "Downloads are unavailable."));
+        return;
+      }
+      if (dialog !== this.seasonDownloadDialog) return;
+      const verifiedId = this.getHeroOfflineDownloadId();
+      const mediaIdentity = createOfflineMediaId(context);
+      const copies = downloads.filter(
+        (entry) =>
+          entry.status === "completed" &&
+          ((verifiedId && entry.downloadId === verifiedId) ||
+            (mediaIdentity &&
+              (entry.mediaIdentity || createOfflineMediaId(entry)) === mediaIdentity))
+      );
+      const automaticOptions = [
+        ["none", t("detail_download_automatic", {}, "Automatic")],
+        [
+          "preferred",
+          t("detail_download_automatic_preferred", {}, "Automatic + Preferred Subtitle")
+        ],
+        ["all", t("detail_download_automatic_all", {}, "Automatic + All Subtitles")]
+      ];
+      this.showSeasonDownloadDialog({
+        title,
+        actionsClassName: copies.length ? "" : "season-download-mode-actions",
+        subtitle: copies.length
+          ? t("detail_manage_download", {}, "Downloaded · Manage download")
+          : offline
+            ? t("detail_download_offline", {}, "Sources unavailable while offline.")
+            : movieTitle,
+        buttons: [
+          ...copies.map((copy) => ({
+            label: copy.quality || copy.filename || copy.title || movieTitle,
+            onAction: () => this.showMovieDownloadCopy(copy)
+          })),
+          ...(!offline
+            ? [
+                ...(!copies.length
+                  ? automaticOptions.map(([mode, label]) => ({
+                      label,
+                      className: "season-download-mode-action",
+                      onAction: () =>
+                        void this.openMovieDownloadDialog({
+                          chooseSource: true,
+                          automaticSubtitleMode: mode
+                        })
+                    }))
+                  : []),
+                {
+                  label: t("detail_download_choose_source", {}, "Choose Source"),
+                  className: "season-download-mode-action season-download-manual-action",
+                  onAction: findSources
+                }
+              ]
+            : [])
+        ]
+      });
+      return;
+    }
+
+    if (offline) {
+      showMessage(t("detail_download_offline", {}, "Sources unavailable while offline."));
+      return;
+    }
+    this.showSeasonDownloadDialog({
+      title,
+      actionsClassName: automaticSubtitleMode ? "" : "season-download-source-picker-actions",
+      subtitle: t("detail_download_finding_sources", {}, "Finding sources…")
+    });
+    const dialog = this.seasonDownloadDialog;
+    const buildContext = (stream) => ({
+      ...context,
+      sourceName: stream.addonName || "",
+      filename:
+        stream.behaviorHints?.filename || stream.raw?.behaviorHints?.filename || stream.title || "",
+      mimeType: stream.mimeType || stream.raw?.mimeType || "",
+      stream
+    });
+    const onChoose = (source) => {
+      this.closeSeasonDownloadDialog();
+      void this.openOfflineDownloadOptions(source.stream, source, {
+        closeLabel: t("common.close", {}, "Close"),
+        onBack: findSources,
+        onQueued: showQueued,
+        onError: showQueueError
+      });
+    };
+    const picker = automaticSubtitleMode
+      ? null
+      : this.createDownloadSourcePicker(dialog, movieTitle, buildContext, onChoose);
+    let result;
+    try {
+      result = await streamRepository.getStreamsFromAllAddons("movie", videoId, {
+        itemId,
+        imdbId: context.imdbId,
+        tmdbId: context.tmdbId,
+        onChunk: picker?.add
+      });
+    } catch (_) {}
+    if (dialog !== this.seasonDownloadDialog) return;
+    if (picker) {
+      picker.finish(result);
+      return;
+    }
+    const streams = filterFilenameStreams(
+      flattenSeasonDownloadStreams(result || {}),
+      PlayerSettingsStore.get()
+    );
+    const sources = streams.map(buildContext).filter(canQueueBrowserOfflineDownload);
+
+    if (!sources.length) {
+      showMessage(t("detail_download_no_sources", {}, "No downloadable sources available."));
+      return;
+    }
+
+    const source = sources[0];
+    if (automaticSubtitleMode !== "none") {
+      try {
+        const subtitles = this.createSeasonOfflineSubtitleSnapshot(
+          await this.discoverOfflineDownloadSubtitles(source)
+        );
+        const selected =
+          automaticSubtitleMode === "preferred"
+            ? getPreferredOfflineDownloadSubtitles(subtitles, PlayerSettingsStore.get())
+            : subtitles;
+        Object.assign(
+          source,
+          this.createSeasonOfflineSubtitleSelection(automaticSubtitleMode, selected)
+        );
+      } catch (_) {
+        // Subtitle discovery failure does not block the video download.
+      }
+    }
+    if (dialog !== this.seasonDownloadDialog) return;
+    try {
+      const queued = await enqueueBrowserOfflineDownload(source);
+      if (dialog === this.seasonDownloadDialog) showQueued(queued);
+    } catch (_) {
+      if (dialog === this.seasonDownloadDialog) showQueueError();
+    }
+  },
+
+  createDownloadSourcePicker(dialog, subtitle, buildContext, onChoose, selectedStreamId = "") {
+    const seen = new Set();
+    const settings = PlayerSettingsStore.get();
+    const add = (result) => {
+      if (dialog !== this.seasonDownloadDialog) return;
+      const buttons = [];
+      const streams = filterFilenameStreams(flattenSeasonDownloadStreams(result || {}), settings);
+      for (const stream of streams) {
+        const source = buildContext(stream);
+        if (!canQueueBrowserOfflineDownload(source)) continue;
+        const id = createOfflineDownloadId(source);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const model = normalizeSourceForDisplay(stream);
+        const label =
+          model.accessibleLabel ||
+          this.getSeasonDownloadSourceLabel(stream, { includeFilename: true });
+        buttons.push({
+          label,
+          title: label,
+          selected: Boolean(selectedStreamId && selectedStreamId === String(stream.id || "")),
+          className: "season-download-source-option",
+          content: () => {
+            const card = document.createElement("span");
+            card.className =
+              "season-download-source-card" + (model.showAddonLogo ? "" : " without-addon");
+            card.innerHTML = renderBrowserSourceCardContent(model);
+            return card;
+          },
+          onAction: () => {
+            if (dialog === this.seasonDownloadDialog) onChoose(source);
+          }
+        });
+      }
+      if (buttons.length) {
+        dialog.appendButtons(buttons);
+        dialog.setSubtitle(t("detail_download_finding_more_sources", {}, "Finding more sources…"));
+      }
+    };
+    return {
+      add,
+      finish: (result) => {
+        if (dialog !== this.seasonDownloadDialog) return;
+        add(result);
+        dialog.setSubtitle(
+          seen.size
+            ? subtitle
+            : t("detail_download_no_sources", {}, "No downloadable sources available.")
+        );
+      }
+    };
+  },
+
+  showMovieDownloadCopy(copy, { confirmDelete = false } = {}) {
+    const back = {
+      label: t("common.back", {}, "Back"),
+      className: "season-download-secondary-action",
+      onAction: () =>
+        confirmDelete ? this.showMovieDownloadCopy(copy) : void this.openMovieDownloadDialog()
+    };
+    const deleteLabel = t("detail_download_delete", {}, "Delete Download");
+    this.showSeasonDownloadDialog({
+      title: confirmDelete
+        ? deleteLabel
+        : t("detail_manage_download", {}, "Downloaded · Manage download"),
+      subtitle: copy.filename || copy.title || "",
+      buttons: [
+        confirmDelete
+          ? {
+              label: deleteLabel,
+              onAction: async () => {
+                const dialog = this.seasonDownloadDialog;
+                if (this.deletingMovieDownload) return;
+                this.deletingMovieDownload = true;
+                try {
+                  await deleteBrowserOfflineDownload(copy.downloadId);
+                  await this.refreshOfflineDownloadStatus();
+                  if (dialog === this.seasonDownloadDialog) this.closeSeasonDownloadDialog();
+                } catch (_) {
+                  if (dialog === this.seasonDownloadDialog)
+                    this.showSeasonDownloadDialog({
+                      title: deleteLabel,
+                      subtitle: t(
+                        "detail_download_delete_failed",
+                        {},
+                        "Could not delete this download."
+                      ),
+                      buttons: [back]
+                    });
+                } finally {
+                  this.deletingMovieDownload = false;
+                }
+              }
+            }
+          : {
+              label: t("offline.playOffline", {}, "Play Offline"),
+              onAction: () => {
+                this.closeSeasonDownloadDialog();
+                void this.playOfflineDetailDownload(copy);
+              }
+            },
+        ...(!confirmDelete
+          ? [
+              {
+                label: deleteLabel,
+                onAction: () => this.showMovieDownloadCopy(copy, { confirmDelete: true })
+              }
+            ]
+          : []),
+        back
+      ]
+    });
+  },
+
   getSeasonDownloadCandidates() {
     return getMissingSeasonEpisodes({
       episodes: this.getSelectedSeasonEpisodes(),
@@ -5604,14 +5915,15 @@ export const MetaDetailsScreen = {
       .join(" · ");
   },
 
-  async resolveSeasonEpisodeStreams(episode = {}) {
+  async resolveSeasonEpisodeStreams(episode = {}, { onChunk } = {}) {
     const result = await streamRepository.getStreamsFromAllAddons(
       "series",
       String(episode.id || ""),
       {
         itemId: this.getOfflineSeriesId(),
         season: Number(episode.season),
-        episode: Number(episode.episode)
+        episode: Number(episode.episode),
+        onChunk
       }
     );
     if (result?.status !== "success" || !Array.isArray(result.data)) return result;
@@ -5636,7 +5948,8 @@ export const MetaDetailsScreen = {
     content = null,
     buttons = [],
     actionsClassName = "",
-    panelClassName = "season-download-dialog"
+    panelClassName = "season-download-dialog",
+    closeLabel = t("common.close", {}, "Close")
   } = {}) {
     this.seasonDownloadDialog?.destroy?.();
     this.seasonDownloadDialog = new NuvioDialog({
@@ -5644,13 +5957,13 @@ export const MetaDetailsScreen = {
       subtitle,
       widthVw: 90,
       panelClassName,
+      closeLabel,
+      progressiveActions: actionsClassName === "season-download-source-picker-actions",
       actionsClassName,
       content,
       buttons,
       onDismiss: () => {
-        this.seasonDownloadDialog = null;
-        if (this.seasonDownloadFlow?.preparing) this.seasonDownloadFlow.cancelled = true;
-        this.seasonDownloadFlow = null;
+        this.closeSeasonDownloadDialog();
       }
     }).mount(document.body);
   },
@@ -5710,13 +6023,7 @@ export const MetaDetailsScreen = {
     if (globalThis.navigator?.onLine === false) {
       this.showSeasonDownloadDialog({
         title: t("offline.downloadSeason", {}, "Download Season"),
-        subtitle: "Sources unavailable while offline",
-        buttons: [
-          {
-            label: t("common.close", {}, "Close"),
-            onAction: () => this.closeSeasonDownloadDialog()
-          }
-        ]
+        subtitle: "Sources unavailable while offline"
       });
       return;
     }
@@ -5738,13 +6045,7 @@ export const MetaDetailsScreen = {
     if (!candidates.length) {
       this.showSeasonDownloadDialog({
         title: `Download ${season === 0 ? "Specials" : `Season ${season}`}`,
-        subtitle: "Season already downloaded",
-        buttons: [
-          {
-            label: t("common.close", {}, "Close"),
-            onAction: () => this.closeSeasonDownloadDialog()
-          }
-        ]
+        subtitle: "Season already downloaded"
       });
       return;
     }
@@ -5757,6 +6058,7 @@ export const MetaDetailsScreen = {
     this.showSeasonDownloadDialog({
       title: `Download ${seasonLabel}`,
       subtitle: "Choose mode",
+      actionsClassName: "season-download-mode-actions",
       content: () => this.createSeasonDownloadSummaryContent(flow),
       buttons: [
         {
@@ -5777,13 +6079,8 @@ export const MetaDetailsScreen = {
         },
         {
           label: "Choose Sources",
-          className: "season-download-mode-action",
+          className: "season-download-mode-action season-download-manual-action",
           onAction: () => this.showManualSeasonDownloadDialog(flow)
-        },
-        {
-          label: t("common.cancel", {}, "Cancel"),
-          className: "season-download-secondary-action",
-          onAction: () => this.closeSeasonDownloadDialog()
         }
       ]
     });
@@ -5799,14 +6096,7 @@ export const MetaDetailsScreen = {
     this.showSeasonDownloadDialog({
       title: `Download ${flow.season === 0 ? "Specials" : `Season ${flow.season}`}`,
       subtitle: "Automatic",
-      content: () => this.createSeasonDownloadSummaryContent(flow),
-      buttons: [
-        {
-          label: t("common.cancel", {}, "Cancel"),
-          className: "season-download-secondary-action",
-          onAction: () => this.closeSeasonDownloadDialog()
-        }
-      ]
+      content: () => this.createSeasonDownloadSummaryContent(flow)
     });
     const prepared = await prepareAutomaticSeasonDownloads({
       episodes: flow.candidates,
@@ -5821,13 +6111,7 @@ export const MetaDetailsScreen = {
           this.showSeasonDownloadDialog({
             title: `Download ${flow.season === 0 ? "Specials" : `Season ${flow.season}`}`,
             subtitle: "Automatic",
-            content: () => this.createSeasonDownloadSummaryContent(flow),
-            buttons: [
-              {
-                label: t("common.cancel", {}, "Cancel"),
-                onAction: () => this.closeSeasonDownloadDialog()
-              }
-            ]
+            content: () => this.createSeasonDownloadSummaryContent(flow)
           });
       }
     });
@@ -5855,6 +6139,7 @@ export const MetaDetailsScreen = {
         })
       );
     }
+    if (flow.cancelled) return;
     const outcomes = await enqueueSeasonDownloadSelections(selected, enqueueBrowserOfflineDownload);
     if (flow.cancelled) return;
     const added = outcomes.filter((entry) => !entry.error).length;
@@ -5877,11 +6162,6 @@ export const MetaDetailsScreen = {
           label: `Add ${selectedCount} to Queue`,
           onAction: () => void this.addManualSeasonDownloads(flow),
           className: `season-download-queue-action${selectedCount ? "" : " season-download-disabled"}`
-        },
-        {
-          label: t("common.cancel", {}, "Cancel"),
-          className: "season-download-secondary-action",
-          onAction: () => this.closeSeasonDownloadDialog()
         }
       ]
     });
@@ -5892,77 +6172,32 @@ export const MetaDetailsScreen = {
     if (!flow || flow.cancelled) return;
     this.showSeasonDownloadDialog({
       title: `S${Number(episode.season)}E${Number(episode.episode)}`,
-      subtitle: "Finding sources…",
+      subtitle: t("detail_download_finding_sources", {}, "Finding sources…"),
+      actionsClassName: "season-download-source-picker-actions",
       buttons: [
-        {
-          label: t("common.cancel", {}, "Cancel"),
-          className: "season-download-secondary-action",
-          onAction: () => this.closeSeasonDownloadDialog()
-        }
-      ]
-    });
-    let streams = [];
-    try {
-      streams = filterFilenameStreams(
-        flattenSeasonDownloadStreams(await this.resolveSeasonEpisodeStreams(episode)),
-        PlayerSettingsStore.get()
-      );
-    } catch (_) {}
-    if (flow.cancelled) return;
-    const eligible = streams.filter((stream) =>
-      canQueueBrowserOfflineDownload(this.createSeasonOfflineDownloadContext(episode, stream))
-    );
-    const selectedStreamId = String(
-      flow.selections.get(String(episode.id || ""))?.stream?.id || ""
-    );
-    const buttons = eligible.map((stream) => {
-      const sourceModel = normalizeSourceForDisplay(stream);
-      const sourceLabel =
-        sourceModel.accessibleLabel ||
-        this.getSeasonDownloadSourceLabel(stream, { includeFilename: true });
-      return {
-        label: sourceLabel,
-        title: sourceLabel,
-        ariaLabel: sourceLabel,
-        selected: selectedStreamId !== "" && selectedStreamId === String(stream.id || ""),
-        className: "season-download-source-option",
-        content: () => {
-          const card = document.createElement("span");
-          card.className = `season-download-source-card${sourceModel.showAddonLogo ? "" : " without-addon"}`;
-          card.innerHTML = renderBrowserSourceCardContent(sourceModel);
-          return card;
-        },
-        onAction: () => {
-          const selected = firstEligibleSeasonDownloadStream(
-            [stream],
-            (entry) => this.createSeasonOfflineDownloadContext(episode, entry),
-            canQueueBrowserOfflineDownload
-          );
-          if (selected) void this.openManualSeasonSubtitlePicker(episode, selected);
-        }
-      };
-    });
-    this.showSeasonDownloadDialog({
-      title: `S${Number(episode.season)}E${Number(episode.episode)}`,
-      subtitle: episode.title || "Select a downloadable source",
-      content: eligible.length
-        ? null
-        : () => {
-            const message = document.createElement("p");
-            message.className = "season-download-summary";
-            message.textContent = "No downloadable sources available.";
-            return message;
-          },
-      buttons: [
-        ...buttons,
         {
           label: t("common.back", {}, "Back"),
           className: "season-download-secondary-action",
           onAction: () => this.showManualSeasonDownloadDialog(flow)
         }
-      ],
-      actionsClassName: "season-download-source-picker-actions"
+      ]
     });
+    const selectedStreamId = String(
+      flow.selections.get(String(episode.id || ""))?.stream?.id || ""
+    );
+    const picker = this.createDownloadSourcePicker(
+      this.seasonDownloadDialog,
+      episode.title || "Select a downloadable source",
+      (stream) => this.createSeasonOfflineDownloadContext(episode, stream),
+      (context) =>
+        void this.openManualSeasonSubtitlePicker(episode, { stream: context.stream, context }),
+      selectedStreamId
+    );
+    let result;
+    try {
+      result = await this.resolveSeasonEpisodeStreams(episode, { onChunk: picker.add });
+    } catch (_) {}
+    picker.finish(result);
   },
 
   async openManualSeasonSubtitlePicker(episode = {}, selected = null) {
@@ -6067,10 +6302,7 @@ export const MetaDetailsScreen = {
   showSeasonDownloadResult(added = 0, skipped = 0) {
     this.showSeasonDownloadDialog({
       title: t("offline.downloadSeason", {}, "Download Season"),
-      subtitle: `${added} episode${added === 1 ? "" : "s"} added to download queue${skipped ? ` · ${skipped} skipped` : ""}`,
-      buttons: [
-        { label: t("common.close", {}, "Close"), onAction: () => this.closeSeasonDownloadDialog() }
-      ]
+      subtitle: `${added} episode${added === 1 ? "" : "s"} added to download queue${skipped ? ` · ${skipped} skipped` : ""}`
     });
   },
 
@@ -9151,6 +9383,7 @@ export const MetaDetailsScreen = {
           "playDefault",
           "playFromBeginning",
           "toggleLibrary",
+          "downloadMovie",
           "toggleWatched",
           "toggleTrailer",
           "sendOfflineSubtitle"
@@ -9169,6 +9402,8 @@ export const MetaDetailsScreen = {
         void this.playDefaultFromHero({ startOver: true });
       } else if (action === "toggleLibrary") {
         void this.toggleLibraryFromHero();
+      } else if (action === "downloadMovie") {
+        void this.openMovieDownloadDialog();
       } else if (action === "toggleWatched") {
         void this.toggleWatchedFromHero();
       } else if (action === "toggleTrailer") {
@@ -12972,6 +13207,11 @@ export const MetaDetailsScreen = {
       return;
     }
 
+    if (action === "downloadMovie") {
+      await this.openMovieDownloadDialog();
+      return;
+    }
+
     if (action === "sendOfflineSubtitle") {
       await this.sendHeroOfflineSubtitle();
       return;
@@ -13189,6 +13429,7 @@ export const MetaDetailsScreen = {
     this.posterOptionsFocusRestore = null;
     this.destroyDetailHoldDialog();
     this.closeSeasonDownloadDialog();
+    this.closeOfflineDownloadOptions();
     this.episodeHoldMenu = null;
     this.seasonHoldMenu = null;
     this.heroPlayMenu = null;
