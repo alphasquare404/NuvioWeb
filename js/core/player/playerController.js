@@ -426,7 +426,7 @@ export const PlayerController = {
     }
 
     const handleRejectedPlay = async (error) => {
-      if (this.isExpectedPlayInterruption(error)) {
+      if (!this.isPlaybackRequestActive(playToken) || this.isExpectedPlayInterruption(error)) {
         return false;
       }
       if (typeof onRejected === "function") {
@@ -439,6 +439,7 @@ export const PlayerController = {
         }
       }
       this.isPlaying = false;
+      if (error?.name === "NotAllowedError") this.emitVideoEvent("playbackautoplayblocked");
       console.warn(warningLabel, error);
       return false;
     };
@@ -1225,17 +1226,7 @@ export const PlayerController = {
       } catch (_) {
         // hls.js may already be loading on older builds.
       }
-      this.applyStartupAudioGateToVideo();
-      const playPromise = this.video.play();
-      this.handlePlaybackStartedUnderStartupGate(playPromise);
-      if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch((error) => {
-          if (this.isExpectedPlayInterruption(error)) {
-            return;
-          }
-          console.warn("HLS playback start rejected", error);
-        });
-      }
+      void this.attemptBrowserVideoPlay({ playToken, warningLabel: "HLS playback start rejected" });
     });
 
     [
@@ -2101,6 +2092,13 @@ export const PlayerController = {
       syncPlaying();
       result?.then(syncPlaying, (error) => {
         syncPlaying();
+        if (
+          this.video === video &&
+          this.isPlaybackRequestActive(playToken) &&
+          error?.name === "NotAllowedError"
+        ) {
+          this.emitVideoEvent("playbackautoplayblocked");
+        }
         if (!this.isExpectedPlayInterruption(error))
           console.warn("Playback resume rejected", error);
       });

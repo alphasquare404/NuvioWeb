@@ -1,4 +1,5 @@
 import { createWakeLock } from "./movi/wakeLock.js";
+import { takeDecodeAudioContext } from "./decodeAudioContext.js";
 import { resolveMediaHead } from "./mediaHeadResolver.js";
 import { clientRemuxAssets } from "./remuxClient.js";
 import { createEmbeddedSubtitles } from "./clientRemux/embeddedSubtitles.mjs";
@@ -6,6 +7,7 @@ import { clientMediaUrlResolver } from "../streams/clientMediaUrlResolver.js";
 import { normalizeTrackLanguageCode } from "./trackLanguage.js";
 
 export function createDecodePlayer({ video, requestHeaders, languages, emit, onError, onCues }) {
+  const audioContext = takeDecodeAudioContext();
   const abort = new AbortController();
   const { signal } = abort;
   const { assetBase, version } = clientRemuxAssets();
@@ -156,6 +158,7 @@ export function createDecodePlayer({ video, requestHeaders, languages, emit, onE
         playback = await module.createDecodePlayback({
           input,
           canvas,
+          audioContext,
           chooseAudio,
           onState: reportState,
           onFrame: reportFrame,
@@ -261,6 +264,7 @@ export function createDecodePlayer({ video, requestHeaders, languages, emit, onE
       subtitles?.destroy();
       if (playback) playback.destroy();
       else input?.dispose();
+      void audioContext.close().catch(() => {});
       for (const [name, descriptor] of originals) {
         if (descriptor) Object.defineProperty(video, name, descriptor);
         else delete video[name];

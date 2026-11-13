@@ -1,3 +1,4 @@
+import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioContext.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import {
@@ -10800,6 +10801,8 @@ export const MetaDetailsScreen = {
     if (!episode) {
       return;
     }
+    if (Platform.isBrowser() && !options.manualSelection)
+      prepareDecodeAudioFromGesture(PlayerSettingsStore.get());
     if (this.shouldPreferOfflineEpisode(episode)) {
       await this.playOfflineDetailDownload({ downloadId: episode.offlineDownloadId }, episode);
       return;
@@ -10815,6 +10818,8 @@ export const MetaDetailsScreen = {
   },
 
   async openMovieStreamChooser(options = {}) {
+    if (Platform.isBrowser() && !options.manualSelection)
+      prepareDecodeAudioFromGesture(PlayerSettingsStore.get());
     this.stopTrailerPlaybackForNavigation();
     this.navigateToStreamScreenForMovie({
       ...this.getResumeParamsForProgress(this.getActiveResumeProgress(), options),

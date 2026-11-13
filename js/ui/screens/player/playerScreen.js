@@ -1,6 +1,7 @@
 import { clientMediaUrlResolver } from "../../../core/streams/clientMediaUrlResolver.js";
 import { resolveMediaHead } from "../../../core/player/mediaHeadResolver.js";
 import { shouldRouteToDecodePlayback } from "../../../core/player/mediabunnySettings.js";
+import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioContext.js";
 import { normalizeTrackLanguageCode } from "../../../core/player/trackLanguage.js";
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
@@ -7396,7 +7397,6 @@ export const PlayerScreen = {
       !status?.autoplayBlocked ||
       !state ||
       state.autoplayBlocked ||
-      this.hasPresentedPlaybackFrame ||
       !video?.paused ||
       video.readyState < 2 ||
       video.error ||
@@ -7422,12 +7422,12 @@ export const PlayerScreen = {
   canManuallyStartClientRemux() {
     const runtime = PlayerController.clientRemux;
     return Boolean(
-      runtime &&
-      (this.startupReadiness?.timeoutError || this.startupReadiness?.autoplayBlocked) &&
+      (this.startupReadiness?.autoplayBlocked ||
+        (runtime && this.startupReadiness?.timeoutError)) &&
       !this.startupErrorMediaCode &&
       !PlayerController.video?.error &&
       !PlayerController.getLastPlaybackErrorCode?.() &&
-      runtime.snapshot().state !== "error" &&
+      runtime?.snapshot().state !== "error" &&
       Number(PlayerController.video?.readyState || 0) >= 2
     );
   },
@@ -7437,6 +7437,7 @@ export const PlayerScreen = {
     const state = this.startupReadiness;
     state.timeoutError = false;
     state.autoplayBlocked = false;
+    state.browserAutoplayRejected = false;
     PlayerController.video?.classList?.remove("player-awaiting-autoplay");
     state.metadataAt = Date.now();
     state.manualPlayAttempts = Number(state.manualPlayAttempts || 0) + 1;
@@ -10108,7 +10109,10 @@ export const PlayerScreen = {
     };
 
     const onPlaying = () => {
-      if (this.startupReadiness) this.startupReadiness.autoplayBlocked = false;
+      if (this.startupReadiness) {
+        this.startupReadiness.autoplayBlocked = false;
+        this.startupReadiness.browserAutoplayRejected = false;
+      }
       video.classList?.remove("player-awaiting-autoplay");
       this.noteStartupReadiness(video);
       if (this.isStartupErrorVisible()) {
@@ -10253,7 +10257,11 @@ export const PlayerScreen = {
     };
 
     const onPlayable = () => {
-      this.showClientRemuxPlayAfterAutoplayBlock(PlayerController.clientRemux?.snapshot());
+      this.showClientRemuxPlayAfterAutoplayBlock({
+        autoplayBlocked:
+          this.startupReadiness?.browserAutoplayRejected ||
+          PlayerController.clientRemux?.snapshot().autoplayBlocked
+      });
       this.noteStartupReadiness(video);
       setStartupStage(this.pendingPlaybackRestore ? "restoring" : "frame");
       if (this.isStartupErrorVisible()) {
@@ -10439,6 +10447,14 @@ export const PlayerScreen = {
       ["progress", onMetadataProgress],
       ["waiting", onWaiting],
       ["playing", onPlaying],
+      [
+        "playbackautoplayblocked",
+        () => {
+          if (!this.startupReadiness || !this.loadingVisible) return;
+          this.startupReadiness.browserAutoplayRejected = true;
+          this.showClientRemuxPlayAfterAutoplayBlock({ autoplayBlocked: true });
+        }
+      ],
       ["error", onError],
       ["pause", onPause],
       ["progress", onProgress],
@@ -11311,17 +11327,38 @@ export const PlayerScreen = {
 
   presentStartedPlayback() {
     this.playbackTransitionLightweight = false;
-    PlayerController.setStartupPresentationAudioMuted?.(false);
     StartupLoadingOverlay.finish();
     this.startupLoadingStage = "loading";
     const overlay = this.uiRefs?.loadingOverlay;
     overlay?.classList.add("playback-ready");
     this.loadingVisible = false;
     this.updateLoadingVisibility();
-    PlayerController.setStartupPresentationAudioMuted?.(false);
+    this.releaseStartupPresentationAudio();
     setTimeout(() => overlay?.classList.remove("playback-ready"), 250);
     this.updateUiTick();
     setTimeout(() => this.maybeShowParentalGuideOverlay(), 80);
+  },
+
+  releaseStartupPresentationAudio() {
+    const video = PlayerController.video;
+    const shouldKeepPlaying =
+      PlayerController.startupPresentationAudioMuted && video && !video.paused;
+    PlayerController.setStartupPresentationAudioMuted?.(false);
+    // WebKit can synchronously pause an autoplaying video when it is unmuted.
+    if (!shouldKeepPlaying || !video.paused) return;
+    const state = this.startupReadiness;
+    void PlayerController.attemptBrowserVideoPlay({
+      playToken: PlayerController.playRequestToken,
+      onRejected: (error) => {
+        if (
+          error?.name === "NotAllowedError" &&
+          state === this.startupReadiness &&
+          PlayerController.video === video
+        ) {
+          this.showClientRemuxPlayAfterAutoplayBlock({ autoplayBlocked: true });
+        }
+      }
+    });
   },
 
   isStartupGateReleaseReady() {
@@ -11834,7 +11871,7 @@ export const PlayerScreen = {
       !this.pendingPlaybackRestore &&
       PlayerController.startupPresentationAudioMuted
     ) {
-      PlayerController.setStartupPresentationAudioMuted(false);
+      this.releaseStartupPresentationAudio();
     }
     this.updateActiveSkipInterval(current);
     this.updateSkipIntroCountdown(Date.now());
@@ -12871,6 +12908,8 @@ export const PlayerScreen = {
     );
   },
   async playStreamCandidate(streamCandidate, options = {}) {
+    if (streamCandidate && Environment.isBrowser())
+      prepareDecodeAudioFromGesture(PlayerSettingsStore.get());
     const mountToken = options?.mountToken ?? null;
     this.directAudioPreferenceState = null;
     this.pendingAutomaticDirectAudio = null;

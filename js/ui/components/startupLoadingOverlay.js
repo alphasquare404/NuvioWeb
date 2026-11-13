@@ -4,6 +4,7 @@ import { I18n } from "../../i18n/index.js";
 import { renderLoadingIndicator } from "./loadingIndicator.js";
 import { createPlayerOrientation } from "../screens/player/browserPlayerOrientation.js";
 import { resolveDetailPortraitBackdrop } from "../screens/detail/detailPortraitPlate.js";
+import { createWakeLock } from "../../core/player/movi/wakeLock.js";
 
 const STAGES = {
   finding: ["startup_loading_finding", "Finding a stream…"],
@@ -37,6 +38,7 @@ let backHandler = null;
 let probeActions = null;
 let orientation = null;
 let artworkResize = null;
+let wakeLock = null;
 
 export const StartupLoadingOverlay = {
   get orientation() {
@@ -126,6 +128,8 @@ export const StartupLoadingOverlay = {
         choose.onclick = () => probeActions?.onChooseStream();
       }
       document.body.appendChild(host);
+      wakeLock = createWakeLock();
+      void wakeLock.start();
       orientation = createPlayerOrientation(host, {
         preference: meta.orientation || "landscape",
         manageBody: false,
@@ -323,6 +327,8 @@ export const StartupLoadingOverlay = {
     this.setStage(stage);
   },
   finish(_reason = "finished") {
+    void wakeLock?.stop();
+    wakeLock = null;
     if (artworkResize) globalThis.removeEventListener?.("resize", artworkResize);
     artworkResize = null;
     orientation?.destroy();

@@ -425,3 +425,34 @@ test("blocked remux autoplay exposes Play and the first tap lifts mute before re
     ["play"]
   ]);
 });
+
+test("startup retries with sound if WebKit pauses the video on unmute", async () => {
+  const calls = [];
+  const video = { paused: false };
+  const controller = {
+    video,
+    startupPresentationAudioMuted: true,
+    setStartupPresentationAudioMuted(muted) {
+      calls.push(muted);
+      this.startupPresentationAudioMuted = muted;
+      video.paused = true;
+    },
+    async attemptBrowserVideoPlay({ onRejected }) {
+      calls.push("play");
+      onRejected({ name: "NotAllowedError" });
+    }
+  };
+  const screen = {
+    ...(await loadPlayerMethods(["releaseStartupPresentationAudio"], {
+      PlayerController: controller
+    })),
+    startupReadiness: {},
+    showClientRemuxPlayAfterAutoplayBlock(status) {
+      calls.push(status.autoplayBlocked);
+    }
+  };
+  screen.releaseStartupPresentationAudio();
+  assert.deepEqual(calls, [false, "play", true]);
+  screen.releaseStartupPresentationAudio();
+  assert.deepEqual(calls, [false, "play", true, false]);
+});

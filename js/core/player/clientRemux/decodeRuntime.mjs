@@ -35,6 +35,7 @@ export async function openDecodeSource({ url, headers, signal }) {
 export async function createDecodePlayback({
   input,
   canvas,
+  audioContext,
   chooseAudio,
   onState,
   onFrame = () => {},
@@ -62,8 +63,6 @@ export async function createDecodePlayback({
   if (!Number.isFinite(length) || length <= 0) throw Error("Video duration unavailable");
   const context = canvas.getContext("2d", { alpha: false });
   if (!context) throw Error("Canvas unavailable");
-  const AudioContext = globalThis.AudioContext || globalThis.webkitAudioContext;
-  const audioContext = new AudioContext();
   const gain = audioContext.createGain();
   gain.connect(audioContext.destination);
   let rate = 1;
@@ -338,7 +337,6 @@ export async function createDecodePlayback({
       disposed = true;
       stopRun();
       input.dispose();
-      void audioContext.close().catch(() => {});
     }
   };
 }

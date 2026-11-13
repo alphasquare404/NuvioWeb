@@ -28,6 +28,7 @@ import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
 import { isWatchProgressInProgress } from "../../../domain/model/watchProgress.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
+import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioContext.js";
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
 import {
   selectAutoPlayStream,
@@ -3223,6 +3224,7 @@ export const StreamScreen = {
     if (!selected) {
       return;
     }
+    if (Environment.isBrowser()) prepareDecodeAudioFromGesture(PlayerSettingsStore.get());
     this._labelProbePaused = true;
     const selectionGeneration = (this._playSelectionGeneration =
       (this._playSelectionGeneration || 0) + 1);
