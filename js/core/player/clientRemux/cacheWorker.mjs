@@ -184,7 +184,13 @@ async function start(data) {
       signal: new AbortController().signal,
       stats,
       fetcher: fetchRange,
-      metadata: (info) => request("metadata", { info }),
+      metadata: (info) => {
+        if (info.mime.startsWith("video/webm;")) {
+          if (options.prefetch) throw Error("cache-prefetch-unavailable");
+          cacheMode = false;
+        }
+        return request("metadata", { info });
+      },
       supportsOutput: (output) => request("supports-output", { output }),
       beforeEncode: () => request("transcode-credit"),
       beforePacket: async () => {

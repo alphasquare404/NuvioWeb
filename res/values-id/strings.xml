@@ -2490,6 +2490,7 @@
     <string name="settings_filter_remux">Remux</string>
     <string name="settings_filter_audio_transcode">Transcode Audio</string>
     <string name="settings_filter_full_transcode">Transcode Penuh</string>
+    <string name="player_video_transcode">Transcode Video</string>
     <string name="settings_probe_stream_title">Probe Stream</string>
     <string name="settings_probe_stream_subtitle">Baca metadata untuk menentukan cara memutar stream. Periksa stream Unknown dan yang diperkirakan perlu transcode, atau pilih Selalu untuk memeriksa semua stream.</string>
     <string name="settings_probe_stream_transcoding">Unknown atau Transcode</string>

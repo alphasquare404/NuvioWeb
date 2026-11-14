@@ -50,7 +50,13 @@ export async function prepareMeasuredTranscode({
     !/^https?:\/\//i.test(sourceUrl || "")
   )
     return null;
-  const verdict = classifyPlayback({ url: sourceUrl, probe, capabilities });
+  const verdict = classifyPlayback({
+    url: sourceUrl,
+    probe,
+    capabilities,
+    clientRemux: mode === "client" && REMUX_POLICY.mode === "client",
+    clientTranscode: mode === "client"
+  });
   // Some measured audio codecs (for example PCM in MKV) have no useful native
   // capability query. After the normal paths refuse playback, let the worker
   // test the real track and output. The label alone cannot authorize encoding.

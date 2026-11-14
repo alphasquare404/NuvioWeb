@@ -50,7 +50,13 @@ export function clientRemuxPlan(
     if (error.message === "Invalid saved audio selection.") throw error;
   }
   if (!probe && audioIndex === null && !attemptCopy) return null;
-  const verdict = classifyPlayback({ url: sourceUrl, label: "", probe, capabilities });
+  const verdict = classifyPlayback({
+    url: sourceUrl,
+    label: "",
+    probe,
+    capabilities,
+    clientRemux: true
+  });
   if (audioIndex === null && verdict.method !== "remux" && !attemptCopy) return null;
   const index = audioIndex ?? (attemptCopy ? 0 : Number(verdict.audioIndex ?? 0));
   if (!Number.isInteger(index) || index < 0) throw Error("Invalid audio selection.");

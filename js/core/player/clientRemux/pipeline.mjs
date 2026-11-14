@@ -18,6 +18,13 @@ import {
   readVideoFragmentTiming,
   MAX_RANDOM_ACCESS_POINTS
 } from "./fragmentTiming.mjs";
+import {
+  createWebmOutput,
+  outputMime,
+  readWebmCluster,
+  webmAudioCodecs,
+  webmVideoCodecs
+} from "./webmOutput.mjs";
 
 // Separate component budgets, not a cap on total browser or decoder memory.
 // The muxer closes fragments at keyframes; a 1s minimum does not bound GOP size.
@@ -57,7 +64,7 @@ export async function remux({
   write,
   writeOutput,
   beforePacket,
-  supportsOutput,
+  supportsOutput = async () => true,
   beforeEncode,
   metadata,
   fetcher = fetch
@@ -110,12 +117,38 @@ export async function remux({
     stats.video = video?.codec || null;
     stats.audio = audio?.codec || null;
     const format = new Mp4OutputFormat({ fastStart: "fragmented" });
-    if (!video?.codec || !format.getSupportedVideoCodecs().includes(video.codec))
+    if (
+      !video?.codec ||
+      !(
+        format.getSupportedVideoCodecs().includes(video.codec) ||
+        webmVideoCodecs.includes(video.codec)
+      )
+    )
       throw Error("client-output-video-codec-unsupported");
-    if (audio && (!audio.codec || !format.getSupportedAudioCodecs().includes(audio.codec)))
+    if (
+      audio &&
+      !(
+        format.getSupportedAudioCodecs().includes(audio.codec) ||
+        webmAudioCodecs.includes(audio.codec)
+      )
+    )
       throw Error("client-output-audio-codec-unsupported");
     const vc = await video.getDecoderConfig(),
       ac = audio ? await audio.getDecoderConfig() : null;
+    const videoParameter = await video.getCodecParameterString();
+    const copyMimeTypes = (track, codecString) => {
+      if (!videoParameter || (track && !codecString)) return [];
+      return [
+        ...(format.getSupportedVideoCodecs().includes(video.codec) &&
+        (!track || format.getSupportedAudioCodecs().includes(track.codec))
+          ? [outputMime("fmp4", "video", videoParameter, codecString)]
+          : []),
+        ...(webmVideoCodecs.includes(video.codec) &&
+        (!track || webmAudioCodecs.includes(track.codec))
+          ? [outputMime("webm", "video", videoParameter, codecString)]
+          : [])
+      ];
+    };
     if (
       expectedAudio?.index === audioIndex &&
       (expectedAudio.count !== audioTracks.length ||
@@ -134,6 +167,7 @@ export async function remux({
         } catch {
           /* An unreadable alternative must not block the selected track. */
         }
+        const mimes = config ? copyMimeTypes(track, codecString) : [];
         return {
           id: String(track.id),
           index,
@@ -142,15 +176,22 @@ export async function remux({
           codec: track.codec,
           channels: config?.numberOfChannels || 0,
           sampleRate: config?.sampleRate || 0,
-          mime: codecString
-            ? `video/mp4; codecs="${await video.getCodecParameterString()},${codecString}"`
-            : "",
-          supported: Boolean(
-            config && codecString && format.getSupportedAudioCodecs().includes(track.codec)
-          )
+          mime: mimes[0] || "",
+          mimes,
+          supported: mimes.length > 0
         };
       })
     );
+    const mimes = audio ? availableAudio[audioIndex].mimes : copyMimeTypes(null, null);
+    let mime;
+    for (const candidate of mimes) {
+      if (await supportsOutput({ mime: candidate })) {
+        mime = candidate;
+        break;
+      }
+    }
+    if (!mime) throw Error("output-codecs-unsupported");
+    const webm = mime.startsWith("video/webm;");
     const duration = await input.getDurationFromMetadata();
     if (!(duration > 0) || !Number.isFinite(duration)) throw Error("duration-unavailable");
     if (start >= duration) throw Error("seek-outside-duration");
@@ -178,7 +219,7 @@ export async function remux({
       duration,
       start: vp.timestamp,
       requested: start,
-      mime: `video/mp4; codecs="${await video.getCodecParameterString()}${audio ? "," + (await audio.getCodecParameterString()) : ""}"`,
+      mime,
       video: video.codec,
       audio: audio?.codec || null,
       channels: ac?.numberOfChannels,
@@ -192,31 +233,41 @@ export async function remux({
       outputPosition = 0,
       outputDrained = Promise.resolve(),
       videoTiming,
-      pendingRaps = [];
+      pendingRaps = [],
+      pendingClusterPayload = 0;
+    const noteFragment = (timing, timestamp) => {
+      pendingRaps.push(...timing.randomAccessPoints);
+      stats.videoReorderGuardSeconds = Math.max(
+        stats.videoReorderGuardSeconds || 0,
+        timing.reorderGuardSeconds
+      );
+      if (pendingRaps.length > MAX_RANDOM_ACCESS_POINTS) throw Error("output-timing-invalid");
+      if (stats.lastFragmentTimestamp !== undefined)
+        stats.maxFragmentInterval = Math.max(
+          stats.maxFragmentInterval || 0,
+          timestamp - stats.lastFragmentTimestamp
+        );
+      stats.lastFragmentTimestamp = timestamp;
+      stats.fragmentCount = (stats.fragmentCount || 0) + 1;
+    };
     output = new Output({
-      format: new Mp4OutputFormat({
-        fastStart: "fragmented",
-        minimumFragmentDuration: 1,
-        onMoov(data) {
-          videoTiming = readVideoTrackTiming(data);
-        },
-        onMoof(data, _position, timestamp) {
-          const timing = readVideoFragmentTiming(data, videoTiming);
-          pendingRaps.push(...timing.randomAccessPoints);
-          stats.videoReorderGuardSeconds = Math.max(
-            stats.videoReorderGuardSeconds || 0,
-            timing.reorderGuardSeconds
-          );
-          if (pendingRaps.length > MAX_RANDOM_ACCESS_POINTS) throw Error("output-timing-invalid");
-          if (stats.lastFragmentTimestamp !== undefined)
-            stats.maxFragmentInterval = Math.max(
-              stats.maxFragmentInterval || 0,
-              timestamp - stats.lastFragmentTimestamp
-            );
-          stats.lastFragmentTimestamp = timestamp;
-          stats.fragmentCount = (stats.fragmentCount || 0) + 1;
-        }
-      }),
+      format: webm
+        ? createWebmOutput((data, _position, timestamp) => {
+            const timing = readWebmCluster(data, timestamp, 1);
+            pendingClusterPayload += timing.payloadBytes;
+            noteFragment(timing, timestamp);
+          })
+        : new Mp4OutputFormat({
+            fastStart: "fragmented",
+            minimumFragmentDuration: 1,
+            onMoov(data) {
+              videoTiming = readVideoTrackTiming(data);
+            },
+            onMoof(data, _position, timestamp) {
+              const timing = readVideoFragmentTiming(data, videoTiming);
+              noteFragment(timing, timestamp);
+            }
+          }),
       target: new StreamTarget(
         new WritableStream({
           async write(chunk) {
@@ -224,7 +275,8 @@ export async function remux({
             if (chunk.position !== outputPosition) throw Error("non-sequential-output");
             if (chunk.data.length > MAX_COMPRESSED_BYTES)
               throw Error("output-write-exceeds-buffer-budget");
-            pendingBytes -= mediaPayloadBytes(chunk.data);
+            pendingBytes -= webm ? pendingClusterPayload : mediaPayloadBytes(chunk.data);
+            pendingClusterPayload = 0;
             if (pendingBytes < 0) throw Error("packet-accounting-invalid");
             stats.pendingPacketBytes = pendingBytes;
             // A flushed payload now belongs to output staging. Do not accumulate
@@ -242,7 +294,7 @@ export async function remux({
               }
               // Split disk writes and transfers; muxer allocations are measured separately.
               stats.maxOutputWrite = Math.max(stats.maxOutputWrite || 0, chunk.data.length);
-              if (writeOutput) {
+              if (writeOutput && !webm) {
                 await writeOutput(chunk.data, {
                   position: chunk.position,
                   randomAccessPoints,

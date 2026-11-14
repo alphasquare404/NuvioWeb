@@ -85,6 +85,19 @@ async function assessUncachedPlaybackCapabilities(
     return { engine, video: null, audio: [], container: null };
   const codec = videoCodecString(probe);
   const sourceTypes = CONTAINER_MIME_TYPES[container];
+  const mediaSource = scope.ManagedMediaSource || scope.MediaSource;
+  const supportsWebm = (type) => {
+    try {
+      return mediaSource?.isTypeSupported?.(type) === true;
+    } catch {
+      return false;
+    }
+  };
+  const webmVideo =
+    engine === "native" &&
+    /^(vp8$|vp09\.|av01\.)/.test(codec) &&
+    supportsWebm(`video/webm; codecs="${codec}"`);
+  const webmOpus = webmVideo && supportsWebm(`video/webm; codecs="${codec},opus"`);
   let video = null;
   let smooth = null;
   let powerEfficient = null;
@@ -201,7 +214,11 @@ async function assessUncachedPlaybackCapabilities(
           if (typeof answer?.supported === "boolean") supported = answer.supported;
         }
       }
-      return { index: track.index, supported, needsRemux };
+      const webmCopy =
+        webmVideo &&
+        ["opus", "vorbis"].includes(track.codec) &&
+        supportsWebm(`video/webm; codecs="${codec},${id}"`);
+      return { index: track.index, supported, needsRemux, ...(webmCopy ? { webmCopy } : {}) };
     })
   );
   return {
@@ -213,6 +230,8 @@ async function assessUncachedPlaybackCapabilities(
     powerEfficient,
     needsRetag,
     relayVideo,
+    ...(webmVideo ? { webmVideo } : {}),
+    ...(webmOpus ? { webmOpus } : {}),
     videoType,
     hdr,
     containerReason:

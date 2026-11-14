@@ -210,6 +210,7 @@ export const BrowserPlayerPresentationScreen = {
     const audioEncoded = output?.audioEncoded ?? (videoEncoded || processing === "audio-transcode");
     const container = {
       fmp4: t("player_fragmented_mp4", "Fragmented MP4 (fMP4)"),
+      webm: "WebM",
       "hls-fmp4": "HLS · fMP4",
       mp4: "MP4"
     }[output?.outputContainer];

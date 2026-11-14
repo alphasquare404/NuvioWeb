@@ -17,6 +17,7 @@ import {
   ensureVideoDecoder,
   hasSoftwareAudioDecoder
 } from "./decoderSupport.mjs";
+import { createWebmOutput, outputMime, readWebmCluster } from "./webmOutput.mjs";
 
 const videoCodecParameters = {
   avc: "avc1.4d401f",
@@ -24,17 +25,21 @@ const videoCodecParameters = {
   av1: "av01.0.08M.08",
   vp9: "vp09.00.41.08"
 };
+const webmVideoParameters = {
+  vp9: videoCodecParameters.vp9,
+  vp8: "vp8",
+  av1: videoCodecParameters.av1
+};
 const audioCodecParameters = { aac: "mp4a.40.2", opus: "opus", flac: "flac", mp3: "mp3" };
 // The pinned MP4 muxer writes HEVC sample entries with the hvc1 tag.
 const mp4VideoParameter = (codec) => codec?.replace(/^hev1(?=\.)/, "hvc1");
-const mimeType = (kind, ...codecs) =>
-  kind + '/mp4; codecs="' + codecs.filter(Boolean).join(",") + '"';
 
 export async function chooseClientAudioEncoding(
   track,
   videoParameter,
   supportsOutput,
-  canEncode = canEncodeAudio
+  canEncode = canEncodeAudio,
+  container = "fmp4"
 ) {
   const channels = await track.getNumberOfChannels();
   const sampleRate = 48000;
@@ -42,17 +47,23 @@ export async function chooseClientAudioEncoding(
   for (const numberOfChannels of channelChoices) {
     const bitrate = numberOfChannels === 1 ? 96_000 : numberOfChannels === 2 ? 128_000 : 320_000;
     const options = { numberOfChannels, sampleRate, bitrate };
-    for (const [codec, parameter] of Object.entries(audioCodecParameters)) {
+    const codecs = container === "webm" ? { opus: "opus" } : audioCodecParameters;
+    for (const [codec, parameter] of Object.entries(codecs)) {
       const audio =
         numberOfChannels > 2
           ? {
-              contentType: mimeType("audio", parameter),
+              contentType: outputMime(container, "audio", parameter),
               channels: String(numberOfChannels),
               samplerate: sampleRate,
               bitrate
             }
           : undefined;
-      if (!(await supportsOutput({ mime: mimeType("video", videoParameter, parameter), audio })))
+      if (
+        !(await supportsOutput({
+          mime: outputMime(container, "video", videoParameter, parameter),
+          audio
+        }))
+      )
         continue;
       if (await canEncode(codec, options)) return { codec, ...options };
       if (codec === "aac" && numberOfChannels <= 8) {
@@ -65,7 +76,14 @@ export async function chooseClientAudioEncoding(
   return null;
 }
 
-async function inspectClientAudioCopy(track, format, codec, videoParameter, supportsOutput) {
+async function inspectClientAudioCopy(
+  track,
+  format,
+  codec,
+  videoParameter,
+  supportsOutput,
+  container
+) {
   if (!track || !format.getSupportedAudioCodecs().includes(codec)) return null;
   const [parameter, numberOfChannels, sampleRate, bitrate] = await Promise.all([
     track.getCodecParameterString(),
@@ -75,11 +93,11 @@ async function inspectClientAudioCopy(track, format, codec, videoParameter, supp
   ]);
   if (!parameter) return null;
   const supported = await supportsOutput({
-    mime: mimeType("video", videoParameter, parameter),
+    mime: outputMime(container, "video", videoParameter, parameter),
     audio:
       numberOfChannels > 2
         ? {
-            contentType: mimeType("audio", parameter),
+            contentType: outputMime(container, "audio", parameter),
             channels: String(numberOfChannels),
             samplerate: sampleRate,
             bitrate: bitrate || 320000
@@ -129,7 +147,42 @@ export async function chooseClientVideoEncoding(
 
 // Conversion trims each seek to zero. MSE applies the matching timestamp offset
 // so progress, subtitles and seek retain the source's absolute timeline.
-export async function transcodeInput({
+export async function transcodeInput(options) {
+  let startedOutput = false;
+  const metadata = (info) => {
+    startedOutput = true;
+    return options.metadata(info);
+  };
+  try {
+    return await transcodeToContainer({ ...options, metadata, outputContainer: "fmp4" });
+  } catch (error) {
+    if (
+      startedOutput ||
+      options.signal.aborted ||
+      ![
+        "client-transcode-video-copy-unsupported",
+        "client-transcode-codec-unsupported",
+        "client-transcode-audio-output-unavailable",
+        "client-transcode-audio-decode-unsupported",
+        "output-codecs-unsupported"
+      ].includes(error.message)
+    )
+      throw error;
+    try {
+      return await transcodeToContainer({ ...options, metadata, outputContainer: "webm" });
+    } catch (fallbackError) {
+      if (
+        !startedOutput &&
+        !options.signal.aborted &&
+        fallbackError.message === "client-transcode-video-copy-unsupported"
+      )
+        throw error;
+      throw fallbackError;
+    }
+  }
+}
+
+async function transcodeToContainer({
   input,
   start,
   audioIndex,
@@ -139,7 +192,8 @@ export async function transcodeInput({
   write,
   supportsOutput = async () => true,
   beforeEncode = async () => {},
-  audioOnly = false
+  audioOnly = false,
+  outputContainer
 }) {
   stats.pipelinePhase = "transcode-track-discovery";
   const video = await input.getPrimaryVideoTrack();
@@ -166,7 +220,26 @@ export async function transcodeInput({
       throw Error("client-transcode-video-decode-unsupported");
   }
 
-  const format = new Mp4OutputFormat({ fastStart: "fragmented", minimumFragmentDuration: 1 });
+  const webm = outputContainer === "webm";
+  const videoParameters = webm ? webmVideoParameters : videoCodecParameters;
+  let webmInitEnd = 0;
+  const webmClusters = [];
+  const makeFormat = () =>
+    webm
+      ? createWebmOutput(
+          (data, position, timestamp) => {
+            const videoTrack = output.tracks.find((track) => track.type === "video");
+            webmClusters.push({
+              end: position + data.length,
+              timing: readWebmCluster(data, timestamp, videoTrack?.id)
+            });
+          },
+          (data, position) => {
+            webmInitEnd = position + data.length;
+          }
+        )
+      : new Mp4OutputFormat({ fastStart: "fragmented", minimumFragmentDuration: 1 });
+  const format = makeFormat();
   let videoParameter;
   let encoding = null;
   let audioCopy = null;
@@ -177,7 +250,14 @@ export async function transcodeInput({
     if (!copyChecks.has(parameter)) {
       copyChecks.set(
         parameter,
-        inspectClientAudioCopy(audio, format, stats.sourceAudio, parameter, supportsOutput)
+        inspectClientAudioCopy(
+          audio,
+          format,
+          stats.sourceAudio,
+          parameter,
+          supportsOutput,
+          outputContainer
+        )
       );
     }
     return copyChecks.get(parameter);
@@ -186,7 +266,13 @@ export async function transcodeInput({
     if (!audio) return null;
     audioDecoderReady ??= ensureAudioDecoder(audio);
     if (!(await audioDecoderReady)) return null;
-    return chooseClientAudioEncoding(audio, parameter, supportsOutput);
+    return chooseClientAudioEncoding(
+      audio,
+      parameter,
+      supportsOutput,
+      canEncodeAudio,
+      outputContainer
+    );
   };
   const audioPlans = new Map();
   const planAudio = async (parameter) => {
@@ -204,7 +290,7 @@ export async function transcodeInput({
     if (
       !format.getSupportedVideoCodecs().includes(stats.sourceVideo) ||
       !videoParameter ||
-      !(await supportsOutput({ mime: mimeType("video", videoParameter) }))
+      !(await supportsOutput({ mime: outputMime(outputContainer, "video", videoParameter) }))
     )
       throw Error("client-transcode-video-copy-unsupported");
     const plan = await planAudio(videoParameter);
@@ -213,8 +299,9 @@ export async function transcodeInput({
   } else {
     const withAudioCopy = [];
     const otherCodecs = [];
-    for (const [codec, parameter] of Object.entries(videoCodecParameters)) {
-      if (!(await supportsOutput({ mime: mimeType("video", parameter) }))) continue;
+    for (const [codec, parameter] of Object.entries(videoParameters)) {
+      if (!(await supportsOutput({ mime: outputMime(outputContainer, "video", parameter) })))
+        continue;
       const copy = await inspectAudioCopy(parameter);
       (copy ? withAudioCopy : otherCodecs).push(codec);
     }
@@ -227,7 +314,7 @@ export async function transcodeInput({
         async (codec, options) => {
           if (!(await canEncodeVideo(codec, options))) return false;
           if (!audio) return true;
-          const plan = await planAudio(videoCodecParameters[codec]);
+          const plan = await planAudio(videoParameters[codec]);
           if (plan.copy || plan.encoding) return true;
           rejectedAudio = true;
           return false;
@@ -242,7 +329,7 @@ export async function transcodeInput({
           : "client-transcode-audio-output-unavailable"
       );
     }
-    videoParameter = videoCodecParameters[encoding.codec];
+    videoParameter = videoParameters[encoding.codec];
     if (audio) {
       const plan = audioPlans.get(videoParameter);
       audioCopy = plan.copy;
@@ -287,7 +374,14 @@ export async function transcodeInput({
             (track.id === audio?.id && audioCopy) ||
             hasSoftwareAudioDecoder(codec) ||
             (await track.canDecode()) ||
-            (await inspectClientAudioCopy(track, format, codec, videoParameter, supportsOutput))
+            (await inspectClientAudioCopy(
+              track,
+              format,
+              codec,
+              videoParameter,
+              supportsOutput,
+              outputContainer
+            ))
           )
         };
       } catch {
@@ -310,10 +404,17 @@ export async function transcodeInput({
   let videoTiming;
   const init = [];
 
-  const append = async (data) => {
+  const append = async (data, end) => {
     const randomAccessPoints = [];
     let guard = 0;
-    for (const box of boxes(data)) {
+    while (webmClusters.length && webmClusters[0].end <= end) {
+      const { timing } = webmClusters.shift();
+      randomAccessPoints.push(
+        ...timing.randomAccessPoints.map((time) => Math.max(0, time + trimStart))
+      );
+      guard = Math.max(guard, timing.reorderGuardSeconds);
+    }
+    for (const box of webm ? [] : boxes(data)) {
       if (box.type === "moov") videoTiming = readVideoTrackTiming(data.subarray(box.at, box.end));
       if (box.type !== "moof") continue;
       const timing = readVideoFragmentTiming(data.subarray(box.at, box.end), videoTiming);
@@ -335,7 +436,7 @@ export async function transcodeInput({
   let output;
   const createOutput = () =>
     new Output({
-      format,
+      format: makeFormat(),
       target: new StreamTarget(
         new WritableStream({
           async write(chunk) {
@@ -344,12 +445,17 @@ export async function transcodeInput({
               throw Error("output-write-exceeds-buffer-budget");
             position += chunk.data.length;
             if (!initialized) {
-              if (!boxes(chunk.data).some((box) => box.type === "moov")) {
+              const initReady = webm
+                ? webmInitEnd > 0 && position >= webmInitEnd
+                : boxes(chunk.data).some((box) => box.type === "moov");
+              if (!initReady) {
                 initBytes += chunk.data.length;
                 if (initBytes > MAX_INIT_BYTES) throw Error("transcode-init-too-large");
                 init.push(chunk.data.slice());
                 return;
               }
+              const mime = (await output.getMimeType()).replace(/\bhev1(?=\.)/g, "hvc1");
+              if (!(await supportsOutput({ mime }))) throw Error("output-codecs-unsupported");
               await metadata({
                 audioIndex,
                 audioTracks: tracks,
@@ -359,7 +465,7 @@ export async function transcodeInput({
                 start: trimStart,
                 requested: start,
                 timestampOffset: trimStart,
-                mime: (await output.getMimeType()).replace(/\bhev1(?=\.)/g, "hvc1"),
+                mime,
                 processing: audioOnly && audioCopy ? "remux" : undefined,
                 audioEncoded: Boolean(audioEncoding),
                 video: audioOnly ? stats.sourceVideo : encoding.codec,
@@ -368,9 +474,9 @@ export async function transcodeInput({
                 sampleRate: (audioCopy || audioEncoding)?.sampleRate
               });
               initialized = true;
-              for (const data of init.splice(0)) await append(data);
+              for (const data of init.splice(0)) await append(data, 0);
             }
-            await append(chunk.data);
+            await append(chunk.data, position);
             stats.outputBytes = position;
           }
         })

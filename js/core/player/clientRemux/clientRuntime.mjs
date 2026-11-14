@@ -104,7 +104,7 @@ export function createClientRemux({
       processing:
         latest.processing ||
         (transcode === "audio" ? "audio-transcode" : transcode ? "transcode" : "remux"),
-      outputContainer: latest.mime ? "fmp4" : "",
+      outputContainer: latest.mime?.startsWith("video/webm;") ? "webm" : latest.mime ? "fmp4" : "",
       position: isRestoring() ? position : Math.max(0, video.currentTime),
       duration: logicalDuration,
       restoring: isRestoring(),
@@ -379,7 +379,8 @@ export function createClientRemux({
         ...track,
         supported:
           track.supported &&
-          (Boolean(transcode) || Boolean(track.mime && Source.isTypeSupported(track.mime)))
+          (Boolean(transcode) ||
+            (track.mimes || [track.mime]).some((mime) => mime && Source.isTypeSupported(mime)))
       }));
       onTracks();
     }

@@ -5,14 +5,16 @@ import { createHash } from "node:crypto";
 import { Input, BufferSource, ALL_FORMATS, EncodedPacketSink } from "mediabunny";
 import { remux } from "./pipeline.mjs";
 
-for (const [file, container, videoCodec, audioCodec, channels] of [
+for (const [file, container, videoCodec, audioCodec, channels, webmFallback] of [
   ["probe-dual-audio.mp4", "MP4", "avc", "aac", 6],
   ["remux-hevc-eac3.mkv", "Matroska", "hevc", "eac3", 6],
-  ["remux-vp9-opus.webm", "WebM", "vp9", "opus", 2]
+  ["remux-vp9-opus.webm", "WebM", "vp9", "opus", 2],
+  ["remux-vp9-opus.webm", "WebM", "vp9", "opus", 2, true]
 ])
-  test(`client copy preserves packets from ${file}`, async () => {
+  test(`client copy preserves packets from ${file}${webmFallback ? " with WebM fallback" : ""}`, async () => {
     const bytes = await readFile(new URL("../fixtures/" + file, import.meta.url));
     const chunks = [];
+    const points = [];
     let info;
     await remux({
       url: "fixture",
@@ -27,7 +29,14 @@ for (const [file, container, videoCodec, audioCodec, channels] of [
       metadata: async (value) => {
         info = value;
       },
-      write: async (bytes) => chunks.push(bytes.slice())
+      supportsOutput: async ({ mime }) => !webmFallback || mime.startsWith("video/webm;"),
+      ...(webmFallback
+        ? { writeOutput: () => assert.fail("WebM should bypass the MP4 cache") }
+        : {}),
+      write: async (bytes, timing) => {
+        chunks.push(bytes.slice());
+        points.push(...(timing.randomAccessPoints || []));
+      }
     });
     assert.equal(info.sourceContainer, container);
     assert.equal(info.sourceSizeBytes, bytes.length);
@@ -46,6 +55,11 @@ for (const [file, container, videoCodec, audioCodec, channels] of [
       return result;
     };
     try {
+      assert.match(info.mime, webmFallback ? /^video\/webm;/ : /^video\/mp4;/);
+      if (webmFallback) {
+        assert.equal((await output.getFormat()).name, "WebM");
+        assert.ok(points.length > 0);
+      }
       assert.deepEqual(
         await hashes(await output.getPrimaryVideoTrack()),
         await hashes(await source.getPrimaryVideoTrack())
