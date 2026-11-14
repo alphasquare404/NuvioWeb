@@ -207,7 +207,7 @@ export const BrowserPlayerPresentationScreen = {
     const output = client || server;
     const processing = output?.processing;
     const videoEncoded = processing === "transcode";
-    const audioEncoded = videoEncoded || processing === "audio-transcode";
+    const audioEncoded = output?.audioEncoded ?? (videoEncoded || processing === "audio-transcode");
     const container = {
       fmp4: t("player_fragmented_mp4", "Fragmented MP4 (fMP4)"),
       "hls-fmp4": "HLS · fMP4",
@@ -216,7 +216,9 @@ export const BrowserPlayerPresentationScreen = {
     const method = {
       remux: "Remux",
       "audio-transcode": t("settings_filter_audio_transcode", "Audio Transcode"),
-      transcode: t("settings_filter_full_transcode", "Full Transcode")
+      transcode: audioEncoded
+        ? t("settings_filter_full_transcode", "Full Transcode")
+        : t("player_video_transcode", "Video Transcode")
     }[processing];
     const location = client
       ? t("player_processing_client", "Client")

@@ -6,7 +6,7 @@ const MAX_CACHED_FRAMES = 32;
 const REQUEST_DELAY_MS = 100;
 const REQUEST_TIMEOUT_MS = 8000;
 
-export function createSeekThumbnails(url, headers) {
+export function createSeekThumbnails(url, headers, { hls = false } = {}) {
   const abort = new AbortController();
   const cache = new Map();
   let source;
@@ -32,6 +32,7 @@ export function createSeekThumbnails(url, headers) {
         const opened = await module.openSeekThumbnailSource({
           url,
           headers,
+          hls,
           signal: abort.signal,
           resolveSource: async (signal) => {
             if (!clientMediaUrlResolver.canUseHost(url)) return null;

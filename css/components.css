@@ -21868,6 +21868,7 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .filename-playback-badge.tone-green { color: #73df9c; background: #102e20; }
 .filename-playback-badge.tone-blue { color: #0867ea; }
 .filename-playback-badge.tone-orange { color: #ffb46b; background: #382413; }
+.filename-playback-badge.tone-purple { color: #be9aff; background: #2c2040; }
 .filename-playback-badge.tone-red { color: #ff9999; background: #351c1c; }
 .filename-playback-badge.tone-neutral { color: #c1c7d0; background: #24272c; }
 .filename-playback-badge.has-artwork { padding: 0; border: 0; background: transparent; }

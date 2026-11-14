@@ -5,6 +5,7 @@ import {
   CanvasSink,
   CustomSource,
   Input,
+  UrlSource,
   VideoSampleSink
 } from "mediabunny";
 import { createRangeFetcher, readRange } from "./range.mjs";
@@ -33,23 +34,61 @@ export async function openDecodeSource({ url, headers, signal, resolveSource }) 
   return new Input({ source, formats: ALL_FORMATS });
 }
 
+function openHlsThumbnailInput({ url, headers }) {
+  const origin = new URL(url).origin;
+  return new Input({
+    formats: ALL_FORMATS,
+    source: new UrlSource(url, {
+      maxCacheSize: LIBRARY_CACHE_BYTES,
+      parallelism: 1,
+      getRetryDelay: () => null,
+      fetchFn(resource, options) {
+        const target = new URL(resource instanceof Request ? resource.url : resource);
+        if (!/^https?:$/.test(target.protocol) || target.username || target.password) {
+          throw Error("Invalid HLS thumbnail URL");
+        }
+        const requestHeaders = new Headers(options.headers);
+        if (target.origin === origin) {
+          for (const [name, value] of new Headers(headers)) {
+            if (!requestHeaders.has(name)) requestHeaders.set(name, value);
+          }
+        }
+        return fetch(resource, { ...options, headers: requestHeaders, credentials: "omit" });
+      }
+    })
+  });
+}
+
 export async function openSeekThumbnailSource(options) {
-  const input = await openDecodeSource(options);
+  options.signal?.throwIfAborted();
+  const input = options.hls ? openHlsThumbnailInput(options) : await openDecodeSource(options);
+  const onAbort = () => input.dispose();
+  const dispose = () => {
+    options.signal?.removeEventListener("abort", onAbort);
+    input.dispose();
+  };
   try {
-    const video = await input.getPrimaryVideoTrack();
-    if (!video || !(await ensureVideoDecoder(video)) || (await video.isLive())) {
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    options.signal?.throwIfAborted();
+    let video = await input.getPrimaryVideoTrack();
+    if (!video || (await video.isLive())) {
       throw Error("Seek thumbnail decoder unavailable");
     }
+    if (options.hls && !(await video.canDecode())) {
+      // Prefer a native decoder on another rendition before using software.
+      video = (await input.getPrimaryVideoTrack({ filter: (track) => track.canDecode() })) || video;
+    }
+    if (!(await ensureVideoDecoder(video))) throw Error("Seek thumbnail decoder unavailable");
     const first = await video.getFirstTimestamp();
     const sink = new CanvasSink(video, { width: 160, height: 90, fit: "contain" });
     return {
       async frame(seconds) {
         return (await sink.getCanvas(first + seconds))?.canvas || null;
       },
-      dispose: () => input.dispose()
+      dispose
     };
   } catch (error) {
-    input.dispose();
+    dispose();
     throw error;
   }
 }

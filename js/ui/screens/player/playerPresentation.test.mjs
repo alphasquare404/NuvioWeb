@@ -607,6 +607,9 @@ test("playback information shows converted output independently of source metada
     Audio: "OPUS · 2 ch · 48 kHz",
     Playback: "Full Transcode · Client"
   });
+  output = { ...output, audio: "eac3", audioEncoded: false };
+  assert.equal(Object.fromEntries(rows.call(ctx)).Playback, "Video Transcode · Client");
+  delete output.audioEncoded;
   output = { ...output, processing: "audio-transcode", video: "hevc", audio: "aac" };
   const audioOnly = Object.fromEntries(rows.call(ctx));
   assert.equal(audioOnly.Video, "1280 × 720 · HEVC · 24 fps · 6.00 Mbps");

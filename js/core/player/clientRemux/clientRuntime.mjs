@@ -101,7 +101,9 @@ export function createClientRemux({
       bufferEnd,
       ...latest,
       ...film?.cache.stats(),
-      processing: transcode === "audio" ? "audio-transcode" : transcode ? "transcode" : "remux",
+      processing:
+        latest.processing ||
+        (transcode === "audio" ? "audio-transcode" : transcode ? "transcode" : "remux"),
       outputContainer: latest.mime ? "fmp4" : "",
       position: isRestoring() ? position : Math.max(0, video.currentTime),
       duration: logicalDuration,

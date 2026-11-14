@@ -19878,12 +19878,16 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
 
     const url = PlayerController.currentPlaybackUrl;
     const mediaType = PlayerController.currentPlaybackMediaSourceType;
+    const urlMimeType = PlayerController.guessMediaMimeType(url);
+    const hls =
+      PlayerController.isLikelyHlsMimeType(mediaType) ||
+      PlayerController.isLikelyHlsMimeType(urlMimeType);
     if (
       !url ||
       !/^(https?:|blob:)/i.test(url) ||
-      this.isCurrentSourceAdaptiveManifest() ||
-      PlayerController.isLikelyHlsMimeType(mediaType) ||
-      PlayerController.isLikelyDashMimeType(mediaType)
+      (hls && !/^https?:/i.test(url)) ||
+      PlayerController.isLikelyDashMimeType(mediaType) ||
+      PlayerController.isLikelyDashMimeType(urlMimeType)
     ) {
       canvas.hidden = true;
       return;
@@ -19892,7 +19896,9 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
       this.seekThumbnails?.dispose();
       canvas.hidden = true;
       this.seekThumbnailUrl = url;
-      this.seekThumbnails = createSeekThumbnails(url, PlayerController.currentPlaybackHeaders);
+      this.seekThumbnails = createSeekThumbnails(url, PlayerController.currentPlaybackHeaders, {
+        hls
+      });
     }
     if (Math.abs(Number(canvas.dataset.time ?? Infinity) - point.seconds) > 10) {
       canvas.hidden = true;
