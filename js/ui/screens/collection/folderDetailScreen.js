@@ -35,11 +35,6 @@ import {
 } from "../../components/watchedTitleBadge.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
-import {
-  bindDesktopNavigationEvents,
-  renderDesktopNavigation,
-  renderNavigationRevealButton
-} from "../../components/desktopNavigation.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
 import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import {
@@ -48,7 +43,6 @@ import {
 } from "../../components/posterOptionsMenu.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
 import { bindHorizontalRailDragScroll } from "../../components/horizontalRailDragScroll.js";
-import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 
 const TMDB_API_URL = "https://api.themoviedb.org/3";
 const TMDB_POSTER_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342";
@@ -983,9 +977,6 @@ export const FolderDetailScreen = {
     this.tabs = [];
     const preferredHomeLayout = String(this.layoutPrefs?.homeLayout || "classic").toLowerCase();
     this.isDesktopBrowser = Platform.isBrowser();
-    this.sidebarProfile = this.isDesktopBrowser
-      ? await getSidebarProfileState().catch(() => null)
-      : null;
     const savedViewMode = String(this.collection?.viewMode || "TABBED_GRID").toUpperCase();
     // Browser collections keep their own information architecture. FOLLOW_LAYOUT
     // intentionally maps to its non-hero row presentation on desktop.
@@ -1756,11 +1747,6 @@ export const FolderDetailScreen = {
     this.container.innerHTML =
       this.viewMode === "TABBED_GRID" || this.isDesktopBrowser
         ? `
-          ${
-            this.isDesktopBrowser
-              ? renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })
-              : ""
-          }
           ${this.isDesktopBrowser ? '<div class="folder-detail-desktop-ambient" aria-hidden="true"></div>' : ""}
           <div class="seeall-shell folder-detail-shell${this.isDesktopBrowser ? " desktop-folder-detail-shell" : ""}${enterClass}">
           ${
@@ -1776,7 +1762,6 @@ export const FolderDetailScreen = {
                          : `<h1 class="folder-detail-mobile-title">${escapeHtml(mobileFolderTitle)}</h1>`
                      }
                    </div>
-                   ${renderNavigationRevealButton()}
                  </header>
                  ${mobileTabsMarkup}`
               : ""
@@ -1868,9 +1853,6 @@ export const FolderDetailScreen = {
       this.folderHeadingCleanup = bindPageHeadingCollapse({ container: this.container });
     }
     ScreenUtils.indexFocusables(this.container);
-    if (this.isDesktopBrowser) {
-      bindDesktopNavigationEvents(this.container);
-    }
     this.bindDesktopBrowserEvents();
     this.syncBrowserSelectedTabIntoView();
     this.applyDesktopAmbientTheme();

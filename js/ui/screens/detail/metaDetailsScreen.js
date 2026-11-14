@@ -77,11 +77,6 @@ import {
   createBrowserOfflineSubtitleSelection,
   getPreferredOfflineDownloadSubtitles
 } from "../../components/browserOfflineSubtitlePicker.js";
-import {
-  bindDesktopNavigationEvents,
-  renderDesktopNavigation,
-  renderNavigationRevealButton
-} from "../../components/desktopNavigation.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
@@ -89,7 +84,6 @@ import { bindMediaContextMenu } from "../../components/mediaContextActions.js";
 import { openDesktopContextMenu } from "../../components/desktopContextMenu.js";
 import { openTouchActionSheet } from "../../components/touchActionSheet.js";
 import { bindBrowserHorizontalTabScroll } from "../../components/browserHorizontalTabScroll.js";
-import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
   closeDesktopTrailerModal as closeSharedDesktopTrailerModal,
   openDesktopTrailerModal as openSharedDesktopTrailerModal
@@ -1857,9 +1851,6 @@ export const MetaDetailsScreen = {
       this.params = params;
       this.renderRouteHandoff();
     }
-    this.sidebarProfile = Platform.isBrowser()
-      ? await getSidebarProfileState().catch(() => null)
-      : null;
     this.closeDesktopTrailerModal({ restoreFocus: false });
     this.stopTrailerPlayback({
       keepDom: false,
@@ -4366,7 +4357,6 @@ export const MetaDetailsScreen = {
           ${renderBackButtonIcon()}
         </button>
         <div class="detail-heading-brand" data-detail-heading-brand aria-hidden="true"></div>
-        ${renderNavigationRevealButton()}
       </header>
     `;
   },
@@ -4503,7 +4493,6 @@ export const MetaDetailsScreen = {
     }
 
     this.container.innerHTML = `
-      ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile }) : ""}
       <div class="series-detail-shell${this.getTrailerShellStateClasses()}">
         <div class="series-detail-backdrop${this.holdDetailArtwork ? " is-awaiting" : ""}" data-backdrop-url="${escapeAttribute(backdrop || "")}"${buildDetailBackdropStyleAttribute(backdrop, portraitBackdrop)}></div>
         <div class="detail-trailer-layer"></div>
@@ -4881,7 +4870,6 @@ export const MetaDetailsScreen = {
     const heroMarkup = this.renderMovieHeroMarkup(meta);
 
     this.container.innerHTML = `
-      ${Platform.isBrowser() ? renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile }) : ""}
       <div class="series-detail-shell movie-detail-shell${this.getTrailerShellStateClasses()}">
         <div class="series-detail-backdrop" data-backdrop-url="${escapeAttribute(backdrop || "")}"${buildDetailBackdropStyleAttribute(backdrop, portraitBackdrop)}></div>
         <div class="detail-trailer-layer"></div>
@@ -7992,7 +7980,6 @@ export const MetaDetailsScreen = {
       background: this.meta?.background || null
     });
     if (Platform.isBrowser()) {
-      bindDesktopNavigationEvents(this.container);
       await this.refreshCurrentLibraryMembership();
     } else {
       this.isSavedInLibrary = !this.isSavedInLibrary;
@@ -9612,7 +9599,6 @@ export const MetaDetailsScreen = {
       this.container?.querySelectorAll("[data-detail-back]").forEach((backButton) => {
         backButton.onclick = () => this.handleDetailBack();
       });
-      bindDesktopNavigationEvents(this.container);
       this.bindDesktopDetailActions();
       this.bindDesktopInsightTabActions();
       this.bindDesktopCastPersonActions();

@@ -16729,7 +16729,7 @@ html[data-nav-placement="sidebar"].desktop-browser {
   --browser-home-no-hero-top: calc(var(--browser-safe-area-top) + 16px);
 }
 
-html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-enabled {
+html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-enabled:not(.discover-shell) {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 78px);
 }
 
@@ -17460,7 +17460,7 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
   /* The page keeps clear of the taller shape, so the last row is never left
      under the bar. */
   html[data-nav-placement="bottom"].desktop-browser:not(.nav-bottom-collapsed)
-    .desktop-navigation-enabled {
+    .desktop-navigation-enabled:not(.discover-shell) {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
   }
 

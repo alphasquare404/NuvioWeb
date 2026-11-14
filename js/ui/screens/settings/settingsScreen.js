@@ -2516,7 +2516,7 @@ export const SettingsScreen = {
       return;
     }
     this.container.innerHTML = `
-      <div class="home-shell settings-shell${isDesktopSettingsBrowser() ? " desktop-navigation-enabled" : ""}">
+      <div class="home-shell settings-shell">
         <div class="settings-root-sidebar-slot" data-settings-root-sidebar></div>
         <div class="settings-workspace">
           <div class="settings-sidebar-frame">
@@ -10569,7 +10569,10 @@ export const SettingsScreen = {
     this.bindSettingsPanelLayout();
 
     const shell = this.container.querySelector(".settings-shell");
+    const isDesktopBrowser = Platform.isBrowser();
+    const showDesktopNavigation = isDesktopBrowser && this.container.id !== SETTINGS_SECTION_ROUTE;
     if (shell) {
+      shell.classList.toggle("desktop-navigation-enabled", showDesktopNavigation);
       shell.dataset.settingsLayout = usesPanels ? "panels" : "pages";
       shell.dataset.settingsStyle = String(
         this.model.theme.settingsUiStyle || "CLASSIC"
@@ -10593,22 +10596,24 @@ export const SettingsScreen = {
     const contentSlot = this.container.querySelector("[data-settings-content]");
     const dialogSlot = this.container.querySelector("[data-settings-dialog]");
 
-    const isDesktopBrowser = Platform.isBrowser();
     // The index gets a second trigger inside its heading for the top-right
     // corner. The root slot keeps its own so the bottom corners never live
     // inside a heading whose glass would become their containing block.
-    const rootSidebarHtml = isDesktopBrowser
-      ? renderDesktopNavigation({
-          selectedRoute: "settings",
-          profile: this.sidebarProfile
-        })
-      : renderRootSidebar({
-          selectedRoute: "settings",
-          profile: this.sidebarProfile,
-          layout: this.layoutPrefs,
-          expanded: Boolean(this.sidebarExpanded),
-          pillIconOnly: Boolean(this.pillIconOnly)
-        });
+    let rootSidebarHtml = "";
+    if (showDesktopNavigation) {
+      rootSidebarHtml = renderDesktopNavigation({
+        selectedRoute: "settings",
+        profile: this.sidebarProfile
+      });
+    } else if (!isDesktopBrowser) {
+      rootSidebarHtml = renderRootSidebar({
+        selectedRoute: "settings",
+        profile: this.sidebarProfile,
+        layout: this.layoutPrefs,
+        expanded: Boolean(this.sidebarExpanded),
+        pillIconOnly: Boolean(this.pillIconOnly)
+      });
+    }
     if (rootSidebarSlot && rootSidebarSlot.innerHTML !== rootSidebarHtml) {
       rootSidebarSlot.innerHTML = rootSidebarHtml;
     }
@@ -10701,9 +10706,9 @@ export const SettingsScreen = {
     }
     this.bindTextDialogEvents();
 
-    if (isDesktopBrowser) {
+    if (showDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
-    } else {
+    } else if (!isDesktopBrowser) {
       bindRootSidebarEvents(this.container, {
         currentRoute: "settings",
         onSelectedAction: () => this.closeSidebarToNav(),
