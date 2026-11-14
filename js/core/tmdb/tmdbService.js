@@ -35,12 +35,13 @@ export const TmdbService = {
       return normalizedIdPart;
     }
 
-    if (!normalizedIdPart.startsWith("tt") || !apiKey) {
+    const tvdb = /^tvdb:(\d+)(?::|$)/i.exec(rawId)?.[1];
+    if ((!tvdb && !/^tt\d+$/i.test(normalizedIdPart)) || !apiKey) {
       return null;
     }
 
     const contentType = getContentType(type);
-    const url = `${TMDB_BASE_URL}/find/${encodeURIComponent(normalizedIdPart)}?external_source=imdb_id&api_key=${encodeURIComponent(apiKey)}`;
+    const url = `${TMDB_BASE_URL}/find/${encodeURIComponent(tvdb || normalizedIdPart)}?external_source=${tvdb ? "tvdb_id" : "imdb_id"}&api_key=${encodeURIComponent(apiKey)}`;
     const response = await fetch(url, { signal: options.signal });
     if (!response.ok) {
       return null;
@@ -57,6 +58,10 @@ export const TmdbService = {
   },
 
   async tmdbToImdb(tmdbId, type = "movie") {
+    return (await TmdbService.externalIds(tmdbId, type))?.imdbId || null;
+  },
+
+  async externalIds(tmdbId, type = "movie", { signal } = {}) {
     const apiKey = getEffectiveTmdbApiKey();
     const numericId = String(tmdbId || "").trim();
     if (!apiKey || !/^\d+$/.test(numericId)) {
@@ -65,13 +70,17 @@ export const TmdbService = {
 
     const contentType = getContentType(type);
     const url = `${TMDB_BASE_URL}/${contentType}/${encodeURIComponent(numericId)}/external_ids?api_key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
     if (!response.ok) {
       return null;
     }
 
     const data = await response.json();
     const imdbId = String(data?.imdb_id || "").trim();
-    return /^tt\d+$/i.test(imdbId) ? imdbId : null;
+    const tvdbId = String(data?.tvdb_id || "").trim();
+    return {
+      imdbId: /^tt\d+$/i.test(imdbId) ? imdbId : null,
+      tvdbId: /^\d+$/.test(tvdbId) ? tvdbId : null
+    };
   }
 };

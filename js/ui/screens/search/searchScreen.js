@@ -3,6 +3,7 @@ import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.
 import { Platform } from "../../../platform/index.js";
 import { getBrowserVerticalScrollOwner } from "../../navigation/browserScrollPosition.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
+import { mediaCatalogAddons } from "../../../data/repository/mediaServerCatalogRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
 import {
@@ -730,7 +731,11 @@ export const SearchScreen = {
   },
 
   async searchRows(query, { token = this.loadToken, onFirstResults = null } = {}) {
-    const addons = await addonRepository.getInstalledAddons();
+    const [installed, media] = await Promise.all([
+      addonRepository.getInstalledAddons(),
+      mediaCatalogAddons({ search: true })
+    ]);
+    const addons = [...installed, ...media];
     const searchableCatalogs = buildSearchTargets(addons);
     const scheduleIndices = buildSearchScheduleIndices(searchableCatalogs);
     const batchSize = getSearchCatalogBatchSize();
@@ -879,19 +884,16 @@ export const SearchScreen = {
               // catalog asked for without disturbing the ones beside it.
               const landscape =
                 Platform.isBrowser() &&
-                shouldDrawCardLandscape(
-                  this.layoutPrefs?.catalogCardOrientation,
-                  item.posterShape
-                );
+                shouldDrawCardLandscape(this.layoutPrefs?.catalogCardOrientation, item.posterShape);
               const art = landscape
                 ? item.background || item.backdrop || item.landscapePoster || item.poster || ""
                 : item.poster || "";
               return `
             <article class="search-result-card focusable${landscape ? " is-landscape" : ""}"
                      data-action="openDetail"
-                     data-item-id="${item.id || ""}"
-                     data-item-type="${item.type || row.type || "movie"}"
-                     data-item-title="${item.name || "Untitled"}"
+                     data-item-id="${escapeHtml(item.id || "")}"
+                     data-item-type="${escapeHtml(item.type || row.type || "movie")}"
+                     data-item-title="${escapeHtml(item.name || "Untitled")}"
                      data-poster-src="${escapeHtml(item.poster || "")}"
                      data-backdrop-src="${escapeHtml(item.background || item.backdrop || item.landscapePoster || "")}"
                      data-addon-base-url="${escapeHtml(row.addonBaseUrl || item.addonBaseUrl || "")}"
@@ -900,10 +902,10 @@ export const SearchScreen = {
                      data-catalog-type="${escapeHtml(row.type || item.catalogType || "")}"
                      data-row-key="${escapeHtml(rowKey)}">
               <div class="search-result-poster-wrap">
-                ${art ? `<img class="search-result-poster" src="${art}" alt="${item.name || "content"}" loading="lazy" decoding="async"${landscape && item.poster && art !== item.poster ? ` data-fallback-src="${escapeHtml(item.poster)}" onerror="this.onerror=null;this.src=this.dataset.fallbackSrc;"` : ""} />` : `<div class="search-result-poster placeholder"></div>`}
+                ${art ? `<img class="search-result-poster" src="${escapeHtml(art)}" alt="${escapeHtml(item.name || "content")}" loading="lazy" decoding="async"${landscape && item.poster && art !== item.poster ? ` data-fallback-src="${escapeHtml(item.poster)}" onerror="this.onerror=null;this.src=this.dataset.fallbackSrc;"` : ""} />` : `<div class="search-result-poster placeholder"></div>`}
                 ${isTitleItemWatched(item, this.watchedTitleIds) ? renderTitleWatchedBadge() : ""}
               </div>
-              <div class="search-result-name">${item.name || "Untitled"}</div>
+              <div class="search-result-name">${escapeHtml(item.name || "Untitled")}</div>
               <div class="search-result-date">${formatReleaseYear(item)}</div>
             </article>
           `;
@@ -914,12 +916,12 @@ export const SearchScreen = {
               ? `
             <article class="search-result-card search-seeall-card focusable${rowIsLandscape ? " is-landscape" : ""}"
                      data-action="openCatalogSeeAll"
-                     data-addon-base-url="${row.addonBaseUrl || ""}"
-                     data-addon-id="${row.addonId || ""}"
-                     data-addon-name="${row.addonName || ""}"
-                     data-catalog-id="${row.catalogId || ""}"
-                     data-catalog-name="${row.catalogName || ""}"
-                     data-catalog-type="${row.type || "movie"}"
+                     data-addon-base-url="${escapeHtml(row.addonBaseUrl || "")}"
+                     data-addon-id="${escapeHtml(row.addonId || "")}"
+                     data-addon-name="${escapeHtml(row.addonName || "")}"
+                     data-catalog-id="${escapeHtml(row.catalogId || "")}"
+                     data-catalog-name="${escapeHtml(row.catalogName || "")}"
+                     data-catalog-type="${escapeHtml(row.type || "movie")}"
                      data-row-index="${rowIndex}"
                      data-row-key="${escapeHtml(rowKey)}">
               <div class="search-seeall-inner">
@@ -1060,14 +1062,17 @@ export const SearchScreen = {
         }
         const track = target.closest(".search-results-track");
         const hasHorizontalWheelIntent =
-          Boolean(event.shiftKey) || Math.abs(Number(event.deltaX || 0)) > Math.abs(Number(event.deltaY || 0));
+          Boolean(event.shiftKey) ||
+          Math.abs(Number(event.deltaX || 0)) > Math.abs(Number(event.deltaY || 0));
         if (!track || !this.container?.contains(track) || !hasHorizontalWheelIntent) {
           return;
         }
         track.scrollLeft += Number(event.deltaX || 0) || Number(event.deltaY || 0);
         event.preventDefault?.();
       };
-      this.container.addEventListener("wheel", this.boundDesktopSearchWheelHandler, { passive: false });
+      this.container.addEventListener("wheel", this.boundDesktopSearchWheelHandler, {
+        passive: false
+      });
     }
 
     this.container.querySelectorAll(".search-results-track").forEach((track) => {
@@ -1077,7 +1082,10 @@ export const SearchScreen = {
       track.dataset.desktopDragBound = "true";
 
       track.addEventListener("dragstart", (event) => {
-        if (event.target instanceof HTMLImageElement && event.target.closest(".search-result-card")) {
+        if (
+          event.target instanceof HTMLImageElement &&
+          event.target.closest(".search-result-card")
+        ) {
           event.preventDefault();
         }
       });

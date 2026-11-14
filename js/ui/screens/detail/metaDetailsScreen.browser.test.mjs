@@ -26,6 +26,7 @@ test("movie download opens a source and subtitle dialog from Detail", async () =
     resolvePlayableDetailType: (type) => type,
     resolveMetaImdbId: () => "tt1",
     resolveMetaTmdbId: () => "1",
+    resolveMetaTvdbId: () => "2",
     parseEpisodeRuntimeMinutes: () => 100,
     t: (_key, _params, fallback) => fallback,
     createOfflineDisplaySnapshot: () => ({}),
@@ -37,6 +38,7 @@ test("movie download opens a source and subtitle dialog from Detail", async () =
         assert.equal(type, "movie");
         assert.equal(id, "video");
         assert.equal(options.itemId, "movie");
+        assert.equal(options.tvdbId, "2");
         options.onChunk([stream]);
         return discovery;
       }

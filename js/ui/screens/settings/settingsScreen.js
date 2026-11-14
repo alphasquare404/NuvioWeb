@@ -1,5 +1,7 @@
 import { renderAutoplaySources, bindAutoplaySources } from "./autoplaySourcesDialog.js";
 import { listAutoplayStreamAddons } from "./autoplayAddonSelection.js";
+import { bindMediaConnections, renderMediaConnections } from "./mediaConnectionsPanel.js";
+import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
 import { renderFilenamePlaybackMethodBadge } from "../../components/filenamePlaybackBadge.js";
 import { normalizeAccentColor, accentTextColor } from "../../../core/theme/accentColor.js";
 import {
@@ -2541,6 +2543,18 @@ export const SettingsScreen = {
     const routeName = Router.getCurrent?.() || SETTINGS_ROUTE;
     this.container = document.getElementById(routeName) || document.getElementById(SETTINGS_ROUTE);
     ScreenUtils.show(this.container);
+    this.mediaServerSettingsUnsubscribe ||= MediaConnectionsStore.subscribe(
+      ({ profileId, syncSource }) => {
+        if (
+          syncSource === "media-server-cloud" &&
+          String(profileId) === String(ProfileManager.getActiveProfileId()) &&
+          this.container?.id === Router.getCurrent?.() &&
+          this.presentedSectionId === "contentDiscovery"
+        ) {
+          void this.render({ refreshModel: false });
+        }
+      }
+    );
     // Two routes share this screen, so the listeners belong to the container,
     // not to this object: a page that mounted first had already marked the
     // click binding done, and the second page -- the section -- had no click
@@ -5768,11 +5782,23 @@ export const SettingsScreen = {
     const titles = {
       addons: t("addon_title", {}, "Addons"),
       plugins: t("plugin_title", {}, "Plugins"),
-      collections: t("settings_discovery_collections", {}, "Collections")
+      collections: t("settings_discovery_collections", {}, "Collections"),
+      mediaConnections: t("media_connections_title", {}, "Servers")
     };
-    const icons = { addons: "view_module", plugins: "extension", collections: "folder" };
+    const icons = {
+      addons: "view_module",
+      plugins: "extension",
+      collections: "folder",
+      mediaConnections: "dns"
+    };
+    const { servers, seerr } = MediaConnectionsStore.get();
     const counts = Object.fromEntries(
-      topics.map((id) => [id, this.contentDiscoveryManager(id)?.count || 0])
+      topics.map((id) => [
+        id,
+        id === "mediaConnections"
+          ? servers.length + Number(Boolean(seerr))
+          : this.contentDiscoveryManager(id)?.count || 0
+      ])
     );
     const summary = (id) =>
       t(
@@ -5795,7 +5821,7 @@ export const SettingsScreen = {
         <button type="button" class="settings-discovery-heading settings-content-focusable focusable" id="${prefix}-heading-${id}" aria-controls="${prefix}-body-${id}" aria-expanded="${active === id}" data-zone="content" data-role="section-toggle" ${this.registerAction(key, this.actionMap.get(key))}>
           <span class="settings-discovery-icon material-icons" aria-hidden="true">${icons[id]}</span><span class="settings-discovery-copy"><span class="settings-discovery-title">${escapeHtml(titles[id])}</span><span class="settings-discovery-summary">${escapeHtml(summary(id))}</span></span><span class="settings-discovery-chevron" aria-hidden="true">${iconSvg(ROW_ICONS.expand, "settings-row-icon")}</span>
         </button>
-        <div class="settings-discovery-body" id="${prefix}-body-${id}" role="${wide ? "tabpanel" : "region"}" aria-labelledby="${prefix}-${wide ? "tab" : "heading"}-${id}"${active === id ? "" : " hidden"}>${active === id ? this.contentDiscoveryManager(id)?.render() || "" : ""}</div>
+        <div class="settings-discovery-body" id="${prefix}-body-${id}" role="${wide ? "tabpanel" : "region"}" aria-labelledby="${prefix}-${wide ? "tab" : "heading"}-${id}"${active === id ? "" : " hidden"}>${active === id ? (id === "mediaConnections" ? renderMediaConnections(t) : this.contentDiscoveryManager(id)?.render() || "") : ""}</div>
       </section>`;
       })
       .join("");
@@ -8034,7 +8060,10 @@ export const SettingsScreen = {
       const sources = {
         addons: listAutoplayStreamAddons(addons),
         plugins,
-        servers: []
+        servers: MediaConnectionsStore.get().servers.map((server) => ({
+          id: server.id,
+          label: server.name
+        }))
       };
       const settings = PlayerSettingsStore.get();
       this.openOptionDialog({
@@ -10688,6 +10717,9 @@ export const SettingsScreen = {
       this.desktopHomeCatalogManager.bind(contentSlot);
     }
 
+    if (section.id === "contentDiscovery") {
+      bindMediaConnections(contentSlot, () => this.render({ refreshModel: false }), t);
+    }
     const dialogHtml = this.optionDialog ? this.renderOptionDialog() : this.renderTextDialog();
     if (dialogSlot && dialogSlot._settingsDialogMarkup !== dialogHtml) {
       dialogSlot.innerHTML = dialogHtml;
@@ -11277,6 +11309,13 @@ export const SettingsScreen = {
   },
 
   async onKeyDown(event) {
+    if (event?.target?.closest?.("[data-media-type-dialog]")) return;
+    if (
+      event?.target?.closest?.("[data-media-connections]") &&
+      event.target.matches("input, select, button, summary") &&
+      !Platform.isBackEvent(event)
+    )
+      return;
     if (
       event?.target?.matches?.("[data-layout-range], [data-appearance-color]") &&
       !Platform.isBackEvent(event)
@@ -11601,6 +11640,8 @@ export const SettingsScreen = {
   cleanup() {
     this.persistUiState();
     this.unbindHeaderCollapse();
+    this.mediaServerSettingsUnsubscribe?.();
+    this.mediaServerSettingsUnsubscribe = null;
     this.settingsPanelLayoutQuery?.removeEventListener?.("change", this.settingsPanelLayoutChanged);
     this.settingsPanelLayoutQuery = null;
     this.settingsPanelLayoutChanged = null;

@@ -10070,6 +10070,256 @@ button:focus-visible {
   font-size: 14px;
 }
 
+.media-connections {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 960px) {
+  .media-connections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.media-connections h3 {
+  margin: 0 0 12px;
+}
+
+.media-seerr-notice {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgb(229 178 86 / 0.4);
+  border-radius: 8px;
+  background: rgb(229 178 86 / 0.1);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.media-seerr-notice a {
+  justify-self: start;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.media-connections section {
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+}
+
+.media-connections form,
+.media-connections label,
+.media-server-type-field {
+  display: grid;
+  gap: 6px;
+}
+
+.media-connections form {
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.media-connections input:not([type="checkbox"]),
+.media-connections select,
+.media-connections button {
+  min-height: 42px;
+  color: inherit;
+  background: var(--surface-color, #242424);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+.media-connections input:not([type="checkbox"]),
+.media-connections select,
+.media-connections [data-media-type-trigger] {
+  background: rgb(var(--secondary-color-rgb) / 0.055);
+  border-color: var(--settings-card-edge, rgb(var(--secondary-color-rgb) / 0.24));
+  color: var(--text-color);
+  font: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.media-connections input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.media-connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.media-connection-row > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.media-server-card {
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--settings-card-edge, var(--border-color));
+  border-radius: 12px;
+  background: var(--settings-card-wash, rgb(var(--secondary-color-rgb) / 0.05));
+}
+
+.media-connections button,
+.media-connections select,
+.media-connections summary {
+  cursor: pointer;
+}
+
+.media-connections summary {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.media-connections details[open] > summary {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.media-connections .media-add-server > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  box-sizing: border-box;
+  font-weight: 600;
+}
+
+.media-connections .media-add-server > summary::-webkit-details-marker {
+  display: none;
+}
+
+.media-connections form > button {
+  border-color: transparent;
+  background: var(--text-color);
+  color: var(--bg-color);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.media-server-type-field > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.media-connections dialog {
+  width: min(360px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid #444;
+  border-radius: 16px;
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.media-connections dialog::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.media-connections dialog header {
+  margin-bottom: 10px;
+}
+
+.media-connections [data-media-type-option] {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  text-align: start;
+}
+
+.media-connections [data-media-type-option][aria-pressed="true"] {
+  border-color: rgb(var(--secondary-color-rgb) / 0.65);
+  background: rgb(var(--secondary-color-rgb) / 0.18);
+}
+
+.media-connections :is(button, summary),
+.autoplay-source-handle,
+.autoplay-source-switch {
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.media-connections :is(button, input, select, summary):focus-visible {
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.7);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .media-connections :is(button:enabled, summary):hover,
+  .autoplay-source-handle:hover,
+  .autoplay-source-switch:enabled:hover {
+    background-color: rgba(255, 255, 255, 0.17);
+    border-radius: 8px;
+  }
+
+  .media-connections form > button:enabled:hover {
+    background: color-mix(in srgb, var(--text-color) 85%, var(--secondary-color));
+  }
+}
+
+.media-connections :is(button:enabled, summary):active,
+.autoplay-source-handle:active,
+.autoplay-source-switch:enabled:active {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.media-connections form > button:enabled:active {
+  background: color-mix(in srgb, var(--text-color) 72%, var(--secondary-color));
+}
+
+.media-connections button[aria-busy="true"],
+.series-detail-actions button[aria-busy="true"] {
+  opacity: 0.65;
+  cursor: progress;
+}
+
+.media-connections [data-media-libraries] {
+  margin: 0;
+}
+
+.media-connections [data-media-library-options] button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  text-align: start;
+  font: inherit;
+}
+
+.media-connections [data-media-library-options] .settings-toggle-pill {
+  width: 44px;
+  height: 24px;
+  padding: 3px;
+}
+
+.media-connections [data-media-library-options] .settings-toggle-thumb {
+  width: 18px;
+  height: 18px;
+}
+
+.media-connections [role="status"]:empty,
+.media-connections ul:empty,
+.media-request-status:empty {
+  display: none;
+}
+
 .autoplay-source-hint {
   margin: 0;
   font-size: 13px;

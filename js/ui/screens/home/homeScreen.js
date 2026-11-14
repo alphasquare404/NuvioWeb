@@ -1,4 +1,6 @@
 import { playbackCompletionPreparation } from "../../../data/repository/playbackCompletionPreparation.js";
+import { mediaCatalogAddons } from "../../../data/repository/mediaServerCatalogRepository.js";
+import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
 import { isWatchProgressFromOtherSource } from "../../../data/repository/watchProgressProvenance.js";
 import { watchProgressCardKey } from "../../../domain/model/watchProgress.js";
 import { Router } from "../../navigation/router.js";
@@ -9264,6 +9266,18 @@ export const HomeScreen = {
         }
       });
     }
+    if (!this.unsubscribeMediaServerChanges) {
+      this.unsubscribeMediaServerChanges = MediaConnectionsStore.subscribe(
+        ({ profileId, syncSource }) => {
+          if (
+            syncSource === "media-server-cloud" &&
+            String(profileId) === String(ProfileManager.getActiveProfileId())
+          ) {
+            this.scheduleCatalogHydrationRefresh();
+          }
+        }
+      );
+    }
   },
 
   scheduleCatalogHydrationRefresh() {
@@ -9434,6 +9448,19 @@ export const HomeScreen = {
   // happened, or a Watch Progress source switched while Home was covered, was
   // to reload the page.
   onRouteRevealed() {
+    if (
+      this.mediaCatalogSettings !==
+      JSON.stringify(
+        MediaConnectionsStore.get().servers.map(({ id, name, libraryIds, enabled }) => [
+          id,
+          name,
+          libraryIds,
+          enabled
+        ])
+      )
+    ) {
+      this.scheduleCatalogHydrationRefresh();
+    }
     if (
       this.loadedWatchProgressSourceKey ===
         watchProgressRepository.getContinueWatchingSourceKey() &&
@@ -9705,7 +9732,19 @@ export const HomeScreen = {
     // slow addon or Trakt call never blocks catalog rows. The section paints
     // instantly from the snapshot hydrated in mount().
 
-    const addons = await addonRepository.getInstalledAddons();
+    this.mediaCatalogSettings = JSON.stringify(
+      MediaConnectionsStore.get().servers.map(({ id, name, libraryIds, enabled }) => [
+        id,
+        name,
+        libraryIds,
+        enabled
+      ])
+    );
+    const [installedAddons, mediaAddons] = await Promise.all([
+      addonRepository.getInstalledAddons(),
+      mediaCatalogAddons({ resumeLabel: t("media_connection_resume", {}, "Resume") })
+    ]);
+    const addons = [...installedAddons, ...mediaAddons];
     this.collections = CollectionsStore.get();
     const catalogDescriptors = [];
 
@@ -13226,6 +13265,8 @@ export const HomeScreen = {
       this.unsubscribeHomeCatalogStoreChanges();
       this.unsubscribeHomeCatalogStoreChanges = null;
     }
+    this.unsubscribeMediaServerChanges?.();
+    this.unsubscribeMediaServerChanges = null;
     if (this.unsubscribeWatchProgressStoreChanges) {
       this.unsubscribeWatchProgressStoreChanges();
       this.unsubscribeWatchProgressStoreChanges = null;

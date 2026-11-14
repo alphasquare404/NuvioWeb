@@ -17,6 +17,7 @@ import { clientRemuxAvailable, clientRemuxPlan } from "./remuxClient.js";
 import { buildRemuxUrl } from "./remuxSource.js";
 import { classifyPlayback, PLAYBACK_METHODS } from "./playbackMethod.js";
 import { TranscodeSettingsStore } from "../../data/local/transcodeSettingsStore.js";
+import { isPrivateMediaUrl } from "../streams/privateMediaSource.js";
 function unavailable(message) {
   const error = new Error(message);
   error.code = "PROCESSING_UNAVAILABLE";
@@ -44,6 +45,7 @@ export async function prepareMeasuredTranscode({
 } = {}) {
   if (
     mode === "none" ||
+    (mode === "server" && isPrivateMediaUrl(sourceUrl)) ||
     (mode === "client" && PlayerSettingsStore.get().mediabunnyEnabled === false) ||
     !probe?.videoCodec ||
     probe.videoCodec === "unknown" ||
@@ -132,6 +134,7 @@ export const SelectedStreamDelivery = {
     url,
     { audioIndex = 0, audioStreams = null, playbackCapabilities = null } = {}
   ) {
+    if (isPrivateMediaUrl(url)) return "";
     const why = (reason) => {
       console.warn(`[Playback] hls skipped: ${reason}`);
       return "";
@@ -252,7 +255,7 @@ export const SelectedStreamDelivery = {
     // The remux decision does not depend on the transcode endpoint: a deployment can
     // run the container copy and not the audio one, and returning early here skipped
     // the remux path entirely for exactly that configuration.
-    if (!url) return url;
+    if (!url || isPrivateMediaUrl(url)) return url;
     if (attemptCopy) return (await prepareUnverifiedRemux(url)).url;
     const clientPlan = clientRemuxPlan(stream, this.getStreamProbe(stream));
     if (clientPlan) return clientPlan.sourceUrl;
@@ -274,6 +277,7 @@ export const SelectedStreamDelivery = {
         inner = "";
       }
       if (inner) {
+        if (isPrivateMediaUrl(inner)) return inner;
         const playlistUrl = await this.remuxPlaylistUrl(inner);
         const playable = playlistUrl ? await this.isPlayableHlsPlaylist(playlistUrl) : false;
         // Cannot be skipped if this branch runs: says whether a playlist was offered at all.

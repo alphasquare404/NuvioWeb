@@ -11,6 +11,7 @@
 // is configured rather than assuming a token is needed.
 
 import { PLAYBACK_METHODS } from "./playbackMethod.js";
+import { isPrivateMediaUrl } from "../streams/privateMediaSource.js";
 
 export const TRANSCODE_ACCESS_MODES = Object.freeze({
   OPEN: "open",
@@ -40,7 +41,7 @@ export function isTranscodeEndpointConfigured(endpoint) {
 
 /** Only a source the bridge itself can fetch is worth wrapping. */
 function isFetchableByServer(url) {
-  return /^https?:\/\//i.test(String(url || "").trim());
+  return /^https?:\/\//i.test(String(url || "").trim()) && !isPrivateMediaUrl(url);
 }
 
 /**
@@ -134,7 +135,7 @@ export function buildTranscodePlaylistUrl(url, { endpoint = "", token = "", plan
   const base = String(endpoint || "").trim();
   // An endpoint that already carries a query cannot have a path appended without
   // guessing where it belongs; that deployment keeps the file delivery.
-  if (!base || base.includes("?")) return "";
+  if (!base || base.includes("?") || !isFetchableByServer(url)) return "";
   const parts = [`u=${encodeURIComponent(String(url || ""))}`];
   const secret = String(token || "").trim();
   if (secret) parts.push(`token=${encodeURIComponent(secret)}`);
@@ -159,7 +160,7 @@ export function buildTranscodeUrl(
   { endpoint = "", token = "", stream = false, plan = null } = {}
 ) {
   const base = String(endpoint || "").trim();
-  if (!base) return "";
+  if (!base || !isFetchableByServer(url)) return "";
   const separator = base.includes("?") ? "&" : "?";
   const parts = [`u=${encodeURIComponent(String(url || ""))}`];
   const secret = String(token || "").trim();

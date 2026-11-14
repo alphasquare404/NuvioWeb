@@ -1,3 +1,4 @@
+import { reportMediaServerProgress } from "../../../core/media/mediaConnections.js";
 import {
   rememberableStreamCandidate,
   rememberedAttemptKey,
@@ -2052,6 +2053,16 @@ export const PlayerScreen = {
   ...BrowserOfflineDownloadOptions,
   ...BrowserPlayerPresentationScreen,
   async mount(params = {}) {
+    const initialServer = params.streamCandidates?.find(
+      (candidate) => candidate.id === params.preferredStreamId || candidate.url === params.streamUrl
+    )?.clientResolve?.mediaServer;
+    if (
+      initialServer?.resumePositionMs > 0 &&
+      !params.resumePositionMs &&
+      !params.startFromBeginning
+    ) {
+      params = { ...params, resumePositionMs: initialServer.resumePositionMs };
+    }
     this.container = document.getElementById("player");
     this.unbindDesktopPlayerPointerBridge();
     this.container.style.display = "block";
@@ -2604,7 +2615,12 @@ export const PlayerScreen = {
   rememberSelectedStreamPreference(streamCandidate) {
     const prefContentId = String(this.params?.itemId || "").trim();
     const prefVideoId = String(this.params?.videoId || this.params?.itemId || "").trim();
-    if (this.offlineDownloadId || !streamCandidate?.id || !prefContentId) {
+    if (
+      this.offlineDownloadId ||
+      !streamCandidate?.id ||
+      !prefContentId ||
+      (streamCandidate.clientResolve || streamCandidate.raw?.clientResolve)?.mediaServer
+    ) {
       return;
     }
     StreamPreferencesStore.set(prefContentId, prefVideoId, streamCandidate.id, {
@@ -8939,6 +8955,8 @@ export const PlayerScreen = {
         itemId: String(this.params?.itemId || ""),
         tmdbId: this.params?.tmdbId ?? this.params?.tmdb_id,
         imdbId: this.params?.imdbId,
+        tvdbId: this.params?.tvdbId ?? this.params?.tvdb_id,
+        title: this.params?.playerTitle,
         season: options.season ?? null,
         episode: options.episode ?? null,
         signal: options.signal,
@@ -12667,7 +12685,8 @@ export const PlayerScreen = {
     })();
     const readyDelivery =
       /\.(?:m3u8|mpd)$/i.test(path) || /\/api\/(?:remux|transcode)(?:\/|$)/.test(path);
-    if (readyDelivery || this.wantsDecodePlayback?.(sourceUrl)) {
+    const serverStream = (candidate.clientResolve || candidate.raw?.clientResolve)?.mediaServer;
+    if (serverStream || readyDelivery || this.wantsDecodePlayback?.(sourceUrl)) {
       this.params.playbackPlan = null;
       this.params.unverifiedPlayback = null;
       return { url: sourceUrl, plan: null };
@@ -13260,6 +13279,17 @@ export const PlayerScreen = {
 
   markPlaybackProgress() {
     const currentSeconds = this.getPlaybackCurrentSeconds();
+    const candidate = this.getCurrentStreamCandidate?.();
+    const server = (candidate?.clientResolve || candidate?.raw?.clientResolve)?.mediaServer;
+    if (server && currentSeconds > 0 && Date.now() - (this.mediaServerProgressAt || 0) >= 10000) {
+      this.mediaServerProgressAt = Date.now();
+      void reportMediaServerProgress(
+        server.connectionId,
+        server.itemId,
+        currentSeconds,
+        this.paused
+      );
+    }
     if (typeof PlayerController.recordProgressSnapshot === "function") {
       PlayerController.recordProgressSnapshot(
         Math.floor(currentSeconds * 1000),
@@ -17532,6 +17562,8 @@ export const PlayerScreen = {
       itemId: String(this.params?.itemId || ""),
       tmdbId: this.params?.tmdbId ?? this.params?.tmdb_id,
       imdbId: this.params?.imdbId,
+      tvdbId: this.params?.tvdbId ?? this.params?.tvdb_id,
+      title: this.params?.playerTitle,
       season: this.params?.season ?? null,
       episode: this.params?.episode ?? null,
       onChunk: (chunkResult) => {

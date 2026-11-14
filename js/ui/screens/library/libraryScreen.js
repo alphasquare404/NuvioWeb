@@ -1,4 +1,6 @@
 import { Router } from "../../navigation/router.js";
+import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
+import { ProfileManager } from "../../../core/profile/profileManager.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import {
   getBrowserVerticalScrollOwner,
@@ -436,6 +438,18 @@ export const LibraryScreen = {
       this.handleControllerChange(state, change)
     );
     this.controller = controller;
+    this.unsubscribeMediaServerChanges?.();
+    this.unsubscribeMediaServerChanges = MediaConnectionsStore.subscribe(
+      ({ profileId, syncSource }) => {
+        if (
+          syncSource === "media-server-cloud" &&
+          String(profileId) === String(ProfileManager.getActiveProfileId()) &&
+          Router.getCurrent() === "library"
+        ) {
+          this.onRouteRevealed();
+        }
+      }
+    );
     this.pendingVerticalScrollTop = null;
     if (navigationContext?.restoreRouteState) {
       controller.hydrateFromRouteState(navigationContext?.restoredState || null);
@@ -2769,6 +2783,7 @@ export const LibraryScreen = {
       title: filename,
       description: item.name,
       addonName: item.providerName,
+      ...(result.mediaServer ? { clientResolve: { mediaServer: result.mediaServer } } : {}),
       behaviorHints: {
         filename,
         videoSize: result.videoSizeBytes || file.sizeBytes || null
@@ -2778,6 +2793,7 @@ export const LibraryScreen = {
       streamUrl: result.url,
       itemId: item.stableKey,
       itemType: "cloud",
+      resumePositionMs: result.resumePositionMs,
       videoId: streamId,
       playerTitle: filename,
       playerSubtitle: item.name,
@@ -3252,6 +3268,8 @@ export const LibraryScreen = {
   },
 
   cleanup() {
+    this.unsubscribeMediaServerChanges?.();
+    this.unsubscribeMediaServerChanges = null;
     this.pageHeadingCollapseCleanup?.();
     this.pageHeadingCollapseCleanup = null;
     this.desktopMediaHoverPreview?.destroy();

@@ -12,6 +12,7 @@ import { ProfileSyncService } from "./core/profile/profileSyncService.js";
 import { getProfileStartupAction } from "./core/profile/profileStartupSelectionPolicy.js";
 import { StartupSyncService } from "./core/profile/startupSyncService.js";
 import { ProviderCredentialSyncService } from "./core/profile/providerCredentialSyncService.js";
+import { MediaServerSyncService } from "./core/profile/mediaServerSyncService.js";
 import { ThemeManager } from "./ui/theme/themeManager.js";
 import { renderAppShell } from "./bootstrap/renderAppShell.js";
 import { renderAddonRemotePage } from "./bootstrap/renderAddonRemotePage.js";
@@ -260,11 +261,15 @@ async function routeAfterAuthentication() {
 }
 
 function setupProviderCredentialForegroundLifecycle() {
+  globalThis.addEventListener("online", () => {
+    void MediaServerSyncService.sync();
+  });
   let wasBackgrounded = document.visibilityState === "hidden" || document.webkitHidden === true;
   const requestAfterBackground = () => {
     if (!wasBackgrounded) return;
     wasBackgrounded = false;
     ProviderCredentialSyncService.requestForegroundPull();
+    void MediaServerSyncService.sync();
     // Watching on another device is the whole point of a tracking provider, so
     // coming back to the app has to re-check. Nothing did: the screen stayed
     // mounted the entire time it was backgrounded, so no mount and no layer

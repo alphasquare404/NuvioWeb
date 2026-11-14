@@ -1,6 +1,7 @@
 import { chooseHlsAudioIndices } from "./relayTracks.js";
 import { classifyStreamFilename } from "../streams/streamCompatibilityFilter.js";
 import { classifyPlayback } from "./playbackMethod.js";
+import { isPrivateMediaUrl } from "../streams/privateMediaSource.js";
 
 import { REMUX_POLICY, REMUX_ENDPOINT, TRANSCODE_ENDPOINT, TRANSCODE_MODE } from "../../config.js";
 import { clientRemuxPlan } from "./remuxClient.js";
@@ -139,7 +140,7 @@ export async function prepareUnverifiedRemux(
     if (plan && probe) plan.audioIndex = audioIndex;
     if (plan) return { url: plan.sourceUrl, plan };
   }
-  if (policy.mode === "server" && remuxEndpoint) {
+  if (policy.mode === "server" && remuxEndpoint && !isPrivateMediaUrl(sourceUrl)) {
     const service = transcodeEndpoint ? await access.resolve() : null;
     if (service?.hls) {
       const url = buildTranscodePlaylistUrl(sourceUrl, {
@@ -195,7 +196,7 @@ export async function prepareUnverifiedAudioTranscode(
     token = TranscodeSettingsStore.get().token || ""
   } = {}
 ) {
-  if (!transcodeEndpoint) return null;
+  if (!transcodeEndpoint || isPrivateMediaUrl(sourceUrl)) return null;
   let facts = probe;
   let verdict = facts ? classifyPlayback({ url: sourceUrl, probe: facts, capabilities }) : null;
   if (

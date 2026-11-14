@@ -11,6 +11,7 @@ import { ProfileSettingsSyncService } from "./profileSettingsSyncService.js";
 import { TraktCredentialSyncService } from "./traktCredentialSyncService.js";
 import { SimklCredentialSyncService } from "./simklCredentialSyncService.js";
 import { ProviderCredentialSyncService } from "./providerCredentialSyncService.js";
+import { MediaServerSyncService } from "./mediaServerSyncService.js";
 import { SimklSyncService } from "../../data/repository/simklSyncService.js";
 import { CollectionSyncService } from "./collectionSyncService.js";
 import { HomeCatalogSettingsSyncService } from "./homeCatalogSettingsSyncService.js";
@@ -317,7 +318,8 @@ export const StartupSyncService = {
           traktCredentialsTask,
           providerCredentialsTask,
           simklTask,
-          ...Object.values(scopedTasks)
+          ...Object.values(scopedTasks),
+          includeProfileScoped ? MediaServerSyncService.sync(activeProfileId) : null
         ]);
         logSyncTiming("background-domains-settled", syncStartedAt);
         if (!isActiveProfile(activeProfileId)) {

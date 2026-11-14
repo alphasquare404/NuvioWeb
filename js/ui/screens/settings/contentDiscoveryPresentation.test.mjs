@@ -15,7 +15,11 @@ test("Discovery keeps one valid topic and allows all narrow cards to close", () 
 });
 
 test("Essential mode never offers or selects the Plugins manager", () => {
-  assert.deepEqual(visibleContentDiscoveryTopics(true), ["addons", "collections"]);
+  assert.deepEqual(visibleContentDiscoveryTopics(true), [
+    "addons",
+    "collections",
+    "mediaConnections"
+  ]);
   assert.equal(activeContentDiscoveryTopic("plugins", { wide: true, essential: true }), "addons");
   assert.equal(activeContentDiscoveryTopic("plugins", { essential: false }), "plugins");
 });

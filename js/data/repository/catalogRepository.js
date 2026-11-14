@@ -1,6 +1,7 @@
 import { safeApiCall } from "../../core/network/safeApiCall.js";
 import { CatalogApi } from "../remote/api/catalogApi.js";
 import { addonRepository } from "./addonRepository.js";
+import { isMediaCatalogBase, loadMediaCatalog } from "./mediaServerCatalogRepository.js";
 
 const ADDON_POSTER_SHAPES = ["poster", "landscape", "square"];
 
@@ -36,6 +37,21 @@ class CatalogRepository {
     supportsSkip = true,
     signal = null
   }) {
+    if (isMediaCatalogBase(addonBaseUrl)) {
+      return safeApiCall(() =>
+        loadMediaCatalog({
+          addonBaseUrl,
+          addonId,
+          addonName,
+          catalogId,
+          catalogName,
+          type,
+          skip,
+          extraArgs,
+          signal
+        })
+      );
+    }
     const cacheKey = this.buildCacheKey({
       addonId,
       type,

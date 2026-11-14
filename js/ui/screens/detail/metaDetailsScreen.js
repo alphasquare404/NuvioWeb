@@ -1,4 +1,9 @@
 import {
+  MediaConnectionsStore,
+  mediaTitleRef,
+  requestSeerrMedia
+} from "../../../core/media/mediaConnections.js";
+import {
   reusableStreamPreference,
   reusablePlaybackUrl
 } from "../../../core/streams/streamReusePreference.js";
@@ -468,6 +473,22 @@ function resolveMetaTmdbId(meta = {}, params = {}) {
             .split(":")[0]
       )
       .find((value) => /^\d+$/.test(value)) || null
+  );
+}
+
+function resolveMetaTvdbId(meta = {}, params = {}) {
+  return (
+    [
+      meta?.tvdbId,
+      meta?.tvdb_id,
+      meta?.ids?.tvdb,
+      meta?.externalIds?.tvdb,
+      meta?.external_ids?.tvdb_id,
+      params?.tvdbId,
+      params?.tvdb_id
+    ]
+      .map((value) => (/^\d+$/.test(String(value ?? "")) ? String(value) : null))
+      .find(Boolean) || null
   );
 }
 
@@ -3414,6 +3435,8 @@ export const MetaDetailsScreen = {
     let resolution = await resolveAutoPlayStream({
       itemId: params?.itemId,
       tmdbId: params?.tmdbId,
+      tvdbId: params?.tvdbId,
+      title: params?.itemTitle || this.meta?.name,
       imdbId: params?.imdbId,
       season: params?.season,
       episode: params?.episode,
@@ -3551,7 +3574,9 @@ export const MetaDetailsScreen = {
                 released: settings.useReleaseDates
                   ? episode.airDate || video.released
                   : video.released,
-                thumbnail: episode.thumbnail || video.thumbnail,
+                thumbnail: mediaTitleRef(meta.id)
+                  ? video.thumbnail || episode.thumbnail
+                  : episode.thumbnail || video.thumbnail,
                 runtime: episode.runtime || video.runtime
               };
             })
@@ -3582,7 +3607,12 @@ export const MetaDetailsScreen = {
         textlessPoster: settings.useArtwork ? enrichment.textlessPoster || null : null,
         // TMDB enrichment deliberately returns no logo when only unrelated
         // languages are available; show the localized text title in that case.
-        logo: settings.useArtwork ? enrichment.logo : meta.logo,
+        logo:
+          mediaTitleRef(meta.id) && meta.logo
+            ? meta.logo
+            : settings.useArtwork
+              ? enrichment.logo
+              : meta.logo,
         genres: settings.useBasicInfo
           ? mergeGenreLists(meta.genres, enrichment.genres)
           : meta.genres,
@@ -4546,6 +4576,44 @@ export const MetaDetailsScreen = {
     this.releaseDetailEnrichmentHold("ratings");
     this.updateRenderedDetailSections(this.meta);
   },
+  async requestMediaOnSeerr(current) {
+    const { seerr } = MediaConnectionsStore.get();
+    const status = this.container.querySelector("[data-media-request-status]");
+    if (!seerr || !status || current.disabled) return;
+    const type = resolvePlayableDetailType(this.params?.itemType || this.meta?.type, this.meta);
+    const title = this.meta?.name || this.meta?.title || "";
+    if (
+      !window.confirm(
+        t("media_request_confirm", { title }, `Send a request for ${title} to Seerr?`)
+      )
+    )
+      return;
+    current.disabled = true;
+    current.setAttribute("aria-busy", "true");
+    status.textContent = t("media_request_sending", {}, "Sending request…");
+    try {
+      const id = Number(
+        resolveMetaTmdbId(this.meta, this.params) ||
+          (await this.searchTmdbIdByTitle(this.meta, type))
+      );
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        status.textContent = t(
+          "media_request_missing_id",
+          {},
+          "Could not identify this title on Seerr."
+        );
+        return;
+      }
+      await requestSeerrMedia(seerr, type === "movie" ? "movie" : "tv", id, "all");
+      status.textContent = t("media_request_success", {}, "Request sent.");
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      current.disabled = false;
+      current.removeAttribute("aria-busy");
+    }
+  },
+
   renderHeroSection({
     meta,
     playLabel,
@@ -4553,6 +4621,7 @@ export const MetaDetailsScreen = {
     creditPrefix = "",
     showWatchedButton = false
   }) {
+    const playableType = resolvePlayableDetailType(this.params?.itemType || meta?.type, meta);
     // The logo swapped too: the add-on's, then TMDB's a moment later.
     const logoOrTitle = this.holdDetailArtwork
       ? '<div class="series-detail-logo-skeleton" aria-hidden="true"></div>'
@@ -4631,6 +4700,13 @@ export const MetaDetailsScreen = {
             }
             ${showWatchedButton ? `<button class="series-circle-btn focusable${this.isMarkedWatched ? " is-selected" : ""}" data-action="toggleWatched" aria-label="${escapeAttribute(this.isMarkedWatched ? t("common.markUnwatched", {}, "Mark Unwatched") : t("common.markWatched", {}, "Mark Watched"))}">${renderWatchedGlyph(this.isMarkedWatched)}</button>` : ""}
             ${trailerButton}
+            ${
+              Platform.isBrowser() &&
+              MediaConnectionsStore.get().seerr &&
+              ["movie", "series"].includes(playableType)
+                ? `<button type="button" class="series-circle-btn focusable" data-action="requestOnSeerr" title="${escapeAttribute(t("media_request_action", {}, "Request on Seerr"))}" aria-label="${escapeAttribute(t("media_request_action", {}, "Request on Seerr"))}"><span class="material-icons" aria-hidden="true">playlist_add</span></button><span class="media-request-status" data-media-request-status role="status"></span>`
+                : ""
+            }
             ${this.renderHeroOfflineSubtitleButton()}
           </div>
           ${heroMetaBelowArtwork ? "" : heroMeta}
@@ -5612,6 +5688,8 @@ export const MetaDetailsScreen = {
         itemId,
         imdbId: context.imdbId,
         tmdbId: context.tmdbId,
+        tvdbId: resolveMetaTvdbId(meta, this.params),
+        title: movieTitle,
         onChunk: picker?.add
       });
     } catch (_) {}
@@ -5909,6 +5987,10 @@ export const MetaDetailsScreen = {
       String(episode.id || ""),
       {
         itemId: this.getOfflineSeriesId(),
+        imdbId: resolveMetaImdbId(this.meta, this.params),
+        tmdbId: resolveMetaTmdbId(this.meta, this.params),
+        tvdbId: resolveMetaTvdbId(this.meta, this.params),
+        title: this.meta?.name || this.params?.fallbackTitle,
         season: Number(episode.season),
         episode: Number(episode.episode),
         onChunk
@@ -9371,6 +9453,7 @@ export const MetaDetailsScreen = {
           "playFromBeginning",
           "toggleLibrary",
           "downloadMovie",
+          "requestOnSeerr",
           "toggleWatched",
           "toggleTrailer",
           "sendOfflineSubtitle"
@@ -9391,6 +9474,8 @@ export const MetaDetailsScreen = {
         void this.toggleLibraryFromHero();
       } else if (action === "downloadMovie") {
         void this.openMovieDownloadDialog();
+      } else if (action === "requestOnSeerr") {
+        void this.requestMediaOnSeerr(actionNode);
       } else if (action === "toggleWatched") {
         void this.toggleWatchedFromHero();
       } else if (action === "toggleTrailer") {
@@ -11350,6 +11435,7 @@ export const MetaDetailsScreen = {
       itemType: this.params?.itemType || "series",
       imdbId,
       tmdbId,
+      tvdbId: resolveMetaTvdbId(this.meta, this.params),
       traktId,
       contentLanguage,
       returnToSearchOnBack: Boolean(this.params?.returnToSearchOnBack),
@@ -11427,6 +11513,7 @@ export const MetaDetailsScreen = {
         itemType: "series",
         imdbId,
         tmdbId,
+        tvdbId: resolveMetaTvdbId(this.meta, this.params),
         traktId,
         contentLanguage,
         originalItemId: this.params?.originalItemId || null,
@@ -11482,6 +11569,7 @@ export const MetaDetailsScreen = {
         itemType,
         imdbId,
         tmdbId,
+        tvdbId: resolveMetaTvdbId(this.meta, this.params),
         traktId,
         contentLanguage,
         originalItemId: this.params?.originalItemId || null,
@@ -11540,6 +11628,7 @@ export const MetaDetailsScreen = {
       itemType: this.params?.itemType || "movie",
       imdbId,
       tmdbId,
+      tvdbId: resolveMetaTvdbId(this.meta, this.params),
       traktId,
       contentLanguage,
       returnToSearchOnBack: Boolean(this.params?.returnToSearchOnBack),
@@ -13193,6 +13282,11 @@ export const MetaDetailsScreen = {
       return;
     }
 
+    if (action === "requestOnSeerr") {
+      await this.requestMediaOnSeerr(current);
+      return;
+    }
+
     if (action === "downloadMovie") {
       await this.openMovieDownloadDialog();
       return;
@@ -13220,6 +13314,7 @@ export const MetaDetailsScreen = {
         itemType: this.params?.itemType,
         imdbId,
         tmdbId,
+        tvdbId: resolveMetaTvdbId(this.meta, this.params),
         traktId,
         contentLanguage,
         returnToSearchOnBack: Boolean(this.params?.returnToSearchOnBack),

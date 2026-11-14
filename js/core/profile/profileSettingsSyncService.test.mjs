@@ -8,7 +8,31 @@ import {
 } from "./profileSettingsContinueWatchingBridge.js";
 
 globalThis.__NUVIO_INCLUDE_TRAKT_CLIENT_SECRET__ = false;
-const { hasUsableRemoteProfileSettings } = await import("./profileSettingsSyncService.js");
+const { hasUsableRemoteProfileSettings, withoutExcludedProfileSettingsKeys } =
+  await import("./profileSettingsSyncService.js");
+
+test("profile sync strips media server addresses while keeping ordinary preferences", () => {
+  const addon = "org.stremio.tmdb_movie_popular";
+  const server = "media:jellyfin:http://jellyfin.local:8096:user_movie_library";
+  const privateCatalog = "nuvio-server://encoded-id_movie_library";
+  assert.deepEqual(
+    withoutExcludedProfileSettingsKeys("layout_settings", {
+      hero_catalog_keys: { type: "string", value: JSON.stringify([server, addon]) },
+      disabled_home_catalog_keys: [privateCatalog, addon]
+    }),
+    {
+      hero_catalog_keys: { type: "string", value: JSON.stringify([addon]) },
+      disabled_home_catalog_keys: [addon]
+    }
+  );
+  assert.deepEqual(
+    withoutExcludedProfileSettingsKeys("player_settings", {
+      stream_auto_play_selected_servers: [server],
+      stream_auto_play_selected_addons: [addon]
+    }),
+    { stream_auto_play_selected_addons: [addon] }
+  );
+});
 
 test("projects explicit Desktop Continue Watching booleans without coercion", () => {
   assert.equal(

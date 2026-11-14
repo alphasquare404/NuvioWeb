@@ -1271,6 +1271,8 @@ export const StreamScreen = {
       itemId: String(this.params?.itemId || ""),
       tmdbId: this.params?.tmdbId ?? this.params?.tmdb_id,
       imdbId: this.params?.imdbId,
+      tvdbId: this.params?.tvdbId ?? this.params?.tvdb_id,
+      title: this.params?.itemTitle,
       season: this.params?.season ?? null,
       episode: this.params?.episode ?? null,
       onAddon: (addon) => {
@@ -3362,6 +3364,7 @@ export const StreamScreen = {
           StartupLoadingOverlay.setStage("finding");
           const resolution = await resolveAutoPlayStream({
             ...target,
+            title: target.itemTitle,
             videoId: target.videoId || target.itemId,
             settings: PlayerSettingsStore.get(),
             installedAddonNames: collectInstalledAddonNames(
@@ -3452,6 +3455,7 @@ export const StreamScreen = {
       itemType: itemType || "movie",
       imdbId: this.params?.imdbId || null,
       tmdbId: this.params?.tmdbId || this.params?.tmdb_id || null,
+      tvdbId: this.params?.tvdbId || this.params?.tvdb_id || null,
       traktId: this.params?.traktId || this.params?.trakt_id || null,
       contentLanguage:
         this.params?.contentLanguage ||

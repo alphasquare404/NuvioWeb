@@ -573,6 +573,10 @@ async function runBuild() {
       ),
       cp(path.join(rootDir, "manifest.webmanifest"), path.join(distDir, "manifest.webmanifest"))
     ]);
+    await cp(
+      path.join(rootDir, "docs", "seerr-cors.md"),
+      path.join(distDir, "assets", "seerr-cors.md")
+    );
     await buildCoreJsBundle();
     await Promise.all([
       cp(
