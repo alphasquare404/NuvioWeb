@@ -1,4 +1,8 @@
 import {
+  autoplaySourceOptions,
+  hasAutoplaySourcePriority
+} from "../../../core/streams/autoplaySourcePolicy.js";
+import {
   matchesReusableStream,
   rememberedAttemptKey,
   reusableStreamPreference
@@ -1465,8 +1469,7 @@ export const StreamScreen = {
         source: settings.streamAutoPlaySource,
         regexPattern: settings.streamAutoPlayRegex,
         installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
-        selectedAddons: settings.streamAutoPlaySelectedAddons,
-        selectedPlugins: settings.streamAutoPlaySelectedPlugins
+        ...autoplaySourceOptions(settings)
       });
       this.autoResumeAttempted = true;
       this.autoResumeUiActive = false;
@@ -1506,6 +1509,7 @@ export const StreamScreen = {
       return;
     if (this.autoPlaySelectionExpired && !deadlineReached) return;
     if (!allLoaded && !this.autoPlaySelectionReady && !deadlineReached) return;
+    if (!allLoaded && !deadlineReached && hasAutoplaySourcePriority(settings)) return;
     if (Number(settings.streamAutoPlayTimeoutSeconds) === 2147483647 && !allLoaded && this.loading)
       return;
     const reusableStream = reusableStreamPreference(
@@ -1567,8 +1571,7 @@ export const StreamScreen = {
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
       installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
-      selectedAddons: settings.streamAutoPlaySelectedAddons,
-      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
+      ...autoplaySourceOptions(settings),
       hdrPreference: resolveHdrPreference(settings),
       preferredBingeGroup: resolvePreferredBingeGroup(settings, () =>
         StreamPreferencesStore.getEntry(

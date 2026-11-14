@@ -876,6 +876,15 @@
     <string name="autoplay_timeout_instant">Instant</string>
     <string name="autoplay_timeout_unlimited">Unlimited</string>
     <string name="autoplay_allowed_addons">Allowed Addons</string>
+    <string name="autoplay_allowed_sources">Allowed Sources</string>
+    <string name="autoplay_source_priority_hint">Drag groups to set priority. Switch individual sources on or off.</string>
+    <string name="autoplay_group_addons">Add-ons</string>
+    <string name="autoplay_group_plugins">Plugins</string>
+    <string name="autoplay_group_servers">Media Servers</string>
+    <string name="autoplay_source_reorder">Reorder {{group}}</string>
+    <string name="autoplay_source_scope_excluded">Excluded by Auto-play Source Scope</string>
+    <string name="autoplay_source_group_empty">No sources connected</string>
+    <string name="autoplay_addon_support_unknown">Stream support unknown</string>
     <string name="autoplay_all_addons">All installed addons</string>
     <string name="autoplay_allowed_plugins">Allowed Plugins</string>
     <string name="autoplay_all_plugins">All enabled plugins</string>

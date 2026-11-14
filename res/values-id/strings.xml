@@ -709,6 +709,15 @@
     <string name="autoplay_timeout_instant">Instan</string>
     <string name="autoplay_timeout_unlimited">Tidak terbatas</string>
     <string name="autoplay_allowed_addons">Addon yang Diizinkan</string>
+    <string name="autoplay_allowed_sources">Sumber yang Diizinkan</string>
+    <string name="autoplay_source_priority_hint">Geser grup untuk mengatur prioritas. Aktifkan atau nonaktifkan setiap sumber.</string>
+    <string name="autoplay_group_addons">Add-on</string>
+    <string name="autoplay_group_plugins">Plugin</string>
+    <string name="autoplay_group_servers">Server Media</string>
+    <string name="autoplay_source_reorder">Atur urutan {{group}}</string>
+    <string name="autoplay_source_scope_excluded">Di luar cakupan sumber putar otomatis</string>
+    <string name="autoplay_source_group_empty">Belum ada sumber</string>
+    <string name="autoplay_addon_support_unknown">Dukungan stream belum diketahui</string>
     <string name="autoplay_all_addons">Semua addon terpasang</string>
     <string name="autoplay_allowed_plugins">Plugin yang Diizinkan</string>
     <string name="autoplay_all_plugins">Semua plugin yang diaktifkan</string>

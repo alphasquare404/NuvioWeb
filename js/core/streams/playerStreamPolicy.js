@@ -1,3 +1,4 @@
+import { autoplaySourceOptions } from "./autoplaySourcePolicy.js";
 import { filterFilenameStreams, filenameStreamDisplayMode } from "./filenameStreamPolicy.js";
 import { streamProbeIdentity } from "../player/streamProbe.js";
 
@@ -43,8 +44,7 @@ export function nextEpisodeSelectionOptions(
     source: String(settings.streamAutoPlaySource || "ALL_SOURCES"),
     regexPattern: manualAutoNext ? "" : String(settings.streamAutoPlayRegex || ""),
     installedAddonNames,
-    selectedAddons: settings.streamAutoPlaySelectedAddons,
-    selectedPlugins: settings.streamAutoPlaySelectedPlugins,
+    ...autoplaySourceOptions(settings),
     preferredBingeGroup: prefer ? preferredBingeGroup : "",
     preferBingeGroupInSelection: prefer,
     bingeGroupOnly: Boolean(bingeGroupOnly)

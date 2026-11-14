@@ -10035,6 +10035,157 @@ button:focus-visible {
   margin: 0 -32px;
 }
 
+.settings-shell .settings-dialog.settings-autoplay-sources-dialog,
+.desktop-browser .settings-shell .settings-dialog.settings-autoplay-sources-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(620px, calc(100vh - 32px));
+  max-height: min(620px, calc(100dvh - 32px));
+  padding: 20px;
+  gap: 12px;
+  border-width: 1px;
+  border-radius: 20px;
+  min-width: 0;
+}
+
+.settings-dialog.settings-autoplay-sources-dialog .settings-dialog-title {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.settings-dialog.settings-autoplay-sources-dialog > .settings-dialog-list {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 3px;
+}
+
+.settings-dialog.settings-autoplay-sources-dialog .settings-dialog-option {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+}
+
+.settings-dialog.settings-autoplay-sources-dialog .settings-dialog-option-label {
+  font-size: 14px;
+}
+
+.autoplay-source-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-tertiary, #b3b3b3);
+}
+
+.autoplay-source-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.autoplay-source-group {
+  flex: 0 0 auto;
+  position: relative;
+  padding: 2px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: #222224;
+}
+
+.autoplay-source-group.is-dragging {
+  z-index: 1;
+}
+
+.autoplay-source-group-heading,
+.autoplay-source-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.autoplay-source-handle,
+.autoplay-source-switch {
+  color: inherit;
+  background: transparent;
+  border: 0;
+}
+
+.autoplay-source-handle {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 40px;
+  padding: 0;
+  cursor: grab;
+  color: var(--text-tertiary, #b3b3b3);
+}
+
+.autoplay-source-handle:active {
+  cursor: grabbing;
+}
+
+.autoplay-source-handle:focus-visible,
+.autoplay-source-switch:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+.autoplay-source-switch {
+  width: 100%;
+  min-height: 44px;
+  justify-content: space-between;
+  text-align: start;
+  padding: 6px 4px 6px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+.autoplay-source-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.autoplay-source-switch:disabled {
+  cursor: default;
+}
+
+.autoplay-source-switch:disabled .settings-toggle-pill {
+  opacity: 0.45;
+}
+
+.autoplay-source-switch .settings-toggle-pill {
+  width: 44px;
+  height: 24px;
+  padding: 3px;
+}
+
+.autoplay-source-switch .settings-toggle-thumb {
+  width: 18px;
+  height: 18px;
+}
+
+.autoplay-source-group small {
+  display: block;
+  padding: 0 8px 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.autoplay-source-name small {
+  padding: 2px 0 0;
+}
+
+@media (max-width: 600px) {
+  .settings-shell .settings-dialog-backdrop:has(> .settings-autoplay-sources-dialog),
+  .desktop-browser .settings-shell .settings-dialog-backdrop:has(> .settings-autoplay-sources-dialog) {
+    padding: 12px;
+  }
+}
+
 .settings-dialog-list::-webkit-scrollbar {
   display: none;
 }

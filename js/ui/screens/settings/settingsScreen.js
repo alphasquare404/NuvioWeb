@@ -1,4 +1,5 @@
-import { visibleAutoplayAddonSelection } from "./autoplayAddonSelection.js";
+import { renderAutoplaySources, bindAutoplaySources } from "./autoplaySourcesDialog.js";
+import { listAutoplayStreamAddons } from "./autoplayAddonSelection.js";
 import { renderFilenamePlaybackMethodBadge } from "../../components/filenamePlaybackBadge.js";
 import { normalizeAccentColor, accentTextColor } from "../../../core/theme/accentColor.js";
 import {
@@ -8013,24 +8014,9 @@ export const SettingsScreen = {
         }
       });
     });
-    this.actionMap.set("playback:autoStreamAddons", async () => {
-      const addons = await addonRepository.getInstalledAddons().catch(() => []);
-      const options = addons
-        .map((addon) => String(addon?.displayName || addon?.name || "").trim())
-        .filter(Boolean)
-        .map((name) => ({ id: name, label: name }));
-      this.openMultiChoiceDialog({
-        title: t("autoplay_allowed_addons", {}, "Allowed Addons"),
-        options,
-        selectedIds: PlayerSettingsStore.get().streamAutoPlaySelectedAddons,
-        returnFocusKey: "playback:autoStreamAddons",
-        onToggle: (selectedIds) =>
-          PlayerSettingsStore.set({
-            streamAutoPlaySelectedAddons: visibleAutoplayAddonSelection(selectedIds, options)
-          })
-      });
-    });
-    this.actionMap.set("playback:autoStreamPlugins", () => {
+    this.actionMap.set("playback:autoStreamSources", () => {
+      const scope = ProfileManager.getActiveProfileId();
+      const addons = addonRepository.getConfiguredAddons();
       const repositories = PluginManager.repositories;
       const pluginNames = repositories
         .listRepositories()
@@ -8041,18 +8027,29 @@ export const SettingsScreen = {
             .filter((scraper) => scraper.enabled !== false);
           return repositories.groupStreamsByRepository && names.length ? [repo] : names;
         });
-      const options = [...PluginManager.listPluginSources(), ...pluginNames]
+      const plugins = [...PluginManager.listPluginSources(), ...pluginNames]
         .filter((source) => source?.enabled !== false)
         .map((source) => String(source?.name || "").trim())
-        .filter(Boolean)
-        .map((name) => ({ id: name, label: name }));
-      this.openMultiChoiceDialog({
-        title: t("autoplay_allowed_plugins", {}, "Allowed Plugins"),
-        options,
-        selectedIds: PlayerSettingsStore.get().streamAutoPlaySelectedPlugins,
-        returnFocusKey: "playback:autoStreamPlugins",
-        onToggle: (selectedIds) =>
-          PlayerSettingsStore.set({ streamAutoPlaySelectedPlugins: selectedIds })
+        .filter(Boolean);
+      const sources = {
+        addons: listAutoplayStreamAddons(addons),
+        plugins,
+        servers: []
+      };
+      const settings = PlayerSettingsStore.get();
+      this.openOptionDialog({
+        title: t("autoplay_allowed_sources", {}, "Allowed Sources"),
+        messageHtml: renderAutoplaySources(sources, settings, t),
+        dialogClassName: "settings-autoplay-sources-dialog",
+        options: [{ id: "done", label: t("collections_editor_done", {}, "Done") }],
+        returnFocusKey: "playback:autoStreamSources",
+        onRender: (slot) =>
+          bindAutoplaySources(slot, {
+            read: () => PlayerSettingsStore.get(),
+            save: (changes) => {
+              if (scope === ProfileManager.getActiveProfileId()) PlayerSettingsStore.set(changes);
+            }
+          })
       });
     });
     this.actionMap.set("playback:audioLanguage", () => {
@@ -8739,43 +8736,15 @@ export const SettingsScreen = {
             "All sources"
           )
         })}
-        ${
-          String(model.player.streamAutoPlaySource || "ALL_SOURCES") !== "ENABLED_PLUGINS_ONLY"
-            ? this.renderActionRow({
-                focusKey: "playback:autoStreamAddons",
-                title: t("autoplay_allowed_addons", {}, "Allowed Addons"),
-                subtitle: t(
-                  "autoplay_scope_addons_desc",
-                  {},
-                  "Auto-play only considers selected installed addons."
-                ),
-                value: model.player.streamAutoPlaySelectedAddons?.length
-                  ? String(
-                      visibleAutoplayAddonSelection(
-                        model.player.streamAutoPlaySelectedAddons,
-                        model.addons
-                      ).length
-                    )
-                  : t("autoplay_all_addons", {}, "All installed addons")
-              })
-            : ""
-        }
-        ${
-          String(model.player.streamAutoPlaySource || "ALL_SOURCES") !== "INSTALLED_ADDONS_ONLY"
-            ? this.renderActionRow({
-                focusKey: "playback:autoStreamPlugins",
-                title: t("autoplay_allowed_plugins", {}, "Allowed Plugins"),
-                subtitle: t(
-                  "autoplay_scope_plugins_desc",
-                  {},
-                  "Auto-play only considers selected enabled plugins."
-                ),
-                value: model.player.streamAutoPlaySelectedPlugins?.length
-                  ? String(model.player.streamAutoPlaySelectedPlugins.length)
-                  : t("autoplay_all_plugins", {}, "All enabled plugins")
-              })
-            : ""
-        }`
+        ${this.renderActionRow({
+          focusKey: "playback:autoStreamSources",
+          title: t("autoplay_allowed_sources", {}, "Allowed Sources"),
+          subtitle: t(
+            "autoplay_source_priority_hint",
+            {},
+            "Drag groups to set priority. Switch individual sources on or off."
+          )
+        })}`
             : ""
         }
         ${
@@ -10720,8 +10689,9 @@ export const SettingsScreen = {
     }
 
     const dialogHtml = this.optionDialog ? this.renderOptionDialog() : this.renderTextDialog();
-    if (dialogSlot && dialogSlot.innerHTML !== dialogHtml) {
+    if (dialogSlot && dialogSlot._settingsDialogMarkup !== dialogHtml) {
       dialogSlot.innerHTML = dialogHtml;
+      dialogSlot._settingsDialogMarkup = dialogHtml;
     }
     if (dialogSlot && typeof this.optionDialog?.onRender === "function") {
       this.optionDialog.onRender(dialogSlot);

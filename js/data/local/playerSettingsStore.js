@@ -1,3 +1,4 @@
+import { normalizeAutoplaySourcePriority } from "../../core/streams/autoplaySourcePolicy.js";
 import { normalizeMediabunnyMode } from "../../core/player/mediabunnySettings.js";
 import {
   DECODE_STREAM_METHODS,
@@ -378,6 +379,14 @@ export function normalizePlayerSettings(settings = {}) {
     ),
     streamAutoPlaySelectedPlugins: normalizeStringList(
       persistentSettings.streamAutoPlaySelectedPlugins
+    ),
+    streamAutoPlaySelectedServers: normalizeStringList(
+      persistentSettings.streamAutoPlaySelectedServers
+    ),
+    streamAutoPlayAddonsDisabled: persistentSettings.streamAutoPlayAddonsDisabled === true,
+    streamAutoPlayPluginsDisabled: persistentSettings.streamAutoPlayPluginsDisabled === true,
+    streamAutoPlaySourcePriority: normalizeAutoplaySourcePriority(
+      persistentSettings.streamAutoPlaySourcePriority
     ),
     streamAutoPlayRegex: String(persistentSettings.streamAutoPlayRegex ?? "").slice(0, 500),
     streamAutoPlayPreferBingeGroupForNextEpisode: Boolean(

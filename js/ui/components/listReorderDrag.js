@@ -99,6 +99,7 @@ export function bindListReorderDrag({
   draggingClass = "is-dragging",
   dragOverClass = "",
   bodyClass = "",
+  scrollContainer = null,
   onMove = null,
   onDrop = null
 } = {}) {
@@ -171,8 +172,9 @@ export function bindListReorderDrag({
   const edgeScroll = () => {
     const viewport = window.innerHeight || document.documentElement.clientHeight || 0;
     if (!viewport) return 0;
-    const fromTop = drag.pointerY;
-    const fromBottom = viewport - drag.pointerY;
+    const bounds = scrollContainer?.getBoundingClientRect();
+    const fromTop = drag.pointerY - Math.max(0, bounds?.top ?? 0);
+    const fromBottom = Math.min(viewport, bounds?.bottom ?? viewport) - drag.pointerY;
     let step = 0;
     if (fromTop < EDGE_SCROLL_ZONE_PX) {
       step = -Math.ceil(
@@ -184,6 +186,11 @@ export function bindListReorderDrag({
       );
     }
     if (!step) return 0;
+    if (scrollContainer) {
+      const before = scrollContainer.scrollTop;
+      scrollContainer.scrollTop += step;
+      return scrollContainer.scrollTop - before;
+    }
     const before = window.scrollY;
     window.scrollBy(0, step);
     return window.scrollY - before;

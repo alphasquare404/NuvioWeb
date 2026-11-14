@@ -1,3 +1,4 @@
+import { autoplaySourceOptions } from "../streams/autoplaySourcePolicy.js";
 import { resolveHdrPreference } from "../streams/streamHdrPreference.js";
 import { DebridSettingsStore } from "../../data/local/debridSettingsStore.js";
 import { selectAutoPlayStream, STREAM_AUTO_PLAY_MODE } from "../streams/streamAutoPlaySelector.js";
@@ -110,8 +111,7 @@ export function prioritizeDirectDebridCandidates(
     source: playerSettings.streamAutoPlaySource,
     regexPattern: playerSettings.streamAutoPlayRegex,
     installedAddonNames,
-    selectedAddons: playerSettings.streamAutoPlaySelectedAddons,
-    selectedPlugins: playerSettings.streamAutoPlaySelectedPlugins
+    ...autoplaySourceOptions(playerSettings)
   });
   const selectedKey = selected ? directDebridPreparationKey(selected) : "";
   const selectedCandidate = candidates.find(
