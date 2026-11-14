@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="166" height="38" viewBox="0 0 166 38" role="img" aria-label="Supported">
+  <title>Supported</title>
+  <g fill="none" stroke="#39C965" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="1.2" y="1.2" width="163.6" height="35.6" rx="9.6" stroke-width="2.4"/>
+    <circle cx="23" cy="19" r="9" stroke-width="2"/>
+    <path d="m19 19 2.7 2.7L27 16.4" stroke-width="2"/>
+    <path d="M43 9.5v19" stroke-width="1.5" opacity=".82"/>
+  </g>
+  <text x="54" y="25.7" fill="#39C965" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" letter-spacing="-0.38">Supported</text>
+</svg>

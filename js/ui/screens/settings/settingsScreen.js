@@ -34,6 +34,7 @@ import {
 } from "../../components/browserStreamSourceCard.js";
 import {
   filenameStreamFilter,
+  filenameStreamFilterKey,
   toggleFilenameStreamFilter,
   FILENAME_ESTIMATE_NOTICE,
   FILENAME_FILTER_NOTICE
@@ -3542,7 +3543,7 @@ export const SettingsScreen = {
                       : useMultiRenderer
                         ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span><span class="settings-language-option-check" aria-hidden="true">${isSelected ? "&#10003;" : ""}</span>`
                         : useSingleChoiceRenderer
-                          ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>${isSelected ? '<span class="settings-single-choice-option-check" aria-hidden="true">&#10003;</span>' : ""}`
+                          ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}${option.secondary ? `<small class="settings-single-choice-subtitle">${escapeHtml(option.secondary)}</small>` : ""}</span>${isSelected ? '<span class="settings-single-choice-option-check" aria-hidden="true">&#10003;</span>' : ""}`
                           : `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>`
                 }
               </button>
@@ -7558,7 +7559,15 @@ export const SettingsScreen = {
 
   renderSettingsStreamPreview(model, applyFilter = false) {
     if (!Platform.isBrowser()) return "";
-    const examples = settingsStreamPreviewSources(applyFilter ? model.player : {});
+    const examples = settingsStreamPreviewSources(
+      applyFilter
+        ? model.player
+        : {
+            ...model.player,
+            filenameStreamFilter: ["all"],
+            decodeStreamFilter: ["all"]
+          }
+    );
     const badgeSettings = StreamBadgeSettingsStore.snapshot();
     const renderExample = (source) => {
       const display = normalizeSourceForDisplay(source, {
@@ -8813,25 +8822,39 @@ export const SettingsScreen = {
       })
     );
     const filenameFilterTitle = t("quick_setup_filter", {}, "Stream filter");
-    this.actionMap.set("playback:filenameStreamFilter", () =>
+    this.actionMap.set("playback:filenameStreamFilter", () => {
+      const settings = PlayerSettingsStore.get();
       this.openMultiChoiceDialog({
         title: filenameFilterTitle,
-        options: filenameStreamFilterOptions(t),
-        selectedIds: filenameStreamFilter(PlayerSettingsStore.get()),
+        options: filenameStreamFilterOptions(t, settings),
+        selectedIds: filenameStreamFilter(settings),
         returnFocusKey: "playback:filenameStreamFilter",
         onToggle: (_selectedIds, option) => {
-          const current = filenameStreamFilter(PlayerSettingsStore.get());
-          const selection = toggleFilenameStreamFilter(current, option.id);
+          const currentSettings = PlayerSettingsStore.get();
+          const current = filenameStreamFilter(currentSettings);
+          const selection = toggleFilenameStreamFilter(current, option.id, currentSettings);
           if (selection.join() !== current.join())
-            PlayerSettingsStore.set({ filenameStreamFilter: selection });
+            PlayerSettingsStore.set({ [filenameStreamFilterKey(currentSettings)]: selection });
           this.optionDialog.selectedIds = new Set(selection);
         }
-      })
-    );
+      });
+    });
     const mediabunnyModes = [
-      { id: "decode", label: "Decode & Play", disabled: !canUseDecodePlayback() },
-      { id: "process", label: "Remux & Transcode" }
+      {
+        id: "decode",
+        label: t("player_decode_only", {}, "Decode Only"),
+        secondary: t("settings_decode_only_subtitle", {}, "Lighter · Audio may drift"),
+        disabled: !canUseDecodePlayback()
+      },
+      {
+        id: "process",
+        label: t("player_remux_transcode", {}, "Remux & Transcode"),
+        secondary: t("settings_remux_transcode_subtitle", {}, "More processing · Better sync")
+      }
     ];
+    const activeMediabunnyMode = mediabunnyModes.find(
+      ({ id }) => id === model.player.mediabunnyMode
+    );
     this.actionMap.set("playback:mediabunnyEnabled", () =>
       PlayerSettingsStore.set({
         mediabunnyEnabled: PlayerSettingsStore.get().mediabunnyEnabled === false
@@ -8841,6 +8864,7 @@ export const SettingsScreen = {
       this.openOptionDialog({
         title: "Mediabunny",
         options: mediabunnyModes,
+        optionRenderer: "single-choice",
         selectedId: PlayerSettingsStore.get().mediabunnyMode,
         returnFocusKey: "playback:mediabunnyMode",
         onSelect: (option) => {
@@ -8856,10 +8880,8 @@ export const SettingsScreen = {
           ? this.renderActionRow({
               focusKey: "playback:mediabunnyMode",
               title: "Playback mode",
-              subtitle:
-                "Decode & Play renders the decoded stream directly. Remux & Transcode uses the browser player.",
-              value: mediabunnyModes.find((option) => option.id === model.player.mediabunnyMode)
-                ?.label
+              subtitle: activeMediabunnyMode?.secondary,
+              value: activeMediabunnyMode?.label
             })
           : ""
       }

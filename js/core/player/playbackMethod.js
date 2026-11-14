@@ -53,7 +53,10 @@ const VIDEO_HINTS = [
   // it turned an unrecognised picture into a confident "h264 -> Direct". A stream whose
   // probe reported MPEG-4 Part 2 was shown as Direct for exactly that reason.
   [/x264|h\.?264|\bavc1?\b|\bavc\b/i, "h264"],
-  [/\bvvc\b|h\.?266/i, "unknown"]
+  [/\bvp0?9\b/i, "vp9"],
+  [/\bvp0?8\b/i, "vp8"],
+  [/\bprores\b/i, "prores"],
+  [/\bvvc\b|h\.?266/i, "vvc"]
 ];
 
 const AUDIO_HINTS = [
@@ -65,7 +68,9 @@ const AUDIO_HINTS = [
   [/\bdts\b/i, "dts"],
   [/\bac3\b|\bdd\b/i, "ac3"],
   [/\bopus\b/i, "opus"],
-  [/aac/i, "aac"]
+  [/aac/i, "aac"],
+  [/\bmp3\b/i, "mp3"],
+  [/\bvorbis\b/i, "vorbis"]
 ];
 
 /**
@@ -203,7 +208,7 @@ export function classifyPlayback({
   // A video codec the text did not name decides remux versus a full re-encode -- a large
   // difference, and one only ffprobe can settle. It is asked before the container, because
   // "unsupported container" only says the relay will be used, not which relay does what.
-  if (videoCodec === "unknown") {
+  if (videoCodec === "unknown" || videoCodec === "vvc") {
     return {
       method: PLAYBACK_METHODS.UNKNOWN,
       reason: "video-unknown",

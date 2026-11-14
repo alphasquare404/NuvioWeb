@@ -3111,6 +3111,13 @@
     <string name="settings_filter_audio_transcode">Audio Transcode</string>
     <string name="settings_filter_full_transcode">Full Transcode</string>
     <string name="player_video_transcode">Video Transcode</string>
+    <string name="player_decode_only">Decode Only</string>
+    <string name="player_remux_transcode">Remux &amp; Transcode</string>
+    <string name="settings_decode_only_subtitle">Lighter · Audio may drift</string>
+    <string name="settings_remux_transcode_subtitle">More processing · Better sync</string>
+    <string name="settings_filter_supported">Supported</string>
+    <string name="settings_filter_unsupported">Unsupported</string>
+    <string name="settings_filter_unknown">Unknown</string>
     <string name="settings_probe_stream_title">Probe Stream</string>
     <string name="settings_probe_stream_subtitle">Read stream metadata to choose how to play it. Check Unknown streams and filename estimates that indicate transcoding, or check every stream with Always.</string>
     <string name="settings_probe_stream_transcoding">Unknown or Transcode</string>

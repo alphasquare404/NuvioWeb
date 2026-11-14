@@ -2491,6 +2491,13 @@
     <string name="settings_filter_audio_transcode">Transcode Audio</string>
     <string name="settings_filter_full_transcode">Transcode Penuh</string>
     <string name="player_video_transcode">Transcode Video</string>
+    <string name="player_decode_only">Decode Saja</string>
+    <string name="player_remux_transcode">Remux &amp; Transcode</string>
+    <string name="settings_decode_only_subtitle">Lebih ringan · Audio bisa meleset</string>
+    <string name="settings_remux_transcode_subtitle">Lebih banyak pemrosesan · Sinkronisasi lebih baik</string>
+    <string name="settings_filter_supported">Didukung</string>
+    <string name="settings_filter_unsupported">Tidak didukung</string>
+    <string name="settings_filter_unknown">Tidak diketahui</string>
     <string name="settings_probe_stream_title">Probe Stream</string>
     <string name="settings_probe_stream_subtitle">Baca metadata untuk menentukan cara memutar stream. Periksa stream Unknown dan yang diperkirakan perlu transcode, atau pilih Selalu untuk memeriksa semua stream.</string>
     <string name="settings_probe_stream_transcoding">Unknown atau Transcode</string>

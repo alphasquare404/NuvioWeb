@@ -76,10 +76,10 @@ test("subtitle preview follows saved appearance and constrains unsafe CSS values
 });
 
 test("stream preview is display-only and has no fetchable media source", () => {
-  assert.equal(SETTINGS_STREAM_PREVIEW_SOURCES.length, 5);
+  assert.equal(SETTINGS_STREAM_PREVIEW_SOURCES.length, 6);
   assert.deepEqual(
     SETTINGS_STREAM_PREVIEW_SOURCES.map((source) => source.previewMethod),
-    ["direct", "remux", "audio-transcode", "transcode", "unknown"]
+    ["direct", "remux", "audio-transcode", "video-transcode", "transcode", "unknown"]
   );
   for (const source of SETTINGS_STREAM_PREVIEW_SOURCES) {
     assert.ok(source.behaviorHints.filename);
@@ -103,7 +103,7 @@ test("Playback summary translations use the application's interpolation format",
 test("illustrative preview follows the display filter without changing device classification", () => {
   assert.deepEqual(
     settingsStreamPreviewSources().map((source) => source.previewMethod),
-    ["direct", "remux", "audio-transcode", "transcode", "unknown"]
+    ["direct", "remux", "audio-transcode", "video-transcode", "transcode", "unknown"]
   );
   assert.deepEqual(
     settingsStreamPreviewSources({ filenameStreamFilter: ["direct"] }).map(

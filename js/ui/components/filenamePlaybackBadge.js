@@ -1,8 +1,10 @@
-import { classifyStreamFilename } from "../../core/streams/streamCompatibilityFilter.js";
-import { FILENAME_ESTIMATE_NOTICE } from "../../core/streams/filenameStreamPolicy.js";
+import {
+  filenameStreamCategory,
+  FILENAME_ESTIMATE_NOTICE
+} from "../../core/streams/filenameStreamPolicy.js";
 import { isTranscodeEnabled } from "../../core/player/selectedStreamDelivery.js";
 import { getDeviceCapabilities } from "../../core/player/deviceCapabilities.js";
-import { TRANSCODE_MODE } from "../../config.js";
+import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { I18n } from "../../i18n/index.js";
 function escape(value) {
   return String(value)
@@ -17,6 +19,8 @@ const LABELS = {
   "audio-transcode": ["Transcode", "orange", "audio-transcode"],
   "video-transcode": ["Transcode", "purple", "video-transcode"],
   transcode: ["Unsupported", "red"],
+  supported: ["Supported", "green", "supported"],
+  unsupported: ["Unsupported", "red", "unsupported"],
   unknown: ["Unknown", "neutral", "unknown"]
 };
 const TRANSCODE_DESCRIPTIONS = {
@@ -27,16 +31,7 @@ const TRANSCODE_DESCRIPTIONS = {
 export function renderFilenamePlaybackBadge(stream, settings = {}, capabilities = null) {
   if (settings?.showPlaybackLabels === false) return "";
   const device = capabilities || getDeviceCapabilities();
-  const { method, audioCodec, audioChannels } = classifyStreamFilename(stream, device);
-  if (
-    method === "transcode" &&
-    TRANSCODE_MODE === "client" &&
-    isTranscodeEnabled() &&
-    device[audioCodec] === true &&
-    !(audioChannels > 2 && device.requiresStereoAac)
-  ) {
-    return renderFilenamePlaybackMethodBadge("video-transcode", settings);
-  }
+  const method = filenameStreamCategory(stream, PlayerSettingsStore.get(), device);
   return renderFilenamePlaybackMethodBadge(method, settings);
 }
 

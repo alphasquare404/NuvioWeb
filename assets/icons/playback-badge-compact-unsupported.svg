@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="183" height="38" viewBox="0 0 183 38" role="img" aria-label="Unsupported">
+  <title>Unsupported</title>
+  <g fill="none" stroke="#FF646B" stroke-linecap="round">
+    <rect x="1.2" y="1.2" width="180.6" height="35.6" rx="9.6" stroke-width="2.4"/>
+    <circle cx="23" cy="19" r="9" stroke-width="2"/>
+    <path d="m19.5 15.5 7 7m0-7-7 7" stroke-width="2"/>
+    <path d="M43 9.5v19" stroke-width="1.5" opacity=".82"/>
+  </g>
+  <text x="54" y="25.7" fill="#FF646B" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" letter-spacing="-0.38">Unsupported</text>
+</svg>

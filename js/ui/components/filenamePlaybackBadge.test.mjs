@@ -3,6 +3,9 @@ import test from "node:test";
 
 globalThis.__NUVIO_ENV__ = { TRANSCODE_MODE: "client" };
 const { renderFilenamePlaybackBadge } = await import("./filenamePlaybackBadge.js");
+const { PlayerSettingsStore } = await import("../../data/local/playerSettingsStore.js");
+const { filterFilenameStreams, filenameStreamFilter } =
+  await import("../../core/streams/filenameStreamPolicy.js");
 
 test("audio, video, and full transcode share the visible label and have distinct colors", () => {
   const caps = { av1: false, h264: true, aac: true, dts: false, containers: { mkv: false } };
@@ -24,4 +27,23 @@ test("an unknown stream uses the gray SVG without an estimate symbol", () => {
   assert.match(badge, /tone-neutral/);
   assert.match(badge, /playback-badge-compact-unknown\.svg" alt="Unknown"/);
   assert.doesNotMatch(badge, /≈/);
+});
+
+test("the active mode pairs each badge with its filter and preserves the other mode's selection", (ctx) => {
+  const caps = { av1: false, aac: true, containers: { mkv: false } };
+  const rows = [{ name: "Film.AV1.AAC.mkv" }, { name: "Film.VVC.AAC.mkv" }, { name: "Film 1080p" }];
+  const settings = {
+    mediabunnyMode: "decode",
+    filenameStreamFilter: ["video-transcode"],
+    decodeStreamFilter: ["supported", "unknown"]
+  };
+  ctx.mock.method(PlayerSettingsStore, "get", () => settings);
+  assert.deepEqual(filterFilenameStreams(rows, settings, caps), [rows[0], rows[2]]);
+  for (const [index, icon] of ["supported", "unsupported", "unknown"].entries()) {
+    assert.ok(renderFilenamePlaybackBadge(rows[index], {}, caps).includes(`compact-${icon}.svg`));
+  }
+  settings.mediabunnyMode = "process";
+  assert.deepEqual(filenameStreamFilter(settings), ["video-transcode"]);
+  assert.deepEqual(filterFilenameStreams(rows, settings, caps), [rows[0]]);
+  assert.match(renderFilenamePlaybackBadge(rows[0], {}, caps), /compact-video-transcode\.svg/);
 });

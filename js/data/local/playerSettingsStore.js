@@ -1,5 +1,6 @@
 import { normalizeMediabunnyMode } from "../../core/player/mediabunnySettings.js";
 import {
+  DECODE_STREAM_METHODS,
   filenameStreamDisplayMode,
   normalizeFilenameStreamFilter
 } from "../../core/streams/filenameStreamPolicy.js";
@@ -416,6 +417,10 @@ export function normalizePlayerSettings(settings = {}) {
     streamCompatibilityFilter: "OFF",
     filenameStreamDisplayMode: filenameStreamDisplayMode(persistentSettings),
     filenameStreamFilter: normalizeFilenameStreamFilter(persistentSettings.filenameStreamFilter),
+    decodeStreamFilter: normalizeFilenameStreamFilter(
+      persistentSettings.decodeStreamFilter,
+      DECODE_STREAM_METHODS
+    ),
     filenameTranscodeFilter: {
       audio: persistentSettings.filenameTranscodeFilter?.audio === true,
       full: persistentSettings.filenameTranscodeFilter?.full === true

@@ -1,5 +1,6 @@
 import { classifyStreamFilename } from "./streamCompatibilityFilter.js";
 import { getDeviceCapabilities } from "../player/deviceCapabilities.js";
+import { TRANSCODE_MODE } from "../../config.js";
 
 export const FILENAME_STREAM_MODES = ["ALL", "DIRECT", "DIRECT_REMUX"];
 export const FILENAME_ESTIMATE_NOTICE =
@@ -12,16 +13,34 @@ export function filenameStreamDisplayMode(settings = {}) {
     ? settings.filenameStreamDisplayMode
     : "ALL";
 }
-export const FILENAME_STREAM_METHODS = ["direct", "remux", "audio-transcode", "transcode"];
+export const FILENAME_STREAM_METHODS = [
+  "direct",
+  "remux",
+  "audio-transcode",
+  "video-transcode",
+  "transcode"
+];
+export const DECODE_STREAM_METHODS = ["supported", "unsupported", "unknown"];
 
-export function normalizeFilenameStreamFilter(value) {
+export function filenameStreamFilterKey(settings = {}) {
+  return settings.mediabunnyEnabled !== false && settings.mediabunnyMode === "decode"
+    ? "decodeStreamFilter"
+    : "filenameStreamFilter";
+}
+
+export function normalizeFilenameStreamFilter(value, methods = FILENAME_STREAM_METHODS) {
   if (!Array.isArray(value)) return null;
   if (value.includes("all")) return ["all"];
-  const methods = FILENAME_STREAM_METHODS.filter((method) => value.includes(method));
-  return methods.length ? methods : null;
+  const selected = methods.filter((method) => value.includes(method));
+  return selected.length ? selected : null;
 }
 
 export function filenameStreamFilter(settings = {}) {
+  if (filenameStreamFilterKey(settings) === "decodeStreamFilter") {
+    return (
+      normalizeFilenameStreamFilter(settings.decodeStreamFilter, DECODE_STREAM_METHODS) || ["all"]
+    );
+  }
   const selection = normalizeFilenameStreamFilter(settings.filenameStreamFilter);
   if (selection) return selection;
   const mode = filenameStreamDisplayMode(settings);
@@ -34,12 +53,47 @@ export function filenameStreamFilter(settings = {}) {
   ];
 }
 
-export function toggleFilenameStreamFilter(selected, method) {
+export function toggleFilenameStreamFilter(selected, method, settings = {}) {
   if (method === "all") return ["all"];
   const next = selected.includes(method)
     ? selected.filter((id) => id !== method)
     : [...selected.filter((id) => id !== "all"), method];
-  return normalizeFilenameStreamFilter(next) || ["all"];
+  const methods =
+    filenameStreamFilterKey(settings) === "decodeStreamFilter"
+      ? DECODE_STREAM_METHODS
+      : FILENAME_STREAM_METHODS;
+  return normalizeFilenameStreamFilter(next, methods) || ["all"];
+}
+
+const decodeVideoCodecs = ["h264", "hevc", "vp8", "vp9", "av1", "prores"];
+const decodeAudioCodecs = ["aac", "opus", "mp3", "vorbis", "flac", "ac3", "eac3", "dts", "truehd"];
+
+export function filenameStreamCategory(
+  stream,
+  settings = {},
+  capabilities = getDeviceCapabilities()
+) {
+  const { method, container, videoCodec, audioCodec, audioChannels } = classifyStreamFilename(
+    stream,
+    capabilities
+  );
+  if (filenameStreamFilterKey(settings) === "decodeStreamFilter") {
+    if (["hls", "dash", "unknown"].includes(container)) return "unknown";
+    if (container === "avi" || videoCodec === "vvc") return "unsupported";
+    if (videoCodec === "unknown" || audioCodec === "unknown") return "unknown";
+    if (decodeVideoCodecs.includes(videoCodec) && decodeAudioCodecs.includes(audioCodec))
+      return "supported";
+    return "unknown";
+  }
+  if (
+    method === "transcode" &&
+    TRANSCODE_MODE === "client" &&
+    settings.mediabunnyEnabled !== false &&
+    capabilities[audioCodec] === true &&
+    !(audioChannels > 2 && capabilities.requiresStereoAac)
+  )
+    return "video-transcode";
+  return method;
 }
 
 export function filterFilenameStreams(streams = [], settings = {}, capabilities = null) {
@@ -47,6 +101,6 @@ export function filterFilenameStreams(streams = [], settings = {}, capabilities 
   if (selected.includes("all")) return streams;
   const device = capabilities || getDeviceCapabilities();
   return streams.filter((stream) =>
-    selected.includes(classifyStreamFilename(stream, device).method)
+    selected.includes(filenameStreamCategory(stream, settings, device))
   );
 }

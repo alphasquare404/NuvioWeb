@@ -279,7 +279,7 @@ export async function createDecodePlayback({
       const audioStarved = job.audioPending && job.audioUntil < time + first - 0.12;
       const videoStarved = job.videoPending && job.lastPictureTime < time - 0.65;
       if (audioStarved || videoStarved) {
-        if (++stalls > 3) fail(job, Error("Decode & Play cannot keep up with this stream"));
+        if (++stalls > 3) fail(job, Error("Decode Only cannot keep up with this stream"));
         else restart(time);
         return;
       }
@@ -316,7 +316,7 @@ export async function createDecodePlayback({
       report();
       return;
     }
-    job.timeout = setTimeout(() => fail(job, Error("Decode & Play timed out")), BUFFER_TIMEOUT_MS);
+    job.timeout = setTimeout(() => fail(job, Error("Decode Only timed out")), BUFFER_TIMEOUT_MS);
     void (async () => {
       const start = first + job.start;
       const sink = new VideoSampleSink(video);

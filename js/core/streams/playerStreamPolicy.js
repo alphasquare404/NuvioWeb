@@ -32,6 +32,9 @@ export function nextEpisodeSelectionOptions(
   return {
     filenameStreamDisplayMode: filenameStreamDisplayMode(settings),
     filenameStreamFilter: settings.filenameStreamFilter,
+    decodeStreamFilter: settings.decodeStreamFilter,
+    mediabunnyMode: settings.mediabunnyMode,
+    mediabunnyEnabled: settings.mediabunnyEnabled,
     filenameTranscodeFilter: settings.filenameTranscodeFilter,
     hdrPreference: resolveHdrPreference(settings),
     probeOnly: false,

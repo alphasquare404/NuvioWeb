@@ -21873,6 +21873,11 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .filename-playback-badge.tone-neutral { color: #c1c7d0; background: #24272c; }
 .filename-playback-badge.has-artwork { padding: 0; border: 0; background: transparent; }
 .filename-playback-badge.has-artwork img { display: block; width: auto; height: 30px; }
+.settings-single-choice-subtitle {
+  display: block;
+  font-weight: 400;
+  opacity: .75;
+}
 
 
 /* The loading canvas follows the requested player orientation from its first paint. */
