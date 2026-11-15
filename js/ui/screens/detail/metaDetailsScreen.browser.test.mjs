@@ -11,7 +11,7 @@ async function metaDetailsScreenSource() {
 test("movie download opens a source and subtitle dialog from Detail", async () => {
   const source = await metaDetailsScreenSource();
   const method = source.match(/async openMovieDownloadDialog\([\s\S]*?\n {2}\},/)?.[0];
-  const picker = source.match(/  createDownloadSourcePicker\([\s\S]*?\n {2}\},/)?.[0];
+  const picker = source.match(/ {2}createDownloadSourcePicker\([\s\S]*?\n {2}\},/)?.[0];
   assert.ok(method);
   assert.ok(picker);
   const stream = { id: "downloadable", addonName: "Addon" };
