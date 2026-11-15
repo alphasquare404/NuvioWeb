@@ -23685,6 +23685,7 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   align-items: center;
   min-height: 44px;
   padding: 10px 14px;
+  border: 0;
   border-radius: 10px;
   background: var(--secondary-color);
   color: var(--on-secondary);

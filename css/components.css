@@ -10164,6 +10164,17 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.media-connection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.media-connection-actions > button {
+  white-space: nowrap;
+}
+
 .media-server-card {
   margin: 0 0 12px;
   padding: 12px;
