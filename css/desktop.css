@@ -24685,3 +24685,123 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
     text-align: center;
   }
 }
+
+/* Plugin settings: the repository header keeps its controls beside the name,
+   and the scraper list sits underneath at every width. */
+.desktop-browser .settings-shell .desktop-plugin-repository {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 16px;
+}
+
+.desktop-browser .settings-shell .desktop-plugin-repository-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.desktop-browser .settings-shell .desktop-plugin-repository-head .desktop-plugin-source-copy {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.desktop-browser .settings-shell .desktop-plugin-source-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.desktop-browser .settings-shell .desktop-plugin-repository-head .desktop-plugin-source-actions {
+  align-self: flex-start;
+  justify-content: flex-end;
+}
+
+.desktop-browser .settings-shell .desktop-plugin-repository .desktop-plugin-source-list > .desktop-plugin-source {
+  padding: 12px 14px;
+  border-radius: 0;
+  background: transparent;
+  align-items: center;
+}
+
+.desktop-browser .settings-shell .desktop-plugin-source-list .desktop-plugin-source-copy strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.desktop-browser .settings-shell .desktop-plugin-section-heading > .desktop-plugin-toggle,
+.desktop-browser .settings-shell .desktop-plugin-repository .desktop-plugin-source-list .desktop-plugin-toggle {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.desktop-browser .settings-shell .desktop-plugin-section-heading {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 1023px) {
+  .desktop-browser .settings-shell .desktop-plugin-repository {
+    padding: 14px;
+  }
+
+  .desktop-browser .settings-shell .desktop-plugin-repository-head {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .desktop-browser .settings-shell .desktop-plugin-repository-head .desktop-plugin-source-actions {
+    justify-content: flex-end;
+  }
+
+  .desktop-browser .settings-shell .desktop-plugin-repository .desktop-plugin-source-list > .desktop-plugin-source {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .desktop-browser .settings-shell .desktop-plugin-repository .desktop-plugin-source-list > .desktop-plugin-source > .desktop-plugin-source-actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 600px) {
+  .desktop-browser .settings-shell .desktop-plugin-repository-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .desktop-browser .settings-shell .desktop-plugin-repository-head .desktop-plugin-source-copy {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .desktop-browser .settings-shell .desktop-plugin-repository-head .desktop-plugin-source-copy p {
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .desktop-browser .settings-shell .desktop-plugin-repository-head .desktop-plugin-source-actions {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+
+  .desktop-browser .settings-shell .desktop-plugin-repository .desktop-plugin-source-list > .desktop-plugin-source {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .desktop-browser .settings-shell .desktop-plugin-repository .desktop-plugin-source-list > .desktop-plugin-source > .desktop-plugin-source-actions {
+    justify-content: flex-start;
+  }
+}

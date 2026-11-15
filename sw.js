@@ -20,6 +20,7 @@ const APP_SHELL = [
   "./assets/brand/pwa-icon-512.png",
   "./assets/brand/pwa-icon-maskable-192.png",
   "./assets/brand/pwa-icon-maskable-512.png",
+  "./assets/brand/seerr.svg",
   "./assets/icons/imdb_logo_2016.svg",
   "./assets/icons/ic_player_play.svg",
   "./assets/icons/ic_player_pause.svg",
