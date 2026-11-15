@@ -23,6 +23,12 @@ import { PLAYBACK_METHODS, classifyPlayback } from "./playbackMethod.js";
 export const PROBE_BYTE_FAILURE_TTL_MS = 10 * 60 * 1000;
 const byteFailures = new Map();
 
+// Waiting on the persistent cache can consume the whole budget, and what is
+// left is measured with a coarse clock: a millisecond or two means the budget
+// is gone. Starting a request with that would only produce an empty result, so
+// it counts as timed out instead.
+const PROBE_MINIMUM_BUDGET_MS = 3;
+
 /**
  * Is this the shape where a probe decides whether the file plays at all?
  *
@@ -425,7 +431,7 @@ export function createStreamProber({
             reportProbeCacheHit(source || key, "persistent");
             return saved;
           }
-          if (!requestTimeoutMs) return null;
+          if (requestTimeoutMs <= PROBE_MINIMUM_BUDGET_MS) return null;
         }
         if (controller.signal.aborted || !source) return null;
         const previousFailure = byteFailures.get(key);
@@ -466,7 +472,7 @@ export function createStreamProber({
         ) {
           void Promise.resolve(metadataCache.set(key, result, jobGeneration)).catch(() => {});
         }
-        return result;
+        return result ?? null;
       })().then((result) => {
         controllers.delete(controller);
         if (pending.get(key)?.promise === promise) pending.delete(key);
