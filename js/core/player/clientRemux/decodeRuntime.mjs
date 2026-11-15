@@ -80,7 +80,9 @@ export async function openSeekThumbnailSource(options) {
     }
     if (!(await ensureVideoDecoder(video))) throw Error("Seek thumbnail decoder unavailable");
     const first = await video.getFirstTimestamp();
-    const sink = new CanvasSink(video, { width: 160, height: 90, fit: "contain" });
+    // "cover" fills the 16:9 preview with the frame. "contain" letterboxes any
+    // wider or taller source, and those black bars read as part of the thumbnail.
+    const sink = new CanvasSink(video, { width: 160, height: 90, fit: "cover" });
     return {
       async frame(seconds) {
         return (await sink.getCanvas(first + seconds))?.canvas || null;

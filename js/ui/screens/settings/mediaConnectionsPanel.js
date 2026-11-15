@@ -44,8 +44,8 @@ export function renderMediaConnections(t) {
         <details data-media-libraries><summary>${label("media_connection_libraries", "Libraries")}</summary><div data-media-library-options></div><p role="status"></p></details></div>`
         )
         .join("")}
-      <details class="media-add-server"${servers.length ? "" : " open"}>
-        <summary><span class="material-icons" aria-hidden="true">add</span>${label("media_connection_add_server", "Add server")}</summary>
+      <details class="settings-manager-add media-add-server"${servers.length ? "" : " open"}>
+        <summary class="settings-manager-add-trigger"><span class="material-icons" aria-hidden="true">add</span>${label("media_connection_add_server", "Add server")}</summary>
         <form data-media-login="server" autocomplete="off">
         ${choiceField("kind", serverType, "jellyfin", "Jellyfin")}
         <label>${label("media_connection_name", "Display name")}<input name="name" /></label>
@@ -63,8 +63,8 @@ export function renderMediaConnections(t) {
       </div>
       ${
         seerr
-          ? `<div class="media-connection-row"><strong>${escape(seerr.name)}</strong><button type="button" data-media-disconnect="seerr">${disconnect}</button></div>
-          <button type="button" data-seerr-requests>${label("media_connection_my_requests", "My Requests")}</button><p data-seerr-request-status role="status"></p><ul data-seerr-request-list></ul>`
+          ? `<div class="media-connection-row"><strong>${escape(seerr.name)}</strong><div class="media-connection-actions"><button type="button" data-seerr-requests>${label("media_connection_my_requests", "My Requests")}</button><button type="button" data-media-disconnect="seerr">${disconnect}</button></div></div>
+          <p data-seerr-request-status role="status"></p><ul data-seerr-request-list></ul>`
           : `<form data-media-login="seerr" autocomplete="off">
             ${choiceField("method", methodLabel, "local", seerrOption)}
             ${fields("seerr")}<button type="submit">${label("media_connection_sign_in", "Sign in")}</button><p role="status"></p>

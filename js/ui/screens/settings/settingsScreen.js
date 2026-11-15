@@ -29,7 +29,8 @@ import {
   subtitleSettingsPreviewStyle,
   settingsStreamPreviewSources,
   filenameStreamFilterOptions,
-  filenameStreamFilterSummary
+  filenameStreamFilterSummary,
+  shouldOfferProbeStream
 } from "./playbackSettingsPresentation.js";
 import {
   normalizeSourceForDisplay,
@@ -8921,7 +8922,22 @@ export const SettingsScreen = {
 </div>
 
       ${this.renderToggleRow({ focusKey: "playback:filenameRouting", title: t("settings_filename_route_title", {}, "Determine stream processing based on filename"), subtitle: isDesktopBrowser ? t("settings_filename_route_short", {}, "Estimate how to play the stream from its filename. If playback fails, another supported method is tried automatically.") : "Use the filename to choose a first playback route when metadata has not been verified.", checked: model.player.filenamePlaybackRoutingEnabled !== false })}
-      ${this.renderActionRow({ focusKey: "playback:probeStream", title: probeStreamTitle, subtitle: t("settings_probe_stream_subtitle", {}, "Read stream metadata to choose how to play it. Check Unknown streams and filename estimates that indicate transcoding, or check every stream with Always."), value: probeStreamOptions.find((option) => option.id === model.player.probeStream)?.label || probeStreamOptions[0].label })}
+      ${
+        shouldOfferProbeStream(model.player)
+          ? this.renderActionRow({
+              focusKey: "playback:probeStream",
+              title: probeStreamTitle,
+              subtitle: t(
+                "settings_probe_stream_subtitle",
+                {},
+                "Read stream metadata to choose how to play it. Check Unknown streams and filename estimates that indicate transcoding, or check every stream with Always."
+              ),
+              value:
+                probeStreamOptions.find((option) => option.id === model.player.probeStream)
+                  ?.label || probeStreamOptions[0].label
+            })
+          : ""
+      }
       <div class="settings-group-heading"><div class="settings-group-title">Stream filter</div></div>
       ${this.renderActionRow({ focusKey: "playback:filenameStreamFilter", title: t("settings_filter_streams_to_show", {}, "Streams to show"), subtitle: isDesktopBrowser ? t("settings_filename_filter_short", {}, "Filename estimates. Also applies to autoplay and next episodes.") : FILENAME_FILTER_NOTICE, value: filenameStreamFilterSummary(model.player, t) })}
 

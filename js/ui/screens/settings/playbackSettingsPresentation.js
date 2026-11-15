@@ -125,6 +125,13 @@ export function filenameStreamFilterSummary(settings, t) {
     .join(" + ");
 }
 
+// Probe Stream reads stream metadata to pick a remux/transcode route. Decode
+// Only never probes and Mediabunny off never processes, so the setting belongs
+// to Remux & Transcode alone: a control that changes nothing is worse than none.
+export function shouldOfferProbeStream(settings = {}) {
+  return settings?.mediabunnyEnabled !== false && settings?.mediabunnyMode !== "decode";
+}
+
 // These are illustrative label categories, not compatibility claims about a file.
 export function settingsStreamPreviewSources(settings = {}) {
   const selected = filenameStreamFilter(settings);

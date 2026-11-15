@@ -21005,14 +21005,19 @@ html[data-layout="mobile"]
   position: absolute;
   bottom: calc(100% - 3px);
   transform: translateX(-50%);
-  padding: 5px 8px;
-  border-radius: 6px;
-  background: rgba(15, 15, 18, .94);
   color: #fff;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
+}
+.desktop-browser #player .player-progress-hover-time {
+  display: block;
+  padding-top: 6px;
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
 }
 .desktop-browser #player .player-progress-hover.hidden,
 .desktop-browser #player .player-desktop-tool-button[hidden] { display: none; }
@@ -23680,6 +23685,7 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   align-items: center;
   min-height: 44px;
   padding: 10px 14px;
+  border: 0;
   border-radius: 10px;
   background: var(--secondary-color);
   color: var(--on-secondary);

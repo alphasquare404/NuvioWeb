@@ -214,9 +214,6 @@
   bottom: 34px;
   left: var(--nv-progress, 24%);
   transform: translateX(-50%);
-  background: var(--nv-panel);
-  padding: 5px 9px;
-  border-radius: 6px;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -928,6 +925,7 @@
   height: auto;
   margin: 0 auto 4px;
   border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
 }
 .desktop-browser #player .nv-seek-preview canvas[hidden] {
   display: none;

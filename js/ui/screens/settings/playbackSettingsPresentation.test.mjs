@@ -7,7 +7,8 @@ import {
   togglePlaybackSettingsGroup,
   subtitleSettingsPreviewStyle,
   SETTINGS_STREAM_PREVIEW_SOURCES,
-  settingsStreamPreviewSources
+  settingsStreamPreviewSources,
+  shouldOfferProbeStream
 } from "./playbackSettingsPresentation.js";
 
 test("compact Playback opens one topic and allows closing it", () => {
@@ -98,6 +99,14 @@ test("Playback summary translations use the application's interpolation format",
     assert.match(xml, /name="settings_summary_player">[^<]*\{\{loading\}\}[^<]*\{\{clock\}\}/);
     assert.match(xml, /name="settings_summary_next">[^<]*\{\{state\}\}/);
   }
+});
+
+test("Probe Stream is offered only while Remux & Transcode is active", () => {
+  const process = { mediabunnyEnabled: true, mediabunnyMode: "process" };
+  assert.equal(shouldOfferProbeStream(process), true);
+  assert.equal(shouldOfferProbeStream({ ...process, mediabunnyMode: "decode" }), false);
+  assert.equal(shouldOfferProbeStream({ ...process, mediabunnyEnabled: false }), false);
+  assert.equal(shouldOfferProbeStream({}), true);
 });
 
 test("illustrative preview follows the display filter without changing device classification", () => {
