@@ -1,4 +1,5 @@
 import { StartupLoadingOverlay } from "../components/startupLoadingOverlay.js";
+import { closeNavigationSearch } from "../components/desktopNavigation.js";
 import { HomeScreen } from "../screens/home/homeScreen.js";
 import { PlayerScreen } from "../screens/player/playerScreen.js";
 import { MoviPlayerScreen } from "../screens/player/movi/moviPlayerScreen.js";
@@ -873,6 +874,7 @@ export const Router = {
   },
 
   async navigate(routeName, params = {}, options = {}) {
+    closeNavigationSearch({ navigating: true });
     if (
       options.isBackNavigation ||
       !["stream", "player"].includes(routeName) ||

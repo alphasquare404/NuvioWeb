@@ -28,6 +28,7 @@ import {
 } from "../../components/sidebarNavigation.js";
 import {
   bindDesktopNavigationEvents,
+  deferUntilNavigationSearchIdle,
   renderDesktopNavigation,
   renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
@@ -97,14 +98,6 @@ function formatTypeLabel(value) {
   if (!normalized) return "Movie";
   if (normalized === "tv") return "TV";
   return toTitleCase(normalized) || "Movie";
-}
-
-function trimLeadingWhitespace(value) {
-  const text = String(value || "");
-  if (typeof text.trimStart === "function") {
-    return text.trimStart();
-  }
-  return text.replace(/^\s+/, "");
 }
 
 function t(key, params = {}, fallback = key) {
@@ -178,36 +171,6 @@ function getSearchCatalogTimeoutMs() {
   return isPerformanceConstrainedRuntime()
     ? SEARCH_CATALOG_TIMEOUT_MS_CONSTRAINED
     : SEARCH_CATALOG_TIMEOUT_MS_DEFAULT;
-}
-
-function getInputSelectionSnapshot(input = null) {
-  if (
-    !input ||
-    typeof input.selectionStart !== "number" ||
-    typeof input.selectionEnd !== "number"
-  ) {
-    return null;
-  }
-  return {
-    start: input.selectionStart,
-    end: input.selectionEnd,
-    direction: input.selectionDirection || "none",
-    valueLength: String(input.value || "").length
-  };
-}
-
-function restoreInputSelection(input = null, snapshot = null) {
-  if (!input || !snapshot || typeof input.setSelectionRange !== "function") {
-    return;
-  }
-  const valueLength = String(input.value || "").length;
-  const start = clamp(Number(snapshot.start || 0), 0, valueLength);
-  const end = clamp(Number(snapshot.end || start), 0, valueLength);
-  try {
-    input.setSelectionRange(start, end, snapshot.direction || "none");
-  } catch (_) {
-    // Some TV inputs expose selection APIs but reject while the OS keyboard is settling.
-  }
 }
 
 function formatDateLabel(item = {}) {
@@ -336,8 +299,6 @@ export const SearchScreen = {
       contentScrollTop: Number(this.contentScrollTop || 0),
       rowScrollLeftByKey,
       rowFocusedIndexByKey: this.rowFocusedIndexByKey ? { ...this.rowFocusedIndexByKey } : {},
-      pendingAutoFocusResults: false,
-      voiceSearchSupported: Boolean(this.voiceSearchSupported),
       focusedAction: String(focused?.dataset?.action || ""),
       focusedRowKey: String(focused?.dataset?.rowKey || ""),
       focusedItemId: String(focused?.dataset?.itemId || ""),
@@ -381,7 +342,6 @@ export const SearchScreen = {
       snapshot?.rowFocusedIndexByKey && typeof snapshot.rowFocusedIndexByKey === "object"
         ? { ...snapshot.rowFocusedIndexByKey }
         : {};
-    this.pendingAutoFocusResults = false;
     this.restoredFocusedDescriptor = snapshot
       ? {
           action: String(snapshot.focusedAction || ""),
@@ -398,13 +358,6 @@ export const SearchScreen = {
     if (this.renderFrame) {
       cancelAnimationFrame(this.renderFrame);
       this.renderFrame = null;
-    }
-  },
-
-  cancelScheduledInputSearch() {
-    if (this.inputSearchTimer) {
-      clearTimeout(this.inputSearchTimer);
-      this.inputSearchTimer = null;
     }
   },
 
@@ -482,15 +435,6 @@ export const SearchScreen = {
     this.rowScrollLeftByKey = {};
     this.rowFocusedIndexByKey = {};
     this.restoredFocusedDescriptor = null;
-    // Voice input is available only when the browser exposes Web Speech.
-    this.voiceSearchSupported =
-      typeof window !== "undefined" &&
-      (typeof window.SpeechRecognition === "function" ||
-        typeof window.webkitSpeechRecognition === "function");
-    this.voiceSearchActive = false;
-    this.voiceRecognition = this.voiceRecognition || null;
-    this.searchToastTimer = null;
-    this.inputSearchTimer = null;
     this.posterOptionsMenu = null;
     this.posterOptionsController = null;
     this.pendingPosterOptionsFocusId = "";
@@ -535,7 +479,11 @@ export const SearchScreen = {
       <div class="home-shell search-screen-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.searchRouteEnterPending ? " search-route-enter" : ""}">
         ${
           useDesktopNavigation
-            ? renderDesktopNavigation({ selectedRoute: "search", profile: this.sidebarProfile })
+            ? renderDesktopNavigation({
+                selectedRoute: "search",
+                profile: this.sidebarProfile,
+                searchQuery: this.query
+              })
             : renderRootSidebar({
                 selectedRoute: "search",
                 profile: this.sidebarProfile,
@@ -566,10 +514,6 @@ export const SearchScreen = {
         onFirstResults: (rows) => {
           if (token !== this.loadToken) return;
           this.rows = rows;
-          if (this.shouldPatchResultsWithoutReplacingInput()) {
-            this.renderResultsOnly();
-            return;
-          }
           this.requestRender();
         }
       });
@@ -579,55 +523,7 @@ export const SearchScreen = {
       this.rows = [];
     }
     if (token !== this.loadToken) return;
-    if (this.shouldPatchResultsWithoutReplacingInput()) {
-      this.renderResultsOnly();
-      return;
-    }
     this.requestRender();
-  },
-
-  shouldPatchResultsWithoutReplacingInput() {
-    return this.isSearchInputEditingActive() && !this.pendingAutoFocusResults;
-  },
-
-  renderResultsOnly() {
-    const content = this.container?.querySelector(".search-content");
-    const header = content?.querySelector(".search-header");
-    const input = this.container?.querySelector("#searchInput");
-    if (!content || !header || !input) {
-      this.requestRender();
-      return;
-    }
-    const selectionSnapshot = getInputSelectionSnapshot(input);
-
-    while (header.nextSibling) {
-      header.nextSibling.remove();
-    }
-    content.insertAdjacentHTML("beforeend", this.renderRows());
-    ScreenUtils.indexFocusables(this.container);
-    this.buildNavigationModel();
-    this.bindActionEvents();
-    this.bindDesktopSearchShelfInteractions();
-    this.bindDesktopMediaHoverPreview();
-    this.browserCardTouchIntentCleanup?.();
-    this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
-      cardSelector: ".search-result-card[data-action='openDetail']",
-      onLongPress: (node) =>
-        void this.openPosterOptionsMenu(node, { invocation: { type: "touch" } })
-    });
-    this.mediaContextMenuCleanup?.();
-    this.mediaContextMenuCleanup = bindMediaContextMenu(this.container, {
-      cardSelector: ".search-result-card[data-action='openDetail']",
-      onInvoke: (node, pointer) =>
-        void this.openPosterOptionsMenu(node, {
-          invocation: { type: "pointer", x: pointer.x, y: pointer.y }
-        })
-    });
-    input.value = this.query || "";
-    input.focus?.();
-    this.focusNode(this.container?.querySelector(".focusable.focused") || null, input);
-    restoreInputSelection(input, selectionSnapshot);
-    this.pendingAutoFocusResults = false;
   },
 
   async loadDiscoverRows() {
@@ -941,14 +837,17 @@ export const SearchScreen = {
 
   render() {
     this.cancelScheduledRender();
-    const queryText = this.query || "";
+    if (deferUntilNavigationSearchIdle(this.container, () => this.requestRender())) return;
     const useDesktopNavigation = true;
-    const showVoiceSearch = this.voiceSearchSupported && !useDesktopNavigation;
     this.container.innerHTML = `
       <div class="home-shell search-screen-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${this.searchRouteEnterPending ? " search-route-enter" : ""}">
         ${
           useDesktopNavigation
-            ? renderDesktopNavigation({ selectedRoute: "search", profile: this.sidebarProfile })
+            ? renderDesktopNavigation({
+                selectedRoute: "search",
+                profile: this.sidebarProfile,
+                searchQuery: this.query
+              })
             : renderRootSidebar({
                 selectedRoute: "search",
                 profile: this.sidebarProfile,
@@ -962,39 +861,6 @@ export const SearchScreen = {
             <h1 class="search-page-heading page-heading-title">${escapeHtml(t("sidebar.search", {}, "Search"))}</h1>
             ${renderNavigationRevealButton()}
           </header>
-          <section class="search-header${this.layoutPrefs?.discoverLocation === "in_search" ? "" : " no-discover"}${showVoiceSearch ? "" : " no-voice"}">
-            ${
-              this.layoutPrefs?.discoverLocation === "in_search"
-                ? `
-              <button class="search-discover-btn focusable" data-action="openDiscover">
-                <span class="search-action-icon material-icons" aria-hidden="true">explore</span>
-              </button>
-            `
-                : ""
-            }
-            ${
-              showVoiceSearch
-                ? `<button
-              class="search-voice-btn focusable${this.voiceSearchActive ? " listening" : ""}"
-              data-action="openVoice"
-              aria-label="Voice search"
-            >
-              <span class="search-action-icon material-icons" aria-hidden="true">mic</span>
-            </button>`
-                : ""
-            }
-            <input
-              id="searchInput"
-              class="search-input-field focusable"
-              type="text"
-              data-action="searchInput"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-              placeholder="${escapeHtml(t("search_placeholder", {}, "Search movies & series"))}"
-              value="${escapeHtml(queryText)}"
-            />
-          </section>
           ${this.renderRows()}
         </main>
       </div>
@@ -1012,22 +878,29 @@ export const SearchScreen = {
         onExpandSidebar: () => this.openSidebar()
       });
     }
-    this.bindSearchInputEvents();
     this.bindActionEvents();
     this.bindDesktopSearchShelfInteractions();
     this.bindDesktopMediaHoverPreview();
-    const input = this.container.querySelector("#searchInput");
-    input?.blur?.();
+    this.browserCardTouchIntentCleanup?.();
+    this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
+      cardSelector: ".search-result-card[data-action='openDetail']",
+      onLongPress: (node) =>
+        void this.openPosterOptionsMenu(node, { invocation: { type: "touch" } })
+    });
+    this.mediaContextMenuCleanup?.();
+    this.mediaContextMenuCleanup = bindMediaContextMenu(this.container, {
+      cardSelector: ".search-result-card[data-action='openDetail']",
+      onInvoke: (node, pointer) =>
+        void this.openPosterOptionsMenu(node, {
+          invocation: { type: "pointer", x: pointer.x, y: pointer.y }
+        })
+    });
     this.restoreScrollState();
-    const shouldFocusResults = Boolean(
-      this.pendingAutoFocusResults && this.navModel?.rows?.[0]?.[0]
-    );
     if (this.focusZone === "sidebar") {
       this.focusSidebarNode();
     } else {
-      this.restoreContentFocus(shouldFocusResults);
+      this.restoreContentFocus();
     }
-    this.pendingAutoFocusResults = false;
   },
 
   bindDesktopSearchShelfInteractions() {
@@ -1316,21 +1189,11 @@ export const SearchScreen = {
   },
 
   buildNavigationModel() {
-    const header = [
-      this.container?.querySelector(".search-discover-btn.focusable"),
-      this.container?.querySelector(".search-voice-btn.focusable"),
-      this.container?.querySelector("#searchInput.focusable")
-    ].filter(Boolean);
     const rows = Array.from(
       this.container?.querySelectorAll(".search-results-row .search-results-track") || []
     )
       .map((track) => Array.from(track.querySelectorAll(".search-result-card.focusable")))
       .filter((row) => row.length > 0);
-
-    header.forEach((node, index) => {
-      node.dataset.navZone = "header";
-      node.dataset.navCol = String(index);
-    });
 
     rows.forEach((rowNodes, rowIndex) => {
       const rowKey = String(rowNodes[0]?.dataset?.rowKey || "");
@@ -1344,22 +1207,13 @@ export const SearchScreen = {
       });
     });
 
-    this.navModel = { header, rows };
+    this.navModel = { rows };
     if (!this.lastContentFocus) {
-      const fallback = this.getDefaultHeaderFocusTarget() || rows[0]?.[0] || null;
+      const fallback = rows[0]?.[0];
       if (fallback) {
         this.rememberContentFocus(fallback);
       }
     }
-  },
-
-  getDefaultHeaderFocusTarget() {
-    return (
-      this.container?.querySelector("#searchInput.focusable") ||
-      this.container?.querySelector(".search-discover-btn.focusable") ||
-      this.container?.querySelector(".search-voice-btn.focusable") ||
-      null
-    );
   },
 
   restoreScrollState() {
@@ -1451,9 +1305,6 @@ export const SearchScreen = {
       target =
         this.container?.querySelector(".search-results-row .search-result-card.focusable") || null;
     }
-    if (!target && !preferResults && this.mode !== "search") {
-      target = this.getDefaultHeaderFocusTarget();
-    }
     if (
       !target &&
       this.restoredFocusedDescriptor?.rowKey &&
@@ -1490,18 +1341,10 @@ export const SearchScreen = {
               `.search-result-card.focusable[data-nav-row="${this.lastContentFocus.row}"][data-nav-col="${this.lastContentFocus.col}"]`
             ) || null;
         }
-      } else if (this.lastContentFocus.zone === "header") {
-        target =
-          this.container?.querySelector(
-            `.focusable[data-nav-zone="header"][data-nav-col="${this.lastContentFocus.col}"]`
-          ) || null;
       }
     }
     if (!target) {
-      target =
-        this.getDefaultHeaderFocusTarget() ||
-        this.container?.querySelector(".search-result-card.focusable") ||
-        null;
+      target = this.container?.querySelector(".search-result-card.focusable") || null;
     }
     if (!target) {
       return false;
@@ -1525,7 +1368,6 @@ export const SearchScreen = {
       ensureSpatialFocusVisible(target);
     }
     const zone = String(target.dataset.navZone || "");
-    const currentZone = String(current?.dataset?.navZone || "");
     const sidebarFocused = isRootSidebarNode(target);
     this.focusZone = sidebarFocused ? "sidebar" : "content";
     if (!this.layoutPrefs?.modernSidebar) {
@@ -1533,9 +1375,6 @@ export const SearchScreen = {
     }
     if (!sidebarFocused) {
       this.rememberContentFocus(target);
-    }
-    if (zone === "header" && currentZone === "results") {
-      this.ensureHeaderVisible();
     }
     if (zone === "results") {
       this.ensureResultsRowVisible(target);
@@ -1773,27 +1612,6 @@ export const SearchScreen = {
     );
   },
 
-  ensureHeaderVisible() {
-    const content = this.container?.querySelector(".search-content");
-    const header = this.container?.querySelector(".search-header");
-    if (!content || !header) return;
-
-    const contentRect = content.getBoundingClientRect();
-    const headerRect = header.getBoundingClientRect();
-    const topInset = 22;
-    const visibleTop = contentRect.top + topInset;
-
-    if (headerRect.top < visibleTop) {
-      this.animateScroll(
-        content,
-        "y",
-        content.scrollTop + (headerRect.top - visibleTop),
-        MODERN_HOME_CONSTANTS.cameraFollowDurationYMs,
-        { mode: "spring" }
-      );
-    }
-  },
-
   handleSearchDpad(event) {
     const keyCode = Number(event?.keyCode || 0);
     const direction =
@@ -1818,29 +1636,6 @@ export const SearchScreen = {
     const zone = String(current.dataset.navZone || "");
 
     event?.preventDefault?.();
-
-    if (zone === "header") {
-      const col = Number(current.dataset.navCol || 0);
-      if (direction === "left") {
-        if (col > 0) return this.focusNode(current, nav.header?.[col - 1] || current) || true;
-        return true;
-      }
-      if (direction === "right") {
-        if (col < (nav.header?.length || 0) - 1) {
-          return this.focusNode(current, nav.header?.[col + 1] || current) || true;
-        }
-        return true;
-      }
-      if (direction === "down") {
-        const firstRow = nav.rows?.[0] || [];
-        const target = this.resolvePreferredResultsNode(firstRow, col);
-        return this.focusNode(current, target) || true;
-      }
-      if (direction === "up") {
-        return true;
-      }
-      return true;
-    }
 
     if (zone === "results") {
       const row = Number(current.dataset.navRow || 0);
@@ -1871,9 +1666,6 @@ export const SearchScreen = {
           const target = this.resolvePreferredResultsNode(prevRowNodes, col);
           return this.focusNode(current, target) || true;
         }
-        const target =
-          nav.header?.[Math.min(col, (nav.header?.length || 1) - 1)] || nav.header?.[0] || null;
-        return this.focusNode(current, target) || true;
       }
       return true;
     }
@@ -1881,148 +1673,10 @@ export const SearchScreen = {
     return false;
   },
 
-  async runSearchFromInput(input, { autoFocusResults = false } = {}) {
-    const nextQuery = trimLeadingWhitespace(input?.value || "").trim();
-    this.query = nextQuery;
-    const nextMode = nextQuery.length >= 2 ? "search" : "idle";
-    if (nextMode === "idle" && this.mode === "idle" && !(this.rows || []).length) {
-      this.lastSubmittedQuery = nextQuery;
-      this.captureLiveViewState();
-      return;
-    }
-    if (this.mode === nextMode && this.lastSubmittedQuery === nextQuery) {
-      return;
-    }
-    this.mode = nextMode;
-    this.pendingAutoFocusResults = Boolean(autoFocusResults && nextMode === "search");
-    this.lastSubmittedQuery = nextQuery;
-    this.loadToken = (this.loadToken || 0) + 1;
-    this.captureLiveViewState();
-    await this.reloadRows();
-  },
-
-  scheduleSearchFromInput(input) {
-    this.cancelScheduledInputSearch();
-    const nextQuery = trimLeadingWhitespace(input?.value || "");
-    const selectionSnapshot = getInputSelectionSnapshot(input);
-    if (input && input.value !== nextQuery) {
-      const removedLeadingChars = String(input.value || "").length - nextQuery.length;
-      input.value = nextQuery;
-      if (selectionSnapshot) {
-        restoreInputSelection(input, {
-          ...selectionSnapshot,
-          start: Math.max(0, Number(selectionSnapshot.start || 0) - removedLeadingChars),
-          end: Math.max(0, Number(selectionSnapshot.end || 0) - removedLeadingChars)
-        });
-      }
-    }
-    this.query = nextQuery.trim();
-    const delay = this.query.length >= 2 ? 320 : 120;
-    this.inputSearchTimer = setTimeout(() => {
-      this.inputSearchTimer = null;
-      void this.runSearchFromInput(input, { autoFocusResults: false });
-    }, delay);
-  },
-
-  bindSearchInputEvents() {
-    const input = this.container?.querySelector("#searchInput");
-    if (!input || input.__boundSearchListeners) return;
-    input.__boundSearchListeners = true;
-
-    input.addEventListener("input", (event) => {
-      this.query = trimLeadingWhitespace(event.target?.value || "");
-      this.scheduleSearchFromInput(input);
-    });
-
-    input.addEventListener("focus", () => {
-      const current = this.container?.querySelector(".focusable.focused") || null;
-      if (current !== input) {
-        this.focusNode(current, input);
-      }
-      const valueLength = String(input.value || "").length;
-      try {
-        input.setSelectionRange(valueLength, valueLength);
-      } catch (_) {}
-    });
-
-    input.addEventListener("keydown", async (event) => {
-      if (event.keyCode !== 13) return;
-      event.preventDefault();
-      this.cancelScheduledInputSearch();
-      await this.runSearchFromInput(input, { autoFocusResults: true });
-    });
-  },
-
-  isSearchInputEditingActive(event = null) {
-    const input = this.container?.querySelector("#searchInput");
-    if (!input) {
-      return false;
-    }
-    const eventTarget = event?.target || null;
-    return (
-      document.activeElement === input ||
-      eventTarget === input ||
-      Boolean(eventTarget?.closest?.("#searchInput")) ||
-      input.classList.contains("focused") ||
-      this.container?.querySelector(".focusable.focused") === input
-    );
-  },
-
-  keepSearchInputEditingKey(event, code) {
-    const input = this.container?.querySelector("#searchInput");
-    const navigationKeys = [35, 36, 37, 39];
-    if (!input || navigationKeys.indexOf(code) === -1 || !this.isSearchInputEditingActive(event)) {
-      return false;
-    }
-
-    // Release left/right once the caret sits at the matching edge of the value
-    // (always true for an empty input) so dpad navigation can move focus out
-    // of the input, e.g. to the discover/mic buttons.
-    const valueLength = String(input.value || "").length;
-    const selectionSnapshot = getInputSelectionSnapshot(input);
-    const caretStart = selectionSnapshot
-      ? clamp(Number(selectionSnapshot.start || 0), 0, valueLength)
-      : valueLength;
-    const caretEnd = selectionSnapshot
-      ? clamp(Number(selectionSnapshot.end || 0), 0, valueLength)
-      : valueLength;
-    const hasSelection = caretStart !== caretEnd;
-    if (code === 37 && !hasSelection && caretStart <= 0) {
-      return false;
-    }
-    if (code === 39 && !hasSelection && caretEnd >= valueLength) {
-      return false;
-    }
-
-    if (document.activeElement !== input) {
-      const selectionSnapshot = getInputSelectionSnapshot(input);
-      input.focus?.();
-      if (selectionSnapshot && (code === 37 || code === 39)) {
-        const delta = code === 37 ? -1 : 1;
-        const nextPosition = clamp(
-          Number(selectionSnapshot.end || selectionSnapshot.start || 0) + delta,
-          0,
-          String(input.value || "").length
-        );
-        restoreInputSelection(input, {
-          ...selectionSnapshot,
-          start: nextPosition,
-          end: nextPosition
-        });
-      } else if (selectionSnapshot) {
-        restoreInputSelection(input, selectionSnapshot);
-      }
-      event?.preventDefault?.();
-    }
-    event?.stopPropagation?.();
-    return true;
-  },
-
   bindActionEvents() {
     this.container?.querySelectorAll("[data-action]").forEach((node) => {
       if (node.__boundActionListeners) return;
       node.__boundActionListeners = true;
-      if (node.dataset.action === "searchInput") return;
       node.addEventListener("click", () => {
         this.activateActionNode(node);
       });
@@ -2037,115 +1691,6 @@ export const SearchScreen = {
 
     if (action === "openDetail") this.openDetailFromNode(node);
     if (action === "openCatalogSeeAll") this.openCatalogSeeAllFromNode(node);
-    if (action === "openDiscover" && this.layoutPrefs?.discoverLocation === "in_search")
-      Router.navigate("discover");
-    if (action === "openVoice") this.handleVoiceSearch();
-  },
-
-  ensureVoiceRecognition() {
-    if (this.voiceRecognition || !this.voiceSearchSupported) {
-      return this.voiceRecognition;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (typeof SpeechRecognition !== "function") {
-      return null;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.lang = navigator.language || "en-US";
-
-    recognition.onresult = async (event) => {
-      const recognized = String(event.results?.[0]?.[0]?.transcript || "").trim();
-      this.voiceSearchActive = false;
-      this.syncVoiceButtonState();
-      if (!recognized) {
-        this.showSearchToast("No speech detected. Try again.");
-        return;
-      }
-      this.query = recognized;
-      this.mode = this.query.length >= 2 ? "search" : "idle";
-      this.pendingAutoFocusResults = this.mode === "search";
-      this.loadToken = (this.loadToken || 0) + 1;
-      this.renderLoading();
-      await this.reloadRows();
-    };
-
-    recognition.onerror = (event) => {
-      this.voiceSearchActive = false;
-      this.syncVoiceButtonState();
-      const errorCode = String(event?.error || "");
-      if (errorCode === "aborted") return;
-      if (errorCode === "not-allowed" || errorCode === "service-not-allowed") {
-        this.showSearchToast("Microphone permission is required for voice search.");
-        return;
-      }
-      if (errorCode === "no-speech") {
-        this.showSearchToast("No speech detected. Try again.");
-        return;
-      }
-      this.showSearchToast("Voice recognition failed. Try again.");
-    };
-
-    recognition.onend = () => {
-      this.voiceSearchActive = false;
-      this.syncVoiceButtonState();
-    };
-
-    this.voiceRecognition = recognition;
-    return recognition;
-  },
-
-  handleVoiceSearch() {
-    const recognition = this.ensureVoiceRecognition();
-    if (!recognition) {
-      this.showSearchToast("Voice search is unavailable on this device.");
-      return;
-    }
-
-    try {
-      if (this.voiceSearchActive) {
-        recognition.stop();
-        return;
-      }
-      this.voiceSearchActive = true;
-      this.syncVoiceButtonState();
-      recognition.start();
-    } catch (_) {
-      this.voiceSearchActive = false;
-      this.syncVoiceButtonState();
-      this.showSearchToast("Voice search is unavailable on this device.");
-    }
-  },
-
-  syncVoiceButtonState() {
-    const button = this.container?.querySelector(".search-voice-btn");
-    if (!button) return;
-    button.classList.toggle("listening", Boolean(this.voiceSearchActive));
-  },
-
-  showSearchToast(message) {
-    if (!this.container) return;
-    const shell = this.container.querySelector(".search-screen-shell");
-    if (!shell) return;
-    let toast = shell.querySelector(".search-toast");
-    if (!toast) {
-      toast = document.createElement("div");
-      toast.className = "search-toast";
-      shell.appendChild(toast);
-    }
-    toast.textContent = String(message || "").trim();
-    toast.classList.add("visible");
-
-    if (this.searchToastTimer) {
-      clearTimeout(this.searchToastTimer);
-    }
-    this.searchToastTimer = setTimeout(() => {
-      toast?.classList.remove("visible");
-    }, 2600);
   },
 
   openDetailFromNode(node) {
@@ -2202,9 +1747,6 @@ export const SearchScreen = {
       return;
     }
 
-    if (this.keepSearchInputEditingKey(event, code)) {
-      return;
-    }
     if (this.layoutPrefs?.modernSidebar && !this.sidebarExpanded) {
       if (code === 40) {
         this.pillIconOnly = true;
@@ -2274,21 +1816,7 @@ export const SearchScreen = {
     const current = this.container.querySelector(".focusable.focused");
     if (!current) return;
 
-    const action = String(current.dataset.action || "");
-    if (
-      action === "openDiscover" ||
-      action === "openVoice" ||
-      action === "openDetail" ||
-      action === "openCatalogSeeAll"
-    ) {
-      this.activateActionNode(current);
-    }
-    if (action === "searchInput") {
-      const input = this.container?.querySelector("#searchInput");
-      if (input) {
-        input.focus();
-      }
-    }
+    this.activateActionNode(current);
   },
 
   onKeyUp(event) {
@@ -2310,6 +1838,10 @@ export const SearchScreen = {
 
   consumeBackRequest() {
     return this.closePosterOptionsMenu();
+  },
+
+  onRouteRevealed() {
+    bindDesktopNavigationEvents(this.container);
   },
 
   cleanup() {
@@ -2337,23 +1869,6 @@ export const SearchScreen = {
     this.posterOptionsController = null;
     this.pendingPosterOptionsFocusId = "";
     this.suppressHoldMenuEnterUntilKeyUp = false;
-    if (this.searchToastTimer) {
-      clearTimeout(this.searchToastTimer);
-      this.searchToastTimer = null;
-    }
-    this.cancelScheduledInputSearch();
-    if (this.voiceRecognition) {
-      try {
-        this.voiceRecognition.onresult = null;
-        this.voiceRecognition.onerror = null;
-        this.voiceRecognition.onend = null;
-        this.voiceRecognition.stop();
-      } catch (_) {
-        // Ignore stop failures from inactive recognizers.
-      }
-      this.voiceRecognition = null;
-    }
-    this.voiceSearchActive = false;
     ScreenUtils.hide(this.container);
   }
 };

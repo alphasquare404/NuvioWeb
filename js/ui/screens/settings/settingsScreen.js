@@ -185,6 +185,7 @@ import {
 } from "../../components/sidebarNavigation.js";
 import {
   bindDesktopNavigationEvents,
+  deferUntilNavigationSearchIdle,
   renderDesktopNavigation,
   renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
@@ -10557,6 +10558,12 @@ export const SettingsScreen = {
     if (refreshModel || !this.model) {
       this.model = await this.collectModel();
     }
+    if (
+      deferUntilNavigationSearchIdle(this.container, () => {
+        if (this.container?.id === Router.getCurrent()) void this.render({ refreshModel: false });
+      })
+    )
+      return;
     this.layoutPrefs = this.model.layout;
     this.sidebarExpanded = Boolean(this.layoutPrefs?.modernSidebar && this.sidebarExpanded);
     this.visibleSections = getVisibleSections(this.model);

@@ -49,6 +49,7 @@ import {
 } from "../../components/sidebarNavigation.js";
 import {
   bindDesktopNavigationEvents,
+  deferUntilNavigationSearchIdle,
   renderDesktopNavigation,
   renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
@@ -1809,6 +1810,12 @@ export const LibraryScreen = {
 
   render() {
     this.cancelScheduledRender();
+    if (
+      deferUntilNavigationSearchIdle(this.container, () => {
+        if (Router.getCurrent() === "library") this.render();
+      })
+    )
+      return;
     this.layoutPrefs = LayoutPreferences.get();
     const useDesktopNavigation = Platform.isBrowser();
     this.sidebarExpanded = Boolean(this.layoutPrefs?.modernSidebar && this.sidebarExpanded);

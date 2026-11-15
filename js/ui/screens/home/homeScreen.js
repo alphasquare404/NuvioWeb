@@ -86,6 +86,7 @@ import {
 } from "../../components/sidebarNavigation.js";
 import {
   bindDesktopNavigationEvents,
+  deferUntilNavigationSearchIdle,
   renderDesktopNavigation
 } from "../../components/desktopNavigation.js";
 import { NuvioDialog } from "../../components/nuvioDialog.js";
@@ -10536,6 +10537,13 @@ export const HomeScreen = {
   },
 
   render() {
+    const container = this.container;
+    if (
+      deferUntilNavigationSearchIdle(container, () => {
+        if (this.container === container && Router.getCurrent() === "home") this.requestRender();
+      })
+    )
+      return;
     const renderStart = HOME_PERF_DEBUG ? homePerfNow() : 0;
     this.deferredRenderPending = false;
     this.cancelScheduledRender();

@@ -1,5 +1,6 @@
 import { Router } from "./router.js";
 import { Platform } from "../../platform/index.js";
+import { closeNavigationSearch } from "../components/desktopNavigation.js";
 
 function buildNormalizedEvent(event) {
   const normalizedKey = Platform.normalizeKey(event);
@@ -92,6 +93,15 @@ export const FocusEngine = {
       return;
     }
 
+    if (event?.target?.closest?.(".desktop-navigation-search")) {
+      if (event.key === "Escape" && !event.isComposing) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        closeNavigationSearch({ restoreFocus: true });
+      }
+      return;
+    }
+
     const normalizedEvent = buildNormalizedEvent(event);
     const keyIdentity = this.getKeyIdentity(normalizedEvent);
     if (keyIdentity && (!normalizedEvent.repeat || !this.activeKeyDownStartedAt.has(keyIdentity))) {
@@ -123,6 +133,7 @@ export const FocusEngine = {
 
   handleKeyUp(event) {
     if (event?.target && !document.contains(event.target)) return;
+    if (event?.target?.closest?.(".desktop-navigation-search")) return;
 
     const normalizedEvent = buildNormalizedEvent(event);
     const keyIdentity = this.getKeyIdentity(normalizedEvent);
