@@ -15343,6 +15343,17 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   filter: invert(0);
 }
 
+/* Seerr brand mark. Masked rather than drawn as an <img> so it takes the
+   button's colour: white at rest, dark when the focused button turns light. */
+.series-btn-logo {
+  display: block;
+  width: 52%;
+  height: 52%;
+  background-color: currentColor;
+  -webkit-mask: url("../assets/brand/seerr.svg") center / contain no-repeat;
+  mask: url("../assets/brand/seerr.svg") center / contain no-repeat;
+}
+
 .series-detail-description {
   margin: 0;
   max-width: 930px;

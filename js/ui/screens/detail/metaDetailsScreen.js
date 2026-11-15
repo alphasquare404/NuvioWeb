@@ -4704,7 +4704,7 @@ export const MetaDetailsScreen = {
               Platform.isBrowser() &&
               MediaConnectionsStore.get().seerr &&
               ["movie", "series"].includes(playableType)
-                ? `<button type="button" class="series-circle-btn focusable" data-action="requestOnSeerr" title="${escapeAttribute(t("media_request_action", {}, "Request on Seerr"))}" aria-label="${escapeAttribute(t("media_request_action", {}, "Request on Seerr"))}"><span class="material-icons" aria-hidden="true">playlist_add</span></button><span class="media-request-status" data-media-request-status role="status"></span>`
+                ? `<button type="button" class="series-circle-btn focusable" data-action="requestOnSeerr" title="${escapeAttribute(t("media_request_action", {}, "Request on Seerr"))}" aria-label="${escapeAttribute(t("media_request_action", {}, "Request on Seerr"))}"><span class="series-btn-logo" aria-hidden="true"></span></button><span class="media-request-status" data-media-request-status role="status"></span>`
                 : ""
             }
             ${this.renderHeroOfflineSubtitleButton()}
