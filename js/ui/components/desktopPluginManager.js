@@ -208,12 +208,21 @@ export function createDesktopPluginManager({ requestRender } = {}) {
       external && Array.isArray(repository.metadata?.plugins) ? repository.metadata.plugins : [];
     const enableAll = !scrapers.some((scraper) => scraper.enabled);
     return `
-      <article class="desktop-plugin-source">
-        <div class="desktop-plugin-source-copy">
-          <h3>${escapeHtml(repository.name)}</h3>
-          <p>${escapeHtml(repository.description || repository.url)}</p>
-          ${external ? "<p>CloudStream metadata</p>" : ""}
-          ${providers.length ? `<ul>${providers.map((provider) => `<li>${escapeHtml(provider.name || provider.internalName || "Provider")}</li>`).join("")}</ul>` : ""}
+      <article class="desktop-plugin-source desktop-plugin-repository">
+        <div class="desktop-plugin-repository-head">
+          <div class="desktop-plugin-source-copy">
+            <h3>${escapeHtml(repository.name)}</h3>
+            <p>${escapeHtml(repository.description || repository.url)}</p>
+            ${external ? "<p>CloudStream metadata</p>" : ""}
+            ${providers.length ? `<ul>${providers.map((provider) => `<li>${escapeHtml(provider.name || provider.internalName || "Provider")}</li>`).join("")}</ul>` : ""}
+          </div>
+          <div class="desktop-plugin-source-actions">
+            <label class="desktop-plugin-toggle"><input type="checkbox" data-plugin-repository-enabled="${id}"${repository.enabled ? " checked" : ""}${editable ? "" : " disabled"}><span class="desktop-plugin-toggle-track" aria-hidden="true"><span></span></span><span class="desktop-plugin-toggle-label">${repository.enabled ? "Enabled" : "Disabled"}</span></label>
+            ${scrapers.length ? `<button type="button" class="desktop-plugin-action" data-plugin-scrapers-toggle-all="${id}" data-enabled="${enableAll}"${editable ? "" : " disabled"}>${enableAll ? "Enable all" : "Disable all"}</button>` : ""}
+            <button type="button" class="desktop-plugin-action" data-plugin-repository-refresh="${id}"${editable ? "" : " disabled"}>Refresh</button>
+            <button type="button" class="desktop-plugin-action desktop-plugin-action-danger" data-plugin-repository-remove="${id}"${editable ? "" : " disabled"}>Remove</button>
+          </div>
+        </div>
           <div class="desktop-plugin-source-list">
             ${scrapers
               .map(
@@ -255,7 +264,7 @@ export function createDesktopPluginManager({ requestRender } = {}) {
                   }
                 </div>
                 <div class="desktop-plugin-source-actions">
-                  <label><input type="checkbox" data-plugin-scraper-enabled="${escapeHtml(scraper.id)}"${scraper.enabled ? " checked" : ""}${editable ? "" : " disabled"}> Enabled</label>
+                  <label class="desktop-plugin-toggle"><input type="checkbox" data-plugin-scraper-enabled="${escapeHtml(scraper.id)}"${scraper.enabled ? " checked" : ""}${editable ? "" : " disabled"}><span class="desktop-plugin-toggle-track" aria-hidden="true"><span></span></span><span class="desktop-plugin-toggle-label">${scraper.enabled ? "Enabled" : "Disabled"}</span></label>
                   <button type="button" class="desktop-plugin-action" data-plugin-scraper-test="${escapeHtml(scraper.id)}"${state.repositoryBusy || !repository.enabled || !scraper.enabled ? " disabled" : ""}>Test</button>
                 </div>
               </div>
@@ -263,13 +272,6 @@ export function createDesktopPluginManager({ requestRender } = {}) {
               )
               .join("")}
           </div>
-        </div>
-        <div class="desktop-plugin-source-actions">
-          <label><input type="checkbox" data-plugin-repository-enabled="${id}"${repository.enabled ? " checked" : ""}${editable ? "" : " disabled"}> Enabled</label>
-          ${scrapers.length ? `<button type="button" class="desktop-plugin-action" data-plugin-scrapers-toggle-all="${id}" data-enabled="${enableAll}"${editable ? "" : " disabled"}>${enableAll ? "Enable all" : "Disable all"}</button>` : ""}
-          <button type="button" class="desktop-plugin-action" data-plugin-repository-refresh="${id}"${editable ? "" : " disabled"}>Refresh</button>
-          <button type="button" class="desktop-plugin-action desktop-plugin-action-danger" data-plugin-repository-remove="${id}"${editable ? "" : " disabled"}>Remove</button>
-        </div>
       </article>`;
   };
 
@@ -356,7 +358,7 @@ export function createDesktopPluginManager({ requestRender } = {}) {
           <section class="desktop-plugin-section" aria-labelledby="desktop-plugin-repositories-title">
             <div class="desktop-plugin-section-heading">
               <h2 id="desktop-plugin-repositories-title">Plugin Repositories</h2>
-              <label><input type="checkbox" data-plugin-group-repositories${repositories.groupStreamsByRepository ? " checked" : ""}${repositories.canEdit() ? "" : " disabled"}> Group streams by repository</label>
+              <label class="desktop-plugin-toggle desktop-plugin-group-toggle"><input type="checkbox" data-plugin-group-repositories${repositories.groupStreamsByRepository ? " checked" : ""}${repositories.canEdit() ? "" : " disabled"}><span class="desktop-plugin-toggle-track" aria-hidden="true"><span></span></span><span class="desktop-plugin-toggle-label">Group streams by repository</span></label>
             </div>
             <form class="desktop-plugin-form" data-plugin-repository-form>
               <div class="desktop-plugin-field">
