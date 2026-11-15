@@ -10369,11 +10369,14 @@ html.desktop-browser[data-nav-placement] body .desktop-navigation.is-search-open
 .desktop-browser .desktop-collection-editor-toggle-row span { display: grid; gap: 4px; }
 .desktop-browser .desktop-collection-editor-toggle-row strong { font-size: 14px; }
 .desktop-browser .desktop-collection-editor-toggle-row small { color: var(--text-secondary); font-size: 12px; }
-.desktop-browser .desktop-collection-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.desktop-browser .desktop-collection-editor-card label.desktop-collection-editor-toggle-row { display: flex; align-items: center; cursor: pointer; color: var(--text-color); }
+.desktop-browser .desktop-collection-switch { position: relative; }
+.desktop-browser .desktop-collection-switch input { position: absolute; inset: 0; margin: 0; opacity: 0; pointer-events: none; }
 .desktop-browser .desktop-collection-switch span { display: block; width: 42px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.16); cursor: pointer; transition: background .15s ease; }
-.desktop-browser .desktop-collection-switch span::after { width: 18px; height: 18px; margin: 3px; border-radius: 50%; background: white; content: ""; transition: transform .15s ease; }
+.desktop-browser .desktop-collection-switch span::after { display: block; width: 18px; height: 18px; position: absolute; inset: 3px auto auto 3px; border-radius: 50%; background: white; content: ""; transition: transform .15s ease; }
 .desktop-browser .desktop-collection-switch input:checked + span { background: rgb(var(--secondary-color-rgb) / .9); }
 .desktop-browser .desktop-collection-switch input:checked + span::after { transform: translateX(18px); }
+.desktop-browser .desktop-collection-switch input:focus-visible + span { outline: 2px solid var(--secondary-color); outline-offset: 2px; }
 .desktop-browser .desktop-collection-segmented { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
 .desktop-browser .desktop-collection-segmented legend { width: 100%; margin-bottom: 3px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
 .desktop-browser .desktop-collection-segmented button { min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; background: rgba(255,255,255,.05); color: var(--text-color); cursor: pointer; }
@@ -10385,7 +10388,10 @@ html.desktop-browser[data-nav-placement] body .desktop-navigation.is-search-open
 .desktop-browser .desktop-folder-cover { display: grid; flex: 0 0 auto; width: 46px; height: 46px; overflow: hidden; place-items: center; border-radius: 9px; background: rgba(255,255,255,.08); color: var(--text-secondary); }
 .desktop-browser .desktop-folder-cover img { width: 100%; height: 100%; object-fit: cover; }
 .desktop-browser .desktop-collection-source-add { display: flex; gap: 10px; }
-.desktop-browser .desktop-collection-source-add select { flex: 1 1 auto; }
+.desktop-browser .desktop-collection-source-add select { flex: 1 1 0; color-scheme: dark; }
+.desktop-browser .desktop-collection-source-add select option { background: #242424; color: #f4f4f4; }
+.desktop-browser .desktop-collection-source-add button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 640px) { .desktop-browser .desktop-collection-source-add select { flex: auto; width: 100%; } }
 @media (hover:hover) and (pointer:fine) { .desktop-browser .desktop-collection-manager-row:hover, .desktop-browser .desktop-collection-editor-row:hover { border-color: rgba(255,255,255,.25); background: rgba(255,255,255,.075); } .desktop-browser .desktop-collection-editor-back:hover { background: rgba(255,255,255,.16); } }
 .desktop-browser .desktop-collection-add-form input:focus-visible, .desktop-browser .desktop-collection-editor-card input:focus-visible, .desktop-browser .desktop-collection-editor-back:focus-visible, .desktop-browser .desktop-collection-segmented button:focus-visible, .desktop-browser .desktop-collection-manager-actions button:focus-visible, .desktop-browser .desktop-collection-editor-actions button:focus-visible { outline: 2px solid rgb(var(--secondary-color-rgb) / .9); outline-offset: 2px; }
 @media (max-width: 640px) { .desktop-browser .desktop-collection-editor-shell { padding: 88px 18px 48px; } .desktop-browser .desktop-collection-editor-back { left: 18px; } .desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-editor-section-heading, .desktop-browser .desktop-collection-editor-row { align-items: flex-start; } .desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-source-add { flex-direction: column; } .desktop-browser .desktop-collection-add-form button { width: 100%; } .desktop-browser .desktop-collection-manager-row, .desktop-browser .desktop-collection-editor-row { display: grid; grid-template-columns: auto minmax(0,1fr); } .desktop-browser .desktop-collection-manager-actions, .desktop-browser .desktop-collection-editor-actions { grid-column: 1 / -1; justify-content: flex-end; } }
