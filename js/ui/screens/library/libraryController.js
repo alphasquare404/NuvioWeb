@@ -109,13 +109,16 @@ function makeInitialState() {
       isEnabled: true,
       isRefreshing: false,
       providers: [],
-      items: []
+      items: [],
+      serverSources: []
     },
     visibleCloudItems: [],
     availableCloudProviders: [],
     availableCloudTypes: [],
+    availableCloudLibraries: [],
     selectedCloudProviderId: null,
     selectedCloudType: null,
+    selectedCloudLibraryId: null,
     cloudSearchQuery: "",
     resolvingCloudFileKey: null,
     cloudFilePickerItem: null
@@ -138,9 +141,12 @@ function withVisibleCloudItems(state) {
   const providerItems = state.selectedCloudProviderId
     ? allItems.filter((item) => item.providerId === state.selectedCloudProviderId)
     : allItems;
-  const typeItems = state.selectedCloudType
-    ? providerItems.filter((item) => item.type === state.selectedCloudType)
+  const libraryItems = state.selectedCloudLibraryId
+    ? providerItems.filter((item) => item.libraryId === state.selectedCloudLibraryId)
     : providerItems;
+  const typeItems = state.selectedCloudType
+    ? libraryItems.filter((item) => item.type === state.selectedCloudType)
+    : libraryItems;
   const query = String(state.cloudSearchQuery || "")
     .trim()
     .toLowerCase();
@@ -168,10 +174,32 @@ function withVisibleCloudItems(state) {
     providerMap.set(item.providerId, current);
   });
   const typeMap = new Map();
-  providerItems.forEach((item) => typeMap.set(item.type, (typeMap.get(item.type) || 0) + 1));
+  // Server titles are files inside a library, not a transfer kind, so they do
+  // not belong in the Type filter that describes debrid transfers.
+  providerItems
+    .filter((item) => !item.libraryId)
+    .forEach((item) => typeMap.set(item.type, (typeMap.get(item.type) || 0) + 1));
+  const serverSources = Array.isArray(state.cloudLibrary?.serverSources)
+    ? state.cloudLibrary.serverSources
+    : [];
+  // A connected server is a provider like any other: it is where the titles come
+  // from. Its libraries are not a type -- they are places inside that provider,
+  // so the picker that lists them is separate.
+  for (const source of serverSources) {
+    providerMap.set(source.id, {
+      key: source.id,
+      label: source.name,
+      count: allItems.filter((item) => item.providerId === source.id).length,
+      isServer: true
+    });
+  }
   const availableCloudProviders = [...providerMap.values()].sort((left, right) =>
     left.label.localeCompare(right.label)
   );
+  const selectedServer = serverSources.find(
+    (source) => source.id === state.selectedCloudProviderId
+  );
+  const availableCloudLibraries = selectedServer ? selectedServer.libraries : [];
   const availableCloudTypes = Object.values(CLOUD_LIBRARY_ITEM_TYPES)
     .filter((type) => typeMap.has(type))
     .map((type) => ({ key: type, label: cloudTypeLabel(type), count: typeMap.get(type) }));
@@ -180,6 +208,7 @@ function withVisibleCloudItems(state) {
     visibleCloudItems,
     availableCloudProviders,
     availableCloudTypes,
+    availableCloudLibraries,
     selectedCloudProviderId: availableCloudProviders.some(
       (option) => option.key === state.selectedCloudProviderId
     )
@@ -187,6 +216,11 @@ function withVisibleCloudItems(state) {
       : null,
     selectedCloudType: availableCloudTypes.some((option) => option.key === state.selectedCloudType)
       ? state.selectedCloudType
+      : null,
+    selectedCloudLibraryId: availableCloudLibraries.some(
+      (library) => library.id === state.selectedCloudLibraryId
+    )
+      ? state.selectedCloudLibraryId
       : null
   };
 }
@@ -1010,6 +1044,15 @@ export class LibraryController {
         }))
       ];
     }
+    if (picker === "cloud_library") {
+      return [
+        { value: ALL_KEY, label: t("cloud_library_library_all", {}, "All") },
+        ...this.state.availableCloudLibraries.map((item) => ({
+          value: item.id,
+          label: item.name
+        }))
+      ];
+    }
     if (picker === "list") {
       if (Platform.isBrowser() && this.state.sourceMode === LibrarySourceMode.SIMKL) {
         return [
@@ -1059,15 +1102,17 @@ export class LibraryController {
           ? this.state.selectedCloudProviderId || ALL_KEY
           : picker === "cloud_type"
             ? this.state.selectedCloudType || ALL_KEY
-            : picker === "list"
-              ? this.state.selectedListKey || ALL_KEY
-              : picker === "type"
-                ? this.state.selectedTypeKey
-                : picker === "genre"
-                  ? this.state.selectedGenre || ALL_KEY
-                  : picker === "year"
-                    ? this.state.selectedYear || ALL_KEY
-                    : this.state.selectedSortKey;
+            : picker === "cloud_library"
+              ? this.state.selectedCloudLibraryId || ALL_KEY
+              : picker === "list"
+                ? this.state.selectedListKey || ALL_KEY
+                : picker === "type"
+                  ? this.state.selectedTypeKey
+                  : picker === "genre"
+                    ? this.state.selectedGenre || ALL_KEY
+                    : picker === "year"
+                      ? this.state.selectedYear || ALL_KEY
+                      : this.state.selectedSortKey;
       const optionIndex = Math.max(
         0,
         options.findIndex((item) => item.value === currentValue)
@@ -1124,6 +1169,10 @@ export class LibraryController {
     }
     if (picker === "cloud_type") {
       this.selectCloudType(option.value === ALL_KEY ? null : option.value);
+      return;
+    }
+    if (picker === "cloud_library") {
+      this.selectCloudLibrary(option.value);
       return;
     }
     if (picker === "list") {
@@ -1195,11 +1244,22 @@ export class LibraryController {
   }
 
   selectCloudProvider(providerId) {
-    this.setState({ selectedCloudProviderId: providerId, expandedPicker: null });
+    this.setState({
+      selectedCloudProviderId: providerId,
+      selectedCloudLibraryId: null,
+      expandedPicker: null
+    });
   }
 
   selectCloudType(type) {
     this.setState({ selectedCloudType: type, expandedPicker: null });
+  }
+
+  selectCloudLibrary(libraryId) {
+    this.setState({
+      selectedCloudLibraryId: libraryId && libraryId !== ALL_KEY ? libraryId : null,
+      expandedPicker: null
+    });
   }
 
   setCloudSearchQuery(query) {

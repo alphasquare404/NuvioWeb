@@ -1897,6 +1897,8 @@
     <string name="cloud_library_type_usenet">Usenet</string>
     <string name="cloud_library_type_web">Web</string>
     <string name="cloud_library_type_files">Files</string>
+<string name="cloud_library_library_label">Library</string>
+<string name="cloud_library_library_all">All</string>
     <string name="cloud_library_error_provider_unavailable">Cloud library is not available for %1$s.</string>
     <string name="cloud_library_error_disabled">Cloud library is disabled.</string>
     <string name="account_loading">Loading\u2026</string>
