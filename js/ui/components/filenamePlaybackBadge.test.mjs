@@ -7,7 +7,8 @@ const { PlayerSettingsStore } = await import("../../data/local/playerSettingsSto
 const { filterFilenameStreams, filenameStreamFilter } =
   await import("../../core/streams/filenameStreamPolicy.js");
 
-test("audio, video, and full transcode share the visible label and have distinct colors", () => {
+test("audio, video, and full transcode share the visible label and have distinct colors", (t) => {
+  t.mock.method(PlayerSettingsStore, "get", () => ({ mediabunnyMode: "process" }));
   const caps = { av1: false, h264: true, aac: true, dts: false, containers: { mkv: false } };
   const audio = renderFilenamePlaybackBadge({ name: "Film.1080p.H264.DTS.mkv" }, {}, caps);
   const video = renderFilenamePlaybackBadge({ name: "Film.1080p.AV1.AAC.mkv" }, {}, caps);

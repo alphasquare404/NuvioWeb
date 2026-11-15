@@ -128,14 +128,23 @@ export function hasProfileSettingsCloudSyncPending(profileId = null) {
   return Object.prototype.hasOwnProperty.call(pending, normalizedProfileId);
 }
 
-function ensureProfileValue(key, envelope, normalize, profileId, { seedFromPrimary = true } = {}) {
+function ensureProfileValue(
+  key,
+  envelope,
+  normalize,
+  profileId,
+  { seedFromPrimary, initialValue }
+) {
   const normalizedProfileId = normalizeProfileId(profileId);
   if (Object.prototype.hasOwnProperty.call(envelope.profiles, normalizedProfileId)) {
     return envelope.profiles[normalizedProfileId];
   }
 
   const primaryValue = envelope.profiles["1"];
-  const seed = seedFromPrimary && primaryValue != null ? cloneValue(primaryValue) : normalize({});
+  const seed =
+    seedFromPrimary && primaryValue != null
+      ? cloneValue(primaryValue)
+      : normalize(cloneValue(initialValue));
   envelope.profiles[normalizedProfileId] = normalize(seed || {});
   persistEnvelope(key, envelope);
   return envelope.profiles[normalizedProfileId];
@@ -200,6 +209,7 @@ export function createProfileScopedStore({
   normalize,
   merge,
   seedFromPrimary = true,
+  initialValue = {},
   legacyMigration = "all"
 }) {
   const listeners = new Set();
@@ -230,7 +240,7 @@ export function createProfileScopedStore({
     getForProfile(profileId) {
       const envelope = readEnvelope(key, normalize, { legacyMigration });
       return cloneValue(
-        ensureProfileValue(key, envelope, normalize, profileId, { seedFromPrimary })
+        ensureProfileValue(key, envelope, normalize, profileId, { seedFromPrimary, initialValue })
       );
     },
 
@@ -238,10 +248,17 @@ export function createProfileScopedStore({
       return this.getForProfile(normalizeProfileId());
     },
 
-    replaceForProfile(profileId, nextValue, { silentSync = false, syncSource = "user", mutation } = {}) {
+    replaceForProfile(
+      profileId,
+      nextValue,
+      { silentSync = false, syncSource = "user", mutation } = {}
+    ) {
       const envelope = readEnvelope(key, normalize, { legacyMigration });
       const normalizedProfileId = normalizeProfileId(profileId);
-      const previousValue = Object.prototype.hasOwnProperty.call(envelope.profiles, normalizedProfileId)
+      const previousValue = Object.prototype.hasOwnProperty.call(
+        envelope.profiles,
+        normalizedProfileId
+      )
         ? cloneValue(envelope.profiles[normalizedProfileId])
         : normalize({});
       const value = normalize(cloneValue(nextValue) || {});
@@ -280,7 +297,10 @@ export function createProfileScopedStore({
     clearProfile(profileId, { silentSync = false, syncSource = "user" } = {}) {
       const envelope = readEnvelope(key, normalize, { legacyMigration });
       const normalizedProfileId = normalizeProfileId(profileId);
-      const previousValue = Object.prototype.hasOwnProperty.call(envelope.profiles, normalizedProfileId)
+      const previousValue = Object.prototype.hasOwnProperty.call(
+        envelope.profiles,
+        normalizedProfileId
+      )
         ? cloneValue(envelope.profiles[normalizedProfileId])
         : null;
       delete envelope.profiles[normalizedProfileId];
