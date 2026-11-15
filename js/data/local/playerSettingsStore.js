@@ -82,7 +82,6 @@ const DEFAULTS = {
   // that never asked for it must keep the built-in player.
   playerEngine: "native",
   mediabunnyEnabled: true,
-  mediabunnyMode: "process",
   // Apple browser users without a stored preference receive the verified
   // Lenna path; platform-specific consumers keep Android on its own options.
   browserExternalPlayer: "lenna",
@@ -109,6 +108,15 @@ const DEFAULTS = {
   // nobody gave. The subscription is never cancelled by this choice -- it is
   // shared with every other notification the app may send.
   externalReturnMethod: ""
+};
+
+// Apply these only when there are no saved preferences for the profile.
+const INITIAL_PLAYER_SETTINGS = {
+  browserExternalPlayer: "disabled",
+  mediabunnyMode: "decode",
+  filenamePlaybackRoutingEnabled: true,
+  filenameStreamFilter: ["all"],
+  decodeStreamFilter: ["all"]
 };
 
 const STREAM_AUTO_PLAY_MODES = ["MANUAL", "FIRST_STREAM", "REGEX_MATCH"];
@@ -487,6 +495,8 @@ export function normalizePlayerSettings(settings = {}) {
 const store = createProfileScopedStore({
   key: KEY,
   normalize: normalizePlayerSettings,
+  seedFromPrimary: false,
+  initialValue: INITIAL_PLAYER_SETTINGS,
   merge(current, partial) {
     const { subtitleDelayMs: _ignoredSubtitleDelayMs, ...persistentPartial } = partial || {};
     return {
@@ -502,7 +512,7 @@ const store = createProfileScopedStore({
 
 export const PlayerSettingsStore = {
   getDefaults() {
-    return normalizePlayerSettings({});
+    return normalizePlayerSettings(INITIAL_PLAYER_SETTINGS);
   },
 
   getForProfile(profileId) {

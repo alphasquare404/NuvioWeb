@@ -15,7 +15,7 @@ const LEGACY_DEBRID_KEY = "debridSettings";
 
 const DEFAULT_STREAM_BADGE_SETTINGS = {
   rules: { imports: [] },
-  showPlaybackLabels: true,
+  showPlaybackLabels: false,
   compatibilityCheckEnabled: true,
   filenameAllAddons: false,
   metadataFilenameFallback: false,
@@ -78,7 +78,9 @@ function normalizeStreamBadgeSettings(value = {}) {
 
 const store = createProfileScopedStore({
   key: KEY,
-  normalize: normalizeStreamBadgeSettings
+  normalize: normalizeStreamBadgeSettings,
+  seedFromPrimary: false,
+  initialValue: DEFAULT_STREAM_BADGE_SETTINGS
 });
 
 async function fetchText(url) {

@@ -9,7 +9,10 @@ import {
 import { filterPlayerStreams, nextEpisodeSelectionOptions } from "./playerStreamPolicy.js";
 import { autoPlayCandidates, selectAutoPlayStream } from "./streamAutoPlaySelector.js";
 import { setDeviceCapabilitiesForTests } from "../player/deviceCapabilities.js";
-import { normalizePlayerSettings } from "../../data/local/playerSettingsStore.js";
+import {
+  PlayerSettingsStore,
+  normalizePlayerSettings
+} from "../../data/local/playerSettingsStore.js";
 import { renderFilenamePlaybackBadge } from "../../ui/components/filenamePlaybackBadge.js";
 import { normalizeSourceForDisplay } from "../../ui/components/browserStreamSourceCard.js";
 const caps = {
@@ -243,7 +246,8 @@ test("manual Auto Next carries the filename filter without weakening addon const
     setDeviceCapabilitiesForTests(null);
   }
 });
-test("filename labels are always estimated and disappear independently of filtering", () => {
+test("filename labels are always estimated and disappear independently of filtering", (t) => {
+  t.mock.method(PlayerSettingsStore, "get", () => ({ mediabunnyMode: "process" }));
   for (const [stream, label, tone] of [
     [direct, "Direct", "green"],
     [remux, "Repackage", "blue"],
