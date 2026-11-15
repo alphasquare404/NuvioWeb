@@ -15354,6 +15354,40 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   mask: url("../assets/brand/seerr.svg") center / contain no-repeat;
 }
 
+/* Phone Detail: one row for Play and every circle button at any phone width.
+   The circle size is derived from the viewport so the row shrinks instead of
+   wrapping, and the gap follows it so the rhythm stays the same. */
+@media (max-width: 600px) {
+  html[data-layout="mobile"] #detail .series-detail-actions {
+    --detail-action-size: clamp(30px, calc((100vw - 145px) / 5.7), 44px);
+    --detail-action-gap: calc(var(--detail-action-size) * 0.14);
+    flex-wrap: nowrap;
+    gap: var(--detail-action-gap);
+  }
+
+  html[data-layout="mobile"] #detail .series-detail-actions .series-primary-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  html[data-layout="mobile"] #detail .series-detail-actions .series-circle-btn {
+    flex: 0 0 auto;
+    width: var(--detail-action-size);
+    height: var(--detail-action-size);
+    min-width: var(--detail-action-size);
+    min-height: var(--detail-action-size);
+  }
+
+  html[data-layout="mobile"] #detail .series-detail-actions .series-circle-btn .series-btn-svg {
+    width: 52%;
+    height: 52%;
+  }
+
+  html[data-layout="mobile"] #detail .series-detail-actions .series-circle-btn .material-icons {
+    font-size: calc(var(--detail-action-size) * 0.52);
+  }
+}
+
 .series-detail-description {
   margin: 0;
   max-width: 930px;
