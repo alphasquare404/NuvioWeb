@@ -2,10 +2,12 @@ import { DebridSettingsStore } from "../local/debridSettingsStore.js";
 import { DebridApi } from "../remote/api/debridApi.js";
 import {
   MediaConnectionsStore,
-  mediaServerItems,
   mediaItemFilename,
-  mediaServerPlaybackUrl
+  mediaServerItems,
+  mediaServerPlaybackUrl,
+  selectedMediaLibraries
 } from "../../core/media/mediaConnections.js";
+import { mediaCatalogLibraries } from "./mediaServerCatalogRepository.js";
 import {
   DEBRID_CAPABILITIES,
   DEBRID_PROVIDER_IDS,
@@ -78,81 +80,122 @@ export function cloudLibrarySettingsSignature(settings = DebridSettingsStore.get
   });
 }
 
+// The Cloud tab is a single list, so a server library contributes its titles to
+// that list rather than standing as a section of its own. Only libraries that
+// still exist on the server are used.
+export function mediaServerSources(servers = [], librariesByServer = {}) {
+  return servers
+    .filter(({ enabled }) => enabled !== false)
+    .map((server) => {
+      const libraries = selectedMediaLibraries(server, librariesByServer[server.id] || [])
+        .filter(({ kind }) => kind && kind !== "collection")
+        .map(({ id, name, kind }) => ({ id, name, kind }));
+      return libraries.length ? { id: server.id, name: server.name, libraries } : null;
+    })
+    .filter(Boolean);
+}
+
+function mediaServerImage(server, id, tag) {
+  return id && tag
+    ? `${server.url}/Items/${encodeURIComponent(id)}/Images/Primary?tag=${encodeURIComponent(tag)}`
+    : null;
+}
+
+// A playable unit from a server, shaped like the debrid rows around it: the
+// library it came from lets the picker narrow the list without a second fetch.
+export function mediaServerCloudItem(server, library, item = {}) {
+  return {
+    providerId: server.id,
+    providerName: server.name,
+    libraryId: library?.id || "",
+    libraryName: library?.name || "",
+    id: item.Id,
+    type: CLOUD_LIBRARY_ITEM_TYPES.FILE,
+    kind: item.Type === "Movie" ? "movie" : "series",
+    name: item.SeriesName ? `${item.SeriesName} – ${item.Name}` : item.Name,
+    poster:
+      mediaServerImage(server, item.Id, item.ImageTags?.Primary) ||
+      mediaServerImage(server, item.SeriesId, item.SeriesPrimaryImageTag) ||
+      mediaServerImage(server, item.ParentId, item.ParentPrimaryImageTag),
+    stableKey: `${server.id}:${item.Id}`,
+    resumePositionMs: Math.floor((Number(item.UserData?.PlaybackPositionTicks) || 0) / 10000),
+    files: [
+      {
+        id: item.Id,
+        name: mediaItemFilename(item),
+        stableKey: item.Id,
+        playable: true
+      }
+    ],
+    progressFraction: Number.isFinite(item.UserData?.PlayedPercentage)
+      ? item.UserData.PlayedPercentage / 100
+      : null
+  };
+}
+
+async function mediaServerLibraryItems(server, library) {
+  const items = [];
+  const limit = 100;
+  for (let index = 0; ; index += limit) {
+    const page = await mediaServerItems(server, {
+      ParentId: library.id,
+      IncludeItemTypes: "Movie,Episode",
+      Fields: "ProviderIds,Container,ImageTags,SeriesPrimaryImageTag,ParentPrimaryImageTag",
+      SortBy: "SortName",
+      StartIndex: String(index),
+      Limit: String(limit)
+    });
+    const rows = Array.isArray(page?.Items) ? page.Items : [];
+    items.push(
+      ...rows.filter((row) => row?.Id).map((row) => mediaServerCloudItem(server, library, row))
+    );
+    if (rows.length < limit || index + rows.length >= Number(page?.TotalRecordCount)) break;
+  }
+  return items;
+}
+
 export const cloudLibraryRepository = {
   async refresh() {
     const settings = DebridSettingsStore.get();
     const servers = MediaConnectionsStore.get().servers.filter(({ enabled }) => enabled !== false);
     if (!settings.cloudLibraryEnabled && !servers.length) {
-      return { isLoaded: true, isEnabled: false, isRefreshing: false, providers: [], items: [] };
+      return {
+        isLoaded: true,
+        isEnabled: false,
+        isRefreshing: false,
+        providers: [],
+        items: [],
+        serverSources: []
+      };
     }
     const credentials = (
       settings.cloudLibraryEnabled ? DebridProviders.configuredServices(settings) : []
     ).filter((credential) =>
       DebridProviders.supports(credential.provider.id, DEBRID_CAPABILITIES.CLOUD_LIBRARY)
     );
-    const providers = await Promise.all(
-      servers.map(async (server) => {
-        const provider = { id: server.id, displayName: server.name };
-        try {
-          const items = [];
-          const limit = 100;
-          const parents = Array.isArray(server.libraryIds) ? server.libraryIds : [null];
-          const seen = new Set();
-          for (const parentId of parents) {
-            for (let index = 0; ; index += limit) {
-              const page = await mediaServerItems(server, {
-                ...(parentId ? { ParentId: parentId } : {}),
-                IncludeItemTypes: "Movie,Episode",
-                SortBy: "SortName",
-                StartIndex: String(index),
-                Limit: String(limit)
-              });
-              const rows = Array.isArray(page?.Items) ? page.Items : [];
-              items.push(
-                ...rows
-                  .filter((item) => {
-                    if (!item.Id || seen.has(item.Id)) return false;
-                    seen.add(item.Id);
-                    return true;
-                  })
-                  .map((item) => ({
-                    providerId: server.id,
-                    providerName: server.name,
-                    id: item.Id,
-                    type: CLOUD_LIBRARY_ITEM_TYPES.FILE,
-                    name: item.SeriesName ? `${item.SeriesName} – ${item.Name}` : item.Name,
-                    stableKey: `${server.id}:${item.Id}`,
-                    resumePositionMs: Math.floor(
-                      (Number(item.UserData?.PlaybackPositionTicks) || 0) / 10000
-                    ),
-                    files: [
-                      {
-                        id: item.Id,
-                        name: mediaItemFilename(item),
-                        stableKey: item.Id,
-                        playable: true
-                      }
-                    ],
-                    progressFraction: Number.isFinite(item.UserData?.PlayedPercentage)
-                      ? item.UserData.PlayedPercentage / 100
-                      : null
-                  }))
-              );
-              if (rows.length < limit || index + rows.length >= Number(page?.TotalRecordCount))
-                break;
-            }
-          }
-          return { provider, providerId: server.id, items, errorMessage: null };
-        } catch (error) {
-          return {
-            provider,
-            providerId: server.id,
-            items: [],
-            errorMessage: String(error?.message || error)
-          };
-        }
-      })
+    const librariesByServer = Object.fromEntries(
+      await Promise.all(
+        servers.map(async (server) => [
+          server.id,
+          await mediaCatalogLibraries(server).catch(() => [])
+        ])
+      )
     );
+    const serverSources = mediaServerSources(servers, librariesByServer);
+    const serverItems = (
+      await Promise.all(
+        serverSources.map(async (source) => {
+          const server = servers.find(({ id }) => id === source.id);
+          const pages = await Promise.all(
+            source.libraries.map((library) =>
+              mediaServerLibraryItems(server, library).catch(() => [])
+            )
+          );
+          return pages.flat();
+        })
+      )
+    ).flat();
+    const providers = [];
     for (const credential of credentials) {
       try {
         const items = await listProviderItems(credential);
@@ -176,13 +219,14 @@ export const cloudLibraryRepository = {
       isEnabled: true,
       isRefreshing: false,
       providers,
-      items: providers.flatMap((provider) => provider.items)
+      items: [...serverItems, ...providers.flatMap((provider) => provider.items)],
+      serverSources
     };
   },
 
   async resolvePlayback(item, file) {
     if (!file?.playable) return { status: "notPlayable" };
-    if (item?.providerId?.startsWith("media:")) {
+    if (item?.libraryId) {
       const server = MediaConnectionsStore.get().servers.find(({ id }) => id === item.providerId);
       return server
         ? {

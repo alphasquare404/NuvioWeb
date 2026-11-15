@@ -197,7 +197,11 @@ function filterStructureSignature(state = {}) {
     Array.isArray(state.availableYears) && state.availableYears.length ? "year" : "no-year",
     state.selectedTypeKey !== "__all__" ? "type-filtered" : "type-all",
     state.selectedGenre ? "genre-filtered" : "genre-all",
-    state.selectedYear ? "year-filtered" : "year-all"
+    state.selectedYear ? "year-filtered" : "year-all",
+    // Choosing a server swaps the Type picker for the Library picker, so the
+    // row has to be rebuilt rather than kept during a partial refresh.
+    state.selectedCloudProviderId || "cloud-provider-all",
+    state.selectedCloudLibraryId || "cloud-library-none"
   ].join("|");
 }
 
@@ -840,29 +844,57 @@ export const LibraryScreen = {
       `;
     }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
+      // A connected server is a provider. Its libraries are places inside that
+      // provider, not item types, so they get their own picker that narrows the
+      // same inline grid instead of opening another screen.
+      const serverSources = state.cloudLibrary.serverSources || [];
+      const hasDebridProviders = (state.cloudLibrary.providers || []).length > 0;
+      const hasProvider = hasDebridProviders || serverSources.length > 0;
+      const selectedServer = serverSources.find(
+        (source) => source.id === state.selectedCloudProviderId
+      );
       const providerLabel =
         state.availableCloudProviders.find((option) => option.key === state.selectedCloudProviderId)
           ?.label || t("cloud_library_provider_all", {}, "All");
       const typeLabel =
         state.availableCloudTypes.find((option) => option.key === state.selectedCloudType)?.label ||
         t("cloud_library_type_all", {}, "All");
+      const libraryLabel =
+        state.availableCloudLibraries.find((library) => library.id === state.selectedCloudLibraryId)
+          ?.name || t("cloud_library_library_all", {}, "All");
       return `
         <section class="library-picker-groups" id="libraryPickerGroupsMount">
           <div class="library-picker-row library-cloud-filter-row">
-            ${this.renderPicker(
-              "cloud_provider",
-              t("cloud_library_provider_label", {}, "Provider"),
-              providerLabel,
-              this.controller.getPickerOptions("cloud_provider"),
-              "library-picker-flex"
-            )}
-            ${this.renderPicker(
-              "cloud_type",
-              t("cloud_library_type_label", {}, "Type"),
-              typeLabel,
-              this.controller.getPickerOptions("cloud_type"),
-              "library-picker-flex"
-            )}
+            ${
+              hasProvider
+                ? this.renderPicker(
+                    "cloud_provider",
+                    t("cloud_library_provider_label", {}, "Provider"),
+                    providerLabel,
+                    this.controller.getPickerOptions("cloud_provider"),
+                    "library-picker-flex"
+                  )
+                : ""
+            }
+            ${
+              selectedServer
+                ? this.renderPicker(
+                    "cloud_library",
+                    t("cloud_library_library_label", {}, "Library"),
+                    libraryLabel,
+                    this.controller.getPickerOptions("cloud_library"),
+                    "library-picker-flex"
+                  )
+                : state.selectedCloudProviderId
+                  ? this.renderPicker(
+                      "cloud_type",
+                      t("cloud_library_type_label", {}, "Type"),
+                      typeLabel,
+                      this.controller.getPickerOptions("cloud_type"),
+                      "library-picker-flex"
+                    )
+                  : ""
+            }
             ${this.renderLibrarySearchButton()}
             <button class="library-cloud-refresh-button focusable"
                     type="button"
@@ -1290,6 +1322,10 @@ export const LibraryScreen = {
     if (state.cloudLibrary.isRefreshing && !state.visibleCloudItems.length) {
       return `<section class="library-empty-state">${renderLoadingIndicator({ size: "medium" })}<p class="library-empty-subtitle">${escapeHtml(t("library_syncing_library", {}, "Loading library"))}</p></section>`;
     }
+    const serverSources = Array.isArray(state.cloudLibrary.serverSources)
+      ? state.cloudLibrary.serverSources
+      : [];
+    const hasDebridProviders = (state.cloudLibrary.providers || []).length > 0;
     let emptyTitle = "";
     let emptySubtitle = "";
     if (!state.cloudLibrary.isEnabled) {
@@ -1299,7 +1335,7 @@ export const LibraryScreen = {
         {},
         "Turn on Cloud library in Connected Services settings."
       );
-    } else if (!(state.cloudLibrary.providers || []).length) {
+    } else if (!hasDebridProviders && !serverSources.length) {
       emptyTitle = t("cloud_library_connect_title", {}, "No cloud account connected");
       emptySubtitle = t(
         "cloud_library_connect_message",
@@ -1319,51 +1355,41 @@ export const LibraryScreen = {
     }
     return `
       <section class="library-grid-wrap library-cloud-grid-wrap">
-        <div class="library-grid library-cloud-grid">
-          ${state.visibleCloudItems
-            .map((item) => {
-              const playableFiles = this.controller.playableFilesForCloudItem(item);
-              const fileLabel =
-                playableFiles.length === 0
-                  ? t("cloud_library_no_playable_files", {}, "No playable files")
-                  : playableFiles.length === 1
-                    ? t("cloud_library_one_playable_file", {}, "1 playable file")
-                    : t(
-                        "cloud_library_playable_file_count",
-                        { count: playableFiles.length },
-                        `${playableFiles.length} playable files`
-                      );
-              const metadata = [
-                item.providerName,
-                this.cloudTypeLabel(item.type),
-                item.status || t("cloud_library_status_ready", {}, "Ready to play"),
-                this.formatCloudSize(item.sizeBytes)
-              ]
-                .filter(Boolean)
-                .join(" • ");
-              const resolving = String(state.resolvingCloudFileKey || "").startsWith(
-                item.stableKey
-              );
-              return `
-                <article class="library-grid-card library-cloud-card focusable"
-                         data-action="openCloudItem"
-                         data-cloud-item-key="${escapeHtml(item.stableKey)}"
-                         data-focus-key="cloud:${escapeHtml(item.stableKey)}">
-                  <div class="library-cloud-card-copy">
-                    <h3>${escapeHtml(item.name)}</h3>
-                    <p>${escapeHtml(metadata)}</p>
-                  </div>
-                  <div class="library-cloud-card-status${playableFiles.length ? " playable" : ""}">
-                    ${escapeHtml(
-                      resolving ? t("cloud_library_opening", {}, "Opening…") : fileLabel
-                    )}
-                  </div>
-                </article>
-              `;
-            })
-            .join("")}
+        <div class="library-grid">
+          ${state.visibleCloudItems.map((item) => this.renderCloudItemCard(item, state)).join("")}
         </div>
       </section>
+    `;
+  },
+
+  // Server titles and debrid transfers share one grid, so a card carries the
+  // cover a Saved card does and the provider it came from underneath.
+  renderCloudItemCard(item, state) {
+    const playableFiles = this.controller.playableFilesForCloudItem(item);
+    const kindLabel = item.libraryId
+      ? item.kind === "series"
+        ? "Series"
+        : "Movie"
+      : this.cloudTypeLabel(item.type);
+    const metadata = [
+      item.providerName,
+      kindLabel,
+      item.status || "",
+      this.formatCloudSize(item.sizeBytes),
+      playableFiles.length ? "" : t("cloud_library_no_playable_files", {}, "No playable files")
+    ]
+      .filter(Boolean)
+      .join(" • ");
+    const resolving = String(state.resolvingCloudFileKey || "").startsWith(item.stableKey);
+    return `
+      <article class="library-grid-card focusable"
+               data-action="openCloudItem"
+               data-cloud-item-key="${escapeHtml(item.stableKey)}"
+               data-focus-key="cloud:${escapeHtml(item.stableKey)}">
+        <div class="library-grid-poster${item.poster ? "" : " placeholder"}"${item.poster ? ` style="background-image:url('${escapeHtml(item.poster)}')"` : ""}></div>
+        <div class="library-grid-title">${escapeHtml(item.name)}</div>
+        <div class="library-grid-meta">${escapeHtml(resolving ? t("cloud_library_opening", {}, "Opening…") : metadata)}</div>
+      </article>
     `;
   },
 
@@ -1381,7 +1407,11 @@ export const LibraryScreen = {
       cloud_type:
         this.controller.state.availableCloudTypes.find(
           (option) => option.key === this.controller.state.selectedCloudType
-        )?.label || t("cloud_library_type_all", {}, "All")
+        )?.label || t("cloud_library_type_all", {}, "All"),
+      cloud_library:
+        this.controller.state.availableCloudLibraries.find(
+          (library) => library.id === this.controller.state.selectedCloudLibraryId
+        )?.name || t("cloud_library_library_all", {}, "All")
     };
     Object.entries(valueByPicker).forEach(([picker, value]) => {
       const node = this.container?.querySelector(
