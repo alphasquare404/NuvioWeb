@@ -967,6 +967,11 @@ const SECTION_META = [
     subtitleKey: "settings.sections.layout.subtitle"
   },
   {
+    id: "streams",
+    labelKey: "settings_stream_badges_section",
+    subtitleKey: "settings_stream_badges_description"
+  },
+  {
     id: "contentDiscovery",
     labelKey: "settings.sections.contentDiscovery.label",
     label: "Content & Discovery",
@@ -983,11 +988,6 @@ const SECTION_META = [
     id: "integration",
     labelKey: "settings.sections.integration.label",
     subtitleKey: "settings.sections.integration.subtitle"
-  },
-  {
-    id: "streams",
-    labelKey: "settings_stream_badges_section",
-    subtitleKey: "settings_stream_badges_description"
   },
   {
     id: "playback",
@@ -1024,13 +1024,13 @@ const SECTION_GROUPS = [
     key: "personalize",
     labelKey: "settings_group_personalize",
     fallback: "Personalize",
-    ids: ["profiles", "appearance", "layout"]
+    ids: ["profiles", "appearance", "layout", "streams"]
   },
   {
     key: "content",
     labelKey: "settings_group_content",
     fallback: "Content",
-    ids: ["contentDiscovery", "integration", "streams", "trakt"]
+    ids: ["contentDiscovery", "integration", "trakt"]
   },
   {
     key: "watching",
@@ -2497,6 +2497,13 @@ export const SettingsScreen = {
       // Retained routes may still be mounted underneath the current page.
       // Only redraw this route; never navigate or change history on resize.
       if (this.container?.id !== Router.getCurrent?.()) return;
+      const usesPanels = this.usesSettingsPanels();
+      if (this.container.id === SETTINGS_ROUTE) {
+        this.activeSection = usesPanels
+          ? this.panelSection || readSettingsUiState().activeSection
+          : null;
+        this.focusZone = usesPanels ? "content" : "nav";
+      }
       this.suppressNextContentFocusScroll = true;
       this.suppressNextRailFocusScroll = true;
       void this.render({ refreshModel: false });
@@ -2599,7 +2606,7 @@ export const SettingsScreen = {
     // rail beside the content and remembers its section instead.
     const routeSection = readSettingsRouteSection(routeName, _params);
     this.activeSection = settingsUsesRoutePages()
-      ? routeSection
+      ? routeSection || (this.usesSettingsPanels() ? persistedUiState.activeSection : null)
       : persistedUiState.activeSection || this.activeSection || null;
     // The index page focuses the list; a section page has no list to focus, so
     // focus starts in the section it was opened for.
@@ -3149,17 +3156,17 @@ export const SettingsScreen = {
 
   renderSectionHeader(section) {
     const copy = translateSectionCopy(section);
-    // The section page is a route, so this control pops that route. It lives
-    // inside the heading so that on a wide screen it can sit in the bar, on the
-    // title's own line; on a phone it is pinned to the bar's edge instead.
-    const back = Platform.isBrowser()
-      ? `
+    const back =
+      Platform.isBrowser() &&
+      this.container?.id === SETTINGS_SECTION_ROUTE &&
+      !this.usesSettingsPanels()
+        ? `
       <button class="settings-section-back focusable" type="button" data-settings-back
               aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
         ${renderBackButtonIcon("round-back-icon settings-section-back-icon")}
       </button>
     `
-      : "";
+        : "";
     return `
       <header class="settings-content-header">
         ${back}
@@ -10566,10 +10573,11 @@ export const SettingsScreen = {
     const usesPanels = this.usesSettingsPanels();
     if (
       !this.visibleSections.some((section) => section.id === this.activeSection) &&
-      !(usesRoutePages && this.activeSection === null)
+      !(usesRoutePages && !usesPanels && this.activeSection === null)
     ) {
       this.setActiveSection(this.visibleSections[0]?.id || "appearance");
     }
+    if (usesPanels) this.panelSection = this.activeSection;
     this.navIndex = clamp(
       Number.isFinite(this.navIndex)
         ? this.navIndex
@@ -10590,17 +10598,16 @@ export const SettingsScreen = {
 
     const shell = this.container.querySelector(".settings-shell");
     const isDesktopBrowser = Platform.isBrowser();
-    const showDesktopNavigation = isDesktopBrowser && this.container.id !== SETTINGS_SECTION_ROUTE;
+    const showDesktopNavigation =
+      isDesktopBrowser && (usesPanels || this.container.id !== SETTINGS_SECTION_ROUTE);
     if (shell) {
       shell.classList.toggle("desktop-navigation-enabled", showDesktopNavigation);
       shell.dataset.settingsLayout = usesPanels ? "panels" : "pages";
       shell.dataset.settingsStyle = String(
         this.model.theme.settingsUiStyle || "CLASSIC"
       ).toLowerCase();
-      // "index" shows the sections as a page and hides the content; "section"
-      // does the reverse. Absent entirely when the rail and the content sit
-      // side by side, which is a television.
-      if (usesRoutePages) {
+      // The mode controls which half is visible in the single-column layout.
+      if (usesRoutePages && !usesPanels) {
         shell.dataset.settingsNavMode = this.activeSection === null ? "index" : "section";
       } else {
         delete shell.dataset.settingsNavMode;
@@ -10925,9 +10932,9 @@ export const SettingsScreen = {
     if (!section) {
       return;
     }
-    // The browser opens the section's own page -- the same shape Search has
-    // when it opens Discover -- so Back is a route pop and not a handler here.
-    if (settingsUsesRoutePages()) {
+    // On a narrow browser the section replaces the index. In panels the
+    // section belongs to the current page, beside the rail.
+    if (settingsUsesRoutePages() && !this.usesSettingsPanels()) {
       this.activeSection = id;
       this.integrationView = "hub";
       this.contentFocusKey = id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
@@ -10935,19 +10942,14 @@ export const SettingsScreen = {
       await Router.navigate(SETTINGS_SECTION_ROUTE, { section: id });
       return;
     }
-    if (id === "trakt") {
-      if (isDesktopSettingsBrowser()) {
-        this.setActiveSection("trakt");
-        await this.render();
-      } else {
-        await Router.navigate("settingsSection", { section: "trakt" });
-      }
+    if (id === "trakt" && !isDesktopSettingsBrowser()) {
+      await Router.navigate("settingsSection", { section: "trakt" });
       return;
     }
     this.setActiveSection(id);
     this.integrationView = "hub";
     this.contentFocusKey = id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
-    await this.render({ refreshModel: false });
+    await this.render({ refreshModel: id === "trakt" });
   },
 
   async activateNavSelection() {

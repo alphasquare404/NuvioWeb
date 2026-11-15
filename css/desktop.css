@@ -14490,9 +14490,9 @@ html:not([data-nav-placement="top"])
   justify-content: flex-start;
   align-content: flex-start;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 18px;
-  background: rgba(30, 30, 36, 0.86);
+  border: 1px solid var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
 }
 
 /* The row that meets the card's curve takes its shape, so a hovered or focused
@@ -14512,7 +14512,7 @@ html:not([data-nav-placement="top"])
 }
 
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item + .settings-nav-item {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--settings-list-divider);
 }
 
 /* Hover on the index page is a light on the row, not a box.
@@ -14537,9 +14537,9 @@ html:not([data-nav-placement="top"])
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card {
   min-height: 76px;
   margin-bottom: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 18px;
-  background: rgba(30, 30, 36, 0.86);
+  border: 1px solid var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
 }
 
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card-avatar {
@@ -22916,10 +22916,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   font-size: 14px;
   cursor: pointer;
 }
-.desktop-browser .settings-shell .settings-playback-tab[aria-selected="true"] {
-  background: var(--text-color);
-  color: var(--bg-color, #101010);
-}
 .desktop-browser .settings-shell .settings-playback-topic-heading {
   display: none;
 }
@@ -23321,6 +23317,11 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
     rgb(var(--secondary-color-rgb) / 0.09),
     rgb(var(--secondary-color-rgb) / 0.025));
   --settings-card-edge: rgb(var(--secondary-color-rgb) / 0.24);
+  --settings-list-surface: rgba(30, 30, 36, 0.86);
+  --settings-list-edge: rgba(255, 255, 255, 0.07);
+  --settings-list-divider: rgba(255, 255, 255, 0.06);
+  --settings-list-radius: 18px;
+  --settings-list-padding: 16px;
 }
 .desktop-browser .settings-shell .settings-group-card,
 .desktop-browser .settings-shell .settings-subsection-card,
@@ -23527,11 +23528,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   font: inherit;
   font-size: 14px;
   cursor: pointer;
-}
-.desktop-browser .settings-shell .settings-discovery-tab[aria-selected="true"] {
-  color: var(--text-color);
-  background: rgb(var(--secondary-color-rgb) / 0.14);
-  border-color: var(--settings-card-edge);
 }
 .desktop-browser .settings-shell .settings-discovery-count {
   min-width: 22px;
@@ -23820,7 +23816,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 .desktop-browser .settings-shell .settings-layout-content { max-width:1400px; width:100%; min-width:0; margin-inline:auto; }
 .desktop-browser .settings-shell .settings-layout-topic-tabs { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:16px; margin-bottom:24px; border-bottom:1px solid var(--settings-card-edge); }
 .desktop-browser .settings-shell .settings-layout-topic-tab { border:1px solid transparent; border-radius:12px; padding:12px 16px; background:transparent; color:var(--text-secondary); font:inherit; font-size:14px; cursor:pointer; }
-.desktop-browser .settings-shell .settings-layout-topic-tab[aria-selected="true"] { color:var(--text-color); background:rgb(var(--secondary-color-rgb) / .16); border-color:var(--settings-card-edge); }
 .desktop-browser .settings-shell .settings-layout-topic-heading { display:none; }
 .desktop-browser .settings-shell .settings-layout-topic-body[hidden] { display:none !important; }
 .desktop-browser .settings-shell .settings-layout-topic-body { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; align-items:start; }
@@ -23891,7 +23886,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 .desktop-browser .settings-shell .settings-integration-content { width:100%; max-width:1400px; min-width:0; margin-inline:auto; }
 .desktop-browser .settings-shell .settings-integration-services { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:28px; }
 .desktop-browser .settings-shell .settings-integration-service { display:flex; align-items:start; gap:12px; padding:18px 14px; min-width:0; border:1px solid var(--settings-card-edge); border-radius:16px; background:var(--settings-card-wash),var(--bg-elevated); color:var(--text-color); text-align:left; font:inherit; cursor:pointer; }
-.desktop-browser .settings-shell .settings-integration-service[aria-pressed="true"] { border-color:var(--secondary-color); background:linear-gradient(rgb(var(--secondary-color-rgb) / .14),rgb(var(--secondary-color-rgb) / .14)),var(--bg-elevated); }
 .desktop-browser .settings-shell .settings-integration-icon { display:grid; place-items:center; flex:0 0 34px; width:34px; height:34px; border-radius:10px; color:var(--secondary-color); background:rgb(var(--secondary-color-rgb) / .12); font-size:20px; }
 .desktop-browser .settings-shell .settings-integration-copy { min-width:0; flex:1; }
 .desktop-browser .settings-shell .settings-integration-name { display:block; font-size:14px; font-weight:600; }
@@ -24347,5 +24341,222 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="processing"] .quick-setup-body > .quick-setup-preview-note {
     grid-column: 1;
     grid-row: 4;
+  }
+}
+
+/* The index and section pages share grouped surfaces and row spacing. */
+.desktop-browser .settings-shell :is(
+  .settings-group-card, .settings-design-card, .settings-integration-group,
+  .settings-layout-live-preview, .settings-source-live-preview,
+  .media-server-card, .media-connections > section
+) {
+  border-color: var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body)
+  :is(.settings-group-card:has(> .settings-stack:only-child > .settings-action-row),
+    .settings-design-card:has(> .settings-stack)) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack:has(> .settings-action-row) {
+  --settings-list-gap: 12px;
+  gap: var(--settings-list-gap);
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row {
+  min-height: 60px;
+  min-width: 0;
+  padding: 12px var(--settings-list-padding);
+  border: 1px solid var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row:has(+ .settings-action-row) {
+  border-bottom: 0;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row + .settings-action-row {
+  margin-block-start: calc(-1 * var(--settings-list-gap));
+  border-top-color: var(--settings-list-divider);
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.desktop-browser .settings-shell :is(
+  .settings-group-heading .settings-group-title,
+  .settings-design-card:has(> .settings-stack) > h2
+) {
+  color: var(--text-tertiary, #808080);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row .settings-row-title {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row .settings-row-subtitle {
+  margin-block-start: 2px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.desktop-browser .settings-shell :is(.settings-row-value, .settings-dialog-option-label) {
+  overflow-wrap: anywhere;
+}
+
+.desktop-browser .settings-shell :is(.settings-dialog, .settings-text-dialog, .settings-p2p-consent-dialog, .media-connections dialog) {
+  border-color: var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--bg-elevated);
+}
+
+.desktop-browser .settings-shell .settings-dialog-list {
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
+}
+
+.desktop-browser .settings-shell .settings-dialog-list > .settings-dialog-option {
+  min-height: 48px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser .settings-shell .settings-dialog-list > .settings-dialog-option + .settings-dialog-option {
+  border-top: 1px solid var(--settings-list-divider);
+}
+
+.desktop-browser .settings-shell .settings-dialog-list > .settings-dialog-option.is-selected {
+  background: rgb(var(--secondary-color-rgb) / 0.16);
+}
+
+.desktop-browser .settings-shell :is(.settings-stack > .settings-action-row, .settings-dialog-list > .settings-dialog-option):focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: -3px;
+}
+
+.desktop-browser .settings-shell :is(
+  .settings-text-dialog-input, .settings-text-dialog-textarea,
+  .desktop-addon-input, .desktop-plugin-input, .desktop-collection-add-form input,
+  .media-connections input:not([type="hidden"])
+) {
+  border-color: var(--settings-list-edge);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, var(--text-color));
+  color: var(--text-color);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .settings-shell :is(.settings-content, .settings-panel-body)
+    .settings-stack > .settings-action-row:not(.is-disabled):hover,
+  .desktop-browser .settings-shell .settings-dialog-list > .settings-dialog-option:hover {
+    background: var(--focus-bg);
+  }
+}
+
+@media (max-width: 1023px) {
+  .desktop-browser .settings-shell :is(.settings-discovery-topic, .settings-layout-topic, .settings-integration-topic, .settings-playback-topic),
+  .desktop-browser .settings-shell .settings-integration-topic:not(.is-open) {
+    margin-block-end: 10px;
+    border: 1px solid var(--settings-list-edge);
+    border-radius: var(--settings-list-radius);
+    background: var(--settings-list-surface);
+  }
+
+  .desktop-browser .settings-shell :is(.settings-discovery-topic, .settings-layout-topic, .settings-integration-topic, .settings-playback-topic).is-open {
+    border-color: rgb(var(--secondary-color-rgb) / 0.35);
+  }
+
+  .desktop-browser .settings-shell :is(.settings-layout-topic-heading, .settings-discovery-heading, .settings-integration-service-mobile, .settings-playback-topic-heading) {
+    min-height: 68px;
+    gap: 14px;
+    padding: 12px var(--settings-list-padding);
+  }
+
+  .desktop-browser .settings-shell :is(.settings-discovery-title, .settings-layout-topic-title, .settings-integration-name, .settings-playback-topic-title) {
+    font-size: 17px;
+    line-height: 1.25;
+  }
+
+  .desktop-browser .settings-shell :is(.settings-discovery-summary, .settings-layout-topic-summary, .settings-integration-summary, .settings-playback-topic-summary) {
+    margin-block-start: 2px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .desktop-browser .settings-shell .settings-playback-topic-panel {
+    padding-inline: var(--settings-list-padding);
+  }
+
+  .desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row {
+    min-height: 68px;
+  }
+
+  .desktop-browser .settings-shell :is(.settings-text-dialog-input, .settings-text-dialog-textarea, .media-connections input:not([type="hidden"])) {
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-sidebar {
+    border-color: var(--settings-list-edge);
+    border-radius: var(--settings-list-radius);
+    background: var(--settings-list-surface);
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-playback-topic-panel > .settings-stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.desktop-browser .settings-shell :is(
+  [role="tab"][aria-selected="true"],
+  .settings-integration-service[aria-pressed="true"]
+) {
+  border-color: var(--secondary-color);
+  background: var(--secondary-color);
+  color: var(--on-secondary);
+}
+
+.desktop-browser .settings-shell :is(
+  [role="tab"][aria-selected="true"] .settings-discovery-count,
+  .settings-integration-service[aria-pressed="true"] .settings-integration-icon
+) {
+  background: transparent;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+}
+
+.desktop-browser .settings-shell .settings-integration-service[aria-pressed="true"] .settings-integration-summary {
+  color: inherit;
+}
+
+@media (max-width: 600px) {
+  html[data-layout] .desktop-browser .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header .settings-header-copy {
+    width: 100%;
+    align-items: center;
+  }
+  html[data-layout] .desktop-browser .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header :is(.settings-title, .settings-subtitle) {
+    margin-inline: auto;
+    text-align: center;
   }
 }

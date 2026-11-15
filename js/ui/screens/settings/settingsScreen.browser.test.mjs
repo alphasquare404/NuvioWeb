@@ -286,6 +286,7 @@ test("panel resize listener only redraws its current route and never changes nav
     "globalThis",
     "Router",
     "SETTINGS_PANELS_QUERY",
+    "SETTINGS_ROUTE",
     `return ({${method}}).bindSettingsPanelLayout;`
   )(
     { isBrowser: () => true },
@@ -307,10 +308,13 @@ test("panel resize listener only redraws its current route and never changes nav
         assert.fail("Resize must not go Back");
       }
     },
-    "(min-width: 1024px)"
+    "(min-width: 1024px)",
+    "settings"
   );
   const screen = {
     container: { id: "settings" },
+    activeSection: "playback",
+    usesSettingsPanels: () => false,
     render(options) {
       assert.deepEqual(options, { refreshModel: false });
       renders++;
@@ -324,6 +328,58 @@ test("panel resize listener only redraws its current route and never changes nav
   current = "settings";
   listener();
   assert.equal(renders, 1);
+  assert.equal(screen.activeSection, null);
+  assert.equal(screen.focusZone, "nav");
   assert.equal(screen.suppressNextContentFocusScroll, true);
   assert.equal(screen.suppressNextRailFocusScroll, true);
+});
+
+test("wide Settings switches in place while narrow Settings opens a section route", async () => {
+  const source = await settingsScreenSource();
+  const open = source.match(/ {2}async openSection\([\s\S]*?\n {2}\},/)[0];
+  const header = source.match(/ {2}renderSectionHeader\([\s\S]*?\n {2}\},/)[0];
+  for (const wide of [false, true]) {
+    const calls = [];
+    const { openSection, renderSectionHeader } = new Function(
+      "Platform",
+      "settingsUsesRoutePages",
+      "getSettingsSectionById",
+      "isDesktopSettingsBrowser",
+      "Router",
+      "SETTINGS_SECTION_ROUTE",
+      "translateSectionCopy",
+      "escapeAttribute",
+      "escapeHtml",
+      "renderBackButtonIcon",
+      "t",
+      `return ({${open}${header}});`
+    )(
+      { isBrowser: () => true },
+      () => true,
+      () => null,
+      () => true,
+      { navigate: (...args) => calls.push(args) },
+      "settingsSection",
+      () => ({ label: "Playback", subtitle: "" }),
+      String,
+      String,
+      () => "",
+      () => "Back"
+    );
+    const screen = {
+      container: { id: "settingsSection" },
+      visibleSections: [{ id: "playback" }],
+      usesSettingsPanels: () => wide,
+      persistUiState() {},
+      setActiveSection(id) {
+        this.activeSection = id;
+      },
+      render: () => calls.push("render")
+    };
+    assert.equal(renderSectionHeader.call(screen, {}).includes("data-settings-back"), !wide);
+    await openSection.call(screen, "playback");
+    assert.equal(screen.activeSection, "playback");
+    assert.deepEqual(calls, wide ? ["render"] : [["settingsSection", { section: "playback" }]]);
+  }
+  assert.match(source, /usesPanels \|\| this\.container\.id !== SETTINGS_SECTION_ROUTE/);
 });
