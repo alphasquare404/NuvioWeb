@@ -84,16 +84,17 @@ test("a refused request is swallowed: playback must not depend on it", async () 
 
 test("coming back to the tab takes the lock again", async () => {
   const { api, calls } = fakeWakeLockApi();
-  const visibility = fakeVisibility("hidden");
+  const visibility = fakeVisibility("visible");
   const lock = createWakeLock({ wakeLockApi: api, visibilitySource: visibility });
 
   await lock.start();
+  visibility.emit("hidden");
   // Safari drops it while hidden; the release event says so.
   api.last.emitRelease();
   assert.equal(lock.isHeld(), false);
 
   visibility.emit("visible");
-  await Promise.resolve();
+  await lock.start();
   assert.deepEqual(calls, ["screen", "screen"]);
   assert.equal(lock.isHeld(), true);
 });
@@ -113,4 +114,28 @@ test("stopping releases the lock and stops chasing it", async () => {
   visibility.emit("visible");
   await Promise.resolve();
   assert.deepEqual(calls, ["screen"], "a stopped lock must not re-acquire");
+});
+
+test("pause releases a pending wake lock and concurrent starts share the request", async () => {
+  const { api, calls } = fakeWakeLockApi();
+  let grant;
+  const lock = createWakeLock({
+    visibilitySource: fakeVisibility("visible"),
+    wakeLockApi: {
+      request(kind) {
+        return new Promise((resolve) => {
+          grant = async () => resolve(await api.request(kind));
+        });
+      }
+    }
+  });
+  const first = lock.start();
+  const second = lock.start();
+  await Promise.resolve();
+  await lock.stop();
+  await grant();
+  assert.deepEqual(await Promise.all([first, second]), [false, false]);
+  assert.deepEqual(calls, ["screen"]);
+  assert.equal(api.last.released, 1);
+  assert.equal(lock.isHeld(), false);
 });

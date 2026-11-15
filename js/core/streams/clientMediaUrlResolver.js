@@ -1,5 +1,6 @@
 import { parseHttpsPlaybackUrl } from "../../../services/debrid-api-bridge/addonPlaybackPolicy.mjs";
 import { secureMediaUrl } from "./secureMediaUrl.js";
+import { isPrivateMediaUrl } from "./privateMediaSource.js";
 import {
   resolveTorboxAddonUrl,
   parseTorrentioTorboxUrl
@@ -50,10 +51,10 @@ export function createClientMediaUrlResolver({
     cached,
     remember,
     canUseHost(url) {
-      return Boolean(hostAllowed() && supportsHostUrl(url));
+      return Boolean(!isPrivateMediaUrl(url) && hostAllowed() && supportsHostUrl(url));
     },
     canPreResolve(url) {
-      return Boolean(hostAllowed() && parseTorrentioTorboxUrl(url));
+      return Boolean(!isPrivateMediaUrl(url) && hostAllowed() && parseTorrentioTorboxUrl(url));
     },
     invalidate(url) {
       cache.delete(http(url));
@@ -74,7 +75,7 @@ export function createClientMediaUrlResolver({
       const timer = setTimeout(abort, Math.max(1, timeoutMs));
       const task = (async () => {
         const fromHost = async () => {
-          const allowed = hostAllowed();
+          const allowed = !isPrivateMediaUrl(key) && hostAllowed();
           if (controller.signal.aborted) return { ok: false, reason: "aborted" };
           if (!allowed) return { ok: false, reason: "cors-or-network" };
           let failure;

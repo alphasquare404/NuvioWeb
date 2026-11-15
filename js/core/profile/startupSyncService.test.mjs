@@ -32,6 +32,7 @@ async function loadStartupSyncService() {
             ["trakt", dependencyModule("TraktCredentialSyncService")],
             ["simkl-credentials", dependencyModule("SimklCredentialSyncService")],
             ["provider", dependencyModule("ProviderCredentialSyncService")],
+            ["media-servers", dependencyModule("MediaServerSyncService")],
             ["simkl", dependencyModule("SimklSyncService")],
             ["collections", dependencyModule("CollectionSyncService")],
             ["home-catalog", dependencyModule("HomeCatalogSettingsSyncService")],
@@ -53,6 +54,7 @@ async function loadStartupSyncService() {
             [/traktCredentialSyncService\.js$/, "trakt"],
             [/simklCredentialSyncService\.js$/, "simkl-credentials"],
             [/providerCredentialSyncService\.js$/, "provider"],
+            [/mediaServerSyncService\.js$/, "media-servers"],
             [/simklSyncService\.js$/, "simkl"],
             [/collectionSyncService\.js$/, "collections"],
             [/homeCatalogSettingsSyncService\.js$/, "home-catalog"],
@@ -102,6 +104,7 @@ function installDependencies({ activeProfileId = "1" } = {}) {
     TraktCredentialSyncService: { pullFromRemote: async () => true },
     SimklCredentialSyncService: { pullFromRemote: async () => true },
     ProviderCredentialSyncService: { syncFromRemote: async () => true },
+    MediaServerSyncService: { sync: async () => true },
     SimklSyncService: { refresh: async () => true },
     CollectionSyncService: {
       pull: async () => ({ result: "SUCCESS_EMPTY" }),

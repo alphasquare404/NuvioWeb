@@ -196,6 +196,7 @@ const mimeTypes = {
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".m3u8": "application/vnd.apple.mpegurl",
+  ".md": "text/plain; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".wasm": "application/wasm",
   ".mp4": "video/mp4",

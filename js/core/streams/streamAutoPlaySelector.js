@@ -3,6 +3,7 @@ import { indexOfPluginBingeMatch } from "./pluginBingeGroup.js";
 import { filterFilenameStreams } from "./filenameStreamPolicy.js";
 import { streamHdrStatus } from "./streamHdrPreference.js";
 import { applyHdrPreference } from "./streamHdrPreference.js";
+import { autoplaySourceIdentity, normalizeAutoplaySourcePriority } from "./autoplaySourcePolicy.js";
 
 // Auto stream selection uses the same preference model as the original app. Given the list of
 // streams shown in the picker and the user's auto-play settings, it returns the
@@ -129,20 +130,6 @@ function streamSearchableText(stream = {}) {
   return parts.map((part) => String(part || "")).join(" ");
 }
 
-function scopeStreamsBySource(streams, source, installedAddonNames) {
-  const installed =
-    installedAddonNames instanceof Set
-      ? installedAddonNames
-      : new Set(Array.isArray(installedAddonNames) ? installedAddonNames : []);
-  if (source === STREAM_AUTO_PLAY_SOURCE.INSTALLED_ADDONS_ONLY) {
-    return streams.filter((stream) => installed.has(String(stream.addonName || "")));
-  }
-  if (source === STREAM_AUTO_PLAY_SOURCE.ENABLED_PLUGINS_ONLY) {
-    return streams.filter((stream) => !installed.has(String(stream.addonName || "")));
-  }
-  return streams;
-}
-
 // Extract excluded words from negative lookaheads like (?!.*(CAM|TS)) so a
 // pattern can both include and exclude.
 function buildExcludeRegex(pattern) {
@@ -184,12 +171,20 @@ export function filterAutoPlaySourceStreams(streams, options = {}) {
     options.selectedPlugins instanceof Set
       ? options.selectedPlugins
       : new Set(Array.isArray(options.selectedPlugins) ? options.selectedPlugins : []);
-  return scopeStreamsBySource(list, source, installedAddonNames).filter((stream) => {
-    const addonName = String(stream?.addonName || "");
-    const isAddonStream = installedAddonNames.has(addonName);
-    return isAddonStream
-      ? !selectedAddons.size || selectedAddons.has(addonName)
-      : !selectedPlugins.size || selectedPlugins.has(addonName);
+  const selectedServers = new Set(options.selectedServers || []);
+  return list.filter((stream) => {
+    const { group, id } = autoplaySourceIdentity(stream, installedAddonNames);
+    if (group === "servers")
+      return source === STREAM_AUTO_PLAY_SOURCE.ALL_SOURCES && selectedServers.has(id);
+    if (group === "addons")
+      return (
+        source !== STREAM_AUTO_PLAY_SOURCE.ENABLED_PLUGINS_ONLY &&
+        (selectedAddons.size ? selectedAddons.has(id) : !options.addonsDisabled)
+      );
+    return (
+      source !== STREAM_AUTO_PLAY_SOURCE.INSTALLED_ADDONS_ONLY &&
+      (selectedPlugins.size ? selectedPlugins.has(id) : !options.pluginsDisabled)
+    );
   });
 }
 
@@ -218,8 +213,25 @@ export function autoPlayCandidates(streams, options = {}) {
         (!exclude || !exclude.test(streamSearchableText(stream)))
     );
   }
-  const candidates =
+  let candidates =
     mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM ? applyHdrPreference(scoped, options) : scoped;
+  const priority = normalizeAutoplaySourcePriority(options.sourcePriority);
+  if (priority.length && normalizeSource(options.source) === STREAM_AUTO_PLAY_SOURCE.ALL_SOURCES) {
+    const installed = new Set(options.installedAddonNames || []);
+    const rank = (stream) => priority.indexOf(autoplaySourceIdentity(stream, installed).group);
+    const preferHdr =
+      mode === STREAM_AUTO_PLAY_MODE.FIRST_STREAM && options.hdrPreference === "PREFER";
+    const hdrRank = (stream) => (preferHdr && streamHdrStatus(stream, options) === true ? 0 : 1);
+    candidates = [...candidates].sort(
+      (a, b) =>
+        hdrRank(a) - hdrRank(b) ||
+        rank(a) - rank(b) ||
+        (installed.has(a.addonName) && installed.has(b.addonName)
+          ? (a.addonOrderIndex ?? Number.MAX_SAFE_INTEGER) -
+            (b.addonOrderIndex ?? Number.MAX_SAFE_INTEGER)
+          : 0)
+    );
+  }
   const group = String(options.preferredBingeGroup || "").trim();
   if (!options.preferBingeGroupInSelection || !group)
     return options.bingeGroupOnly ? [] : candidates;

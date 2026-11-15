@@ -1,6 +1,7 @@
 import { validatePluginFetchRequest } from "./pluginSecurity.js";
 import { httpRequest } from "../network/httpClient.js";
 import { SessionStore } from "../storage/sessionStore.js";
+import { isPrivateMediaUrl } from "../streams/privateMediaSource.js";
 
 async function readBounded(response, maxBytes) {
   const reader = response.body?.getReader();
@@ -91,6 +92,7 @@ export async function fetchPluginRequest(request) {
   const url = new URL(validation.url);
   const canRelay =
     url.protocol === "https:" &&
+    !isPrivateMediaUrl(url.href) &&
     !url.username &&
     !url.password &&
     Boolean(globalThis.location && !SessionStore.isAnonymousSession && SessionStore.accessToken);

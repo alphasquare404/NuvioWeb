@@ -6,6 +6,25 @@ let reader,
   abort,
   serial = Promise.resolve(),
   latest = 0;
+let resolveId = 0;
+const requests = new Map();
+
+function request(type, url, signal) {
+  signal?.throwIfAborted();
+  const id = ++resolveId;
+  return new Promise((resolve, reject) => {
+    const cancel = () => {
+      requests.delete(id);
+      reject(signal.reason);
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    requests.set(id, (value) => {
+      signal?.removeEventListener("abort", cancel);
+      resolve(value);
+    });
+    postMessage({ type, sourceId, id, url });
+  });
+}
 self.onmessage = ({ data }) => {
   if (data.type === "open") {
     if (data.version !== __NUVIO_REMUX_ASSET_ID__) {
@@ -16,7 +35,27 @@ self.onmessage = ({ data }) => {
     sourceId = data.sourceId;
     reader = new MkvTextSubtitles({
       url: data.url,
-      fetcher: createRangeFetcher(data.url, data.requestHeaders)
+      fetcher: createRangeFetcher(
+        data.url,
+        data.requestHeaders,
+        async (url, options) => {
+          try {
+            return await fetch(url, options);
+          } catch (error) {
+            if (
+              !data.canResolveHead ||
+              options.method !== "HEAD" ||
+              error.name !== "TypeError" ||
+              options.signal?.aborted
+            )
+              throw error;
+            const size = await request("resolve-head", url, options.signal);
+            if (!size) throw error;
+            return new Response(null, { headers: { "Content-Length": size } });
+          }
+        },
+        data.canResolveSource ? (signal) => request("resolve-source", data.url, signal) : undefined
+      )
     });
     abort = new AbortController();
     serial = reader
@@ -26,6 +65,11 @@ self.onmessage = ({ data }) => {
     return;
   }
   if (data.sourceId !== sourceId) return;
+  if (data.type === "resolve-result") {
+    requests.get(data.id)?.(data.value);
+    requests.delete(data.id);
+    return;
+  }
   latest = data.requestId;
   abort?.abort();
   if (data.type === "window")

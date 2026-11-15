@@ -14,13 +14,7 @@ import {
   sortPersonCreditsByLatest,
   sortPersonCreditsByPopularity
 } from "../../../core/tmdb/tmdbPersonService.js";
-import {
-  bindDesktopNavigationEvents,
-  renderDesktopNavigation,
-  renderNavigationRevealButton
-} from "../../components/desktopNavigation.js";
 import { renderBackButtonIcon } from "../../components/backButtonIcon.js";
-import { getSidebarProfileState } from "../../components/sidebarNavigation.js";
 import {
   posterItemFromNode,
   PosterOptionsDialogController
@@ -97,9 +91,6 @@ export const CastDetailScreen = {
   async mount(params = {}) {
     this.container = document.getElementById("castDetail");
     ScreenUtils.show(this.container);
-    this.sidebarProfile = Platform.isBrowser()
-      ? await getSidebarProfileState().catch(() => null)
-      : null;
     this.params = params || {};
     this.loadToken = (this.loadToken || 0) + 1;
     this.person = null;
@@ -215,11 +206,11 @@ export const CastDetailScreen = {
     if (Platform.isBrowser()) {
       this.container.innerHTML = `
         <div class="browser-person-detail-shell">
-          ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
+          <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">${renderBackButtonIcon()}</button>
           <div class="browser-person-detail-status">${renderLoadingIndicator()}<span>Loading person details…</span></div>
         </div>
       `;
-      bindDesktopNavigationEvents(this.container);
+      this.bindBrowserPersonActions();
       return;
     }
     this.container.innerHTML = `
@@ -236,13 +227,11 @@ export const CastDetailScreen = {
     if (Platform.isBrowser()) {
       this.container.innerHTML = `
         <div class="browser-person-detail-shell">
-          ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
           <div class="browser-person-detail-status is-error"><p>${escapeHtml(message)}</p><button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">${renderBackButtonIcon()}</button></div>
         </div>
       `;
       ScreenUtils.indexFocusables(this.container);
       this.bindBrowserPersonActions();
-      bindDesktopNavigationEvents(this.container);
       return;
     }
     this.container.innerHTML = `
@@ -378,13 +367,11 @@ export const CastDetailScreen = {
         )}</span>`;
     this.container.innerHTML = `
       <div class="browser-person-detail-shell">
-        ${renderDesktopNavigation({ selectedRoute: "", profile: this.sidebarProfile })}
         <header class="browser-person-detail-heading cast-page-heading page-heading" data-page-heading>
           <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
             ${renderBackButtonIcon()}
           </button>
           <h1 class="page-heading-title">${escapeHtml(person.name || "Unknown")}</h1>
-          ${renderNavigationRevealButton()}
         </header>
         <div class="browser-person-detail-layout">
           <aside class="browser-person-detail-profile">
@@ -422,7 +409,6 @@ export const CastDetailScreen = {
           })
       });
     }
-    bindDesktopNavigationEvents(this.container);
     this.castCreditDragCleanup?.();
     this.castCreditDragCleanup = bindHorizontalRailDragScroll({
       container: this.container,

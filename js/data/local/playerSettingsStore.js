@@ -1,4 +1,7 @@
+import { normalizeAutoplaySourcePriority } from "../../core/streams/autoplaySourcePolicy.js";
+import { normalizeMediabunnyMode } from "../../core/player/mediabunnySettings.js";
 import {
+  DECODE_STREAM_METHODS,
   filenameStreamDisplayMode,
   normalizeFilenameStreamFilter
 } from "../../core/streams/filenameStreamPolicy.js";
@@ -78,6 +81,8 @@ const DEFAULTS = {
   // the movi engine needs WebCodecs and a CORS-readable source, so a profile
   // that never asked for it must keep the built-in player.
   playerEngine: "native",
+  mediabunnyEnabled: true,
+  mediabunnyMode: "process",
   // Apple browser users without a stored preference receive the verified
   // Lenna path; platform-specific consumers keep Android on its own options.
   browserExternalPlayer: "lenna",
@@ -375,6 +380,14 @@ export function normalizePlayerSettings(settings = {}) {
     streamAutoPlaySelectedPlugins: normalizeStringList(
       persistentSettings.streamAutoPlaySelectedPlugins
     ),
+    streamAutoPlaySelectedServers: normalizeStringList(
+      persistentSettings.streamAutoPlaySelectedServers
+    ),
+    streamAutoPlayAddonsDisabled: persistentSettings.streamAutoPlayAddonsDisabled === true,
+    streamAutoPlayPluginsDisabled: persistentSettings.streamAutoPlayPluginsDisabled === true,
+    streamAutoPlaySourcePriority: normalizeAutoplaySourcePriority(
+      persistentSettings.streamAutoPlaySourcePriority
+    ),
     streamAutoPlayRegex: String(persistentSettings.streamAutoPlayRegex ?? "").slice(0, 500),
     streamAutoPlayPreferBingeGroupForNextEpisode: Boolean(
       persistentSettings.streamAutoPlayPreferBingeGroupForNextEpisode ??
@@ -399,6 +412,11 @@ export function normalizePlayerSettings(settings = {}) {
       persistentSettings.externalPlayerProgress ?? DEFAULTS.externalPlayerProgress
     ),
     playerEngine: normalizePlayerEngine(persistentSettings.playerEngine ?? DEFAULTS.playerEngine),
+    mediabunnyEnabled: persistentSettings.mediabunnyEnabled !== false,
+    mediabunnyMode: normalizeMediabunnyMode(
+      persistentSettings.mediabunnyMode,
+      normalizePlayerEngine(persistentSettings.playerEngine)
+    ),
     offlinePlaybackTarget: normalizeOfflinePlaybackTarget(
       persistentSettings.offlinePlaybackTarget ?? DEFAULTS.offlinePlaybackTarget
     ),
@@ -408,6 +426,10 @@ export function normalizePlayerSettings(settings = {}) {
     streamCompatibilityFilter: "OFF",
     filenameStreamDisplayMode: filenameStreamDisplayMode(persistentSettings),
     filenameStreamFilter: normalizeFilenameStreamFilter(persistentSettings.filenameStreamFilter),
+    decodeStreamFilter: normalizeFilenameStreamFilter(
+      persistentSettings.decodeStreamFilter,
+      DECODE_STREAM_METHODS
+    ),
     filenameTranscodeFilter: {
       audio: persistentSettings.filenameTranscodeFilter?.audio === true,
       full: persistentSettings.filenameTranscodeFilter?.full === true

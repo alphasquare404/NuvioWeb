@@ -1,4 +1,12 @@
 import { secureMediaUrl } from "../../core/streams/secureMediaUrl.js";
+import {
+  MediaConnectionsStore,
+  findMediaServerStreams,
+  mediaItemFilename,
+  mediaServerPlaybackUrl,
+  mediaTitleRef,
+  readMediaTitleIdentity
+} from "../../core/media/mediaConnections.js";
 import { safeApiCall } from "../../core/network/safeApiCall.js";
 import { addonRepository } from "./addonRepository.js";
 import { StreamApi } from "../remote/api/streamApi.js";
@@ -14,6 +22,41 @@ import { TmdbService } from "../../core/tmdb/tmdbService.js";
 import { LocalDebridAvailabilityService } from "../../core/debrid/localDebridAvailabilityService.js";
 import { DebridStreamPresentation } from "../../core/debrid/directDebridStreamPresentation.js";
 
+const matchingId = (values, expression) =>
+  values.map((value) => expression.exec(String(value || "").trim())?.[1]).find(Boolean);
+
+export function streamTitleIdentity(videoId, options = {}) {
+  const episodeParts = /:(\d+):(\d+)$/.exec(String(videoId || ""));
+  return {
+    imdbId: matchingId([options.imdbId, options.itemId, videoId], /^(tt\d+)(?::|$)/i),
+    tmdbId: matchingId([options.tmdbId, options.itemId, videoId], /^(?:tmdb:)?(\d+)(?::|$)/i),
+    tvdbId:
+      matchingId([options.tvdbId], /^(?:tvdb:)?(\d+)$/i) ||
+      matchingId([options.itemId, videoId], /^tvdb:(\d+)(?::|$)/i),
+    title: options.title || undefined,
+    season: options.season ?? episodeParts?.[1],
+    episode: options.episode ?? episodeParts?.[2]
+  };
+}
+
+export function addonStreamIds({ imdbId, tmdbId, tvdbId, season, episode }, type) {
+  const series = ["series", "tv", "show"].includes(type);
+  if (
+    series &&
+    (season == null ||
+      episode == null ||
+      !Number.isInteger(Number(season)) ||
+      Number(season) < 0 ||
+      !Number.isInteger(Number(episode)) ||
+      Number(episode) < 1)
+  )
+    return [];
+  const suffix = series ? `:${Number(season)}:${Number(episode)}` : "";
+  return [imdbId, tmdbId && `tmdb:${tmdbId}`, tvdbId && `tvdb:${tvdbId}`]
+    .filter(Boolean)
+    .map((id) => id + suffix);
+}
+
 class StreamRepository {
   async getStreamsFromAddon(baseUrl, type, videoId) {
     const url = this.buildStreamUrl(baseUrl, type, videoId);
@@ -27,6 +70,53 @@ class StreamRepository {
   }
 
   async getStreamsFromAllAddons(type, videoId, options = {}) {
+    const nativeRef = mediaTitleRef(options.itemId) || mediaTitleRef(videoId);
+    const identity = streamTitleIdentity(videoId, options);
+    let nativeIdentityTask;
+    const baseIdentity = () => {
+      if (!nativeRef) return Promise.resolve(identity);
+      if (
+        (identity.imdbId || identity.tmdbId || identity.tvdbId) &&
+        (type === "movie" || (identity.season != null && identity.episode != null))
+      ) {
+        return Promise.resolve(identity);
+      }
+      nativeIdentityTask ||= readMediaTitleIdentity(
+        mediaTitleRef(videoId) || nativeRef,
+        options.signal
+      )
+        .catch(() => ({}))
+        .then((ids) => ({
+          ...ids,
+          ...Object.fromEntries(Object.entries(identity).filter(([, value]) => value != null))
+        }));
+      return nativeIdentityTask;
+    };
+    let expandedIdentityTask;
+    const expandedIdentity = () => {
+      expandedIdentityTask ||= baseIdentity().then(async (ids) => {
+        if (ids.tmdbId && ids.imdbId && (type === "movie" || ids.tvdbId)) return ids;
+        const publicId = ids.imdbId || (ids.tvdbId && `tvdb:${ids.tvdbId}`);
+        const tmdbId =
+          ids.tmdbId ||
+          (publicId &&
+            (await TmdbService.ensureTmdbId(publicId, type, {
+              requireEnabled: false,
+              signal: options.signal
+            }).catch(() => null)));
+        if (!tmdbId) return ids;
+        const external = await TmdbService.externalIds(tmdbId, type, {
+          signal: options.signal
+        }).catch(() => null);
+        return {
+          ...ids,
+          tmdbId,
+          imdbId: ids.imdbId || external?.imdbId,
+          tvdbId: ids.tvdbId || external?.tvdbId
+        };
+      });
+      return expandedIdentityTask;
+    };
     const installedAddons = (await addonRepository.getInstalledAddons()).map((addon, index) => ({
       ...addon,
       orderIndex: index
@@ -75,66 +165,86 @@ class StreamRepository {
     const sourceAddons = options.preferredPluginOnly ? [] : installedAddons;
     const addonTasks = sourceAddons.map(async (addon) => {
       try {
-        // Secondary/aggregator catalogs sometimes expose a channel row while
-        // the original addon owns the ID under `tv`. Exact type remains the
-        // default; an explicit, unambiguous idPrefix may recover the owner type.
-        const streamRequestType = addonRepository.resolveResourceRequestType(
-          addon,
-          "stream",
-          type,
-          videoId,
-          { allowIdTypeFallback: true }
-        );
-        const metaRequestType = addonRepository.resolveResourceRequestType(
-          addon,
-          "meta",
-          type,
-          videoId,
-          { allowIdTypeFallback: true }
-        );
-        const canStream = Boolean(streamRequestType);
-        const canMeta = Boolean(metaRequestType);
-        // Meta-only stream discovery is a compatibility path for debrid cloud
-        // items, which are exposed through the `other` type. Regular movie/series
-        // metadata addons must not be queried as stream sources.
-        const canTryMetaOnlyStreams =
-          canMeta &&
-          String(type || "")
-            .trim()
-            .toLowerCase() === "other";
-        if (!canStream && !canTryMetaOnlyStreams) {
-          return null;
-        }
+        const tried = new Set();
+        let announced = false;
         const orderIndex = Number(addon.orderIndex ?? Number.MAX_SAFE_INTEGER);
-        notifyAddon(addon, orderIndex);
-        let addonStreams = [];
-        let streamRequestSucceeded = false;
-        if (canStream) {
-          const streamsResult = await this.getStreamsFromAddon(
-            addon.baseUrl,
-            streamRequestType,
-            videoId
+        const requestStreams = async (id) => {
+          if (!id || options.signal?.aborted || tried.has(id)) return [];
+          tried.add(id);
+          // Secondary/aggregator catalogs sometimes expose a channel row while
+          // the original addon owns the ID under `tv`. Exact type remains the
+          // default; an explicit, unambiguous idPrefix may recover the owner type.
+          const streamRequestType = addonRepository.resolveResourceRequestType(
+            addon,
+            "stream",
+            type,
+            id,
+            { allowIdTypeFallback: true }
           );
-          if (streamsResult.status === "success") {
-            streamRequestSucceeded = true;
-            if (streamsResult.data.length) {
-              addonStreams = streamsResult.data;
+          const metaRequestType = addonRepository.resolveResourceRequestType(
+            addon,
+            "meta",
+            type,
+            id,
+            { allowIdTypeFallback: true }
+          );
+          const canStream = Boolean(streamRequestType);
+          const canMeta = Boolean(metaRequestType);
+          // Meta-only stream discovery is a compatibility path for debrid cloud
+          // items, which are exposed through the `other` type. Regular movie/series
+          // metadata addons must not be queried as stream sources.
+          const canTryMetaOnlyStreams =
+            canMeta &&
+            String(type || "")
+              .trim()
+              .toLowerCase() === "other";
+          if (!canStream && !canTryMetaOnlyStreams) {
+            return [];
+          }
+          if (!announced) notifyAddon(addon, orderIndex);
+          announced = true;
+          let addonStreams = [];
+          let streamRequestSucceeded = false;
+          if (canStream) {
+            const streamsResult = await this.getStreamsFromAddon(
+              addon.baseUrl,
+              streamRequestType,
+              id
+            );
+            if (streamsResult.status === "success") {
+              streamRequestSucceeded = true;
+              if (streamsResult.data.length) {
+                addonStreams = streamsResult.data;
+              }
             }
           }
+          // Match Android: when a declared stream endpoint succeeds with no
+          // results, try the matching meta video's inline streams even if the
+          // manifest omitted its meta resource. Keep the existing meta-only
+          // compatibility path for debrid cloud `other` catalogs as well.
+          if (
+            addonStreams.length === 0 &&
+            ((canStream && streamRequestSucceeded) || canTryMetaOnlyStreams)
+          ) {
+            addonStreams = await this.fetchInlineStreamsFromMeta(
+              addon,
+              canStream ? streamRequestType : metaRequestType,
+              id
+            );
+          }
+          return addonStreams;
+        };
+        let addonStreams = [];
+        const initial = nativeRef ? addonStreamIds(await baseIdentity(), type) : [videoId];
+        for (const id of initial) {
+          addonStreams = await requestStreams(id);
+          if (addonStreams.length) break;
         }
-        // Match Android: when a declared stream endpoint succeeds with no
-        // results, try the matching meta video's inline streams even if the
-        // manifest omitted its meta resource. Keep the existing meta-only
-        // compatibility path for debrid cloud `other` catalogs as well.
-        if (
-          addonStreams.length === 0 &&
-          ((canStream && streamRequestSucceeded) || canTryMetaOnlyStreams)
-        ) {
-          addonStreams = await this.fetchInlineStreamsFromMeta(
-            addon,
-            canStream ? streamRequestType : metaRequestType,
-            videoId
-          );
+        if (nativeRef && !addonStreams.length) {
+          for (const id of addonStreamIds(await expandedIdentity(), type)) {
+            addonStreams = await requestStreams(id);
+            if (addonStreams.length) break;
+          }
         }
         if (addonStreams.length === 0) {
           return null;
@@ -184,8 +294,10 @@ class StreamRepository {
       if (options.signal?.aborted) abort();
       const timeout = setTimeout(abort, PLUGIN_LIMITS.globalTimeoutMs);
       try {
+        const ids = nativeRef ? await baseIdentity() : identity;
         await this.getPluginStreams(type, videoId, {
           ...options,
+          ...ids,
           signal: controller.signal,
           onGroup: (group) => prepared.push(prepareDebridGroup(group).catch(() => group))
         });
@@ -206,6 +318,58 @@ class StreamRepository {
       return [...grouped.values()];
     })();
 
+    const serverTask = Promise.all(
+      (options.preferredPluginOnly ? [] : MediaConnectionsStore.get().servers)
+        .filter(({ enabled }) => enabled !== false)
+        .map(async (server) => {
+          try {
+            const own = mediaTitleRef(videoId) || nativeRef;
+            const ids = own?.connectionId === server.id ? identity : await baseIdentity();
+            let items = await findMediaServerStreams(server, type, videoId, { ...options, ...ids });
+            if (!items.length && !options.signal?.aborted) {
+              const fallback = await expandedIdentity();
+              if (
+                ["imdbId", "tmdbId", "tvdbId", "season", "episode"].some(
+                  (key) => fallback[key] != null && fallback[key] !== ids[key]
+                )
+              ) {
+                items = await findMediaServerStreams(server, type, videoId, {
+                  ...options,
+                  ...fallback
+                });
+              }
+            }
+            if (options.signal?.aborted || !items.length) return null;
+            const group = {
+              addonId: server.id,
+              addonName: server.name,
+              sourceProviderId: server.id,
+              streams: items
+                .filter((item) => item.Id)
+                .map((item) => ({
+                  id: `${server.id}:${item.Id}`,
+                  name: server.name,
+                  title: mediaItemFilename(item),
+                  url: mediaServerPlaybackUrl(server, item.Id),
+                  behaviorHints: { filename: mediaItemFilename(item) },
+                  clientResolve: {
+                    mediaServer: {
+                      connectionId: server.id,
+                      itemId: item.Id,
+                      resumePositionMs: Math.floor(
+                        (Number(item.UserData?.PlaybackPositionTicks) || 0) / 10000
+                      )
+                    }
+                  }
+                }))
+            };
+            notifyChunk(group);
+            return group;
+          } catch {
+            return null;
+          }
+        })
+    );
     const results = await Promise.all(addonTasks);
     const addonsWithStreams = results
       .filter(Boolean)
@@ -213,7 +377,10 @@ class StreamRepository {
         (left, right) => Number(left.addonOrderIndex || 0) - Number(right.addonOrderIndex || 0)
       );
     const pluginStreams = await pluginTask;
-    return { status: "success", data: [...addonsWithStreams, ...pluginStreams] };
+    return {
+      status: "success",
+      data: [...addonsWithStreams, ...pluginStreams, ...(await serverTask).filter(Boolean)]
+    };
   }
 
   async getPluginStreams(type, videoId, options = {}) {
@@ -225,7 +392,13 @@ class StreamRepository {
       .find(Boolean);
     const tmdbLookupId = localId
       ? rawVideoId
-      : String(knownTmdbId || options.imdbId || options.itemId || rawVideoId).trim();
+      : String(
+          knownTmdbId ||
+            options.imdbId ||
+            (options.tvdbId && `tvdb:${options.tvdbId}`) ||
+            options.itemId ||
+            rawVideoId
+        ).trim();
     const tmdbId = await TmdbService.ensureTmdbId(tmdbLookupId, type, {
       requireEnabled: false,
       signal: options.signal

@@ -1,6 +1,7 @@
 import { reportProbeCacheHit } from "./probeDiagnostics.js";
 import { probeInBrowser, isBrowserProbeParallelReady } from "./ffprobeClient.js";
 import { normalizeProbeMode } from "./probeMode.js";
+import { isPrivateMediaUrl } from "../streams/privateMediaSource.js";
 import {
   probeMetadataCache,
   probeMetadataCacheGeneration,
@@ -337,6 +338,7 @@ export function createStreamProber({
       } = {}
     ) {
       const source = String(url || "").trim();
+      if (selectedMode === "server" && isPrivateMediaUrl(source)) return null;
       const strongIdentity = /^torrent-file:[a-f0-9]{40}:\d+$/.test(identity) ? identity : "";
       // A file's cached facts do not require a freshly resolved signed URL.
       // An empty source with a strong identity is a strictly cache-only lookup.

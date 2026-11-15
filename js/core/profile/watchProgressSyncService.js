@@ -1,4 +1,5 @@
 import { AuthManager } from "../auth/authManager.js";
+import { isPrivateMediaKey } from "../streams/privateMediaSource.js";
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
 import { isNuvioSyncOwnedProgress } from "../../data/repository/watchProgressProvenance.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
@@ -68,7 +69,9 @@ function readSyncState() {
 function readBaselineItems(profileId) {
   const state = readSyncState();
   const profileState = state[String(profileId)] || {};
-  return normalizeProgressItems(profileState.remoteSnapshot || []);
+  return normalizeProgressItems(profileState.remoteSnapshot || []).filter(
+    (item) => !isPrivateMediaKey(item.contentId) && !isPrivateMediaKey(item.videoId)
+  );
 }
 
 function writeBaselineItems(profileId, items = []) {
@@ -282,6 +285,7 @@ function coalesceSyncItems(items = []) {
 }
 
 function isSyncableProgressItem(item = {}) {
+  if (isPrivateMediaKey(item.contentId) || isPrivateMediaKey(item.videoId)) return false;
   const durationMs = Number(item?.durationMs || 0);
   return (
     !Number.isFinite(durationMs) || durationMs <= 0 || durationMs >= MIN_PROGRESS_SYNC_DURATION_MS
@@ -353,6 +357,7 @@ function buildRemoteProgressEntries(items = []) {
 function buildDeleteKeys(items = []) {
   const keys = new Set();
   (Array.isArray(items) ? items : []).forEach((item) => {
+    if (isPrivateMediaKey(item?.contentId) || isPrivateMediaKey(item?.videoId)) return;
     const key = toProgressKey(item);
     if (key) {
       keys.add(key);

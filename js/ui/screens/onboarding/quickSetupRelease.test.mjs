@@ -251,16 +251,18 @@ test("preview filters actual shared card models without opening a stream", async
     String,
     (key, params, fallback) => fallback
   ).renderStreamPreview;
-  const html = preview.call({ labels: true, streamFilter: ["all"] });
+  const render = (labels, streamFilter) =>
+    preview.call({ labels, streamFilterSettings: () => ({ filenameStreamFilter: streamFilter }) });
+  const html = render(true, ["all"]);
   assert.deepEqual(
     models.map((m) => m.source.previewMethod),
-    ["direct", "remux", "audio-transcode", "transcode", "unknown"]
+    ["direct", "remux", "audio-transcode", "video-transcode", "transcode", "unknown"]
   );
   assert.ok(html.includes("stream-route-card-action"));
   assert.ok(html.includes("stream-route-offline-actions"));
   assert.ok(!html.includes('data-action="playStream"'));
   models.length = 0;
-  preview.call({ labels: false, streamFilter: ["direct", "remux"] });
+  render(false, ["direct", "remux"]);
   assert.deepEqual(
     models.map((m) => m.source.previewMethod),
     ["direct", "remux"]

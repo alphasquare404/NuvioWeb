@@ -1,8 +1,11 @@
 import { httpRequest } from "../network/httpClient.js";
 import { SessionStore } from "../storage/sessionStore.js";
+import { isPrivateMediaUrl } from "../streams/privateMediaSource.js";
 
 export async function resolveMediaHead(url, headers, signal) {
-  if (!SessionStore.accessToken || SessionStore.isAnonymousSession) return null;
+  if (isPrivateMediaUrl(url) || !SessionStore.accessToken || SessionStore.isAnonymousSession) {
+    return null;
+  }
   try {
     if (new URL(url).protocol !== "https:") return null;
     const result = await httpRequest("/api/debrid/plugin/fetch", {

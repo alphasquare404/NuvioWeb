@@ -1,4 +1,7 @@
-import { filenameStreamFilter } from "../../../core/streams/filenameStreamPolicy.js";
+import {
+  filenameStreamFilter,
+  filenameStreamFilterKey
+} from "../../../core/streams/filenameStreamPolicy.js";
 
 export const PLAYBACK_SETTINGS_GROUPS = [
   "general",
@@ -70,11 +73,19 @@ export const SETTINGS_STREAM_PREVIEW_SOURCES = [
   },
   {
     id: "example-video",
-    previewMethod: "transcode",
+    previewMethod: "video-transcode",
     name: "Sample.2160p.HEVC.AAC.mkv",
     description: "HEVC · AAC · MKV",
     addonName: "Preview",
     behaviorHints: { filename: "Sample.2160p.HEVC.AAC.mkv", videoSize: 7000000000 }
+  },
+  {
+    id: "example-full",
+    previewMethod: "transcode",
+    name: "Sample.2160p.HEVC.DTS.mkv",
+    description: "HEVC · DTS · MKV",
+    addonName: "Preview",
+    behaviorHints: { filename: "Sample.2160p.HEVC.DTS.mkv" }
   },
   {
     id: "example-unknown",
@@ -86,19 +97,29 @@ export const SETTINGS_STREAM_PREVIEW_SOURCES = [
   }
 ];
 
-export function filenameStreamFilterOptions(t) {
+export function filenameStreamFilterOptions(t, settings = {}) {
+  const all = { id: "all", label: t("settings_filter_all", {}, "All Streams") };
+  if (filenameStreamFilterKey(settings) === "decodeStreamFilter") {
+    return [
+      all,
+      { id: "supported", label: t("settings_filter_supported", {}, "Supported") },
+      { id: "unsupported", label: t("settings_filter_unsupported", {}, "Unsupported") },
+      { id: "unknown", label: t("settings_filter_unknown", {}, "Unknown") }
+    ];
+  }
   return [
-    { id: "all", label: t("settings_filter_all", {}, "All Streams") },
+    all,
     { id: "direct", label: t("settings_filter_direct", {}, "Direct") },
     { id: "remux", label: t("settings_filter_remux", {}, "Remux") },
     { id: "audio-transcode", label: t("settings_filter_audio_transcode", {}, "Audio Transcode") },
+    { id: "video-transcode", label: t("player_video_transcode", {}, "Video Transcode") },
     { id: "transcode", label: t("settings_filter_full_transcode", {}, "Full Transcode") }
   ];
 }
 
 export function filenameStreamFilterSummary(settings, t) {
   const selection = filenameStreamFilter(settings);
-  return filenameStreamFilterOptions(t)
+  return filenameStreamFilterOptions(t, settings)
     .filter(({ id }) => selection.includes(id))
     .map(({ label }) => label)
     .join(" + ");
@@ -107,8 +128,20 @@ export function filenameStreamFilterSummary(settings, t) {
 // These are illustrative label categories, not compatibility claims about a file.
 export function settingsStreamPreviewSources(settings = {}) {
   const selected = filenameStreamFilter(settings);
-  if (selected.includes("all")) return SETTINGS_STREAM_PREVIEW_SOURCES;
-  return SETTINGS_STREAM_PREVIEW_SOURCES.filter((source) =>
-    selected.includes(source.previewMethod)
-  );
+  const examples =
+    filenameStreamFilterKey(settings) === "decodeStreamFilter"
+      ? [
+          { ...SETTINGS_STREAM_PREVIEW_SOURCES[0], previewMethod: "supported" },
+          {
+            id: "example-unsupported",
+            previewMethod: "unsupported",
+            name: "Sample.1080p.VVC.AAC.mkv",
+            description: "VVC · AAC · MKV",
+            addonName: "Preview"
+          },
+          SETTINGS_STREAM_PREVIEW_SOURCES.find(({ previewMethod }) => previewMethod === "unknown")
+        ]
+      : SETTINGS_STREAM_PREVIEW_SOURCES;
+  if (selected.includes("all")) return examples;
+  return examples.filter((source) => selected.includes(source.previewMethod));
 }

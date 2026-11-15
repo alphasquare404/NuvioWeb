@@ -52,6 +52,8 @@ export class NuvioDialog {
     buttons = [],
     onDismiss = null,
     panelClassName = "",
+    closeLabel = "",
+    progressiveActions = false,
     actionsClassName = "",
     content = null,
     onVerticalNavigate = null,
@@ -64,6 +66,8 @@ export class NuvioDialog {
     this.buttons = buttons;
     this.onDismiss = onDismiss;
     this.panelClassName = panelClassName;
+    this.closeLabel = closeLabel;
+    this.progressiveActions = progressiveActions;
     this.actionsClassName = actionsClassName;
     this.content = content;
     this.onVerticalNavigate = onVerticalNavigate;
@@ -121,13 +125,33 @@ export class NuvioDialog {
     const titleEl = document.createElement("div");
     titleEl.className = "nuvio-dialog-title";
     titleEl.textContent = this.title;
-    panel.appendChild(titleEl);
+    let closeButton = null;
+    if (this.closeLabel) {
+      const header = document.createElement("div");
+      header.className = "nuvio-dialog-header";
+      closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "nuvio-dialog-close";
+      closeButton.setAttribute("aria-label", this.closeLabel);
+      closeButton.title = this.closeLabel;
+      closeButton.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+      closeButton.addEventListener("click", () => this._dismiss());
+      header.appendChild(titleEl);
+      header.appendChild(closeButton);
+      panel.appendChild(header);
+      this._closeButton = closeButton;
+    } else {
+      panel.appendChild(titleEl);
+    }
 
     // Optional subtitle
-    if (this.subtitle) {
+    if (this.subtitle || this.progressiveActions) {
       const subtitleEl = document.createElement("div");
       subtitleEl.className = "nuvio-dialog-subtitle";
       subtitleEl.textContent = this.subtitle;
+      this._subtitle = subtitleEl;
+      if (this.progressiveActions) subtitleEl.setAttribute("role", "status");
       panel.appendChild(subtitleEl);
     }
 
@@ -146,38 +170,11 @@ export class NuvioDialog {
     }
 
     // Buttons
-    if (this.buttons.length > 0) {
+    if (this.buttons.length > 0 || this.progressiveActions) {
       const actions = document.createElement("div");
       actions.className = `nuvio-dialog-actions${this.actionsClassName ? ` ${this.actionsClassName}` : ""}`;
-
-      this.buttons.forEach((btn, i) => {
-        const el = document.createElement("button");
-        el.className =
-          "nuvio-dialog-button" +
-          (btn.danger ? " nuvio-dialog-button-danger" : "") +
-          (btn.selected ? " selected" : "") +
-          (btn.className ? ` ${btn.className}` : "");
-        this._setButtonSelected(el, Boolean(btn.selected));
-        if (typeof btn.content === "function") {
-          const customContent = btn.content(el);
-          if (customContent?.nodeType) el.appendChild(customContent);
-        } else {
-          const label = document.createElement("span");
-          label.className = "nuvio-dialog-button-label";
-          label.textContent = btn.label;
-          el.appendChild(label);
-        }
-        el.dataset.key = btn.key || String(i);
-        const accessibleLabel = btn.ariaLabel || btn.label;
-        if (accessibleLabel) el.setAttribute("aria-label", accessibleLabel);
-        if (btn.title || btn.label) el.title = btn.title || btn.label;
-        el.addEventListener("click", () => {
-          if (btn.onAction) btn.onAction();
-        });
-        actions.appendChild(el);
-        this._buttonEls.push(el);
-      });
-
+      this._actions = actions;
+      this._appendButtonElements(this.buttons);
       panel.appendChild(actions);
     }
 
@@ -193,20 +190,65 @@ export class NuvioDialog {
       if (e.target === backdrop) this._dismiss();
     });
 
-    // Keyboard navigation
     window.addEventListener("keydown", this._keyHandler, { capture: true });
     window.addEventListener("keyup", this._keyUpHandler, { capture: true });
-
-    // Focus first button after 2 frames (matches ATV LaunchedEffect repeat(2) { withFrameNanos })
-    this._scheduleFrame(() => this._scheduleFrame(() => this._focusIndex(0)));
-
-    // Trigger enter animation
+    this._scheduleFrame(() =>
+      this._scheduleFrame(() => {
+        if (this._destroyed) return;
+        if (this._buttonEls.length) this._focusIndex(0);
+        else this._closeButton?.focus({ preventScroll: true });
+      })
+    );
     this._scheduleFrame(() => {
       backdrop.classList.add("nuvio-dialog-backdrop-enter");
       panel.classList.add("nuvio-dialog-panel-enter");
     });
 
     return this;
+  }
+
+  setSubtitle(text) {
+    if (this._subtitle) this._subtitle.textContent = text;
+  }
+
+  appendButtons(buttons) {
+    if (this._destroyed || !this._actions) return;
+    this.buttons = [...this.buttons, ...buttons];
+    this._appendButtonElements(buttons);
+  }
+
+  _appendButtonElements(buttons) {
+    for (const btn of buttons) {
+      const el = document.createElement("button");
+      el.className =
+        "nuvio-dialog-button" +
+        (btn.danger ? " nuvio-dialog-button-danger" : "") +
+        (btn.selected ? " selected" : "") +
+        (btn.className ? ` ${btn.className}` : "");
+      this._setButtonSelected(el, Boolean(btn.selected));
+      if (typeof btn.content === "function") {
+        const customContent = btn.content(el);
+        if (customContent?.nodeType) el.appendChild(customContent);
+      } else {
+        const label = document.createElement("span");
+        label.className = "nuvio-dialog-button-label";
+        label.textContent = btn.label;
+        el.appendChild(label);
+      }
+      el.dataset.key = btn.key || String(this._buttonEls.length);
+      const accessibleLabel = btn.ariaLabel || btn.label;
+      if (accessibleLabel) el.setAttribute("aria-label", accessibleLabel);
+      if (btn.title || btn.label) el.title = btn.title || btn.label;
+      el.addEventListener("focus", () => {
+        this._focusedIndex = this._buttonEls.indexOf(el);
+        this._buttonEls.forEach((button) => button.classList.toggle("focused", button === el));
+      });
+      el.addEventListener("click", () => {
+        if (btn.onAction) btn.onAction();
+      });
+      this._actions.appendChild(el);
+      this._buttonEls.push(el);
+    }
   }
 
   setButtonSelected(key, selected) {
@@ -317,6 +359,10 @@ export class NuvioDialog {
       e.preventDefault();
       e.stopPropagation();
       if (this._enterSuppressed) {
+        return;
+      }
+      if (this._closeButton && target === this._closeButton) {
+        this._dismiss();
         return;
       }
       const btn = this.buttons[this._focusedIndex];

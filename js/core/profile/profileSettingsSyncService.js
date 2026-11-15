@@ -1,3 +1,5 @@
+import { normalizeAutoplaySourcePriority } from "../streams/autoplaySourcePolicy.js";
+import { isPrivateMediaKey } from "../streams/privateMediaSource.js";
 import { LocalStore } from "../storage/localStore.js";
 import { AuthManager } from "../auth/authManager.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
@@ -53,7 +55,11 @@ const DESKTOP_TRAKT_SETTINGS_PAYLOAD_FEATURE = "trakt_settings_payload";
 // show_unaired_next_up boolean and otherwise preserves it as opaque data.
 const EXCLUDED_PROFILE_KEYS = {
   layout_settings: new Set(["search_discover_enabled"]),
-  player_settings: new Set(["audio_amplification_db", "persist_audio_amplification"]),
+  player_settings: new Set([
+    "audio_amplification_db",
+    "persist_audio_amplification",
+    "stream_auto_play_selected_servers"
+  ]),
   mdblist_settings: new Set(["mdblist_api_key"]),
   debrid_settings: new Set([
     "torbox_api_key",
@@ -76,6 +82,30 @@ export function profileSettingsExcludedKeys(featureName) {
 export function withoutExcludedProfileSettingsKeys(featureName, featurePayload = {}) {
   const sanitized = cloneValue(featurePayload) || {};
   EXCLUDED_PROFILE_KEYS[featureName]?.forEach((key) => delete sanitized[key]);
+  if (featureName === "layout_settings") {
+    for (const key of [
+      "hero_catalog_keys",
+      "home_catalog_order_keys",
+      "disabled_home_catalog_keys"
+    ]) {
+      const entry = sanitized[key];
+      if (entry == null) continue;
+      const encoded = isEncodedPreferenceValue(entry);
+      const value = encoded ? entry.value : entry;
+      let keys = value;
+      if (typeof value === "string") {
+        try {
+          keys = JSON.parse(value);
+        } catch {
+          continue;
+        }
+      }
+      if (!Array.isArray(keys) || !keys.some(isPrivateMediaKey)) continue;
+      keys = keys.filter((catalog) => !isPrivateMediaKey(catalog));
+      const cleanValue = typeof value === "string" ? JSON.stringify(keys) : keys;
+      sanitized[key] = encoded ? { ...entry, value: cleanValue } : cleanValue;
+    }
+  }
   return sanitized;
 }
 
@@ -712,7 +742,7 @@ const FEATURE_ADAPTERS = {
         modern_hero_full_screen_backdrop: Boolean(layout.modernHeroFullScreenBackdropEnabled),
         hero_section_enabled: Boolean(layout.heroSectionEnabled),
         discover_location: normalizeDiscoverLocationForAndroid(layout.discoverLocation),
-        hero_catalog_keys: Array.isArray(layout.heroCatalogKeys) ? layout.heroCatalogKeys : [],
+        hero_catalog_keys: (layout.heroCatalogKeys || []).filter((key) => !isPrivateMediaKey(key)),
         poster_labels_enabled: Boolean(layout.posterLabelsEnabled),
         catalog_addon_name_enabled: Boolean(layout.catalogAddonNameEnabled),
         catalog_type_suffix_enabled: Boolean(layout.catalogTypeSuffixEnabled),
@@ -919,8 +949,13 @@ const FEATURE_ADAPTERS = {
       }
       if (booleanOrNull(raw.classic_focus_gradient_enabled) != null)
         partial.classicFocusGradientEnabled = Boolean(raw.classic_focus_gradient_enabled);
-      if (Array.isArray(raw.hero_catalog_keys))
-        partial.heroCatalogKeys = raw.hero_catalog_keys.map(String).filter(Boolean);
+      if (Array.isArray(raw.hero_catalog_keys)) {
+        const localKeys = LayoutPreferences.getForProfile(profileId).heroCatalogKeys || [];
+        partial.heroCatalogKeys = [
+          ...raw.hero_catalog_keys.map(String).filter((key) => key && !isPrivateMediaKey(key)),
+          ...localKeys.filter(isPrivateMediaKey)
+        ];
+      }
       if (stringOrNull(raw.continue_watching_card_style))
         partial.continueWatchingCardStyle = String(raw.continue_watching_card_style).toLowerCase();
       if (booleanOrNull(raw.focused_poster_backdrop_expand_enabled) != null) {
@@ -1129,6 +1164,11 @@ const FEATURE_ADAPTERS = {
         stream_auto_play_selected_plugins: Array.isArray(settings.streamAutoPlaySelectedPlugins)
           ? settings.streamAutoPlaySelectedPlugins
           : [],
+        stream_auto_play_addons_disabled: settings.streamAutoPlayAddonsDisabled === true,
+        stream_auto_play_plugins_disabled: settings.streamAutoPlayPluginsDisabled === true,
+        stream_auto_play_source_priority: normalizeAutoplaySourcePriority(
+          settings.streamAutoPlaySourcePriority
+        ).join(","),
         stream_auto_play_regex: String(settings.streamAutoPlayRegex || ""),
         stream_auto_play_timeout_seconds: Math.max(
           0,
@@ -1230,6 +1270,13 @@ const FEATURE_ADAPTERS = {
           projected[key] = raw[key].map((entry) => String(entry || "").trim()).filter(Boolean);
         }
       });
+      for (const key of ["stream_auto_play_addons_disabled", "stream_auto_play_plugins_disabled"]) {
+        if (typeof raw[key] === "boolean") projected[key] = raw[key];
+      }
+      if (typeof raw.stream_auto_play_source_priority === "string")
+        projected.stream_auto_play_source_priority = normalizeAutoplaySourcePriority(
+          raw.stream_auto_play_source_priority
+        ).join(",");
       if (numberOrNull(raw.still_watching_episode_threshold) != null) {
         projected.still_watching_episode_threshold = normalizeStillWatchingThresholdForSync(
           raw.still_watching_episode_threshold
@@ -1415,6 +1462,14 @@ const FEATURE_ADAPTERS = {
       if (Array.isArray(raw.stream_auto_play_selected_plugins)) {
         partial.streamAutoPlaySelectedPlugins = raw.stream_auto_play_selected_plugins;
       }
+      if (typeof raw.stream_auto_play_addons_disabled === "boolean")
+        partial.streamAutoPlayAddonsDisabled = raw.stream_auto_play_addons_disabled;
+      if (typeof raw.stream_auto_play_plugins_disabled === "boolean")
+        partial.streamAutoPlayPluginsDisabled = raw.stream_auto_play_plugins_disabled;
+      if (typeof raw.stream_auto_play_source_priority === "string")
+        partial.streamAutoPlaySourcePriority = normalizeAutoplaySourcePriority(
+          raw.stream_auto_play_source_priority
+        );
       if (raw.stream_auto_play_regex != null) {
         partial.streamAutoPlayRegex = String(raw.stream_auto_play_regex);
       }
@@ -2056,11 +2111,7 @@ function buildComparableSignatureFromLocal(profileId) {
   return stableStringify(buildComparableFeaturesFromLocal(profileId));
 }
 
-function buildOutgoingBlob(
-  profileId,
-  baseBlob = null,
-  { dirtyStoreKeys = null } = {}
-) {
+function buildOutgoingBlob(profileId, baseBlob = null, { dirtyStoreKeys = null } = {}) {
   const normalizedBase = normalizeBlob(baseBlob || {});
   const hasRemoteSettings = hasUsableRemoteProfileSettings(normalizedBase);
   const dirtyFeatures =
@@ -2074,8 +2125,10 @@ function buildOutgoingBlob(
   const nextFeatures = Object.entries(normalizedBase.features).reduce(
     (accumulator, [featureName, featurePayload]) => {
       if (!SUPPORTED_FEATURE_NAMES.includes(featureName)) return accumulator;
-      const encodedPayload = encodeFeaturePayload(featurePayload, featureName);
-      EXCLUDED_PROFILE_KEYS[featureName]?.forEach((key) => delete encodedPayload[key]);
+      const encodedPayload = encodeFeaturePayload(
+        withoutExcludedProfileSettingsKeys(featureName, featurePayload),
+        featureName
+      );
       accumulator[featureName] = encodedPayload;
       return accumulator;
     },
@@ -2105,9 +2158,7 @@ function buildOutgoingBlob(
     normalizedBase.features[DESKTOP_CONTINUE_WATCHING_SETTINGS_PAYLOAD_FEATURE];
   const shouldPatchDesktopContinueWatchingPayload =
     isDesktopBrowserProfileSettings() &&
-    (!hasRemoteSettings ||
-      dirtyFeatures == null ||
-      dirtyFeatures.has("layout_settings"));
+    (!hasRemoteSettings || dirtyFeatures == null || dirtyFeatures.has("layout_settings"));
   if (
     typeof desktopContinueWatchingSettingsPayload === "string" ||
     shouldPatchDesktopContinueWatchingPayload
@@ -2215,15 +2266,12 @@ function applyRemoteBlob(profileId, blob) {
 }
 
 function replayPendingLocalSettings(profileId, mutations = []) {
-  return mutations.reduce(
-    (didReplay, mutation) => {
-      if (typeof mutation?.replay === "function") {
-        return mutation.replay(profileId) || didReplay;
-      }
-      return replayProfileSettingsMutation(profileId, mutation) || didReplay;
-    },
-    false
-  );
+  return mutations.reduce((didReplay, mutation) => {
+    if (typeof mutation?.replay === "function") {
+      return mutation.replay(profileId) || didReplay;
+    }
+    return replayProfileSettingsMutation(profileId, mutation) || didReplay;
+  }, false);
 }
 
 async function canUseSettingsContext(context, profileId, { requireActiveProfile = false } = {}) {
@@ -2250,7 +2298,13 @@ export const ProfileSettingsSyncService = {
       if (!(await canUseSettingsContext(syncContext, resolvedProfileId))) return false;
       if (hasUsableRemoteProfileSettings(blob)) {
         const didApply = importRemoteBlob(resolvedProfileId, blob, platform);
-        if (!(await SyncHydrationState.completePull(syncContext, "profile-settings", SyncPullResult.SUCCESS_WITH_DATA))) {
+        if (
+          !(await SyncHydrationState.completePull(
+            syncContext,
+            "profile-settings",
+            SyncPullResult.SUCCESS_WITH_DATA
+          ))
+        ) {
           return false;
         }
         const mutations = SyncHydrationState.getPendingSettingsMutations(syncContext);
@@ -2334,7 +2388,9 @@ export const ProfileSettingsSyncService = {
       }
       const resolvedProfileId = resolveProfileId(profileId);
       const syncContext = context || (await SyncHydrationState.capture(resolvedProfileId));
-      if (!(await canUseSettingsContext(syncContext, resolvedProfileId, { requireActiveProfile }))) {
+      if (
+        !(await canUseSettingsContext(syncContext, resolvedProfileId, { requireActiveProfile }))
+      ) {
         return false;
       }
       if (!(await SyncHydrationState.allowsAutomaticPush(syncContext, "profile-settings"))) {
@@ -2350,7 +2406,9 @@ export const ProfileSettingsSyncService = {
       }
       const platform = getProfileSettingsSyncPlatform();
       const remoteBlob = await pullRemoteBlob(resolvedProfileId, platform);
-      if (!(await canUseSettingsContext(syncContext, resolvedProfileId, { requireActiveProfile }))) {
+      if (
+        !(await canUseSettingsContext(syncContext, resolvedProfileId, { requireActiveProfile }))
+      ) {
         return false;
       }
       const mutations = SyncHydrationState.getPendingSettingsMutations(syncContext);
@@ -2366,7 +2424,9 @@ export const ProfileSettingsSyncService = {
         },
         true
       );
-      if (!(await canUseSettingsContext(syncContext, resolvedProfileId, { requireActiveProfile }))) {
+      if (
+        !(await canUseSettingsContext(syncContext, resolvedProfileId, { requireActiveProfile }))
+      ) {
         return false;
       }
       setCachedBlob(resolvedProfileId, blob, platform);

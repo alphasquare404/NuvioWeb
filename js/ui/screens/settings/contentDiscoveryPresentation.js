@@ -1,4 +1,4 @@
-export const CONTENT_DISCOVERY_TOPICS = ["addons", "plugins", "collections"];
+export const CONTENT_DISCOVERY_TOPICS = ["addons", "plugins", "collections", "mediaConnections"];
 
 export function visibleContentDiscoveryTopics(essential = false) {
   return CONTENT_DISCOVERY_TOPICS.filter((id) => !essential || id !== "plugins");

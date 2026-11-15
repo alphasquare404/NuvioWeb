@@ -5,6 +5,8 @@ import { HomeCatalogStore } from "../../data/local/homeCatalogStore.js";
 import { CollectionsStore } from "../../data/local/collectionsStore.js";
 import { LayoutPreferences } from "../../data/local/layoutPreferences.js";
 import { addonRepository } from "../../data/repository/addonRepository.js";
+import { mediaCatalogAddons } from "../../data/repository/mediaServerCatalogRepository.js";
+import { I18n } from "../../i18n/index.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -16,7 +18,9 @@ function escapeHtml(value) {
 }
 
 function catalogTypeLabel(type) {
-  const value = String(type || "").trim().toLowerCase();
+  const value = String(type || "")
+    .trim()
+    .toLowerCase();
   if (value === "series") return "Show";
   if (value === "movie") return "Movie";
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Catalog";
@@ -42,7 +46,11 @@ export function createDesktopHomeCatalogManager({ requestRender } = {}) {
   };
 
   const loadItems = async () => {
-    const addons = await addonRepository.getInstalledAddons();
+    const [installed, media] = await Promise.all([
+      addonRepository.getInstalledAddons(),
+      mediaCatalogAddons({ resumeLabel: I18n.t("media_connection_resume") })
+    ]);
+    const addons = [...installed, ...media];
     const collections = CollectionsStore.get();
     const prefs = HomeCatalogStore.get();
     const heroCatalogKeys = new Set(
@@ -67,8 +75,7 @@ export function createDesktopHomeCatalogManager({ requestRender } = {}) {
       }
       return {
         ...item,
-        isHeroSource:
-          !hasExplicitHeroSelection || heroCatalogKeys.has(String(item.key || ""))
+        isHeroSource: !hasExplicitHeroSelection || heroCatalogKeys.has(String(item.key || ""))
       };
     });
   };
@@ -220,7 +227,10 @@ export function createDesktopHomeCatalogManager({ requestRender } = {}) {
 
     bind(container) {
       container.querySelectorAll("[data-home-catalog-toggle]").forEach((node) => {
-        node.addEventListener("change", () => void toggleVisibility(state.items[Number(node.dataset.homeCatalogToggle || -1)]));
+        node.addEventListener(
+          "change",
+          () => void toggleVisibility(state.items[Number(node.dataset.homeCatalogToggle || -1)])
+        );
       });
       bindDrag(container);
     }

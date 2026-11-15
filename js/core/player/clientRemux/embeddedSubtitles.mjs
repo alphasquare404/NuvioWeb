@@ -14,10 +14,14 @@ export function createEmbeddedSubtitles({
   getTime,
   onTracks,
   onCues,
+  onDecodedCues,
   onStatus,
-  makeTransport = null
+  makeTransport = null,
+  resolveSource,
+  resolveHead
 }) {
   let worker = null,
+    sourceAbort = null,
     sourceId = null,
     request = 0,
     list = [],
@@ -39,9 +43,12 @@ export function createEmbeddedSubtitles({
   }
   function clear() {
     revision++;
+    onDecodedCues?.([]);
     clearSubtitleCues(track());
   }
   function dispose() {
+    sourceAbort?.abort();
+    sourceAbort = null;
     worker?.terminate();
     worker = null;
     sourceId = null;
@@ -76,6 +83,7 @@ export function createEmbeddedSubtitles({
   }
   function select(id) {
     const candidate = list.find((t) => String(t.id) === String(id));
+    if (!candidate && selected === null && (id === null || id === -1 || id === "off")) return true;
     if (id !== null && id !== -1 && id !== "off" && !candidate?.supported) return false;
     request++;
     worker?.postMessage({ type: "cancel", sourceId, requestId: request });
@@ -86,6 +94,10 @@ export function createEmbeddedSubtitles({
     if (selected === null) {
       state = "off";
       notify();
+      return true;
+    }
+    if (onDecodedCues) {
+      load(getTime(), true);
       return true;
     }
     if (typeof VTTCue !== "function") {
@@ -106,11 +118,32 @@ export function createEmbeddedSubtitles({
   }
   function setSource(url) {
     dispose();
-    sourceId = crypto.randomUUID();
+    sourceId = globalThis.crypto?.randomUUID?.() ?? String(++request);
+    sourceAbort = new AbortController();
     state = "opening";
-    worker = makeTransport ? makeTransport() : new Worker(new URL("subtitle-worker.js", assetBase));
-    worker.onmessage = ({ data }) => {
+    try {
+      worker = makeTransport
+        ? makeTransport()
+        : new Worker(new URL("subtitle-worker.js", assetBase));
+    } catch {
+      state = "error";
+      reason = "subtitle-worker-error";
+      notify();
+      return;
+    }
+    const transport = worker;
+    worker.onmessage = async ({ data }) => {
       if (data.sourceId !== sourceId) return;
+      if (data.type === "resolve-source" || data.type === "resolve-head") {
+        const resolver = data.type === "resolve-source" ? resolveSource : resolveHead;
+        let value = null;
+        try {
+          value = await resolver?.(data.url, sourceAbort.signal);
+        } catch {}
+        if (worker === transport && data.sourceId === sourceId)
+          transport.postMessage({ type: "resolve-result", sourceId, id: data.id, value });
+        return;
+      }
       if (data.type === "tracks") {
         list = data.tracks;
         state = "ready";
@@ -125,6 +158,11 @@ export function createEmbeddedSubtitles({
         stats = data.result.stats;
         state = "showing";
         reason = null;
+        if (onDecodedCues) {
+          onDecodedCues(data.result.cues.map((cue) => ({ ...cue, text: cueText(cue.text) })));
+          notify();
+          return;
+        }
         const layer = track();
         if (!layer || selected === null) return;
         const mode = layer.mode,
@@ -157,7 +195,15 @@ export function createEmbeddedSubtitles({
       reason = "subtitle-worker-error";
       notify();
     };
-    worker.postMessage({ type: "open", version, requestHeaders, sourceId, url });
+    worker.postMessage({
+      type: "open",
+      version,
+      requestHeaders,
+      sourceId,
+      url,
+      canResolveSource: Boolean(resolveSource),
+      canResolveHead: Boolean(resolveHead)
+    });
     notify();
   }
   const timer = setInterval(() => {
@@ -167,6 +213,7 @@ export function createEmbeddedSubtitles({
     setSource,
     dispose,
     seek(time) {
+      if (onDecodedCues && selected !== null) clear();
       load(time, true);
     },
     select,

@@ -2526,26 +2526,6 @@ html.desktop-browser {
   margin-bottom: 14px;
 }
 
-.desktop-browser #detail .detail-offline-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid rgba(118, 224, 164, 0.38);
-  border-radius: 999px;
-  background: rgb(20 72 45 / 0.72);
-  color: #d8ffe7;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
-  pointer-events: none;
-}
-
-.desktop-browser #detail .detail-offline-indicator .material-icons {
-  font-size: 17px;
-}
-
 .desktop-browser #detail .series-primary-btn {
   box-sizing: border-box;
   width: auto;
@@ -2608,6 +2588,11 @@ html.is-hero-stream-hold * {
 .desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"]:focus-visible,
 .desktop-browser #detail .series-circle-btn[data-action="toggleLibrary"].focused {
   color: var(--detail-text-primary);
+}
+
+.desktop-browser #detail .series-circle-btn[data-action="downloadMovie"].is-downloaded {
+  border-color: rgb(118 224 164 / 0.38);
+  color: #d8ffe7;
 }
 
 /* The watched button keeps its dark action tile when it is both selected and
@@ -5936,13 +5921,35 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser .nuvio-dialog-panel.season-download-dialog {
-  width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
-  max-width: min(560px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
-  max-height: min(74dvh, 600px);
-  padding: 20px;
-  gap: 10px;
-  border-radius: 16px;
+  width: min(460px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px));
+  max-width: min(460px, calc(100vw - var(--browser-safe-area-left) - var(--browser-safe-area-right) - 24px)) !important;
+  max-height: min(82dvh, 580px);
+  padding: 16px;
+  gap: 8px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 20px;
+  background: #1a1d23;
   overflow: hidden;
+}
+
+.desktop-browser :is(.season-download-dialog, .stream-download-options-dialog) .nuvio-dialog-header {
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.desktop-browser :is(.season-download-dialog, .stream-download-options-dialog) .nuvio-dialog-header .nuvio-dialog-title {
+  margin: 0;
+  font-size: 19px;
+}
+
+.desktop-browser :is(.season-download-dialog, .stream-download-options-dialog) .nuvio-dialog-close {
+  margin: -5px -5px -5px 0;
+  background: rgb(255 255 255 / 0.065);
+  color: var(--detail-text-primary, #fff);
+}
+
+.desktop-browser :is(.season-download-dialog, .stream-download-options-dialog) .nuvio-dialog-close:is(:hover, :focus-visible) {
+  background: rgb(255 255 255 / 0.16);
 }
 
 .desktop-browser .season-download-dialog .nuvio-dialog-title {
@@ -5968,7 +5975,7 @@ html.is-hero-stream-hold * {
 
 .desktop-browser .season-download-summary,
 .desktop-browser .season-download-progress {
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.4;
@@ -6029,7 +6036,15 @@ html.is-hero-stream-hold * {
 
 .desktop-browser .season-download-dialog .nuvio-dialog-actions {
   flex: 0 0 auto;
-  gap: 7px;
+  gap: 5px;
+}
+
+.desktop-browser .season-download-dialog .season-download-mode-actions {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
 }
 
 .desktop-browser .season-download-dialog .season-download-source-picker-actions {
@@ -6061,6 +6076,22 @@ html.is-hero-stream-hold * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.desktop-browser .season-download-dialog .season-download-mode-action {
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.desktop-browser .season-download-dialog .season-download-mode-action .nuvio-dialog-button-label {
+  overflow: visible;
+  white-space: normal;
+}
+
+.desktop-browser .season-download-dialog .season-download-manual-action {
+  margin-top: 4px;
+  border-color: rgb(var(--secondary-color-rgb) / 0.48);
+  background: rgb(var(--secondary-color-rgb) / 0.12);
 }
 
 .desktop-browser .season-download-dialog .nuvio-dialog-button.focused,
@@ -6107,8 +6138,8 @@ html.is-hero-stream-hold * {
   display: grid;
   min-width: 0;
   align-content: center;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 3px;
+  padding: 8px 10px;
 }
 
 .desktop-browser .season-download-source-card .stream-route-card-heading {
@@ -6126,7 +6157,7 @@ html.is-hero-stream-hold * {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin: 4px 0;
+  margin: 2px 0;
   min-width: 0;
 }
 
@@ -6247,9 +6278,7 @@ html.is-hero-stream-hold * {
   }
 
   .desktop-browser .nuvio-dialog-panel.season-download-dialog {
-    max-height: min(78dvh, 560px);
-    padding: 16px;
-    gap: 9px;
+    padding: 14px;
   }
 
   .desktop-browser .season-download-dialog .nuvio-dialog-title {
@@ -9925,6 +9954,119 @@ html.is-hero-stream-hold * {
   display: none;
 }
 
+.desktop-browser .desktop-navigation-scroll,
+.desktop-browser .desktop-navigation-search {
+  transition: opacity 180ms ease, transform 200ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.desktop-browser .desktop-navigation.is-search-open .desktop-navigation-scroll {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.desktop-browser .desktop-navigation-search {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 14px 4px;
+  box-sizing: border-box;
+  color: var(--text-color);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+}
+
+.desktop-browser .desktop-navigation.is-search-open .desktop-navigation-search {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.desktop-browser .desktop-navigation-search > .desktop-navigation-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+.desktop-browser .desktop-navigation-search input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+}
+
+.desktop-browser .desktop-navigation-search input::placeholder {
+  color: var(--text-secondary, #b3b3b3);
+}
+
+.desktop-browser .desktop-navigation-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.desktop-browser .desktop-navigation-search button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.desktop-browser .desktop-navigation-search button[hidden] {
+  display: none;
+}
+
+.desktop-browser .desktop-navigation-search button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.desktop-browser .desktop-navigation-search button:is(:hover, :focus-visible) {
+  background: rgb(255 255 255 / 0.14);
+}
+
+html[data-nav-placement="sidebar"].desktop-browser .desktop-navigation-search {
+  inset-block-end: auto;
+  min-height: var(--browser-floating-nav-height);
+}
+
+html[data-nav-placement="bottom"].desktop-browser .desktop-navigation.is-search-open {
+  bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--nav-search-keyboard-inset, 0px)) + 10px);
+}
+
+html[data-nav-placement="sidebar"][data-nav-rail-corner^="bottom-"].desktop-browser
+  .desktop-navigation.is-search-open {
+  bottom: calc(var(--browser-nav-rail-bottom) + var(--browser-nav-rail-gap) + var(--nav-search-keyboard-inset, 0px));
+}
+
+html.desktop-browser[data-nav-placement] body .desktop-navigation.is-search-open.is-search-pinned {
+  top: calc(var(--nav-search-viewport-top, 0px) + var(--browser-floating-nav-top));
+  bottom: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser .desktop-navigation-scroll,
+  .desktop-browser .desktop-navigation-search {
+    transition: none;
+  }
+}
+
 .desktop-browser .desktop-navigation-item {
   display: inline-flex;
   min-width: max-content;
@@ -10227,11 +10369,14 @@ html.is-hero-stream-hold * {
 .desktop-browser .desktop-collection-editor-toggle-row span { display: grid; gap: 4px; }
 .desktop-browser .desktop-collection-editor-toggle-row strong { font-size: 14px; }
 .desktop-browser .desktop-collection-editor-toggle-row small { color: var(--text-secondary); font-size: 12px; }
-.desktop-browser .desktop-collection-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.desktop-browser .desktop-collection-editor-card label.desktop-collection-editor-toggle-row { display: flex; align-items: center; cursor: pointer; color: var(--text-color); }
+.desktop-browser .desktop-collection-switch { position: relative; }
+.desktop-browser .desktop-collection-switch input { position: absolute; inset: 0; margin: 0; opacity: 0; pointer-events: none; }
 .desktop-browser .desktop-collection-switch span { display: block; width: 42px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.16); cursor: pointer; transition: background .15s ease; }
-.desktop-browser .desktop-collection-switch span::after { width: 18px; height: 18px; margin: 3px; border-radius: 50%; background: white; content: ""; transition: transform .15s ease; }
+.desktop-browser .desktop-collection-switch span::after { display: block; width: 18px; height: 18px; position: absolute; inset: 3px auto auto 3px; border-radius: 50%; background: white; content: ""; transition: transform .15s ease; }
 .desktop-browser .desktop-collection-switch input:checked + span { background: rgb(var(--secondary-color-rgb) / .9); }
 .desktop-browser .desktop-collection-switch input:checked + span::after { transform: translateX(18px); }
+.desktop-browser .desktop-collection-switch input:focus-visible + span { outline: 2px solid var(--secondary-color); outline-offset: 2px; }
 .desktop-browser .desktop-collection-segmented { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
 .desktop-browser .desktop-collection-segmented legend { width: 100%; margin-bottom: 3px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
 .desktop-browser .desktop-collection-segmented button { min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; background: rgba(255,255,255,.05); color: var(--text-color); cursor: pointer; }
@@ -10243,7 +10388,10 @@ html.is-hero-stream-hold * {
 .desktop-browser .desktop-folder-cover { display: grid; flex: 0 0 auto; width: 46px; height: 46px; overflow: hidden; place-items: center; border-radius: 9px; background: rgba(255,255,255,.08); color: var(--text-secondary); }
 .desktop-browser .desktop-folder-cover img { width: 100%; height: 100%; object-fit: cover; }
 .desktop-browser .desktop-collection-source-add { display: flex; gap: 10px; }
-.desktop-browser .desktop-collection-source-add select { flex: 1 1 auto; }
+.desktop-browser .desktop-collection-source-add select { flex: 1 1 0; color-scheme: dark; }
+.desktop-browser .desktop-collection-source-add select option { background: #242424; color: #f4f4f4; }
+.desktop-browser .desktop-collection-source-add button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 640px) { .desktop-browser .desktop-collection-source-add select { flex: auto; width: 100%; } }
 @media (hover:hover) and (pointer:fine) { .desktop-browser .desktop-collection-manager-row:hover, .desktop-browser .desktop-collection-editor-row:hover { border-color: rgba(255,255,255,.25); background: rgba(255,255,255,.075); } .desktop-browser .desktop-collection-editor-back:hover { background: rgba(255,255,255,.16); } }
 .desktop-browser .desktop-collection-add-form input:focus-visible, .desktop-browser .desktop-collection-editor-card input:focus-visible, .desktop-browser .desktop-collection-editor-back:focus-visible, .desktop-browser .desktop-collection-segmented button:focus-visible, .desktop-browser .desktop-collection-manager-actions button:focus-visible, .desktop-browser .desktop-collection-editor-actions button:focus-visible { outline: 2px solid rgb(var(--secondary-color-rgb) / .9); outline-offset: 2px; }
 @media (max-width: 640px) { .desktop-browser .desktop-collection-editor-shell { padding: 88px 18px 48px; } .desktop-browser .desktop-collection-editor-back { left: 18px; } .desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-editor-section-heading, .desktop-browser .desktop-collection-editor-row { align-items: flex-start; } .desktop-browser .desktop-collection-add-form, .desktop-browser .desktop-collection-source-add { flex-direction: column; } .desktop-browser .desktop-collection-add-form button { width: 100%; } .desktop-browser .desktop-collection-manager-row, .desktop-browser .desktop-collection-editor-row { display: grid; grid-template-columns: auto minmax(0,1fr); } .desktop-browser .desktop-collection-manager-actions, .desktop-browser .desktop-collection-editor-actions { grid-column: 1 / -1; justify-content: flex-end; } }
@@ -14461,9 +14609,9 @@ html:not([data-nav-placement="top"])
   justify-content: flex-start;
   align-content: flex-start;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 18px;
-  background: rgba(30, 30, 36, 0.86);
+  border: 1px solid var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
 }
 
 /* The row that meets the card's curve takes its shape, so a hovered or focused
@@ -14483,7 +14631,7 @@ html:not([data-nav-placement="top"])
 }
 
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-nav-group .settings-nav-item + .settings-nav-item {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--settings-list-divider);
 }
 
 /* Hover on the index page is a light on the row, not a box.
@@ -14508,9 +14656,9 @@ html:not([data-nav-placement="top"])
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card {
   min-height: 76px;
   margin-bottom: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 18px;
-  background: rgba(30, 30, 36, 0.86);
+  border: 1px solid var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
 }
 
 .desktop-browser .settings-shell[data-settings-nav-mode="index"] .settings-account-card-avatar {
@@ -16700,7 +16848,7 @@ html[data-nav-placement="sidebar"].desktop-browser {
   --browser-home-no-hero-top: calc(var(--browser-safe-area-top) + 16px);
 }
 
-html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-enabled {
+html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-enabled:not(.discover-shell) {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 78px);
 }
 
@@ -17431,7 +17579,7 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
   /* The page keeps clear of the taller shape, so the last row is never left
      under the bar. */
   html[data-nav-placement="bottom"].desktop-browser:not(.nav-bottom-collapsed)
-    .desktop-navigation-enabled {
+    .desktop-navigation-enabled:not(.discover-shell) {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
   }
 
@@ -22887,10 +23035,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   font-size: 14px;
   cursor: pointer;
 }
-.desktop-browser .settings-shell .settings-playback-tab[aria-selected="true"] {
-  background: var(--text-color);
-  color: var(--bg-color, #101010);
-}
 .desktop-browser .settings-shell .settings-playback-topic-heading {
   display: none;
 }
@@ -23292,6 +23436,11 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
     rgb(var(--secondary-color-rgb) / 0.09),
     rgb(var(--secondary-color-rgb) / 0.025));
   --settings-card-edge: rgb(var(--secondary-color-rgb) / 0.24);
+  --settings-list-surface: rgba(30, 30, 36, 0.86);
+  --settings-list-edge: rgba(255, 255, 255, 0.07);
+  --settings-list-divider: rgba(255, 255, 255, 0.06);
+  --settings-list-radius: 18px;
+  --settings-list-padding: 16px;
 }
 .desktop-browser .settings-shell .settings-group-card,
 .desktop-browser .settings-shell .settings-subsection-card,
@@ -23498,11 +23647,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   font: inherit;
   font-size: 14px;
   cursor: pointer;
-}
-.desktop-browser .settings-shell .settings-discovery-tab[aria-selected="true"] {
-  color: var(--text-color);
-  background: rgb(var(--secondary-color-rgb) / 0.14);
-  border-color: var(--settings-card-edge);
 }
 .desktop-browser .settings-shell .settings-discovery-count {
   min-width: 22px;
@@ -23791,7 +23935,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 .desktop-browser .settings-shell .settings-layout-content { max-width:1400px; width:100%; min-width:0; margin-inline:auto; }
 .desktop-browser .settings-shell .settings-layout-topic-tabs { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:16px; margin-bottom:24px; border-bottom:1px solid var(--settings-card-edge); }
 .desktop-browser .settings-shell .settings-layout-topic-tab { border:1px solid transparent; border-radius:12px; padding:12px 16px; background:transparent; color:var(--text-secondary); font:inherit; font-size:14px; cursor:pointer; }
-.desktop-browser .settings-shell .settings-layout-topic-tab[aria-selected="true"] { color:var(--text-color); background:rgb(var(--secondary-color-rgb) / .16); border-color:var(--settings-card-edge); }
 .desktop-browser .settings-shell .settings-layout-topic-heading { display:none; }
 .desktop-browser .settings-shell .settings-layout-topic-body[hidden] { display:none !important; }
 .desktop-browser .settings-shell .settings-layout-topic-body { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; align-items:start; }
@@ -23862,7 +24005,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 .desktop-browser .settings-shell .settings-integration-content { width:100%; max-width:1400px; min-width:0; margin-inline:auto; }
 .desktop-browser .settings-shell .settings-integration-services { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:28px; }
 .desktop-browser .settings-shell .settings-integration-service { display:flex; align-items:start; gap:12px; padding:18px 14px; min-width:0; border:1px solid var(--settings-card-edge); border-radius:16px; background:var(--settings-card-wash),var(--bg-elevated); color:var(--text-color); text-align:left; font:inherit; cursor:pointer; }
-.desktop-browser .settings-shell .settings-integration-service[aria-pressed="true"] { border-color:var(--secondary-color); background:linear-gradient(rgb(var(--secondary-color-rgb) / .14),rgb(var(--secondary-color-rgb) / .14)),var(--bg-elevated); }
 .desktop-browser .settings-shell .settings-integration-icon { display:grid; place-items:center; flex:0 0 34px; width:34px; height:34px; border-radius:10px; color:var(--secondary-color); background:rgb(var(--secondary-color-rgb) / .12); font-size:20px; }
 .desktop-browser .settings-shell .settings-integration-copy { min-width:0; flex:1; }
 .desktop-browser .settings-shell .settings-integration-name { display:block; font-size:14px; font-weight:600; }
@@ -24318,5 +24460,222 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   .desktop-browser #quickSetup .quick-setup-screen[data-setup-step="processing"] .quick-setup-body > .quick-setup-preview-note {
     grid-column: 1;
     grid-row: 4;
+  }
+}
+
+/* The index and section pages share grouped surfaces and row spacing. */
+.desktop-browser .settings-shell :is(
+  .settings-group-card, .settings-design-card, .settings-integration-group,
+  .settings-layout-live-preview, .settings-source-live-preview,
+  .media-server-card, .media-connections > section
+) {
+  border-color: var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body)
+  :is(.settings-group-card:has(> .settings-stack:only-child > .settings-action-row),
+    .settings-design-card:has(> .settings-stack)) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack:has(> .settings-action-row) {
+  --settings-list-gap: 12px;
+  gap: var(--settings-list-gap);
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row {
+  min-height: 60px;
+  min-width: 0;
+  padding: 12px var(--settings-list-padding);
+  border: 1px solid var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row:has(+ .settings-action-row) {
+  border-bottom: 0;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row + .settings-action-row {
+  margin-block-start: calc(-1 * var(--settings-list-gap));
+  border-top-color: var(--settings-list-divider);
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.desktop-browser .settings-shell :is(
+  .settings-group-heading .settings-group-title,
+  .settings-design-card:has(> .settings-stack) > h2
+) {
+  color: var(--text-tertiary, #808080);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row .settings-row-title {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row .settings-row-subtitle {
+  margin-block-start: 2px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.desktop-browser .settings-shell :is(.settings-row-value, .settings-dialog-option-label) {
+  overflow-wrap: anywhere;
+}
+
+.desktop-browser .settings-shell :is(.settings-dialog, .settings-text-dialog, .settings-p2p-consent-dialog, .media-connections dialog) {
+  border-color: var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--bg-elevated);
+}
+
+.desktop-browser .settings-shell .settings-dialog-list {
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--settings-list-edge);
+  border-radius: var(--settings-list-radius);
+  background: var(--settings-list-surface);
+}
+
+.desktop-browser .settings-shell .settings-dialog-list > .settings-dialog-option {
+  min-height: 48px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.desktop-browser .settings-shell .settings-dialog-list > .settings-dialog-option + .settings-dialog-option {
+  border-top: 1px solid var(--settings-list-divider);
+}
+
+.desktop-browser .settings-shell .settings-dialog-list > .settings-dialog-option.is-selected {
+  background: rgb(var(--secondary-color-rgb) / 0.16);
+}
+
+.desktop-browser .settings-shell :is(.settings-stack > .settings-action-row, .settings-dialog-list > .settings-dialog-option):focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: -3px;
+}
+
+.desktop-browser .settings-shell :is(
+  .settings-text-dialog-input, .settings-text-dialog-textarea,
+  .desktop-addon-input, .desktop-plugin-input, .desktop-collection-add-form input,
+  .media-connections input:not([type="hidden"])
+) {
+  border-color: var(--settings-list-edge);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, var(--text-color));
+  color: var(--text-color);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-browser .settings-shell :is(.settings-content, .settings-panel-body)
+    .settings-stack > .settings-action-row:not(.is-disabled):hover,
+  .desktop-browser .settings-shell .settings-dialog-list > .settings-dialog-option:hover {
+    background: var(--focus-bg);
+  }
+}
+
+@media (max-width: 1023px) {
+  .desktop-browser .settings-shell :is(.settings-discovery-topic, .settings-layout-topic, .settings-integration-topic, .settings-playback-topic),
+  .desktop-browser .settings-shell .settings-integration-topic:not(.is-open) {
+    margin-block-end: 10px;
+    border: 1px solid var(--settings-list-edge);
+    border-radius: var(--settings-list-radius);
+    background: var(--settings-list-surface);
+  }
+
+  .desktop-browser .settings-shell :is(.settings-discovery-topic, .settings-layout-topic, .settings-integration-topic, .settings-playback-topic).is-open {
+    border-color: rgb(var(--secondary-color-rgb) / 0.35);
+  }
+
+  .desktop-browser .settings-shell :is(.settings-layout-topic-heading, .settings-discovery-heading, .settings-integration-service-mobile, .settings-playback-topic-heading) {
+    min-height: 68px;
+    gap: 14px;
+    padding: 12px var(--settings-list-padding);
+  }
+
+  .desktop-browser .settings-shell :is(.settings-discovery-title, .settings-layout-topic-title, .settings-integration-name, .settings-playback-topic-title) {
+    font-size: 17px;
+    line-height: 1.25;
+  }
+
+  .desktop-browser .settings-shell :is(.settings-discovery-summary, .settings-layout-topic-summary, .settings-integration-summary, .settings-playback-topic-summary) {
+    margin-block-start: 2px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .desktop-browser .settings-shell .settings-playback-topic-panel {
+    padding-inline: var(--settings-list-padding);
+  }
+
+  .desktop-browser .settings-shell :is(.settings-content, .settings-panel-body) .settings-stack > .settings-action-row {
+    min-height: 68px;
+  }
+
+  .desktop-browser .settings-shell :is(.settings-text-dialog-input, .settings-text-dialog-textarea, .media-connections input:not([type="hidden"])) {
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-sidebar {
+    border-color: var(--settings-list-edge);
+    border-radius: var(--settings-list-radius);
+    background: var(--settings-list-surface);
+  }
+  .desktop-browser .settings-shell[data-settings-layout="panels"] .settings-playback-topic-panel > .settings-stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.desktop-browser .settings-shell :is(
+  [role="tab"][aria-selected="true"],
+  .settings-integration-service[aria-pressed="true"]
+) {
+  border-color: var(--secondary-color);
+  background: var(--secondary-color);
+  color: var(--on-secondary);
+}
+
+.desktop-browser .settings-shell :is(
+  [role="tab"][aria-selected="true"] .settings-discovery-count,
+  .settings-integration-service[aria-pressed="true"] .settings-integration-icon
+) {
+  background: transparent;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+}
+
+.desktop-browser .settings-shell .settings-integration-service[aria-pressed="true"] .settings-integration-summary {
+  color: inherit;
+}
+
+@media (max-width: 600px) {
+  html[data-layout] .desktop-browser .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header .settings-header-copy {
+    width: 100%;
+    align-items: center;
+  }
+  html[data-layout] .desktop-browser .settings-shell[data-settings-nav-mode="section"]
+    .settings-content-header :is(.settings-title, .settings-subtitle) {
+    margin-inline: auto;
+    text-align: center;
   }
 }

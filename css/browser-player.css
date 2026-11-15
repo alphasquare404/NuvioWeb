@@ -919,6 +919,18 @@
   min-width: 0;
   margin: 0;
   white-space: nowrap;
+  z-index: 2;
+  text-align: center;
+}
+.desktop-browser #player .nv-seek-preview canvas:not([hidden]) {
+  display: block;
+  width: min(160px, 42vw);
+  height: auto;
+  margin: 0 auto 4px;
+  border-radius: 4px;
+}
+.desktop-browser #player .nv-seek-preview canvas[hidden] {
+  display: none;
 }
 .desktop-browser #player #playerUiRoot.player-presentation .nv-portrait-summary {
   display: none;
@@ -1869,4 +1881,29 @@
     ) {
     cursor: not-allowed;
   }
+}
+
+.player-decode-picture {
+  pointer-events: none;
+  background: #000;
+}
+
+#videoPlayer.player-decode-source {
+  visibility: hidden;
+}
+
+.player-picture-subtitles .player-html-subtitle-default {
+  top: auto !important;
+  right: 5%;
+  bottom: 5%;
+  left: 5%;
+  align-items: center;
+  max-width: none;
+  text-align: center;
+  transform: translateY(var(--player-subtitle-offset));
+}
+
+.player-picture-subtitles .player-html-subtitle-line {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }

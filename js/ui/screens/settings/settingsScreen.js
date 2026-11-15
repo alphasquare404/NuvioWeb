@@ -1,4 +1,7 @@
-import { visibleAutoplayAddonSelection } from "./autoplayAddonSelection.js";
+import { renderAutoplaySources, bindAutoplaySources } from "./autoplaySourcesDialog.js";
+import { listAutoplayStreamAddons } from "./autoplayAddonSelection.js";
+import { bindMediaConnections, renderMediaConnections } from "./mediaConnectionsPanel.js";
+import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
 import { renderFilenamePlaybackMethodBadge } from "../../components/filenamePlaybackBadge.js";
 import { normalizeAccentColor, accentTextColor } from "../../../core/theme/accentColor.js";
 import {
@@ -34,6 +37,7 @@ import {
 } from "../../components/browserStreamSourceCard.js";
 import {
   filenameStreamFilter,
+  filenameStreamFilterKey,
   toggleFilenameStreamFilter,
   FILENAME_ESTIMATE_NOTICE,
   FILENAME_FILTER_NOTICE
@@ -64,7 +68,7 @@ import { CollectionsStore, buildCollectionHomeKey } from "../../../data/local/co
 import { ThemeStore } from "../../../data/local/themeStore.js";
 import { ThemeManager } from "../../theme/themeManager.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
-import { hasWebCodecs } from "../../../core/player/movi/moviCapability.js";
+import { canUseDecodePlayback } from "../../../core/player/mediabunnySettings.js";
 import {
   SUBTITLE_VERTICAL_OFFSET_DEFAULT,
   SUBTITLE_VERTICAL_OFFSET_MAX,
@@ -181,6 +185,7 @@ import {
 } from "../../components/sidebarNavigation.js";
 import {
   bindDesktopNavigationEvents,
+  deferUntilNavigationSearchIdle,
   renderDesktopNavigation,
   renderNavigationRevealButton
 } from "../../components/desktopNavigation.js";
@@ -963,6 +968,11 @@ const SECTION_META = [
     subtitleKey: "settings.sections.layout.subtitle"
   },
   {
+    id: "streams",
+    labelKey: "settings_stream_badges_section",
+    subtitleKey: "settings_stream_badges_description"
+  },
+  {
     id: "contentDiscovery",
     labelKey: "settings.sections.contentDiscovery.label",
     label: "Content & Discovery",
@@ -979,11 +989,6 @@ const SECTION_META = [
     id: "integration",
     labelKey: "settings.sections.integration.label",
     subtitleKey: "settings.sections.integration.subtitle"
-  },
-  {
-    id: "streams",
-    labelKey: "settings_stream_badges_section",
-    subtitleKey: "settings_stream_badges_description"
   },
   {
     id: "playback",
@@ -1020,13 +1025,13 @@ const SECTION_GROUPS = [
     key: "personalize",
     labelKey: "settings_group_personalize",
     fallback: "Personalize",
-    ids: ["profiles", "appearance", "layout"]
+    ids: ["profiles", "appearance", "layout", "streams"]
   },
   {
     key: "content",
     labelKey: "settings_group_content",
     fallback: "Content",
-    ids: ["contentDiscovery", "integration", "streams", "trakt"]
+    ids: ["contentDiscovery", "integration", "trakt"]
   },
   {
     key: "watching",
@@ -2481,52 +2486,6 @@ function isAppearanceThemeFocusKey(focusKey) {
   return String(focusKey || "").startsWith("appearance:theme:");
 }
 
-/**
- * Rows the movi engine ignores, and so must not be offered while it is the one
- * playing.
- *
- * Each of these is a real feature of the built-in player, not a mistake. But a
- * switch that cannot do anything is worse than a missing switch: it reads as a
- * broken feature rather than as the boundary of an engine.
- *
- * Module-level on purpose. `createScreenPrototype()` copies only functions from a
- * screen onto the section screens it derives, leaving data properties behind, so
- * a list kept on the object would be `undefined` the moment this screen is
- * rendered as a section — and the settings page would crash on its first row.
- */
-const MOVI_IGNORED_ROW_KEYS = [
-  // Player chrome and behaviour the movi route does not implement.
-  "playback:autoplay",
-  "playback:loadingOverlay",
-  "playback:loadingStatus",
-  "playback:pauseOverlay",
-  "playback:parentalGuide",
-  // The session belongs to the built-in player, which owns next-episode and
-  // still-watching prompts; the movi route ends when the file does.
-  "playback:nextEpisodeThresholdMode",
-  "playback:nextEpisodeThresholdValue",
-  "playback:stillWatching",
-  "playback:stillWatchingThreshold",
-  // Track selection: the route follows the profile's language and does not
-  // choose tracks by hand, so these have nothing to act on.
-  "playback:audioLanguage",
-  "playback:secondaryAudioLanguage",
-  "playback:secondarySubtitleLanguage",
-  "playback:useForcedSubtitles",
-  "playback:showOnlyPreferredSubtitleLanguages",
-  "playback:subtitleStartupMode",
-  "playback:renderMode",
-  // Subtitle appearance: the overlay draws with its own defaults for now, so
-  // these would be switches that change nothing.
-  "playback:subtitleSize",
-  "playback:subtitleOffset",
-  "playback:subtitleBold",
-  "playback:subtitleTextColor",
-  "playback:subtitleBackgroundColor",
-  "playback:subtitleOutline",
-  "playback:subtitleOutlineColor"
-];
-
 export const SettingsScreen = {
   usesSettingsPanels() {
     return Platform.isBrowser() && Boolean(globalThis.matchMedia?.(SETTINGS_PANELS_QUERY).matches);
@@ -2539,6 +2498,13 @@ export const SettingsScreen = {
       // Retained routes may still be mounted underneath the current page.
       // Only redraw this route; never navigate or change history on resize.
       if (this.container?.id !== Router.getCurrent?.()) return;
+      const usesPanels = this.usesSettingsPanels();
+      if (this.container.id === SETTINGS_ROUTE) {
+        this.activeSection = usesPanels
+          ? this.panelSection || readSettingsUiState().activeSection
+          : null;
+        this.focusZone = usesPanels ? "content" : "nav";
+      }
       this.suppressNextContentFocusScroll = true;
       this.suppressNextRailFocusScroll = true;
       void this.render({ refreshModel: false });
@@ -2562,7 +2528,7 @@ export const SettingsScreen = {
       return;
     }
     this.container.innerHTML = `
-      <div class="home-shell settings-shell${isDesktopSettingsBrowser() ? " desktop-navigation-enabled" : ""}">
+      <div class="home-shell settings-shell">
         <div class="settings-root-sidebar-slot" data-settings-root-sidebar></div>
         <div class="settings-workspace">
           <div class="settings-sidebar-frame">
@@ -2585,6 +2551,18 @@ export const SettingsScreen = {
     const routeName = Router.getCurrent?.() || SETTINGS_ROUTE;
     this.container = document.getElementById(routeName) || document.getElementById(SETTINGS_ROUTE);
     ScreenUtils.show(this.container);
+    this.mediaServerSettingsUnsubscribe ||= MediaConnectionsStore.subscribe(
+      ({ profileId, syncSource }) => {
+        if (
+          syncSource === "media-server-cloud" &&
+          String(profileId) === String(ProfileManager.getActiveProfileId()) &&
+          this.container?.id === Router.getCurrent?.() &&
+          this.presentedSectionId === "contentDiscovery"
+        ) {
+          void this.render({ refreshModel: false });
+        }
+      }
+    );
     // Two routes share this screen, so the listeners belong to the container,
     // not to this object: a page that mounted first had already marked the
     // click binding done, and the second page -- the section -- had no click
@@ -2629,7 +2607,7 @@ export const SettingsScreen = {
     // rail beside the content and remembers its section instead.
     const routeSection = readSettingsRouteSection(routeName, _params);
     this.activeSection = settingsUsesRoutePages()
-      ? routeSection
+      ? routeSection || (this.usesSettingsPanels() ? persistedUiState.activeSection : null)
       : persistedUiState.activeSection || this.activeSection || null;
     // The index page focuses the list; a section page has no list to focus, so
     // focus starts in the section it was opened for.
@@ -3179,17 +3157,17 @@ export const SettingsScreen = {
 
   renderSectionHeader(section) {
     const copy = translateSectionCopy(section);
-    // The section page is a route, so this control pops that route. It lives
-    // inside the heading so that on a wide screen it can sit in the bar, on the
-    // title's own line; on a phone it is pinned to the bar's edge instead.
-    const back = Platform.isBrowser()
-      ? `
+    const back =
+      Platform.isBrowser() &&
+      this.container?.id === SETTINGS_SECTION_ROUTE &&
+      !this.usesSettingsPanels()
+        ? `
       <button class="settings-section-back focusable" type="button" data-settings-back
               aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
         ${renderBackButtonIcon("round-back-icon settings-section-back-icon")}
       </button>
     `
-      : "";
+        : "";
     return `
       <header class="settings-content-header">
         ${back}
@@ -3207,22 +3185,6 @@ export const SettingsScreen = {
    * `browserExternalPlayer` stores "disabled" for "inside Nuvio", so this is the
    * one question the Play-with row and every external-only row below it ask.
    */
-  /**
-   * Should this row be left out because the movi engine cannot honour it?
-   *
-   * Reads the module-level list, never `this`: this method is copied onto the
-   * section screens by prototype, and anything kept in a data property would not
-   * travel with it.
-   */
-  rowHiddenForEngine(focusKey) {
-    if (!MOVI_IGNORED_ROW_KEYS.includes(String(focusKey || ""))) return false;
-    if (!hasWebCodecs()) return false;
-    const settings = PlayerSettingsStore.get();
-    if (String(settings.playerEngine || "") !== "movi") return false;
-    // Handing playback to another app means no engine of ours plays at all.
-    return normalizeBrowserExternalPlayer(settings.browserExternalPlayer) === "disabled";
-  },
-
   playWithUsesExternal(model = {}) {
     const player = normalizeBrowserExternalPlayer(model.player?.browserExternalPlayer);
     return player !== "disabled" && getBrowserExternalPlayerOptions().includes(player);
@@ -3241,7 +3203,6 @@ export const SettingsScreen = {
     disabled = false,
     planned = false
   }) {
-    if (this.rowHiddenForEngine(focusKey)) return "";
     const inert = disabled || planned;
     // An unknown icon name used to crash the whole section: `ROW_ICONS[name]` was
     // undefined and the renderer tried to draw it. Fall back to the chevron instead.
@@ -3279,7 +3240,6 @@ export const SettingsScreen = {
     disabled = false,
     planned = false
   }) {
-    if (this.rowHiddenForEngine(focusKey)) return "";
     const inert = disabled || planned;
     return `
       <button class="settings-action-row settings-toggle-row settings-content-focusable focusable${inert ? " is-disabled" : ""}${planned ? " is-planned" : ""}"
@@ -3606,7 +3566,7 @@ export const SettingsScreen = {
                       : useMultiRenderer
                         ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span><span class="settings-language-option-check" aria-hidden="true">${isSelected ? "&#10003;" : ""}</span>`
                         : useSingleChoiceRenderer
-                          ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>${isSelected ? '<span class="settings-single-choice-option-check" aria-hidden="true">&#10003;</span>' : ""}`
+                          ? `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}${option.secondary ? `<small class="settings-single-choice-subtitle">${escapeHtml(option.secondary)}</small>` : ""}</span>${isSelected ? '<span class="settings-single-choice-option-check" aria-hidden="true">&#10003;</span>' : ""}`
                           : `<span class="settings-dialog-option-label">${escapeHtml(translateOptionLabel(option))}</span>`
                 }
               </button>
@@ -5830,11 +5790,23 @@ export const SettingsScreen = {
     const titles = {
       addons: t("addon_title", {}, "Addons"),
       plugins: t("plugin_title", {}, "Plugins"),
-      collections: t("settings_discovery_collections", {}, "Collections")
+      collections: t("settings_discovery_collections", {}, "Collections"),
+      mediaConnections: t("media_connections_title", {}, "Servers")
     };
-    const icons = { addons: "view_module", plugins: "extension", collections: "folder" };
+    const icons = {
+      addons: "view_module",
+      plugins: "extension",
+      collections: "folder",
+      mediaConnections: "dns"
+    };
+    const { servers, seerr } = MediaConnectionsStore.get();
     const counts = Object.fromEntries(
-      topics.map((id) => [id, this.contentDiscoveryManager(id)?.count || 0])
+      topics.map((id) => [
+        id,
+        id === "mediaConnections"
+          ? servers.length + Number(Boolean(seerr))
+          : this.contentDiscoveryManager(id)?.count || 0
+      ])
     );
     const summary = (id) =>
       t(
@@ -5857,7 +5829,7 @@ export const SettingsScreen = {
         <button type="button" class="settings-discovery-heading settings-content-focusable focusable" id="${prefix}-heading-${id}" aria-controls="${prefix}-body-${id}" aria-expanded="${active === id}" data-zone="content" data-role="section-toggle" ${this.registerAction(key, this.actionMap.get(key))}>
           <span class="settings-discovery-icon material-icons" aria-hidden="true">${icons[id]}</span><span class="settings-discovery-copy"><span class="settings-discovery-title">${escapeHtml(titles[id])}</span><span class="settings-discovery-summary">${escapeHtml(summary(id))}</span></span><span class="settings-discovery-chevron" aria-hidden="true">${iconSvg(ROW_ICONS.expand, "settings-row-icon")}</span>
         </button>
-        <div class="settings-discovery-body" id="${prefix}-body-${id}" role="${wide ? "tabpanel" : "region"}" aria-labelledby="${prefix}-${wide ? "tab" : "heading"}-${id}"${active === id ? "" : " hidden"}>${active === id ? this.contentDiscoveryManager(id)?.render() || "" : ""}</div>
+        <div class="settings-discovery-body" id="${prefix}-body-${id}" role="${wide ? "tabpanel" : "region"}" aria-labelledby="${prefix}-${wide ? "tab" : "heading"}-${id}"${active === id ? "" : " hidden"}>${active === id ? (id === "mediaConnections" ? renderMediaConnections(t) : this.contentDiscoveryManager(id)?.render() || "") : ""}</div>
       </section>`;
       })
       .join("");
@@ -7622,7 +7594,15 @@ export const SettingsScreen = {
 
   renderSettingsStreamPreview(model, applyFilter = false) {
     if (!Platform.isBrowser()) return "";
-    const examples = settingsStreamPreviewSources(applyFilter ? model.player : {});
+    const examples = settingsStreamPreviewSources(
+      applyFilter
+        ? model.player
+        : {
+            ...model.player,
+            filenameStreamFilter: ["all"],
+            decodeStreamFilter: ["all"]
+          }
+    );
     const badgeSettings = StreamBadgeSettingsStore.snapshot();
     const renderExample = (source) => {
       const display = normalizeSourceForDisplay(source, {
@@ -8068,24 +8048,9 @@ export const SettingsScreen = {
         }
       });
     });
-    this.actionMap.set("playback:autoStreamAddons", async () => {
-      const addons = await addonRepository.getInstalledAddons().catch(() => []);
-      const options = addons
-        .map((addon) => String(addon?.displayName || addon?.name || "").trim())
-        .filter(Boolean)
-        .map((name) => ({ id: name, label: name }));
-      this.openMultiChoiceDialog({
-        title: t("autoplay_allowed_addons", {}, "Allowed Addons"),
-        options,
-        selectedIds: PlayerSettingsStore.get().streamAutoPlaySelectedAddons,
-        returnFocusKey: "playback:autoStreamAddons",
-        onToggle: (selectedIds) =>
-          PlayerSettingsStore.set({
-            streamAutoPlaySelectedAddons: visibleAutoplayAddonSelection(selectedIds, options)
-          })
-      });
-    });
-    this.actionMap.set("playback:autoStreamPlugins", () => {
+    this.actionMap.set("playback:autoStreamSources", () => {
+      const scope = ProfileManager.getActiveProfileId();
+      const addons = addonRepository.getConfiguredAddons();
       const repositories = PluginManager.repositories;
       const pluginNames = repositories
         .listRepositories()
@@ -8096,18 +8061,32 @@ export const SettingsScreen = {
             .filter((scraper) => scraper.enabled !== false);
           return repositories.groupStreamsByRepository && names.length ? [repo] : names;
         });
-      const options = [...PluginManager.listPluginSources(), ...pluginNames]
+      const plugins = [...PluginManager.listPluginSources(), ...pluginNames]
         .filter((source) => source?.enabled !== false)
         .map((source) => String(source?.name || "").trim())
-        .filter(Boolean)
-        .map((name) => ({ id: name, label: name }));
-      this.openMultiChoiceDialog({
-        title: t("autoplay_allowed_plugins", {}, "Allowed Plugins"),
-        options,
-        selectedIds: PlayerSettingsStore.get().streamAutoPlaySelectedPlugins,
-        returnFocusKey: "playback:autoStreamPlugins",
-        onToggle: (selectedIds) =>
-          PlayerSettingsStore.set({ streamAutoPlaySelectedPlugins: selectedIds })
+        .filter(Boolean);
+      const sources = {
+        addons: listAutoplayStreamAddons(addons),
+        plugins,
+        servers: MediaConnectionsStore.get().servers.map((server) => ({
+          id: server.id,
+          label: server.name
+        }))
+      };
+      const settings = PlayerSettingsStore.get();
+      this.openOptionDialog({
+        title: t("autoplay_allowed_sources", {}, "Allowed Sources"),
+        messageHtml: renderAutoplaySources(sources, settings, t),
+        dialogClassName: "settings-autoplay-sources-dialog",
+        options: [{ id: "done", label: t("collections_editor_done", {}, "Done") }],
+        returnFocusKey: "playback:autoStreamSources",
+        onRender: (slot) =>
+          bindAutoplaySources(slot, {
+            read: () => PlayerSettingsStore.get(),
+            save: (changes) => {
+              if (scope === ProfileManager.getActiveProfileId()) PlayerSettingsStore.set(changes);
+            }
+          })
       });
     });
     this.actionMap.set("playback:audioLanguage", () => {
@@ -8794,43 +8773,15 @@ export const SettingsScreen = {
             "All sources"
           )
         })}
-        ${
-          String(model.player.streamAutoPlaySource || "ALL_SOURCES") !== "ENABLED_PLUGINS_ONLY"
-            ? this.renderActionRow({
-                focusKey: "playback:autoStreamAddons",
-                title: t("autoplay_allowed_addons", {}, "Allowed Addons"),
-                subtitle: t(
-                  "autoplay_scope_addons_desc",
-                  {},
-                  "Auto-play only considers selected installed addons."
-                ),
-                value: model.player.streamAutoPlaySelectedAddons?.length
-                  ? String(
-                      visibleAutoplayAddonSelection(
-                        model.player.streamAutoPlaySelectedAddons,
-                        model.addons
-                      ).length
-                    )
-                  : t("autoplay_all_addons", {}, "All installed addons")
-              })
-            : ""
-        }
-        ${
-          String(model.player.streamAutoPlaySource || "ALL_SOURCES") !== "INSTALLED_ADDONS_ONLY"
-            ? this.renderActionRow({
-                focusKey: "playback:autoStreamPlugins",
-                title: t("autoplay_allowed_plugins", {}, "Allowed Plugins"),
-                subtitle: t(
-                  "autoplay_scope_plugins_desc",
-                  {},
-                  "Auto-play only considers selected enabled plugins."
-                ),
-                value: model.player.streamAutoPlaySelectedPlugins?.length
-                  ? String(model.player.streamAutoPlaySelectedPlugins.length)
-                  : t("autoplay_all_plugins", {}, "All enabled plugins")
-              })
-            : ""
-        }`
+        ${this.renderActionRow({
+          focusKey: "playback:autoStreamSources",
+          title: t("autoplay_allowed_sources", {}, "Allowed Sources"),
+          subtitle: t(
+            "autoplay_source_priority_hint",
+            {},
+            "Drag groups to set priority. Switch individual sources on or off."
+          )
+        })}`
             : ""
         }
         ${
@@ -8877,22 +8828,73 @@ export const SettingsScreen = {
       })
     );
     const filenameFilterTitle = t("quick_setup_filter", {}, "Stream filter");
-    this.actionMap.set("playback:filenameStreamFilter", () =>
+    this.actionMap.set("playback:filenameStreamFilter", () => {
+      const settings = PlayerSettingsStore.get();
       this.openMultiChoiceDialog({
         title: filenameFilterTitle,
-        options: filenameStreamFilterOptions(t),
-        selectedIds: filenameStreamFilter(PlayerSettingsStore.get()),
+        options: filenameStreamFilterOptions(t, settings),
+        selectedIds: filenameStreamFilter(settings),
         returnFocusKey: "playback:filenameStreamFilter",
         onToggle: (_selectedIds, option) => {
-          const current = filenameStreamFilter(PlayerSettingsStore.get());
-          const selection = toggleFilenameStreamFilter(current, option.id);
+          const currentSettings = PlayerSettingsStore.get();
+          const current = filenameStreamFilter(currentSettings);
+          const selection = toggleFilenameStreamFilter(current, option.id, currentSettings);
           if (selection.join() !== current.join())
-            PlayerSettingsStore.set({ filenameStreamFilter: selection });
+            PlayerSettingsStore.set({ [filenameStreamFilterKey(currentSettings)]: selection });
           this.optionDialog.selectedIds = new Set(selection);
+        }
+      });
+    });
+    const mediabunnyModes = [
+      {
+        id: "decode",
+        label: t("player_decode_only", {}, "Decode Only"),
+        secondary: t("settings_decode_only_subtitle", {}, "Lighter · Audio may drift"),
+        disabled: !canUseDecodePlayback()
+      },
+      {
+        id: "process",
+        label: t("player_remux_transcode", {}, "Remux & Transcode"),
+        secondary: t("settings_remux_transcode_subtitle", {}, "More processing · Better sync")
+      }
+    ];
+    const activeMediabunnyMode = mediabunnyModes.find(
+      ({ id }) => id === model.player.mediabunnyMode
+    );
+    this.actionMap.set("playback:mediabunnyEnabled", () =>
+      PlayerSettingsStore.set({
+        mediabunnyEnabled: PlayerSettingsStore.get().mediabunnyEnabled === false
+      })
+    );
+    this.actionMap.set("playback:mediabunnyMode", () =>
+      this.openOptionDialog({
+        title: "Mediabunny",
+        options: mediabunnyModes,
+        optionRenderer: "single-choice",
+        selectedId: PlayerSettingsStore.get().mediabunnyMode,
+        returnFocusKey: "playback:mediabunnyMode",
+        onSelect: (option) => {
+          if (!option.disabled) PlayerSettingsStore.set({ mediabunnyMode: option.id });
         }
       })
     );
+    const mediabunnyRows = Platform.isBrowser()
+      ? `
+      ${this.renderToggleRow({ focusKey: "playback:mediabunnyEnabled", title: "Mediabunny", subtitle: "Process compatible streams on this device.", checked: model.player.mediabunnyEnabled !== false })}
+      ${
+        model.player.mediabunnyEnabled !== false
+          ? this.renderActionRow({
+              focusKey: "playback:mediabunnyMode",
+              title: "Playback mode",
+              subtitle: activeMediabunnyMode?.secondary,
+              value: activeMediabunnyMode?.label
+            })
+          : ""
+      }
+    `
+      : "";
     const audioBody = `
+      ${mediabunnyRows}
       <div class="settings-audio-language-group">${isDesktopBrowser ? `<div class="settings-group-heading"><div class="settings-group-title">${escapeHtml(t("settings_audio_languages", {}, "Audio languages"))}</div></div>` : ""}
         ${this.renderActionRow({
           focusKey: "playback:audioLanguage",
@@ -10556,6 +10558,12 @@ export const SettingsScreen = {
     if (refreshModel || !this.model) {
       this.model = await this.collectModel();
     }
+    if (
+      deferUntilNavigationSearchIdle(this.container, () => {
+        if (this.container?.id === Router.getCurrent()) void this.render({ refreshModel: false });
+      })
+    )
+      return;
     this.layoutPrefs = this.model.layout;
     this.sidebarExpanded = Boolean(this.layoutPrefs?.modernSidebar && this.sidebarExpanded);
     this.visibleSections = getVisibleSections(this.model);
@@ -10572,10 +10580,11 @@ export const SettingsScreen = {
     const usesPanels = this.usesSettingsPanels();
     if (
       !this.visibleSections.some((section) => section.id === this.activeSection) &&
-      !(usesRoutePages && this.activeSection === null)
+      !(usesRoutePages && !usesPanels && this.activeSection === null)
     ) {
       this.setActiveSection(this.visibleSections[0]?.id || "appearance");
     }
+    if (usesPanels) this.panelSection = this.activeSection;
     this.navIndex = clamp(
       Number.isFinite(this.navIndex)
         ? this.navIndex
@@ -10595,15 +10604,17 @@ export const SettingsScreen = {
     this.bindSettingsPanelLayout();
 
     const shell = this.container.querySelector(".settings-shell");
+    const isDesktopBrowser = Platform.isBrowser();
+    const showDesktopNavigation =
+      isDesktopBrowser && (usesPanels || this.container.id !== SETTINGS_SECTION_ROUTE);
     if (shell) {
+      shell.classList.toggle("desktop-navigation-enabled", showDesktopNavigation);
       shell.dataset.settingsLayout = usesPanels ? "panels" : "pages";
       shell.dataset.settingsStyle = String(
         this.model.theme.settingsUiStyle || "CLASSIC"
       ).toLowerCase();
-      // "index" shows the sections as a page and hides the content; "section"
-      // does the reverse. Absent entirely when the rail and the content sit
-      // side by side, which is a television.
-      if (usesRoutePages) {
+      // The mode controls which half is visible in the single-column layout.
+      if (usesRoutePages && !usesPanels) {
         shell.dataset.settingsNavMode = this.activeSection === null ? "index" : "section";
       } else {
         delete shell.dataset.settingsNavMode;
@@ -10619,22 +10630,24 @@ export const SettingsScreen = {
     const contentSlot = this.container.querySelector("[data-settings-content]");
     const dialogSlot = this.container.querySelector("[data-settings-dialog]");
 
-    const isDesktopBrowser = Platform.isBrowser();
     // The index gets a second trigger inside its heading for the top-right
     // corner. The root slot keeps its own so the bottom corners never live
     // inside a heading whose glass would become their containing block.
-    const rootSidebarHtml = isDesktopBrowser
-      ? renderDesktopNavigation({
-          selectedRoute: "settings",
-          profile: this.sidebarProfile
-        })
-      : renderRootSidebar({
-          selectedRoute: "settings",
-          profile: this.sidebarProfile,
-          layout: this.layoutPrefs,
-          expanded: Boolean(this.sidebarExpanded),
-          pillIconOnly: Boolean(this.pillIconOnly)
-        });
+    let rootSidebarHtml = "";
+    if (showDesktopNavigation) {
+      rootSidebarHtml = renderDesktopNavigation({
+        selectedRoute: "settings",
+        profile: this.sidebarProfile
+      });
+    } else if (!isDesktopBrowser) {
+      rootSidebarHtml = renderRootSidebar({
+        selectedRoute: "settings",
+        profile: this.sidebarProfile,
+        layout: this.layoutPrefs,
+        expanded: Boolean(this.sidebarExpanded),
+        pillIconOnly: Boolean(this.pillIconOnly)
+      });
+    }
     if (rootSidebarSlot && rootSidebarSlot.innerHTML !== rootSidebarHtml) {
       rootSidebarSlot.innerHTML = rootSidebarHtml;
     }
@@ -10718,18 +10731,22 @@ export const SettingsScreen = {
       this.desktopHomeCatalogManager.bind(contentSlot);
     }
 
+    if (section.id === "contentDiscovery") {
+      bindMediaConnections(contentSlot, () => this.render({ refreshModel: false }), t);
+    }
     const dialogHtml = this.optionDialog ? this.renderOptionDialog() : this.renderTextDialog();
-    if (dialogSlot && dialogSlot.innerHTML !== dialogHtml) {
+    if (dialogSlot && dialogSlot._settingsDialogMarkup !== dialogHtml) {
       dialogSlot.innerHTML = dialogHtml;
+      dialogSlot._settingsDialogMarkup = dialogHtml;
     }
     if (dialogSlot && typeof this.optionDialog?.onRender === "function") {
       this.optionDialog.onRender(dialogSlot);
     }
     this.bindTextDialogEvents();
 
-    if (isDesktopBrowser) {
+    if (showDesktopNavigation) {
       bindDesktopNavigationEvents(this.container);
-    } else {
+    } else if (!isDesktopBrowser) {
       bindRootSidebarEvents(this.container, {
         currentRoute: "settings",
         onSelectedAction: () => this.closeSidebarToNav(),
@@ -10922,9 +10939,9 @@ export const SettingsScreen = {
     if (!section) {
       return;
     }
-    // The browser opens the section's own page -- the same shape Search has
-    // when it opens Discover -- so Back is a route pop and not a handler here.
-    if (settingsUsesRoutePages()) {
+    // On a narrow browser the section replaces the index. In panels the
+    // section belongs to the current page, beside the rail.
+    if (settingsUsesRoutePages() && !this.usesSettingsPanels()) {
       this.activeSection = id;
       this.integrationView = "hub";
       this.contentFocusKey = id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
@@ -10932,19 +10949,14 @@ export const SettingsScreen = {
       await Router.navigate(SETTINGS_SECTION_ROUTE, { section: id });
       return;
     }
-    if (id === "trakt") {
-      if (isDesktopSettingsBrowser()) {
-        this.setActiveSection("trakt");
-        await this.render();
-      } else {
-        await Router.navigate("settingsSection", { section: "trakt" });
-      }
+    if (id === "trakt" && !isDesktopSettingsBrowser()) {
+      await Router.navigate("settingsSection", { section: "trakt" });
       return;
     }
     this.setActiveSection(id);
     this.integrationView = "hub";
     this.contentFocusKey = id === "appearance" ? this.getAppearanceThemeFocusKey() : null;
-    await this.render({ refreshModel: false });
+    await this.render({ refreshModel: id === "trakt" });
   },
 
   async activateNavSelection() {
@@ -11306,6 +11318,13 @@ export const SettingsScreen = {
   },
 
   async onKeyDown(event) {
+    if (event?.target?.closest?.("[data-media-type-dialog]")) return;
+    if (
+      event?.target?.closest?.("[data-media-connections]") &&
+      event.target.matches("input, select, button, summary") &&
+      !Platform.isBackEvent(event)
+    )
+      return;
     if (
       event?.target?.matches?.("[data-layout-range], [data-appearance-color]") &&
       !Platform.isBackEvent(event)
@@ -11630,6 +11649,8 @@ export const SettingsScreen = {
   cleanup() {
     this.persistUiState();
     this.unbindHeaderCollapse();
+    this.mediaServerSettingsUnsubscribe?.();
+    this.mediaServerSettingsUnsubscribe = null;
     this.settingsPanelLayoutQuery?.removeEventListener?.("change", this.settingsPanelLayoutChanged);
     this.settingsPanelLayoutQuery = null;
     this.settingsPanelLayoutChanged = null;

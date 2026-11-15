@@ -338,3 +338,32 @@ test("a device change during an in-flight assessment cannot return an old predic
   assert.equal((await pending).video, false);
   assert.equal(videoQueries, 2);
 });
+test("a browser with WebM MSE support can copy video when MP4 is rejected", async () => {
+  const { classifyPlayback } = await import("./playbackMethod.js");
+  const probe = {
+    container: "mkv",
+    codecString: "vp09.00.10.08",
+    videoCodec: "vp9",
+    audioCodec: "opus",
+    audioStreams: [{ index: 0, codec: "opus" }]
+  };
+  const scope = {
+    MediaSource: { isTypeSupported: (mime) => mime.startsWith("video/webm") }
+  };
+  const mediaElement = { canPlayType: () => "" };
+  for (const [audioCodec, method] of [
+    ["opus", "remux"],
+    ["dts", "audio-transcode"]
+  ]) {
+    const source = { ...probe, audioCodec, audioStreams: [{ index: 0, codec: audioCodec }] };
+    source.playbackCapabilities = await assessPlaybackCapabilities(source, { scope, mediaElement });
+    assert.equal(
+      classifyPlayback({ probe: source, clientRemux: true, clientTranscode: true }).method,
+      method
+    );
+    assert.equal(
+      classifyPlayback({ probe: source, clientRemux: false, clientTranscode: false }).method,
+      "transcode"
+    );
+  }
+});

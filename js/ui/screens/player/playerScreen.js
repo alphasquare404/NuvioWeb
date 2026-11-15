@@ -1,3 +1,14 @@
+import { reportMediaServerProgress } from "../../../core/media/mediaConnections.js";
+import {
+  rememberableStreamCandidate,
+  rememberedAttemptKey,
+  selectRememberedRetry
+} from "../../../core/streams/streamReusePreference.js";
+import { clientMediaUrlResolver } from "../../../core/streams/clientMediaUrlResolver.js";
+import { resolveMediaHead } from "../../../core/player/mediaHeadResolver.js";
+import { shouldRouteToDecodePlayback } from "../../../core/player/mediabunnySettings.js";
+import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioContext.js";
+import { normalizeTrackLanguageCode } from "../../../core/player/trackLanguage.js";
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
@@ -18,6 +29,7 @@ import {
   prepareUnverifiedRemux
 } from "../../../core/player/unverifiedPlayback.js";
 import { clientRemuxPlan, clientRemuxAssets } from "../../../core/player/remuxClient.js";
+import { createSeekThumbnails } from "../../../core/player/seekThumbnails.js";
 import {
   relayTrackContext,
   relayAudioUrl,
@@ -264,108 +276,6 @@ const AUDIO_TRACK_LANGUAGE_KEY_BY_CODE = {
 // the ISO 639-1 / app language ids, so subtitle and audio tracks labelled
 // with 3-letter codes (common from OpenSubtitles) match
 // the preferred language and show the right language name.
-const LANGUAGE_CODE_ALIASES = {
-  afr: "af",
-  alb: "sq",
-  amh: "am",
-  ara: "ar",
-  arm: "hy",
-  aze: "az",
-  baq: "eu",
-  bel: "be",
-  ben: "bn",
-  bos: "bs",
-  br: "pt-br",
-  bul: "bg",
-  bur: "my",
-  cat: "ca",
-  ces: "cs",
-  chi: "zh",
-  cym: "cy",
-  cze: "cs",
-  dan: "da",
-  deu: "de",
-  dut: "nl",
-  ell: "el",
-  eng: "en",
-  est: "et",
-  eus: "eu",
-  fas: "fa",
-  fil: "tl",
-  fin: "fi",
-  fra: "fr",
-  fre: "fr",
-  geo: "ka",
-  ger: "de",
-  gle: "ga",
-  glg: "gl",
-  gre: "el",
-  guj: "gu",
-  heb: "he",
-  hin: "hi",
-  hrv: "hr",
-  hun: "hu",
-  hye: "hy",
-  ice: "is",
-  in: "id",
-  ind: "id",
-  isl: "is",
-  ita: "it",
-  iw: "he",
-  jpn: "ja",
-  kan: "kn",
-  kat: "ka",
-  kaz: "kk",
-  khm: "km",
-  kor: "ko",
-  lao: "lo",
-  lav: "lv",
-  lit: "lt",
-  mac: "mk",
-  mal: "ml",
-  mar: "mr",
-  may: "ms",
-  mkd: "mk",
-  mlt: "mt",
-  mon: "mn",
-  msa: "ms",
-  mya: "my",
-  nep: "ne",
-  nld: "nl",
-  nor: "no",
-  pan: "pa",
-  pb: "pt-br",
-  per: "fa",
-  pob: "pt-br",
-  pol: "pl",
-  por: "pt",
-  ptb: "pt-br",
-  ron: "ro",
-  rum: "ro",
-  rus: "ru",
-  sin: "si",
-  slk: "sk",
-  slo: "sk",
-  slv: "sl",
-  spa: "es",
-  sqi: "sq",
-  srp: "sr",
-  swa: "sw",
-  swe: "sv",
-  tam: "ta",
-  tel: "te",
-  tgl: "tl",
-  tha: "th",
-  tur: "tr",
-  ukr: "uk",
-  und: "",
-  urd: "ur",
-  uzb: "uz",
-  vie: "vi",
-  wel: "cy",
-  zho: "zh",
-  zul: "zu"
-};
 const LANGUAGE_NAME_ALIASES = {
   arabic: "ar",
   arabo: "ar",
@@ -660,22 +570,6 @@ function getAudioTrackSupportState(_track = {}) {
     supported: true,
     unsupportedReason: null
   };
-}
-
-function normalizeTrackLanguageCode(value) {
-  const raw = cleanDisplayText(value).toLowerCase();
-  if (!raw || raw === "unknown") {
-    return "";
-  }
-  if (!/^[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*$/i.test(raw)) {
-    return "";
-  }
-  const parts = raw.split(/[-_]/);
-  const base = LANGUAGE_CODE_ALIASES[parts[0]] ?? parts[0];
-  if (!base) {
-    return "";
-  }
-  return [base, ...parts.slice(1)].join("-");
 }
 
 function resolveRouteContentLanguage(params = {}) {
@@ -2159,6 +2053,16 @@ export const PlayerScreen = {
   ...BrowserOfflineDownloadOptions,
   ...BrowserPlayerPresentationScreen,
   async mount(params = {}) {
+    const initialServer = params.streamCandidates?.find(
+      (candidate) => candidate.id === params.preferredStreamId || candidate.url === params.streamUrl
+    )?.clientResolve?.mediaServer;
+    if (
+      initialServer?.resumePositionMs > 0 &&
+      !params.resumePositionMs &&
+      !params.startFromBeginning
+    ) {
+      params = { ...params, resumePositionMs: initialServer.resumePositionMs };
+    }
     this.container = document.getElementById("player");
     this.unbindDesktopPlayerPointerBridge();
     this.container.style.display = "block";
@@ -2180,6 +2084,7 @@ export const PlayerScreen = {
     this._selectedSourceProber?.cancelAll();
     this._selectedSourceAbort = null;
     this._startupSourceFailures = new Set();
+    this._reuseFailedAttempts = new Set();
     this._startupSourceAdvancing = false;
     this._preparingSelectedSource = false;
     this._startupDiscoveryCompleted = false;
@@ -2561,8 +2466,9 @@ export const PlayerScreen = {
       const allowPlaybackDuringStartupAudioGate = shouldAllowPlaybackDuringStartupAudioGate({
         isHlsPlayback: this.isCurrentSourceLikelyHls(initialStreamUrl, sourceCandidate),
         isClientRemuxPlayback:
-          this.params?.playbackPlan?.route === "client" &&
-          this.params.playbackPlan.sourceUrl === initialStreamUrl
+          this.wantsDecodePlayback?.(initialStreamUrl) ||
+          (this.params?.playbackPlan?.route === "client" &&
+            this.params.playbackPlan.sourceUrl === initialStreamUrl)
       });
       this.enableStartupAudioGate({
         allowPlayback: allowPlaybackDuringStartupAudioGate
@@ -2709,7 +2615,12 @@ export const PlayerScreen = {
   rememberSelectedStreamPreference(streamCandidate) {
     const prefContentId = String(this.params?.itemId || "").trim();
     const prefVideoId = String(this.params?.videoId || this.params?.itemId || "").trim();
-    if (this.offlineDownloadId || !streamCandidate?.id || !prefContentId) {
+    if (
+      this.offlineDownloadId ||
+      !streamCandidate?.id ||
+      !prefContentId ||
+      (streamCandidate.clientResolve || streamCandidate.raw?.clientResolve)?.mediaServer
+    ) {
       return;
     }
     StreamPreferencesStore.set(prefContentId, prefVideoId, streamCandidate.id, {
@@ -2718,7 +2629,10 @@ export const PlayerScreen = {
         streamCandidate?.behaviorHints?.bingeGroup ||
         streamCandidate?.raw?.behaviorHints?.bingeGroup ||
         "",
-      resumeIdentity: buildStreamResumeIdentity(streamCandidate)
+      resumeIdentity: buildStreamResumeIdentity(streamCandidate),
+      candidate: PlayerSettingsStore.get().streamReuseLastLinkEnabled
+        ? rememberableStreamCandidate(streamCandidate)
+        : null
     });
   },
 
@@ -4199,6 +4113,19 @@ export const PlayerScreen = {
         assetBase,
         version,
         requestHeaders: this.getCurrentStreamRequestHeaders(candidate),
+        resolveHead: (target, signal) =>
+          resolveMediaHead(
+            target,
+            new URL(target).origin === new URL(url).origin
+              ? this.getCurrentStreamRequestHeaders(candidate)
+              : {},
+            signal
+          ),
+        resolveSource: async (target, signal) => {
+          if (!clientMediaUrlResolver.canUseHost(target)) return null;
+          const result = await clientMediaUrlResolver.resolve(target, { signal, skipDirect: true });
+          return result.ok ? result.url : null;
+        },
         getTime: () => this.getPlaybackCurrentSeconds(),
         onTracks: () => {
           if (active()) this.refreshTrackDialogs();
@@ -4564,6 +4491,9 @@ export const PlayerScreen = {
       onStatus: refresh,
       onCues: () => {
         if (active()) this.refreshSubtitleCueStyles();
+      },
+      onDecodedCues: (cues) => {
+        if (active()) this.showPlaybackSubtitleCues(cues);
       },
       makeTransport: () => createRelaySubtitleTransport(context)
     });
@@ -5556,21 +5486,25 @@ export const PlayerScreen = {
     }
 
     this.boundDesktopPlayerPointerMoveHandler = (event) => {
-      this.updateProgressHover(event);
       const activePointer = this.desktopProgressPointer;
       if (activePointer && Number(event.pointerId) === Number(activePointer.pointerId)) {
+        this.updateProgressHover(event);
         const deltaX = playerLocalPoint(event, this.browserOrientation).x - activePointer.startX;
         const deltaY = playerLocalPoint(event, this.browserOrientation).y - activePointer.startY;
         if (!activePointer.dragging && Math.hypot(deltaX, deltaY) > 2) {
           activePointer.dragging = true;
         }
-        if (activePointer.dragging) {
+        if (activePointer.touch) {
+          event.preventDefault?.();
+          this.updateUiTick();
+        } else if (activePointer.dragging) {
           event.preventDefault?.();
           this.seekProgressFromPointer(event, activePointer.shell);
         }
         return;
       }
 
+      this.updateProgressHover(event);
       this.revealDesktopPlayerControls();
     };
 
@@ -5591,6 +5525,7 @@ export const PlayerScreen = {
         startX: playerLocalPoint(event, this.browserOrientation).x,
         startY: playerLocalPoint(event, this.browserOrientation).y,
         shell,
+        touch: event.pointerType === "touch" || event.pointerType === "pen",
         dragging: false
       };
       try {
@@ -5599,6 +5534,11 @@ export const PlayerScreen = {
         // Pointer capture is best effort; a click still follows the existing path.
       }
       this.revealDesktopPlayerControls();
+      if (this.desktopProgressPointer.touch) {
+        this.clearControlsAutoHide();
+        this.updateProgressHover(event);
+        this.updateUiTick();
+      }
     };
 
     const finishProgressPointer = (event, { cancelled = false } = {}) => {
@@ -5606,7 +5546,7 @@ export const PlayerScreen = {
       if (!activePointer || Number(event.pointerId) !== Number(activePointer.pointerId)) {
         return;
       }
-      if (activePointer.dragging && !cancelled) {
+      if ((activePointer.touch || activePointer.dragging) && !cancelled) {
         event.preventDefault?.();
         this.seekProgressFromPointer(event, activePointer.shell);
         // Only the native click emitted by this completed drag is ignored. A
@@ -5626,6 +5566,11 @@ export const PlayerScreen = {
         // Capture may already have been released by the browser.
       }
       this.desktopProgressPointer = null;
+      if (activePointer.touch || cancelled) {
+        this.updateProgressHover(null);
+        this.updateUiTick();
+        this.resetControlsAutoHide();
+      }
       this.revealDesktopPlayerControls();
     };
 
@@ -5792,6 +5737,7 @@ export const PlayerScreen = {
   },
 
   unbindDesktopPlayerPointerBridge() {
+    this.disposeSeekThumbnails();
     this.playerRailDragCleanup?.();
     this.playerRailDragCleanup = null;
     if (!this.container || !this.boundDesktopPlayerClickHandler) {
@@ -7307,12 +7253,51 @@ export const PlayerScreen = {
     return false;
   },
 
+  wantsDecodePlayback(url) {
+    return (
+      Environment.isBrowser() &&
+      !this._decodeFallbackActive &&
+      shouldRouteToDecodePlayback({ streamUrl: url }, PlayerSettingsStore.get())
+    );
+  },
+
+  async fallbackFromDecodePlayback(candidate, mountToken) {
+    if (
+      this._decodeFallbackActive ||
+      !this.isActiveMountToken(mountToken) ||
+      this.playerBackNavigationInProgress
+    )
+      return false;
+    this._decodeFallbackActive = true;
+    const timeSeconds = this.getPlaybackCurrentSeconds();
+    if (!this.pendingPlaybackRestore && timeSeconds > 0) {
+      this.pendingPlaybackRestore = { timeSeconds, paused: false, attempts: 0, lastAttemptAt: 0 };
+    }
+    try {
+      if (candidate && !this.offlineObjectUrl) {
+        await this.playStreamCandidate(candidate, {
+          mountToken,
+          preservePendingRestore: true
+        });
+      } else {
+        await this.playStreamByUrl(this.activePlaybackUrl, {
+          mountToken,
+          preservePendingRestore: true
+        });
+      }
+    } finally {
+      this._decodeFallbackActive = false;
+    }
+    return true;
+  },
+
   startPlayerControllerPlayback(
     url,
     context = {},
     { mountToken = null, sourceCandidate = null } = {}
   ) {
     const playbackUrl = String(url || "").trim();
+    this.disposeSeekThumbnails();
     if (this.params?.playbackPlan?.sourceUrl === playbackUrl)
       context = { ...context, playbackPlan: this.params.playbackPlan };
     if (!playbackUrl) {
@@ -7328,6 +7313,16 @@ export const PlayerScreen = {
         playbackPlan: {
           ...context.playbackPlan,
           startSeconds: Number(this.pendingPlaybackRestore?.timeSeconds) || 0
+        }
+      };
+    context = { ...context, onSubtitleCues: (cues) => this.showPlaybackSubtitleCues(cues) };
+    const decode = !context.forceEngine && this.wantsDecodePlayback?.(playbackUrl);
+    if (decode)
+      context = {
+        ...context,
+        decodePlayback: {
+          languages: this.getStartupPreferredAudioLanguageTargets(),
+          start: Number(this.pendingPlaybackRestore?.timeSeconds) || 0
         }
       };
     PlayerController.video?.classList?.remove("player-awaiting-autoplay");
@@ -7362,6 +7357,7 @@ export const PlayerScreen = {
         sourceCandidate ||
         this.getStreamCandidateByUrl(playbackUrl) ||
         this.getCurrentStreamCandidate();
+      if (decode && (await this.fallbackFromDecodePlayback(candidate, mountToken))) return;
       if (
         await this.tryUnverifiedRemuxAfterFailure?.({
           mediaErrorCode,
@@ -7444,7 +7440,6 @@ export const PlayerScreen = {
       !status?.autoplayBlocked ||
       !state ||
       state.autoplayBlocked ||
-      this.hasPresentedPlaybackFrame ||
       !video?.paused ||
       video.readyState < 2 ||
       video.error ||
@@ -7470,12 +7465,12 @@ export const PlayerScreen = {
   canManuallyStartClientRemux() {
     const runtime = PlayerController.clientRemux;
     return Boolean(
-      runtime &&
-      (this.startupReadiness?.timeoutError || this.startupReadiness?.autoplayBlocked) &&
+      (this.startupReadiness?.autoplayBlocked ||
+        (runtime && this.startupReadiness?.timeoutError)) &&
       !this.startupErrorMediaCode &&
       !PlayerController.video?.error &&
       !PlayerController.getLastPlaybackErrorCode?.() &&
-      runtime.snapshot().state !== "error" &&
+      runtime?.snapshot().state !== "error" &&
       Number(PlayerController.video?.readyState || 0) >= 2
     );
   },
@@ -7485,6 +7480,7 @@ export const PlayerScreen = {
     const state = this.startupReadiness;
     state.timeoutError = false;
     state.autoplayBlocked = false;
+    state.browserAutoplayRejected = false;
     PlayerController.video?.classList?.remove("player-awaiting-autoplay");
     state.metadataAt = Date.now();
     state.manualPlayAttempts = Number(state.manualPlayAttempts || 0) + 1;
@@ -8938,7 +8934,7 @@ export const PlayerScreen = {
     }
     const cacheKey = this.getStreamCacheKey(normalizedVideoId, normalizedType);
     const cache = this.streamCandidatesByVideoId || (this.streamCandidatesByVideoId = new Map());
-    if (cache.has(cacheKey)) {
+    if (!options.refresh && cache.has(cacheKey)) {
       const cached = cache.get(cacheKey);
       const cachedStreams = Array.isArray(cached) ? cached.map((stream) => ({ ...stream })) : [];
       options.onChunk?.(cachedStreams);
@@ -8946,7 +8942,7 @@ export const PlayerScreen = {
     }
     const loadPromises =
       this.streamCandidatesLoadPromises || (this.streamCandidatesLoadPromises = new Map());
-    if (loadPromises.has(cacheKey)) {
+    if (!options.refresh && loadPromises.has(cacheKey)) {
       const loaded = await loadPromises.get(cacheKey);
       const loadedStreams = Array.isArray(loaded) ? loaded.map((stream) => ({ ...stream })) : [];
       options.onChunk?.(loadedStreams);
@@ -8959,8 +8955,11 @@ export const PlayerScreen = {
         itemId: String(this.params?.itemId || ""),
         tmdbId: this.params?.tmdbId ?? this.params?.tmdb_id,
         imdbId: this.params?.imdbId,
+        tvdbId: this.params?.tvdbId ?? this.params?.tvdb_id,
+        title: this.params?.playerTitle,
         season: options.season ?? null,
         episode: options.episode ?? null,
+        signal: options.signal,
         priorityBingeGroup: options.priorityBingeGroup,
         onChunk: (chunkResult) => {
           const chunkItems = flattenStreamGroups(chunkResult);
@@ -9383,6 +9382,11 @@ export const PlayerScreen = {
   },
 
   applyAudioAmplification() {
+    if (PlayerController.playbackEngine === "mediabunny-decode") {
+      PlayerController.clientRemux?.setGain(dbToGain(Number(this.audioAmplificationDb) || 0));
+      this.audioAmplificationAvailable = true;
+      return;
+    }
     if (Number(this.audioAmplificationDb || 0) <= 0) {
       this.audioAmplificationAvailable =
         supportsWebAudioAmplification() &&
@@ -9460,6 +9464,7 @@ export const PlayerScreen = {
       "--player-subtitle-offset",
       `${(verticalOffset.residualOffset * -2).toFixed(2)}vh`
     );
+    this.updateBrowserNativeSubtitleOffset();
     this.refreshSubtitleCueStyles();
     if (refreshTrackRendering) {
       this.refreshSubtitleTrackRendering();
@@ -9614,6 +9619,38 @@ export const PlayerScreen = {
     const pixels =
       offset.lineOffset * fontPx * 1.28 + offset.residualOffset * 0.02 * canvasHeight + lift;
     video.style.setProperty("--player-native-subtitle-offset", -pixels + "px");
+    const html = this.uiRefs?.htmlSubtitles;
+    if (html && this.usesPlaybackSubtitleOverlay()) {
+      const surface = PlayerController.clientRemux?.canvas || video;
+      const picture = playerLocalRect(surface, this.browserOrientation);
+      const root = playerLocalRect(this.uiRefs.root, this.browserOrientation);
+      if (picture?.width > 0 && picture.height > 0 && root) {
+        html.classList.add("player-picture-subtitles");
+        html.style.inset = [
+          picture.top - root.top,
+          root.right - picture.right,
+          root.bottom - picture.bottom,
+          picture.left - root.left
+        ]
+          .map((edge) => edge + "px")
+          .join(" ");
+        const pictureFont = Math.max(
+          16,
+          picture.height *
+            0.045 *
+            (normalizeSubtitleFontSize(this.subtitleStyleSettings?.fontSize) / 100)
+        );
+        const userOffset =
+          offset.lineOffset * pictureFont * 1.28 + offset.residualOffset * picture.height * 0.02;
+        html.style.setProperty("--player-subtitle-offset", -userOffset + "px");
+        html.style.setProperty("--player-html-subtitle-font-size", pictureFont + "px");
+      }
+    } else if (html?.classList.contains("player-picture-subtitles")) {
+      html.classList.remove("player-picture-subtitles");
+      html.style.removeProperty("inset");
+      html.style.removeProperty("--player-subtitle-offset");
+      html.style.removeProperty("--player-html-subtitle-font-size");
+    }
     this.syncRotatedNativeSubtitles?.();
   },
 
@@ -10118,7 +10155,10 @@ export const PlayerScreen = {
     };
 
     const onPlaying = () => {
-      if (this.startupReadiness) this.startupReadiness.autoplayBlocked = false;
+      if (this.startupReadiness) {
+        this.startupReadiness.autoplayBlocked = false;
+        this.startupReadiness.browserAutoplayRejected = false;
+      }
       video.classList?.remove("player-awaiting-autoplay");
       this.noteStartupReadiness(video);
       if (this.isStartupErrorVisible()) {
@@ -10263,7 +10303,11 @@ export const PlayerScreen = {
     };
 
     const onPlayable = () => {
-      this.showClientRemuxPlayAfterAutoplayBlock(PlayerController.clientRemux?.snapshot());
+      this.showClientRemuxPlayAfterAutoplayBlock({
+        autoplayBlocked:
+          this.startupReadiness?.browserAutoplayRejected ||
+          PlayerController.clientRemux?.snapshot().autoplayBlocked
+      });
       this.noteStartupReadiness(video);
       setStartupStage(this.pendingPlaybackRestore ? "restoring" : "frame");
       if (this.isStartupErrorVisible()) {
@@ -10337,6 +10381,11 @@ export const PlayerScreen = {
       // same source the player was actually playing.
       const currentSourceCandidate =
         this.getStreamCandidateByUrl(this.activePlaybackUrl) || this.getCurrentStreamCandidate();
+      if (
+        PlayerController.playbackEngine === "mediabunny-decode" &&
+        (await this.fallbackFromDecodePlayback(currentSourceCandidate, this.playerMountToken))
+      )
+        return;
       if (
         await this.tryUnverifiedRemuxAfterFailure?.({
           mediaErrorCode,
@@ -10444,6 +10493,14 @@ export const PlayerScreen = {
       ["progress", onMetadataProgress],
       ["waiting", onWaiting],
       ["playing", onPlaying],
+      [
+        "playbackautoplayblocked",
+        () => {
+          if (!this.startupReadiness || !this.loadingVisible) return;
+          this.startupReadiness.browserAutoplayRejected = true;
+          this.showClientRemuxPlayAfterAutoplayBlock({ autoplayBlocked: true });
+        }
+      ],
       ["error", onError],
       ["pause", onPause],
       ["progress", onProgress],
@@ -11005,6 +11062,7 @@ export const PlayerScreen = {
   setControlsVisible(visible, { focus = false } = {}) {
     this.controlsVisible = Boolean(visible);
     if (Environment.isBrowser()) {
+      if (!this.controlsVisible) this.updateProgressHover(null);
       this.container?.classList.toggle(
         "desktop-player-cursor-hidden",
         !this.controlsVisible && !this.paused
@@ -11288,6 +11346,7 @@ export const PlayerScreen = {
       return false;
     }
     this.hasPresentedPlaybackFrame = true;
+    if (this.params?.reuseLastLink) this.params.reuseLastLink = null;
     this.pendingAutomaticDirectAudio = null;
     this.applyDirectAudioPreferenceAfterStart?.();
     this.rememberSelectedStreamPreference?.(this.getCurrentStreamCandidate?.());
@@ -11316,17 +11375,38 @@ export const PlayerScreen = {
 
   presentStartedPlayback() {
     this.playbackTransitionLightweight = false;
-    PlayerController.setStartupPresentationAudioMuted?.(false);
     StartupLoadingOverlay.finish();
     this.startupLoadingStage = "loading";
     const overlay = this.uiRefs?.loadingOverlay;
     overlay?.classList.add("playback-ready");
     this.loadingVisible = false;
     this.updateLoadingVisibility();
-    PlayerController.setStartupPresentationAudioMuted?.(false);
+    this.releaseStartupPresentationAudio();
     setTimeout(() => overlay?.classList.remove("playback-ready"), 250);
     this.updateUiTick();
     setTimeout(() => this.maybeShowParentalGuideOverlay(), 80);
+  },
+
+  releaseStartupPresentationAudio() {
+    const video = PlayerController.video;
+    const shouldKeepPlaying =
+      PlayerController.startupPresentationAudioMuted && video && !video.paused;
+    PlayerController.setStartupPresentationAudioMuted?.(false);
+    // WebKit can synchronously pause an autoplaying video when it is unmuted.
+    if (!shouldKeepPlaying || !video.paused) return;
+    const state = this.startupReadiness;
+    void PlayerController.attemptBrowserVideoPlay({
+      playToken: PlayerController.playRequestToken,
+      onRejected: (error) => {
+        if (
+          error?.name === "NotAllowedError" &&
+          state === this.startupReadiness &&
+          PlayerController.video === video
+        ) {
+          this.showClientRemuxPlayAfterAutoplayBlock({ autoplayBlocked: true });
+        }
+      }
+    });
   },
 
   isStartupGateReleaseReady() {
@@ -11443,6 +11523,7 @@ export const PlayerScreen = {
   },
 
   getDisplayedPlaybackSeconds(current = this.getPlaybackCurrentSeconds()) {
+    if (Number.isFinite(this.touchSeekPreviewSeconds)) return this.touchSeekPreviewSeconds;
     if (
       this.controlsVisible &&
       this.controlFocusZone === "progress" &&
@@ -11839,7 +11920,7 @@ export const PlayerScreen = {
       !this.pendingPlaybackRestore &&
       PlayerController.startupPresentationAudioMuted
     ) {
-      PlayerController.setStartupPresentationAudioMuted(false);
+      this.releaseStartupPresentationAudio();
     }
     this.updateActiveSkipInterval(current);
     this.updateSkipIntroCountdown(Date.now());
@@ -12384,8 +12465,9 @@ export const PlayerScreen = {
     const allowPlaybackDuringStartupAudioGate = shouldAllowPlaybackDuringStartupAudioGate({
       isHlsPlayback: this.isCurrentSourceLikelyHls(streamUrl, sourceCandidate),
       isClientRemuxPlayback:
-        this.params?.playbackPlan?.route === "client" &&
-        this.params.playbackPlan.sourceUrl === streamUrl
+        this.wantsDecodePlayback?.(streamUrl) ||
+        (this.params?.playbackPlan?.route === "client" &&
+          this.params.playbackPlan.sourceUrl === streamUrl)
     });
 
     this.playbackTransitionLightweight = Boolean(
@@ -12428,6 +12510,7 @@ export const PlayerScreen = {
     this.markPlaybackProgress();
     this.clearPlaybackStallGuard();
     this.clearRelayTrackData();
+    this.clearHtmlSubtitleOverlay();
     this.clearSubtitleCueStyleBindings();
     if (resetSilentAudioState) {
       this.silentAudioFallbackAttempts.clear();
@@ -12602,7 +12685,8 @@ export const PlayerScreen = {
     })();
     const readyDelivery =
       /\.(?:m3u8|mpd)$/i.test(path) || /\/api\/(?:remux|transcode)(?:\/|$)/.test(path);
-    if (readyDelivery) {
+    const serverStream = (candidate.clientResolve || candidate.raw?.clientResolve)?.mediaServer;
+    if (serverStream || readyDelivery || this.wantsDecodePlayback?.(sourceUrl)) {
       this.params.playbackPlan = null;
       this.params.unverifiedPlayback = null;
       return { url: sourceUrl, plan: null };
@@ -12771,6 +12855,16 @@ export const PlayerScreen = {
     // accessor may still point at another source, so retain the failed attempt.
     const current = failure.streamCandidate || this.getCurrentStreamCandidate();
     (this._startupSourceFailures ||= new Set()).add(playerStreamProbeKey(current || {}));
+    const reuse = this.params.reuseLastLink;
+    if (reuse) {
+      const failedKey = rememberedAttemptKey(current);
+      (this._reuseFailedAttempts ||= new Set()).add(failedKey);
+      StreamPreferencesStore.forgetLink(
+        this.params.itemId,
+        this.params.videoId || this.params.itemId,
+        failedKey
+      );
+    }
     const detail = String(failure.detail || failure.error?.message || "");
     const processingUrl = /\/api\/(?:remux|transcode)/.test(
       failure.playbackUrl || this.activePlaybackUrl || ""
@@ -12783,6 +12877,7 @@ export const PlayerScreen = {
     this._selectedSourceAbort?.abort();
     this.activePlaybackUrl = null;
     this.params.unverifiedPlayback = null;
+    if (reuse) this.params.playbackPlan = null;
     try {
       PlayerController.stop();
     } catch {
@@ -12804,28 +12899,40 @@ export const PlayerScreen = {
             ? "FIRST_STREAM"
             : settings.streamAutoPlayMode
       });
-      let next = candidates.find(
-        (stream) => !this._startupSourceFailures.has(playerStreamProbeKey(stream))
-      );
+      let next = reuse
+        ? selectRememberedRetry(candidates, reuse, this._reuseFailedAttempts)
+        : candidates.find(
+            (stream) => !this._startupSourceFailures.has(playerStreamProbeKey(stream))
+          );
       if (
         !next &&
         this.params.streamCandidatesComplete === false &&
         !this._startupDiscoveryCompleted
       ) {
         this._startupDiscoveryCompleted = true;
+        if (reuse) {
+          this.startupLoadingStage = "finding";
+          StartupLoadingOverlay.setStage("finding");
+        }
         const controller = (this._selectedSourceAbort = new AbortController());
         try {
           const rows = await selectedPlaybackTask(
             () =>
               this.getPlayableStreamsForVideo(
                 this.params.videoId || this.params.itemId,
-                normalizeItemType(this.params.itemType || "movie")
+                normalizeItemType(this.params.itemType || "movie"),
+                {
+                  season: this.params.season,
+                  episode: this.params.episode,
+                  signal: controller.signal,
+                  refresh: Boolean(reuse)
+                }
               ),
             { signal: controller.signal, timeoutMs: 45000 }
           );
           if (!this.isActiveMountToken(token) || this.playerBackNavigationInProgress) return;
           this.streamCandidates = this.normalizeStreamCandidates([
-            ...this.streamCandidates,
+            ...(reuse ? [] : this.streamCandidates),
             ...rows
           ]);
           this.params.streamCandidatesComplete = true;
@@ -12849,6 +12956,7 @@ export const PlayerScreen = {
         if (!this.isActiveMountToken(token) || this.playerBackNavigationInProgress) return;
         this._startupSourceAdvancing = false;
         this.loadingVisible = true;
+        this.startupLoadingStage = "opening";
         StartupLoadingOverlay.setStage("opening");
         await this.playStreamCandidate(next, { mountToken: token, preservePendingRestore: true });
         return;
@@ -12866,6 +12974,7 @@ export const PlayerScreen = {
         autoResolvedStreams: this.streamCandidates,
         autoResolvedStreamsComplete: this.params.streamCandidatesComplete !== false,
         autoResolvedStreamId: null,
+        reuseLastLink: null,
         playbackFailureMessage: this.params.automaticSourceSelection
           ? "None of the permitted streams could be played. Choose another stream."
           : String(message || "This stream could not be played. Choose another stream.")
@@ -12874,6 +12983,8 @@ export const PlayerScreen = {
     );
   },
   async playStreamCandidate(streamCandidate, options = {}) {
+    if (streamCandidate && Environment.isBrowser())
+      prepareDecodeAudioFromGesture(PlayerSettingsStore.get());
     const mountToken = options?.mountToken ?? null;
     this.directAudioPreferenceState = null;
     this.pendingAutomaticDirectAudio = null;
@@ -13168,6 +13279,17 @@ export const PlayerScreen = {
 
   markPlaybackProgress() {
     const currentSeconds = this.getPlaybackCurrentSeconds();
+    const candidate = this.getCurrentStreamCandidate?.();
+    const server = (candidate?.clientResolve || candidate?.raw?.clientResolve)?.mediaServer;
+    if (server && currentSeconds > 0 && Date.now() - (this.mediaServerProgressAt || 0) >= 10000) {
+      this.mediaServerProgressAt = Date.now();
+      void reportMediaServerProgress(
+        server.connectionId,
+        server.itemId,
+        currentSeconds,
+        this.paused
+      );
+    }
     if (typeof PlayerController.recordProgressSnapshot === "function") {
       PlayerController.recordProgressSnapshot(
         Math.floor(currentSeconds * 1000),
@@ -14101,6 +14223,24 @@ export const PlayerScreen = {
     }
   },
 
+  usesPlaybackSubtitleOverlay() {
+    return (
+      PlayerController.playbackEngine === "mediabunny-decode" ||
+      PlayerController.playbackEngine === "client-remux" ||
+      Boolean(this.relayTrackContext)
+    );
+  },
+
+  showPlaybackSubtitleCues(cues) {
+    if (!cues.length) {
+      this.clearHtmlSubtitleOverlay();
+      return;
+    }
+    this.updateBrowserNativeSubtitleOffset();
+    this.htmlSubtitleCues = cues;
+    this.scheduleHtmlSubtitleOverlayRender();
+  },
+
   renderHtmlSubtitleOverlayCue(activeCues = []) {
     const node = this.uiRefs?.htmlSubtitles || document.getElementById("playerHtmlSubtitles");
     if (!node) {
@@ -14133,11 +14273,13 @@ export const PlayerScreen = {
       node.setAttribute("aria-hidden", "true");
       return;
     }
+    const usePicturePosition = this.usesPlaybackSubtitleOverlay();
     const cueGroups = new Map();
     activeCues.forEach((cue) => {
-      const line = cue?.line == null ? NaN : Number(cue.line);
+      const line = usePicturePosition || cue?.line == null ? NaN : Number(cue.line);
       const normalizedLine = Number.isFinite(line) ? clamp(line, 0, 100) : null;
-      const align = ["start", "end", "center"].includes(cue?.align) ? cue.align : "center";
+      const align =
+        !usePicturePosition && ["start", "end"].includes(cue?.align) ? cue.align : "center";
       const groupKey = `${normalizedLine ?? "default"}:${align}`;
       if (!cueGroups.has(groupKey)) {
         cueGroups.set(groupKey, { line: normalizedLine, align, cues: [] });
@@ -14353,6 +14495,10 @@ export const PlayerScreen = {
         !this.selectedAddonSubtitleId &&
         !this.selectedManifestSubtitleTrackId)
     );
+  },
+
+  getEmbeddedSubtitleStatus() {
+    return this.relayTextSubtitles?.snapshot() || PlayerController.clientRemux?.snapshot().subtitle;
   },
 
   getSubtitleEntries(tab = this.subtitleDialogTab) {
@@ -14835,6 +14981,7 @@ export const PlayerScreen = {
       .filter(
         (entry) =>
           !showOnlyPreferredLanguages ||
+          !preferredTargets.length ||
           entry.key === SUBTITLE_LANGUAGE_OFF_KEY ||
           entry.key === selectedLanguageKey ||
           (entry.key === SUBTITLE_LANGUAGE_UNKNOWN_KEY && entry.hasInternalTracks) ||
@@ -16168,10 +16315,29 @@ export const PlayerScreen = {
       : currentTracks.length;
 
     this.clearMountedExternalSubtitleTracks();
+    if (this.usesPlaybackSubtitleOverlay()) this.clearHtmlSubtitleOverlay();
 
-    const resolvedSubtitleUrl = await this.resolveSubtitlePlaybackUrl(subtitle.url);
+    const resolvedSubtitleUrl = await this.resolveSubtitlePlaybackUrl(subtitle.url, {
+      timeoutMs: 10000
+    });
     if (!isCurrentSelection() || !resolvedSubtitleUrl) {
       this.settleSubtitlePointerScrollTransaction(selectionToken);
+      return;
+    }
+
+    if (this.usesPlaybackSubtitleOverlay()) {
+      try {
+        const response = await fetch(resolvedSubtitleUrl);
+        if (!response.ok) throw Error("Subtitle unavailable");
+        const cues = this.parseSubtitleCues(await response.text());
+        if (isCurrentSelection() && this.usesPlaybackSubtitleOverlay()) {
+          this.showPlaybackSubtitleCues(cues);
+        }
+      } catch {
+        if (isCurrentSelection()) this.clearHtmlSubtitleOverlay();
+      } finally {
+        this.settleSubtitlePointerScrollTransaction(selectionToken);
+      }
       return;
     }
 
@@ -17396,6 +17562,8 @@ export const PlayerScreen = {
       itemId: String(this.params?.itemId || ""),
       tmdbId: this.params?.tmdbId ?? this.params?.tmdb_id,
       imdbId: this.params?.imdbId,
+      tvdbId: this.params?.tvdbId ?? this.params?.tvdb_id,
+      title: this.params?.playerTitle,
       season: this.params?.season ?? null,
       episode: this.params?.episode ?? null,
       onChunk: (chunkResult) => {
@@ -17931,7 +18099,17 @@ export const PlayerScreen = {
       video.style.maxWidth = "none";
       video.style.maxHeight = "none";
       video.style.background = "black";
+      const canvas = PlayerController.clientRemux?.canvas;
+      if (canvas)
+        Object.assign(canvas.style, {
+          position: "fixed",
+          left: video.style.left,
+          top: video.style.top,
+          width: video.style.width,
+          height: video.style.height
+        });
     }
+    this.updateBrowserNativeSubtitleOffset();
     if (showToast) {
       this.showAspectToast(mode.label);
     }
@@ -19709,41 +19887,91 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
   updateProgressHover(event) {
     const preview = this.container?.querySelector("#playerProgressHover");
     if (!preview) return;
-    const shell = event?.target?.closest?.(".player-progress-shell");
-    const duration = this.getPlaybackDurationSeconds();
+    const pointer = this.desktopProgressPointer;
+    const captured = event && pointer?.pointerId === event.pointerId ? pointer : null;
+    const shell = captured?.shell || event?.target?.closest?.(".player-progress-shell");
+    const hover = event && (!event.pointerType || event.pointerType === "mouse");
+    const point =
+      shell && this.container.contains(shell) && (hover || captured?.touch)
+        ? this.getProgressPointerPosition(event, shell)
+        : null;
+    const canvas = preview.querySelector("canvas");
+    this.touchSeekPreviewSeconds = captured?.touch ? (point?.seconds ?? null) : null;
+    preview.classList.toggle("hidden", !point);
+    if (!point) {
+      this.seekThumbnails?.clear();
+      if (canvas) canvas.hidden = true;
+      return;
+    }
+    preview.querySelector(".player-progress-hover-time").textContent = formatTime(point.seconds);
+    const inset = Math.min(86, point.width / 2);
+    preview.style.left = clamp(point.x, inset, point.width - inset) + "px";
+    if (!canvas) return;
+
+    const url = PlayerController.currentPlaybackUrl;
+    const mediaType = PlayerController.currentPlaybackMediaSourceType;
+    const urlMimeType = PlayerController.guessMediaMimeType(url);
+    const hls =
+      PlayerController.isLikelyHlsMimeType(mediaType) ||
+      PlayerController.isLikelyHlsMimeType(urlMimeType);
+    if (
+      !url ||
+      !/^(https?:|blob:)/i.test(url) ||
+      (hls && !/^https?:/i.test(url)) ||
+      PlayerController.isLikelyDashMimeType(mediaType) ||
+      PlayerController.isLikelyDashMimeType(urlMimeType)
+    ) {
+      canvas.hidden = true;
+      return;
+    }
+    if (this.seekThumbnailUrl !== url) {
+      this.seekThumbnails?.dispose();
+      canvas.hidden = true;
+      this.seekThumbnailUrl = url;
+      this.seekThumbnails = createSeekThumbnails(url, PlayerController.currentPlaybackHeaders, {
+        hls
+      });
+    }
+    if (Math.abs(Number(canvas.dataset.time ?? Infinity) - point.seconds) > 10) {
+      canvas.hidden = true;
+    }
+    this.seekThumbnails.request(point.seconds, (frame, time) => {
+      if (!preview.isConnected || preview.classList.contains("hidden")) return;
+      if (!canvas.hidden && canvas.dataset.time === String(time)) return;
+      const context = canvas.getContext("2d");
+      canvas.hidden = !frame || !context;
+      if (!canvas.hidden) {
+        context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+        canvas.dataset.time = String(time);
+      }
+    });
+  },
+
+  disposeSeekThumbnails() {
+    this.updateProgressHover(null);
+    this.touchSeekPreviewSeconds = null;
+    this.seekThumbnails?.dispose();
+    this.seekThumbnails = null;
+    this.seekThumbnailUrl = null;
+  },
+
+  getProgressPointerPosition(event, shell) {
     const rect = playerLocalRect(shell, this.browserOrientation);
-    const visible = Boolean(
-      event &&
-      (!event.pointerType || event.pointerType === "mouse") &&
-      shell &&
-      this.container.contains(shell) &&
-      rect?.width > 0 &&
-      Number.isFinite(duration) &&
-      duration > 0
-    );
-    preview.classList.toggle("hidden", !visible);
-    if (!visible) return;
-    const ratio = clamp(
-      (playerLocalPoint(event, this.browserOrientation).x - rect.left) / rect.width,
-      0,
-      1
-    );
-    preview.textContent = formatTime(duration * ratio);
-    preview.style.left = clamp(ratio * rect.width, 28, Math.max(28, rect.width - 28)) + "px";
+    const duration = this.getPlaybackDurationSeconds();
+    if (!rect || rect.width <= 0 || !Number.isFinite(duration) || duration <= 0) {
+      return null;
+    }
+    const x = clamp(playerLocalPoint(event, this.browserOrientation).x - rect.left, 0, rect.width);
+    return { x, width: rect.width, seconds: (x / rect.width) * duration };
   },
 
   seekProgressFromPointer(event, target) {
     const shell = target?.closest?.(".player-progress-shell") || this.uiRefs?.progressShell;
-    const rect = playerLocalRect(shell, this.browserOrientation);
-    const duration = this.getPlaybackDurationSeconds();
-    if (!rect || rect.width <= 0 || !Number.isFinite(duration) || duration <= 0) {
-      return false;
-    }
-    const x = playerLocalPoint(event, this.browserOrientation).x;
-    const ratio = clamp((x - rect.left) / rect.width, 0, 1);
+    const point = this.getProgressPointerPosition(event, shell);
+    if (!point) return false;
     this.seekPreviewSeconds = null;
     this.seekRepeatCount = 0;
-    this.seekPlaybackSeconds(duration * ratio);
+    this.seekPlaybackSeconds(point.seconds);
     this.updateUiTick();
     this.resetControlsAutoHide();
     return true;

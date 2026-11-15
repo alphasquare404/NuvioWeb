@@ -4,7 +4,10 @@ import { build } from "esbuild";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-async function fixture(run) {
+async function fixture(run, { wakeLock } = {}) {
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  if (wakeLock)
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { wakeLock } });
   const saved = {
     document: globalThis.document,
     settings: globalThis.__STARTUP_SETTINGS__,
@@ -104,6 +107,10 @@ async function fixture(run) {
     await run({ overlay, nodes, settings: globalThis.__STARTUP_SETTINGS__, usesUnifiedStartup });
   } finally {
     overlay.finish();
+    if (wakeLock) {
+      if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+      else delete globalThis.navigator;
+    }
     globalThis.document = saved.document;
     globalThis.__STARTUP_SETTINGS__ = saved.settings;
     globalThis.localStorage = saved.storage;
@@ -111,6 +118,29 @@ async function fixture(run) {
     globalThis.innerHeight = saved.height;
   }
 }
+
+test("loading holds the screen awake across stages and releases it on exit", async () => {
+  const calls = [];
+  await fixture(
+    async ({ overlay }) => {
+      overlay.begin({ itemKey: "movie" }, "finding");
+      overlay.begin({ itemKey: "movie" }, "probing");
+      await new Promise(setImmediate);
+      assert.deepEqual(calls, ["screen"]);
+      overlay.setBackHandler(() => calls.push("back"));
+      overlay.back();
+      assert.deepEqual(calls, ["screen", "release", "back"]);
+    },
+    {
+      wakeLock: {
+        async request(type) {
+          calls.push(type);
+          return { release: async () => calls.push("release") };
+        }
+      }
+    }
+  );
+});
 
 test("one overlay node survives search, stream checks, opening and video loading", async () => {
   await fixture(({ overlay, nodes }) => {

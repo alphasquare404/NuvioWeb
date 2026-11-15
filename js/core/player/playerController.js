@@ -1,3 +1,4 @@
+import { createDecodePlayer } from "./decodePlayer.js";
 import { clientMediaUrlResolver } from "../streams/clientMediaUrlResolver.js";
 import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
@@ -292,7 +293,7 @@ export const PlayerController = {
         ...track,
         index,
         selected: index === this.clientRemux.snapshot().audioIndex,
-        engine: "client-remux"
+        engine: this.playbackEngine
       }));
     if (this.playbackEngine === "hls.js") {
       const selectedIndex = this.getSelectedHlsAudioTrackIndex();
@@ -425,7 +426,7 @@ export const PlayerController = {
     }
 
     const handleRejectedPlay = async (error) => {
-      if (this.isExpectedPlayInterruption(error)) {
+      if (!this.isPlaybackRequestActive(playToken) || this.isExpectedPlayInterruption(error)) {
         return false;
       }
       if (typeof onRejected === "function") {
@@ -438,6 +439,7 @@ export const PlayerController = {
         }
       }
       this.isPlaying = false;
+      if (error?.name === "NotAllowedError") this.emitVideoEvent("playbackautoplayblocked");
       console.warn(warningLabel, error);
       return false;
     };
@@ -1224,17 +1226,7 @@ export const PlayerController = {
       } catch (_) {
         // hls.js may already be loading on older builds.
       }
-      this.applyStartupAudioGateToVideo();
-      const playPromise = this.video.play();
-      this.handlePlaybackStartedUnderStartupGate(playPromise);
-      if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch((error) => {
-          if (this.isExpectedPlayInterruption(error)) {
-            return;
-          }
-          console.warn("HLS playback start rejected", error);
-        });
-      }
+      void this.attemptBrowserVideoPlay({ playToken, warningLabel: "HLS playback start rejected" });
     });
 
     [
@@ -1811,7 +1803,9 @@ export const PlayerController = {
       forceEngine = null,
       streamIdentity = null,
       offlinePlayback = false,
-      playbackPlan = null
+      playbackPlan = null,
+      decodePlayback = null,
+      onSubtitleCues = null
     } = {}
   ) {
     if (!this.video) return;
@@ -1857,6 +1851,43 @@ export const PlayerController = {
     this.lastPlaybackErrorCode = 0;
     this.lastHlsErrorDiagnostic = null;
 
+    if (decodePlayback) {
+      this.teardownAdaptiveInstances();
+      this.video.removeAttribute("src");
+      this.video.load();
+      this.playbackEngine = "mediabunny-decode";
+      const active = () => this.isPlaybackRequestActive(playToken, requestedUrl);
+      const runtime = createDecodePlayer({
+        video: this.video,
+        requestHeaders,
+        languages: decodePlayback.languages,
+        emit: (event) => {
+          if (active()) this.emitVideoEvent(event);
+        },
+        onError: () => {
+          if (active()) this.reportClientRemuxError("mediabunny-decode-failed");
+        },
+        onCues: (cues) => {
+          if (active()) onSubtitleCues?.(cues);
+        }
+      });
+      this.clientRemux = runtime;
+      try {
+        await runtime.start({
+          url: requestedUrl,
+          start: decodePlayback.start,
+          autoplay: !(this.startupAudioGateActive && this.startupAudioGatePausesPlayback),
+          playbackRate: this.desiredPlaybackRate
+        });
+      } catch (error) {
+        if (this.clientRemux === runtime) await this.disposeClientRemux();
+        else await runtime.dispose();
+        throw error;
+      }
+      if (active()) this.startProgressSaveTimer();
+      return;
+    }
+
     if (playbackPlan?.route === "client" && playbackPlan.sourceUrl === requestedUrl) {
       this.teardownAdaptiveInstances();
       this.playbackEngine = "client-remux";
@@ -1886,10 +1917,11 @@ export const PlayerController = {
           if (this.isPlaybackRequestActive(playToken, requestedUrl))
             this.emitVideoEvent("audiotrackschanged", { playbackEngine: "client-remux" });
         },
-        onCues: () => {
-          if (this.isPlaybackRequestActive(playToken, requestedUrl))
-            this.emitVideoEvent("remuxsubtitlecues");
-        },
+        onDecodedCues:
+          onSubtitleCues &&
+          ((cues) => {
+            if (this.isPlaybackRequestActive(playToken, requestedUrl)) onSubtitleCues(cues);
+          }),
         onStatus: () => {
           if (this.isPlaybackRequestActive(playToken, requestedUrl))
             this.emitVideoEvent("remuxstatus");
@@ -2060,6 +2092,13 @@ export const PlayerController = {
       syncPlaying();
       result?.then(syncPlaying, (error) => {
         syncPlaying();
+        if (
+          this.video === video &&
+          this.isPlaybackRequestActive(playToken) &&
+          error?.name === "NotAllowedError"
+        ) {
+          this.emitVideoEvent("playbackautoplayblocked");
+        }
         if (!this.isExpectedPlayInterruption(error))
           console.warn("Playback resume rejected", error);
       });

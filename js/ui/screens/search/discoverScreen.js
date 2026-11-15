@@ -36,11 +36,6 @@ import {
   setModernSidebarPillIconOnly,
   setLegacySidebarExpanded
 } from "../../components/sidebarNavigation.js";
-import {
-  bindDesktopNavigationEvents,
-  renderDesktopNavigation,
-  renderNavigationRevealButton
-} from "../../components/desktopNavigation.js";
 import { bindPageHeadingCollapse } from "../../components/pageHeadingCollapse.js";
 import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 import { bindBrowserCardTouchIntent } from "../../components/browserCardTouchIntent.js";
@@ -336,11 +331,13 @@ export const DiscoverScreen = {
       scrollSelector: ".discover-main"
     });
     this.layoutPrefs = LayoutPreferences.get();
-    try {
-      this.sidebarProfile = await getSidebarProfileState();
-    } catch (err) {
-      console.warn("Discover sidebar profile failed to load", err);
-      this.sidebarProfile = null;
+    if (this.isSidebarRootRoute()) {
+      try {
+        this.sidebarProfile = await getSidebarProfileState();
+      } catch (err) {
+        console.warn("Discover sidebar profile failed to load", err);
+        this.sidebarProfile = null;
+      }
     }
     this.sidebarExpanded = false;
     this.focusZone = "content";
@@ -1562,8 +1559,8 @@ export const DiscoverScreen = {
   render() {
     this.cancelScheduledRender();
     this.layoutPrefs = LayoutPreferences.get();
-    const useDesktopNavigation = Platform.isBrowser();
-    const showRootSidebar = !useDesktopNavigation && this.isSidebarRootRoute();
+    const isBrowser = Platform.isBrowser();
+    const showRootSidebar = this.isSidebarRootRoute();
     const openPicker = this.openPicker || null;
     if (this.lastRenderedOpenPicker && this.lastRenderedOpenPicker !== openPicker) {
       this.startClosingPicker(this.lastRenderedOpenPicker);
@@ -1586,22 +1583,20 @@ export const DiscoverScreen = {
     this.discoverRouteEnterPending = false;
 
     this.container.innerHTML = `
-      <div class="home-shell search-screen-shell discover-shell${useDesktopNavigation ? " desktop-navigation-enabled" : ""}${showRootSidebar ? " discover-root-route" : ""}">
+      <div class="home-shell search-screen-shell discover-shell${isBrowser ? " desktop-navigation-enabled" : ""}${showRootSidebar ? " discover-root-route" : ""}">
         ${
-          useDesktopNavigation
-            ? renderDesktopNavigation({ selectedRoute: "search", profile: this.sidebarProfile })
-            : showRootSidebar
-              ? renderRootSidebar({
-                  selectedRoute: "discover",
-                  profile: this.sidebarProfile,
-                  layout: this.layoutPrefs,
-                  expanded: Boolean(this.sidebarExpanded),
-                  pillIconOnly: Boolean(this.pillIconOnly)
-                })
-              : ""
+          showRootSidebar
+            ? renderRootSidebar({
+                selectedRoute: "discover",
+                profile: this.sidebarProfile,
+                layout: this.layoutPrefs,
+                expanded: Boolean(this.sidebarExpanded),
+                pillIconOnly: Boolean(this.pillIconOnly)
+              })
+            : ""
         }
         ${
-          useDesktopNavigation
+          isBrowser
             ? `<button class="discover-desktop-back-button" type="button" data-action="desktopDiscoverBack" aria-label="${escapeHtml(t("common.back", {}, "Back"))}">
                 ${renderBackButtonIcon()}
               </button>`
@@ -1614,7 +1609,6 @@ export const DiscoverScreen = {
                 <h1 class="seeall-title page-heading-title">Discover</h1>
                 <div class="seeall-subtitle page-heading-subtitle" id="discoverContextLabel">${escapeHtml(contextLabel)}</div>
               </div>
-              ${useDesktopNavigation ? renderNavigationRevealButton() : ""}
             </header>
             <section class="discover-picker-groups" id="discoverPickerRow">
               <div class="library-picker-row discover-picker-row library-primary-filter-row">
@@ -1649,8 +1643,7 @@ export const DiscoverScreen = {
 
     ScreenUtils.indexFocusables(this.container);
     this.buildNavigationModel();
-    if (useDesktopNavigation) {
-      bindDesktopNavigationEvents(this.container);
+    if (isBrowser) {
       this.container
         .querySelector('[data-action="desktopDiscoverBack"]')
         ?.addEventListener("click", () => {

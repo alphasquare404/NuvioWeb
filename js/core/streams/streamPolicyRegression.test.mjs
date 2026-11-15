@@ -2,6 +2,7 @@ import { filterFilenameStreams } from "./filenameStreamPolicy.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { autoplaySourceOptions } from "./autoplaySourcePolicy.js";
 import {
   autoPlayCandidates,
   selectAutoPlayStream,
@@ -109,6 +110,7 @@ test("remembered links cannot bypass current source, regex or compatibility cons
       filterPlayerStreams,
       filterFilenameStreams,
       selectAutoPlayStream,
+      autoplaySourceOptions,
       collectInstalledAddonNames,
       getDeviceCapabilities: () => caps,
       PROBE_MODE: "client",

@@ -1,10 +1,18 @@
-// Reading counts never rewrites the saved autoplay scope. Editing only keeps
-// choices the person can actually see in the installed-addon dialog.
-export function visibleAutoplayAddonSelection(selected = [], addons = []) {
-  const names = new Set(
-    addons
-      .map((addon) => String(addon?.displayName || addon?.name || addon?.id || "").trim())
-      .filter(Boolean)
-  );
-  return [...new Set(selected.filter((name) => names.has(name)))];
+export function listAutoplayStreamAddons(addons) {
+  return addons
+    .filter(
+      (addon) =>
+        !Array.isArray(addon.resources) ||
+        addon.resources.some(
+          (resource) =>
+            String(resource.name || "")
+              .trim()
+              .toLowerCase() === "stream"
+        )
+    )
+    .map((addon) => {
+      const label = String(addon.displayName || addon.name || "").trim();
+      return { id: label, label, unknown: !Array.isArray(addon.resources) };
+    })
+    .filter(({ id }) => id);
 }

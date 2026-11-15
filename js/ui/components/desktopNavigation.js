@@ -1,5 +1,6 @@
 import { Router } from "../navigation/router.js";
 import { I18n } from "../../i18n/index.js";
+import { LayoutPreferences } from "../../data/local/layoutPreferences.js";
 
 const NAVIGATION_ITEMS = [
   {
@@ -99,10 +100,21 @@ export function renderNavigationRevealButton() {
   `;
 }
 
-export function renderDesktopNavigation({ selectedRoute = "", profile = null } = {}) {
+export function renderDesktopNavigation({
+  selectedRoute = "",
+  profile = null,
+  searchQuery = null
+} = {}) {
   const currentRoute = String(selectedRoute || "");
+  const searchLabel = escapeHtml(t("search_placeholder", "Search movies & series"));
+  const searchPlaceholder = escapeHtml(
+    t(NAVIGATION_ITEMS[1].labelKey, NAVIGATION_ITEMS[1].fallback)
+  );
+  const discoverLabel = escapeHtml(t("discover_title", "Discover"));
+  const cancelLabel = escapeHtml(t("common.cancel", "Cancel"));
+  const allowDiscover = LayoutPreferences.get().discoverLocation === "in_search";
   return `
-    <nav class="desktop-navigation" aria-label="Primary navigation">
+    <nav class="desktop-navigation" aria-label="Primary navigation"${searchQuery === null ? "" : ` data-search-query="${escapeHtml(searchQuery)}"`}>
       <div class="desktop-navigation-scroll">
         ${NAVIGATION_ITEMS.map((item) => {
           const label = t(item.labelKey, item.fallback);
@@ -110,7 +122,7 @@ export function renderDesktopNavigation({ selectedRoute = "", profile = null } =
           return `
             <button class="desktop-navigation-item${isActive ? " is-active" : ""}"
                     type="button"
-                    data-desktop-route="${item.route}"${isActive ? ' aria-current="page"' : ""}>
+                    data-desktop-route="${item.route}"${item.route === "search" ? ' aria-expanded="false"' : ""}${isActive ? ' aria-current="page"' : ""}>
               ${renderIcon(item)}
               <span class="desktop-navigation-label">${escapeHtml(label)}</span>
             </button>
@@ -118,12 +130,167 @@ export function renderDesktopNavigation({ selectedRoute = "", profile = null } =
         }).join("")}
         ${renderProfile(profile, currentRoute)}
       </div>
+      <form class="desktop-navigation-search" role="search" inert>
+        ${renderIcon(NAVIGATION_ITEMS[1])}
+        <input type="search" name="query" aria-label="${searchLabel}" placeholder="${searchPlaceholder}"
+               enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        ${
+          allowDiscover
+            ? `<button type="button" data-navigation-discover aria-label="${discoverLabel}" title="${discoverLabel}">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.3 5.3-5.3 2.3 2.3-5.3z" stroke-linejoin="round"/>
+          </svg>
+        </button>`
+            : ""
+        }
+        <button type="button" data-navigation-search-cancel aria-label="${cancelLabel}" title="${cancelLabel}">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="m6 6 12 12M18 6 6 18"/>
+          </svg>
+        </button>
+      </form>
     </nav>
     ${renderNavigationRevealButton()}
   `;
 }
 
 const NAVIGATION_OPEN_CLASS = "nav-rail-open";
+let activeSearch = null;
+let dismissedResults = null;
+
+export function deferUntilNavigationSearchIdle(container, resume) {
+  if (activeSearch?.container !== container || !activeSearch?.form.isConnected) return false;
+  if (Router.getCurrent() === "search" && !activeSearch.form.contains(document.activeElement)) {
+    return false;
+  }
+  activeSearch.resume = resume;
+  return true;
+}
+
+export function closeNavigationSearch({ restoreFocus = false, navigating = false } = {}) {
+  if (navigating) dismissedResults = null;
+  const search = activeSearch;
+  if (!search) return false;
+  activeSearch = null;
+  const { nav, form, tabs, input, button, container, cleanup, resume } = search;
+  if (!navigating && nav.hasAttribute("data-search-query")) dismissedResults = container;
+  cleanup();
+  nav.classList.remove("is-search-open", "is-search-pinned");
+  nav.style.removeProperty("--nav-search-keyboard-inset");
+  nav.style.removeProperty("--nav-search-viewport-top");
+  form.inert = true;
+  tabs.inert = false;
+  input.value = "";
+  input.blur();
+  button.setAttribute("aria-expanded", "false");
+  if (restoreFocus && nav.isConnected) button.focus({ preventScroll: true });
+  if (resume) queueMicrotask(resume);
+  return nav.isConnected;
+}
+
+function openNavigationSearch(container, nav, { value = "", focus = false } = {}) {
+  const button = nav.querySelector('[data-desktop-route="search"]');
+  const form = nav.querySelector(".desktop-navigation-search");
+  const tabs = nav.querySelector(".desktop-navigation-scroll");
+  const input = form.elements.namedItem("query");
+  const discover = form.querySelector("[data-navigation-discover]");
+  const viewport = globalThis.visualViewport;
+  const isIPhone = viewport && /iPhone|iPod/i.test(globalThis.navigator?.userAgent || "");
+  let restingHeight = viewport?.height || 0;
+  let waitingForKeyboard = false;
+  let keyboardTimer;
+  const syncKeyboardPosition = () => {
+    if (!viewport) return;
+    if (isIPhone) {
+      const keyboardVisible = restingHeight - viewport.height > 100;
+      if (keyboardVisible) waitingForKeyboard = false;
+      nav.classList.toggle("is-search-pinned", waitingForKeyboard || keyboardVisible);
+      nav.style.setProperty("--nav-search-viewport-top", `${viewport.offsetTop}px`);
+      return;
+    }
+    const inset = Math.max(
+      0,
+      document.documentElement.clientHeight - viewport.height - viewport.offsetTop
+    );
+    nav.style.setProperty("--nav-search-keyboard-inset", `${inset}px`);
+  };
+  closeNavigationSearch({ navigating: true });
+  const search = {
+    container,
+    nav,
+    input,
+    form,
+    button,
+    tabs,
+    cleanup() {
+      clearTimeout(keyboardTimer);
+      viewport?.removeEventListener("resize", syncKeyboardPosition);
+      viewport?.removeEventListener("scroll", syncKeyboardPosition);
+    }
+  };
+  activeSearch = search;
+  const updateDiscover = () => {
+    if (discover) discover.hidden = Boolean(input.value.trim());
+  };
+  input.value = value;
+  updateDiscover();
+  input.oninput = updateDiscover;
+  input.onfocus = () => {
+    if (!isIPhone) return;
+    restingHeight = Math.max(restingHeight, viewport.height);
+    waitingForKeyboard = true;
+    syncKeyboardPosition();
+    clearTimeout(keyboardTimer);
+    keyboardTimer = setTimeout(() => {
+      waitingForKeyboard = false;
+      syncKeyboardPosition();
+    }, 500);
+  };
+  form.onfocusout = () => {
+    queueMicrotask(() => {
+      if (
+        activeSearch !== search ||
+        Router.getCurrent() !== "search" ||
+        form.contains(document.activeElement)
+      )
+        return;
+      const resume = search.resume;
+      search.resume = null;
+      resume?.();
+    });
+  };
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    const query = input.value.trim();
+    if (query.length < 2) return;
+    if (nav.dataset.searchQuery === query) {
+      input.value = query;
+      input.blur();
+      return;
+    }
+    const replaceHistory = Router.getCurrent() === "search";
+    input.blur();
+    void Router.navigate("search", { query }, { replaceHistory });
+  };
+  if (discover) {
+    discover.onclick = () => {
+      if (!input.value.trim()) navigateTo("discover");
+    };
+  }
+  form.querySelector("[data-navigation-search-cancel]").onclick = () => {
+    closeNavigationSearch({ restoreFocus: true });
+  };
+  viewport?.addEventListener("resize", syncKeyboardPosition);
+  viewport?.addEventListener("scroll", syncKeyboardPosition);
+  setBottomNavigationCollapsed(false);
+  if (document.documentElement.dataset?.navPlacement === "sidebar") setNavigationRailOpen(true);
+  tabs.inert = true;
+  form.inert = false;
+  nav.classList.add("is-search-open");
+  button.setAttribute("aria-expanded", "true");
+  syncKeyboardPosition();
+  if (focus) input.focus({ preventScroll: true });
+}
 
 function setNavigationRailOpen(open) {
   const root = globalThis?.document?.documentElement;
@@ -155,7 +322,8 @@ function bindNavigationRailDismiss() {
       if (typeof target?.closest !== "function") return;
       if (
         target.closest(".desktop-navigation") ||
-        target.closest("[data-desktop-navigation-reveal]")
+        target.closest("[data-desktop-navigation-reveal]") ||
+        activeSearch?.form.isConnected
       ) {
         return;
       }
@@ -203,6 +371,7 @@ function handleBottomNavigationScroll(event) {
   const root = globalThis?.document?.documentElement;
   // Only the bottom bar hides; the other two placements are not in the way.
   if (!root || root.dataset.navPlacement !== "bottom") return;
+  if (activeSearch?.form.isConnected) return;
   const target = resolveScrollTarget(event?.target);
   if (!target) return;
   const top = Math.max(0, Number(target.scrollTop || 0) || 0);
@@ -252,14 +421,27 @@ export function bindDesktopNavigationEvents(container) {
       event.preventDefault();
       event.stopPropagation();
       const root = globalThis?.document?.documentElement;
-      setNavigationRailOpen(!root?.classList.contains(NAVIGATION_OPEN_CLASS));
+      const open = !root?.classList.contains(NAVIGATION_OPEN_CLASS);
+      if (!open) closeNavigationSearch();
+      setNavigationRailOpen(open);
     };
   });
   container?.querySelectorAll(".desktop-navigation [data-desktop-route]").forEach((button) => {
     button.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
-      navigateTo(String(button.dataset.desktopRoute || ""));
+      const route = String(button.dataset.desktopRoute || "");
+      if (route === "search")
+        openNavigationSearch(container, button.closest(".desktop-navigation"), { focus: true });
+      else navigateTo(route);
     };
   });
+  const resultsNav = container?.querySelector(".desktop-navigation[data-search-query]");
+  if (activeSearch?.container === container && !activeSearch.form.isConnected) {
+    const draft = activeSearch.input.value;
+    if (resultsNav) openNavigationSearch(container, resultsNav, { value: draft });
+    else closeNavigationSearch({ navigating: true });
+  } else if (resultsNav && activeSearch?.nav !== resultsNav && dismissedResults !== container) {
+    openNavigationSearch(container, resultsNav, { value: resultsNav.dataset.searchQuery });
+  }
 }

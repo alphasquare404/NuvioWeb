@@ -1,9 +1,57 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  autoPlayCandidates,
   collectInstalledAddonNames,
   resolvePreferredBingeGroup
 } from "./streamAutoPlaySelector.js";
+import { autoplaySourceOptions, toggleAutoplaySource } from "./autoplaySourcePolicy.js";
+
+const sources = [
+  { id: "plugin", addonName: "Plugin", url: "https://example.test/plugin.mp4" },
+  { id: "addon", addonName: "Addon", url: "https://example.test/addon.mp4" },
+  { id: "other", addonName: "Other", url: "https://example.test/other.mp4" },
+  {
+    id: "server",
+    addonName: "Server",
+    url: "https://example.test/server.mp4",
+    clientResolve: { mediaServer: { connectionId: "private" } }
+  }
+];
+const selection = (settings = {}) =>
+  autoPlayCandidates(sources, {
+    mode: "FIRST_STREAM",
+    source: "ALL_SOURCES",
+    installedAddonNames: ["Addon", "Other"],
+    ...autoplaySourceOptions(settings)
+  }).map(({ id }) => id);
+
+test("legacy selections retain their order and media servers are opt-in", () => {
+  assert.deepEqual(selection(), ["plugin", "addon", "other"]);
+  assert.deepEqual(selection({ streamAutoPlaySelectedAddons: ["Other"] }), ["plugin", "other"]);
+  assert.deepEqual(
+    selection({
+      streamAutoPlaySelectedServers: ["private"],
+      streamAutoPlaySourcePriority: ["servers", "addons", "plugins"]
+    }),
+    ["server", "addon", "other", "plugin"]
+  );
+});
+
+test("source switches retain hidden selections and can disable every visible source", () => {
+  const original = { streamAutoPlaySelectedAddons: ["Addon", "Temporarily unavailable"] };
+  assert.deepEqual(toggleAutoplaySource(original, "addons", "Addon", ["Addon", "Other"]), {
+    streamAutoPlaySelectedAddons: ["Temporarily unavailable"],
+    streamAutoPlayAddonsDisabled: false
+  });
+  const none = toggleAutoplaySource({}, "plugins", "Plugin", ["Plugin"]);
+  assert.deepEqual(selection(none), ["addon", "other"]);
+  assert.deepEqual(selection({ ...none, streamAutoPlaySelectedPlugins: ["Plugin"] }), [
+    "plugin",
+    "addon",
+    "other"
+  ]);
+});
 
 const BOTH_ON = {
   streamAutoPlayPreferBingeGroupForNextEpisode: true,

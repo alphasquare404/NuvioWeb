@@ -1,9 +1,8 @@
 import { StartupLoadingOverlay } from "../components/startupLoadingOverlay.js";
+import { closeNavigationSearch } from "../components/desktopNavigation.js";
 import { HomeScreen } from "../screens/home/homeScreen.js";
 import { PlayerScreen } from "../screens/player/playerScreen.js";
 import { MoviPlayerScreen } from "../screens/player/movi/moviPlayerScreen.js";
-import { shouldRoutePlayerToMovi } from "../../core/player/movi/moviCapability.js";
-import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { AccountScreen } from "../screens/account/accountScreen.js";
 import { AuthQrSignInScreen } from "../screens/account/authQrSignInScreen.js";
 import { AuthSignInScreen } from "../screens/account/authSignInScreen.js";
@@ -875,6 +874,7 @@ export const Router = {
   },
 
   async navigate(routeName, params = {}, options = {}) {
+    closeNavigationSearch({ navigating: true });
     if (
       options.isBackNavigation ||
       !["stream", "player"].includes(routeName) ||
@@ -902,17 +902,6 @@ export const Router = {
       StartupLoadingOverlay.setBackHandler(() => void this.back());
     }
     const navigationStart = ROUTER_PERF_DEBUG ? routerPerfNow() : 0;
-
-    // Which engine draws the picture is a route decision, and the player route
-    // has six doorways (stream picker, detail, library, next episode...). Asking
-    // each caller to remember the choice means one of them forgets, so it is
-    // answered here instead, once, for whoever asked. The rule itself lives in
-    // moviCapability so it can be tested without a router.
-    // The source was prepared using the stream's playback verdict. Navigation must
-    // preserve it: a filename extension cannot override browser capability evidence.
-    if (routeName === "player" && shouldRoutePlayerToMovi(params, PlayerSettingsStore.get())) {
-      routeName = "moviPlayer";
-    }
 
     const fromHistory = Boolean(options?.fromHistory);
     const skipStackPush = Boolean(options?.skipStackPush);

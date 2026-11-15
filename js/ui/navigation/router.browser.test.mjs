@@ -2274,3 +2274,138 @@ test("first Collection mount layers its own shell instead of the inherited Home 
   assert.equal(home.container.inert, false);
   assert.equal(folderContainer.style.getPropertyValue("z-index"), "");
 });
+test("navbar Search survives the first keyboard resize and restores the submitted query", async (t) => {
+  const { bindDesktopNavigationEvents, closeNavigationSearch, deferUntilNavigationSearchIdle } =
+    await import("../components/desktopNavigation.js");
+  const home = makeScreen("home");
+  const search = makeScreen("search");
+  const discover = makeScreen("discover");
+  resetRouter({ home, search, discover });
+  Router.init();
+  await Router.navigate("home");
+
+  const viewportEvents = new Map();
+  const viewport = {
+    height: 800,
+    offsetTop: 0,
+    addEventListener: (type, callback) => viewportEvents.set(type, callback),
+    removeEventListener: (type) => viewportEvents.delete(type)
+  };
+  const mockGlobal = (key, value) => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, key);
+    Object.defineProperty(globalThis, key, { configurable: true, value });
+    t.after(() => {
+      if (previous) Object.defineProperty(globalThis, key, previous);
+      else delete globalThis[key];
+    });
+  };
+  mockGlobal("visualViewport", viewport);
+  mockGlobal("navigator", { userAgent: "iPhone" });
+  const originalRootClassList = document.documentElement.classList;
+  const originalQuerySelectorAll = document.querySelectorAll;
+  document.documentElement.classList = { toggle() {} };
+  document.querySelectorAll = () => [];
+  t.after(() => {
+    closeNavigationSearch({ navigating: true });
+    document.documentElement.classList = originalRootClassList;
+    document.querySelectorAll = originalQuerySelectorAll;
+  });
+  let focused;
+  function buildNavbar(query = null) {
+    const classes = new Set();
+    const compass = {};
+    const cancel = {};
+    const tabs = { inert: false };
+    const input = {
+      value: "",
+      focus() {
+        focused = this;
+        this.onfocus?.();
+      },
+      blur() {
+        if (focused === this) focused = null;
+      }
+    };
+    const form = {
+      inert: true,
+      isConnected: true,
+      elements: { namedItem: () => input },
+      querySelector: (selector) => (selector === "[data-navigation-discover]" ? compass : cancel)
+    };
+    const button = {
+      dataset: { desktopRoute: "search" },
+      closest: () => nav,
+      setAttribute() {},
+      focus() {
+        focused = this;
+      }
+    };
+    const nav = {
+      dataset: query === null ? {} : { searchQuery: query },
+      hasAttribute: () => query !== null,
+      isConnected: true,
+      querySelector: (selector) =>
+        ({
+          '[data-desktop-route="search"]': button,
+          ".desktop-navigation-search": form,
+          ".desktop-navigation-scroll": tabs
+        })[selector],
+      style: makeStyle(),
+      classList: {
+        add: (...names) => names.forEach((name) => classes.add(name)),
+        remove: (...names) => names.forEach((name) => classes.delete(name)),
+        toggle: (name, active) => (active ? classes.add(name) : classes.delete(name))
+      }
+    };
+    const container = {
+      querySelector: () => (query === null ? null : nav),
+      querySelectorAll: (selector) => (selector.includes("data-desktop-route") ? [button] : [])
+    };
+    bindDesktopNavigationEvents(container);
+    return { classes, compass, cancel, tabs, button, container, form, input };
+  }
+  const click = { preventDefault() {}, stopPropagation() {} };
+  const origin = buildNavbar();
+  origin.button.onclick(click);
+  assert.equal(focused, origin.input);
+  assert.equal(Router.getCurrent(), "home");
+  assert.equal(origin.compass.hidden, false);
+  assert.equal(origin.classes.has("is-search-pinned"), true);
+  let refreshed = false;
+  assert.equal(
+    deferUntilNavigationSearchIdle(origin.container, () => {
+      refreshed = true;
+    }),
+    true
+  );
+  viewport.height = 465;
+  viewportEvents.get("resize")();
+  viewport.height = 800;
+  viewportEvents.get("resize")();
+  assert.equal(origin.classes.has("is-search-open"), true);
+  assert.equal(focused, origin.input);
+  origin.input.value = " ";
+  origin.form.onsubmit(click);
+  assert.equal(search.mounts.length, 0);
+  origin.cancel.onclick();
+  await Promise.resolve();
+  assert.equal(refreshed, true);
+  assert.equal(focused, origin.button);
+
+  origin.button.onclick(click);
+  origin.input.value = "  Silo  ";
+  origin.input.oninput();
+  assert.equal(origin.compass.hidden, true);
+  origin.form.onsubmit(click);
+  await new Promise(setImmediate);
+  assert.equal(search.mounts[0].params.query, "Silo");
+  const results = buildNavbar("Silo");
+  assert.equal(results.form.inert, false);
+  assert.equal(results.input.value, "Silo");
+  assert.notEqual(focused, results.input);
+  results.input.value = "";
+  results.input.oninput();
+  results.compass.onclick();
+  await new Promise(setImmediate);
+  assert.equal(Router.getCurrent(), "discover");
+});

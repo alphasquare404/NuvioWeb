@@ -13,6 +13,7 @@ test("remux assets are local, lazy and bind workers to the same immutable protoc
   const files = await readdir(new URL(id + "/", base));
   for (const file of [
     "client-runtime.js",
+    "decode-runtime.js",
     "cache-worker.js",
     "subtitle-worker.js",
     "mediabunny.LICENSE",

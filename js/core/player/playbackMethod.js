@@ -1,3 +1,5 @@
+import { REMUX_MODE, TRANSCODE_MODE } from "../../config.js";
+
 // How a stream will be played, decided before it is played.
 //
 // The ladder is a cost ladder, not a guess:
@@ -51,7 +53,10 @@ const VIDEO_HINTS = [
   // it turned an unrecognised picture into a confident "h264 -> Direct". A stream whose
   // probe reported MPEG-4 Part 2 was shown as Direct for exactly that reason.
   [/x264|h\.?264|\bavc1?\b|\bavc\b/i, "h264"],
-  [/\bvvc\b|h\.?266/i, "unknown"]
+  [/\bvp0?9\b/i, "vp9"],
+  [/\bvp0?8\b/i, "vp8"],
+  [/\bprores\b/i, "prores"],
+  [/\bvvc\b|h\.?266/i, "vvc"]
 ];
 
 const AUDIO_HINTS = [
@@ -63,7 +68,9 @@ const AUDIO_HINTS = [
   [/\bdts\b/i, "dts"],
   [/\bac3\b|\bdd\b/i, "ac3"],
   [/\bopus\b/i, "opus"],
-  [/aac/i, "aac"]
+  [/aac/i, "aac"],
+  [/\bmp3\b/i, "mp3"],
+  [/\bvorbis\b/i, "vorbis"]
 ];
 
 /**
@@ -125,7 +132,14 @@ function codecSupported(codec, capabilities = {}) {
  * @param {object|null} input.probe     {container, videoCodec, audioCodec} from the server
  * @param {object} input.capabilities   what this device claims it can decode
  */
-export function classifyPlayback({ url = "", label = "", probe = null, capabilities = {} } = {}) {
+export function classifyPlayback({
+  url = "",
+  label = "",
+  probe = null,
+  capabilities = {},
+  clientRemux = REMUX_MODE === "client",
+  clientTranscode = TRANSCODE_MODE === "client"
+} = {}) {
   const exact = Boolean(probe);
   const text = `${url} ${label}`;
   const container = String(probe?.container || detectContainer(text) || "unknown").toLowerCase();
@@ -173,11 +187,28 @@ export function classifyPlayback({ url = "", label = "", probe = null, capabilit
       ? (assessment.audio?.find((item) => item.index === track.index)?.supported ?? null)
       : codecSupported(track.codec, capabilities);
   const audioOk = probe?.hasAudio === false ? true : trackSupport({ index: 0, codec: audioCodec });
+  if (
+    assessment?.webmVideo &&
+    (videoOk !== true || assessment.relayVideo === false || audioOk !== true) &&
+    (videoOk !== true || assessment.container !== true || audioOk !== true)
+  ) {
+    const copyAudio =
+      probe.hasAudio === false ||
+      assessment.audio?.some((track) => track.index === 0 && track.webmCopy);
+    if (copyAudio && clientRemux) return outcome(PLAYBACK_METHODS.REMUX, "webm-output-copy");
+    if (
+      clientTranscode &&
+      (copyAudio || assessment.webmOpus) &&
+      probe.hasAudio !== false &&
+      audioCodec !== "unknown"
+    )
+      return outcome(PLAYBACK_METHODS.AUDIO_TRANSCODE, "webm-output");
+  }
 
   // A video codec the text did not name decides remux versus a full re-encode -- a large
   // difference, and one only ffprobe can settle. It is asked before the container, because
   // "unsupported container" only says the relay will be used, not which relay does what.
-  if (videoCodec === "unknown") {
+  if (videoCodec === "unknown" || videoCodec === "vvc") {
     return {
       method: PLAYBACK_METHODS.UNKNOWN,
       reason: "video-unknown",

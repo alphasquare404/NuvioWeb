@@ -1,4 +1,5 @@
 import { AuthManager } from "../auth/authManager.js";
+import { isPrivateMediaKey } from "../streams/privateMediaSource.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { watchedItemsRepository } from "../../data/repository/watchedItemsRepository.js";
 import { isNuvioSyncOwnedProgress } from "../../data/repository/watchProgressProvenance.js";
@@ -114,7 +115,10 @@ export function mergeWatchedItems(localItems = [], remoteItems = [], reconciledA
   // episode is the completion itself.
   localItems.forEach((item) => {
     const key = watchedItemKey(item);
-    if (!byKey.has(key) && Number(item.watchedAt || 0) > reconciledAt) {
+    if (
+      !byKey.has(key) &&
+      (isPrivateMediaKey(item.contentId) || Number(item.watchedAt || 0) > reconciledAt)
+    ) {
       byKey.set(key, item);
     }
   });
@@ -199,7 +203,7 @@ export const WatchedItemsSyncService = {
       if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
       const remoteItems = (rows || [])
         .map((row) => mapRemoteItem(row))
-        .filter((item) => Boolean(item.contentId));
+        .filter((item) => item.contentId && !isPrivateMediaKey(item.contentId));
       // Read local again, after the network. The list captured before the pull
       // is a snapshot of a store that kept being written while the round trip
       // was in flight -- a couple of seconds, which is exactly long enough for
@@ -245,8 +249,8 @@ export const WatchedItemsSyncService = {
         return false;
       }
       const sessionGeneration = AuthManager.getSessionGeneration();
-      const items = (await watchedItemsRepository.listLocal()).filter((item) =>
-        isNuvioSyncOwnedProgress(item)
+      const items = (await watchedItemsRepository.listLocal()).filter(
+        (item) => !isPrivateMediaKey(item.contentId) && isNuvioSyncOwnedProgress(item)
       );
       await SupabaseApi.rpc(
         PUSH_RPC,
@@ -280,7 +284,10 @@ export const WatchedItemsSyncService = {
       const since = Number(watchedStateForProfile().lastSuccessfulPushAt || 0);
       const items = await watchedItemsRepository.listLocal();
       return items.some(
-        (item) => isNuvioSyncOwnedProgress(item) && Number(item.watchedAt || 0) > since
+        (item) =>
+          !isPrivateMediaKey(item.contentId) &&
+          isNuvioSyncOwnedProgress(item) &&
+          Number(item.watchedAt || 0) > since
       );
     } catch (_) {
       return true;
@@ -296,7 +303,7 @@ export const WatchedItemsSyncService = {
         return true;
       }
       const keys = (Array.isArray(items) ? items : [])
-        .filter((item) => Boolean(item?.contentId))
+        .filter((item) => item?.contentId && !isPrivateMediaKey(item.contentId))
         .map((item) => toDeleteKey(item));
       if (!keys.length) {
         return true;

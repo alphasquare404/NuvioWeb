@@ -165,8 +165,8 @@ test("a probe is cached, and concurrent callers share one request", async () => 
   const prober = createStreamProber({ endpoint: "/api/probe", fetchImpl });
 
   const [first, second] = await Promise.all([
-    prober.probe("https://cdn/stream/abc"),
-    prober.probe("https://cdn/stream/abc")
+    prober.probe("https://cdn.test/stream/abc"),
+    prober.probe("https://cdn.test/stream/abc")
   ]);
   assert.equal(calls.length, 1);
   assert.deepEqual(first, second);
@@ -179,7 +179,7 @@ test("a probe is cached, and concurrent callers share one request", async () => 
     audioStreams: []
   });
 
-  await prober.probe("https://cdn/stream/abc");
+  await prober.probe("https://cdn.test/stream/abc");
   assert.equal(calls.length, 1, "a cached answer is not asked for again");
 });
 
@@ -191,8 +191,8 @@ test("a failure is not cached, and never throws", async () => {
   });
   const prober = createStreamProber({ endpoint: "/api/probe", fetchImpl });
 
-  assert.equal(await prober.probe("https://cdn/x"), null);
-  assert.deepEqual(await prober.probe("https://cdn/x"), {
+  assert.equal(await prober.probe("https://cdn.test/x"), null);
+  assert.deepEqual(await prober.probe("https://cdn.test/x"), {
     container: "mkv",
     videoCodec: "hevc",
     videoTag: "hev1",
@@ -216,7 +216,7 @@ test("a probed row stops being Unknown when classified again", async () => {
     endpoint: "/api/probe",
     fetchImpl: fakeFetch(okProbe).fetchImpl
   });
-  const rows = [{ url: "https://cdn/stream/abc", label: "" }];
+  const rows = [{ url: "https://cdn.test/stream/abc", label: "" }];
 
   const unknown = classifyPlayback({ url: rows[0].url, label: rows[0].label, capabilities: CAPS });
   assert.equal(unknown.method, PLAYBACK_METHODS.UNKNOWN);
@@ -316,9 +316,9 @@ test("cache retains file facts and reassesses the current local engine", async (
     },
     assess: async () => ({ engine })
   });
-  const first = await prober.probe("https://cdn/a");
+  const first = await prober.probe("https://cdn.test/a");
   engine = "movi";
-  const second = await prober.probe("https://cdn/a");
+  const second = await prober.probe("https://cdn.test/a");
   assert.equal(requests, 1);
   assert.equal(first.width, 3840);
   assert.equal(first.bitDepth, 10);

@@ -1,5 +1,10 @@
 import {
+  autoplaySourceOptions,
+  hasAutoplaySourcePriority
+} from "../../../core/streams/autoplaySourcePolicy.js";
+import {
   matchesReusableStream,
+  rememberedAttemptKey,
   reusableStreamPreference
 } from "../../../core/streams/streamReusePreference.js";
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
@@ -15,10 +20,9 @@ import {
 import { Router } from "../../navigation/router.js";
 import {
   streamSelectionDeadline,
+  resolveAutoPlayStream,
   reportAutoPlaySelection
 } from "../../../core/streams/streamAutoResolve.js";
-import { loadMoviModule } from "../../../core/player/movi/moviEngine.js";
-import { shouldUseMovi } from "../../../core/player/movi/moviCapability.js";
 
 import { buildPlayerSubtitle } from "../../../core/util/runtimeLabel.js";
 import { REMUX_ENDPOINT } from "../../../config.js";
@@ -30,6 +34,7 @@ import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
 import { isWatchProgressInProgress } from "../../../domain/model/watchProgress.js";
 import { PlayerSettingsStore } from "../../../data/local/playerSettingsStore.js";
+import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioContext.js";
 import { StreamPreferencesStore } from "../../../data/local/streamPreferencesStore.js";
 import {
   selectAutoPlayStream,
@@ -723,24 +728,6 @@ export const StreamScreen = {
     };
   },
 
-  /**
-   * Warm the movi runtime while the user is still choosing a link.
-   *
-   * Deliberately fire-and-forget: if it fails, the player route loads the module
-   * itself and reports the failure where it belongs, rather than this screen
-   * showing an error about a player nobody has opened yet.
-   */
-  prefetchMoviEngine() {
-    let wanted = false;
-    try {
-      wanted = shouldUseMovi(PlayerSettingsStore.get());
-    } catch {
-      return;
-    }
-    if (!wanted) return;
-    void loadMoviModule().catch(() => {});
-  },
-
   async mount(params = {}, navigationContext = {}) {
     this.container = document.getElementById("stream");
     ScreenUtils.show(this.container);
@@ -749,11 +736,6 @@ export const StreamScreen = {
     this._labelProbePaused = false;
     this._labelProbePaused = false;
     this._playSelectionGeneration = (this._playSelectionGeneration || 0) + 1;
-    // The movi runtime is ~23 MB (element.js plus its wasm) and is fetched when the
-    // player route opens. Fetching it while the user is still choosing a link moves
-    // that wait somewhere it is not felt: this screen is usually up for several
-    // seconds before a tap, and the download runs in the background.
-    void this.prefetchMoviEngine();
     if (this.hasAutoResolvedChoice(params)) {
       this.autoResolvedPlaybackPending = true;
       this.renderAutoResolvedHandoff(params?.backdrop || "");
@@ -1289,6 +1271,8 @@ export const StreamScreen = {
       itemId: String(this.params?.itemId || ""),
       tmdbId: this.params?.tmdbId ?? this.params?.tmdb_id,
       imdbId: this.params?.imdbId,
+      tvdbId: this.params?.tvdbId ?? this.params?.tvdb_id,
+      title: this.params?.itemTitle,
       season: this.params?.season ?? null,
       episode: this.params?.episode ?? null,
       onAddon: (addon) => {
@@ -1479,13 +1463,15 @@ export const StreamScreen = {
       const selected = selectAutoPlayStream(allowed, {
         filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
         filenameStreamFilter: settings.filenameStreamFilter,
+        decodeStreamFilter: settings.decodeStreamFilter,
+        mediabunnyMode: settings.mediabunnyMode,
+        mediabunnyEnabled: settings.mediabunnyEnabled,
         filenameTranscodeFilter: settings.filenameTranscodeFilter,
         mode: settings.streamAutoPlayMode,
         source: settings.streamAutoPlaySource,
         regexPattern: settings.streamAutoPlayRegex,
         installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
-        selectedAddons: settings.streamAutoPlaySelectedAddons,
-        selectedPlugins: settings.streamAutoPlaySelectedPlugins
+        ...autoplaySourceOptions(settings)
       });
       this.autoResumeAttempted = true;
       this.autoResumeUiActive = false;
@@ -1525,6 +1511,7 @@ export const StreamScreen = {
       return;
     if (this.autoPlaySelectionExpired && !deadlineReached) return;
     if (!allLoaded && !this.autoPlaySelectionReady && !deadlineReached) return;
+    if (!allLoaded && !deadlineReached && hasAutoplaySourcePriority(settings)) return;
     if (Number(settings.streamAutoPlayTimeoutSeconds) === 2147483647 && !allLoaded && this.loading)
       return;
     const reusableStream = reusableStreamPreference(
@@ -1578,13 +1565,15 @@ export const StreamScreen = {
       reusableStream,
       filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
       filenameStreamFilter: settings.filenameStreamFilter,
+      decodeStreamFilter: settings.decodeStreamFilter,
+      mediabunnyMode: settings.mediabunnyMode,
+      mediabunnyEnabled: settings.mediabunnyEnabled,
       filenameTranscodeFilter: settings.filenameTranscodeFilter,
       mode: settings.streamAutoPlayMode,
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
       installedAddonNames: collectInstalledAddonNames(addonRepository.getCachedInstalledAddons()),
-      selectedAddons: settings.streamAutoPlaySelectedAddons,
-      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
+      ...autoplaySourceOptions(settings),
       hdrPreference: resolveHdrPreference(settings),
       preferredBingeGroup: resolvePreferredBingeGroup(settings, () =>
         StreamPreferencesStore.getEntry(
@@ -3237,7 +3226,8 @@ export const StreamScreen = {
       skipExternalRoute = false,
       playerOverride = "",
       automatic = false,
-      failedExternalStreamIds = []
+      failedExternalStreamIds = [],
+      failedExternalAttempts = new Set()
     } = {}
   ) {
     this.cancelAutoPlayCountdown();
@@ -3248,12 +3238,18 @@ export const StreamScreen = {
     if (!selected) {
       return;
     }
+    if (Environment.isBrowser()) prepareDecodeAudioFromGesture(PlayerSettingsStore.get());
     this._labelProbePaused = true;
     const selectionGeneration = (this._playSelectionGeneration =
       (this._playSelectionGeneration || 0) + 1);
     const selectionCurrent = () =>
       selectionGeneration === this._playSelectionGeneration && Router.getCurrent() === "stream";
-    StartupLoadingOverlay.begin(this.getStartupOverlayMeta(), "opening");
+    StartupLoadingOverlay.begin(
+      this.getStartupOverlayMeta(),
+      this.params?.reuseLastLink && this.params.autoResolvedStreamsComplete === false
+        ? "reopening"
+        : "opening"
+    );
     StartupLoadingOverlay.setBackHandler(() => {
       this._playSelectionGeneration++;
       this._labelProbePaused = false;
@@ -3355,6 +3351,52 @@ export const StreamScreen = {
       return;
     }
     if (externalRequested) {
+      if (automatic && this.params?.reuseLastLink) {
+        const target = this.params;
+        const failedKey = rememberedAttemptKey(selected);
+        failedExternalAttempts.add(failedKey);
+        StreamPreferencesStore.forgetLink(
+          target.itemId,
+          target.videoId || target.itemId,
+          failedKey
+        );
+        if (target.autoResolvedStreamsComplete === false) {
+          StartupLoadingOverlay.setStage("finding");
+          const resolution = await resolveAutoPlayStream({
+            ...target,
+            title: target.itemTitle,
+            videoId: target.videoId || target.itemId,
+            settings: PlayerSettingsStore.get(),
+            installedAddonNames: collectInstalledAddonNames(
+              addonRepository.getCachedInstalledAddons()
+            ),
+            shouldCancel: () => !selectionCurrent()
+          });
+          if (!selectionCurrent()) return;
+          this.streams = mergeStreamItems([], this.applyAddonLogos(resolution.streams));
+          this._filteredStreamsCache = null;
+          target.autoResolvedStreamsComplete = true;
+        }
+        const available = this.getFilteredStreams().filter(
+          (stream) => !failedExternalAttempts.has(rememberedAttemptKey(stream))
+        );
+        const next = this.selectStreamForAutoPlay(available);
+        if (next?.id) {
+          StartupLoadingOverlay.setStage("opening");
+          return this.playStream(next.id, {
+            automatic,
+            playerOverride: externalPlayer,
+            failedExternalAttempts
+          });
+        }
+        target.reuseLastLink = null;
+        this.autoPlayAttempted = true;
+        this._labelProbePaused = false;
+        this.autoResolvedPlaybackPending = false;
+        StartupLoadingOverlay.finish();
+        this.requestRender({ delayMs: 0 });
+        return;
+      }
       const failedIds = [...failedExternalStreamIds, selected.id];
       const next = automatic
         ? this.selectStreamForAutoPlay(
@@ -3396,8 +3438,13 @@ export const StreamScreen = {
     const playerSource = offlineObjectUrl || selected.url || selected.externalUrl || null;
     const playbackPlan = null;
     const unverifiedPlayback = null;
-    StartupLoadingOverlay.setStage("opening");
+    StartupLoadingOverlay.setStage(
+      this.params?.reuseLastLink && this.params.autoResolvedStreamsComplete === false
+        ? "reopening"
+        : "opening"
+    );
     const playbackParams = {
+      reuseLastLink: this.params?.reuseLastLink || null,
       unverifiedPlayback,
       prepareSelectedSource: !offlineObjectUrl,
       automaticSourceSelection: !offlineObjectUrl && automatic && !this.params?.manualSelection,
@@ -3408,6 +3455,7 @@ export const StreamScreen = {
       itemType: itemType || "movie",
       imdbId: this.params?.imdbId || null,
       tmdbId: this.params?.tmdbId || this.params?.tmdb_id || null,
+      tvdbId: this.params?.tvdbId || this.params?.tvdb_id || null,
       traktId: this.params?.traktId || this.params?.trakt_id || null,
       contentLanguage:
         this.params?.contentLanguage ||

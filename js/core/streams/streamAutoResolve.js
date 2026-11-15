@@ -1,3 +1,4 @@
+import { autoplaySourceOptions, hasAutoplaySourcePriority } from "./autoplaySourcePolicy.js";
 import { reusableStreamPreference, matchesReusableStream } from "./streamReusePreference.js";
 // Picking a stream without a screen to pick it on.
 //
@@ -147,6 +148,8 @@ export async function resolveAutoPlayStream({
   videoId,
   tmdbId,
   imdbId,
+  tvdbId,
+  title,
   season,
   episode,
   settings = {},
@@ -174,6 +177,7 @@ export async function resolveAutoPlayStream({
   const type = normalizeStreamType(itemType);
   const startedAt = now();
   const waitSeconds = normalizeSelectionWaitSeconds(settings.streamAutoPlayTimeoutSeconds);
+  const waitForPriority = hasAutoplaySourcePriority(settings);
   const reusableStream = reusableStreamPreference(settings, itemId, videoId);
   let streams = [];
   let selected = null;
@@ -228,7 +232,9 @@ export async function resolveAutoPlayStream({
           bestVerified = result.selected;
           if (
             (complete && atRevision === revision) ||
-            (!complete && canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt }))
+            (!complete &&
+              !waitForPriority &&
+              canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt }))
           ) {
             selected = bestVerified;
             if (returnOnFirstMatch) releaseCandidate({ status: "success", data: [] });
@@ -251,14 +257,16 @@ export async function resolveAutoPlayStream({
       reusableStream,
       filenameStreamDisplayMode: settings.filenameStreamDisplayMode,
       filenameStreamFilter: settings.filenameStreamFilter,
+      decodeStreamFilter: settings.decodeStreamFilter,
+      mediabunnyMode: settings.mediabunnyMode,
+      mediabunnyEnabled: settings.mediabunnyEnabled,
       filenameTranscodeFilter: settings.filenameTranscodeFilter,
       mode: settings.streamAutoPlayMode,
       hdrPreference: resolveHdrPreference(settings),
       source: settings.streamAutoPlaySource,
       regexPattern: settings.streamAutoPlayRegex,
       installedAddonNames: knownAddonNames,
-      selectedAddons: settings.streamAutoPlaySelectedAddons,
-      selectedPlugins: settings.streamAutoPlaySelectedPlugins,
+      ...autoplaySourceOptions(settings),
       preferredBingeGroup,
       preferBingeGroupInSelection: Boolean(preferredBingeGroup)
     });
@@ -283,6 +291,8 @@ export async function resolveAutoPlayStream({
     itemId,
     tmdbId,
     imdbId,
+    tvdbId,
+    title,
     season,
     episode,
     signal,
@@ -300,7 +310,11 @@ export async function resolveAutoPlayStream({
       }
       // A chunk is a partial list, so it only counts once the grace period for
       // better sources has passed.
-      if (!canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt })) return;
+      if (
+        waitForPriority ||
+        !canSelectFromPartialList({ waitSeconds, elapsedMs: now() - startedAt })
+      )
+        return;
       const candidate = choose();
       if (candidate?.id) {
         selected = candidate;
@@ -394,8 +408,7 @@ export async function resolveAutoPlayStream({
         filterAutoPlaySourceStreams(streams, {
           source: settings.streamAutoPlaySource,
           installedAddonNames: knownAddonNames,
-          selectedAddons: settings.streamAutoPlaySelectedAddons,
-          selectedPlugins: settings.streamAutoPlaySelectedPlugins
+          ...autoplaySourceOptions(settings)
         }).some((stream) => hdrFromText(stream) === true)),
     timedOut: timedOut && !selected,
     deadlineAt,

@@ -1,6 +1,8 @@
 import { safeApiCall } from "../../core/network/safeApiCall.js";
 import { addonRepository } from "./addonRepository.js";
 import { MetaApi } from "../remote/api/metaApi.js";
+import { isMediaCatalogBase, loadMediaTitle } from "./mediaServerCatalogRepository.js";
+import { mediaTitleRef } from "../../core/media/mediaConnections.js";
 
 function normalizeDisplayText(value) {
   return String(value ?? "")
@@ -16,6 +18,9 @@ class MetaRepository {
   }
 
   async getMeta(addonBaseUrl, type, id) {
+    if (isMediaCatalogBase(addonBaseUrl) || mediaTitleRef(id)) {
+      return safeApiCall(() => loadMediaTitle(id));
+    }
     const normalizedType = String(type || "").trim();
     const normalizedId = String(id || "").trim();
     const cacheKey = `${addonRepository.canonicalizeUrl(addonBaseUrl)}:${normalizedType}:${normalizedId}`;
@@ -52,6 +57,7 @@ class MetaRepository {
   }
 
   async getMetaFromAllAddons(type, id) {
+    if (mediaTitleRef(id)) return safeApiCall(() => loadMediaTitle(id));
     const requestedType = String(type || "").trim();
     const inferredType = this.inferCanonicalType(requestedType, id);
     const cacheKey = `all:${requestedType}:${inferredType}:${String(id || "").trim()}`;

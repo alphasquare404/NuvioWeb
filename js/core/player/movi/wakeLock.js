@@ -24,22 +24,35 @@ export function createWakeLock({
   let wanted = false;
   let listenerBound = false;
 
-  async function acquire() {
-    if (!wanted || sentinel) return Boolean(sentinel);
-    if (!wakeLockApi || typeof wakeLockApi.request !== "function") return false;
-    try {
-      const next = await wakeLockApi.request("screen");
-      sentinel = next || null;
-      // The browser can release it on its own (tab hidden, battery saver). Clear
-      // the handle so the next visible tick takes it again.
-      sentinel?.addEventListener?.("release", () => {
-        sentinel = null;
+  let pending = null;
+  const isVisible = () => visibilitySource?.visibilityState !== "hidden";
+
+  function acquire() {
+    if (!wanted || !isVisible() || sentinel) return Promise.resolve(Boolean(sentinel));
+    if (!wakeLockApi || typeof wakeLockApi.request !== "function") return Promise.resolve(false);
+    if (pending) return pending;
+
+    pending = Promise.resolve()
+      .then(() => (wanted && isVisible() ? wakeLockApi.request("screen") : null))
+      .then(async (next) => {
+        if (!wanted || !isVisible()) {
+          await next?.release?.();
+          return false;
+        }
+        sentinel = next?.released === true ? null : next || null;
+        sentinel?.addEventListener?.("release", () => {
+          if (sentinel === next) sentinel = null;
+        });
+        return Boolean(sentinel);
+      })
+      .catch((error) => {
+        if (wanted) warn("Screen wake lock was refused", error);
+        return false;
+      })
+      .finally(() => {
+        pending = null;
       });
-      return Boolean(sentinel);
-    } catch (error) {
-      warn("movi: screen wake lock was refused", error);
-      return false;
-    }
+    return pending;
   }
 
   function handleVisibility() {

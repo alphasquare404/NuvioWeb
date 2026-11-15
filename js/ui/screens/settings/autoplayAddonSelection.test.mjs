@@ -1,15 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { visibleAutoplayAddonSelection } from "./autoplayAddonSelection.js";
-test("addon count and editing exclude invisible stale names and duplicate selections", () => {
-  const saved = ["Addon A", "Removed addon", "Addon A"];
+import { listAutoplayStreamAddons } from "./autoplayAddonSelection.js";
+test("allowed sources keep stream and unknown add-ons in their installed order", () => {
   assert.deepEqual(
-    visibleAutoplayAddonSelection(saved, [{ displayName: "Addon A", name: "manifest name" }]),
-    ["Addon A"]
+    listAutoplayStreamAddons([
+      { name: "Cinemeta", resources: [{ name: "catalog" }, { name: "meta" }] },
+      { displayName: "Renamed provider", name: "Original", resources: [{ name: "stream" }] },
+      { name: "Subtitles", resources: [{ name: "subtitles" }] },
+      { name: "Manifest unavailable" },
+      { name: "Second provider", resources: [{ name: "stream" }] }
+    ]),
+    [
+      { id: "Renamed provider", label: "Renamed provider", unknown: false },
+      { id: "Manifest unavailable", label: "Manifest unavailable", unknown: true },
+      { id: "Second provider", label: "Second provider", unknown: false }
+    ]
   );
-  assert.deepEqual(visibleAutoplayAddonSelection(saved, [{ id: "Addon A", label: "Addon A" }]), [
-    "Addon A"
-  ]);
-  assert.deepEqual(saved, ["Addon A", "Removed addon", "Addon A"]);
-  assert.deepEqual(visibleAutoplayAddonSelection(["Removed addon"], [{ name: "Addon A" }]), []);
 });

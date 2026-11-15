@@ -111,13 +111,17 @@ export const BrowserOfflineDownloadOptions = {
       title: "Download Options",
       widthVw: 34,
       panelClassName: "stream-download-options-dialog",
+      closeLabel: state.closeLabel,
       actionsClassName: "stream-download-options-actions",
       content: () => this.renderOfflineDownloadOptionsContent(state),
       buttons: [
         {
-          label: "Cancel",
+          label: state.onBack ? "Back" : "Cancel",
           className: "season-download-secondary-action",
-          onAction: () => this.closeOfflineDownloadOptions()
+          onAction: () => {
+            this.closeOfflineDownloadOptions();
+            state.onBack?.();
+          }
         },
         {
           label: "Download",
@@ -130,10 +134,18 @@ export const BrowserOfflineDownloadOptions = {
     this.offlineDownloadOptionsDialog.mount(document.body);
   },
 
-  async openOfflineDownloadOptions(stream, context = this.getOfflineDownloadContext(stream)) {
+  async openOfflineDownloadOptions(
+    stream,
+    context = this.getOfflineDownloadContext(stream),
+    { onBack = null, onQueued = null, onError = null, closeLabel = "" } = {}
+  ) {
     const state = {
       stream,
       context,
+      onBack,
+      onQueued,
+      onError,
+      closeLabel,
       subtitles: [],
       subtitleSnapshot: [],
       selectedMode: "none",
@@ -163,19 +175,34 @@ export const BrowserOfflineDownloadOptions = {
   },
 
   async confirmOfflineDownloadOptions(state = this.offlineDownloadOptionsState) {
-    if (!state?.context) return;
+    if (!state?.context || state !== this.offlineDownloadOptionsState || state.submitting) return;
+    state.submitting = true;
     const selection = createBrowserOfflineSubtitleSelection(state.subtitleSnapshot, state);
     try {
       const queued = await enqueueBrowserOfflineDownload({
         ...state.context,
         ...selection
       });
+      if (this.offlineDownloadOptionsState !== state) return;
       this.closeOfflineDownloadOptions();
-      this.showAspectToast?.(
-        queued.status === "existing" ? "Already in Downloads" : "Download queued"
-      );
+      if (state.onQueued) state.onQueued(queued);
+      else
+        this.showAspectToast?.(
+          queued.status === "existing" ? "Already in Downloads" : "Download queued"
+        );
     } catch (_) {
-      (this.showStreamToast || this.showAspectToast).call(this, "Could not download this source.");
+      if (this.offlineDownloadOptionsState !== state) return;
+      if (state.onError) {
+        this.closeOfflineDownloadOptions();
+        state.onError();
+      } else {
+        (this.showStreamToast || this.showAspectToast)?.call(
+          this,
+          "Could not download this source."
+        );
+      }
+    } finally {
+      state.submitting = false;
     }
   }
 };

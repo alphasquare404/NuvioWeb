@@ -8,6 +8,93 @@ async function metaDetailsScreenSource() {
   return readFile(metaDetailsScreenUrl, "utf8");
 }
 
+test("movie download opens a source and subtitle dialog from Detail", async () => {
+  const source = await metaDetailsScreenSource();
+  const method = source.match(/async openMovieDownloadDialog\([\s\S]*?\n {2}\},/)?.[0];
+  const picker = source.match(/ {2}createDownloadSourcePicker\([\s\S]*?\n {2}\},/)?.[0];
+  assert.ok(method);
+  assert.ok(picker);
+  const stream = { id: "downloadable", addonName: "Addon" };
+  let finishDiscovery;
+  const discovery = new Promise((resolve) => {
+    finishDiscovery = resolve;
+  });
+  const services = {
+    Platform: { isBrowser: () => true },
+    isBrowserOfflineDownloadSupported: () => true,
+    resolveMovieStreamIdentity: () => ({ itemId: "movie", videoId: "video" }),
+    resolvePlayableDetailType: (type) => type,
+    resolveMetaImdbId: () => "tt1",
+    resolveMetaTmdbId: () => "1",
+    resolveMetaTvdbId: () => "2",
+    parseEpisodeRuntimeMinutes: () => 100,
+    t: (_key, _params, fallback) => fallback,
+    createOfflineDisplaySnapshot: () => ({}),
+    listOfflineDownloads: async () => [],
+    createOfflineMediaId: () => "movie",
+    createOfflineDownloadId: ({ stream }) => stream.id,
+    streamRepository: {
+      async getStreamsFromAllAddons(type, id, options) {
+        assert.equal(type, "movie");
+        assert.equal(id, "video");
+        assert.equal(options.itemId, "movie");
+        assert.equal(options.tvdbId, "2");
+        options.onChunk([stream]);
+        return discovery;
+      }
+    },
+    filterFilenameStreams: (streams) => streams,
+    flattenSeasonDownloadStreams: (result) => result,
+    PlayerSettingsStore: { get: () => ({}) },
+    canQueueBrowserOfflineDownload: ({ stream }) => stream.id === "downloadable",
+    normalizeSourceForDisplay: ({ id }) => ({ accessibleLabel: id })
+  };
+  const methods = new Function(...Object.keys(services), "return ({" + method + picker + "})")(
+    ...Object.values(services)
+  );
+  const detail = {
+    meta: { name: "Movie", type: "movie" },
+    ...methods,
+    getHeroOfflineDownloadId: () => "",
+    showSeasonDownloadDialog(options) {
+      this.seasonDownloadDialog = {
+        ...options,
+        buttons: options.buttons || [],
+        appendButtons(buttons) {
+          this.buttons.push(...buttons);
+        },
+        setSubtitle(subtitle) {
+          this.subtitle = subtitle;
+        }
+      };
+    },
+    closeSeasonDownloadDialog() {
+      this.seasonDownloadDialog = null;
+    },
+    openOfflineDownloadOptions(selected, context, callbacks) {
+      assert.equal(selected, stream);
+      assert.equal(context.mediaId, "movie");
+      callbacks.onQueued({ status: "queued" });
+    }
+  };
+  await detail.openMovieDownloadDialog();
+  assert.ok(detail.seasonDownloadDialog.buttons.some(({ label }) => label === "Choose Source"));
+  assert.ok(detail.seasonDownloadDialog.buttons.some(({ label }) => label === "Automatic"));
+  const pending = detail.openMovieDownloadDialog({ chooseSource: true });
+  assert.deepEqual(
+    detail.seasonDownloadDialog.buttons.map(({ label }) => label),
+    ["downloadable"]
+  );
+  finishDiscovery([stream, { id: "unsupported" }]);
+  await pending;
+  assert.deepEqual(
+    detail.seasonDownloadDialog.buttons.map(({ label }) => label),
+    ["downloadable"]
+  );
+  detail.seasonDownloadDialog.buttons[0].onAction();
+  assert.equal(detail.seasonDownloadDialog.subtitle, "Download queued.");
+});
+
 test("choosing a season redraws only what the season changes", async () => {
   // A full render restored the scroll from a value captured elsewhere -- zero --
   // so the page jumped to the top, and rebuilding the dropdown under the finger
@@ -163,4 +250,84 @@ test("Back releases the autoplay handoff before refreshing preserved Detail", as
   assert.equal(screen.routeHandoffPending, false);
   assert.equal(screen.renderedRouteHandoffMarkup, null);
   assert.equal(renders, 1);
+});
+
+test("Continue Watching prepares before showing a real add-on search", async () => {
+  const source = await metaDetailsScreenSource();
+  const method = source.match(/renderRouteHandoff\(stage = "checking"\) \{[\s\S]*?\n {2}\},/)?.[0];
+  assert.ok(method);
+  const stages = [];
+  const overlay = {
+    active: false,
+    begin(_metadata, stage) {
+      this.active = true;
+      stages.push(stage);
+    },
+    updateMetadata() {},
+    setStage(stage) {
+      stages.push(stage);
+    }
+  };
+  const run = new Function(
+    "Platform",
+    "usesUnifiedStartup",
+    "isAutoPlayEffectivelyEnabled",
+    "PlayerSettingsStore",
+    "StartupLoadingOverlay",
+    "return ({" + method + "}).renderRouteHandoff"
+  )(
+    { isBrowser: () => true },
+    () => true,
+    () => true,
+    { get: () => ({}) },
+    overlay
+  );
+  const screen = { container: {}, params: {}, getStartupOverlayMeta: () => ({}) };
+  run.call(screen);
+  run.call(screen, "finding");
+  assert.deepEqual(stages, ["checking", "finding"]);
+
+  const open = source.match(/async openStreamRoute\(params, options\) \{[\s\S]*?\n {2}\},/)?.[0];
+  assert.ok(open);
+  const saved = {
+    streamId: "old",
+    resumeIdentity: "file:episode",
+    candidate: { id: "old", url: "https://media.example/old" }
+  };
+  const next = new Function(
+    "PlayerSettingsStore",
+    "isAutoPlayEffectivelyEnabled",
+    "reusableStreamPreference",
+    "collectInstalledAddonNames",
+    "addonRepository",
+    "Platform",
+    "reusablePlaybackUrl",
+    "autoPlayCandidates",
+    "nextEpisodeSelectionOptions",
+    "StartupLoadingOverlay",
+    "Router",
+    "resolveAutoPlayStream",
+    "return ({" + open + "}).openStreamRoute"
+  )(
+    { get: () => ({ browserExternalPlayer: "lenna" }) },
+    () => true,
+    () => saved,
+    () => new Set(),
+    { getCachedInstalledAddons: () => [] },
+    { isBrowser: () => true },
+    (url) => url,
+    (candidates) => candidates,
+    () => ({}),
+    overlay,
+    { navigate: (_route, params) => params },
+    () => assert.fail("Cached link must be handed off before discovery")
+  );
+  const params = await next.call(screen, {
+    itemId: "tt1",
+    videoId: "tt1:1:2",
+    resumePositionMs: 140000
+  });
+  assert.equal(params.autoResolvedStreamId, "old");
+  assert.equal(params.resumePositionMs, 140000);
+  assert.equal(stages.at(-1), "reopening");
 });

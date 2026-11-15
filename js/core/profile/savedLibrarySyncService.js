@@ -1,4 +1,5 @@
 import { AuthManager } from "../auth/authManager.js";
+import { isPrivateMediaKey } from "../streams/privateMediaSource.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { savedLibraryRepository } from "../../data/repository/savedLibraryRepository.js";
 import { ProfileManager } from "./profileManager.js";
@@ -96,13 +97,19 @@ export const SavedLibrarySyncService = {
       }
       const remoteItems = (rows || [])
         .map((row) => mapRemoteItem(row))
-        .filter((item) => Boolean(item.contentId));
+        .filter((item) => item.contentId && !isPrivateMediaKey(item.contentId));
       if (!remoteItems.length && localItems.length) {
         return localItems;
       }
       if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
-      await savedLibraryRepository.replaceAll(remoteItems, resolvedProfileId);
-      return remoteItems;
+      const currentItems = await savedLibraryRepository.getAll(1000, resolvedProfileId);
+      if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
+      const mergedItems = [
+        ...remoteItems,
+        ...currentItems.filter((item) => isPrivateMediaKey(item.contentId))
+      ];
+      await savedLibraryRepository.replaceAll(mergedItems, resolvedProfileId);
+      return mergedItems;
     } catch (error) {
       console.warn("Saved library sync pull failed", error);
       return [];
@@ -116,7 +123,9 @@ export const SavedLibrarySyncService = {
       }
       const sessionGeneration = AuthManager.getSessionGeneration();
       const resolvedProfileId = resolveProfileId(profileId);
-      const items = await savedLibraryRepository.getAll(1000, resolvedProfileId);
+      const items = (await savedLibraryRepository.getAll(1000, resolvedProfileId)).filter(
+        (item) => !isPrivateMediaKey(item.contentId)
+      );
       if (!items.length) {
         return true;
       }

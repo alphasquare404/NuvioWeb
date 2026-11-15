@@ -1758,6 +1758,37 @@ button:focus-visible {
 }
 
 /* Title — titleLarge: 20sp=40px, Medium(500) */
+.nuvio-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nuvio-dialog-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.nuvio-dialog-close:hover,
+.nuvio-dialog-close:focus-visible {
+  background: rgb(255 255 255 / 0.14);
+}
+
+.nuvio-dialog-close svg {
+  width: 20px;
+  height: 20px;
+}
+
 .nuvio-dialog-title {
   font-size: 40px;
   line-height: 1.2;
@@ -10002,6 +10033,407 @@ button:focus-visible {
   scroll-behavior: auto;
   padding: 8px 32px;
   margin: 0 -32px;
+}
+
+.settings-shell .settings-dialog.settings-autoplay-sources-dialog,
+.desktop-browser .settings-shell .settings-dialog.settings-autoplay-sources-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(620px, calc(100vh - 32px));
+  max-height: min(620px, calc(100dvh - 32px));
+  padding: 20px;
+  gap: 12px;
+  border-width: 1px;
+  border-radius: 20px;
+  min-width: 0;
+}
+
+.settings-dialog.settings-autoplay-sources-dialog .settings-dialog-title {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.settings-dialog.settings-autoplay-sources-dialog > .settings-dialog-list {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 3px;
+}
+
+.settings-dialog.settings-autoplay-sources-dialog .settings-dialog-option {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+}
+
+.settings-dialog.settings-autoplay-sources-dialog .settings-dialog-option-label {
+  font-size: 14px;
+}
+
+.media-connections {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 960px) {
+  .media-connections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.media-connections h3 {
+  margin: 0 0 12px;
+}
+
+.media-seerr-notice {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgb(229 178 86 / 0.4);
+  border-radius: 8px;
+  background: rgb(229 178 86 / 0.1);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.media-seerr-notice a {
+  justify-self: start;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.media-connections section {
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+}
+
+.media-connections form,
+.media-connections label,
+.media-server-type-field {
+  display: grid;
+  gap: 6px;
+}
+
+.media-connections form {
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.media-connections input:not([type="checkbox"]),
+.media-connections select,
+.media-connections button {
+  min-height: 42px;
+  color: inherit;
+  background: var(--surface-color, #242424);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+.media-connections input:not([type="checkbox"]),
+.media-connections select,
+.media-connections [data-media-type-trigger] {
+  background: rgb(var(--secondary-color-rgb) / 0.055);
+  border-color: var(--settings-card-edge, rgb(var(--secondary-color-rgb) / 0.24));
+  color: var(--text-color);
+  font: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.media-connections input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.media-connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.media-connection-row > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.media-server-card {
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--settings-card-edge, var(--border-color));
+  border-radius: 12px;
+  background: var(--settings-card-wash, rgb(var(--secondary-color-rgb) / 0.05));
+}
+
+.media-connections button,
+.media-connections select,
+.media-connections summary {
+  cursor: pointer;
+}
+
+.media-connections summary {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.media-connections details[open] > summary {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.media-connections .media-add-server > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  box-sizing: border-box;
+  font-weight: 600;
+}
+
+.media-connections .media-add-server > summary::-webkit-details-marker {
+  display: none;
+}
+
+.media-connections form > button {
+  border-color: transparent;
+  background: var(--text-color);
+  color: var(--bg-color);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.media-server-type-field > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.media-connections dialog {
+  width: min(360px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid #444;
+  border-radius: 16px;
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.media-connections dialog::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.media-connections dialog header {
+  margin-bottom: 10px;
+}
+
+.media-connections [data-media-type-option] {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  text-align: start;
+}
+
+.media-connections [data-media-type-option][aria-pressed="true"] {
+  border-color: rgb(var(--secondary-color-rgb) / 0.65);
+  background: rgb(var(--secondary-color-rgb) / 0.18);
+}
+
+.media-connections :is(button, summary),
+.autoplay-source-handle,
+.autoplay-source-switch {
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.media-connections :is(button, input, select, summary):focus-visible {
+  outline: 2px solid rgb(var(--secondary-color-rgb) / 0.7);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .media-connections :is(button:enabled, summary):hover,
+  .autoplay-source-handle:hover,
+  .autoplay-source-switch:enabled:hover {
+    background-color: rgba(255, 255, 255, 0.17);
+    border-radius: 8px;
+  }
+
+  .media-connections form > button:enabled:hover {
+    background: color-mix(in srgb, var(--text-color) 85%, var(--secondary-color));
+  }
+}
+
+.media-connections :is(button:enabled, summary):active,
+.autoplay-source-handle:active,
+.autoplay-source-switch:enabled:active {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.media-connections form > button:enabled:active {
+  background: color-mix(in srgb, var(--text-color) 72%, var(--secondary-color));
+}
+
+.media-connections button[aria-busy="true"],
+.series-detail-actions button[aria-busy="true"] {
+  opacity: 0.65;
+  cursor: progress;
+}
+
+.media-connections [data-media-libraries] {
+  margin: 0;
+}
+
+.media-connections [data-media-library-options] button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  text-align: start;
+  font: inherit;
+}
+
+.media-connections [data-media-library-options] .settings-toggle-pill {
+  width: 44px;
+  height: 24px;
+  padding: 3px;
+}
+
+.media-connections [data-media-library-options] .settings-toggle-thumb {
+  width: 18px;
+  height: 18px;
+}
+
+.media-connections [role="status"]:empty,
+.media-connections ul:empty,
+.media-request-status:empty {
+  display: none;
+}
+
+.autoplay-source-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-tertiary, #b3b3b3);
+}
+
+.autoplay-source-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.autoplay-source-group {
+  flex: 0 0 auto;
+  position: relative;
+  padding: 2px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: #222224;
+}
+
+.autoplay-source-group.is-dragging {
+  z-index: 1;
+}
+
+.autoplay-source-group-heading,
+.autoplay-source-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.autoplay-source-handle,
+.autoplay-source-switch {
+  color: inherit;
+  background: transparent;
+  border: 0;
+}
+
+.autoplay-source-handle {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 40px;
+  padding: 0;
+  cursor: grab;
+  color: var(--text-tertiary, #b3b3b3);
+}
+
+.autoplay-source-handle:active {
+  cursor: grabbing;
+}
+
+.autoplay-source-handle:focus-visible,
+.autoplay-source-switch:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+.autoplay-source-switch {
+  width: 100%;
+  min-height: 44px;
+  justify-content: space-between;
+  text-align: start;
+  padding: 6px 4px 6px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+.autoplay-source-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.autoplay-source-switch:disabled {
+  cursor: default;
+}
+
+.autoplay-source-switch:disabled .settings-toggle-pill {
+  opacity: 0.45;
+}
+
+.autoplay-source-switch .settings-toggle-pill {
+  width: 44px;
+  height: 24px;
+  padding: 3px;
+}
+
+.autoplay-source-switch .settings-toggle-thumb {
+  width: 18px;
+  height: 18px;
+}
+
+.autoplay-source-group small {
+  display: block;
+  padding: 0 8px 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.autoplay-source-name small {
+  padding: 2px 0 0;
+}
+
+@media (max-width: 600px) {
+  .settings-shell .settings-dialog-backdrop:has(> .settings-autoplay-sources-dialog),
+  .desktop-browser .settings-shell .settings-dialog-backdrop:has(> .settings-autoplay-sources-dialog) {
+    padding: 12px;
+  }
 }
 
 .settings-dialog-list::-webkit-scrollbar {
@@ -21837,10 +22269,16 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
 .filename-playback-badge.tone-green { color: #73df9c; background: #102e20; }
 .filename-playback-badge.tone-blue { color: #0867ea; }
 .filename-playback-badge.tone-orange { color: #ffb46b; background: #382413; }
+.filename-playback-badge.tone-purple { color: #be9aff; background: #2c2040; }
 .filename-playback-badge.tone-red { color: #ff9999; background: #351c1c; }
 .filename-playback-badge.tone-neutral { color: #c1c7d0; background: #24272c; }
 .filename-playback-badge.has-artwork { padding: 0; border: 0; background: transparent; }
 .filename-playback-badge.has-artwork img { display: block; width: auto; height: 30px; }
+.settings-single-choice-subtitle {
+  display: block;
+  font-weight: 400;
+  opacity: .75;
+}
 
 
 /* The loading canvas follows the requested player orientation from its first paint. */
