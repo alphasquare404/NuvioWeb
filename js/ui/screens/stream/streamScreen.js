@@ -138,6 +138,9 @@ import {
 } from "../../../core/offline/browserOfflineDownloadQueue.js";
 
 const STREAM_BADGE_LIMIT = 9;
+// A held direction repeats faster than the list can re-render; spacing the
+// repeats keeps one press worth one card instead of skipping several.
+const STREAM_DPAD_REPEAT_THROTTLE_MS = 112;
 
 // Stands in for the source list while comparing one render of the page against
 // the last. A comment cannot appear in generated markup, so it cannot collide.
@@ -3612,6 +3615,15 @@ export const StreamScreen = {
 
     const direction = getDpadDirection(event);
     if (direction) {
+      const now = Date.now();
+      if (
+        event?.repeat &&
+        now - Number(this.streamLastNavigationRepeatAt || 0) < STREAM_DPAD_REPEAT_THROTTLE_MS
+      ) {
+        event?.preventDefault?.();
+        return;
+      }
+      this.streamLastNavigationRepeatAt = now;
       const { chips, rows } = this.getFocusLists();
       const zone = this.focusState?.zone || (rows.length ? "card" : "filter");
       let index = Number(this.focusState?.index || 0);

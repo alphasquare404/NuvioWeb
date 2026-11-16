@@ -243,13 +243,9 @@ function toProgressKey(item = {}) {
 }
 
 function syncIdentityKey(item = {}) {
-  const contentId = String(item.contentId || "").trim();
-  const season = toNonNegativeIntegerOrNull(item.season);
-  const episode = toPositiveIntegerOrNull(item.episode);
-  if (contentId && season != null && episode != null) {
-    return `${contentId}:episode:${season}:${episode}`;
-  }
-  return `${contentId}:video:${toRemoteVideoId(item)}`;
+  // Same identity the local store and the dedupe pass use, so a row cannot be
+  // coalesced under one key here and split under another there.
+  return toProgressKey(item);
 }
 
 function dedupeSyncItems(items = []) {

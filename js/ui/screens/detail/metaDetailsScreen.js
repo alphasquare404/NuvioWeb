@@ -11736,6 +11736,12 @@ export const MetaDetailsScreen = {
     }
 
     const edgePadding = horizontalTrack.classList.contains("home-track") ? 0 : 24;
+    // The first focusable item already sits after the track's safe gutter.
+    // Applying the generic edge padding to its offsetLeft leaves a residual
+    // horizontal shift after navigating back to the start of the rail.
+    if (horizontalTrack.querySelector?.(".focusable") === target) {
+      return 0;
+    }
     const targetLeft = target.offsetLeft;
     const targetRight = targetLeft + target.offsetWidth;
     const viewLeft = horizontalTrack.scrollLeft;

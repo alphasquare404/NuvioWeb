@@ -184,7 +184,10 @@ export const CastDetailScreen = {
       this.credits = credits
         .map((item) => ({
           id: item?.id ? String(item.id) : "",
-          itemId: item?.imdb_id || item?.id ? String(item.imdb_id || item.id) : "",
+          // TMDB credits expose a numeric TMDB id. Keep the canonical
+          // "tmdb:<id>" identity so the detail route can resolve it to the IMDb
+          // id the metadata addons expect before loading episodes.
+          itemId: item?.imdb_id || (item?.id ? `tmdb:${String(item.id)}` : ""),
           type: toType(item?.media_type),
           name: item?.title || item?.name || "Untitled",
           subtitle: item?.character || "",

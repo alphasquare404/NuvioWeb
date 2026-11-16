@@ -3327,4 +3327,19 @@
     <string name="quick_setup_cors_client">Client remux and direct in-app downloads require CORS permission from the stream host. Direct playback may still work when CORS is blocked.</string>
     <string name="quick_setup_cors_downloads">Direct in-app downloads require CORS permission from the stream host.</string>
     <string name="quick_setup_cors_read_more">Read More</string>
+    <string name="common_back">Back</string>
+    <string name="library_source_servers">Servers</string>
+    <string name="servers_empty_title">No media servers</string>
+    <string name="servers_empty_message">Connect a Jellyfin or Emby server in Settings.</string>
+    <string name="servers_no_libraries">No libraries selected for this server.</string>
+    <string name="servers_loading">Loading titles…</string>
+    <string name="servers_empty_library">This library has no titles.</string>
+    <string name="servers_failure_unreachable">Could not reach this library.</string>
+    <string name="media_connection_catalog_metadata">Use catalog metadata</string>
+    <string name="media_connection_import_watch_state">Import watch state</string>
+    <string name="servers_all">All</string>
+    <string name="servers_server_label">Server</string>
+    <string name="servers_type_label">Type</string>
+    <string name="servers_type_movies">Movies</string>
+    <string name="servers_type_shows">Shows</string>
 </resources>

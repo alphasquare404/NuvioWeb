@@ -10183,6 +10183,32 @@ button:focus-visible {
   background: var(--settings-card-wash, rgb(var(--secondary-color-rgb) / 0.05));
 }
 
+.media-server-flags {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.media-server-flag {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+
+.media-server-flag[aria-checked="true"] {
+  border-color: var(--focus-color, #fff);
+}
+
 .media-connections button,
 .media-connections select,
 .media-connections summary {

@@ -1,4 +1,9 @@
 import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
+import { selectedMediaLibraries } from "../../../core/media/mediaConnections.js";
+import {
+  loadMediaCatalog,
+  mediaCatalogLibraries
+} from "../../../data/repository/mediaServerCatalogRepository.js";
 import {
   LibraryListPrivacy,
   LibrarySortOptionKey,
@@ -30,7 +35,7 @@ const ALL_KEY = "__all__";
 const MESSAGE_CLEAR_MS = 2400;
 const SYNC_LOADING_MIN_MS = 700;
 const LEADING_ARTICLE_REGEX = /^(the|an|a)\s+/i;
-export const LIBRARY_VIEW_MODE = { SAVED: "saved", CLOUD: "cloud" };
+export const LIBRARY_VIEW_MODE = { SAVED: "saved", CLOUD: "cloud", SERVERS: "servers" };
 export const LIBRARY_PRESENTATION_MODE = { FLAT: "flat", GROUPED: "grouped" };
 const SIMKL_GROUP_STATUS_ORDER = ["watching", "plantowatch", "completed", "hold", "dropped"];
 
@@ -121,7 +126,14 @@ function makeInitialState() {
     selectedCloudLibraryId: null,
     cloudSearchQuery: "",
     resolvingCloudFileKey: null,
-    cloudFilePickerItem: null
+    cloudFilePickerItem: null,
+    mediaServers: [],
+    mediaServersLoaded: false,
+    selectedServerId: null,
+    selectedServerType: null,
+    serverItems: [],
+    serverItemsLoading: false,
+    serverItemsError: ""
   };
 }
 
@@ -174,32 +186,11 @@ function withVisibleCloudItems(state) {
     providerMap.set(item.providerId, current);
   });
   const typeMap = new Map();
-  // Server titles are files inside a library, not a transfer kind, so they do
-  // not belong in the Type filter that describes debrid transfers.
-  providerItems
-    .filter((item) => !item.libraryId)
-    .forEach((item) => typeMap.set(item.type, (typeMap.get(item.type) || 0) + 1));
-  const serverSources = Array.isArray(state.cloudLibrary?.serverSources)
-    ? state.cloudLibrary.serverSources
-    : [];
-  // A connected server is a provider like any other: it is where the titles come
-  // from. Its libraries are not a type -- they are places inside that provider,
-  // so the picker that lists them is separate.
-  for (const source of serverSources) {
-    providerMap.set(source.id, {
-      key: source.id,
-      label: source.name,
-      count: allItems.filter((item) => item.providerId === source.id).length,
-      isServer: true
-    });
-  }
+  providerItems.forEach((item) => typeMap.set(item.type, (typeMap.get(item.type) || 0) + 1));
   const availableCloudProviders = [...providerMap.values()].sort((left, right) =>
     left.label.localeCompare(right.label)
   );
-  const selectedServer = serverSources.find(
-    (source) => source.id === state.selectedCloudProviderId
-  );
-  const availableCloudLibraries = selectedServer ? selectedServer.libraries : [];
+  const availableCloudLibraries = [];
   const availableCloudTypes = Object.values(CLOUD_LIBRARY_ITEM_TYPES)
     .filter((type) => typeMap.has(type))
     .map((type) => ({ key: type, label: cloudTypeLabel(type), count: typeMap.get(type) }));
@@ -217,11 +208,7 @@ function withVisibleCloudItems(state) {
     selectedCloudType: availableCloudTypes.some((option) => option.key === state.selectedCloudType)
       ? state.selectedCloudType
       : null,
-    selectedCloudLibraryId: availableCloudLibraries.some(
-      (library) => library.id === state.selectedCloudLibraryId
-    )
-      ? state.selectedCloudLibraryId
-      : null
+    selectedCloudLibraryId: null
   };
 }
 
@@ -490,6 +477,24 @@ function copyEditorState(state) {
         privacy: state.privacy || LibraryListPrivacy.PRIVATE
       }
     : null;
+}
+
+// The Servers tab needs the whole connection, not just its label: loading a
+// server's libraries reads url/token, and narrowing them reads libraryIds.
+export async function serverLibraryGroups(servers = [], loadLibraries = mediaCatalogLibraries) {
+  return Promise.all(
+    servers.map(async (server) => {
+      const libraries = await loadLibraries(server).catch(() => []);
+      return {
+        id: server.id,
+        name: server.name,
+        kind: server.kind,
+        libraries: selectedMediaLibraries(server, libraries).filter(
+          ({ kind }) => kind && kind !== "collection"
+        )
+      };
+    })
+  );
 }
 
 export class LibraryController {
@@ -1053,6 +1058,27 @@ export class LibraryController {
         }))
       ];
     }
+    if (picker === "server") {
+      return [
+        { value: ALL_KEY, label: t("servers_all", {}, "All") },
+        ...this.state.mediaServers.map((server) => ({ value: server.id, label: server.name }))
+      ];
+    }
+    if (picker === "server_type") {
+      const kinds = new Set(
+        this.state.mediaServers.flatMap((server) => this.serverTypesFor(server))
+      );
+      const labels = {
+        movie: t("servers_type_movies", {}, "Movies"),
+        series: t("servers_type_shows", {}, "Shows")
+      };
+      return [
+        { value: ALL_KEY, label: t("servers_all", {}, "All") },
+        ...["movie", "series"]
+          .filter((kind) => kinds.has(kind))
+          .map((kind) => ({ value: kind, label: labels[kind] }))
+      ];
+    }
     if (picker === "list") {
       if (Platform.isBrowser() && this.state.sourceMode === LibrarySourceMode.SIMKL) {
         return [
@@ -1104,15 +1130,19 @@ export class LibraryController {
             ? this.state.selectedCloudType || ALL_KEY
             : picker === "cloud_library"
               ? this.state.selectedCloudLibraryId || ALL_KEY
-              : picker === "list"
-                ? this.state.selectedListKey || ALL_KEY
-                : picker === "type"
-                  ? this.state.selectedTypeKey
-                  : picker === "genre"
-                    ? this.state.selectedGenre || ALL_KEY
-                    : picker === "year"
-                      ? this.state.selectedYear || ALL_KEY
-                      : this.state.selectedSortKey;
+              : picker === "server"
+                ? this.state.selectedServerId || ALL_KEY
+                : picker === "server_type"
+                  ? this.state.selectedServerType || ALL_KEY
+                  : picker === "list"
+                    ? this.state.selectedListKey || ALL_KEY
+                    : picker === "type"
+                      ? this.state.selectedTypeKey
+                      : picker === "genre"
+                        ? this.state.selectedGenre || ALL_KEY
+                        : picker === "year"
+                          ? this.state.selectedYear || ALL_KEY
+                          : this.state.selectedSortKey;
       const optionIndex = Math.max(
         0,
         options.findIndex((item) => item.value === currentValue)
@@ -1175,6 +1205,14 @@ export class LibraryController {
       this.selectCloudLibrary(option.value);
       return;
     }
+    if (picker === "server") {
+      void this.selectServer(option.value === ALL_KEY ? null : option.value);
+      return;
+    }
+    if (picker === "server_type") {
+      void this.selectServerType(option.value === ALL_KEY ? null : option.value);
+      return;
+    }
     if (picker === "list") {
       this.selectList(
         this.state.sourceMode === LibrarySourceMode.SIMKL && option.value === ALL_KEY
@@ -1202,11 +1240,128 @@ export class LibraryController {
 
   async selectViewMode(mode) {
     const normalized =
-      mode === LIBRARY_VIEW_MODE.CLOUD ? LIBRARY_VIEW_MODE.CLOUD : LIBRARY_VIEW_MODE.SAVED;
+      mode === LIBRARY_VIEW_MODE.CLOUD
+        ? LIBRARY_VIEW_MODE.CLOUD
+        : mode === LIBRARY_VIEW_MODE.SERVERS
+          ? LIBRARY_VIEW_MODE.SERVERS
+          : LIBRARY_VIEW_MODE.SAVED;
     persistedLibraryViewMode = normalized;
-    this.setState({ viewMode: normalized, expandedPicker: null });
+    this.setState({
+      viewMode: normalized,
+      expandedPicker: null,
+      cloudFilePickerItem: null,
+      ...(normalized === LIBRARY_VIEW_MODE.SERVERS
+        ? {}
+        : { serverItems: [], serverItemsLoading: false, serverItemsError: "" })
+    });
     if (normalized === LIBRARY_VIEW_MODE.CLOUD && !this.state.cloudLibrary.isLoaded) {
       await this.refreshCloudLibrary();
+    }
+    if (normalized === LIBRARY_VIEW_MODE.SERVERS) {
+      await this.refreshServerConnections();
+    }
+  }
+
+  // Servers are catalog sources, not transfer files. One dropdown chooses the
+  // connection, the other the kind; both default to All.
+  async refreshServerConnections() {
+    const servers = MediaConnectionsStore.get().servers.filter(({ enabled }) => enabled !== false);
+    const mediaServers = await serverLibraryGroups(servers);
+    if (this.disposed) return false;
+    const serverId = mediaServers.some(({ id }) => id === this.state.selectedServerId)
+      ? this.state.selectedServerId
+      : null;
+    const type = ["movie", "series"].includes(this.state.selectedServerType)
+      ? this.state.selectedServerType
+      : null;
+    this.setState({
+      mediaServers,
+      mediaServersLoaded: true,
+      selectedServerId: serverId,
+      selectedServerType: type,
+      serverItems: [],
+      serverItemsError: ""
+    });
+    return this.loadServerTitles(serverId, type);
+  }
+
+  // Library names are the person's own ("Films", "Kids"); the dropdown asks for
+  // the kind, which is what decides the catalog query.
+  serverTypesFor(server) {
+    const kinds = new Set((server?.libraries || []).map(({ kind }) => kind));
+    const types = [];
+    if (kinds.has("movie") || kinds.has("mixed")) types.push("movie");
+    if (kinds.has("series") || kinds.has("mixed")) types.push("series");
+    return types;
+  }
+
+  async selectServer(serverId) {
+    const id = this.state.mediaServers.some(({ id }) => id === serverId) ? serverId : null;
+    this.setState({ selectedServerId: id, serverItems: [], serverItemsError: "" });
+    return this.loadServerTitles(id, this.state.selectedServerType || null);
+  }
+
+  async selectServerType(type) {
+    const kind = ["movie", "series"].includes(type) ? type : null;
+    const serverId = String(this.state.selectedServerId || "");
+    this.setState({ selectedServerType: kind, serverItems: [], serverItemsError: "" });
+    return this.loadServerTitles(serverId || null, kind);
+  }
+
+  async loadServerTitles(serverId = null, type = null) {
+    const servers = serverId
+      ? this.state.mediaServers.filter(({ id }) => id === serverId)
+      : this.state.mediaServers;
+    const scopes = servers.flatMap((server) =>
+      (server.libraries || [])
+        .filter(({ kind }) => (type ? kind === type || kind === "mixed" : kind !== "collection"))
+        .map((library) => ({ server, library }))
+    );
+    if (!scopes.length) {
+      this.setState({ serverItems: [], serverItemsLoading: false });
+      return false;
+    }
+    this.setState({ serverItemsLoading: true, serverItemsError: "" });
+    try {
+      const items = [];
+      const seen = new Set();
+      for (const { server, library } of scopes) {
+        let skip = 0;
+        for (;;) {
+          const result = await loadMediaCatalog({
+            addonBaseUrl: `nuvio-server://${encodeURIComponent(server.id)}`,
+            addonId: server.id,
+            addonName: server.name,
+            catalogId: `library-${library.id}`,
+            catalogName: library.name,
+            type: library.kind === "mixed" && type ? type : library.kind,
+            skip,
+            extraArgs: {}
+          });
+          if (this.disposed) return false;
+          const page = (Array.isArray(result?.items) ? result.items : []).filter(
+            (item) => !type || library.kind !== "mixed" || item.type === type
+          );
+          for (const item of page) {
+            if (!item?.id || seen.has(item.id)) continue;
+            seen.add(item.id);
+            items.push(item);
+          }
+          if (result?.hasMore !== true || !page.length || items.length >= 1000) break;
+          skip += Array.isArray(result?.items) ? result.items.length : page.length;
+        }
+      }
+      this.setState({ serverItems: items, serverItemsLoading: false });
+      return true;
+    } catch (error) {
+      if (this.disposed) return false;
+      this.setState({
+        serverItemsLoading: false,
+        serverItemsError:
+          String(error?.message || "") ||
+          t("servers_failure_unreachable", {}, "Could not reach this library.")
+      });
+      return false;
     }
   }
 

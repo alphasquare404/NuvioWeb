@@ -16,6 +16,7 @@ import {
   shouldDrawCardLandscape
 } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
+import { CloudLibraryPlaybackSessionStore } from "../../../data/local/cloudLibraryPlaybackStore.js";
 import {
   LibraryController,
   LIBRARY_PRIVACY_OPTIONS,
@@ -790,15 +791,19 @@ export const LibraryScreen = {
         ? state.selectedCloudProviderId || "__all__"
         : picker === "cloud_type"
           ? state.selectedCloudType || "__all__"
-          : picker === "list"
-            ? state.selectedListKey || "__all__"
-            : picker === "type"
-              ? state.selectedTypeKey
-              : picker === "genre"
-                ? state.selectedGenre || "__all__"
-                : picker === "year"
-                  ? state.selectedYear || "__all__"
-                  : state.selectedSortKey;
+          : picker === "server"
+            ? state.selectedServerId || "__all__"
+            : picker === "server_type"
+              ? state.selectedServerType || "__all__"
+              : picker === "list"
+                ? state.selectedListKey || "__all__"
+                : picker === "type"
+                  ? state.selectedTypeKey
+                  : picker === "genre"
+                    ? state.selectedGenre || "__all__"
+                    : picker === "year"
+                      ? state.selectedYear || "__all__"
+                      : state.selectedSortKey;
     const selectedIndex = Math.max(
       0,
       options.findIndex((option) => option.value === currentValue)
@@ -842,6 +847,45 @@ export const LibraryScreen = {
           </div>
         </section>
       `;
+    }
+    if (state.viewMode === LIBRARY_VIEW_MODE.SERVERS) {
+      const servers = Array.isArray(state.mediaServers) ? state.mediaServers : [];
+      const allLabel = t("servers_all", {}, "All");
+      const typeLabels = {
+        movie: t("servers_type_movies", {}, "Movies"),
+        series: t("servers_type_shows", {}, "Shows")
+      };
+      const serverName = servers.find(({ id }) => id === state.selectedServerId)?.name || allLabel;
+      const serverOptions = [
+        { value: "__all__", label: allLabel },
+        ...servers.map((server) => ({ value: server.id, label: server.name }))
+      ];
+      const kinds = new Set(
+        servers.flatMap((server) => this.controller?.serverTypesFor?.(server) || [])
+      );
+      const typeOptions = [
+        { value: "__all__", label: allLabel },
+        ...["movie", "series"]
+          .filter((kind) => kinds.has(kind))
+          .map((kind) => ({ value: kind, label: typeLabels[kind] }))
+      ];
+      return `
+        <section class="library-picker-groups" id="libraryPickerGroupsMount">
+          <div class="library-picker-row library-server-picker-row">
+            ${servers.length ? this.renderPicker("server", t("servers_server_label", {}, "Server"), serverName, serverOptions, "library-server-picker") : ""}
+            ${
+              servers.length && typeOptions.length > 1
+                ? this.renderPicker(
+                    "server_type",
+                    t("servers_type_label", {}, "Type"),
+                    state.selectedServerType ? typeLabels[state.selectedServerType] : allLabel,
+                    typeOptions,
+                    "library-server-picker"
+                  )
+                : ""
+            }
+          </div>
+        </section>`;
     }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       // A connected server is a provider. Its libraries are places inside that
@@ -1058,6 +1102,9 @@ export const LibraryScreen = {
     if (isBrowserOfflineNow()) {
       return `<div id="libraryContentAreaMount">${this.renderOfflineEmptyState()}</div>`;
     }
+    if (state.viewMode === LIBRARY_VIEW_MODE.SERVERS) {
+      return `<div id="libraryContentAreaMount">${this.renderServersContent(state)}</div>`;
+    }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       return `
         <div id="libraryContentAreaMount">
@@ -1169,6 +1216,10 @@ export const LibraryScreen = {
         <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="cloud">
           ${escapeHtml(t("library_source_cloud", {}, "Cloud"))}
+        </button>
+        <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.SERVERS ? " selected" : ""}"
+                data-action="selectLibraryViewMode" data-view-mode="servers">
+          ${escapeHtml(t("library_source_servers", {}, "Servers"))}
         </button>
         ${
           Platform.isBrowser()
@@ -1293,6 +1344,34 @@ export const LibraryScreen = {
       return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">${title}</h3><p class="library-empty-subtitle">Completed downloads will appear here and remain available offline.</p></section>`;
     }
     return this.renderGrid(items, "library-downloaded-grid");
+  },
+
+  renderServersContent(state) {
+    const servers = Array.isArray(state.mediaServers) ? state.mediaServers : [];
+    if (!servers.length) {
+      return `<section class="library-empty-state"><h3 class="library-empty-title">${escapeHtml(
+        t("servers_empty_title", {}, "No media servers")
+      )}</h3><p class="library-empty-subtitle">${escapeHtml(
+        t("servers_empty_message", {}, "Connect a Jellyfin or Emby server in Settings.")
+      )}</p></section>`;
+    }
+    if (state.serverItemsLoading) {
+      return `<section class="library-empty-state"><p class="library-empty-subtitle">${escapeHtml(
+        t("servers_loading", {}, "Loading titles…")
+      )}</p></section>`;
+    }
+    if (state.serverItemsError) {
+      return `<section class="library-empty-state"><p class="library-empty-subtitle">${escapeHtml(
+        state.serverItemsError
+      )}</p></section>`;
+    }
+    const items = Array.isArray(state.serverItems) ? state.serverItems : [];
+    if (!items.length) {
+      return `<section class="library-empty-state"><p class="library-empty-subtitle">${escapeHtml(
+        t("servers_empty_library", {}, "This library has no titles.")
+      )}</p></section>`;
+    }
+    return this.renderGrid(items);
   },
 
   renderCloudActions() {
@@ -1891,7 +1970,11 @@ export const LibraryScreen = {
               ${this.renderViewModeTabs(state)}
             </div>
             ${this.renderPickerGroups(state)}
-            ${this.renderLibrarySearchField(state)}
+            ${
+              state.viewMode === LIBRARY_VIEW_MODE.SERVERS
+                ? ""
+                : this.renderLibrarySearchField(state)
+            }
 
             ${this.renderLibraryContentArea(state)}
           </section>
@@ -2813,6 +2896,22 @@ export const LibraryScreen = {
     if (!result?.url) return;
     const filename = result.filename || file.name || item.name;
     const streamId = `${item.stableKey}:${file.stableKey}`;
+    CloudLibraryPlaybackSessionStore.start({
+      token: streamId,
+      itemKey: item.stableKey,
+      fileKey: file.stableKey,
+      itemName: item.name,
+      fileName: filename,
+      providerId: item.providerId,
+      providerName: item.providerName,
+      libraryId: item.libraryId || null,
+      itemType: item.type || "",
+      itemId: item.id || "",
+      poster: item.poster || item.background || item.backdrop || null,
+      fileId: file.id || "",
+      playbackUrl: file.playbackUrl || null,
+      fileSizeBytes: file.sizeBytes || null
+    });
     const stream = {
       id: streamId,
       url: result.url,
@@ -2832,8 +2931,11 @@ export const LibraryScreen = {
       itemType: "cloud",
       resumePositionMs: result.resumePositionMs,
       videoId: streamId,
+      cloudSessionToken: streamId,
       playerTitle: filename,
       playerSubtitle: item.name,
+      handoffReturnRoute: "home",
+      returnToStreamOnBack: false,
       streamCandidates: [stream],
       preferredStreamId: streamId
     });

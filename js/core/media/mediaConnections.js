@@ -37,11 +37,12 @@ export function mediaConnectionBase(value) {
 async function request(
   base,
   route,
-  { body, token, credentials = "omit", signal, authorization } = {}
+  { body, token, credentials = "omit", signal, authorization, method } = {}
 ) {
   registerPrivateMediaOrigin(base);
+  const requestMethod = method || (body === undefined ? "GET" : "POST");
   const response = await fetch(base + route, {
-    method: body === undefined ? "GET" : "POST",
+    method: requestMethod,
     redirect: "error",
     referrerPolicy: "no-referrer",
     credentials,
@@ -258,6 +259,48 @@ export function reportMediaServerProgress(connectionId, itemId, seconds, paused)
       IsPaused: paused,
       PlayMethod: "DirectPlay"
     }
+  }).catch(() => {});
+}
+
+// Jellyfin/Emby keep their own resume point for the next client that opens the
+// title, so a stop is a real write, not cleanup. Sent in the same shape as the
+// periodic progress call, with a session id the server can group them by.
+export function reportMediaServerSession(
+  server,
+  { itemId, seconds = 0, paused = false, playSessionId = "", event = "progress" } = {}
+) {
+  if (!server || !itemId) return Promise.resolve();
+  const route =
+    event === "start"
+      ? "/Sessions/Playing"
+      : event === "stop"
+        ? "/Sessions/Playing/Stopped"
+        : "/Sessions/Playing/Progress";
+  return request(server.url, route, {
+    token: server.token,
+    body: {
+      ItemId: itemId,
+      PositionTicks: Math.max(0, Math.round(Number(seconds || 0) * 10000000)),
+      IsPaused: Boolean(paused),
+      PlayMethod: "DirectPlay",
+      CanSeek: true,
+      ...(playSessionId ? { PlaySessionId: playSessionId } : {}),
+      ...(event === "pause"
+        ? { EventName: "Pause" }
+        : event === "resume"
+          ? { EventName: "Unpause" }
+          : event === "progress"
+            ? { EventName: "TimeUpdate" }
+            : {})
+    }
+  }).catch(() => {});
+}
+
+export function mediaServerPlayed(server, itemId, played) {
+  if (!server?.url || !itemId) return Promise.resolve();
+  return request(server.url, `/Users/${segment(server.userId)}/PlayedItems/${segment(itemId)}`, {
+    token: server.token,
+    method: played ? "POST" : "DELETE"
   }).catch(() => {});
 }
 

@@ -41,6 +41,14 @@ export function renderMediaConnections(t) {
           (
             server
           ) => `<div class="media-server-card" data-media-server="${escape(server.id)}"><div class="media-connection-row"><strong>${escape(server.name)}</strong><button type="button" data-media-disconnect="${escape(server.id)}">${disconnect}</button></div>
+        <div class="media-server-flags">
+          <button type="button" class="media-server-flag" role="switch" data-media-server-flag="useCatalogMetadata" aria-checked="${server.useCatalogMetadata === true}">
+            <span>${label("media_connection_catalog_metadata", "Use catalog metadata")}</span><span class="settings-toggle-pill${server.useCatalogMetadata ? " is-checked" : ""}" aria-hidden="true"><span class="settings-toggle-thumb"></span></span>
+          </button>
+          <button type="button" class="media-server-flag" role="switch" data-media-server-flag="importWatchState" aria-checked="${server.importWatchState === true}">
+            <span>${label("media_connection_import_watch_state", "Import watch state")}</span><span class="settings-toggle-pill${server.importWatchState ? " is-checked" : ""}" aria-hidden="true"><span class="settings-toggle-thumb"></span></span>
+          </button>
+        </div>
         <details data-media-libraries><summary>${label("media_connection_libraries", "Libraries")}</summary><div data-media-library-options></div><p role="status"></p></details></div>`
         )
         .join("")}
@@ -182,6 +190,22 @@ export function bindMediaConnections(slot, render, t) {
     });
   }
   panel.addEventListener("click", (event) => {
+    const flag = event.target.closest("[data-media-server-flag]");
+    if (flag && active()) {
+      const id = flag.closest("[data-media-server]").dataset.mediaServer;
+      const key = String(flag.dataset.mediaServerFlag || "");
+      if (!["useCatalogMetadata", "importWatchState"].includes(key)) return;
+      const { servers } = MediaConnectionsStore.getForProfile(scope);
+      const checked = flag.getAttribute("aria-checked") !== "true";
+      flag.setAttribute("aria-checked", String(checked));
+      flag.querySelector(".settings-toggle-pill")?.classList.toggle("is-checked", checked);
+      save({
+        servers: servers.map((server) =>
+          server.id === id ? { ...server, [key]: checked } : server
+        )
+      });
+      return;
+    }
     const control = event.target.closest("[data-media-library-id]");
     if (!control || !active()) return;
     const options = control.closest("[data-media-library-options]");

@@ -7,6 +7,8 @@ import { Router } from "../../navigation/router.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import { addonRepository } from "../../../data/repository/addonRepository.js";
 import { catalogRepository } from "../../../data/repository/catalogRepository.js";
+import { CloudLibraryPlaybackProgressStore } from "../../../data/local/cloudLibraryPlaybackStore.js";
+import { cloudLibraryRepository } from "../../../data/repository/cloudLibraryRepository.js";
 import { watchProgressRepository } from "../../../data/repository/watchProgressRepository.js";
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
 import { watchedSeriesReconciliationService } from "../../../data/repository/watchedSeriesReconciliationService.js";
@@ -5500,6 +5502,11 @@ export const HomeScreen = {
   },
 
   openContinueWatchingFromItem(item, options = {}) {
+    const normalizedForCloud = normalizeContinueWatchingItem(item);
+    if (String(normalizedForCloud?.contentType || "").toLowerCase() === "cloud") {
+      void this.resumeCloudContinueWatching(normalizedForCloud);
+      return true;
+    }
     const params = continueWatchingStreamParams(item, options);
     if (!params) {
       return false;
@@ -5537,6 +5544,73 @@ export const HomeScreen = {
       resumeSeason: normalized.season ?? null,
       resumeEpisode: normalized.episode ?? null,
       resumeStreamIdentity: params.resumeStreamIdentity || null
+    });
+    return true;
+  },
+
+  // A cloud card cannot go through Detail: its content id names a library item,
+  // not an add-on title. Re-resolve the playable URL from the recorded session
+  // and hand the player the same resume position it would have passed along.
+  async resumeCloudContinueWatching(item) {
+    const contentId = String(item?.contentId || "").trim();
+    const entry = CloudLibraryPlaybackProgressStore.findForContinueWatching(contentId);
+    if (!entry?.providerId) {
+      console.warn("Cloud continue-watching entry is missing its playback session", contentId);
+      return false;
+    }
+    const resolved = await cloudLibraryRepository
+      .resolvePlayback(
+        {
+          providerId: entry.providerId,
+          libraryId: entry.libraryId || undefined,
+          type: entry.itemType || undefined,
+          id: entry.itemId || undefined,
+          providerName: entry.providerName,
+          name: entry.title,
+          resumePositionMs: entry.positionMs
+        },
+        {
+          id: entry.fileId,
+          name: entry.fileName,
+          playable: true,
+          // Signed URLs expire; ask the provider for a fresh one by id.
+          playbackUrl: null,
+          sizeBytes: entry.fileSizeBytes
+        }
+      )
+      .catch(() => null);
+    if (resolved?.status !== "success" || !resolved.url) {
+      console.warn("Cloud continue-watching playback could not be resolved", resolved?.status);
+      return false;
+    }
+    const streamId = String(entry.videoId || contentId);
+    const filename = resolved.filename || entry.fileName || entry.title;
+    const stream = {
+      id: streamId,
+      url: resolved.url,
+      name: filename,
+      title: filename,
+      description: entry.title,
+      addonName: entry.providerName,
+      ...(resolved.mediaServer ? { clientResolve: { mediaServer: resolved.mediaServer } } : {}),
+      behaviorHints: {
+        filename,
+        videoSize: resolved.videoSizeBytes || entry.fileSizeBytes || null
+      }
+    };
+    Router.navigate("player", {
+      streamUrl: resolved.url,
+      itemId: contentId,
+      itemType: "cloud",
+      resumePositionMs: entry.completed ? 0 : resolved.resumePositionMs || entry.positionMs || 0,
+      videoId: streamId,
+      cloudSessionToken: streamId,
+      playerTitle: filename,
+      playerSubtitle: entry.title,
+      handoffReturnRoute: "home",
+      returnToStreamOnBack: false,
+      streamCandidates: [stream],
+      preferredStreamId: streamId
     });
     return true;
   },
