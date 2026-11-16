@@ -129,16 +129,11 @@ function makeInitialState() {
     cloudFilePickerItem: null,
     mediaServers: [],
     mediaServersLoaded: false,
-    serverLibraryView: {
-      serverId: null,
-      libraryId: null,
-      serverName: "",
-      libraryName: "",
-      type: "",
-      items: [],
-      loading: false,
-      error: ""
-    }
+    selectedServerId: null,
+    selectedServerType: null,
+    serverItems: [],
+    serverItemsLoading: false,
+    serverItemsError: ""
   };
 }
 
@@ -1063,6 +1058,27 @@ export class LibraryController {
         }))
       ];
     }
+    if (picker === "server") {
+      return [
+        { value: ALL_KEY, label: t("servers_all", {}, "All") },
+        ...this.state.mediaServers.map((server) => ({ value: server.id, label: server.name }))
+      ];
+    }
+    if (picker === "server_type") {
+      const kinds = new Set(
+        this.state.mediaServers.flatMap((server) => this.serverTypesFor(server))
+      );
+      const labels = {
+        movie: t("servers_type_movies", {}, "Movies"),
+        series: t("servers_type_shows", {}, "Shows")
+      };
+      return [
+        { value: ALL_KEY, label: t("servers_all", {}, "All") },
+        ...["movie", "series"]
+          .filter((kind) => kinds.has(kind))
+          .map((kind) => ({ value: kind, label: labels[kind] }))
+      ];
+    }
     if (picker === "list") {
       if (Platform.isBrowser() && this.state.sourceMode === LibrarySourceMode.SIMKL) {
         return [
@@ -1114,15 +1130,19 @@ export class LibraryController {
             ? this.state.selectedCloudType || ALL_KEY
             : picker === "cloud_library"
               ? this.state.selectedCloudLibraryId || ALL_KEY
-              : picker === "list"
-                ? this.state.selectedListKey || ALL_KEY
-                : picker === "type"
-                  ? this.state.selectedTypeKey
-                  : picker === "genre"
-                    ? this.state.selectedGenre || ALL_KEY
-                    : picker === "year"
-                      ? this.state.selectedYear || ALL_KEY
-                      : this.state.selectedSortKey;
+              : picker === "server"
+                ? this.state.selectedServerId || ALL_KEY
+                : picker === "server_type"
+                  ? this.state.selectedServerType || ALL_KEY
+                  : picker === "list"
+                    ? this.state.selectedListKey || ALL_KEY
+                    : picker === "type"
+                      ? this.state.selectedTypeKey
+                      : picker === "genre"
+                        ? this.state.selectedGenre || ALL_KEY
+                        : picker === "year"
+                          ? this.state.selectedYear || ALL_KEY
+                          : this.state.selectedSortKey;
       const optionIndex = Math.max(
         0,
         options.findIndex((item) => item.value === currentValue)
@@ -1185,6 +1205,14 @@ export class LibraryController {
       this.selectCloudLibrary(option.value);
       return;
     }
+    if (picker === "server") {
+      void this.selectServer(option.value === ALL_KEY ? null : option.value);
+      return;
+    }
+    if (picker === "server_type") {
+      void this.selectServerType(option.value === ALL_KEY ? null : option.value);
+      return;
+    }
     if (picker === "list") {
       this.selectList(
         this.state.sourceMode === LibrarySourceMode.SIMKL && option.value === ALL_KEY
@@ -1224,18 +1252,7 @@ export class LibraryController {
       cloudFilePickerItem: null,
       ...(normalized === LIBRARY_VIEW_MODE.SERVERS
         ? {}
-        : {
-            serverLibraryView: {
-              serverId: null,
-              libraryId: null,
-              serverName: "",
-              libraryName: "",
-              type: "",
-              items: [],
-              loading: false,
-              error: ""
-            }
-          })
+        : { serverItems: [], serverItemsLoading: false, serverItemsError: "" })
     });
     if (normalized === LIBRARY_VIEW_MODE.CLOUD && !this.state.cloudLibrary.isLoaded) {
       await this.refreshCloudLibrary();
@@ -1245,89 +1262,107 @@ export class LibraryController {
     }
   }
 
-  // Servers are catalog sources, not transfer files. Their libraries are the
-  // places inside them, so the shelf lists connections and libraries first.
+  // Servers are catalog sources, not transfer files. One dropdown chooses the
+  // connection, the other the kind; both default to All.
   async refreshServerConnections() {
     const servers = MediaConnectionsStore.get().servers.filter(({ enabled }) => enabled !== false);
     const mediaServers = await serverLibraryGroups(servers);
     if (this.disposed) return false;
-    this.setState({ mediaServers, mediaServersLoaded: true });
-    return true;
+    const serverId = mediaServers.some(({ id }) => id === this.state.selectedServerId)
+      ? this.state.selectedServerId
+      : null;
+    const type = ["movie", "series"].includes(this.state.selectedServerType)
+      ? this.state.selectedServerType
+      : null;
+    this.setState({
+      mediaServers,
+      mediaServersLoaded: true,
+      selectedServerId: serverId,
+      selectedServerType: type,
+      serverItems: [],
+      serverItemsError: ""
+    });
+    return this.loadServerTitles(serverId, type);
   }
 
-  async openServerLibrary(serverId, libraryId) {
-    const server = this.state.mediaServers.find(({ id }) => id === serverId);
-    const library = server?.libraries.find(({ id }) => id === libraryId);
-    if (!server || !library) return false;
-    this.setState({
-      serverLibraryView: {
-        serverId,
-        libraryId,
-        serverName: server.name,
-        libraryName: library.name,
-        type: library.kind,
-        items: [],
-        loading: true,
-        error: ""
-      }
-    });
+  // Library names are the person's own ("Films", "Kids"); the dropdown asks for
+  // the kind, which is what decides the catalog query.
+  serverTypesFor(server) {
+    const kinds = new Set((server?.libraries || []).map(({ kind }) => kind));
+    const types = [];
+    if (kinds.has("movie") || kinds.has("mixed")) types.push("movie");
+    if (kinds.has("series") || kinds.has("mixed")) types.push("series");
+    return types;
+  }
+
+  async selectServer(serverId) {
+    const id = this.state.mediaServers.some(({ id }) => id === serverId) ? serverId : null;
+    this.setState({ selectedServerId: id, serverItems: [], serverItemsError: "" });
+    return this.loadServerTitles(id, this.state.selectedServerType || null);
+  }
+
+  async selectServerType(type) {
+    const kind = ["movie", "series"].includes(type) ? type : null;
+    const serverId = String(this.state.selectedServerId || "");
+    this.setState({ selectedServerType: kind, serverItems: [], serverItemsError: "" });
+    return this.loadServerTitles(serverId || null, kind);
+  }
+
+  async loadServerTitles(serverId = null, type = null) {
+    const servers = serverId
+      ? this.state.mediaServers.filter(({ id }) => id === serverId)
+      : this.state.mediaServers;
+    const scopes = servers.flatMap((server) =>
+      (server.libraries || [])
+        .filter(({ kind }) => (type ? kind === type || kind === "mixed" : kind !== "collection"))
+        .map((library) => ({ server, library }))
+    );
+    if (!scopes.length) {
+      this.setState({ serverItems: [], serverItemsLoading: false });
+      return false;
+    }
+    this.setState({ serverItemsLoading: true, serverItemsError: "" });
     try {
       const items = [];
-      let skip = 0;
-      for (;;) {
-        const result = await loadMediaCatalog({
-          addonBaseUrl: `nuvio-server://${encodeURIComponent(server.id)}`,
-          addonId: server.id,
-          addonName: server.name,
-          catalogId: `library-${library.id}`,
-          catalogName: library.name,
-          type: library.kind,
-          skip,
-          extraArgs: {}
-        });
-        if (this.disposed) return false;
-        const page = Array.isArray(result?.items) ? result.items : [];
-        items.push(...page);
-        const hasMore = result?.hasMore === true;
-        if (!hasMore || !page.length || items.length >= 500) break;
-        skip += page.length;
-      }
-      this.setState({
-        serverLibraryView: {
-          ...this.state.serverLibraryView,
-          items,
-          loading: false
+      const seen = new Set();
+      for (const { server, library } of scopes) {
+        let skip = 0;
+        for (;;) {
+          const result = await loadMediaCatalog({
+            addonBaseUrl: `nuvio-server://${encodeURIComponent(server.id)}`,
+            addonId: server.id,
+            addonName: server.name,
+            catalogId: `library-${library.id}`,
+            catalogName: library.name,
+            type: library.kind === "mixed" && type ? type : library.kind,
+            skip,
+            extraArgs: {}
+          });
+          if (this.disposed) return false;
+          const page = (Array.isArray(result?.items) ? result.items : []).filter(
+            (item) => !type || library.kind !== "mixed" || item.type === type
+          );
+          for (const item of page) {
+            if (!item?.id || seen.has(item.id)) continue;
+            seen.add(item.id);
+            items.push(item);
+          }
+          if (result?.hasMore !== true || !page.length || items.length >= 1000) break;
+          skip += Array.isArray(result?.items) ? result.items.length : page.length;
         }
-      });
+      }
+      this.setState({ serverItems: items, serverItemsLoading: false });
       return true;
     } catch (error) {
       if (this.disposed) return false;
       this.setState({
-        serverLibraryView: {
-          ...this.state.serverLibraryView,
-          loading: false,
-          error:
-            String(error?.message || "") ||
-            t("servers_failure_unreachable", {}, "Could not reach this library.")
-        }
+        serverItemsLoading: false,
+        serverItemsError:
+          String(error?.message || "") ||
+          t("servers_failure_unreachable", {}, "Could not reach this library.")
       });
       return false;
     }
-  }
-
-  closeServerLibrary() {
-    this.setState({
-      serverLibraryView: {
-        serverId: null,
-        libraryId: null,
-        serverName: "",
-        libraryName: "",
-        type: "",
-        items: [],
-        loading: false,
-        error: ""
-      }
-    });
   }
 
   async refreshCloudLibrary() {

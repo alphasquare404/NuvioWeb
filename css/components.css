@@ -9887,29 +9887,6 @@ button:focus-visible {
   background: var(--focus-bg, #303030);
 }
 
-.library-server-title {
-  margin: 0 0 12px;
-  font-size: 22px;
-}
-
-.library-server-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.library-server-heading h3 {
-  margin: 0;
-  font-size: 22px;
-}
-
-.library-server-heading p {
-  margin: 2px 0 0;
-  color: var(--text-secondary, #bcbcbc);
-  font-size: 15px;
-}
-
 .library-cloud-toolbar {
   justify-content: space-between;
 }

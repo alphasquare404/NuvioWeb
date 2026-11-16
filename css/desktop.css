@@ -8873,6 +8873,52 @@ html.is-hero-stream-hold * {
   height: 18px;
 }
 
+/* Server filters read on one line: the label sits before the value, and the
+   two pickers share the row instead of wrapping apart. */
+.desktop-browser .library-picker-row.library-server-picker-row {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.desktop-browser .library-picker-row .library-server-picker {
+  flex: 0 1 clamp(180px, 22vw, 260px);
+  min-width: 0;
+}
+
+/* The two server filters share one line even where the generic picker row
+   stacks: Server and Type are short, and two rows of 56px is space a phone
+   does not have. */
+.desktop-browser .library-shell.desktop-navigation-enabled .library-picker-row.library-server-picker-row,
+.desktop-browser .library-picker-row.library-server-picker-row {
+  display: flex;
+  grid-template-columns: none;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.desktop-browser
+  .library-shell.desktop-navigation-enabled
+  .library-picker-row.library-server-picker-row
+  .library-picker,
+.desktop-browser .library-picker-row.library-server-picker-row .library-picker {
+  flex: 0 1 clamp(180px, 22vw, 260px);
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .desktop-browser
+    .library-shell.desktop-navigation-enabled
+    .library-picker-row.library-server-picker-row
+    .library-picker {
+    flex: 1 1 0;
+    flex-basis: auto;
+    width: auto;
+  }
+}
+
 .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor.focused,
 .desktop-browser .library-shell.desktop-navigation-enabled .library-picker-anchor:focus-visible,
 .desktop-browser .library-shell.desktop-navigation-enabled .library-picker.open .library-picker-anchor {
@@ -15499,11 +15545,6 @@ html:not([data-nav-placement="top"])
 
 /* A server library name is content, not a tab label: let the capsule grow to a
    second line instead of clipping the name. */
-.desktop-browser .library-server-libraries {
-  flex-wrap: wrap;
-  border-radius: 24px;
-}
-
 .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button.selected,
 .desktop-browser .library-view-mode-button.selected {
   background: rgb(var(--secondary-color-rgb) / 0.22);
@@ -15521,32 +15562,38 @@ html:not([data-nav-placement="top"])
     margin-bottom: 12px;
   }
 
-  /* A phone has the width to spare and nothing to put beside it, so the three
-     shelves divide the row between them. */
+  /* A phone has the width to spare and nothing to put beside it, so the
+     shelves divide the row between them. A tablet keeps the compact capsule. */
   .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row,
   .desktop-browser .library-view-mode-row {
-    display: flex;
-    width: 100%;
-    padding: 3px;
+    align-self: flex-start;
   }
 
-  .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button,
-  .desktop-browser .library-view-mode-button {
-    flex: 1 1 0;
-    min-width: 0;
-    /* Four labels share a phone's width now, so the padding and type shrink
-       with the capsule instead of overflowing it. */
-    padding: 0 6px;
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  @media (max-width: 600px) {
+    .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row,
+    .desktop-browser .library-view-mode-row {
+      display: flex;
+      width: 100%;
+      padding: 3px;
+    }
 
-  /* A library name keeps its own width and wraps to a second line. */
-  .desktop-browser .library-server-libraries .library-view-mode-button {
-    flex: 0 1 auto;
-    overflow: visible;
-    text-overflow: clip;
+    .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button,
+    .desktop-browser .library-view-mode-button {
+      flex: 1 1 0;
+      min-width: 0;
+      /* Four labels share a phone's width now, so the padding and type shrink
+         with the capsule instead of overflowing it. */
+      padding: 0 6px;
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .library-server-library-button {
+      min-height: 32px;
+      padding: 0 12px;
+      font-size: 13px;
+    }
   }
 }
 

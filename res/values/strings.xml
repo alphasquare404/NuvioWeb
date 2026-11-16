@@ -3337,4 +3337,9 @@
     <string name="servers_failure_unreachable">Could not reach this library.</string>
     <string name="media_connection_catalog_metadata">Use catalog metadata</string>
     <string name="media_connection_import_watch_state">Import watch state</string>
+    <string name="servers_all">All</string>
+    <string name="servers_server_label">Server</string>
+    <string name="servers_type_label">Type</string>
+    <string name="servers_type_movies">Movies</string>
+    <string name="servers_type_shows">Shows</string>
 </resources>
