@@ -456,3 +456,30 @@ test("startup retries with sound if WebKit pauses the video on unmute", async ()
   screen.releaseStartupPresentationAudio();
   assert.deepEqual(calls, [false, "play", true, false]);
 });
+
+test("leaving the startup audio gate pushes the element volume to decoded playback", async () => {
+  const volumes = [];
+  const video = { paused: false, muted: true, volume: 0.8 };
+  const controller = {
+    video,
+    startupPresentationAudioMuted: true,
+    clientRemux: { setVolume: (value) => volumes.push(value) },
+    setStartupPresentationAudioMuted(muted) {
+      this.startupPresentationAudioMuted = muted;
+      video.muted = muted;
+    },
+    attemptBrowserVideoPlay() {}
+  };
+  const screen = {
+    ...(await loadPlayerMethods(["releaseStartupPresentationAudio", "syncDecodeAudioVolume"], {
+      PlayerController: controller
+    })),
+    startupReadiness: {},
+    showClientRemuxPlayAfterAutoplayBlock() {}
+  };
+  screen.releaseStartupPresentationAudio();
+  assert.deepEqual(volumes, [0.8]);
+  video.muted = true;
+  screen.syncDecodeAudioVolume();
+  assert.deepEqual(volumes, [0.8, 0]);
+});

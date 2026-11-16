@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { prepareDecodeAudioFromGesture, takeDecodeAudioContext } from "./decodeAudioContext.js";
+import {
+  prepareDecodeAudioFromGesture,
+  takeDecodeAudioContext,
+  applyPlaybackAudioSession
+} from "./decodeAudioContext.js";
 
 test("Decode & Play reuses the context unlocked during the initial gesture", () => {
   const activation = { isActive: false };
@@ -41,4 +45,28 @@ test("Decode & Play reuses the context unlocked during the initial gesture", () 
       else delete globalThis[key];
     }
   }
+});
+
+test("decode playback claims an audio session that ignores the ring switch", () => {
+  const session = { type: "auto" };
+  applyPlaybackAudioSession({ navigator: { audioSession: session } });
+  assert.equal(session.type, "playback");
+});
+
+test("browsers without an audio session API are left alone", () => {
+  applyPlaybackAudioSession({ navigator: {} });
+  applyPlaybackAudioSession({});
+  assert.ok(true);
+});
+
+test("a session that rejects assignment does not break playback setup", () => {
+  const session = {
+    get type() {
+      return "auto";
+    },
+    set type(_value) {
+      throw new Error("readonly");
+    }
+  };
+  assert.doesNotThrow(() => applyPlaybackAudioSession({ navigator: { audioSession: session } }));
 });

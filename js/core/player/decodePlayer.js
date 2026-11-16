@@ -57,10 +57,16 @@ export function createDecodePlayer({ video, requestHeaders, languages, emit, onE
     }
   });
 
-  function setVolume() {
-    playback?.setVolume(video.muted ? 0 : video.volume);
+  function setVolume(value) {
+    const next = Number(value);
+    playback?.setVolume(Number.isFinite(next) ? Math.max(0, Math.min(1, next)) : 1);
   }
-  video.addEventListener("volumechange", setVolume);
+  // The element's mute state is the app's own startup gate, and a missed
+  // volumechange must not leave the decoded audio silent for the whole run.
+  function syncElementVolume() {
+    setVolume(video.muted ? 0 : video.volume);
+  }
+  video.addEventListener("volumechange", syncElementVolume);
 
   function reportState(next) {
     if (signal.aborted) return;
@@ -177,7 +183,7 @@ export function createDecodePlayer({ video, requestHeaders, languages, emit, onE
         signal.throwIfAborted();
       }
       playback.setRate(playbackRate);
-      setVolume();
+      setVolume(video.muted ? 0 : video.volume);
       if (/matroska|webm/i.test(playback.format)) {
         subtitles = createEmbeddedSubtitles({
           video,
@@ -253,6 +259,7 @@ export function createDecodePlayer({ video, requestHeaders, languages, emit, onE
     },
     setRate: (rate) => playback?.setRate(rate),
     setGain: (gain) => playback?.setGain(gain),
+    setVolume,
     getSubtitleTracks: () => subtitles?.tracks() || [],
     selectSubtitle: (id) => subtitles?.select(id) ?? false,
     setSubtitleDelay: (delay) => subtitles?.setDelay(delay),
