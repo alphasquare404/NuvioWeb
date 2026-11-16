@@ -4,6 +4,7 @@ import { WatchProgressStore } from "../local/watchProgressStore.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
 import { LocalStore } from "../../core/storage/localStore.js";
 import { ContinueWatchingPreferences } from "../local/continueWatchingPreferences.js";
+import { CloudLibraryPlaybackProgressStore } from "../local/cloudLibraryPlaybackStore.js";
 import { watchProgressOwner } from "./watchProgressProvenance.js";
 import { continueWatchingRemovalSuppression } from "./continueWatchingRemovalSuppression.js";
 import {
@@ -578,13 +579,23 @@ async function batchEnrichProgressItems(items) {
     if (cached && now - cached.timestamp < ENRICHED_META_CACHE_TTL_MS) {
       meta = cached.meta;
     } else {
-      const canonicalType = item.contentType === "series" ? "series" : "movie";
-      const result = await withTimeout(
-        metaRepository.getMetaFromAllAddons(canonicalType, lookupId),
-        PROGRESS_META_TIMEOUT_MS,
-        null
-      ).catch(() => null);
-      meta = result?.status === "success" && result?.data ? result.data : null;
+      // Addons disagree on whether a show is "series" or "tv"; the same title
+      // can resolve under either, so ask for the alternatives before giving up.
+      const normalized = String(item.contentType || "")
+        .trim()
+        .toLowerCase();
+      const candidates = normalized ? [normalized] : [];
+      if (normalized === "series" || normalized === "tv") candidates.push("series", "tv");
+      else candidates.push("movie");
+      for (const candidateType of [...new Set(candidates)]) {
+        const result = await withTimeout(
+          metaRepository.getMetaFromAllAddons(candidateType, lookupId),
+          PROGRESS_META_TIMEOUT_MS,
+          null
+        ).catch(() => null);
+        meta = result?.status === "success" && result?.data ? result.data : null;
+        if (meta) break;
+      }
       // Only cache real metadata. Caching a null (timeout/miss) would leave the
       // item unenriched for the full TTL after a single slow response.
       if (meta) {
@@ -788,7 +799,12 @@ class WatchProgressRepository {
   }
 
   async getAllForContinueWatching() {
-    const localItems = WatchProgressStore.listForProfile(activeProfileId());
+    // Cloud/debrid playback has no add-on metadata, so its display fields and
+    // the session needed to resolve a fresh URL travel with the progress entry
+    // itself. Merge those rows regardless of which provider owns Continue
+    // Watching: they are local playback, not provider history.
+    const cloudItems = CloudLibraryPlaybackProgressStore.list();
+    const localItems = [...WatchProgressStore.listForProfile(activeProfileId()), ...cloudItems];
     if (selectedContinueWatchingSource() === WatchProgressSource.NUVIO_SYNC) {
       return filterForSelectedContinueWatchingSource([...localItems, ...localCompletedProgress()]);
     }

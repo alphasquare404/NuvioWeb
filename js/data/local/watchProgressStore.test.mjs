@@ -124,3 +124,82 @@ test("removal notifies the exact removed card identities for immediate CW update
     values.clear();
   }
 });
+
+test("one movie keeps one row however its video id is named", () => {
+  values.clear();
+  WatchProgressStore.upsert(
+    {
+      contentId: "movie:same",
+      contentType: "movie",
+      videoId: "source-a",
+      positionMs: 1000,
+      durationMs: 10000
+    },
+    "1"
+  );
+  WatchProgressStore.upsert(
+    {
+      contentId: "movie:same",
+      contentType: "movie",
+      videoId: "source-b",
+      positionMs: 5000,
+      durationMs: 10000
+    },
+    "1"
+  );
+  const items = WatchProgressStore.listForProfile("1");
+  assert.equal(items.length, 1);
+  assert.equal(items[0].positionMs, 5000);
+  values.clear();
+});
+
+test("episodes of one series stay separate rows", () => {
+  values.clear();
+  WatchProgressStore.upsert(
+    {
+      contentId: "series:one",
+      contentType: "series",
+      season: 1,
+      episode: 1,
+      positionMs: 1000,
+      durationMs: 10000
+    },
+    "1"
+  );
+  WatchProgressStore.upsert(
+    {
+      contentId: "series:one",
+      contentType: "series",
+      season: 1,
+      episode: 2,
+      positionMs: 2000,
+      durationMs: 10000
+    },
+    "1"
+  );
+  assert.equal(WatchProgressStore.listForProfile("1").length, 2);
+  values.clear();
+});
+
+test("an episode row outdates a movie row of the same content id", () => {
+  values.clear();
+  WatchProgressStore.upsert(
+    { contentId: "series:collision", contentType: "movie", positionMs: 1000, durationMs: 10000 },
+    "1"
+  );
+  WatchProgressStore.upsert(
+    {
+      contentId: "series:collision",
+      contentType: "series",
+      season: 2,
+      episode: 3,
+      positionMs: 3000,
+      durationMs: 10000
+    },
+    "1"
+  );
+  // The movie key is the bare content id; the episode key carries s/e, so both
+  // identities stay addressable instead of overwriting one another.
+  assert.equal(WatchProgressStore.listForProfile("1").length, 2);
+  values.clear();
+});

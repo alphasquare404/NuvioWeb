@@ -81,10 +81,13 @@ function normalizeInflatedMilliseconds(positionMs = 0, durationMs = 0) {
 function progressKey(progress = {}) {
   const profileId = String(progress.profileId || "1").trim() || "1";
   const contentId = String(progress.contentId || "").trim();
-  const videoId = progress.videoId == null ? "main" : String(progress.videoId).trim();
   const season = progress.season == null ? "" : String(Number(progress.season));
   const episode = progress.episode == null ? "" : String(Number(progress.episode));
-  return `${profileId}::${contentId}::${videoId}::${season}::${episode}`;
+  // One identity per watchable item, shared with the sync service. A videoId
+  // that merely names the file used to split the same episode into two rows.
+  const itemKey =
+    season !== "" && episode !== "" ? `${contentId}_s${season}e${episode}` : contentId;
+  return `${profileId}::${itemKey}`;
 }
 
 function dedupeAndSort(items = []) {
