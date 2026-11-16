@@ -4,8 +4,21 @@ let preparedContext;
 let expiry;
 
 function createAudioContext() {
+  applyPlaybackAudioSession();
   const AudioContext = globalThis.AudioContext || globalThis.webkitAudioContext;
   return new AudioContext();
+}
+
+// Decoded audio goes straight to WebAudio, which iOS silences with the ring
+// switch unless the page claims a playback session. The video path never needs
+// this, so only the decode runtime calls it.
+export function applyPlaybackAudioSession(scope = globalThis) {
+  try {
+    const session = scope.navigator?.audioSession;
+    if (session && "type" in session) session.type = "playback";
+  } catch (_) {
+    // Unsupported browsers keep their default session.
+  }
 }
 
 export function prepareDecodeAudioFromGesture(settings) {
@@ -19,6 +32,7 @@ export function prepareDecodeAudioFromGesture(settings) {
   }
 
   try {
+    applyPlaybackAudioSession();
     preparedContext ||= createAudioContext();
     void preparedContext.resume().catch(() => {});
     clearTimeout(expiry);

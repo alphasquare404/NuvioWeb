@@ -11297,6 +11297,15 @@ export const PlayerScreen = {
     this.startupAudioFallbackApplied = false;
     this.startupAudioTrackSetSignature = "";
     PlayerController.setStartupAudioGate?.(false, { resume });
+    this.syncDecodeAudioVolume?.();
+  },
+
+  // Decoded audio keeps its own gain, so a gate transition has to be pushed to
+  // it directly: a volumechange the runtime missed would otherwise leave the
+  // whole playback silent while the picture keeps running.
+  syncDecodeAudioVolume() {
+    const video = PlayerController.video;
+    PlayerController.clientRemux?.setVolume?.(video?.muted ? 0 : Number(video?.volume ?? 1));
   },
 
   isPlaybackStartupSettled() {
@@ -11392,6 +11401,7 @@ export const PlayerScreen = {
     const shouldKeepPlaying =
       PlayerController.startupPresentationAudioMuted && video && !video.paused;
     PlayerController.setStartupPresentationAudioMuted?.(false);
+    this.syncDecodeAudioVolume?.();
     // WebKit can synchronously pause an autoplaying video when it is unmuted.
     if (!shouldKeepPlaying || !video.paused) return;
     const state = this.startupReadiness;

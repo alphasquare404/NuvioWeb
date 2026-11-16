@@ -359,12 +359,22 @@ export async function createDecodePlayback({
       restart(snapshot().time);
     },
     async play() {
+      try {
+        const session = globalThis.navigator?.audioSession;
+        if (session && "type" in session) session.type = "playback";
+      } catch (_) {
+        // Unsupported browsers keep their default session.
+      }
       const resumed = audioContext.resume();
-      if (
-        audioContext.state !== "running" &&
-        globalThis.navigator?.userActivation?.isActive === false
-      ) {
-        void resumed.catch(() => {});
+      if (audioContext.state !== "running") {
+        // A suspended context would keep the picture running in silence. Wait
+        // briefly for a gesture-granted resume, then ask for a tap instead.
+        await Promise.race([
+          resumed.catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, 250))
+        ]);
+      }
+      if (audioContext.state !== "running") {
         throw new DOMException("Tap Play to enable audio", "NotAllowedError");
       }
       await resumed;
