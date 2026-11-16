@@ -15475,6 +15475,16 @@ html:not([data-nav-placement="top"])
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05);
+  /* The capsule is only as wide as the row will allow: a fourth tab must not
+     push the pill past the page edge. */
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-row::-webkit-scrollbar,
+.desktop-browser .library-view-mode-row::-webkit-scrollbar {
+  display: none;
 }
 
 .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button,
@@ -15483,6 +15493,15 @@ html:not([data-nav-placement="top"])
   border-radius: 999px;
   background: transparent;
   color: var(--text-secondary);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* A server library name is content, not a tab label: let the capsule grow to a
+   second line instead of clipping the name. */
+.desktop-browser .library-server-libraries {
+  flex-wrap: wrap;
+  border-radius: 24px;
 }
 
 .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button.selected,
@@ -15508,12 +15527,26 @@ html:not([data-nav-placement="top"])
   .desktop-browser .library-view-mode-row {
     display: flex;
     width: 100%;
+    padding: 3px;
   }
 
   .desktop-browser .library-shell.desktop-navigation-enabled .library-view-mode-button,
   .desktop-browser .library-view-mode-button {
     flex: 1 1 0;
     min-width: 0;
+    /* Four labels share a phone's width now, so the padding and type shrink
+       with the capsule instead of overflowing it. */
+    padding: 0 6px;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* A library name keeps its own width and wraps to a second line. */
+  .desktop-browser .library-server-libraries .library-view-mode-button {
+    flex: 0 1 auto;
+    overflow: visible;
+    text-overflow: clip;
   }
 }
 

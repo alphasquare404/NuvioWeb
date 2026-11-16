@@ -1,4 +1,9 @@
 import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
+import { selectedMediaLibraries } from "../../../core/media/mediaConnections.js";
+import {
+  loadMediaCatalog,
+  mediaCatalogLibraries
+} from "../../../data/repository/mediaServerCatalogRepository.js";
 import {
   LibraryListPrivacy,
   LibrarySortOptionKey,
@@ -30,7 +35,7 @@ const ALL_KEY = "__all__";
 const MESSAGE_CLEAR_MS = 2400;
 const SYNC_LOADING_MIN_MS = 700;
 const LEADING_ARTICLE_REGEX = /^(the|an|a)\s+/i;
-export const LIBRARY_VIEW_MODE = { SAVED: "saved", CLOUD: "cloud" };
+export const LIBRARY_VIEW_MODE = { SAVED: "saved", CLOUD: "cloud", SERVERS: "servers" };
 export const LIBRARY_PRESENTATION_MODE = { FLAT: "flat", GROUPED: "grouped" };
 const SIMKL_GROUP_STATUS_ORDER = ["watching", "plantowatch", "completed", "hold", "dropped"];
 
@@ -121,7 +126,19 @@ function makeInitialState() {
     selectedCloudLibraryId: null,
     cloudSearchQuery: "",
     resolvingCloudFileKey: null,
-    cloudFilePickerItem: null
+    cloudFilePickerItem: null,
+    mediaServers: [],
+    mediaServersLoaded: false,
+    serverLibraryView: {
+      serverId: null,
+      libraryId: null,
+      serverName: "",
+      libraryName: "",
+      type: "",
+      items: [],
+      loading: false,
+      error: ""
+    }
   };
 }
 
@@ -174,32 +191,11 @@ function withVisibleCloudItems(state) {
     providerMap.set(item.providerId, current);
   });
   const typeMap = new Map();
-  // Server titles are files inside a library, not a transfer kind, so they do
-  // not belong in the Type filter that describes debrid transfers.
-  providerItems
-    .filter((item) => !item.libraryId)
-    .forEach((item) => typeMap.set(item.type, (typeMap.get(item.type) || 0) + 1));
-  const serverSources = Array.isArray(state.cloudLibrary?.serverSources)
-    ? state.cloudLibrary.serverSources
-    : [];
-  // A connected server is a provider like any other: it is where the titles come
-  // from. Its libraries are not a type -- they are places inside that provider,
-  // so the picker that lists them is separate.
-  for (const source of serverSources) {
-    providerMap.set(source.id, {
-      key: source.id,
-      label: source.name,
-      count: allItems.filter((item) => item.providerId === source.id).length,
-      isServer: true
-    });
-  }
+  providerItems.forEach((item) => typeMap.set(item.type, (typeMap.get(item.type) || 0) + 1));
   const availableCloudProviders = [...providerMap.values()].sort((left, right) =>
     left.label.localeCompare(right.label)
   );
-  const selectedServer = serverSources.find(
-    (source) => source.id === state.selectedCloudProviderId
-  );
-  const availableCloudLibraries = selectedServer ? selectedServer.libraries : [];
+  const availableCloudLibraries = [];
   const availableCloudTypes = Object.values(CLOUD_LIBRARY_ITEM_TYPES)
     .filter((type) => typeMap.has(type))
     .map((type) => ({ key: type, label: cloudTypeLabel(type), count: typeMap.get(type) }));
@@ -217,11 +213,7 @@ function withVisibleCloudItems(state) {
     selectedCloudType: availableCloudTypes.some((option) => option.key === state.selectedCloudType)
       ? state.selectedCloudType
       : null,
-    selectedCloudLibraryId: availableCloudLibraries.some(
-      (library) => library.id === state.selectedCloudLibraryId
-    )
-      ? state.selectedCloudLibraryId
-      : null
+    selectedCloudLibraryId: null
   };
 }
 
@@ -490,6 +482,24 @@ function copyEditorState(state) {
         privacy: state.privacy || LibraryListPrivacy.PRIVATE
       }
     : null;
+}
+
+// The Servers tab needs the whole connection, not just its label: loading a
+// server's libraries reads url/token, and narrowing them reads libraryIds.
+export async function serverLibraryGroups(servers = [], loadLibraries = mediaCatalogLibraries) {
+  return Promise.all(
+    servers.map(async (server) => {
+      const libraries = await loadLibraries(server).catch(() => []);
+      return {
+        id: server.id,
+        name: server.name,
+        kind: server.kind,
+        libraries: selectedMediaLibraries(server, libraries).filter(
+          ({ kind }) => kind && kind !== "collection"
+        )
+      };
+    })
+  );
 }
 
 export class LibraryController {
@@ -1202,12 +1212,122 @@ export class LibraryController {
 
   async selectViewMode(mode) {
     const normalized =
-      mode === LIBRARY_VIEW_MODE.CLOUD ? LIBRARY_VIEW_MODE.CLOUD : LIBRARY_VIEW_MODE.SAVED;
+      mode === LIBRARY_VIEW_MODE.CLOUD
+        ? LIBRARY_VIEW_MODE.CLOUD
+        : mode === LIBRARY_VIEW_MODE.SERVERS
+          ? LIBRARY_VIEW_MODE.SERVERS
+          : LIBRARY_VIEW_MODE.SAVED;
     persistedLibraryViewMode = normalized;
-    this.setState({ viewMode: normalized, expandedPicker: null });
+    this.setState({
+      viewMode: normalized,
+      expandedPicker: null,
+      cloudFilePickerItem: null,
+      ...(normalized === LIBRARY_VIEW_MODE.SERVERS
+        ? {}
+        : {
+            serverLibraryView: {
+              serverId: null,
+              libraryId: null,
+              serverName: "",
+              libraryName: "",
+              type: "",
+              items: [],
+              loading: false,
+              error: ""
+            }
+          })
+    });
     if (normalized === LIBRARY_VIEW_MODE.CLOUD && !this.state.cloudLibrary.isLoaded) {
       await this.refreshCloudLibrary();
     }
+    if (normalized === LIBRARY_VIEW_MODE.SERVERS) {
+      await this.refreshServerConnections();
+    }
+  }
+
+  // Servers are catalog sources, not transfer files. Their libraries are the
+  // places inside them, so the shelf lists connections and libraries first.
+  async refreshServerConnections() {
+    const servers = MediaConnectionsStore.get().servers.filter(({ enabled }) => enabled !== false);
+    const mediaServers = await serverLibraryGroups(servers);
+    if (this.disposed) return false;
+    this.setState({ mediaServers, mediaServersLoaded: true });
+    return true;
+  }
+
+  async openServerLibrary(serverId, libraryId) {
+    const server = this.state.mediaServers.find(({ id }) => id === serverId);
+    const library = server?.libraries.find(({ id }) => id === libraryId);
+    if (!server || !library) return false;
+    this.setState({
+      serverLibraryView: {
+        serverId,
+        libraryId,
+        serverName: server.name,
+        libraryName: library.name,
+        type: library.kind,
+        items: [],
+        loading: true,
+        error: ""
+      }
+    });
+    try {
+      const items = [];
+      let skip = 0;
+      for (;;) {
+        const result = await loadMediaCatalog({
+          addonBaseUrl: `nuvio-server://${encodeURIComponent(server.id)}`,
+          addonId: server.id,
+          addonName: server.name,
+          catalogId: `library-${library.id}`,
+          catalogName: library.name,
+          type: library.kind,
+          skip,
+          extraArgs: {}
+        });
+        if (this.disposed) return false;
+        const page = Array.isArray(result?.items) ? result.items : [];
+        items.push(...page);
+        const hasMore = result?.hasMore === true;
+        if (!hasMore || !page.length || items.length >= 500) break;
+        skip += page.length;
+      }
+      this.setState({
+        serverLibraryView: {
+          ...this.state.serverLibraryView,
+          items,
+          loading: false
+        }
+      });
+      return true;
+    } catch (error) {
+      if (this.disposed) return false;
+      this.setState({
+        serverLibraryView: {
+          ...this.state.serverLibraryView,
+          loading: false,
+          error:
+            String(error?.message || "") ||
+            t("servers_failure_unreachable", {}, "Could not reach this library.")
+        }
+      });
+      return false;
+    }
+  }
+
+  closeServerLibrary() {
+    this.setState({
+      serverLibraryView: {
+        serverId: null,
+        libraryId: null,
+        serverName: "",
+        libraryName: "",
+        type: "",
+        items: [],
+        loading: false,
+        error: ""
+      }
+    });
   }
 
   async refreshCloudLibrary() {

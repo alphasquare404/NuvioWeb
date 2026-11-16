@@ -16,6 +16,7 @@ import {
   shouldDrawCardLandscape
 } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
+import { CloudLibraryPlaybackSessionStore } from "../../../data/local/cloudLibraryPlaybackStore.js";
 import {
   LibraryController,
   LIBRARY_PRIVACY_OPTIONS,
@@ -843,6 +844,11 @@ export const LibraryScreen = {
         </section>
       `;
     }
+    if (state.viewMode === LIBRARY_VIEW_MODE.SERVERS) {
+      // Servers pick their own library inside the tab; a saved-library Type or
+      // sort filter would have nothing to narrow.
+      return `<section class="library-picker-groups" id="libraryPickerGroupsMount"></section>`;
+    }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       // A connected server is a provider. Its libraries are places inside that
       // provider, not item types, so they get their own picker that narrows the
@@ -1058,6 +1064,9 @@ export const LibraryScreen = {
     if (isBrowserOfflineNow()) {
       return `<div id="libraryContentAreaMount">${this.renderOfflineEmptyState()}</div>`;
     }
+    if (state.viewMode === LIBRARY_VIEW_MODE.SERVERS) {
+      return `<div id="libraryContentAreaMount">${this.renderServersContent(state)}</div>`;
+    }
     if (state.viewMode === LIBRARY_VIEW_MODE.CLOUD) {
       return `
         <div id="libraryContentAreaMount">
@@ -1169,6 +1178,10 @@ export const LibraryScreen = {
         <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="cloud">
           ${escapeHtml(t("library_source_cloud", {}, "Cloud"))}
+        </button>
+        <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.SERVERS ? " selected" : ""}"
+                data-action="selectLibraryViewMode" data-view-mode="servers">
+          ${escapeHtml(t("library_source_servers", {}, "Servers"))}
         </button>
         ${
           Platform.isBrowser()
@@ -1293,6 +1306,77 @@ export const LibraryScreen = {
       return `<section class="library-empty-state">${bookmarkOutlineSvg()}<h3 class="library-empty-title">${title}</h3><p class="library-empty-subtitle">Completed downloads will appear here and remain available offline.</p></section>`;
     }
     return this.renderGrid(items, "library-downloaded-grid");
+  },
+
+  renderServersContent(state) {
+    const view = state.serverLibraryView || {};
+    if (view.libraryId) {
+      return this.renderServerLibraryContent(state, view);
+    }
+    const servers = Array.isArray(state.mediaServers) ? state.mediaServers : [];
+    if (!servers.length) {
+      return `<section class="library-empty-state"><h3 class="library-empty-title">${escapeHtml(
+        t("servers_empty_title", {}, "No media servers")
+      )}</h3><p class="library-empty-subtitle">${escapeHtml(
+        t("servers_empty_message", {}, "Connect a Jellyfin or Emby server in Settings.")
+      )}</p></section>`;
+    }
+    return servers
+      .map(
+        (server) => `
+      <section class="library-grid-wrap">
+        <h3 class="library-server-title">${escapeHtml(server.name)}</h3>
+        <div class="library-view-mode-row library-server-libraries">
+          ${
+            server.libraries.length
+              ? server.libraries
+                  .map(
+                    (library) => `<button class="library-view-mode-button focusable"
+                       data-action="openServerLibrary"
+                       data-server-id="${escapeHtml(server.id)}"
+                       data-library-id="${escapeHtml(library.id)}">${escapeHtml(library.name)}</button>`
+                  )
+                  .join("")
+              : `<p class="library-empty-subtitle">${escapeHtml(
+                  t("servers_no_libraries", {}, "No libraries selected for this server.")
+                )}</p>`
+          }
+        </div>
+      </section>`
+      )
+      .join("");
+  },
+
+  // Titles from a server open Detail, never the file: the detail page is where
+  // seasons, episodes and the watched state live.
+  renderServerLibraryContent(state, view) {
+    const header = `
+      <div class="library-server-header">
+        <button class="library-view-mode-button focusable" data-action="closeServerLibrary">
+          <span class="material-icons" aria-hidden="true">arrow_back</span>
+          ${escapeHtml(t("common_back", {}, "Back"))}
+        </button>
+        <div class="library-server-heading">
+          <h3>${escapeHtml(view.libraryName || "")}</h3>
+          <p>${escapeHtml(view.serverName || "")}</p>
+        </div>
+      </div>`;
+    if (view.loading) {
+      return `${header}<section class="library-empty-state"><p class="library-empty-subtitle">${escapeHtml(
+        t("servers_loading", {}, "Loading titles…")
+      )}</p></section>`;
+    }
+    if (view.error) {
+      return `${header}<section class="library-empty-state"><p class="library-empty-subtitle">${escapeHtml(
+        view.error
+      )}</p></section>`;
+    }
+    if (!view.items.length) {
+      return `${header}<section class="library-empty-state"><p class="library-empty-subtitle">${escapeHtml(
+        t("servers_empty_library", {}, "This library has no titles.")
+      )}</p></section>`;
+    }
+    return `${header}${this.renderGrid(view.items)}`;
   },
 
   renderCloudActions() {
@@ -1891,7 +1975,11 @@ export const LibraryScreen = {
               ${this.renderViewModeTabs(state)}
             </div>
             ${this.renderPickerGroups(state)}
-            ${this.renderLibrarySearchField(state)}
+            ${
+              state.viewMode === LIBRARY_VIEW_MODE.SERVERS
+                ? ""
+                : this.renderLibrarySearchField(state)
+            }
 
             ${this.renderLibraryContentArea(state)}
           </section>
@@ -2813,6 +2901,22 @@ export const LibraryScreen = {
     if (!result?.url) return;
     const filename = result.filename || file.name || item.name;
     const streamId = `${item.stableKey}:${file.stableKey}`;
+    CloudLibraryPlaybackSessionStore.start({
+      token: streamId,
+      itemKey: item.stableKey,
+      fileKey: file.stableKey,
+      itemName: item.name,
+      fileName: filename,
+      providerId: item.providerId,
+      providerName: item.providerName,
+      libraryId: item.libraryId || null,
+      itemType: item.type || "",
+      itemId: item.id || "",
+      poster: item.poster || item.background || item.backdrop || null,
+      fileId: file.id || "",
+      playbackUrl: file.playbackUrl || null,
+      fileSizeBytes: file.sizeBytes || null
+    });
     const stream = {
       id: streamId,
       url: result.url,
@@ -2832,8 +2936,11 @@ export const LibraryScreen = {
       itemType: "cloud",
       resumePositionMs: result.resumePositionMs,
       videoId: streamId,
+      cloudSessionToken: streamId,
       playerTitle: filename,
       playerSubtitle: item.name,
+      handoffReturnRoute: "home",
+      returnToStreamOnBack: false,
       streamCandidates: [stream],
       preferredStreamId: streamId
     });
@@ -2926,6 +3033,17 @@ export const LibraryScreen = {
       this.downloadManagerView = false;
       this.downloadedPickerOpen = false;
       await this.controller.selectViewMode(String(node.dataset.viewMode || "saved"));
+      return;
+    }
+    if (action === "openServerLibrary") {
+      await this.controller.openServerLibrary(
+        String(node.dataset.serverId || ""),
+        String(node.dataset.libraryId || "")
+      );
+      return;
+    }
+    if (action === "closeServerLibrary") {
+      this.controller.closeServerLibrary();
       return;
     }
     if (action === "selectDownloadedLibraryView") {

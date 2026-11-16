@@ -3,11 +3,9 @@ import { DebridApi } from "../remote/api/debridApi.js";
 import {
   MediaConnectionsStore,
   mediaItemFilename,
-  mediaServerItems,
   mediaServerPlaybackUrl,
   selectedMediaLibraries
 } from "../../core/media/mediaConnections.js";
-import { mediaCatalogLibraries } from "./mediaServerCatalogRepository.js";
 import {
   DEBRID_CAPABILITIES,
   DEBRID_PROVIDER_IDS,
@@ -133,32 +131,10 @@ export function mediaServerCloudItem(server, library, item = {}) {
   };
 }
 
-async function mediaServerLibraryItems(server, library) {
-  const items = [];
-  const limit = 100;
-  for (let index = 0; ; index += limit) {
-    const page = await mediaServerItems(server, {
-      ParentId: library.id,
-      IncludeItemTypes: "Movie,Episode",
-      Fields: "ProviderIds,Container,ImageTags,SeriesPrimaryImageTag,ParentPrimaryImageTag",
-      SortBy: "SortName",
-      StartIndex: String(index),
-      Limit: String(limit)
-    });
-    const rows = Array.isArray(page?.Items) ? page.Items : [];
-    items.push(
-      ...rows.filter((row) => row?.Id).map((row) => mediaServerCloudItem(server, library, row))
-    );
-    if (rows.length < limit || index + rows.length >= Number(page?.TotalRecordCount)) break;
-  }
-  return items;
-}
-
 export const cloudLibraryRepository = {
   async refresh() {
     const settings = DebridSettingsStore.get();
-    const servers = MediaConnectionsStore.get().servers.filter(({ enabled }) => enabled !== false);
-    if (!settings.cloudLibraryEnabled && !servers.length) {
+    if (!settings.cloudLibraryEnabled) {
       return {
         isLoaded: true,
         isEnabled: false,
@@ -173,28 +149,6 @@ export const cloudLibraryRepository = {
     ).filter((credential) =>
       DebridProviders.supports(credential.provider.id, DEBRID_CAPABILITIES.CLOUD_LIBRARY)
     );
-    const librariesByServer = Object.fromEntries(
-      await Promise.all(
-        servers.map(async (server) => [
-          server.id,
-          await mediaCatalogLibraries(server).catch(() => [])
-        ])
-      )
-    );
-    const serverSources = mediaServerSources(servers, librariesByServer);
-    const serverItems = (
-      await Promise.all(
-        serverSources.map(async (source) => {
-          const server = servers.find(({ id }) => id === source.id);
-          const pages = await Promise.all(
-            source.libraries.map((library) =>
-              mediaServerLibraryItems(server, library).catch(() => [])
-            )
-          );
-          return pages.flat();
-        })
-      )
-    ).flat();
     const providers = [];
     for (const credential of credentials) {
       try {
@@ -219,8 +173,8 @@ export const cloudLibraryRepository = {
       isEnabled: true,
       isRefreshing: false,
       providers,
-      items: [...serverItems, ...providers.flatMap((provider) => provider.items)],
-      serverSources
+      items: providers.flatMap((provider) => provider.items),
+      serverSources: []
     };
   },
 

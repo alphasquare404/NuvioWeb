@@ -1,3 +1,4 @@
+import { projectServerWatchState } from "../../core/media/mediaServerWatchState.js";
 import {
   MediaConnectionsStore,
   mediaServerItem,
@@ -97,8 +98,15 @@ function image(server, id, kind, tag) {
 }
 
 function mapTitle(server, item) {
+  const external = mediaProviderIds(item);
+  // Catalog-metadata servers keep the add-on identity for the same title, so
+  // resume/watched written elsewhere lands on the row the person just opened.
+  const catalogId =
+    server.useCatalogMetadata && item.Type !== "BoxSet"
+      ? external.imdbId || (external.tmdbId ? `tmdb:${external.tmdbId}` : null)
+      : null;
   return {
-    id: mediaTitleId(server, item.Id),
+    id: catalogId || mediaTitleId(server, item.Id),
     name:
       item.Type === "Episode"
         ? `${item.SeriesName || ""} · ${item.Name}`.replace(/^ · /, "")
@@ -116,7 +124,6 @@ function mapTitle(server, item) {
     ...mediaProviderIds(item)
   };
 }
-
 export async function loadMediaCatalog({
   addonBaseUrl,
   addonId,
@@ -173,6 +180,7 @@ export async function loadMediaCatalog({
           SortBy: "SortName",
           StartIndex: String(skip),
           Limit: String(pageSize),
+          Fields: "ProviderIds,Container,UserData,RunTimeTicks",
           EnableTotalRecordCount: "true"
         },
         signal
@@ -181,6 +189,13 @@ export async function loadMediaCatalog({
       hasMore = Number.isFinite(Number(result?.TotalRecordCount))
         ? skip + records.length < Number(result.TotalRecordCount)
         : records.length === pageSize;
+    }
+  }
+  // Movie rows carry their own server state, so a library shelf can show the
+  // same ticks and watched badges Detail will show.
+  for (const record of records) {
+    if (record?.Type === "Movie") {
+      projectServerWatchState({ server, meta: mapTitle(server, record), items: [record] });
     }
   }
   const items = [
@@ -223,12 +238,13 @@ export async function loadMediaTitle(id) {
       ? await mediaServerItems(server, {
           ParentId: item.Id,
           IncludeItemTypes: "Episode",
+          Fields: "UserData,RunTimeTicks,ProviderIds",
           EnableImages: "true",
           EnableImageTypes: "Primary",
           SortBy: "ParentIndexNumber,IndexNumber"
         })
       : null;
-  return {
+  const result = {
     ...meta,
     runtime: item.RunTimeTicks ? `${Math.round(item.RunTimeTicks / 600000000)} min` : null,
     videos: (available?.Items || [])
@@ -243,4 +259,12 @@ export async function loadMediaTitle(id) {
         thumbnail: image(server, episode.Id, "Primary", episode.ImageTags?.Primary)
       }))
   };
+  // Native-identity titles carry the server's own resume/watched state into the
+  // same local stores the rest of the app reads.
+  projectServerWatchState({
+    server,
+    meta: result,
+    items: item.Type === "Series" ? available?.Items || [] : [item]
+  });
+  return result;
 }

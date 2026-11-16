@@ -9887,6 +9887,29 @@ button:focus-visible {
   background: var(--focus-bg, #303030);
 }
 
+.library-server-title {
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+
+.library-server-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.library-server-heading h3 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.library-server-heading p {
+  margin: 2px 0 0;
+  color: var(--text-secondary, #bcbcbc);
+  font-size: 15px;
+}
+
 .library-cloud-toolbar {
   justify-content: space-between;
 }
@@ -10181,6 +10204,32 @@ button:focus-visible {
   border: 1px solid var(--settings-card-edge, var(--border-color));
   border-radius: 12px;
   background: var(--settings-card-wash, rgb(var(--secondary-color-rgb) / 0.05));
+}
+
+.media-server-flags {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.media-server-flag {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+
+.media-server-flag[aria-checked="true"] {
+  border-color: var(--focus-color, #fff);
 }
 
 .media-connections button,

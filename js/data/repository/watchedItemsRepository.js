@@ -8,6 +8,7 @@ import { MdbListAuthStore } from "../local/mdbListAuthStore.js";
 import { MdbListSyncService } from "./mdbListSyncService.js";
 import { TraktAuthService, requestJson as traktRequestJson } from "./traktAuthService.js";
 import { ownsWatchProgress } from "./trackingWriteScope.js";
+import { mirrorWatchedToServers } from "../../core/media/mediaServerWatchedMirror.js";
 
 function activeProfileId() {
   return String(ProfileManager.getActiveProfileId() || "1");
@@ -336,6 +337,11 @@ class WatchedItemsRepository {
       { authoritative: options.authoritative !== false }
     );
     queueWatchedItemsCloudSync();
+    if (options.skipServerWrite !== true) {
+      void mirrorWatchedToServers(item, true).catch((error) => {
+        console.warn("Media server watched update failed", error);
+      });
+    }
     if (shouldUseSimkl() && options.skipTrackingWrite !== true) {
       void SimklSyncService.markWatched(item).catch((error) => {
         console.warn("SIMKL watched history update failed", error);
@@ -380,6 +386,29 @@ class WatchedItemsRepository {
         : [{ contentId, season: options?.season ?? null, episode: options?.episode ?? null }]
     );
     queueWatchedItemsCloudSync();
+    if (options?.skipServerWrite !== true) {
+      const serverTargets = removedItems.length
+        ? removedItems
+        : [
+            {
+              contentId,
+              contentType:
+                options?.contentType ||
+                (options?.season != null || options?.episode != null ? "series" : "movie"),
+              title: options?.title,
+              season: options?.season ?? null,
+              episode: options?.episode ?? null,
+              videoId: options?.videoId || null,
+              imdbId: options?.imdbId,
+              tmdbId: options?.tmdbId
+            }
+          ];
+      for (const target of serverTargets) {
+        void mirrorWatchedToServers(target, false).catch((error) => {
+          console.warn("Media server watched removal failed", error);
+        });
+      }
+    }
     void deleteWatchedItemsFromCloud(removedItems).catch((error) => {
       console.warn("Watched items cloud delete failed", error);
     });

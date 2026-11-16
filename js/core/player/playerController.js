@@ -2,6 +2,7 @@ import { createDecodePlayer } from "./decodePlayer.js";
 import { clientMediaUrlResolver } from "../streams/clientMediaUrlResolver.js";
 import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
+import { CloudLibraryPlaybackProgressStore } from "../../data/local/cloudLibraryPlaybackStore.js";
 import { markPlaybackWatched } from "./markPlaybackWatched.js";
 import { buildExternalScrobbleContext } from "./externalScrobbleContext.js";
 import { TrackingScrobbleService } from "../../data/repository/trackingScrobbleService.js";
@@ -1805,6 +1806,7 @@ export const PlayerController = {
       offlinePlayback = false,
       playbackPlan = null,
       decodePlayback = null,
+      cloudSessionToken = null,
       onSubtitleCues = null
     } = {}
   ) {
@@ -1844,6 +1846,7 @@ export const PlayerController = {
     this.currentItemBackground = background || null;
     this.currentEpisodeTitle = episodeTitle || null;
     this.currentStreamIdentity = streamIdentity || null;
+    this.currentCloudSessionToken = cloudSessionToken || null;
     this.currentPlaybackIsOffline = Boolean(offlinePlayback);
     this.currentPlaybackUrl = requestedUrl;
     this.currentPlaybackHeaders = { ...(requestHeaders || {}) };
@@ -2164,6 +2167,7 @@ export const PlayerController = {
     this.currentItemBackground = null;
     this.currentEpisodeTitle = null;
     this.currentStreamIdentity = null;
+    this.currentCloudSessionToken = null;
     this.currentPlaybackUrl = "";
     this.sourceDurationHint = null;
     this.currentPlaybackHeaders = {};
@@ -2491,6 +2495,14 @@ export const PlayerController = {
     const hasReachedMinimumSyncPosition =
       Number.isFinite(safePosition) && safePosition >= MIN_PROGRESS_SYNC_DURATION_MS;
     const isCompleted = hasFiniteDuration && safePosition / safeDuration >= 0.9;
+    const cloudSessionToken = String(this.currentCloudSessionToken || "").trim();
+    if (cloudSessionToken && String(active.itemType || "").toLowerCase() === "cloud") {
+      CloudLibraryPlaybackProgressStore.record(cloudSessionToken, {
+        positionMs: Math.max(0, Math.trunc(safePosition)),
+        durationMs: hasFiniteDuration ? Math.max(0, Math.trunc(safeDuration)) : 0,
+        completed: isCompleted
+      });
+    }
     if (safePosition > 0) {
       this.recordProgressSnapshot(safePosition, safeDuration, active);
     }

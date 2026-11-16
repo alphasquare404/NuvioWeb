@@ -1,4 +1,7 @@
-import { reportMediaServerProgress } from "../../../core/media/mediaConnections.js";
+import {
+  MediaConnectionsStore,
+  reportMediaServerSession
+} from "../../../core/media/mediaConnections.js";
 import {
   rememberableStreamCandidate,
   rememberedAttemptKey,
@@ -2591,6 +2594,7 @@ export const PlayerScreen = {
       itemId: this.params.itemId || null,
       itemType: normalizeItemType(this.params.itemType || "movie"),
       videoId: this.params.videoId || null,
+      cloudSessionToken: this.params.cloudSessionToken || null,
       season: this.params.season == null ? null : Number(this.params.season),
       episode: this.params.episode == null ? null : Number(this.params.episode),
       title: this.params.playerTitle || this.params.itemTitle || null,
@@ -7326,6 +7330,8 @@ export const PlayerScreen = {
         }
       };
     PlayerController.video?.classList?.remove("player-awaiting-autoplay");
+    this.mediaServerPlaybackSession = null;
+    this.mediaServerProgressAt = 0;
     this.startupReadiness = Environment.isBrowser()
       ? {
           url: playbackUrl,
@@ -8567,6 +8573,10 @@ export const PlayerScreen = {
     this._nextSourceDiscoveryCancel?.();
     StartupLoadingOverlay.finish();
     const streamParams = this.buildReturnStreamRouteParamsFromPlayer();
+    const serverSession = this.mediaServerPlaybackSession;
+    if (serverSession) {
+      this.stopMediaServerSession();
+    }
     try {
       PlayerController.stop();
     } catch (_) {
@@ -13287,18 +13297,56 @@ export const PlayerScreen = {
     }
   },
 
+  stopMediaServerSession() {
+    const session = this.mediaServerPlaybackSession;
+    this.mediaServerPlaybackSession = null;
+    if (!session) return;
+    void reportMediaServerSession(
+      MediaConnectionsStore.get().servers.find(({ id }) => id === session.connectionId),
+      {
+        ...session,
+        seconds: this.getPlaybackCurrentSeconds(),
+        paused: true,
+        event: "stop"
+      }
+    );
+  },
+
   markPlaybackProgress() {
     const currentSeconds = this.getPlaybackCurrentSeconds();
     const candidate = this.getCurrentStreamCandidate?.();
     const server = (candidate?.clientResolve || candidate?.raw?.clientResolve)?.mediaServer;
-    if (server && currentSeconds > 0 && Date.now() - (this.mediaServerProgressAt || 0) >= 10000) {
-      this.mediaServerProgressAt = Date.now();
-      void reportMediaServerProgress(
-        server.connectionId,
-        server.itemId,
-        currentSeconds,
-        this.paused
-      );
+    if (server && currentSeconds > 0) {
+      const session = this.mediaServerPlaybackSession;
+      if (
+        !session ||
+        session.connectionId !== server.connectionId ||
+        session.itemId !== server.itemId
+      ) {
+        this.mediaServerPlaybackSession = {
+          connectionId: server.connectionId,
+          itemId: server.itemId,
+          playSessionId:
+            globalThis.crypto?.randomUUID?.() ||
+            `nuvio-${Date.now()}-${Math.random().toString(16).slice(2)}`
+        };
+        void reportMediaServerSession(
+          MediaConnectionsStore.get().servers.find(({ id }) => id === server.connectionId),
+          { ...this.mediaServerPlaybackSession, event: "start" }
+        );
+      }
+      if (Date.now() - (this.mediaServerProgressAt || 0) >= 10000) {
+        this.mediaServerProgressAt = Date.now();
+        void reportMediaServerSession(
+          MediaConnectionsStore.get().servers.find(({ id }) => id === server.connectionId),
+          {
+            ...this.mediaServerPlaybackSession,
+            seconds: currentSeconds,
+            paused: this.paused,
+            event: "progress"
+          }
+        );
+      }
     }
     if (typeof PlayerController.recordProgressSnapshot === "function") {
       PlayerController.recordProgressSnapshot(
@@ -21296,6 +21344,7 @@ ${!Environment.isBrowser() ? `<button type="button" class="player-episode-stream
         this.endedHandler = null;
       }
       TrackingScrobbleService.cancel();
+      this.stopMediaServerSession();
       this.cancelSeekPreview({ commit: false });
       this.dismissPauseOverlay();
       this.pauseOverlayMetaRequestToken = Number(this.pauseOverlayMetaRequestToken || 0) + 1;
