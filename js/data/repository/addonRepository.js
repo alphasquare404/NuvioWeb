@@ -4,6 +4,11 @@ import { ProfileManager } from "../../core/profile/profileManager.js";
 import { AddonApi } from "../remote/api/addonApi.js";
 import { buildConfiguredAddonEntry } from "../../core/addons/addonRuntimeState.js";
 
+// Addons publish manifest changes (new catalogs, renamed rows) without telling
+// us, and the in-memory cache used to survive the whole page until a manual
+// sync. One background sweep per window keeps Home honest.
+const MANIFEST_REFRESH_TTL_MS = 30 * 60 * 1000;
+
 const ADDON_URLS_KEY = "installedAddonUrls";
 const ADDON_DISPLAY_NAMES_KEY = "installedAddonDisplayNames";
 const ADDON_ENABLED_STATES_KEY = "installedAddonEnabledStates";
@@ -17,6 +22,8 @@ export class AddonRepository {
     this.manifestCache = new Map();
     this.manifestErrorCache = new Map();
     this.manifestRequests = new Map();
+    this.lastManifestRefreshAttemptAt = 0;
+    this.backgroundManifestRefresh = null;
     this.installedAddonsCache = null;
     this.installedAddonsCacheKey = "";
     this.installedAddonsPromise = null;
@@ -393,6 +400,34 @@ export class AddonRepository {
     return this.applyDisplayNames(addons);
   }
 
+  scheduleManifestRevalidation(urls = []) {
+    if (this.backgroundManifestRefresh) return;
+    const lastAttemptAt = Number(this.lastManifestRefreshAttemptAt || 0);
+    if (lastAttemptAt && Date.now() - lastAttemptAt < MANIFEST_REFRESH_TTL_MS) return;
+    const targets = (Array.isArray(urls) ? urls : []).filter(Boolean);
+    if (!targets.length) return;
+    // Record the attempt before starting IO: a sweep that fails while offline
+    // must still wait for the next window instead of retrying on every render.
+    this.lastManifestRefreshAttemptAt = Date.now();
+    const request = (async () => {
+      const results = await Promise.all(
+        targets.map((url) => this.fetchAddon(url, { force: true }).catch(() => null))
+      );
+      if (results.some((result) => result?.status === "success")) {
+        this.invalidateInstalledAddonsCache();
+      }
+    })()
+      .catch((error) => {
+        console.warn("Background addon manifest refresh failed", error);
+      })
+      .finally(() => {
+        if (this.backgroundManifestRefresh === request) {
+          this.backgroundManifestRefresh = null;
+        }
+      });
+    this.backgroundManifestRefresh = request;
+  }
+
   async getInstalledAddons(options = {}) {
     const includeDisabled = Boolean(options?.includeDisabled);
     const allUrls = this.getInstalledAddonUrls();
@@ -412,6 +447,7 @@ export class AddonRepository {
     const force = Boolean(options?.force);
     const cacheOnly = Boolean(options?.cacheOnly);
     if (!force && this.installedAddonsCache && this.installedAddonsCacheKey === cacheKey) {
+      if (!cacheOnly) this.scheduleManifestRevalidation(urls);
       return [...this.installedAddonsCache];
     }
 
