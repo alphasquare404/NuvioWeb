@@ -61,6 +61,13 @@ import {
 } from "./modernHomeLayout.js";
 import { applySectionScopedUpdate } from "./homeSectionUpdate.js";
 import {
+  HOME_ARTWORK_ROW_MARGIN,
+  isRectBeyondWindow,
+  isRectNearWindow,
+  releasePaintedArtwork,
+  windowRectFromViewport
+} from "./homeArtworkWindow.js";
+import {
   captureReusableRenderState,
   restoreDecodedImages,
   restoreTrackScroll
@@ -195,8 +202,11 @@ const CW_RELEASE_ALERT_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
 const BROWSER_HOME_DRILL_DOWN_ROUTES = new Set(["detail", "folderDetail", "stream", "player"]);
 const BROWSER_HOME_GLOBAL_ROUTES = new Set(["search", "library", "settings", "profileSelection"]);
 
-const HOME_LAZY_IMAGE_SELECTOR =
-  ".home-main .content-poster[data-src], .home-main .home-poster-landscape-logo[data-src], .home-main .home-continue-bg[data-src]";
+// Every card image, painted or not. The index has to keep a painted poster in
+// it -- built from [data-src] alone, an image left the index the moment it
+// loaded, so nothing could ever find it again to hand its bitmaps back.
+const HOME_ARTWORK_IMAGE_SELECTOR =
+  ".home-main .content-poster, .home-main .home-poster-landscape-logo, .home-main .home-continue-bg";
 const HOME_LAZY_IMAGE_ROW_SELECTOR =
   ".home-row, .home-modern-row, .home-grid-section, .home-row-continue";
 
@@ -2582,6 +2592,19 @@ function buildLazyImageAttributes(
     return `data-src="${safeSrc}" loading="${loadingMode}" decoding="async"${priority}`;
   }
   return `src="${safeSrc}" loading="${loadingMode}" decoding="async"${priority}`;
+}
+
+/**
+ * DOM-side guard for {@link releasePaintedArtwork}: only a live poster is handed
+ * back, and the attribute swap itself belongs to that helper.
+ *
+ * @param {HTMLImageElement | null | undefined} image
+ */
+function releaseHomeArtworkImage(image) {
+  if (!(image instanceof HTMLImageElement) || !image.isConnected) {
+    return;
+  }
+  releasePaintedArtwork(image);
 }
 
 export function createPosterCardMarkup(
@@ -8973,15 +8996,19 @@ export const HomeScreen = {
   },
 
   bindHomeViewportEvents() {
-    const viewport = this.getHomeViewport();
-    if (this.boundHomeViewport === viewport) {
-      return;
-    }
-    if (this.boundHomeViewport && this.boundHomeViewportScrollHandler) {
-      this.boundHomeViewport.removeEventListener("scroll", this.boundHomeViewportScrollHandler);
-    }
-    this.boundHomeViewport = viewport || null;
-    if (!viewport) {
+    // The element this screen calls its viewport is not always the one that
+    // scrolls: in the browser the rows wrapper sits in normal flow and the
+    // screen scrolls around it. Without a listener on the element that really
+    // scrolls, nothing past the first screen is ever hydrated -- and the lazy
+    // pass, which now bounds what it loads, needs that event to load the rest.
+    const viewport = this.getHomeViewport() || null;
+    const scrollOwner = this.getHomeVerticalScrollOwner();
+    // The viewport handler also follows focus, which belongs to the rows
+    // scrolling themselves. On a browser that scrolls its own screen, only the
+    // artwork pass may ride along: dragging the scroll back to a focused card
+    // would fight the person scrolling.
+    const hydrationOnlyOwner = scrollOwner && scrollOwner !== viewport ? scrollOwner : null;
+    if (this.boundHomeViewport === viewport && this.boundHomeScrollOwner === hydrationOnlyOwner) {
       return;
     }
     if (!this.boundHomeViewportScrollHandler) {
@@ -9001,7 +9028,22 @@ export const HomeScreen = {
         this.scheduleHomeViewportFocusSync();
       };
     }
-    viewport.addEventListener("scroll", this.boundHomeViewportScrollHandler, { passive: true });
+    if (!this.boundHomeScrollOwnerHydrationHandler) {
+      this.boundHomeScrollOwnerHydrationHandler = () => {
+        this.scheduleHomeLazyImageHydration();
+      };
+    }
+    this.boundHomeViewport?.removeEventListener("scroll", this.boundHomeViewportScrollHandler);
+    this.boundHomeScrollOwner?.removeEventListener(
+      "scroll",
+      this.boundHomeScrollOwnerHydrationHandler
+    );
+    this.boundHomeViewport = viewport;
+    this.boundHomeScrollOwner = hydrationOnlyOwner;
+    viewport?.addEventListener("scroll", this.boundHomeViewportScrollHandler, { passive: true });
+    hydrationOnlyOwner?.addEventListener("scroll", this.boundHomeScrollOwnerHydrationHandler, {
+      passive: true
+    });
   },
 
   async mount(params = {}, navigationContext = {}) {
@@ -11145,7 +11187,7 @@ export const HomeScreen = {
       return [];
     }
     const imagesByRow = new Map();
-    Array.from(this.container.querySelectorAll(HOME_LAZY_IMAGE_SELECTOR)).forEach((image) => {
+    Array.from(this.container.querySelectorAll(HOME_ARTWORK_IMAGE_SELECTOR)).forEach((image) => {
       const row = image.closest(HOME_LAZY_IMAGE_ROW_SELECTOR);
       const rowImages = imagesByRow.get(row) || [];
       rowImages.push(image);
@@ -11180,24 +11222,24 @@ export const HomeScreen = {
     if (!imageRows.length) {
       return;
     }
-    const viewport =
-      this.container.querySelector(".home-modern-rows-viewport") ||
-      this.container.querySelector(".home-main") ||
-      this.container;
-    const viewportRect = viewport.getBoundingClientRect();
-    const verticalMargin = 1200;
-    const horizontalMargin = 1000;
+    const windowRect = this.homeArtworkWindowRect();
     imageRows.forEach(({ row, images }) => {
       if (row instanceof HTMLElement && !row.isConnected) {
         return;
       }
       const shouldHydrateFocusedRow = Boolean(anchorRow && row === anchorRow);
-      if (!shouldHydrateFocusedRow && row instanceof HTMLElement) {
-        const rowRect = row.getBoundingClientRect();
-        const isRowNearViewport =
-          rowRect.bottom >= viewportRect.top - verticalMargin &&
-          rowRect.top <= viewportRect.bottom + verticalMargin;
-        if (!isRowNearViewport) {
+      const rowRect = row instanceof HTMLElement ? row.getBoundingClientRect() : null;
+      if (rowRect && !shouldHydrateFocusedRow) {
+        // Home keeps every catalog row mounted, so a row the viewer has scrolled
+        // away from still holds its decoded posters -- about 1.4MB each, and a
+        // profile with a hundred catalogs reached 2GB. Past the release margin
+        // that memory buys nothing, so the bitmaps go back and the row loads
+        // them again when it returns.
+        if (isRectBeyondWindow(rowRect, windowRect)) {
+          images.forEach((image) => releaseHomeArtworkImage(image));
+          return;
+        }
+        if (!isRectNearWindow(rowRect, windowRect, HOME_ARTWORK_ROW_MARGIN)) {
           return;
         }
       }
@@ -11210,16 +11252,11 @@ export const HomeScreen = {
           image.removeAttribute("data-src");
           return;
         }
-        if (!shouldHydrateFocusedRow) {
-          const rect = image.getBoundingClientRect();
-          const isNearViewport =
-            rect.bottom >= viewportRect.top - verticalMargin &&
-            rect.top <= viewportRect.bottom + verticalMargin &&
-            rect.right >= viewportRect.left - horizontalMargin &&
-            rect.left <= viewportRect.right + horizontalMargin;
-          if (!isNearViewport) {
-            return;
-          }
+        if (
+          !shouldHydrateFocusedRow &&
+          !isRectNearWindow(image.getBoundingClientRect(), windowRect)
+        ) {
+          return;
         }
         // The app already decides when an image is close enough to load. Leaving
         // loading="lazy" here delegates that decision back to old TV browsers,
@@ -11229,6 +11266,26 @@ export const HomeScreen = {
         image.src = src;
       });
     });
+  },
+
+  /**
+   * The window the viewer can see, in client coordinates.
+   *
+   * The element Home hands over is not always the scroll port -- the desktop
+   * layout puts the rows in normal flow and scrolls the screen around them --
+   * so [windowRectFromViewport] clamps whatever box it gets to the visible
+   * viewport. Without that clamp the box spanned all 37 000px of catalogs and
+   * every row counted as near it.
+   *
+   * @returns {{top: number, bottom: number, left: number, right: number}}
+   */
+  homeArtworkWindowRect() {
+    const viewport =
+      this.container?.querySelector(".home-modern-rows-viewport") ||
+      this.container?.querySelector(".home-main") ||
+      this.container;
+    const rect = viewport?.getBoundingClientRect?.() || null;
+    return windowRectFromViewport(rect, globalThis.innerWidth, globalThis.innerHeight);
   },
 
   teardownGridStickyHeader() {
@@ -13312,10 +13369,15 @@ export const HomeScreen = {
       clearTimeout(this.homeViewportFocusSyncTimer);
       this.homeViewportFocusSyncTimer = null;
     }
-    if (this.boundHomeViewport && this.boundHomeViewportScrollHandler) {
-      this.boundHomeViewport.removeEventListener("scroll", this.boundHomeViewportScrollHandler);
+    if (this.boundHomeViewportScrollHandler) {
+      this.boundHomeViewport?.removeEventListener("scroll", this.boundHomeViewportScrollHandler);
+      this.boundHomeScrollOwner?.removeEventListener(
+        "scroll",
+        this.boundHomeScrollOwnerHydrationHandler
+      );
     }
     this.boundHomeViewport = null;
+    this.boundHomeScrollOwner = null;
     if (this.homeTruncationFrame) {
       cancelAnimationFrame(this.homeTruncationFrame);
       this.homeTruncationFrame = null;
