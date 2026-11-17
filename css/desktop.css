@@ -2979,13 +2979,13 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-row,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-row {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-row {
   gap: 0;
   margin-bottom: 10px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card {
   min-height: 100px;
   padding: 15px 18px;
   gap: 18px;
@@ -2997,7 +2997,7 @@ html.is-hero-stream-hold * {
   transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-actions {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -3006,8 +3006,8 @@ html.is-hero-stream-hold * {
   margin: 8px 2px 0;
 }
 
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-action,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-progress {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-action,
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-progress {
   min-height: 32px;
   padding: 6px 10px;
   border: 1px solid rgb(255 255 255 / 0.18);
@@ -3019,25 +3019,25 @@ html.is-hero-stream-hold * {
   line-height: 1;
 }
 
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-action {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-action {
   cursor: pointer;
 }
 
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-action.download {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-action.download {
   border-color: rgb(var(--secondary-color-rgb) / 0.55);
 }
 
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-action.secondary {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-action.secondary {
   color: var(--text-secondary);
 }
 
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-progress {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-progress {
   border-color: transparent;
   background: transparent;
   color: var(--text-secondary);
 }
 
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-global-notice {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-global-notice {
   position: fixed;
   z-index: 4;
   right: max(18px, env(safe-area-inset-right));
@@ -3051,15 +3051,15 @@ html.is-hero-stream-hold * {
   line-height: 1.3;
 }
 
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-action:focus-visible {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-action:focus-visible {
   outline: 2px solid var(--secondary-color);
   outline-offset: 2px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card.focused,
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card:focus-visible,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card.focused,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card:focus-visible {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card.focused,
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card:focus-visible {
   border-color: var(--secondary-color);
   background: rgba(31, 31, 37, 0.94);
   box-shadow: 0 0 0 2px rgb(var(--secondary-color-rgb) / 0.58), 0 8px 22px rgba(0, 0, 0, 0.2);
@@ -3068,29 +3068,29 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-heading,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-heading {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-heading {
   font-size: 17px;
   line-height: 1.28;
   font-weight: 600;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-quality,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-quality {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-quality {
   margin-top: 5px;
   font-size: 15px;
   line-height: 1.3;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-badges,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-badges {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-badges {
   gap: 5px;
   margin: 7px 0 6px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-stream-badge,
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-stream-badge.size,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-stream-badge,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-stream-badge.size {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-stream-badge,
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-stream-badge.size {
   min-height: 24px;
   padding: 0 7px;
   border-radius: 6px;
@@ -3102,51 +3102,51 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-stream-badge.image,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-stream-badge.image {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-stream-badge.image {
   min-width: 40px;
   max-width: 104px;
   padding: 3px 6px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-stream-badge.image img,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-stream-badge.image img {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-stream-badge.image img {
   max-width: 92px;
   max-height: 18px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-line,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-line {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-line {
   margin-top: 4px;
   font-size: 13px;
   line-height: 1.35;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-line.secondary,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-line.secondary {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-line.secondary {
   margin-top: 2px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-side,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-side {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-side {
   width: 108px;
   flex-basis: 108px;
   gap: 7px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-badge,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-addon-badge {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-addon-badge {
   width: 44px;
   height: 44px;
   border-width: 1px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-badge span,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-addon-badge span {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-addon-badge span {
   font-size: 20px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-name,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-addon-name {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-addon-name {
   max-width: 108px;
   overflow: hidden;
   font-size: 13px;
@@ -3246,7 +3246,7 @@ html.is-hero-stream-hold * {
    already the button -- a second focusable target would be one more stop for
    keyboard and remote navigation to pass through for no gain. */
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action {
   position: relative;
   display: flex;
   flex-wrap: wrap;
@@ -3260,7 +3260,7 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action::before,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action::before {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action::before {
   content: "";
   position: absolute;
   top: 16px;
@@ -3290,7 +3290,7 @@ html.is-hero-stream-hold * {
    same card builder serving the detail screen.s season downloads, which have
    no download row and no play affordance. */
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-copy,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action > .stream-route-card-copy {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action > .stream-route-card-copy {
   order: 1;
   flex: 0 0 100%;
   min-width: 0;
@@ -3301,7 +3301,7 @@ html.is-hero-stream-hold * {
    of text rather than three indents. Padding rather than margin: these are
    full-width flex items and a margin would push them past the card. */
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-status,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action > .stream-route-card-status {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action > .stream-route-card-status {
   order: 2;
   flex: 0 0 100%;
   display: flex;
@@ -3315,7 +3315,7 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status-text,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-status-text {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-status-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3323,26 +3323,26 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status.downloading,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-status.downloading {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-status.downloading {
   color: var(--secondary-color);
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status.queued,
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status.paused,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-status.queued,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-status.paused {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-status.queued,
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-status.paused {
   color: rgba(255, 196, 92, 0.95);
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status.offline,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-status.offline {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-status.offline {
   color: rgba(126, 211, 148, 0.95);
 }
 
 /* The source and its controls share the card's last line: where this came from
    on the left, what can be done with it on the right. */
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-side,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action > .stream-route-card-side {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action > .stream-route-card-side {
   /* The television lays the source out as a 108px column with the name under
      its badge. On one line it is a badge and a name side by side, and the name
      is allowed the room to actually be read. */
@@ -3361,14 +3361,14 @@ html.is-hero-stream-hold * {
 /* The source badge and the download control are the two round things on the
    last line, so they are the same round thing: one size, one centre line. */
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-addon-badge,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action .stream-route-addon-badge {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action .stream-route-addon-badge {
   width: 32px;
   height: 32px;
   flex: 0 0 auto;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-offline-action,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action .stream-route-offline-action {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action .stream-route-offline-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3383,8 +3383,8 @@ html.is-hero-stream-hold * {
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-side,
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-offline-actions,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action > .stream-route-card-side,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action > .stream-route-offline-actions {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action > .stream-route-card-side,
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action > .stream-route-offline-actions {
   align-items: center;
   min-height: 32px;
 }
@@ -3398,7 +3398,7 @@ html.is-hero-stream-hold * {
   #player #episodeSidePanel
   .stream-route-card-action:has(> .stream-route-card-side, > .stream-route-offline-actions)::after,
 .desktop-browser
-  :is(#stream, :where(#quickSetup .quick-setup-stream-preview))
+  :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview)
   .stream-route-card-action:has(> .stream-route-card-side, > .stream-route-offline-actions)::after {
   content: "";
   order: 3;
@@ -3409,19 +3409,19 @@ html.is-hero-stream-hold * {
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-addon-badge span,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action .stream-route-addon-badge span {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action .stream-route-addon-badge span {
   font-size: 11px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-addon-name,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action .stream-route-addon-name {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action .stream-route-addon-name {
   max-width: min(260px, 40vw);
   color: var(--text-secondary);
   font-size: 12.5px;
 }
 
 .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-offline-actions,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action > .stream-route-offline-actions {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action > .stream-route-offline-actions {
   order: 5;
   flex: 0 0 auto;
   margin: 0 0 0 auto;
@@ -3429,7 +3429,7 @@ html.is-hero-stream-hold * {
 
 /* The figure belongs on the dial rather than beside it, which leaves the line
    above free to say how much has actually landed. */
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-offline-ring {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-offline-ring {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3478,7 +3478,7 @@ html.is-hero-stream-hold * {
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card:hover,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card:hover {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card:hover {
     border-color: rgba(255, 255, 255, 0.28);
     background: rgba(34, 34, 40, 0.94);
     box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
@@ -3564,13 +3564,13 @@ html.is-hero-stream-hold * {
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card {
     align-items: flex-start;
     flex-wrap: wrap;
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-side,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-side {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-side {
     width: 100%;
     flex-basis: 100%;
     flex-direction: row;
@@ -3578,7 +3578,7 @@ html.is-hero-stream-hold * {
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-name,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-addon-name {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-addon-name {
     max-width: none;
   }
 }
@@ -13735,14 +13735,14 @@ body.desktop-browser {
 .desktop-browser #stream .stream-route-title,
   .desktop-browser #stream .stream-route-subtitle,
   .desktop-browser #stream .stream-route-detail-line,
-  .desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-heading,
-  .desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-line,
-  .desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-addon-name {
+  .desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-heading,
+  .desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-line,
+  .desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-addon-name {
     overflow-wrap: anywhere;
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-copy,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-copy {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-copy {
     min-width: 0;
   }
 
@@ -13829,12 +13829,12 @@ body.desktop-browser {
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-row,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-row {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-row {
     margin-bottom: 12px;
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card {
     min-height: 0;
     padding: 14px;
     gap: 12px;
@@ -13842,7 +13842,7 @@ body.desktop-browser {
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-heading,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-heading {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-heading {
     display: -webkit-box;
     font-size: 16px;
     line-height: 1.3;
@@ -13853,25 +13853,25 @@ body.desktop-browser {
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-quality,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-quality {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-quality {
     margin-top: 4px;
     font-size: 14px;
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-line,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-line {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-line {
     font-size: 12px;
     overflow-wrap: anywhere;
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-side,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-side {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-side {
     min-height: 44px;
     gap: 8px;
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-addon-badge,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-addon-badge {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-addon-badge {
     width: 42px;
     height: 42px;
   }
@@ -16798,14 +16798,14 @@ html:not([data-nav-placement="top"])
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action {
     padding: 14px 14px 14px 56px;
     column-gap: 10px;
     row-gap: 8px;
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action::before,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action::before {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action::before {
     top: 14px;
     left: 14px;
     width: 32px;
@@ -16818,7 +16818,7 @@ html:not([data-nav-placement="top"])
      would push the controls onto a fourth line. It shares the last line here,
      the same as everywhere else. */
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-card-side,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action > .stream-route-card-side {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action > .stream-route-card-side {
     width: auto;
     flex: 0 1 auto;
     flex-basis: auto;
@@ -16826,18 +16826,18 @@ html:not([data-nav-placement="top"])
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action .stream-route-addon-name,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action .stream-route-addon-name {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action .stream-route-addon-name {
     max-width: min(150px, 42vw);
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-action > .stream-route-offline-actions,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-action > .stream-route-offline-actions {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-action > .stream-route-offline-actions {
     flex: 0 0 auto;
     margin: 0 0 0 auto;
   }
 
   .desktop-browser #player :is(#episodeSidePanel, #playerSourcesPanel) .stream-route-card-status,
-.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview)) .stream-route-card-status {
+.desktop-browser :is(#stream, :where(#quickSetup .quick-setup-stream-preview), .settings-source-live-preview) .stream-route-card-status {
     font-size: 12px;
   }
 }
@@ -23231,9 +23231,8 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 .desktop-browser .settings-shell .settings-source-live-preview {
   max-width: 960px;
   margin: 20px 0 28px;
-  padding: 20px;
-  border-radius: 16px;
-  background: var(--bg-elevated);
+  padding: 0;
+  background: transparent;
 }
 .desktop-browser .settings-shell .settings-live-preview-caption {
   display: block;
@@ -23248,30 +23247,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
   margin: 0 0 14px;
   font-size: 12px;
   line-height: 1.5;
-}
-.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card {
-  margin: 0;
-  padding: 14px 0;
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  border-bottom: 1px solid var(--border-color);
-  border-radius: 0;
-  background: transparent;
-}
-.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card:last-child {
-  border-bottom: 0;
-}
-.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card-copy {
-  min-width: 0;
-}
-.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card-heading,
-.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card-line {
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.desktop-browser .settings-shell .settings-source-live-preview .stream-route-card-heading {
-  font-size: 14px;
 }
 .desktop-browser .settings-shell .settings-subtitle-live-preview {
   position: relative;
@@ -23529,7 +23504,6 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 }
 .desktop-browser .settings-shell .settings-group-card,
 .desktop-browser .settings-shell .settings-subsection-card,
-.desktop-browser .settings-shell .settings-source-live-preview,
 .desktop-browser .settings-shell .settings-audio-language-group > .settings-action-row {
   background-image: var(--settings-card-wash);
   border-color: var(--settings-card-edge);
@@ -24206,14 +24180,7 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
  .desktop-browser .settings-shell .settings-fusion-source-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
  .desktop-browser .settings-shell .settings-fusion-source-action { min-height:44px; }
 }
-.desktop-browser .settings-shell .settings-fusion-live-example .settings-source-live-preview { max-width:none; margin:0 0 20px; padding:22px; border:1px solid var(--settings-card-edge); border-radius:18px; background:var(--settings-card-wash),var(--bg-elevated); }
-.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-card { min-height:0; gap:12px; padding:18px 0; }
-.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-card-heading { font-size:14px; line-height:1.5; }
-.desktop-browser .settings-shell .settings-fusion-live-example :is(.stream-route-card-line,.stream-route-card-quality) { font-size:12px; line-height:1.5; margin-top:4px; }
-.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-stream-badge { font-size:11px; min-height:22px; padding:3px 6px; }
-.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-card-side { flex:0 0 44px; max-width:44px; }
-.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-addon-badge { width:32px; height:32px; font-size:12px; }
-.desktop-browser .settings-shell .settings-fusion-live-example .stream-route-addon-name { font-size:10px; overflow-wrap:anywhere; }
+.desktop-browser .settings-shell .settings-fusion-live-example .settings-source-live-preview { max-width:none; margin:0 0 20px; }
 
 /* Match Home's card protection on other media cards only. Page copy,
    action sheets and editable controls retain normal selection. Preserve the
@@ -24552,7 +24519,7 @@ html.desktop-browser #detail .detail-morelike-card:focus-visible .detail-morelik
 /* The index and section pages share grouped surfaces and row spacing. */
 .desktop-browser .settings-shell :is(
   .settings-group-card, .settings-design-card, .settings-integration-group,
-  .settings-layout-live-preview, .settings-source-live-preview,
+  .settings-layout-live-preview,
   .media-server-card, .media-connections > section
 ) {
   border-color: var(--settings-list-edge);

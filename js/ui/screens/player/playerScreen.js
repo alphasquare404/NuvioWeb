@@ -217,6 +217,7 @@ const STARTUP_PLAYBACK_ADVANCE_EPSILON_SECONDS = 0.001;
 // Decode gets the first try plus two retries; only then does the session move
 // to Remux permanently.
 const DECODE_ATTEMPTS_BEFORE_REMUX = 3;
+
 const BUFFERING_SPINNER_STALL_MS = 0;
 const LOADING_LOGO_FILL_TARGET_LERP = 0.22;
 const LOADING_LOGO_FILL_IDLE_STEP = 0.006;
@@ -7195,6 +7196,13 @@ export const PlayerScreen = {
   },
 
   async tryUnverifiedRemuxAfterFailure(failure = {}) {
+    let automaticFallback = true;
+    try {
+      automaticFallback = PlayerSettingsStore.get().playbackFallbackEnabled !== false;
+    } catch (_) {
+      // Unit harnesses evaluate this method without the settings store.
+    }
+    if (!automaticFallback) return false;
     if (this.pendingAutomaticDirectAudio && (await this.restoreDefaultAfterAutomaticAudioFailure()))
       return true;
     const attempt = this.params?.unverifiedPlayback;
@@ -7315,6 +7323,13 @@ export const PlayerScreen = {
       }
       return true;
     }
+    let automaticFallback = true;
+    try {
+      automaticFallback = PlayerSettingsStore.get().playbackFallbackEnabled !== false;
+    } catch (_) {
+      // Unit harnesses evaluate this method without the settings store.
+    }
+    if (!automaticFallback) return false;
     this._decodeFallbackActive = true;
     blockDecodePlayback();
     if (!this.pendingPlaybackRestore && timeSeconds > 0) {

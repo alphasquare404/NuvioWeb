@@ -694,6 +694,8 @@
     <string name="playback_external_forward_subtitles_sub">Fetch subtitles in your preferred language from addons and pass them to the external player.</string>
     <string name="playback_section_audio">Audio &amp; Video</string>
     <string name="playback_section_audio_desc">Audio controls and video compatibility.</string>
+  <string name="settings_playback_fallback_title">Fallback to another playback mode</string>
+  <string name="settings_playback_fallback_sub">When a playback mode fails, try the next compatible one automatically instead of stopping.</string>
     <string name="playback_section_subtitles">Subtitles</string>
     <string name="playback_section_subtitles_desc">Language, style, and render mode.</string>
     <string name="playback_afr_open">Open</string>

@@ -21,3 +21,16 @@ test("the stored value is read case-insensitively", () => {
   assert.equal(normalizePlayerSettings({ playerEngine: "  MOVI " }).playerEngine, "movi");
   assert.equal(normalizePlayerSettings({ playerEngine: "Native" }).playerEngine, "native");
 });
+
+test("automatic playback fallback is on by default and can be turned off", () => {
+  assert.equal(PlayerSettingsStore.getDefaults().playbackFallbackEnabled, true);
+  assert.equal(normalizePlayerSettings({}).playbackFallbackEnabled, true);
+  assert.equal(
+    normalizePlayerSettings({ playbackFallbackEnabled: false }).playbackFallbackEnabled,
+    false
+  );
+  assert.equal(
+    normalizePlayerSettings({ playbackFallbackEnabled: true }).playbackFallbackEnabled,
+    true
+  );
+});

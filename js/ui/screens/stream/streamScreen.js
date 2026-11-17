@@ -81,10 +81,7 @@ import {
   normalizeStreamBadgeChipColor,
   normalizeStreamBadgeRules
 } from "../../../core/streams/streamBadgeRules.js";
-import {
-  normalizeSourceForDisplay,
-  renderBrowserSourceCardContent
-} from "../../components/browserStreamSourceCard.js";
+import { renderBrowserStreamCard } from "../../components/browserStreamSourceCard.js";
 import { resolveBrowserStreamCardClickAction } from "../../components/browserStreamCardClick.js";
 import { renderRouteHandoffShell } from "../../components/routeHandoffShell.js";
 import { resolveHandoffReturnRoute } from "../../../core/streams/streamAutoResolve.js";
@@ -2417,24 +2414,15 @@ export const StreamScreen = {
 
   renderStreamCard(stream, index, streamBadgesEnabled = true, badgeSettings = null) {
     if (Platform.isBrowser()) {
-      const sourceModel = normalizeSourceForDisplay(stream, {
+      return renderBrowserStreamCard(stream, {
         badgeSettings,
         streamBadgesEnabled,
-        addonLogoLookup: this.addonLogoLookup
+        addonLogoLookup: this.addonLogoLookup,
+        classes: `focusable${this.isCardActionFocused(index, "play") ? " focused" : ""}`,
+        attributes: `style="position: relative;" data-action="playStream" data-card-action="play" data-stream-id="${escapeHtml(stream.id)}" data-stream-row="${index}"`,
+        rowAttributes: `data-stream-row="${index}"`,
+        afterContent: this.renderOfflineDownloadActions(stream)
       });
-      return `
-        <div class="stream-route-card-row" data-stream-row="${index}">
-          <article class="stream-route-card stream-route-card-action focusable${this.isCardActionFocused(index, "play") ? " focused" : ""}"
-                   style="position: relative;"
-                   data-action="playStream"
-                   data-card-action="play"
-                   data-stream-id="${escapeHtml(stream.id)}"
-                   data-stream-row="${index}">
-            ${renderBrowserSourceCardContent(sourceModel)}
-            ${this.renderOfflineDownloadActions(stream)}
-          </article>
-        </div>
-      `;
     }
     const headline = getStreamHeadline(stream);
     const quality = getStreamQuality(stream);
