@@ -9,7 +9,10 @@ import {
 } from "../../../core/streams/streamReusePreference.js";
 import { clientMediaUrlResolver } from "../../../core/streams/clientMediaUrlResolver.js";
 import { resolveMediaHead } from "../../../core/player/mediaHeadResolver.js";
-import { shouldRouteToDecodePlayback } from "../../../core/player/mediabunnySettings.js";
+import {
+  blockDecodePlayback,
+  shouldRouteToDecodePlayback
+} from "../../../core/player/mediabunnySettings.js";
 import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioContext.js";
 import { normalizeTrackLanguageCode } from "../../../core/player/trackLanguage.js";
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
@@ -211,6 +214,9 @@ import {
 const CLOCK_FORMATTER_CACHE = new Map();
 const LANGUAGE_DISPLAY_NAME_CACHE = new Map();
 const STARTUP_PLAYBACK_ADVANCE_EPSILON_SECONDS = 0.001;
+// Decode gets the first try plus two retries; only then does the session move
+// to Remux permanently.
+const DECODE_ATTEMPTS_BEFORE_REMUX = 3;
 const BUFFERING_SPINNER_STALL_MS = 0;
 const LOADING_LOGO_FILL_TARGET_LERP = 0.22;
 const LOADING_LOGO_FILL_IDLE_STEP = 0.006;
@@ -2056,6 +2062,7 @@ export const PlayerScreen = {
   ...BrowserOfflineDownloadOptions,
   ...BrowserPlayerPresentationScreen,
   async mount(params = {}) {
+    this._decodeAttempts = 0;
     const initialServer = params.streamCandidates?.find(
       (candidate) => candidate.id === params.preferredStreamId || candidate.url === params.streamUrl
     )?.clientResolve?.mediaServer;
@@ -7272,8 +7279,44 @@ export const PlayerScreen = {
       this.playerBackNavigationInProgress
     )
       return false;
-    this._decodeFallbackActive = true;
     const timeSeconds = this.getPlaybackCurrentSeconds();
+    const attempts = Number(this._decodeAttempts || 0);
+    // The first failure may be a range hiccup rather than a broken decoder, so
+    // the same stream gets a few more tries before the engine is abandoned.
+    if (attempts < DECODE_ATTEMPTS_BEFORE_REMUX - 1) {
+      this._decodeAttempts = attempts + 1;
+      console.warn("[Decode] retrying after a failure", {
+        attempt: this._decodeAttempts + 1,
+        of: DECODE_ATTEMPTS_BEFORE_REMUX,
+        time: Math.round(Number(timeSeconds || 0) * 100) / 100
+      });
+      if (!this.pendingPlaybackRestore && timeSeconds > 0) {
+        this.pendingPlaybackRestore = {
+          timeSeconds,
+          paused: false,
+          attempts: 0,
+          lastAttemptAt: 0
+        };
+      }
+      try {
+        if (candidate && !this.offlineObjectUrl) {
+          await this.playStreamCandidate(candidate, {
+            mountToken,
+            preservePendingRestore: true
+          });
+        } else {
+          await this.playStreamByUrl(this.activePlaybackUrl, {
+            mountToken,
+            preservePendingRestore: true
+          });
+        }
+      } catch (_) {
+        // The next failure lands back here and counts as another attempt.
+      }
+      return true;
+    }
+    this._decodeFallbackActive = true;
+    blockDecodePlayback();
     if (!this.pendingPlaybackRestore && timeSeconds > 0) {
       this.pendingPlaybackRestore = { timeSeconds, paused: false, attempts: 0, lastAttemptAt: 0 };
     }

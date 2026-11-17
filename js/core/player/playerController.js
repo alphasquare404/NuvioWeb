@@ -1705,6 +1705,7 @@ export const PlayerController = {
       const diagnostic = {
         event: e?.type || "error",
         mediaErrorCode,
+        reason: String(e?.detail?.reason || ""),
         playbackEngine: this.playbackEngine,
         errorSource: customErrorCode ? "controller" : nativeErrorCode ? "browser" : "unknown",
         readyState: this.video?.readyState,
