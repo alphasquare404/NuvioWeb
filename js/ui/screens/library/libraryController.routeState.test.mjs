@@ -58,7 +58,7 @@ test("LibraryController captures and hydrates serializable route-level selection
     });
     assert.equal(restored, true);
     assert.deepEqual(controller.captureRouteState(), {
-      viewMode: LIBRARY_VIEW_MODE.CLOUD,
+      viewMode: LIBRARY_VIEW_MODE.SAVED,
       presentationMode: LIBRARY_PRESENTATION_MODE.GROUPED,
       sourceMode: "local",
       selectedListKey: "watching",

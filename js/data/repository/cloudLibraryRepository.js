@@ -78,6 +78,15 @@ export function cloudLibrarySettingsSignature(settings = DebridSettingsStore.get
   });
 }
 
+// The Cloud tab only earns a place when a debrid account can actually list a
+// cloud library; without one it is an empty shelf with a misleading label.
+export function hasCloudLibraryConfiguration(settings = DebridSettingsStore.get()) {
+  if (settings?.cloudLibraryEnabled !== true) return false;
+  return DebridProviders.configuredServices(settings).some(({ provider }) =>
+    DebridProviders.supports(provider.id, DEBRID_CAPABILITIES.CLOUD_LIBRARY)
+  );
+}
+
 // The Cloud tab is a single list, so a server library contributes its titles to
 // that list rather than standing as a section of its own. Only libraries that
 // still exist on the server are used.

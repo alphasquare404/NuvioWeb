@@ -1,5 +1,8 @@
-import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
-import { selectedMediaLibraries } from "../../../core/media/mediaConnections.js";
+import {
+  MediaConnectionsStore,
+  hasConfiguredMediaServer,
+  selectedMediaLibraries
+} from "../../../core/media/mediaConnections.js";
 import {
   loadMediaCatalog,
   mediaCatalogLibraries
@@ -17,7 +20,8 @@ import { I18n } from "../../../i18n/index.js";
 import { buildWatchedTitleIdSet } from "../../components/watchedTitleBadge.js";
 import {
   cloudLibraryRepository,
-  cloudLibrarySettingsSignature
+  cloudLibrarySettingsSignature,
+  hasCloudLibraryConfiguration
 } from "../../../data/repository/cloudLibraryRepository.js";
 import {
   CLOUD_LIBRARY_ITEM_TYPES,
@@ -511,11 +515,42 @@ export class LibraryController {
     this.pendingFacetRouteState = null;
     this.cloudSettingsSignature = cloudLibrarySettingsSignature();
     this.unsubscribeDebridSettings = DebridSettingsStore.subscribe(() => {
+      if (this.disposed) return;
+      if (this.ensureViewModeAvailable()) return;
+      this.onChange(this.getState(), { reason: "settings" });
       void this.refreshCloudLibraryIfSettingsChanged();
     });
     this.unsubscribeMediaConnections = MediaConnectionsStore.subscribe(() => {
+      if (this.disposed) return;
+      if (this.ensureViewModeAvailable()) return;
+      if (this.state.viewMode === LIBRARY_VIEW_MODE.SERVERS) {
+        void this.refreshServerConnections();
+      }
+      this.onChange(this.getState(), { reason: "settings" });
       void this.refreshCloudLibraryIfSettingsChanged();
     });
+  }
+
+  // Cloud and Servers only make sense with a configuration behind them; the
+  // tabs are hidden otherwise, and a persisted selection falls back to Saved.
+  availableViewModes() {
+    const modes = [LIBRARY_VIEW_MODE.SAVED];
+    if (hasCloudLibraryConfiguration()) modes.push(LIBRARY_VIEW_MODE.CLOUD);
+    if (hasConfiguredMediaServer()) modes.push(LIBRARY_VIEW_MODE.SERVERS);
+    return modes;
+  }
+
+  ensureViewModeAvailable() {
+    if (this.availableViewModes().includes(this.state.viewMode)) {
+      return false;
+    }
+    persistedLibraryViewMode = LIBRARY_VIEW_MODE.SAVED;
+    this.setState({
+      viewMode: LIBRARY_VIEW_MODE.SAVED,
+      expandedPicker: null,
+      cloudFilePickerItem: null
+    });
+    return true;
   }
 
   async init() {
@@ -533,8 +568,12 @@ export class LibraryController {
       });
     }
     await this.reload();
+    this.ensureViewModeAvailable();
     if (this.state.viewMode === LIBRARY_VIEW_MODE.CLOUD && !this.state.cloudLibrary.isLoaded) {
       await this.refreshCloudLibrary();
+    }
+    if (this.state.viewMode === LIBRARY_VIEW_MODE.SERVERS) {
+      await this.refreshServerConnections();
     }
   }
 
@@ -560,7 +599,12 @@ export class LibraryController {
     const viewMode =
       snapshot.viewMode === LIBRARY_VIEW_MODE.CLOUD
         ? LIBRARY_VIEW_MODE.CLOUD
-        : LIBRARY_VIEW_MODE.SAVED;
+        : snapshot.viewMode === LIBRARY_VIEW_MODE.SERVERS
+          ? LIBRARY_VIEW_MODE.SERVERS
+          : LIBRARY_VIEW_MODE.SAVED;
+    const availableViewMode = this.availableViewModes().includes(viewMode)
+      ? viewMode
+      : LIBRARY_VIEW_MODE.SAVED;
     const presentationMode =
       snapshot.presentationMode === LIBRARY_PRESENTATION_MODE.GROUPED
         ? LIBRARY_PRESENTATION_MODE.GROUPED
@@ -570,7 +614,7 @@ export class LibraryController {
       return normalized || null;
     };
     const pendingRouteState = {
-      viewMode,
+      viewMode: availableViewMode,
       presentationMode,
       selectedListKey: stringOrNull(snapshot.selectedListKey),
       selectedTypeKey: stringOrNull(snapshot.selectedTypeKey) || ALL_KEY,
@@ -590,7 +634,7 @@ export class LibraryController {
       ...this.state,
       ...pendingRouteState
     };
-    persistedLibraryViewMode = viewMode;
+    persistedLibraryViewMode = availableViewMode;
     return true;
   }
 
@@ -903,6 +947,7 @@ export class LibraryController {
     }
     this.state.visibleItems = sortForState(this.state.allItems, this.state);
     this.onChange(this.getState());
+    this.ensureViewModeAvailable();
 
     if (waitForPendingFacetMetadata) {
       return;
@@ -1239,12 +1284,15 @@ export class LibraryController {
   }
 
   async selectViewMode(mode) {
-    const normalized =
+    const requested =
       mode === LIBRARY_VIEW_MODE.CLOUD
         ? LIBRARY_VIEW_MODE.CLOUD
         : mode === LIBRARY_VIEW_MODE.SERVERS
           ? LIBRARY_VIEW_MODE.SERVERS
           : LIBRARY_VIEW_MODE.SAVED;
+    const normalized = this.availableViewModes().includes(requested)
+      ? requested
+      : LIBRARY_VIEW_MODE.SAVED;
     persistedLibraryViewMode = normalized;
     this.setState({
       viewMode: normalized,

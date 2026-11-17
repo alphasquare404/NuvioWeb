@@ -8,7 +8,8 @@ globalThis.localStorage = {
   clear: () => {}
 };
 
-const { mediaServerSources, mediaServerCloudItem } = await import("./cloudLibraryRepository.js");
+const { hasCloudLibraryConfiguration, mediaServerSources, mediaServerCloudItem } =
+  await import("./cloudLibraryRepository.js");
 
 const server = { id: "media:one", name: "Living Room", url: "https://jellyfin.test" };
 
@@ -107,4 +108,16 @@ test("an item without artwork keeps no poster instead of inventing one", () => {
     }
   );
   assert.equal(item.poster, null);
+});
+
+test("the Cloud tab only exists when a debrid cloud library is configured", () => {
+  assert.equal(
+    hasCloudLibraryConfiguration({ cloudLibraryEnabled: false, torboxApiKey: "x" }),
+    false
+  );
+  assert.equal(hasCloudLibraryConfiguration({ cloudLibraryEnabled: true }), false);
+  assert.equal(
+    hasCloudLibraryConfiguration({ cloudLibraryEnabled: true, torboxApiKey: "x" }),
+    true
+  );
 });

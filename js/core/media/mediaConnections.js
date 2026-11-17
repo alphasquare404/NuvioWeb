@@ -149,6 +149,12 @@ export async function mediaServerLibraries(server, signal) {
 export const selectedMediaLibraries = (server, libraries) =>
   libraries.filter(({ id }) => !Array.isArray(server.libraryIds) || server.libraryIds.includes(id));
 
+// A Servers tab with no enabled connection has nothing to show; the tab is
+// only rendered when one exists.
+export function hasConfiguredMediaServer() {
+  return MediaConnectionsStore.get().servers.some(({ enabled }) => enabled !== false);
+}
+
 export const mediaTitleId = (server, itemId) => `server:${segment(server.id)}:${segment(itemId)}`;
 
 export function mediaTitleRef(value) {
