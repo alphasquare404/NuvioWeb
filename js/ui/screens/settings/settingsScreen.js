@@ -6493,6 +6493,7 @@ export const SettingsScreen = {
               return false;
             }
             TmdbSettingsStore.setApiKey(apiKey);
+            if (!TmdbSettingsStore.get().enabled) TmdbSettingsStore.set({ enabled: true });
             return true;
           }
         });

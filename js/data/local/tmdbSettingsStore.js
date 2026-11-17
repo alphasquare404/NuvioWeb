@@ -3,8 +3,13 @@ import { TMDB_API_KEY } from "../../config.js";
 
 const KEY = "tmdbSettings";
 
+// A deployment that ships a key has already answered "do you want TMDB?";
+// asking every user to flip a switch first is how a configured fallback still
+// looks broken.
+const HAS_DEPLOYMENT_KEY = Boolean(String(TMDB_API_KEY || "").trim());
+
 const DEFAULTS = {
-  enabled: false,
+  enabled: HAS_DEPLOYMENT_KEY,
   apiKey: "",
   modernHomeEnabled: false,
   enrichContinueWatching: true,
@@ -36,10 +41,10 @@ export function normalizeTmdbLanguageCode(value = DEFAULTS.language) {
   return region ? `${language}-${region}` : language;
 }
 
-function normalizeTmdbSettings(value = {}) {
+export function normalizeTmdbSettings(value = {}, { hasDeploymentKey = HAS_DEPLOYMENT_KEY } = {}) {
   const source = value && typeof value === "object" ? value : {};
   return {
-    enabled: Boolean(source.enabled),
+    enabled: source.enabled === undefined ? Boolean(hasDeploymentKey) : Boolean(source.enabled),
     apiKey: String(source.apiKey || "").trim(),
     modernHomeEnabled: Boolean(source.modernHomeEnabled),
     enrichContinueWatching: source.enrichContinueWatching !== false,
