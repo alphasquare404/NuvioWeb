@@ -82,6 +82,9 @@ const DEFAULTS = {
   // that never asked for it must keep the built-in player.
   playerEngine: "native",
   mediabunnyEnabled: true,
+  // A failed decode can hand the stream to Remux & Transcode. Off keeps the
+  // failure visible instead of silently changing engines.
+  playbackFallbackEnabled: true,
   // Apple browser users without a stored preference receive the verified
   // Lenna path; platform-specific consumers keep Android on its own options.
   browserExternalPlayer: "lenna",
@@ -421,6 +424,7 @@ export function normalizePlayerSettings(settings = {}) {
     ),
     playerEngine: normalizePlayerEngine(persistentSettings.playerEngine ?? DEFAULTS.playerEngine),
     mediabunnyEnabled: persistentSettings.mediabunnyEnabled !== false,
+    playbackFallbackEnabled: persistentSettings.playbackFallbackEnabled !== false,
     mediabunnyMode: normalizeMediabunnyMode(
       persistentSettings.mediabunnyMode,
       normalizePlayerEngine(persistentSettings.playerEngine)

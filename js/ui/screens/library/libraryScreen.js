@@ -1,5 +1,8 @@
 import { Router } from "../../navigation/router.js";
-import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
+import {
+  MediaConnectionsStore,
+  hasConfiguredMediaServer
+} from "../../../core/media/mediaConnections.js";
 import { ProfileManager } from "../../../core/profile/profileManager.js";
 import { ensureSpatialFocusVisible, ScreenUtils } from "../../navigation/screen.js";
 import {
@@ -17,6 +20,7 @@ import {
 } from "../../../data/local/layoutPreferences.js";
 import { I18n } from "../../../i18n/index.js";
 import { CloudLibraryPlaybackSessionStore } from "../../../data/local/cloudLibraryPlaybackStore.js";
+import { hasCloudLibraryConfiguration } from "../../../data/repository/cloudLibraryRepository.js";
 import {
   LibraryController,
   LIBRARY_PRIVACY_OPTIONS,
@@ -1207,20 +1211,30 @@ export const LibraryScreen = {
   },
 
   renderViewModeTabs(state) {
+    const showCloudTab = hasCloudLibraryConfiguration();
+    const showServersTab = hasConfiguredMediaServer();
     return `
       <div class="library-view-mode-row">
         <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.SAVED ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="saved">
           ${escapeHtml(t("library_source_saved", {}, "Saved"))}
         </button>
-        <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
+        ${
+          showCloudTab
+            ? `<button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.CLOUD ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="cloud">
           ${escapeHtml(t("library_source_cloud", {}, "Cloud"))}
-        </button>
-        <button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.SERVERS ? " selected" : ""}"
+        </button>`
+            : ""
+        }
+        ${
+          showServersTab
+            ? `<button class="library-view-mode-button focusable${!this.isDownloadedView() && !this.isDownloadManagerView() && state.viewMode === LIBRARY_VIEW_MODE.SERVERS ? " selected" : ""}"
                 data-action="selectLibraryViewMode" data-view-mode="servers">
           ${escapeHtml(t("library_source_servers", {}, "Servers"))}
-        </button>
+        </button>`
+            : ""
+        }
         ${
           Platform.isBrowser()
             ? `<button class="library-view-mode-button focusable${this.isDownloadedView() || this.isDownloadManagerView() ? " selected" : ""}"

@@ -12,8 +12,11 @@ import { createRangeFetcher, readRange } from "./range.mjs";
 import { createSourceReader, LIBRARY_CACHE_BYTES } from "./sourceReader.mjs";
 import { ensureAudioDecoder, ensureVideoDecoder } from "./decoderSupport.mjs";
 
-const AUDIO_AHEAD = 0.5;
-const START_LEAD = 0.1;
+const AUDIO_AHEAD = 2;
+// A short lead and a bigger read cache let a software decoder absorb network
+// jitter instead of restarting on the first slow range request.
+const START_LEAD = 0.25;
+const DECODE_CACHE_BYTES = 8 * 1024 * 1024;
 const BUFFER_TIMEOUT_MS = 15000;
 
 export async function openDecodeSource({ url, headers, signal, resolveSource }) {
@@ -27,7 +30,10 @@ export async function openDecodeSource({ url, headers, signal, resolveSource }) 
     source = new CustomSource({
       getSize: () => stats.size,
       read: createSourceReader({ url, signal, stats, fetcher }),
-      maxCacheSize: LIBRARY_CACHE_BYTES,
+      maxCacheSize: DECODE_CACHE_BYTES,
+      // Network prefetch asks for spans larger than the reader accepts, which
+      // surfaced as range-read-limit mid-film; the audio pump keeps the buffer
+      // full without speculative reads.
       prefetchProfile: "none"
     });
   }
@@ -161,6 +167,7 @@ export async function createDecodePlayback({
     run = null;
     if (!old) return;
     clearTimeout(old.timeout);
+    clearInterval(old.audioTimer);
     cancelAnimationFrame(old.frame);
     for (const node of old.nodes) {
       node.onended = null;
@@ -178,6 +185,13 @@ export async function createDecodePlayback({
     requestedPlaying = false;
     stopRun();
     report();
+    // The engine label alone ("mediabunny-decode") hid whether this was a
+    // timeout, a starved decoder or a codec refusal.
+    console.warn("[Decode] failed", {
+      name: String(error?.name || ""),
+      message: String(error?.message || error || ""),
+      time: Math.round(Number(position || 0) * 100) / 100
+    });
     onError(error);
   }
 
@@ -278,12 +292,40 @@ export async function createDecodePlayback({
         report();
         return;
       }
-      const audioStarved = job.audioPending && job.audioUntil < time + first - 0.12;
+      const audioStarved = job.audioPending && job.audioUntil < time + first - 0.75;
       const videoStarved = job.videoPending && job.lastPictureTime < time - 0.65;
       if (audioStarved || videoStarved) {
-        if (++stalls > 3) fail(job, Error("Decode Only cannot keep up with this stream"));
-        else restart(time);
-        return;
+        // A shallow dip usually refills on the next audio pump. Restarting on
+        // the first sample below the line is what turns a small hiccup into a
+        // visible one, so the run only restarts after the miss persists.
+        job.starvedSince ||= now;
+        if (now - job.starvedSince < 1200) {
+          // Keep decoding and let pumpSound catch up on the next frame.
+        } else {
+          job.starvedSince = 0;
+          stalls += 1;
+          if (stalls === 1) {
+            // One warning per run is enough to tell a slow network range apart
+            // from a decoder that cannot keep up.
+            console.warn("[Decode] stalled", {
+              reason: audioStarved ? "audio" : "video",
+              time: Math.round(time * 100) / 100,
+              audioUntil: Math.round(Number(job.audioUntil || 0) * 100) / 100,
+              lastPictureTime: Math.round(Number(job.lastPictureTime || 0) * 100) / 100
+            });
+          }
+          if (stalls > 3) fail(job, Error("Decode Only cannot keep up with this stream"));
+          else restart(time);
+          return;
+        }
+      } else {
+        job.starvedSince = 0;
+      }
+      // Playback got through a few seconds without starving: earlier hiccups
+      // are history and must not accumulate into a hard failure hours later.
+      if (time - Number(job.stallResetAt || 0) >= 3) {
+        stalls = 0;
+        job.stallResetAt = time;
       }
     }
     if (!job.picture && !job.videoPending && !job.videoDone) {
@@ -309,7 +351,14 @@ export async function createDecodePlayback({
     ended = false;
     position = Math.max(0, Math.min(time, length));
     if (disposed) return;
-    const job = { start: position, anchor: null, nodes: new Set(), audioDone: false };
+    const job = {
+      start: position,
+      anchor: null,
+      nodes: new Set(),
+      audioDone: false,
+      stallResetAt: position,
+      starvedSince: 0
+    };
     run = job;
     report();
     if (run !== job) return;
@@ -340,6 +389,13 @@ export async function createDecodePlayback({
       job.audio = selected ? new AudioBufferSink(selected).buffers(start) : null;
       job.audioDone = !selected;
       tick(job, performance.now());
+      // Audio scheduling must not depend on animation frames: a long frame or
+      // a throttled tab would stop filling the buffer and trip the stall guard
+      // even though the network is fine.
+      job.audioTimer = setInterval(() => {
+        if (run !== job || job.anchor === null) return;
+        pumpSound(job, snapshot().time);
+      }, 400);
     })().catch((error) => fail(job, error));
   }
 

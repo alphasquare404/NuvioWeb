@@ -1,4 +1,7 @@
-import { renderFilenamePlaybackBadge } from "./filenamePlaybackBadge.js";
+import {
+  renderFilenamePlaybackBadge,
+  renderFilenamePlaybackMethodBadge
+} from "./filenamePlaybackBadge.js";
 import { DebridSettingsStore } from "../../data/local/debridSettingsStore.js";
 import { StreamBadgeSettingsStore } from "../../data/local/streamBadgeSettingsStore.js";
 import {
@@ -228,4 +231,38 @@ export function renderBrowserSourceCardContent(model = {}) {
     ? `<div class="stream-route-card-side"><div class="stream-route-addon-badge">${model.addonLogoUrl ? `<img src="${escapeHtml(model.addonLogoUrl)}" alt="${escapeHtml(model.addonName || "Addon")}" decoding="async" loading="lazy" referrerpolicy="no-referrer" /><span hidden>${escapeHtml(model.addonBadgeLabel || "A")}</span>` : `<span>${escapeHtml(model.addonBadgeLabel || "A")}</span>`}</div><div class="stream-route-addon-name" title="${escapeHtml(model.addonName || "Addon")}">${escapeHtml(model.addonName || "Addon")}</div></div>`
     : "";
   return `<div class="stream-route-card-copy"><div class="stream-route-card-heading">${escapeHtml(model.headline || "Unknown source")}</div>${model.topBadges || ""}${!badges ? `<div class="stream-route-card-quality">${escapeHtml(model.quality || "Auto")}</div>` : ""}${(model.descriptionLines || []).map((line, index) => `<div class="stream-route-card-line${index > 0 ? " secondary" : ""}" title="${escapeHtml(line)}">${escapeHtml(line)}</div>`).join("")}${model.bottomBadges || ""}</div>${addonIdentity}`;
+}
+
+/** Renders the stream-page card itself so every preview uses its real asset. */
+export function renderBrowserStreamCard(
+  stream,
+  {
+    badgeSettings = StreamBadgeSettingsStore.snapshot(),
+    streamBadgesEnabled = DebridSettingsStore.get().streamBadgesEnabled !== false,
+    addonLogoLookup = {},
+    playbackMethod = "",
+    methodBadgeSettings = badgeSettings,
+    classes = "",
+    attributes = "",
+    rowAttributes = "",
+    afterContent = ""
+  } = {}
+) {
+  const display = normalizeSourceForDisplay(stream, {
+    badgeSettings,
+    streamBadgesEnabled,
+    addonLogoLookup
+  });
+  if (playbackMethod) {
+    const methodBadge = renderFilenamePlaybackMethodBadge(playbackMethod, methodBadgeSettings);
+    if (methodBadge) {
+      display.badges = display.badges
+        ? display.badges.replace(">", `>${methodBadge}`)
+        : `<div class="stream-route-card-badges">${methodBadge}</div>`;
+      const placement = resolveBadgePlacement(badgeSettings);
+      display.topBadges = placement === "TOP" ? display.badges : "";
+      display.bottomBadges = placement === "BOTTOM" ? display.badges : "";
+    }
+  }
+  return `<div class="stream-route-card-row"${rowAttributes ? ` ${rowAttributes}` : ""}><article class="stream-route-card stream-route-card-action${classes ? ` ${classes}` : ""}"${attributes ? ` ${attributes}` : ""}>${renderBrowserSourceCardContent(display)}${afterContent}</article></div>`;
 }

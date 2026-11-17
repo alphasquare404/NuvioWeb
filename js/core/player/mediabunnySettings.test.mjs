@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizePlayerSettings } from "../../data/local/playerSettingsStore.js";
-import { shouldRouteToDecodePlayback } from "./mediabunnySettings.js";
+import {
+  blockDecodePlayback,
+  isDecodeBlocked,
+  resetDecodeBlock,
+  shouldRouteToDecodePlayback
+} from "./mediabunnySettings.js";
 
 test("Mediabunny preserves existing playback and migrates an explicit movi selection", () => {
   assert.equal(normalizePlayerSettings({}).mediabunnyEnabled, true);
@@ -47,4 +52,18 @@ test("Decode & Play is opt-in and fallback does not route back to Decode & Play"
     shouldRouteToDecodePlayback(source, settings, { ...scope, isSecureContext: false }),
     false
   );
+});
+
+test("a decode failure keeps the session on Remux after the retries", () => {
+  const source = { streamUrl: "https://media.example/video.mkv" };
+  const scope = { isSecureContext: true, AudioContext: function AudioContext() {} };
+  const settings = { mediabunnyEnabled: true, mediabunnyMode: "decode" };
+  resetDecodeBlock();
+  assert.equal(isDecodeBlocked(), false);
+  assert.equal(shouldRouteToDecodePlayback(source, settings, scope), true);
+  blockDecodePlayback();
+  assert.equal(isDecodeBlocked(), true);
+  assert.equal(shouldRouteToDecodePlayback(source, settings, scope), false);
+  resetDecodeBlock();
+  assert.equal(shouldRouteToDecodePlayback(source, settings, scope), true);
 });

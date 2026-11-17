@@ -2,7 +2,6 @@ import { renderAutoplaySources, bindAutoplaySources } from "./autoplaySourcesDia
 import { listAutoplayStreamAddons } from "./autoplayAddonSelection.js";
 import { bindMediaConnections, renderMediaConnections } from "./mediaConnectionsPanel.js";
 import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
-import { renderFilenamePlaybackMethodBadge } from "../../components/filenamePlaybackBadge.js";
 import { normalizeAccentColor, accentTextColor } from "../../../core/theme/accentColor.js";
 import {
   INTEGRATION_SERVICES,
@@ -32,10 +31,7 @@ import {
   filenameStreamFilterSummary,
   shouldOfferProbeStream
 } from "./playbackSettingsPresentation.js";
-import {
-  normalizeSourceForDisplay,
-  renderBrowserSourceCardContent
-} from "../../components/browserStreamSourceCard.js";
+import { renderBrowserStreamCard } from "../../components/browserStreamSourceCard.js";
 import {
   filenameStreamFilter,
   filenameStreamFilterKey,
@@ -6493,6 +6489,7 @@ export const SettingsScreen = {
               return false;
             }
             TmdbSettingsStore.setApiKey(apiKey);
+            if (!TmdbSettingsStore.get().enabled) TmdbSettingsStore.set({ enabled: true });
             return true;
           }
         });
@@ -7604,22 +7601,27 @@ export const SettingsScreen = {
             decodeStreamFilter: ["all"]
           }
     );
-    const badgeSettings = StreamBadgeSettingsStore.snapshot();
+    const previewBadgeSettings = StreamBadgeSettingsStore.snapshot();
+    const badgeSettings = { ...previewBadgeSettings, showPlaybackLabels: false };
+    // Preview cards borrow the real add-on identity (name and logo asset) from
+    // the installed manifests; a letter placeholder made them look unlike the
+    // cards on the Stream page.
     const renderExample = (source) => {
-      const display = normalizeSourceForDisplay(source, {
-        badgeSettings: { ...badgeSettings, showPlaybackLabels: false }
+      const cardSource = {
+        ...source,
+        addonName: "Sample Addon",
+        addonLogo: "assets/brand/app_logo_mark.png"
+      };
+      return renderBrowserStreamCard(cardSource, {
+        badgeSettings,
+        streamBadgesEnabled: DebridSettingsStore.get().streamBadgesEnabled !== false,
+        playbackMethod: source.previewMethod,
+        methodBadgeSettings: previewBadgeSettings,
+        rowAttributes: `data-preview-source="${source.id}"`,
+        // The stream card.s last line pairs the source with its download
+        // control; the preview draws the same round asset, inert.
+        afterContent: `<div class="stream-route-offline-actions"><span class="stream-route-offline-action download" aria-hidden="true">\u2193</span></div>`
       });
-      {
-        const exampleBadge = renderFilenamePlaybackMethodBadge(source.previewMethod, badgeSettings);
-        if (exampleBadge)
-          display.badges = display.badges
-            ? display.badges.replace(">", `>${exampleBadge}`)
-            : `<div class="stream-route-card-badges">${exampleBadge}</div>`;
-        const top = String(badgeSettings.badgePlacement).toUpperCase() === "TOP";
-        display.topBadges = top ? display.badges : "";
-        display.bottomBadges = top ? "" : display.badges;
-      }
-      return `<article class="stream-route-card" data-preview-source="${source.id}">${renderBrowserSourceCardContent(display)}</article>`;
     };
     return `<section class="settings-source-live-preview" aria-label="${escapeHtml(t("settings_preview_streams", {}, "Stream card preview"))}"><div class="settings-live-preview-caption">${escapeHtml(t("settings_preview_streams", {}, "Stream card preview"))}</div><p class="settings-live-preview-note">${escapeHtml(t("settings_preview_all_labels"))}</p>${examples.map(renderExample).join("") || `<p>${escapeHtml(t("settings_preview_no_matches", {}, "No examples match this device and filter."))}</p>`}</section>`;
   },
@@ -8867,6 +8869,11 @@ export const SettingsScreen = {
         mediabunnyEnabled: PlayerSettingsStore.get().mediabunnyEnabled === false
       })
     );
+    this.actionMap.set("playback:playbackFallback", () =>
+      PlayerSettingsStore.set({
+        playbackFallbackEnabled: PlayerSettingsStore.get().playbackFallbackEnabled === false
+      })
+    );
     this.actionMap.set("playback:mediabunnyMode", () =>
       this.openOptionDialog({
         title: "Mediabunny",
@@ -8892,6 +8899,16 @@ export const SettingsScreen = {
             })
           : ""
       }
+      ${this.renderToggleRow({
+        focusKey: "playback:playbackFallback",
+        title: t("settings_playback_fallback_title", {}, "Fallback to another playback mode"),
+        subtitle: t(
+          "settings_playback_fallback_sub",
+          {},
+          "When a playback mode fails, try the next compatible one automatically instead of stopping."
+        ),
+        checked: model.player.playbackFallbackEnabled !== false
+      })}
     `
       : "";
     const audioBody = `

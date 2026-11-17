@@ -37,6 +37,10 @@ test("container runtime allowlist includes Premiumize but excludes Trakt server 
   assert.match(entrypoint, /write_value PREMIUMIZE_CLIENT_ID/);
   assert.match(entrypoint, /write_value SIMKL_CLIENT_ID/);
   assert.match(entrypoint, /write_value TRAKT_CLIENT_ID/);
+  // Browser-public values read from the deployment environment have to reach
+  // nuvio.env.js, otherwise a fallback key is configured but never shipped.
+  assert.match(entrypoint, /write_value TMDB_API_KEY/);
+  assert.match(entrypoint, /write_value TV_LOGIN_WEB_BASE_URL/);
   assert.doesNotMatch(entrypoint, /write_value TRAKT_CLIENT_SECRET|write_value TRAKT_REDIRECT_URI/);
 });
 
