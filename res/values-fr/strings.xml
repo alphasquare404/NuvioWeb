@@ -1036,6 +1036,9 @@
     <string name="parental_severity_severe">Sévère</string>
     <string name="parental_severity_moderate">Modéré</string>
     <string name="parental_severity_mild">Léger</string>
+    <string name="player_caption_subtitle">Sous-titres</string>
+    <string name="player_caption_stream">Source</string>
+    <string name="player_more">Plus</string>
     <string name="player_ends_at">Fin à %1$s</string>
     <string name="player_via">via %1$s</string>
     <string name="season_episode_format">S%1$d E%2$d</string>
