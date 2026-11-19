@@ -1,5 +1,11 @@
 ﻿import { renderLoadingIndicator } from "../../components/loadingIndicator.js";
 
+import { I18n } from "../../../i18n/index.js";
+
+function t(key, fallback) {
+  return I18n.t(key, {}, { fallback });
+}
+
 export class AccountSettingsContent {
   constructor(container) {
     this.container = container;
@@ -13,7 +19,7 @@ export class AccountSettingsContent {
       this.container.innerHTML = `
         <div class="account-settings-loading text-secondary">
           ${renderLoadingIndicator()}
-          <span>Loading...</span>
+          <span>${t("account_settings_loading", "Loading...")}</span>
         </div>
       `;
       return;
@@ -22,13 +28,13 @@ export class AccountSettingsContent {
     if (authState === "signedOut") {
       this.container.innerHTML = `
         <p class="account-settings-note">
-          Sync your library and preferences across devices.
+          ${t("account_settings_signed_out_note", "Sync your library and preferences across devices.")}
         </p>
 
         ${this.renderActionButton(
           "assets/icons/trakt_tv_glyph.svg",
-          "Sign in with QR",
-          "Scan a QR code to link this device",
+          t("account_signin_qr_title", "Sign in with QR"),
+          t("account_signin_qr_subtitle", "Scan a QR code and complete email login on your phone"),
           "signin"
         )}
       `;
@@ -77,7 +83,7 @@ export class AccountSettingsContent {
   renderStatusCard(email) {
     return `
       <div class="status-card">
-        <span class="status-label">Signed in as</span>
+        <span class="status-label">${t("account_signed_in_as", "Signed in as")}</span>
         <strong>${email}</strong>
       </div>
     `;
@@ -88,7 +94,7 @@ export class AccountSettingsContent {
       <div class="sync-card">
         <div class="account-settings-loading text-secondary">
           ${renderLoadingIndicator()}
-          <span>Loading sync overview...</span>
+          <span>${t("account_sync_overview_loading", "Loading sync overview...")}</span>
         </div>
       </div>
     `;
@@ -145,7 +151,7 @@ export class AccountSettingsContent {
       <div class="account-settings-card account-settings-card-danger focusable" data-action="logout">
         <div class="account-settings-row">
           <img class="icon-img" src="assets/icons/ic_chevron_compact_left.png" alt="" aria-hidden="true" />
-          <div class="account-settings-title">Sign Out</div>
+          <div class="account-settings-title">${t("account_sign_out", "Sign Out")}</div>
         </div>
       </div>
     `;

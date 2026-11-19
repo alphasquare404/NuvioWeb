@@ -1,3 +1,9 @@
+import { I18n } from "../../../i18n/index.js";
+
+function t(key, params = {}, fallback = key) {
+  return I18n.t(key, params, { fallback });
+}
+
 export const SubtitleDialog = {
   show(container, subtitles = []) {
     if (!container) return;
@@ -14,17 +20,17 @@ export const SubtitleDialog = {
       .map(
         (subtitle) => `
       <div style="padding:4px 0;">
-        <strong>${subtitle.active ? ">" : ""} ${subtitle.label || subtitle.lang || "unknown"}</strong>
-        <span style="opacity:0.75;"> - ${subtitle.source || subtitle.addonName || "addon"}</span>
+        <strong>${subtitle.active ? ">" : ""} ${subtitle.label || subtitle.lang || t("common.unknown", {}, "unknown")}</strong>
+        <span style="opacity:0.75;"> - ${subtitle.source || subtitle.addonName || t("nav_addons", {}, "addon")}</span>
       </div>
     `
       )
       .join("");
     node.innerHTML = `
-      <h3>Subtitles</h3>
-      <p>${subtitles.length} options</p>
-      ${rows || "<p>No subtitles found.</p>"}
-      <p style="opacity:0.75;">Press S to close</p>
+      <h3>${t("subtitle_dialog_title", {}, "Subtitles")}</h3>
+      <p>${t("subtitle_dialog_options", [subtitles.length], `${subtitles.length} options`)}</p>
+      ${rows || `<p>${t("subtitle_dialog_none", {}, "No subtitles found.")}</p>`}
+      <p style="opacity:0.75;">${t("subtitle_dialog_close_hint", {}, "Press S to close")}</p>
     `;
     container.appendChild(node);
   },

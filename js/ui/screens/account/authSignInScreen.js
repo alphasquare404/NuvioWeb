@@ -136,7 +136,11 @@ export const AuthSignInScreen = {
             </label>
             ${errorMessage}
             <button class="desktop-auth-submit" type="submit" ${submitting ? "disabled" : ""}>
-              ${submitting ? "Signing in…" : "Sign In"}
+              ${escapeHtml(
+                submitting
+                  ? t("media_connection_signing_in", "Signing in…")
+                  : t("auth_signin_title", "Sign In")
+              )}
             </button>
           </form>
           <div class="desktop-auth-divider" role="separator">

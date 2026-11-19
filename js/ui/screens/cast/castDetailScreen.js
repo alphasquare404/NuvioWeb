@@ -210,7 +210,7 @@ export const CastDetailScreen = {
       this.container.innerHTML = `
         <div class="browser-person-detail-shell">
           <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">${renderBackButtonIcon()}</button>
-          <div class="browser-person-detail-status">${renderLoadingIndicator()}<span>Loading person details…</span></div>
+          <div class="browser-person-detail-status">${renderLoadingIndicator()}<span>${escapeHtml(t("cast_detail_loading", {}, "Loading person details…"))}</span></div>
         </div>
       `;
       this.bindBrowserPersonActions();
@@ -220,7 +220,7 @@ export const CastDetailScreen = {
       <div class="cast-detail-shell">
         <div class="cast-detail-loading">
           ${renderLoadingIndicator()}
-          <span>Loading cast profile...</span>
+          <span>${escapeHtml(t("cast_detail_loading", {}, "Loading cast profile..."))}</span>
         </div>
       </div>
     `;
@@ -334,13 +334,13 @@ export const CastDetailScreen = {
           <div class="cast-detail-hero-content">
             <div class="cast-detail-avatar"${person.profile ? ` style="background-image:url('${escapeAttribute(person.profile)}')"` : ""}></div>
             <div class="cast-detail-meta">
-              <h2 class="cast-detail-name">${escapeHtml(person.name || "Unknown")}</h2>
+              <h2 class="cast-detail-name">${escapeHtml(person.name || t("common.unknown", {}, "Unknown"))}</h2>
               <div class="cast-detail-facts">
                 ${person.knownForDepartment ? `<span>${escapeHtml(person.knownForDepartment)}</span>` : ""}
                 ${person.birthday ? `<span>${escapeHtml(person.birthday)}</span>` : ""}
                 ${person.placeOfBirth ? `<span>${escapeHtml(person.placeOfBirth)}</span>` : ""}
               </div>
-              <p class="cast-detail-bio">${escapeHtml(person.biography || "No biography available.")}</p>
+              <p class="cast-detail-bio">${escapeHtml(person.biography || t("cast_detail_biography_empty", {}, "No biography available."))}</p>
             </div>
           </div>
         </section>
@@ -359,7 +359,7 @@ export const CastDetailScreen = {
     const person = this.person || {};
     const age = calculatePersonAge(person.birthday, person.deathday);
     const birth = person.birthday
-      ? `Born ${escapeHtml(person.birthday)}${age != null ? ` (${age})` : ""}`
+      ? `${escapeHtml(person.birthday)}${age != null ? ` (${age})` : ""}`
       : "";
     const avatar = person.profile
       ? `<img src="${escapeAttribute(person.profile)}" alt="" loading="eager" decoding="async" onerror="this.hidden=true" />`
@@ -374,19 +374,19 @@ export const CastDetailScreen = {
           <button class="detail-desktop-back-button focusable" type="button" data-action="back" aria-label="${escapeAttribute(t("common.back", {}, "Back"))}">
             ${renderBackButtonIcon()}
           </button>
-          <h1 class="page-heading-title">${escapeHtml(person.name || "Unknown")}</h1>
+          <h1 class="page-heading-title">${escapeHtml(person.name || t("common.unknown", {}, "Unknown"))}</h1>
         </header>
         <div class="browser-person-detail-layout">
           <aside class="browser-person-detail-profile">
             <div class="browser-person-detail-avatar">${avatar}</div>
             <dl class="browser-person-detail-facts">
-              ${birth ? `<div><dt>Born</dt><dd>${birth}</dd></div>` : ""}
-              ${person.placeOfBirth ? `<div><dt>Place of birth</dt><dd>${escapeHtml(person.placeOfBirth)}</dd></div>` : ""}
-              <div><dt>Credits</dt><dd>${Number(this.credits?.length || 0)}</dd></div>
+              ${birth ? `<div><dt>${escapeHtml(t("cast_detail_born_label", {}, "Born"))}</dt><dd>${birth}</dd></div>` : ""}
+              ${person.placeOfBirth ? `<div><dt>${escapeHtml(t("cast_detail_place_of_birth", {}, "Place of birth"))}</dt><dd>${escapeHtml(person.placeOfBirth)}</dd></div>` : ""}
+              <div><dt>${escapeHtml(t("cast_detail_credits", {}, "Credits"))}</dt><dd>${Number(this.credits?.length || 0)}</dd></div>
             </dl>
             <section class="browser-person-detail-biography">
-              <h2>Biography</h2>
-              <p class="browser-person-detail-biography-copy" id="castBiographyCopy">${escapeHtml(person.biography || "No biography available.")}</p>
+              <h2>${escapeHtml(t("cast_detail_biography", {}, "Biography"))}</h2>
+              <p class="browser-person-detail-biography-copy" id="castBiographyCopy">${escapeHtml(person.biography || t("cast_detail_biography_empty", {}, "No biography available."))}</p>
               <button class="browser-person-detail-biography-toggle focusable" type="button" data-action="toggleBiography" aria-controls="castBiographyCopy" aria-expanded="false" hidden>${escapeHtml(t("detail_description_more", {}, "more"))}</button>
             </section>
           </aside>

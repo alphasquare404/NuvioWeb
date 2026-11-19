@@ -248,7 +248,7 @@ function stripCountSuffix(value) {
 
 function typeLabelForEmptyState(key) {
   if (!key || key === ALL_KEY) {
-    return "all";
+    return t("library_type_all", {}, "All").toLowerCase();
   }
   return libraryTypeLabel(key)
     .replace(/\s+\(\d+\)$/, "")
@@ -1049,7 +1049,7 @@ export class LibraryController {
       );
     }
     if (this.state.sourceMode === LibrarySourceMode.SIMKL) {
-      return `No ${selectedTypeLabel} in this Simkl status`;
+      return t("library_empty_simkl_title", [selectedTypeLabel], `No ${selectedTypeLabel} in this Simkl status`);
     }
     return t("library_empty_local_title", [selectedTypeLabel], `No ${selectedTypeLabel} yet`);
   }
@@ -1070,7 +1070,7 @@ export class LibraryController {
       );
     }
     if (this.state.sourceMode === LibrarySourceMode.SIMKL) {
-      return "Use + in details to move items between Simkl statuses";
+      return t("library_empty_simkl_subtitle", {}, "Use + in details to move items between Simkl statuses");
     }
     return t("library_empty_local_subtitle", {}, "Start saving your favorites to see them here");
   }
