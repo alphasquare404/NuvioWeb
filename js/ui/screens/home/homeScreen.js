@@ -2467,7 +2467,9 @@ function renderLegacyCatalogRowsMarkup(rows = [], options = {}) {
       : formatCatalogRowTitle(rowData.catalogName, rowData.type, showCatalogTypeSuffix);
     const rowSubtitle =
       layoutMode === "classic" && showCatalogAddonName && rowData.addonName
-        ? `from ${rowData.addonName}`
+        ? I18n.t("catalog_from_addon", [rowData.addonName], {
+            fallback: `from ${rowData.addonName}`
+          })
         : "";
     const maxItems = Math.max(1, Number(rowItemLimit || HOME_MAX_ITEMS_PER_ROW_DEFAULT));
     const hasSeeAll = !isCollectionRow && !isLoading && items.length > maxItems;

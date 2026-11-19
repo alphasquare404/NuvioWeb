@@ -611,7 +611,9 @@ export const SearchScreen = {
           ),
           subtitle:
             this.layoutPrefs?.catalogAddonNameEnabled !== false
-              ? `from ${entry.addonName || "Addon"}`
+              ? I18n.t("catalog_from_addon", [entry.addonName || "Addon"], {
+                  fallback: `from ${entry.addonName || "Addon"}`
+                })
               : "",
           type: entry.type,
           addonBaseUrl: entry.addonBaseUrl,
@@ -686,7 +688,9 @@ export const SearchScreen = {
             ),
             subtitle:
               this.layoutPrefs?.catalogAddonNameEnabled !== false
-                ? `from ${catalog.addonName || "Addon"}`
+                ? I18n.t("catalog_from_addon", [catalog.addonName || "Addon"], {
+                    fallback: `from ${catalog.addonName || "Addon"}`
+                  })
                 : "",
             type: catalog.type,
             addonBaseUrl: catalog.addonBaseUrl,
