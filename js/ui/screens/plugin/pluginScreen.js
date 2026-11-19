@@ -73,19 +73,22 @@ export const PluginScreen = {
 
   buildSyncStatusText() {
     if (this.syncing) {
-      return "Syncing addons...";
+      return t("plugin_sync_status_syncing", "Syncing addons…");
     }
     if (!this.model?.authenticated) {
-      return "Sign in on your phone to link addons.";
+      return t("plugin_sync_status_link_prompt", "Sign in on your phone to link addons.");
     }
     const status = this.model?.syncStatus || {};
     if (status.state === "error") {
-      return "Couldn't reach the addon service. Check the TV internet connection and try Refresh.";
+      return t(
+        "plugin_sync_status_error",
+        "Couldn't reach the addon service. Check the TV internet connection and try Refresh."
+      );
     }
     if (this.model?.addonCount > 0) {
-      return "Addons are up to date.";
+      return t("plugin_sync_status_up_to_date", "Addons are up to date.");
     }
-    return "No addons linked yet. Add them on your phone, then press Refresh.";
+    return t("plugin_sync_status_empty", "No addons linked yet. Add them on your phone, then press Refresh.");
   },
 
   async refreshAddons() {

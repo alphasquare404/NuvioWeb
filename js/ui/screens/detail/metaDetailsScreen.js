@@ -5295,7 +5295,7 @@ export const MetaDetailsScreen = {
 
   renderSeriesCastTrack(kind = "series") {
     if (!Array.isArray(this.castItems) || !this.castItems.length) {
-      return `<div class="series-insight-empty">No cast information.</div>`;
+      return `<div class="series-insight-empty">${escapeHtml(t("detail_no_cast_information", {}, "No cast information."))}</div>`;
     }
     const className = kind === "movie" ? "movie-cast-track" : "series-cast-track";
     const cards = this.castItems
@@ -11670,9 +11670,9 @@ export const MetaDetailsScreen = {
     this.isLoadingDetail = false;
     this.container.innerHTML = `
       <div class="row">
-        <h2>Detail</h2>
+        <h2>${escapeHtml(t("detail_error_title", {}, "Detail"))}</h2>
         <p>${message}</p>
-        <div class="card focusable" data-action="goBack">Back</div>
+        <div class="card focusable" data-action="goBack">${escapeHtml(t("common.back", {}, "Back"))}</div>
       </div>
     `;
     ScreenUtils.indexFocusables(this.container);

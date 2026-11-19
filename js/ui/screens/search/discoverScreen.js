@@ -1606,13 +1606,13 @@ export const DiscoverScreen = {
           <div class="seeall-shell discover-seeall-shell">
             <header class="seeall-header discover-header page-heading page-heading-back" data-page-heading>
               <div class="discover-header-copy page-heading-copy">
-                <h1 class="seeall-title page-heading-title">Discover</h1>
+                <h1 class="seeall-title page-heading-title">${escapeHtml(t("discover_title", {}, "Discover"))}</h1>
                 <div class="seeall-subtitle page-heading-subtitle" id="discoverContextLabel">${escapeHtml(contextLabel)}</div>
               </div>
             </header>
             <section class="discover-picker-groups" id="discoverPickerRow">
               <div class="library-picker-row discover-picker-row library-primary-filter-row">
-                ${this.renderFilterPicker("type", "Type", formatAddonTypeLabel(this.selectedType))}
+                ${this.renderFilterPicker("type", t("discover_filter_type", {}, "Type"), formatAddonTypeLabel(this.selectedType))}
                 <button class="library-filter-toggle focusable${
                   this.discoverFiltersExpanded ? " is-expanded" : ""
                 }${this.selectedGenre ? " has-active-filters" : ""}"
@@ -1626,8 +1626,8 @@ export const DiscoverScreen = {
               ${
                 this.discoverFiltersExpanded
                   ? `<div class="library-picker-row discover-picker-row library-secondary-filter-row">
-                       ${this.renderFilterPicker("catalog", "Catalog", selectedCatalog?.catalogName || "Select")}
-                       ${this.renderFilterPicker("genre", "Genre", this.selectedGenre || "Default")}
+                       ${this.renderFilterPicker("catalog", t("discover_filter_catalog", {}, "Catalog"), selectedCatalog?.catalogName || t("discover_select_catalog", {}, "Select"))}
+                       ${this.renderFilterPicker("genre", t("discover_filter_genre", {}, "Genre"), this.selectedGenre || t("discover_genre_default", {}, "Default"))}
                      </div>`
                   : ""
               }

@@ -6,9 +6,18 @@ const REMEMBER_LAST_PROFILE_KEY = "rememberLastProfile";
 const HAS_EVER_SELECTED_PROFILE_KEY = "hasEverSelectedProfile";
 export const MAX_PROFILES = 6;
 
-const DEFAULT_PROFILES = [
-  { id: "1", profileIndex: 1, name: "Profile 1", avatarColorHex: "#1E88E5", isPrimary: true }
-];
+async function createDefaultProfiles() {
+  const { I18n } = await import("../../i18n/index.js");
+  return [
+    {
+      id: "1",
+      profileIndex: 1,
+      name: I18n.t("profile_default_name", { index: 1 }, { fallback: "Profile 1" }),
+      avatarColorHex: "#1E88E5",
+      isPrimary: true
+    }
+  ];
+}
 
 function normalizeProfile(profile, index = 0) {
   const fallbackIndex = index + 1;
@@ -55,8 +64,9 @@ export const ProfileManager = {
       LocalStore.set(PROFILES_KEY, normalized);
       return normalized;
     }
-    LocalStore.set(PROFILES_KEY, DEFAULT_PROFILES);
-    return DEFAULT_PROFILES;
+    const defaultProfiles = await createDefaultProfiles();
+    LocalStore.set(PROFILES_KEY, defaultProfiles);
+    return defaultProfiles;
   },
 
   async replaceProfiles(profiles) {

@@ -2119,7 +2119,10 @@ async function fetchAccountSyncOverview() {
       const remoteProfile = remoteProfiles[profileIdString] || {};
       return {
         profileId,
-        profileName: localProfile?.name || remoteProfile.name || `Profile ${profileId}`,
+        profileName:
+          localProfile?.name ||
+          remoteProfile.name ||
+          t("profile_default_name", { index: profileId }, `Profile ${profileId}`),
         avatarColorHex: localProfile?.avatarColorHex || remoteProfile.color || "#1E88E5",
         // The picture the profile is known by everywhere else in the app. The
         // row drew a coloured disc with an initial in it instead, which is the
@@ -4215,7 +4218,7 @@ export const SettingsScreen = {
                       .toUpperCase() || "?"
                   )}</span>`
             }
-            <span class="settings-account-profile-name">${escapeHtml(profile.profileName || `Profile ${profile.profileId || ""}`)}</span>
+            <span class="settings-account-profile-name">${escapeHtml(profile.profileName || t("profile_default_name", { index: profile.profileId || "" }, `Profile ${profile.profileId || ""}`))}</span>
             <span class="settings-account-sync-stats">
               ${renderStats([
                 profile.addons || 0,

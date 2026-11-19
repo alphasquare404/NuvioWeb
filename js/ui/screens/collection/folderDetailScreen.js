@@ -8,6 +8,7 @@ import { catalogRepository } from "../../../data/repository/catalogRepository.js
 import { watchedItemsRepository } from "../../../data/repository/watchedItemsRepository.js";
 import { CollectionsStore } from "../../../data/local/collectionsStore.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
+import { I18n } from "../../../i18n/index.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
 import {
   getEffectiveTmdbApiKey,
@@ -989,7 +990,7 @@ export const FolderDetailScreen = {
     this.heroItem = null;
 
     if (!this.collection || !this.folder) {
-      this.container.innerHTML = `<div class="seeall-shell"><div class="seeall-empty">Collection folder not found.</div></div>`;
+      this.container.innerHTML = `<div class="seeall-shell"><div class="seeall-empty">${I18n.t("folder_detail_not_found", {}, { fallback: "Collection folder not found." })}</div></div>`;
       return;
     }
 
