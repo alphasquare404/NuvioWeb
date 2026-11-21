@@ -61,6 +61,24 @@ export function readHeroArtwork(key) {
   return { poster: String(entry.p || ""), backdrop: String(entry.b || "") };
 }
 
+export function heroArtworkKey(item) {
+  const id = String(item?.id || "").trim();
+  return id ? `${String(item.type || item.apiType || "movie")}:${id}` : "";
+}
+
+// Read the canonical answer on every paint. A screen must not keep a second
+// snapshot that can outlive an update learned on another screen.
+export function resolveHeroArtwork(item, { enabled = true } = {}) {
+  if (!enabled) return item;
+  const artwork = readHeroArtwork(heroArtworkKey(item));
+  if (!artwork) return item;
+  return {
+    ...item,
+    textlessPoster: artwork.poster || null,
+    textlessBackdrop: artwork.backdrop || null
+  };
+}
+
 export function rememberHeroArtwork(key, { poster = "", backdrop = "" } = {}) {
   if (!key) {
     return;

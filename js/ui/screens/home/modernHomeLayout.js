@@ -311,7 +311,7 @@ function renderModernHeroMarkup({
         <div class="home-hero-copy home-modern-hero-copy">
           <div class="home-hero-brand">
             ${display.logo ? `<img class="home-hero-logo" src="${escapeAttribute(display.logo)}" alt="${escapeAttribute(display.title)}" decoding="async" fetchpriority="high" />` : ""}
-            <h1 class="home-hero-title-text${display.logo ? " is-hidden" : ""}">${escapeHtml(display.title)}</h1>
+            <h1 class="home-hero-title-text${display.logo ? " is-hidden" : ""}" title="${escapeAttribute(display.title)}">${escapeHtml(display.title)}</h1>
           </div>
           ${browserHero ? '<div class="home-hero-metadata">' : ""}
           <div class="home-modern-hero-meta-line${metaLine ? "" : " is-empty"}">${metaLine}</div>

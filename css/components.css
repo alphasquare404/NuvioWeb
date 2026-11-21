@@ -6461,9 +6461,6 @@ button:focus-visible {
 }
 
 .home-screen-shell.home-layout-modern .home-hero-logo-transition-ghost {
-  position: absolute;
-  left: 0;
-  top: 0;
   opacity: 1;
   pointer-events: none;
   transition: opacity 400ms ease;
@@ -6487,8 +6484,15 @@ button:focus-visible {
 .home-screen-shell.home-layout-modern .home-hero-brand {
   position: relative;
   flex: 0 0 auto;
-  gap: 16px;
+  display: grid;
+  grid-template-areas: "brand";
+  justify-items: start;
   width: 100%;
+}
+
+.home-screen-shell.home-layout-modern .home-hero-brand > .home-hero-logo,
+.home-screen-shell.home-layout-modern .home-hero-brand > .home-hero-title-text {
+  grid-area: brand;
 }
 
 .home-screen-shell.home-layout-modern .home-modern-hero-meta-line,
@@ -16212,9 +16216,8 @@ html[data-card-depth="true"][data-card-depth-trailers="true"] .detail-trailer-ca
   background-image: var(--detail-backdrop, none);
 }
 
-/* Phones only: a tablet held upright keeps its copy beside the artwork, and
-   the wide picture is the one composed for that. */
-@media (orientation: portrait) and (max-width: 600px) {
+/* Touch portrait uses the same poster composition on phones and tablets. */
+@media (any-pointer: coarse) and (orientation: portrait) {
   .series-detail-backdrop {
     background-image: var(--detail-backdrop-portrait, var(--detail-backdrop, none));
   }

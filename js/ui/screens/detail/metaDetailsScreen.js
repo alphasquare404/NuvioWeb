@@ -12,6 +12,11 @@ import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioC
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { nextEpisodeSelectionOptions } from "../../../core/streams/playerStreamPolicy.js";
 import { updateBrowserHeroGeometry } from "../../components/browserHeroGeometry.js";
+import { fitInlineSynopsis } from "../../components/inlineSynopsis.js";
+import {
+  COMPACT_BROWSER_HERO_QUERY,
+  usesCompactBrowserHero
+} from "../../components/browserHeroLayout.js";
 import { buildHeroBackdropSources } from "../../../core/media/heroArtworkSources.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
@@ -42,7 +47,8 @@ import { watchedSeriesReconciliationService } from "../../../data/repository/wat
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
 import { capTmdbImageSize } from "../../../core/media/tmdbImageSize.js";
-import { rememberHeroArtwork } from "../../../data/local/heroArtworkCache.js";
+import { rememberHeroArtwork, resolveHeroArtwork } from "../../../data/local/heroArtworkCache.js";
+import { isTmdbArtworkEnabled } from "../../../core/tmdb/tmdbArtworkGate.js";
 import { detailArtworkKey, resolveDetailPortraitBackdrop } from "./detailPortraitPlate.js";
 import { LayoutPreferences } from "../../../data/local/layoutPreferences.js";
 import { imdbEpisodeRatingsRepository } from "../../../data/repository/imdbEpisodeRatingsRepository.js";
@@ -1559,16 +1565,8 @@ function captureHorizontalScrollMap(container) {
   return state;
 }
 
-// Whether a finger can reach this screen. Paired with the browser check so a
-// remote keeps the layout its directional keys are built around, and asking
-// `any-pointer` rather than `pointer` so a tablet with a trackpad still counts.
-function detailUsesTouchLayout() {
-  if (!Platform.isBrowser()) return false;
-  try {
-    return Boolean(globalThis.matchMedia?.("(any-pointer: coarse)")?.matches);
-  } catch (_) {
-    return false;
-  }
+function detailUsesCompactLayout() {
+  return Platform.isBrowser() && usesCompactBrowserHero();
 }
 
 // One answer to "is this in the library", for the icon and for the press alike.
@@ -1609,6 +1607,10 @@ function toDetailBackdropImageValue(url) {
 
 // Both shapes travel as custom properties; which one is painted is a media
 // query in the stylesheet, so a rotation needs no re-render.
+function resolveDetailHeroArtwork(meta) {
+  return resolveHeroArtwork(meta, { enabled: isTmdbArtworkEnabled(TmdbSettingsStore.get()) });
+}
+
 function buildDetailBackdropStyleAttribute(backdrop, portraitBackdrop) {
   if (!backdrop) {
     return "";
@@ -4424,7 +4426,7 @@ export const MetaDetailsScreen = {
     const next =
       shell?.querySelector(".series-episode-card, .series-cast-card") ||
       shell?.querySelector(".series-insight-section");
-    updateBrowserHeroGeometry(hero, shell, next, !detailUsesTouchLayout());
+    updateBrowserHeroGeometry(hero, shell, next, !detailUsesCompactLayout());
   },
 
   bindDetailHeading() {
@@ -4489,11 +4491,11 @@ export const MetaDetailsScreen = {
     const heroMount = this.container.querySelector("#detailHeroSection");
     if (heroMount) geometryObserver?.observe(heroMount);
     const onScroll = () => schedule();
-    const pointerQuery = globalThis.matchMedia?.("(any-pointer: coarse)");
-    const onPointerChange = () => {
+    const layoutQuery = globalThis.matchMedia?.(COMPACT_BROWSER_HERO_QUERY);
+    const onLayoutChange = () => {
       if (this.meta) this.updateRenderedDetailSections(this.meta);
     };
-    pointerQuery?.addEventListener?.("change", onPointerChange);
+    layoutQuery?.addEventListener?.("change", onLayoutChange);
     globalThis.document?.addEventListener?.("scroll", onScroll, {
       capture: true,
       passive: true
@@ -4517,7 +4519,7 @@ export const MetaDetailsScreen = {
 
     this.detailHeadingCleanup = () => {
       geometryObserver?.disconnect();
-      pointerQuery?.removeEventListener?.("change", onPointerChange);
+      layoutQuery?.removeEventListener?.("change", onLayoutChange);
       globalThis.document?.removeEventListener?.("scroll", onScroll, true);
       globalThis.removeEventListener?.("resize", schedule);
       globalThis.removeEventListener?.("orientationchange", schedule);
@@ -4537,8 +4539,9 @@ export const MetaDetailsScreen = {
   },
 
   renderSeriesLayout(meta) {
-    const backdrop = this.holdDetailArtwork ? "" : buildHeroBackdropSources(meta)[0] || "";
-    const portraitBackdrop = resolveDetailPortraitBackdrop(meta);
+    const artwork = resolveDetailHeroArtwork(meta);
+    const backdrop = this.holdDetailArtwork ? "" : buildHeroBackdropSources(artwork)[0] || "";
+    const portraitBackdrop = resolveDetailPortraitBackdrop(artwork);
     const heroMarkup = this.renderSeriesHeroMarkup(meta);
     if (!this.selectedRatingSeason || !this.seriesRatingsBySeason?.[this.selectedRatingSeason]) {
       this.selectedRatingSeason = this.selectedSeason || this.episodes?.[0]?.season || 1;
@@ -4647,8 +4650,8 @@ export const MetaDetailsScreen = {
     const logoOrTitle = this.holdDetailArtwork
       ? '<div class="series-detail-logo-skeleton" aria-hidden="true"></div>'
       : meta.logo
-        ? `<img src="${capTmdbImageSize(meta.logo, "heroLogo")}" class="series-detail-logo" alt="${escapeHtml(meta.name || "logo")}" decoding="async" fetchpriority="high" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><h1 class="series-detail-title" title="${escapeHtml(meta.name || "Untitled")}" onclick="this.classList.toggle('is-expanded')" hidden>${escapeHtml(meta.name || "Untitled")}</h1>`
-        : `<h1 class="series-detail-title">${escapeHtml(meta.name || "Untitled")}</h1>`;
+        ? `<img src="${capTmdbImageSize(meta.logo, "heroLogo")}" class="series-detail-logo" alt="${escapeHtml(meta.name || "logo")}" decoding="async" fetchpriority="high" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><h1 class="series-detail-title" title="${escapeAttribute(meta.name || "Untitled")}" hidden>${escapeHtml(meta.name || "Untitled")}</h1>`
+        : `<h1 class="series-detail-title" title="${escapeAttribute(meta.name || "Untitled")}">${escapeHtml(meta.name || "Untitled")}</h1>`;
     const externalRatings = this.holdDetailRatings
       ? '<div class="detail-ratings-row detail-ratings-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>'
       : this.renderExternalRatingsRow(meta);
@@ -4674,25 +4677,22 @@ export const MetaDetailsScreen = {
     const downloadLabel = this.offlineMovieDownloaded
       ? t("detail_manage_download", {}, "Downloaded · Manage download")
       : t("downloads_download", {}, "Download");
-    // Under a finger the artwork is portrait and the copy is the full width, so
-    // everything but the title and the buttons would sit on top of the picture.
-    // It moves below the artwork instead. A mouse keeps the cinema framing, and
-    // TV keeps the single collapsible body its trailer transition animates.
-    const heroMetaBelowArtwork = detailUsesTouchLayout();
+    // Compact portrait and phone landscape put metadata below the artwork.
+    // Tablet landscape shares desktop composition; TV keeps its trailer body.
+    const heroMetaBelowArtwork = detailUsesCompactLayout();
     const heroDescriptionHasToggle = heroMetaBelowArtwork || Platform.isBrowser();
+    const heroDescription = meta.description || t("detail.noDescription", {}, "No description.");
     const heroMeta = `
       ${this.renderResumeIndicator()}
       ${creditLine ? `<p class="series-detail-support">${escapeHtml(creditPrefix)}: ${escapeHtml(creditLine)}</p>` : ""}
       ${externalRatings}
       ${
         heroDescriptionHasToggle
-          ? `<div class="detail-description-shell"><p class="series-detail-description">${escapeHtml(
-              meta.description || t("detail.noDescription", {}, "No description.")
-            )}</p><button class="detail-description-toggle focusable" type="button"
+          ? `<div class="detail-description-shell"><p class="series-detail-description"><span class="detail-description-text" data-source-text="${escapeAttribute(heroDescription)}">${escapeHtml(heroDescription)}</span><button class="detail-description-toggle focusable" type="button"
                        data-action="toggleHeroDescription" aria-expanded="false" hidden>${escapeHtml(
                          t("detail_description_more", {}, "more")
-                       )}</button></div>`
-          : `<p class="series-detail-description">${escapeHtml(meta.description || t("detail.noDescription", {}, "No description."))}</p>`
+                       )}</button></p></div>`
+          : `<p class="series-detail-description">${escapeHtml(heroDescription)}</p>`
       }
       ${this.renderHeroMetaRows(meta)}
     `;
@@ -4960,8 +4960,9 @@ export const MetaDetailsScreen = {
   },
 
   renderMovieLayout(meta) {
-    const backdrop = this.holdDetailArtwork ? "" : buildHeroBackdropSources(meta)[0] || "";
-    const portraitBackdrop = resolveDetailPortraitBackdrop(meta);
+    const artwork = resolveDetailHeroArtwork(meta);
+    const backdrop = this.holdDetailArtwork ? "" : buildHeroBackdropSources(artwork)[0] || "";
+    const portraitBackdrop = resolveDetailPortraitBackdrop(artwork);
     const heroMarkup = this.renderMovieHeroMarkup(meta);
 
     this.container.innerHTML = `
@@ -5058,8 +5059,9 @@ export const MetaDetailsScreen = {
       node.style.removeProperty("--detail-backdrop-portrait");
       return;
     }
-    const desired = buildHeroBackdropSources(meta)[0] || "";
-    const portrait = resolveDetailPortraitBackdrop(meta);
+    const artwork = resolveDetailHeroArtwork(meta);
+    const desired = buildHeroBackdropSources(artwork)[0] || "";
+    const portrait = resolveDetailPortraitBackdrop(artwork);
     // Both pictures decide whether there is anything to do. Comparing only the
     // wide one meant the plate was never written: enrichment arrives with the
     // same backdrop it already had and the poster it did not, and this returned
@@ -6649,21 +6651,27 @@ export const MetaDetailsScreen = {
 
   bindHeroDescriptionToggle() {
     const description = this.container?.querySelector(".series-detail-description");
+    const text = description?.querySelector(".detail-description-text");
     const toggle = this.container?.querySelector("[data-action='toggleHeroDescription']");
     if (this.heroDescriptionResizeHandler) {
       globalThis.removeEventListener?.("resize", this.heroDescriptionResizeHandler);
       this.heroDescriptionResizeHandler = null;
     }
-    if (!(description instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+    if (
+      !(description instanceof HTMLElement) ||
+      !(text instanceof HTMLElement) ||
+      !(toggle instanceof HTMLElement)
+    ) {
       return;
     }
     const syncToggle = () => {
-      if (description.classList.contains("is-expanded")) {
-        return;
-      }
-      // A clamped paragraph is taller than it is allowed to be. Anything that
-      // fits has nothing to reveal, so the control stays away.
-      toggle.hidden = description.scrollHeight <= description.clientHeight + 1;
+      fitInlineSynopsis(
+        description,
+        text,
+        toggle,
+        text.dataset.sourceText,
+        description.classList.contains("is-expanded")
+      );
     };
     toggle.onclick = () => {
       const expanded = description.classList.toggle("is-expanded");
@@ -6672,9 +6680,7 @@ export const MetaDetailsScreen = {
       toggle.textContent = expanded
         ? t("detail_description_less", {}, "less")
         : t("detail_description_more", {}, "more");
-      if (!expanded) {
-        syncToggle();
-      }
+      syncToggle();
     };
     syncToggle();
     // Turning the phone changes how many lines fit, and so whether there is

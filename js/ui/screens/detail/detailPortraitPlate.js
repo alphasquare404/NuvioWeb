@@ -1,6 +1,6 @@
 import { capTmdbImageSize } from "../../../core/media/tmdbImageSize.js";
 import { isTmdbArtworkEnabled } from "../../../core/tmdb/tmdbArtworkGate.js";
-import { readHeroArtwork } from "../../../data/local/heroArtworkCache.js";
+import { heroArtworkKey, readHeroArtwork } from "../../../data/local/heroArtworkCache.js";
 import { TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
 
 /**
@@ -8,8 +8,7 @@ import { TmdbSettingsStore } from "../../../data/local/tmdbSettingsStore.js";
  * too -- the two screens ask about the same titles and share the answer.
  */
 export function detailArtworkKey(meta) {
-  const id = String(meta?.id || "").trim();
-  return id ? `${String(meta?.type || "movie")}:${id}` : "";
+  return heroArtworkKey(meta);
 }
 
 /**

@@ -1953,60 +1953,6 @@ html.desktop-browser {
   overflow: visible;
   padding: 0 0 72px;
 }
-@media (any-pointer: coarse) {
-
-  /* Everything but the title and the buttons lives here, below the picture
-     rather than over it. */
-
-  /* The buttons' bottom margin used to separate them from the copy that sat
-     under them inside the hero. That copy is below the artwork now, and the
-     margin was only adding to the gap. */
-
-  /* A later breakpoint rule sets this padding with the same weight, so the
-     content wrapper is named to outrank it. */
-
-  /* The column is anchored to the bottom of this box, so the box has to be
-     the window -- otherwise in a short landscape window it ends partway up
-     and the copy appears to float in the middle of the artwork. */
-
-  /* Reading, not framing -- but it belongs with the framing it was written
-     for. Split across two queries, a landscape window took the desktop hero
-     and these together, and the result was neither layout: a left-aligned
-     title above centred credits. */
-  /* Portrait has room for two lines before the synopsis becomes the page.
-     Landscape is wider and shallower, so it keeps the longer clamp. */
-
-  /* The control belongs at the end of what it is cutting off, not on a line
-     below it. The fade keeps the last words from running under the label. */
-
-  /* Expanded there is nothing to sit at the end of, so it returns to a line. */
-
-  .desktop-browser #detail .series-detail-actions,
-  .desktop-browser #detail .detail-ratings-row,
-  .desktop-browser #detail .detail-meta-row {
-    justify-content: center;
-  }
-
-  .desktop-browser #detail .detail-meta-stack {
-    align-items: center;
-  }
-
-  .desktop-browser #detail .series-detail-support,
-  .desktop-browser #detail .detail-resume-indicator {
-    width: 100%;
-    text-align: center;
-  }
-
-  /* The resume line is a flex row, and text-align does not move flex items --
-     it was the one thing on this page still sitting against the left edge. */
-  .desktop-browser #detail .detail-resume-indicator {
-    justify-content: center;
-  }
-}
-
-/* Portrait has room for two lines before the synopsis becomes the page.
-   Landscape is wider and shallower, so it keeps the longer clamp. */
-
 .desktop-browser #detail .detail-desktop-back-button,
 .desktop-browser #castDetail .detail-desktop-back-button {
   position: fixed;
