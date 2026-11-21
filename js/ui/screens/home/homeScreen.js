@@ -1,3 +1,9 @@
+import { updateBrowserHeroGeometry } from "../../components/browserHeroGeometry.js";
+import {
+  heroImageFallbacks,
+  heroTargetData,
+  renderHeroTargetAttributes
+} from "../../../core/media/heroArtworkSources.js";
 import { playbackCompletionPreparation } from "../../../data/repository/playbackCompletionPreparation.js";
 import { mediaCatalogAddons } from "../../../data/repository/mediaServerCatalogRepository.js";
 import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
@@ -315,10 +321,12 @@ function usesPortraitHeroArtwork(display, src) {
 }
 
 function renderHeroBackdropImage(display) {
-  if (!display?.backdrop) {
+  if (!resolveHeroArtworkSrc(display)) {
     return '<div class="home-hero-backdrop placeholder"></div>';
   }
-  const fallbackQueue = encodeHeroBackdropFallbacks(display.backdropFallbacks || []);
+  const fallbackQueue = encodeHeroBackdropFallbacks(
+    heroImageFallbacks(display, resolveHeroArtworkSrc(display))
+  );
   const fallbackAttribute = fallbackQueue
     ? ` data-fallback-srcs="${escapeAttribute(fallbackQueue)}"`
     : "";
@@ -607,6 +615,7 @@ function animateModernHeroBackdropSwap(backdrop, nextSrc, nextAlt = "", portrait
   }
 
   if (currentSrc === normalizedSrc) {
+    finalize();
     applyShape();
     backdrop.setAttribute("alt", normalizedAlt);
     backdrop.classList.remove("placeholder");
@@ -692,6 +701,7 @@ function animateModernHeroLogoSwap(logoNode, nextSrc, nextAlt = "") {
   }
 
   if (currentSrc === normalizedSrc) {
+    finalize();
     logoNode.setAttribute("alt", normalizedAlt);
     return;
   }
@@ -916,7 +926,16 @@ function normalizeHomeRowItem(row = null, item = null) {
       }
     );
   }
-  return normalizeCatalogItem(item, row.type || "movie");
+  return normalizeCatalogItem(
+    {
+      ...item,
+      addonBaseUrl: item.addonBaseUrl || row.addonBaseUrl || "",
+      addonId: item.addonId || row.addonId || "",
+      addonName: item.addonName || row.addonName || "",
+      catalogType: row.type || item.type || "movie"
+    },
+    row.type || "movie"
+  );
 }
 
 function formatEpisodeCode(season, episode) {
@@ -2161,9 +2180,7 @@ function renderHeroMarkup(layoutMode, heroItem, heroCandidates) {
                ${
                  isInteractive
                    ? `data-action="openDetail"
-               data-item-id="${escapeAttribute(heroItem?.id || "")}"
-               data-item-type="${escapeAttribute(heroItem?.type || "movie")}"
-               data-item-title="${escapeAttribute(heroItem?.name || "Untitled")}"`
+               ${renderHeroTargetAttributes(heroItem, escapeAttribute)}`
                    : ""
                }>
         <div class="home-hero-backdrop-wrap">
@@ -4296,19 +4313,27 @@ export const HomeScreen = {
     if (!display) {
       return;
     }
-    heroNode.dataset.itemId = hero?.id || "";
-    heroNode.dataset.itemType = hero?.type || "movie";
-    heroNode.dataset.itemTitle = hero?.name || "Untitled";
+    Object.assign(heroNode.dataset, heroTargetData(heroWithPlate));
     heroNode.classList.toggle("is-hero-meta-enriching", Boolean(hero?.heroMetaEnriching));
     heroNode.classList.remove("is-hero-focus-pending");
 
-    const backdrop = heroNode.querySelector(".home-hero-backdrop");
+    let backdrop = heroNode.querySelector(".home-hero-backdrop");
+    if (backdrop && !(backdrop instanceof HTMLImageElement) && resolveHeroArtworkSrc(display)) {
+      const image = document.createElement("img");
+      image.className = "home-hero-backdrop";
+      image.setAttribute("onerror", buildImageFallbackErrorHandler());
+      backdrop.replaceWith(image);
+      backdrop = image;
+    }
     if (backdrop) {
       const src = resolveHeroArtworkSrc(display);
       const portraitShape = usesPortraitHeroArtwork(display, src);
+      backdrop.dataset.fallbackSrcs = encodeHeroBackdropFallbacks(heroImageFallbacks(display, src));
       if (this.layoutMode === "modern" && backdrop instanceof HTMLImageElement) {
         const shouldFreezeBackdrop =
-          Boolean(hero?.heroMetaEnriching) && String(backdrop.getAttribute("src") || "").trim();
+          !Platform.isBrowser() &&
+          Boolean(hero?.heroMetaEnriching) &&
+          String(backdrop.getAttribute("src") || "").trim();
         if (!shouldFreezeBackdrop) {
           animateModernHeroBackdropSwap(backdrop, src, display.title || "featured", portraitShape);
         } else {
@@ -10831,6 +10856,7 @@ export const HomeScreen = {
       this.catalogSeeAllMap = new Map();
     } else if (this.layoutMode === "modern") {
       modernLayoutPayload = renderModernHomeLayout({
+        browserHero: Platform.isBrowser(),
         rows: this.rows,
         heroItem,
         heroCandidates: this.heroCandidates,
@@ -12483,6 +12509,20 @@ export const HomeScreen = {
   // button's. That button's middle depends on the copy's padding and its own
   // height, both of which change across seven breakpoints -- so it is measured
   // once and handed to CSS rather than restated in each of them.
+  syncBrowserHeroGeometry() {
+    if (!Platform.isBrowser()) return;
+    const hero = this.container?.querySelector(".home-modern-hero-card");
+    const next = this.container?.querySelector(
+      ".home-continue-card:not(.home-continue-card-loading), .home-content-card"
+    );
+    updateBrowserHeroGeometry(
+      hero,
+      hero,
+      next,
+      !globalThis.matchMedia?.("(any-pointer: coarse)")?.matches
+    );
+  },
+
   alignDesktopHeroControls(heroCard) {
     const button = heroCard?.querySelector(".desktop-hero-details-button");
     if (!button) {
@@ -12499,6 +12539,7 @@ export const HomeScreen = {
 
   watchDesktopHeroControlsAlignment(heroCard) {
     this.alignDesktopHeroControls(heroCard);
+    this.syncBrowserHeroGeometry();
     if (this.desktopHeroAlignmentObserver?.target === heroCard) {
       return;
     }
@@ -12507,8 +12548,13 @@ export const HomeScreen = {
       this.desktopHeroAlignmentObserver = null;
       return;
     }
-    const observer = new ResizeObserver(() => this.alignDesktopHeroControls(heroCard));
+    const observer = new ResizeObserver(() => {
+      this.alignDesktopHeroControls(heroCard);
+      this.syncBrowserHeroGeometry();
+    });
     observer.observe(heroCard);
+    const nextRail = this.container?.querySelector(".home-modern-rows-viewport");
+    if (nextRail) observer.observe(nextRail);
     this.desktopHeroAlignmentObserver = { target: heroCard, observer };
   },
 

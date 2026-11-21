@@ -12,6 +12,7 @@ const APP_SHELL = [
   "./css/components.css",
   "./css/themes.css",
   "./css/desktop.css",
+  "./css/browser-hero.css",
   "./manifest.webmanifest",
   "./assets/brand/nuvio-favicon.png",
   "./assets/brand/app_logo_wordmark.png",

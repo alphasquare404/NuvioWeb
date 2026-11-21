@@ -11,6 +11,8 @@ import { autoPlayCandidates } from "../../../core/streams/streamAutoPlaySelector
 import { prepareDecodeAudioFromGesture } from "../../../core/player/decodeAudioContext.js";
 import { BrowserOfflineDownloadOptions } from "../../components/browserOfflineDownloadOptions.js";
 import { nextEpisodeSelectionOptions } from "../../../core/streams/playerStreamPolicy.js";
+import { updateBrowserHeroGeometry } from "../../components/browserHeroGeometry.js";
+import { buildHeroBackdropSources } from "../../../core/media/heroArtworkSources.js";
 import { renderFilenamePlaybackBadge } from "../../components/filenamePlaybackBadge.js";
 import { filterFilenameStreams } from "../../../core/streams/filenameStreamPolicy.js";
 import {
@@ -4415,6 +4417,16 @@ export const MetaDetailsScreen = {
     this.scheduleDetailHeadingProgress?.();
   },
 
+  syncBrowserHeroGeometry() {
+    if (!Platform.isBrowser()) return;
+    const shell = this.container?.querySelector(".series-detail-shell");
+    const hero = shell?.querySelector(".detail-hero-section");
+    const next =
+      shell?.querySelector(".series-episode-card, .series-cast-card") ||
+      shell?.querySelector(".series-insight-section");
+    updateBrowserHeroGeometry(hero, shell, next, !detailUsesTouchLayout());
+  },
+
   bindDetailHeading() {
     this.detailHeadingCleanup?.();
     this.detailHeadingCleanup = null;
@@ -4433,6 +4445,7 @@ export const MetaDetailsScreen = {
     let frame = 0;
     const apply = () => {
       frame = 0;
+      this.syncBrowserHeroGeometry();
       const layout = String(globalThis?.document?.documentElement?.dataset?.layout || "");
       if (layout === "desktop") {
         shell.style.setProperty("--detail-heading-progress", "0");
@@ -4471,7 +4484,16 @@ export const MetaDetailsScreen = {
     };
     this.scheduleDetailHeadingProgress = schedule;
 
+    const geometryObserver =
+      typeof ResizeObserver === "function" ? new ResizeObserver(schedule) : null;
+    const heroMount = this.container.querySelector("#detailHeroSection");
+    if (heroMount) geometryObserver?.observe(heroMount);
     const onScroll = () => schedule();
+    const pointerQuery = globalThis.matchMedia?.("(any-pointer: coarse)");
+    const onPointerChange = () => {
+      if (this.meta) this.updateRenderedDetailSections(this.meta);
+    };
+    pointerQuery?.addEventListener?.("change", onPointerChange);
     globalThis.document?.addEventListener?.("scroll", onScroll, {
       capture: true,
       passive: true
@@ -4494,6 +4516,8 @@ export const MetaDetailsScreen = {
     }
 
     this.detailHeadingCleanup = () => {
+      geometryObserver?.disconnect();
+      pointerQuery?.removeEventListener?.("change", onPointerChange);
       globalThis.document?.removeEventListener?.("scroll", onScroll, true);
       globalThis.removeEventListener?.("resize", schedule);
       globalThis.removeEventListener?.("orientationchange", schedule);
@@ -4513,9 +4537,7 @@ export const MetaDetailsScreen = {
   },
 
   renderSeriesLayout(meta) {
-    const backdrop = this.holdDetailArtwork
-      ? ""
-      : capTmdbImageSize(meta.background || meta.poster || "", "heroBackdrop");
+    const backdrop = this.holdDetailArtwork ? "" : buildHeroBackdropSources(meta)[0] || "";
     const portraitBackdrop = resolveDetailPortraitBackdrop(meta);
     const heroMarkup = this.renderSeriesHeroMarkup(meta);
     if (!this.selectedRatingSeason || !this.seriesRatingsBySeason?.[this.selectedRatingSeason]) {
@@ -4527,8 +4549,7 @@ export const MetaDetailsScreen = {
         <div class="series-detail-backdrop${this.holdDetailArtwork ? " is-awaiting" : ""}" data-backdrop-url="${escapeAttribute(backdrop || "")}"${buildDetailBackdropStyleAttribute(backdrop, portraitBackdrop)}></div>
         <div class="detail-trailer-layer"></div>
         <div class="detail-trailer-loading-spinner" aria-hidden="true">${renderLoadingIndicator({ className: "player-loading-spinner-ring" })}</div>
-        <div class="series-detail-vignette"></div>
-        <div class="detail-bottom-shadow"></div>
+        ${Platform.isBrowser() ? "" : '<div class="series-detail-vignette"></div><div class="detail-bottom-shadow"></div>'}
 
         ${this.renderDetailHeading()}
 
@@ -4665,12 +4686,12 @@ export const MetaDetailsScreen = {
       ${externalRatings}
       ${
         heroDescriptionHasToggle
-          ? `<p class="series-detail-description">${escapeHtml(
+          ? `<div class="detail-description-shell"><p class="series-detail-description">${escapeHtml(
               meta.description || t("detail.noDescription", {}, "No description.")
-            )}<button class="detail-description-toggle focusable" type="button"
+            )}</p><button class="detail-description-toggle focusable" type="button"
                        data-action="toggleHeroDescription" aria-expanded="false" hidden>${escapeHtml(
                          t("detail_description_more", {}, "more")
-                       )}</button></p>`
+                       )}</button></div>`
           : `<p class="series-detail-description">${escapeHtml(meta.description || t("detail.noDescription", {}, "No description."))}</p>`
       }
       ${this.renderHeroMetaRows(meta)}
@@ -4939,9 +4960,7 @@ export const MetaDetailsScreen = {
   },
 
   renderMovieLayout(meta) {
-    const backdrop = this.holdDetailArtwork
-      ? ""
-      : capTmdbImageSize(meta.background || meta.poster || "", "heroBackdrop");
+    const backdrop = this.holdDetailArtwork ? "" : buildHeroBackdropSources(meta)[0] || "";
     const portraitBackdrop = resolveDetailPortraitBackdrop(meta);
     const heroMarkup = this.renderMovieHeroMarkup(meta);
 
@@ -4950,8 +4969,7 @@ export const MetaDetailsScreen = {
         <div class="series-detail-backdrop" data-backdrop-url="${escapeAttribute(backdrop || "")}"${buildDetailBackdropStyleAttribute(backdrop, portraitBackdrop)}></div>
         <div class="detail-trailer-layer"></div>
         <div class="detail-trailer-loading-spinner" aria-hidden="true">${renderLoadingIndicator({ className: "player-loading-spinner-ring" })}</div>
-        <div class="series-detail-vignette"></div>
-        <div class="detail-bottom-shadow"></div>
+        ${Platform.isBrowser() ? "" : '<div class="series-detail-vignette"></div><div class="detail-bottom-shadow"></div>'}
 
         ${this.renderDetailHeading()}
 
@@ -5040,10 +5058,7 @@ export const MetaDetailsScreen = {
       node.style.removeProperty("--detail-backdrop-portrait");
       return;
     }
-    const desired = capTmdbImageSize(
-      String(meta?.background || meta?.poster || ""),
-      "heroBackdrop"
-    );
+    const desired = buildHeroBackdropSources(meta)[0] || "";
     const portrait = resolveDetailPortraitBackdrop(meta);
     // Both pictures decide whether there is anything to do. Comparing only the
     // wide one meant the plate was never written: enrichment arrives with the
@@ -5066,7 +5081,7 @@ export const MetaDetailsScreen = {
         return;
       }
       const current = this.container?.querySelector(".series-detail-backdrop");
-      if (current instanceof HTMLElement && current.dataset.backdropUrl === desired) {
+      if (current instanceof HTMLElement && current.dataset.backdropKey === key) {
         current.style.setProperty("--detail-backdrop", toDetailBackdropImageValue(desired));
         if (portrait) {
           current.style.setProperty(
@@ -6652,6 +6667,7 @@ export const MetaDetailsScreen = {
     };
     toggle.onclick = () => {
       const expanded = description.classList.toggle("is-expanded");
+      description.parentElement?.classList.toggle("is-expanded", expanded);
       toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
       toggle.textContent = expanded
         ? t("detail_description_less", {}, "less")

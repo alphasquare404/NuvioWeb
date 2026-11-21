@@ -1,7 +1,42 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { load } from "cheerio";
 
-import { renderModernHeroMetaLine } from "./modernHomeLayout.js";
+import { renderModernHeroMetaLine, renderModernHomeLayout } from "./modernHomeLayout.js";
+
+test("the rendered hero has its own metadata area and complete source context on first paint", () => {
+  const hero = {
+    id: "movie-b",
+    type: "movie",
+    name: "Title B",
+    poster: "poster-b",
+    background: "wide-b",
+    addonBaseUrl: "https://owner",
+    addonId: "owner-id"
+  };
+  const { markup } = renderModernHomeLayout({
+    heroItem: hero,
+    browserHero: true,
+    heroCandidates: [hero],
+    showHeroSection: true,
+    buildModernHeroPresentation: () => ({
+      title: hero.name,
+      description: "A synopsis",
+      backdrop: hero.background
+    }),
+    renderContinueWatchingSection: () => "",
+    escapeHtml: String,
+    escapeAttribute: String
+  });
+  assert.ok(markup.includes('class="home-hero-metadata"'));
+  assert.ok(markup.includes('data-addon-base-url="https://owner"'));
+  assert.ok(markup.includes('data-addon-id="owner-id"'));
+  assert.ok(markup.includes('data-poster-src="poster-b"'));
+  assert.ok(markup.includes('data-backdrop-src="wide-b"'));
+  const $ = load(markup);
+  assert.ok($(".home-hero-metadata").parent().hasClass("home-hero-copy"));
+  assert.ok($(".home-hero-indicators").parent().hasClass("home-hero-card"));
+});
 
 const escapeHtml = (value) => String(value ?? "");
 
