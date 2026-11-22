@@ -407,10 +407,22 @@ export const MdbListSyncService = {
 
   async getWatchedItems({ allowStale = false } = {}) {
     const snapshot = await this.getProgressSnapshot({ maxAgeMs: allowStale ? SNAPSHOT_TTL_MS : 0 });
-    return (snapshot.historyItems || []).map((item) => ({
-      ...item,
-      watchedAt: Number(item.updatedAt || item.watchedAt || 0) || Date.now()
-    }));
+    // The watched payload has two shapes: flat history rows and episode rows
+    // nested under shows[].seasons[].episodes[]. The nested ones already seed
+    // Next Up; the watched list consumers must see the same episodes or the
+    // Detail badge disagrees with Next Up about what has been watched.
+    const byKey = new Map();
+    [...(snapshot.historyItems || []), ...(snapshot.watchedShowSeedItems || [])].forEach((item) => {
+      const key = `${String(item?.contentId || "")}:${item?.season ?? ""}:${item?.episode ?? ""}`;
+      const watchedAt = Number(item.updatedAt || item.watchedAt || 0) || Date.now();
+      const existing = byKey.get(key);
+      if (!existing || watchedAt >= Number(existing.watchedAt || 0)) {
+        byKey.set(key, { ...item, watchedAt });
+      }
+    });
+    return Array.from(byKey.values()).sort(
+      (left, right) => Number(right.watchedAt || 0) - Number(left.watchedAt || 0)
+    );
   },
 
   async markWatched(item = {}) {

@@ -9,6 +9,7 @@ import { MdbListSyncService } from "./mdbListSyncService.js";
 import { TraktAuthService, requestJson as traktRequestJson } from "./traktAuthService.js";
 import { ownsWatchProgress } from "./trackingWriteScope.js";
 import { mirrorWatchedToServers } from "../../core/media/mediaServerWatchedMirror.js";
+import { watchedItemIdentityValues } from "./watchedIdentity.js";
 
 function activeProfileId() {
   return String(ProfileManager.getActiveProfileId() || "1");
@@ -306,11 +307,18 @@ class WatchedItemsRepository {
   async isWatched(contentId, options = {}) {
     const allowEpisodeEntries = Boolean(options?.allowEpisodeEntries);
     const all = await this.getAll();
+    const targetIdentities = Array.from(
+      watchedItemIdentityValues({ contentId: String(contentId || "") })
+    );
     return all.some((item) => {
-      if (item.contentId !== String(contentId || "")) {
+      if (!allowEpisodeEntries && !(item.season == null && item.episode == null)) {
         return false;
       }
-      return allowEpisodeEntries || (item.season == null && item.episode == null);
+      // A provider and the catalog are allowed to pick different ids for the
+      // same title (IMDb vs TMDb). The row carries its aliases, so compare the
+      // identity sets rather than one spelling of the id.
+      const itemIdentities = watchedItemIdentityValues(item);
+      return targetIdentities.some((identity) => itemIdentities.has(identity));
     });
   }
 

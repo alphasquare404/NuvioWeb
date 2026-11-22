@@ -2,13 +2,19 @@ import { watchedItemsRepository } from "./watchedItemsRepository.js";
 import { watchProgressRepository } from "./watchProgressRepository.js";
 import { TraktAuthService } from "./traktAuthService.js";
 import { ProfileManager } from "../../core/profile/profileManager.js";
+import { TraktSettingsStore, WatchProgressSource } from "../local/traktSettingsStore.js";
+import { ownsWatchProgress } from "./trackingWriteScope.js";
+import { watchedItemsShareIdentity } from "./watchedIdentity.js";
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const CACHE = new Map();
 
 function buildCacheKey(contentId, traktId) {
   const profileId = ProfileManager.getActiveProfileId() || "default";
-  return `${profileId}:${contentId}:${traktId}`;
+  // The watched state depends on which source owns it: a Trakt answer must not
+  // be reused after the user switches to Nuvio Sync or MDBList.
+  const source = TraktSettingsStore.get().watchProgressSource || WatchProgressSource.NUVIO_SYNC;
+  return `${profileId}:${source}:${contentId}:${traktId}`;
 }
 
 function getCachedEntry(cacheKey) {
@@ -37,7 +43,9 @@ async function fetchLocalWatchedMap(contentId) {
   const watchedMap = new Map();
 
   for (const item of allWatched) {
-    if (item.contentId !== contentId) continue;
+    // A provider and the catalog can spell the same title with different ids;
+    // comparing the raw string would miss the row the user actually watched.
+    if (!watchedItemsShareIdentity(item, { contentId })) continue;
     if (item.contentType === "series" && item.season != null && item.episode != null) {
       const key = buildEpisodeKey(item.season, item.episode);
       watchedMap.set(key, {
@@ -96,6 +104,10 @@ async function fetchProgressWatchedMap(contentId) {
 
 async function fetchTraktSeriesWatchedMap(showTraktId) {
   if (!showTraktId) return new Map();
+  // Only the source that owns watch progress may answer for it. Otherwise the
+  // Detail badge could say "watched" from Trakt while Continue Watching (Nuvio
+  // Sync or MDBList) says the title has not been seen.
+  if (!ownsWatchProgress(WatchProgressSource.TRAKT)) return new Map();
 
   const isAuthenticated = await TraktAuthService.isAuthenticated();
   if (!isAuthenticated) return new Map();
@@ -111,6 +123,7 @@ async function fetchTraktSeriesWatchedMap(showTraktId) {
 
 async function fetchTraktMovieWatchedState(movieTraktId) {
   if (!movieTraktId) return null;
+  if (!ownsWatchProgress(WatchProgressSource.TRAKT)) return null;
 
   const isAuthenticated = await TraktAuthService.isAuthenticated();
   if (!isAuthenticated) return null;
@@ -220,9 +233,11 @@ export const detailWatchedEnrichmentService = {
 
   invalidateCache(contentId) {
     if (!contentId) return;
-    const profileId = ProfileManager.getActiveProfileId() || "default";
+    // The key carries profile and source now, so match the content segment
+    // wherever it appears instead of only the active profile's prefix.
+    const needle = `:${contentId}:`;
     for (const [key] of CACHE) {
-      if (key.startsWith(`${profileId}:${contentId}:`)) {
+      if (key.includes(needle)) {
         CACHE.delete(key);
       }
     }
