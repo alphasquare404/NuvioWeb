@@ -5,6 +5,10 @@ import { watchProgressRepository } from "../../data/repository/watchProgressRepo
 import { CloudLibraryPlaybackProgressStore } from "../../data/local/cloudLibraryPlaybackStore.js";
 import { markPlaybackWatched } from "./markPlaybackWatched.js";
 import { buildExternalScrobbleContext } from "./externalScrobbleContext.js";
+import {
+  getWatchProgressFraction,
+  WATCH_PROGRESS_COMPLETED_THRESHOLD
+} from "../../domain/model/watchProgress.js";
 import { TrackingScrobbleService } from "../../data/repository/trackingScrobbleService.js";
 import { WatchProgressSyncService } from "../profile/watchProgressSyncService.js";
 import { nativeVideoEngine } from "./engines/nativeVideoEngine.js";
@@ -47,6 +51,9 @@ export const PlayerController = {
   playbackEngineAttempts: new Map(),
   playRequestToken: 0,
   playbackSessionActive: false,
+  // Whether this session reached the video's own `ended` event, whose handler
+  // reports the stop scrobble itself; teardown must not report that finish again.
+  playbackEndedNaturally: false,
   startupAudioGateActive: false,
   startupAudioGatePausesPlayback: true,
   startupPresentationAudioMuted: false,
@@ -1690,6 +1697,9 @@ export const PlayerController = {
     listen("ended", () => {
       if (this.isClientRemuxRestoring()) return;
       this.isPlaying = false;
+      // playerScreen.handlePlaybackEnded sends the stop scrobble for a natural
+      // end; remembering it keeps teardown from sending the same finish again.
+      this.playbackEndedNaturally = true;
       const context = this.createProgressContext();
       const durationMs = Math.floor(this.getDurationSeconds() * 1000);
       const completedMs =
@@ -1835,6 +1845,7 @@ export const PlayerController = {
     this.lastKnownDurationSeconds = 0;
     this.lastProgressSnapshot = null;
     this.playbackSessionActive = true;
+    this.playbackEndedNaturally = false;
     this.applyStartupAudioGateToVideo();
 
     this.currentItemId = itemId;
@@ -2176,6 +2187,7 @@ export const PlayerController = {
     this.lastKnownDurationSeconds = 0;
     this.playbackEngine = "none";
     this.lastPlaybackErrorCode = 0;
+    this.playbackEndedNaturally = false;
     this.clearPlaybackEngineAttempts();
 
     this.stopProgressSaveTimer();
@@ -2262,14 +2274,34 @@ export const PlayerController = {
   // and until now that path only ever wrote locally: the tracking provider kept
   // whatever position it last heard about, so it looked like NuvioWeb had
   // stopped reporting progress entirely.
+  //
+  // It is also where a finished title used to be left "scrobbling" on the
+  // provider: past the completion mark the app records the finish and writes
+  // history, and a history write cannot end the provider's scrobble session.
+  // Only a stop can, so that is what a completed exit reports -- at the full
+  // duration, because the completion path has already decided the title is
+  // watched.
   scrobbleTerminalReport() {
     const context = this.createProgressContext();
     if (!context?.itemId) return;
+    if (this.shouldSuppressOfflineProgress?.()) return;
+    // A natural end already reported its own stop through its own handler.
+    if (this.playbackEndedNaturally) return;
+    // An external player owns this session; the built-in position is stale and
+    // the handoff report carries what actually happened.
+    if (this.externalProgressHandoff) return;
     const snapshot = this.getRecordedProgressSnapshot(context);
     const positionMs =
       Math.floor(this.getCurrentTimeSeconds() * 1000) || Number(snapshot?.positionMs || 0);
     const durationMs =
       Math.floor(this.getDurationSeconds() * 1000) || Number(snapshot?.durationMs || 0);
+    if (
+      getWatchProgressFraction({ positionMs, durationMs }) >= WATCH_PROGRESS_COMPLETED_THRESHOLD
+    ) {
+      const completed = buildExternalScrobbleContext(context, durationMs, durationMs);
+      if (completed) TrackingScrobbleService.complete(completed);
+      return;
+    }
     TrackingScrobbleService.report(buildExternalScrobbleContext(context, positionMs, durationMs));
   },
 
