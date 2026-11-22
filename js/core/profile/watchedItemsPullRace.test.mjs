@@ -119,3 +119,25 @@ test("a completion is not deleted by a push that succeeded during the pull", () 
     true
   );
 });
+
+// The last un-watch: a successful empty snapshot is an answer, not a failed
+// fetch. The baseline says which local rows the cloud was known to hold, so
+// only those may be read as deletions made elsewhere.
+test("an empty snapshot removes a record the cloud used to hold", () => {
+  const baselineKeys = new Set([`${EPISODE.contentId}:1:7`]);
+  const merged = mergeWatchedItems([OLDER], [], PUSHED_AT, { baselineKeys });
+  assert.equal(merged.length, 0);
+});
+
+test("an empty snapshot keeps a local-only completion never sent to the cloud", () => {
+  const merged = mergeWatchedItems([COMPLETION], [], PUSHED_AT, {
+    baselineKeys: new Set()
+  });
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].watchedAt, COMPLETION.watchedAt);
+});
+
+test("without a baseline the agreement timestamp still settles an empty snapshot", () => {
+  const merged = mergeWatchedItems([OLDER], [], PUSHED_AT);
+  assert.equal(merged.length, 0);
+});

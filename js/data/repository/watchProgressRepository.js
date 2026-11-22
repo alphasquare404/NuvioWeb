@@ -61,6 +61,15 @@ function activeProfileId() {
   return String(ProfileManager.getActiveProfileId() || "1");
 }
 
+// A provider snapshot belongs to one profile and one provider account. Keying
+// the in-flight request and the cache by that scope keeps a fetch started for
+// profile A from being handed to profile B after a switch -- the values were
+// stamped with A's profile at creation, but the cache used to answer B.
+function traktSnapshotScope(profileId) {
+  const auth = TraktAuthStore.get(profileId);
+  return `${profileId}:${auth.username || auth.userSlug || ""}`;
+}
+
 let watchProgressSyncTimer = null;
 let watchProgressSyncInFlight = null;
 let traktProgressSnapshotCache = null;
@@ -349,7 +358,7 @@ function normalizeResumeProgress(progress = null) {
   };
 }
 
-function toProgressItemFromTraktHistory(historyItem) {
+function toProgressItemFromTraktHistory(historyItem, profileId = activeProfileId()) {
   if (!historyItem) return null;
   const isEpisode = historyItem.type === "episode";
   const tmdbId = isEpisode ? historyItem.showTmdbId : historyItem.tmdbId;
@@ -376,7 +385,7 @@ function toProgressItemFromTraktHistory(historyItem) {
     // Trakt history represents completed items, not partial progress.
     // Keep it out of Continue Watching while still letting it seed Next Up.
     progressPercent: 100,
-    profileId: activeProfileId(),
+    profileId,
     season:
       isEpisode &&
       historyItem.seasonNumber != null &&
@@ -391,7 +400,7 @@ function toProgressItemFromTraktHistory(historyItem) {
   };
 }
 
-function toProgressItemFromPlayback(playbackItem) {
+function toProgressItemFromPlayback(playbackItem, profileId = activeProfileId()) {
   if (!playbackItem || playbackItem.progressPercent == null) return null;
   const progressFraction = playbackItem.progressPercent / 100;
   if (
@@ -417,7 +426,7 @@ function toProgressItemFromPlayback(playbackItem) {
     positionMs: 0,
     durationMs: 0,
     progressPercent: playbackItem.progressPercent,
-    profileId: activeProfileId(),
+    profileId,
     season:
       isEpisode &&
       playbackItem.seasonNumber != null &&
@@ -432,7 +441,7 @@ function toProgressItemFromPlayback(playbackItem) {
   };
 }
 
-function toWatchedShowSeedItems(watchedShowItem) {
+function toWatchedShowSeedItems(watchedShowItem, profileId = activeProfileId()) {
   if (!watchedShowItem || !Array.isArray(watchedShowItem.seasons)) return [];
   const watchedEpisodes = [];
   const fallbackWatchedAt = watchedShowItem.lastWatchedAt
@@ -470,7 +479,7 @@ function toWatchedShowSeedItems(watchedShowItem) {
       positionMs: 1,
       durationMs: 1,
       progressPercent: 100,
-      profileId: activeProfileId(),
+      profileId,
       season: watchedEpisode.season,
       episode: watchedEpisode.episode,
       seasonNumber: watchedEpisode.season,
@@ -485,19 +494,21 @@ async function fetchTraktProgressSnapshot() {
     return { historyItems: [], playbackItems: [], watchedShowSeedItems: [] };
   }
 
+  const profileId = activeProfileId();
+  const scope = traktSnapshotScope(profileId);
   const now = Date.now();
   if (
     traktProgressSnapshotCache &&
-    traktProgressSnapshotCache.profileId === activeProfileId() &&
+    traktProgressSnapshotCache.scope === scope &&
     now - Number(traktProgressSnapshotCache.fetchedAt || 0) < TRAKT_PROGRESS_SNAPSHOT_TTL_MS
   ) {
     return traktProgressSnapshotCache.snapshot;
   }
-  if (traktProgressSnapshotInFlight) {
-    return traktProgressSnapshotInFlight;
+  if (traktProgressSnapshotInFlight && traktProgressSnapshotInFlight.scope === scope) {
+    return traktProgressSnapshotInFlight.promise;
   }
 
-  traktProgressSnapshotInFlight = (async () => {
+  const promise = (async () => {
     const [history, playbackState, watchedShows] = await Promise.all([
       withTimeout(
         TraktAuthService.fetchWatchHistory({ limit: 300 }),
@@ -523,25 +534,36 @@ async function fetchTraktProgressSnapshot() {
 
     const watchedShowSeedItems = [];
     watchedShows.forEach((watchedShow) => {
-      Array.prototype.push.apply(watchedShowSeedItems, toWatchedShowSeedItems(watchedShow));
+      Array.prototype.push.apply(
+        watchedShowSeedItems,
+        toWatchedShowSeedItems(watchedShow, profileId)
+      );
     });
 
     const snapshot = {
-      historyItems: history.map(toProgressItemFromTraktHistory).filter(Boolean),
-      playbackItems: playbackState.map(toProgressItemFromPlayback).filter(Boolean),
+      historyItems: history
+        .map((item) => toProgressItemFromTraktHistory(item, profileId))
+        .filter(Boolean),
+      playbackItems: playbackState
+        .map((item) => toProgressItemFromPlayback(item, profileId))
+        .filter(Boolean),
       watchedShowSeedItems
     };
     traktProgressSnapshotCache = {
-      profileId: activeProfileId(),
+      profileId,
+      scope,
       fetchedAt: Date.now(),
       snapshot
     };
     return snapshot;
   })().finally(() => {
-    traktProgressSnapshotInFlight = null;
+    if (traktProgressSnapshotInFlight && traktProgressSnapshotInFlight.promise === promise) {
+      traktProgressSnapshotInFlight = null;
+    }
   });
+  traktProgressSnapshotInFlight = { scope, promise };
 
-  return traktProgressSnapshotInFlight;
+  return promise;
 }
 
 async function fetchSimklProgressSnapshot() {

@@ -70,10 +70,12 @@ function writeWatchedStateForProfile(profileId = resolveProfileId(), patch = {})
 
 // Exported for the tests that pin the pull-race rule; the service is the only
 // caller.
-export function mergeWatchedItems(localItems = [], remoteItems = [], reconciledAt = 0) {
-  if (!remoteItems.length) {
-    return [...localItems];
-  }
+export function mergeWatchedItems(
+  localItems = [],
+  remoteItems = [],
+  reconciledAt = 0,
+  { baselineKeys = null } = {}
+) {
   const byKey = new Map();
   const upsert = (item, preferIncomingOnTie = false) => {
     const key = watchedItemKey(item);
@@ -96,29 +98,38 @@ export function mergeWatchedItems(localItems = [], remoteItems = [], reconciledA
   };
 
   remoteItems.forEach((item) => upsert(item, true));
+  const baseline =
+    baselineKeys == null
+      ? null
+      : baselineKeys instanceof Set
+        ? baselineKeys
+        : new Set(Array.from(baselineKeys, String));
   // A local record the cloud does not have is either something un-watched on
   // another device -- which must disappear here too -- or something this device
-  // recorded and the cloud has not been told about. What tells them apart is
-  // the last time this device and the cloud agreed: older than that, the cloud
-  // knew about it and no longer does; newer, the cloud has never seen it.
-  //
-  // That moment is a pull as much as a push. Asking only about pushes read a row
-  // this device had *received* from the cloud as one of its own: its watchedAt
-  // is whenever the episode was originally watched, which on the receiving
-  // device is newer than its own last push. So an episode un-marked on the first
-  // device survived the second device's pull and was pushed straight back up,
-  // and the two never settled.
+  // recorded and the cloud has not been told about. The baseline keys tell them
+  // apart exactly: a key the cloud was last known to hold and no longer reports
+  // was deleted there; a key it never held is this device's unsent mutation.
   //
   // With nothing on record there has been no agreement, so nothing local can be
-  // read as a deletion made elsewhere. Skipping the whole pass there dropped
-  // every local record instead, which on a device that had just finished an
-  // episode is the completion itself.
+  // read as a deletion made elsewhere. Older clients only have the timestamp of
+  // that agreement, which is the fallback below: a record written after it is
+  // newer than what the fetched rows could have known about, and stays.
   localItems.forEach((item) => {
     const key = watchedItemKey(item);
-    if (
-      !byKey.has(key) &&
-      (isPrivateMediaKey(item.contentId) || Number(item.watchedAt || 0) > reconciledAt)
-    ) {
+    if (byKey.has(key)) {
+      return;
+    }
+    if (isPrivateMediaKey(item.contentId)) {
+      byKey.set(key, item);
+      return;
+    }
+    if (baseline) {
+      if (!baseline.has(key)) {
+        byKey.set(key, item);
+      }
+      return;
+    }
+    if (Number(item.watchedAt || 0) > reconciledAt) {
       byKey.set(key, item);
     }
   });
@@ -173,74 +184,90 @@ async function pullRemoteWatchedItems(profileId) {
   }
 }
 
+async function pullWatchedItems() {
+  try {
+    if (!AuthManager.isAuthenticated) {
+      return { ok: false, items: [] };
+    }
+    const sessionGeneration = AuthManager.getSessionGeneration();
+    if (!shouldUseSupabaseWatchProgressSync()) {
+      return { ok: true, items: [] };
+    }
+    const profileId = resolveProfileId();
+    // The local store only: merging in the selected provider's history here
+    // would persist it as Nuvio Sync's own on the next replaceAll.
+    const localItems = await watchedItemsRepository.listLocal();
+    // Read before the network, because it describes the rows that are about
+    // to be fetched. Read afterwards it can already have moved: a push that
+    // succeeds during the round trip advances it past a completion written
+    // just before, and the merge below then reads that completion as
+    // something the cloud was told about and has since dropped -- so it
+    // deletes it, while the very snapshot it is comparing against was taken
+    // before that push and could not have contained it.
+    const stateBeforeFetch = watchedStateForProfile(profileId);
+    const reconciledBeforeFetchAt = Math.max(
+      Number(stateBeforeFetch.lastSuccessfulPushAt || 0),
+      Number(stateBeforeFetch.lastSuccessfulPullAt || 0)
+    );
+    const baselineKeys =
+      stateBeforeFetch && Array.isArray(stateBeforeFetch.remoteKeys)
+        ? new Set(stateBeforeFetch.remoteKeys.map(String))
+        : null;
+    const rows = await pullRemoteWatchedItems(profileId);
+    if (!AuthManager.isSessionCurrent(sessionGeneration)) {
+      return { ok: false, items: localItems };
+    }
+    const remoteItems = (rows || [])
+      .map((row) => mapRemoteItem(row))
+      .filter((item) => item.contentId && !isPrivateMediaKey(item.contentId));
+    // Read local again, after the network. The list captured before the pull
+    // is a snapshot of a store that kept being written while the round trip
+    // was in flight -- a couple of seconds, which is exactly long enough for
+    // an external player's report to land. A completion written in that
+    // window is in neither list: not in the cloud, which has not been told
+    // yet, and not in the stale local copy either. replaceAll then wrote the
+    // watched set from before the episode finished back over it, and
+    // Continue Watching moved on to the next episode and then returned to
+    // the one that had just been watched.
+    //
+    // The progress service already reads twice for this reason. This one is
+    // the half that decides what counts as watched, which is what Next Up is
+    // built from, so getting it wrong undoes the completion outright.
+    const currentLocalItems = await watchedItemsRepository.listLocal();
+    if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
+      return { ok: false, items: localItems };
+    }
+    const mergedItems = mergeWatchedItems(currentLocalItems, remoteItems, reconciledBeforeFetchAt, {
+      baselineKeys
+    });
+    if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
+      return { ok: false, items: localItems };
+    }
+    await watchedItemsRepository.replaceAll(mergedItems, profileId);
+    // The two have just agreed. Recorded so the next pull can tell a row that
+    // arrived from the cloud from one this device wrote afterwards. A
+    // successfully empty snapshot is an agreement too: it is how the last
+    // un-watch reaches this device.
+    writeWatchedStateForProfile(profileId, {
+      lastSuccessfulPullAt: Date.now(),
+      remoteKeys: remoteItems.map((item) => watchedItemKey(item))
+    });
+    return { ok: true, items: mergedItems };
+  } catch (error) {
+    console.warn("Watched items sync pull failed", error);
+    return { ok: false, items: [] };
+  }
+}
+
 export const WatchedItemsSyncService = {
   async pull() {
-    try {
-      if (!AuthManager.isAuthenticated) {
-        return [];
-      }
-      const sessionGeneration = AuthManager.getSessionGeneration();
-      if (!shouldUseSupabaseWatchProgressSync()) {
-        return [];
-      }
-      const profileId = resolveProfileId();
-      // The local store only: merging in the selected provider's history here
-      // would persist it as Nuvio Sync's own on the next replaceAll.
-      const localItems = await watchedItemsRepository.listLocal();
-      // Read before the network, because it describes the rows that are about
-      // to be fetched. Read afterwards it can already have moved: a push that
-      // succeeds during the round trip advances it past a completion written
-      // just before, and the merge below then reads that completion as
-      // something the cloud was told about and has since dropped -- so it
-      // deletes it, while the very snapshot it is comparing against was taken
-      // before that push and could not have contained it.
-      const stateBeforeFetch = watchedStateForProfile(profileId);
-      const reconciledBeforeFetchAt = Math.max(
-        Number(stateBeforeFetch.lastSuccessfulPushAt || 0),
-        Number(stateBeforeFetch.lastSuccessfulPullAt || 0)
-      );
-      const rows = await pullRemoteWatchedItems(profileId);
-      if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
-      const remoteItems = (rows || [])
-        .map((row) => mapRemoteItem(row))
-        .filter((item) => item.contentId && !isPrivateMediaKey(item.contentId));
-      // Read local again, after the network. The list captured before the pull
-      // is a snapshot of a store that kept being written while the round trip
-      // was in flight -- a couple of seconds, which is exactly long enough for
-      // an external player's report to land. A completion written in that
-      // window is in neither list: not in the cloud, which has not been told
-      // yet, and not in the stale local copy either. replaceAll then wrote the
-      // watched set from before the episode finished back over it, and
-      // Continue Watching moved on to the next episode and then returned to
-      // the one that had just been watched.
-      //
-      // The progress service already reads twice for this reason. This one is
-      // the half that decides what counts as watched, which is what Next Up is
-      // built from, so getting it wrong undoes the completion outright.
-      const currentLocalItems = await watchedItemsRepository.listLocal();
-      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
-        return localItems;
-      }
-      if (!remoteItems.length && currentLocalItems.length) {
-        return currentLocalItems;
-      }
-      const mergedItems = mergeWatchedItems(
-        currentLocalItems,
-        remoteItems,
-        reconciledBeforeFetchAt
-      );
-      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
-        return localItems;
-      }
-      await watchedItemsRepository.replaceAll(mergedItems, profileId);
-      // The two have just agreed. Recorded so the next pull can tell a row that
-      // arrived from the cloud from one this device wrote afterwards.
-      writeWatchedStateForProfile(profileId, { lastSuccessfulPullAt: Date.now() });
-      return mergedItems;
-    } catch (error) {
-      console.warn("Watched items sync pull failed", error);
-      return [];
-    }
+    return (await pullWatchedItems()).items;
+  },
+
+  // Typed result for the reconnect path: a pull that failed must not be read as
+  // an empty cloud and followed by a push. See watchProgressSyncService.
+  async pullWithStatus() {
+    return pullWatchedItems();
   },
 
   async push() {
@@ -249,19 +276,29 @@ export const WatchedItemsSyncService = {
         return false;
       }
       const sessionGeneration = AuthManager.getSessionGeneration();
+      // Capture the scope before the first read: the rows belong to the profile
+      // that was active when they were read, and the payload must not be sent
+      // under a profile the user switched to mid-flight.
+      const profileId = resolveProfileId();
       const items = (await watchedItemsRepository.listLocal()).filter(
         (item) => !isPrivateMediaKey(item.contentId) && isNuvioSyncOwnedProgress(item)
       );
+      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
+        return false;
+      }
       await SupabaseApi.rpc(
         PUSH_RPC,
         {
-          p_profile_id: resolveProfileId(),
+          p_profile_id: profileId,
           p_items: items.map((item) => toRemoteItem(item))
         },
         true
       );
       if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
-      writeWatchedStateForProfile(resolveProfileId(), { lastSuccessfulPushAt: Date.now() });
+      writeWatchedStateForProfile(profileId, {
+        lastSuccessfulPushAt: Date.now(),
+        remoteKeys: items.map((item) => watchedItemKey(item))
+      });
       return true;
     } catch (error) {
       console.warn("Watched items sync push failed", error);
@@ -281,8 +318,10 @@ export const WatchedItemsSyncService = {
   async hasUnsyncedItems() {
     try {
       if (!AuthManager.isAuthenticated) return true;
-      const since = Number(watchedStateForProfile().lastSuccessfulPushAt || 0);
+      const profileId = resolveProfileId();
+      const since = Number(watchedStateForProfile(profileId).lastSuccessfulPushAt || 0);
       const items = await watchedItemsRepository.listLocal();
+      if (resolveProfileId() !== profileId) return true;
       return items.some(
         (item) =>
           !isPrivateMediaKey(item.contentId) &&
@@ -294,7 +333,7 @@ export const WatchedItemsSyncService = {
     }
   },
 
-  async deleteItems(items = []) {
+  async deleteItems(items = [], { profileId = null } = {}) {
     try {
       if (!AuthManager.isAuthenticated) {
         return false;
@@ -302,6 +341,7 @@ export const WatchedItemsSyncService = {
       if (!shouldUseSupabaseWatchProgressSync()) {
         return true;
       }
+      const scopeProfileId = profileId == null ? resolveProfileId() : Number(profileId);
       const keys = (Array.isArray(items) ? items : [])
         .filter((item) => item?.contentId && !isPrivateMediaKey(item.contentId))
         .map((item) => toDeleteKey(item));
@@ -311,12 +351,22 @@ export const WatchedItemsSyncService = {
       await SupabaseApi.rpc(
         DELETE_RPC,
         {
-          p_profile_id: resolveProfileId(),
+          p_profile_id: scopeProfileId,
           p_keys: keys
         },
         true
       );
-      writeWatchedStateForProfile(resolveProfileId(), { lastSuccessfulPushAt: Date.now() });
+      const removedKeys = new Set(
+        (Array.isArray(items) ? items : []).map((item) => watchedItemKey(item))
+      );
+      const state = watchedStateForProfile(scopeProfileId);
+      const remoteKeys = Array.isArray(state.remoteKeys)
+        ? state.remoteKeys.filter((key) => !removedKeys.has(String(key)))
+        : undefined;
+      writeWatchedStateForProfile(scopeProfileId, {
+        lastSuccessfulPushAt: Date.now(),
+        ...(remoteKeys ? { remoteKeys } : {})
+      });
       return true;
     } catch (error) {
       console.warn("Watched items sync delete failed", error);
