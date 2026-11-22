@@ -318,17 +318,22 @@ class WatchedItemsRepository {
     if (!item?.contentId) {
       return;
     }
+    const activeProfile = activeProfileId();
+    const pid = options.profileId == null ? activeProfile : String(options.profileId);
+    const profileIsActive = pid === activeProfile;
     // Local watched state is the completion boundary for Player and Continue
     // Watching. A tracking provider can be offline or reject a history write;
     // it must not prevent the local completion from being recorded.
-    clearTombstones(activeProfileId(), [item]);
+    clearTombstones(pid, [item]);
     WatchedItemsStore.upsert(
       {
         ...item,
-        source: String(item?.source || "").trim() || selectedLocalWatchedSource(),
+        source:
+          String(item?.source || "").trim() ||
+          (profileIsActive ? selectedLocalWatchedSource() : WatchProgressSource.NUVIO_SYNC),
         watchedAt: item.watchedAt || Date.now()
       },
-      activeProfileId(),
+      pid,
       // A completion is never one of playback's periodic writes: every caller
       // is a finish, a scrobble stop, a reconciliation sweep or the user
       // marking something watched. Announcing them like a tick left Home
@@ -336,6 +341,13 @@ class WatchedItemsRepository {
       // Continue Watching card. Callers may still opt out.
       { authoritative: options.authoritative !== false }
     );
+    // Provider credentials, the media-server mirror and the cloud push all
+    // belong to the profile currently on screen. A completion for a different
+    // profile is still recorded locally above, where that profile will find it
+    // when it becomes active again.
+    if (!profileIsActive) {
+      return;
+    }
     queueWatchedItemsCloudSync();
     if (options.skipServerWrite !== true) {
       void mirrorWatchedToServers(item, true).catch((error) => {

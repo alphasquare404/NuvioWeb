@@ -1,6 +1,7 @@
 import { createDecodePlayer } from "./decodePlayer.js";
 import { clientMediaUrlResolver } from "../streams/clientMediaUrlResolver.js";
 import { PlayerSettingsStore } from "../../data/local/playerSettingsStore.js";
+import { ProfileManager } from "../profile/profileManager.js";
 import { watchProgressRepository } from "../../data/repository/watchProgressRepository.js";
 import { CloudLibraryPlaybackProgressStore } from "../../data/local/cloudLibraryPlaybackStore.js";
 import { markPlaybackWatched } from "./markPlaybackWatched.js";
@@ -2435,26 +2436,30 @@ export const PlayerController = {
     // the external player happened to stop at.
     const scrobbleContext = buildExternalScrobbleContext(context, durationMs, durationMs);
     if (!scrobbleContext || !TrackingScrobbleService.isEnabled()) return false;
-    TrackingScrobbleService.stop(scrobbleContext);
-    return true;
+    return TrackingScrobbleService.stop(scrobbleContext);
   },
 
   async completePlayback(
     context = null,
-    { allowCloudSync = true, externalAuthoritative = false } = {}
+    { allowCloudSync = true, externalAuthoritative = false, profileId = null } = {}
   ) {
     const active = context || this.createProgressContext();
     if (!active?.itemId) return false;
     if (this.shouldSuppressOfflineProgress?.()) return true;
     if (!externalAuthoritative && this.isClientRemuxRestoring?.()) return false;
     if (!externalAuthoritative && this.shouldSuppressStaleInternalProgress(active, 0)) return true;
-    const scrobbled = Boolean(externalAuthoritative && this.scrobbleExternalCompletion?.(active));
+    const profileIsActive =
+      profileId == null || String(profileId) === String(ProfileManager.getActiveProfileId() || "1");
+    const scrobbled = Boolean(
+      externalAuthoritative && profileIsActive && this.scrobbleExternalCompletion?.(active)
+    );
     await this.markPlaybackWatched(active, {
       authoritative: true,
-      skipTrackingWrite: scrobbled
+      skipTrackingWrite: scrobbled,
+      ...(profileId ? { profileId } : {})
     });
     if (externalAuthoritative) this.acceptExternalPlaybackCompletion(active);
-    if (allowCloudSync) await this.pushProgressIfDue(true);
+    if (allowCloudSync && profileIsActive) await this.pushProgressIfDue(true);
     return true;
   },
 
@@ -2468,6 +2473,20 @@ export const PlayerController = {
     if (!context?.itemId || !["finished", "stopped"].includes(outcome)) {
       return false;
     }
+    // The offline choice belonged to the playback that was handed off. By the
+    // time the report returns the built-in player may be long gone, so the
+    // decision has to travel with the handoff.
+    if (
+      context.offlinePlayback === true &&
+      PlayerSettingsStore.get().syncOfflineProgress !== true
+    ) {
+      return false;
+    }
+    // Every write below is scoped to the profile the handoff was launched from,
+    // not the one that happens to be active when the callback arrives.
+    const profileId = handoff?.profileId == null ? null : String(handoff.profileId);
+    const profileIsActive =
+      profileId == null || profileId === String(ProfileManager.getActiveProfileId() || "1");
     const toMilliseconds = (value) => {
       const seconds = Number(value);
       return Number.isFinite(seconds) && seconds >= 0 ? Math.round(seconds * 1000) : 0;
@@ -2486,19 +2505,25 @@ export const PlayerController = {
       return false;
     }
     if (outcome === "finished") {
-      return PlayerController.completePlayback.call(this, context, { externalAuthoritative: true });
+      return PlayerController.completePlayback.call(this, context, {
+        externalAuthoritative: true,
+        ...(profileId ? { profileId } : {})
+      });
     }
     if (reportedPositionMs <= 0) return false;
     const applied = await this.flushProgress(reportedPositionMs, durationMs, false, context, {
-      externalAuthoritative: true
+      externalAuthoritative: true,
+      ...(profileId ? { profileId } : {})
     });
     if (applied) {
       this.acceptExternalPlaybackProgress?.(context, reportedPositionMs, durationMs);
       // The report is terminal, so this is the only chance to tell the tracking
       // providers where the user got to. "finished" needs nothing here: it goes
       // through markPlaybackWatched, which already writes the history entry.
+      // Scrobbling uses the active profile's provider credentials, so a report
+      // for another profile must not be sent under the current one.
       const scrobbleContext = buildExternalScrobbleContext(context, reportedPositionMs, durationMs);
-      if (scrobbleContext) {
+      if (scrobbleContext && profileIsActive) {
         TrackingScrobbleService.report(scrobbleContext);
       }
     }
@@ -2510,12 +2535,19 @@ export const PlayerController = {
     durationMs,
     clear = false,
     context = null,
-    { allowCloudSync = true, externalAuthoritative = false, allowRestoringSnapshot = false } = {}
+    {
+      allowCloudSync = true,
+      externalAuthoritative = false,
+      allowRestoringSnapshot = false,
+      profileId = null
+    } = {}
   ) {
     const active = context || this.createProgressContext();
     if (!active?.itemId) {
       return;
     }
+    const profileIsActive =
+      profileId == null || String(profileId) === String(ProfileManager.getActiveProfileId() || "1");
     if (this.shouldSuppressOfflineProgress?.()) return true;
     if (!externalAuthoritative && this.isClientRemuxRestoring?.() && !allowRestoringSnapshot)
       return false;
@@ -2550,9 +2582,15 @@ export const PlayerController = {
 
     if (clear || isCompleted) {
       if (isCompleted) {
-        return this.completePlayback(active, { allowCloudSync, externalAuthoritative });
+        return this.completePlayback(active, {
+          allowCloudSync,
+          externalAuthoritative,
+          profileId
+        });
       } else {
-        await watchProgressRepository.removeProgress(active.itemId, active.videoId || null);
+        await watchProgressRepository.removeProgress(active.itemId, active.videoId || null, {
+          ...(profileId ? { profileId } : {})
+        });
       }
       if (!allowCloudSync) {
         return true;
@@ -2560,7 +2598,7 @@ export const PlayerController = {
       // Local watched/progress state (and series reconciliation above) is the
       // canonical completion boundary. A delayed/offline cloud push must not
       // make an already-applied completion look like a failed playback report.
-      await this.pushProgressIfDue(true);
+      if (profileIsActive) await this.pushProgressIfDue(true);
       return true;
     }
 
@@ -2586,7 +2624,7 @@ export const PlayerController = {
         positionMs: Math.max(0, Math.trunc(safePosition)),
         durationMs: hasFiniteDuration ? Math.max(0, Math.trunc(safeDuration)) : 0
       },
-      { authoritative: externalAuthoritative }
+      { authoritative: externalAuthoritative, ...(profileId ? { profileId } : {}) }
     );
     if (!allowCloudSync) {
       return true;
@@ -2597,7 +2635,7 @@ export const PlayerController = {
     // reason they must not wait for it either. Awaiting it here put a network
     // round trip between an accepted external-player report and the card
     // moving, for a write nothing was waiting on.
-    void this.pushProgressIfDue(false);
+    if (profileIsActive) void this.pushProgressIfDue(false);
     return true;
   },
 

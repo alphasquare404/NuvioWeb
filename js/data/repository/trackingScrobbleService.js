@@ -36,7 +36,9 @@ export function createTrackingScrobbleService(providers = DEFAULT_PROVIDERS) {
     },
 
     stop(context) {
-      enabledProviders().forEach((provider) => provider.stop(context));
+      const enabled = enabledProviders();
+      enabled.forEach((provider) => provider.stop(context));
+      return enabled.length > 0;
     },
 
     /**

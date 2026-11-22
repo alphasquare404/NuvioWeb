@@ -650,12 +650,10 @@ async function removeTraktPlaybackForContent(contentId) {
 }
 
 class WatchProgressRepository {
-  async saveProgress(progress, { authoritative = false } = {}) {
+  async saveProgress(progress, { authoritative = false, profileId = null } = {}) {
+    const pid = profileId == null ? activeProfileId() : String(profileId);
     if (isSeriesType(progress?.contentType)) {
-      ContinueWatchingPreferences.removeDismissedNextUpKeysForContent(
-        progress?.contentId,
-        activeProfileId()
-      );
+      ContinueWatchingPreferences.removeDismissedNextUpKeysForContent(progress?.contentId, pid);
     }
     const updatedAt = progress.updatedAt || Date.now();
     WatchProgressStore.upsert(
@@ -664,11 +662,18 @@ class WatchProgressRepository {
         source: String(progress?.source || "").trim() || selectedLocalProgressSource(),
         updatedAt
       },
-      activeProfileId(),
+      pid,
       { authoritative }
     );
-    patchOrInvalidateContinueWatchingDisplaySnapshot({ ...progress, updatedAt });
-    queueWatchProgressCloudSync();
+    if (pid === activeProfileId()) {
+      patchOrInvalidateContinueWatchingDisplaySnapshot({ ...progress, updatedAt });
+      queueWatchProgressCloudSync();
+    } else {
+      // The row belongs to a profile that is not on screen. Writing it is
+      // correct; patching the visible snapshot or pushing to the active
+      // profile's cloud scope is not.
+      invalidateContinueWatchingDisplaySnapshot();
+    }
   }
 
   async getProgressByContentId(contentId) {
@@ -697,8 +702,8 @@ class WatchProgressRepository {
     return this.getResumeByContentIds([contentId], target);
   }
 
-  async removeProgress(contentId, videoId = null) {
-    const pid = activeProfileId();
+  async removeProgress(contentId, videoId = null, { profileId = null } = {}) {
+    const pid = profileId == null ? activeProfileId() : String(profileId);
     const removedItems = WatchProgressStore.listForProfile(pid).filter((item) =>
       matchesProgressTarget(item, contentId, videoId)
     );
@@ -710,13 +715,16 @@ class WatchProgressRepository {
     // standing until something else forced a refresh.
     WatchProgressStore.remove(contentId, videoId, pid, { authoritative: true });
     invalidateContinueWatchingDisplaySnapshot();
+    if (pid !== activeProfileId()) {
+      return;
+    }
     queueWatchProgressCloudSync();
     void deleteWatchProgressFromCloud(removedItems).catch((error) => {
       console.warn("Watch progress cloud delete failed", error);
     });
   }
 
-  async removePlaybackProgress(identity = {}) {
+  async removePlaybackProgress(identity = {}, { profileId = null } = {}) {
     const contentId = String(identity?.contentId || identity?.itemId || "").trim();
     if (!contentId) {
       return false;
@@ -725,7 +733,7 @@ class WatchProgressRepository {
     const season = Number.isFinite(Number(identity?.season)) ? Number(identity.season) : null;
     const episode = Number.isFinite(Number(identity?.episode)) ? Number(identity.episode) : null;
     const isEpisode = season != null || episode != null;
-    const pid = activeProfileId();
+    const pid = profileId == null ? activeProfileId() : String(profileId);
     const removedItems = WatchProgressStore.listForProfile(pid).filter((item) => {
       if (String(item?.contentId || "") !== contentId) return false;
       if (!isEpisode) return !videoId || String(item?.videoId || "") === videoId;
@@ -745,6 +753,9 @@ class WatchProgressRepository {
       WatchProgressStore.listForProfile(pid).filter((item) => !removedItems.includes(item))
     );
     invalidateContinueWatchingDisplaySnapshot();
+    if (pid !== activeProfileId()) {
+      return true;
+    }
     queueWatchProgressCloudSync();
     void deleteWatchProgressFromCloud(removedItems).catch((error) => {
       console.warn("Watch progress cloud delete failed", error);

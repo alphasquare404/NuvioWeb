@@ -5208,7 +5208,10 @@ export const PlayerScreen = {
       returnMethod,
       resumePositionSeconds: this.getExternalPlayerResumeSeconds(),
       knownDurationMs: this.getExternalPlayerKnownDurationMs(),
-      progressContext: PlayerController.createProgressContext?.(),
+      progressContext: {
+        ...(PlayerController.createProgressContext?.() || {}),
+        offlinePlayback: PlayerController.currentPlaybackIsOffline === true
+      },
       ...context
     });
     if (!prepared?.launch?.href) {
