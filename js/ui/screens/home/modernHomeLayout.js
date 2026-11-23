@@ -1,3 +1,4 @@
+import { renderHeroTargetAttributes } from "../../../core/media/heroArtworkSources.js";
 export const MODERN_HOME_CONSTANTS = {
   heroFocusDelayMs: 450,
   heroRapidNavThresholdMs: 130,
@@ -35,6 +36,7 @@ export function renderModernHomeLayout({
   rowItemLimit = 15,
   paginatedRowCounts = null,
   showHeroSection = false,
+  browserHero = false,
   showPosterLabels = true,
   showCatalogTypeSuffix = true,
   cardOrientation = "portrait",
@@ -137,6 +139,7 @@ export function renderModernHomeLayout({
             ? renderModernHeroMarkup({
                 heroItem,
                 heroCandidates,
+                browserHero,
                 buildModernHeroPresentation,
                 renderHeroBackdropImage,
                 escapeHtml,
@@ -278,6 +281,7 @@ export function renderModernHeroMetaLine(display, escapeHtml) {
 function renderModernHeroMarkup({
   heroItem,
   heroCandidates,
+  browserHero,
   buildModernHeroPresentation,
   renderHeroBackdropImage,
   escapeHtml,
@@ -291,9 +295,7 @@ function renderModernHeroMarkup({
   return `
     <section class="home-hero home-hero-modern">
       <article class="home-hero-card home-modern-hero-card${heroItem?.heroMetaEnriching ? " is-hero-meta-enriching" : ""}"
-               data-item-id="${escapeAttribute(heroItem?.id || "")}"
-               data-item-type="${escapeAttribute(heroItem?.type || "movie")}"
-               data-item-title="${escapeAttribute(heroItem?.name || "Untitled")}">
+               ${renderHeroTargetAttributes(heroItem, escapeAttribute)}>
         <div class="home-modern-hero-media">
           <div class="home-hero-backdrop-wrap">
           ${
@@ -309,10 +311,12 @@ function renderModernHeroMarkup({
         <div class="home-hero-copy home-modern-hero-copy">
           <div class="home-hero-brand">
             ${display.logo ? `<img class="home-hero-logo" src="${escapeAttribute(display.logo)}" alt="${escapeAttribute(display.title)}" decoding="async" fetchpriority="high" />` : ""}
-            <h1 class="home-hero-title-text${display.logo ? " is-hidden" : ""}">${escapeHtml(display.title)}</h1>
+            <h1 class="home-hero-title-text${display.logo ? " is-hidden" : ""}" title="${escapeAttribute(display.title)}">${escapeHtml(display.title)}</h1>
           </div>
+          ${browserHero ? '<div class="home-hero-metadata">' : ""}
           <div class="home-modern-hero-meta-line${metaLine ? "" : " is-empty"}">${metaLine}</div>
           <p class="home-hero-description${display.description ? "" : " is-empty"}"><span class="home-hero-description-text" data-source-text="${escapeAttribute(display.description)}">${escapeHtml(display.description)}</span></p>
+          ${browserHero ? "</div>" : ""}
         </div>
         <div class="home-hero-indicators">${buildHeroIndicators(heroCandidates, heroItem)}</div>
       </article>

@@ -108,6 +108,21 @@ function dedupeAndSort(items = []) {
   );
 }
 
+// The cap is a per-person safety valve, not a shared budget: a profile with a
+// large history used to evict another profile's progress rows entirely.
+function capPerProfile(items = [], limit = 5000) {
+  const counts = new Map();
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const pid = String(item?.profileId || "1");
+    const count = counts.get(pid) || 0;
+    if (count >= limit) {
+      return false;
+    }
+    counts.set(pid, count + 1);
+    return true;
+  });
+}
+
 let listAllCacheRaw = null;
 let listAllCacheValue = null;
 const changeListeners = new Set();
@@ -190,10 +205,9 @@ export const WatchProgressStore = {
     }
     const items = this.listAll();
     const key = progressKey(normalized);
-    const next = dedupeAndSort([
-      normalized,
-      ...items.filter((item) => progressKey(item) !== key)
-    ]).slice(0, 5000);
+    const next = capPerProfile(
+      dedupeAndSort([normalized, ...items.filter((item) => progressKey(item) !== key)])
+    );
     persistProgressItems(next);
     notifyChange(pid, "upsert", { authoritative, item: normalized });
   },
@@ -235,7 +249,7 @@ export const WatchProgressStore = {
     const normalized = (Array.isArray(items) ? items : [])
       .map((item) => normalizeProgress(item, pid))
       .filter((item) => Boolean(item.contentId));
-    const next = dedupeAndSort([...normalized, ...keepOtherProfiles]).slice(0, 5000);
+    const next = capPerProfile(dedupeAndSort([...normalized, ...keepOtherProfiles]));
     persistProgressItems(next);
     notifyChange(pid, "replaceForProfile");
   }

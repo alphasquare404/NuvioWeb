@@ -1,0 +1,566 @@
+/* Browser hero policy. TV keeps its rules in components.css. Layout reserves
+   85vh on desktop; only the decorative media extends over the following rail.
+   Touch portrait and short phone landscape use compact composition.
+   Tablet landscape shares desktop composition with smaller content sizing. */
+.desktop-browser {
+  --browser-hero-height: 85vh;
+  --browser-hero-logo-height: 120px;
+  --browser-hero-logo-width: 480px;
+  --browser-hero-title-size: clamp(38px, 4vw, 64px);
+  --browser-hero-text-size: 16px;
+  --browser-hero-gutter: clamp(32px, 5vw, 96px);
+  --browser-hero-copy-width: min(52%, 720px);
+  --browser-hero-bottom: clamp(40px, 6vh, 72px);
+  --browser-hero-fade: 200px;
+}
+
+.desktop-browser .home-screen-shell .home-hero {
+  position: relative;
+  width: 100vw;
+  margin: 0 0 0 calc(50% - 50vw);
+}
+.desktop-browser .home-screen-shell .home-hero-card {
+  position: relative;
+  inset: auto;
+  min-height: var(--browser-hero-height);
+  height: var(--browser-hero-height);
+  overflow: visible;
+  touch-action: pan-y;
+}
+.desktop-browser .home-layout-modern .home-modern-hero-media {
+  position: absolute;
+  inset: 0 0 auto;
+  width: 100%;
+  height: var(--browser-hero-media-height, var(--browser-hero-height));
+  overflow: hidden;
+}
+.desktop-browser .home-screen-shell .home-hero-backdrop-wrap {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+.desktop-browser .home-screen-shell .home-hero-backdrop {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  opacity: 1;
+}
+
+/* One mask per media subtree. Its transparent end is the measured edge of the
+   artwork, not a permanently invisible extra strip. Both screens share it. */
+.desktop-browser .home-layout-modern .home-modern-hero-media,
+.desktop-browser #detail .series-detail-backdrop,
+.desktop-browser #detail .detail-trailer-layer {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--browser-hero-fade)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--browser-hero-fade)),
+    transparent 100%
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+.desktop-browser .home-screen-shell .home-hero-card::before,
+.desktop-browser .home-screen-shell .home-hero-card::after,
+.desktop-browser .home-layout-modern .home-modern-hero-media::before {
+  content: none;
+}
+.desktop-browser .home-layout-modern .home-modern-hero-media::after,
+.desktop-browser #detail .series-detail-backdrop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 45%,
+    rgb(0 0 0 / 0.12) 75%,
+    rgb(0 0 0 / 0.4) 100%
+  );
+}
+.desktop-browser .home-screen-shell .home-hero-copy,
+.desktop-browser .home-layout-modern .home-modern-hero-copy {
+  position: absolute;
+  inset: 0 auto 0 0;
+  box-sizing: border-box;
+  width: var(--browser-hero-copy-width);
+  max-width: var(--browser-hero-copy-width);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 0 var(--browser-hero-bottom) var(--browser-hero-gutter);
+  overflow: visible;
+  text-align: left;
+}
+.desktop-browser .home-hero-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+.desktop-browser
+  .home-layout-modern
+  .home-modern-hero-card.is-hero-meta-enriching
+  .home-modern-hero-copy {
+  visibility: visible;
+}
+.desktop-browser .home-screen-shell .home-hero-brand,
+.desktop-browser #detail .detail-hero-brand {
+  position: relative;
+  min-height: 0;
+}
+.desktop-browser .home-screen-shell .home-hero-logo,
+.desktop-browser #detail .series-detail-logo {
+  width: auto;
+  height: auto;
+  max-width: min(100%, var(--browser-hero-logo-width));
+  max-height: var(--browser-hero-logo-height);
+  object-fit: contain;
+  object-position: left bottom;
+  filter: drop-shadow(0 3px 12px rgb(0 0 0 / 0.55));
+  margin: 0;
+}
+.desktop-browser .home-screen-shell .home-hero-title-text,
+.desktop-browser #detail .series-detail-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  max-width: 100%;
+  font-size: var(--browser-hero-title-size);
+  line-height: 1.08;
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 0.55);
+}
+.desktop-browser .home-hero-title-text.is-hidden,
+.desktop-browser #detail .series-detail-title[hidden] {
+  display: none;
+}
+.desktop-browser .home-modern-hero-meta-line,
+.desktop-browser .home-modern-hero-meta-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--browser-hero-text-size);
+}
+.desktop-browser .home-modern-hero-meta-group {
+  display: inline;
+}
+.desktop-browser .home-modern-hero-meta-part {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.desktop-browser .home-screen-shell .home-hero-description,
+.desktop-browser #detail .series-detail-description {
+  display: block;
+  width: 100%;
+  max-width: 660px;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  letter-spacing: normal;
+  font-weight: 400;
+  font-size: var(--browser-hero-text-size);
+  line-height: 1.5;
+  text-align: left;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+.desktop-browser .home-hero-description-toggle {
+  position: static;
+  min-height: 0;
+  padding: 0 0 0 5px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.desktop-browser .home-hero-description.is-expanded {
+  display: block;
+  overflow: visible;
+  max-height: none;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+.desktop-browser .home-hero-description-toggle[hidden] {
+  display: none;
+}
+.desktop-browser .home-hero-description-toggle:focus-visible,
+.desktop-browser .desktop-hero-details-button:focus-visible,
+.desktop-browser .desktop-hero-carousel button:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 3px;
+}
+.desktop-browser .desktop-hero-details-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 12px;
+  background: #fafafa;
+  color: #151515;
+  font: 700 14px/1 sans-serif;
+  cursor: pointer;
+}
+.desktop-browser .home-layout-modern .home-hero-indicators {
+  display: none;
+}
+.desktop-browser .home-layout-modern .desktop-hero-carousel {
+  position: absolute;
+  bottom: var(--hero-controls-middle, 62px);
+  right: var(--browser-hero-gutter);
+  transform: translateY(50%);
+  z-index: 5;
+  display: inline-flex;
+  max-width: calc(100% - 40px);
+  gap: 8px;
+  align-items: center;
+}
+.desktop-browser .desktop-hero-carousel-button,
+.desktop-browser .desktop-hero-carousel-dot {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+.desktop-browser .desktop-hero-carousel-button {
+  width: 36px;
+  height: 44px;
+  font-size: 28px;
+}
+.desktop-browser .desktop-hero-carousel-dots {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.desktop-browser .desktop-hero-carousel-dot {
+  position: relative;
+  width: 18px;
+  height: 44px;
+}
+.desktop-browser .desktop-hero-carousel-dot::before {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  top: 19px;
+  left: 6px;
+  border-radius: 4px;
+  background: #ffffff60;
+}
+.desktop-browser .desktop-hero-carousel-dot.is-active {
+  width: 26px;
+}
+.desktop-browser .desktop-hero-carousel-dot.is-active::before {
+  width: 20px;
+  left: 3px;
+  background: #fff;
+}
+.desktop-browser .desktop-hero-carousel[hidden],
+.desktop-browser .desktop-hero-carousel-button[hidden] {
+  display: none;
+}
+
+/* Detail shares the desktop composition, artwork height and fade with Home. */
+.desktop-browser #detail .series-detail-backdrop,
+.desktop-browser #detail .detail-trailer-layer {
+  position: absolute;
+  inset: 0 0 auto;
+  width: 100%;
+  height: var(--browser-hero-media-height, var(--browser-hero-height));
+  min-height: 0;
+  background-position: center;
+  background-size: cover;
+}
+.desktop-browser #detail .detail-hero-section {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  box-sizing: border-box;
+  height: auto;
+  min-height: var(--browser-hero-height);
+  padding: 100px var(--browser-hero-gutter) var(--browser-hero-bottom);
+  gap: 12px;
+}
+.desktop-browser #detail .detail-hero-brand,
+.desktop-browser #detail .detail-hero-body {
+  width: min(100%, 660px);
+  max-height: none;
+  overflow: visible;
+}
+.desktop-browser #detail .detail-hero-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.desktop-browser #detail .detail-hero-body .series-detail-actions {
+  order: 2;
+  margin: 0;
+}
+.desktop-browser #detail .series-detail-logo-skeleton {
+  width: 440px;
+  max-width: 100%;
+  height: var(--browser-hero-logo-height);
+}
+.desktop-browser #detail .detail-description-shell {
+  width: 100%;
+  max-width: 660px;
+}
+.desktop-browser #detail .series-detail-description.is-expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+}
+.desktop-browser #detail .detail-description-toggle {
+  position: static;
+  display: inline-block;
+  min-height: 0;
+  padding: 0 0 0 5px;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: #ddd;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.desktop-browser #detail .detail-description-toggle[hidden] {
+  display: none;
+}
+.desktop-browser #detail .detail-description-toggle:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 3px;
+}
+.desktop-browser #detail .series-detail-shell.detail-scrolled .series-detail-backdrop {
+  opacity: 1;
+}
+
+/* Tablet landscape keeps desktop structure without desktop-sized copy. */
+@media (any-pointer: coarse) and (orientation: landscape) and (min-height: 600px) {
+  .desktop-browser {
+    --browser-hero-logo-height: clamp(76px, 10vh, 104px);
+    --browser-hero-title-size: clamp(30px, 3vw, 42px);
+    --browser-hero-text-size: 15px;
+    --browser-hero-gutter: clamp(24px, 4vw, 48px);
+    --browser-hero-copy-width: min(54%, 620px);
+    --browser-hero-bottom: clamp(24px, 5vh, 48px);
+  }
+}
+
+/* Compact composition: all touch portrait and short phone landscape. */
+@media (any-pointer: coarse) and (orientation: portrait),
+  (any-pointer: coarse) and (orientation: landscape) and (max-height: 599px) {
+  .desktop-browser {
+    --browser-hero-gutter: clamp(20px, 4vw, 36px);
+    --browser-hero-logo-height: 86px;
+    --browser-hero-logo-width: min(76vw, 320px);
+    --browser-hero-copy-top: calc(var(--browser-hero-height) * 0.55);
+  }
+  .desktop-browser .home-screen-shell .home-hero-card {
+    height: auto;
+    min-height: var(--browser-hero-height);
+  }
+  .desktop-browser .home-layout-modern .home-modern-hero-media {
+    height: var(--browser-hero-height);
+  }
+  .desktop-browser .home-layout-modern .home-modern-hero-copy {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: none;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    min-height: calc(var(--browser-hero-height) - 24px);
+    padding: var(--browser-hero-copy-top) var(--browser-hero-gutter) 0;
+    gap: 8px;
+  }
+
+  .desktop-browser .home-layout-modern .home-hero-metadata,
+  .desktop-browser #detail .detail-hero-meta-section {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+  }
+  .desktop-browser #detail .detail-hero-meta-section {
+    padding: var(--browser-detail-meta-padding, 24px) var(--browser-hero-gutter);
+    gap: var(--browser-detail-meta-gap, 8px);
+  }
+  .desktop-browser .home-layout-modern .home-hero-description,
+  .desktop-browser #detail .detail-hero-meta-section > * {
+    width: min(100%, 660px);
+    text-align: center;
+  }
+  .desktop-browser .home-layout-modern .home-modern-hero-meta-line {
+    justify-content: center;
+  }
+  .desktop-browser .home-layout-modern .home-hero-metadata .home-hero-description {
+    margin: 0;
+  }
+
+  .desktop-browser #detail .detail-hero-section {
+    min-height: var(--browser-hero-height);
+    height: auto;
+    padding: 80px var(--browser-hero-gutter) var(--browser-detail-hero-bottom, 24px);
+    align-items: center;
+    text-align: center;
+    gap: var(--browser-detail-hero-gap, 18px);
+  }
+  .desktop-browser #detail .detail-hero-brand {
+    align-items: center;
+  }
+  .desktop-browser #detail .detail-hero-body {
+    width: 100%;
+    text-align: center;
+  }
+  .desktop-browser #detail .series-detail-actions {
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 0;
+  }
+  .desktop-browser .home-screen-shell .home-hero-logo,
+  .desktop-browser #detail .series-detail-logo {
+    object-position: center bottom;
+  }
+  .desktop-browser .desktop-hero-carousel-dots {
+    gap: 0;
+  }
+  .desktop-browser .desktop-hero-carousel-button {
+    display: none;
+  }
+
+  .desktop-browser .home-layout-modern .home-modern-hero-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0;
+  }
+
+  .desktop-browser .home-layout-modern .home-hero-brand {
+    height: auto;
+    justify-items: center;
+  }
+
+  .desktop-browser .home-layout-modern .home-modern-hero-meta-line {
+    gap: 4px;
+    font-size: 12px;
+  }
+  .desktop-browser .home-layout-modern .home-modern-hero-meta-group {
+    font-size: inherit;
+  }
+  .desktop-browser .home-layout-modern .home-modern-hero-meta-part {
+    gap: 4px;
+  }
+  .desktop-browser .home-layout-modern .home-hero-description,
+  .desktop-browser #detail .series-detail-description {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .desktop-browser .home-layout-modern .desktop-hero-carousel {
+    position: static;
+    inset: auto;
+    transform: none;
+  }
+  .desktop-browser .home-layout-modern .desktop-hero-carousel-dot {
+    height: 24px;
+  }
+  .desktop-browser .home-layout-modern .desktop-hero-carousel-dot::before {
+    top: 9px;
+  }
+  .desktop-browser #detail {
+    --browser-detail-hero-bottom: 8px;
+    --browser-detail-hero-gap: 12px;
+    --browser-detail-meta-padding: 8px;
+    --browser-detail-meta-gap: 8px;
+  }
+  /* The stack owns its spacing. Child margins must not add another gap. */
+  .desktop-browser #detail .detail-hero-meta-section > * {
+    margin-block: 0;
+  }
+  .desktop-browser #detail .detail-resume-indicator {
+    font-size: 13px;
+  }
+  .desktop-browser #detail .series-detail-support {
+    font-size: 14px;
+  }
+  .desktop-browser #detail .detail-ratings-row {
+    gap: 8px;
+  }
+  .desktop-browser #detail .detail-rating-item {
+    gap: 4px;
+    font-size: 12px;
+  }
+  .desktop-browser #detail .detail-rating-item img {
+    width: 18px;
+    height: 18px;
+  }
+
+  .desktop-browser #detail .detail-ratings-row,
+  .desktop-browser #detail .detail-meta-row,
+  .desktop-browser #detail .detail-resume-indicator {
+    justify-content: center;
+  }
+  .desktop-browser #detail .detail-meta-stack {
+    align-items: center;
+  }
+  .desktop-browser #detail .series-detail-support,
+  .desktop-browser #detail .detail-resume-indicator {
+    width: 100%;
+    text-align: center;
+  }
+}
+/* Home and Detail share artwork height for each viewport class. */
+@media (any-pointer: coarse) and (orientation: portrait) and (max-width: 600px) {
+  .desktop-browser {
+    --browser-hero-height: min(80dvh, 660px);
+  }
+}
+@media (any-pointer: coarse) and (orientation: portrait) and (min-width: 601px) {
+  .desktop-browser {
+    --browser-hero-height: min(90dvh, 150vw);
+  }
+}
+@media (any-pointer: coarse) and (orientation: landscape) and (max-height: 599px) {
+  .desktop-browser {
+    --browser-hero-height: 100dvh;
+    --browser-hero-logo-height: 60px;
+    --browser-hero-copy-top: clamp(24px, 10dvh, 56px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-browser .home-hero-logo,
+  .desktop-browser .home-hero-backdrop {
+    transition: none;
+  }
+}

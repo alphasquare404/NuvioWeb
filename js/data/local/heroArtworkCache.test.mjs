@@ -9,8 +9,14 @@ globalThis.localStorage = {
   clear: () => values.clear()
 };
 
-const { readHeroArtwork, rememberHeroArtwork, clearHeroArtworkCache, describeHeroArtworkCache } =
-  await import("./heroArtworkCache.js");
+const {
+  readHeroArtwork,
+  rememberHeroArtwork,
+  clearHeroArtworkCache,
+  describeHeroArtworkCache,
+  resolveHeroArtwork,
+  heroArtworkKey
+} = await import("./heroArtworkCache.js");
 
 test("an answer is remembered and read back", () => {
   values.clear();
@@ -65,4 +71,34 @@ test("a cache from another version is ignored rather than trusted", () => {
     JSON.stringify({ version: 99, items: { "movie:tt5": { p: "/p.jpg", t: Date.now() } } })
   );
   assert.equal(readHeroArtwork("movie:tt5"), null);
+});
+
+test("returning Home resolves Detail's newer artwork without a page reload", () => {
+  values.clear();
+  const hero = { id: "tt6", type: "movie", textlessBackdrop: "/old.jpg", name: "A title" };
+  rememberHeroArtwork(heroArtworkKey(hero), { poster: "/old-poster.jpg", backdrop: "/old.jpg" });
+  const firstPaint = resolveHeroArtwork(hero);
+  assert.equal(firstPaint.textlessBackdrop, "/old.jpg");
+  rememberHeroArtwork(heroArtworkKey(hero), { poster: "/new-poster.jpg", backdrop: "/new.jpg" });
+  const returnedPaint = resolveHeroArtwork(hero);
+  assert.equal(returnedPaint.textlessBackdrop, "/new.jpg");
+  assert.equal(returnedPaint.textlessPoster, "/new-poster.jpg");
+  assert.equal(firstPaint.textlessBackdrop, "/old.jpg");
+  assert.equal(hero.textlessBackdrop, "/old.jpg");
+});
+
+test("a newer empty answer removes stale plates and an artwork opt-out ignores the cache", () => {
+  values.clear();
+  const hero = {
+    id: "tt7",
+    apiType: "series",
+    background: "/addon.jpg",
+    textlessBackdrop: "/stale.jpg"
+  };
+  rememberHeroArtwork("series:tt7", {});
+  assert.equal(resolveHeroArtwork(hero).textlessBackdrop, null);
+  assert.equal(resolveHeroArtwork(hero).background, "/addon.jpg");
+  assert.equal(resolveHeroArtwork(hero, { enabled: false }), hero);
+  clearHeroArtworkCache();
+  assert.equal(resolveHeroArtwork(hero), hero);
 });

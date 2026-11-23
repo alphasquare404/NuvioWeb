@@ -1,5 +1,7 @@
 import { TRAKT_API_URL, TRAKT_CLIENT_ID } from "../../config.js";
 import { TraktAuthStore } from "../local/traktAuthStore.js";
+import { ProfileManager } from "../../core/profile/profileManager.js";
+import { captureAccountScope, isAccountScopeCurrent } from "../../core/auth/accountScope.js";
 import { detailWatchedEnrichmentService } from "./detailWatchedEnrichmentService.js";
 import { TraktCredentialSyncService } from "../../core/profile/traktCredentialSyncService.js";
 
@@ -8,6 +10,9 @@ const DEFAULT_API_URL = "https://api.trakt.tv";
 const REFRESH_LEEWAY_SECONDS = 60;
 const BROWSER_AUTH_BRIDGE_BASE_PATH = "/api/trakt";
 let browserBridgeStatus = "unknown";
+// One refresh per provider identity: two concurrent refreshes would present the
+// same refresh token twice and can invalidate the session.
+const refreshInFlight = new Map();
 
 function apiBaseUrl() {
   return String(TRAKT_API_URL || DEFAULT_API_URL).replace(/\/+$/, "");
@@ -88,8 +93,14 @@ function isTokenExpiredOrExpiring(state) {
   return Date.now() / 1000 >= expiresAt - REFRESH_LEEWAY_SECONDS;
 }
 
-async function fetchUserSettings() {
-  const token = await TraktAuthService.getValidAccessToken();
+async function fetchUserSettings(profileId = null) {
+  // A refresh that started on profile A must finish on A even if the user has
+  // switched profiles by the time the response lands. Without the explicit
+  // profile, the save below used whichever profile was active then.
+  const token =
+    profileId == null
+      ? await TraktAuthService.getValidAccessToken()
+      : TraktAuthStore.get(profileId).accessToken;
   if (!token) {
     return null;
   }
@@ -102,7 +113,7 @@ async function fetchUserSettings() {
   const user = payload?.user || {};
   const username = user.username || null;
   const userSlug = user.ids?.slug || null;
-  TraktAuthStore.saveUser({ username, userSlug });
+  TraktAuthStore.saveUser({ username, userSlug }, profileId ?? undefined);
   return username;
 }
 
@@ -133,7 +144,9 @@ export const TraktAuthService = {
       throw new Error("Trakt browser authentication is unavailable on this server");
     }
 
-    const current = TraktAuthStore.get();
+    const profileId = String(ProfileManager.getActiveProfileId() || "1");
+    const scope = captureAccountScope(profileId);
+    const current = TraktAuthStore.get(profileId);
     if (current.deviceCode && current.expiresAt && Date.now() < Number(current.expiresAt)) {
       return current;
     }
@@ -160,30 +173,38 @@ export const TraktAuthService = {
       );
     }
 
-    return TraktAuthStore.saveDeviceFlow(payload);
+    if (!isAccountScopeCurrent(scope)) {
+      throw new Error("Account session changed while starting Trakt sign-in");
+    }
+    return TraktAuthStore.saveDeviceFlow(payload, profileId);
   },
 
   async pollDeviceToken() {
     if (!hasRequiredCredentials()) {
       return { type: "failed", message: "Missing TRAKT credentials" };
     }
-    const state = TraktAuthStore.get();
+    const profileId = String(ProfileManager.getActiveProfileId() || "1");
+    const scope = captureAccountScope(profileId);
+    const state = TraktAuthStore.get(profileId);
     if (!state.deviceCode) {
       return { type: "failed", message: "No active Trakt device code" };
     }
     if (state.expiresAt && Date.now() >= Number(state.expiresAt)) {
-      TraktAuthStore.clearDeviceFlow();
+      TraktAuthStore.clearDeviceFlow(profileId);
       return { type: "expired" };
     }
 
     const { response, payload } = await requestBrowserBridge("/device/token", {
       body: { code: state.deviceCode }
     });
+    if (!isAccountScopeCurrent(scope)) {
+      return { type: "failed", message: "Account session changed" };
+    }
 
     if (response.ok && payload) {
-      TraktAuthStore.saveToken(payload);
-      const username = await fetchUserSettings();
-      await TraktCredentialSyncService.pushCurrentToRemote();
+      TraktAuthStore.saveToken(payload, profileId);
+      const username = await fetchUserSettings(profileId);
+      await TraktCredentialSyncService.pushCurrentToRemote(profileId);
       return { type: "approved", username };
     }
 
@@ -191,20 +212,20 @@ export const TraktAuthService = {
       return { type: "pending" };
     }
     if (response.status === 409) {
-      TraktAuthStore.clearDeviceFlow();
+      TraktAuthStore.clearDeviceFlow(profileId);
       return { type: "already_used" };
     }
     if (response.status === 410) {
-      TraktAuthStore.clearDeviceFlow();
+      TraktAuthStore.clearDeviceFlow(profileId);
       return { type: "expired" };
     }
     if (response.status === 418) {
-      TraktAuthStore.clearDeviceFlow();
+      TraktAuthStore.clearDeviceFlow(profileId);
       return { type: "denied" };
     }
     if (response.status === 429) {
       const interval = Math.min(60, Math.max(5, Number(state.pollInterval || 5) + 5));
-      TraktAuthStore.updatePollInterval(interval);
+      TraktAuthStore.updatePollInterval(interval, profileId);
       return { type: "slow_down", pollIntervalSeconds: interval };
     }
     return {
@@ -213,11 +234,30 @@ export const TraktAuthService = {
     };
   },
 
-  async refreshTokenIfNeeded(force = false) {
+  refreshTokenIfNeeded(force = false, profileId = null) {
+    const resolvedProfileId = String(profileId ?? ProfileManager.getActiveProfileId() ?? "1");
+    if (refreshInFlight.has(resolvedProfileId)) {
+      return refreshInFlight.get(resolvedProfileId);
+    }
+    const task = this.performTokenRefresh(force, resolvedProfileId).finally(() => {
+      if (refreshInFlight.get(resolvedProfileId) === task) {
+        refreshInFlight.delete(resolvedProfileId);
+      }
+    });
+    refreshInFlight.set(resolvedProfileId, task);
+    return task;
+  },
+
+  async performTokenRefresh(force = false, profileId = null) {
     if (!hasRequiredCredentials()) {
       return false;
     }
-    const state = TraktAuthStore.get();
+    // Every save below is scoped explicitly. Reading the active profile again
+    // after the network await used to write A's refreshed token over B's
+    // credentials when the user switched profiles mid-refresh.
+    const resolvedProfileId = String(profileId ?? ProfileManager.getActiveProfileId() ?? "1");
+    const scope = captureAccountScope(resolvedProfileId);
+    const state = TraktAuthStore.get(resolvedProfileId);
     if (!state.refreshToken) {
       return false;
     }
@@ -231,42 +271,52 @@ export const TraktAuthService = {
     const { response, payload } = await requestBrowserBridge("/refresh", {
       body: { refresh_token: state.refreshToken }
     });
+    if (!isAccountScopeCurrent(scope)) {
+      return false;
+    }
 
     if (!response.ok || !payload) {
       if (response.status === 401 || response.status === 403) {
-        const recovered = await TraktCredentialSyncService.pullFromRemote();
-        if (recovered && TraktAuthStore.get().refreshToken !== state.refreshToken) {
-          return this.refreshTokenIfNeeded(true);
+        const recovered = await TraktCredentialSyncService.pullFromRemote(resolvedProfileId);
+        if (
+          recovered &&
+          TraktAuthStore.get(resolvedProfileId).refreshToken !== state.refreshToken
+        ) {
+          return Boolean(TraktAuthStore.get(resolvedProfileId).accessToken);
         }
-        TraktAuthStore.clearAuth();
+        TraktAuthStore.clearAuth(resolvedProfileId);
       }
       return false;
     }
-    TraktAuthStore.saveToken(payload);
-    await fetchUserSettings();
-    await TraktCredentialSyncService.pushCurrentToRemote();
+    TraktAuthStore.saveToken(payload, resolvedProfileId);
+    await fetchUserSettings(resolvedProfileId);
+    await TraktCredentialSyncService.pushCurrentToRemote(resolvedProfileId);
     return true;
   },
 
   async getValidAccessToken() {
-    const state = TraktAuthStore.get();
+    const profileId = String(ProfileManager.getActiveProfileId() || "1");
+    const state = TraktAuthStore.get(profileId);
     if (!state.accessToken) {
       return null;
     }
     if (isTokenExpiredOrExpiring(state)) {
-      const refreshed = await this.refreshTokenIfNeeded(true);
+      const refreshed = await this.refreshTokenIfNeeded(true, profileId);
       if (!refreshed) {
         return null;
       }
-      return TraktAuthStore.get().accessToken;
+      return TraktAuthStore.get(profileId).accessToken;
     }
     return state.accessToken;
   },
 
   async disconnect() {
-    await TraktCredentialSyncService.deleteRemote();
+    // The delete and the local clear must both belong to the profile that
+    // started the disconnect, even if the user switches while the request runs.
+    const profileId = String(ProfileManager.getActiveProfileId() || "1");
+    await TraktCredentialSyncService.deleteRemote(profileId);
     detailWatchedEnrichmentService.invalidateAllCache();
-    TraktAuthStore.clearAuth();
+    TraktAuthStore.clearAuth(profileId);
   },
 
   fetchUserSettings,

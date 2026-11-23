@@ -50,7 +50,14 @@ function sanitizeProgressContext(context) {
     poster: context.poster == null ? null : String(context.poster),
     background: context.background == null ? null : String(context.background),
     episodeTitle: context.episodeTitle == null ? null : String(context.episodeTitle),
-    streamIdentity: context.streamIdentity == null ? null : String(context.streamIdentity)
+    streamIdentity: context.streamIdentity == null ? null : String(context.streamIdentity),
+    // The playback's offline identity has to survive the handoff: by the time
+    // the report returns, the built-in player that knew it may no longer be the
+    // active session.
+    offlinePlayback: context.offlinePlayback === true,
+    imdbId: context.imdbId == null ? null : String(context.imdbId),
+    tmdbId: Number.isFinite(Number(context.tmdbId)) ? Number(context.tmdbId) : null,
+    traktId: Number.isFinite(Number(context.traktId)) ? Number(context.traktId) : null
   };
 }
 
@@ -255,6 +262,40 @@ export function installExternalPlaybackReturnCoordinator({
     );
     onManualFallback(pending);
   };
+  // A collected report is persisted before it is applied. The relay record is
+  // one-time, so a page that reloads mid-apply must be able to finish with the
+  // report it already consumed -- and a report that cannot be applied must end
+  // in a terminal state instead of leaving the handoff stuck in "applying".
+  const applyReport = async (handoff, reportPayload) => {
+    const applying = updatePendingHandoff(
+      handoff,
+      { state: "applying-report", pendingReport: reportPayload },
+      runtime
+    );
+    let applied = false;
+    try {
+      applied = await onAutomaticReport({ found: true, handoff: applying, ...reportPayload });
+    } catch (error) {
+      console.warn("[ExternalPlayback] report application failed", error);
+    }
+    if (applied) {
+      // A report that arrives after the prompt went up answers the very
+      // question it is asking, so the prompt must go rather than let the
+      // viewer overwrite the real position with a guess.
+      onManualFallbackResolved();
+      // Keep the identity-bearing handoff until its application has succeeded.
+      clearExternalPlaybackHandoff({ runtime });
+      return;
+    }
+    if (applying.manualPromptEligible) {
+      promptManually(applying);
+      return;
+    }
+    // The report cannot be applied and there is no manual path: stop asking.
+    // Without this terminal state every foreground and every new coordinator
+    // refused the handoff because it still looked like an in-flight apply.
+    updatePendingHandoff(applying, { state: "report-rejected", pendingReport: null }, runtime);
+  };
   const runAfterForeground = ({ confirmedReturn = true } = {}) => {
     const handoff = readPendingExternalPlaybackHandoff({ runtime, profileId: getProfileId() });
     if (!handoff || collecting) return;
@@ -264,13 +305,20 @@ export function installExternalPlaybackReturnCoordinator({
       if (confirmedReturn) promptManually(handoff);
       return;
     }
-    // Only a cycle that is mid-apply blocks another. "manual-required" used to
-    // block too, which meant that once the prompt had appeared -- because the
-    // report had not arrived within the retry window -- every later return was
-    // refused for the ten minutes the handoff lives, even though the report was
-    // by then sitting in the relay. The progress simply stayed lost until the
-    // page was reloaded. The prompt has its own guard against appearing twice.
-    if (handoff.state === "applying-report") return;
+    if (handoff.state === "report-rejected") {
+      return;
+    }
+    if (handoff.state === "applying-report") {
+      // Recovery after a reload: the report was persisted before the first
+      // attempt, so finish applying it rather than blocking forever.
+      if (handoff.pendingReport) {
+        collecting = true;
+        void applyReport(handoff, handoff.pendingReport).finally(() => {
+          collecting = false;
+        });
+      }
+      return;
+    }
     updatePendingHandoff(
       handoff,
       {
@@ -291,27 +339,15 @@ export function installExternalPlaybackReturnCoordinator({
           profileId: getProfileId()
         });
         if (result.found) {
-          const applying = updatePendingHandoff(
-            result.handoff,
-            { state: "applying-report" },
-            runtime
-          );
-          const applied = await onAutomaticReport({ ...result, handoff: applying });
-          if (applied) {
-            // A report that arrives after the prompt went up answers the very
-            // question it is asking, so the prompt must go rather than let the
-            // viewer overwrite the real position with a guess.
-            onManualFallbackResolved();
-            // Keep the identity-bearing handoff until its application has
-            // succeeded. The relay record is one-time, so consuming first
-            // would leave an explicit completion unable to recover safely.
-            clearExternalPlaybackHandoff({ runtime });
-          } else {
-            // The relay report is one-time. Automatic is deliberately not a
-            // synonym for manual fallback: preserve the chosen mode and leave
-            // existing progress unchanged if application cannot proceed.
-            if (applying.manualPromptEligible) promptManually(applying);
-          }
+          await applyReport(result.handoff, {
+            outcome: result.outcome,
+            provider: result.provider,
+            sourceOutcome: result.sourceOutcome,
+            positionSeconds: result.positionSeconds,
+            durationSeconds: result.durationSeconds,
+            progressFraction: result.progressFraction,
+            parameterNames: result.parameterNames
+          });
           finishCollecting();
           return;
         }

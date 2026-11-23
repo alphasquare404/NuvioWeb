@@ -1,4 +1,5 @@
 import { AuthManager } from "../auth/authManager.js";
+import { captureAccountScope, isAccountScopeCurrent } from "../auth/accountScope.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { SimklAuthStore } from "../../data/local/simklAuthStore.js";
 import { ProfileManager } from "./profileManager.js";
@@ -84,11 +85,15 @@ export const SimklCredentialSyncService = {
       try {
         if (!AuthManager.isAuthenticated) return false;
         const resolvedProfileId = resolveProfileId(profileId);
+        const scope = captureAccountScope(resolvedProfileId);
         const credentials = await SupabaseApi.rpc(
           PULL_RPC,
           { p_profile_id: resolvedProfileId },
           true
         );
+        if (!isAccountScopeCurrent(scope)) {
+          return false;
+        }
         const row = (Array.isArray(credentials) ? credentials : []).find(
           (entry) => String(entry?.provider || "").toLowerCase() === PROVIDER
         );

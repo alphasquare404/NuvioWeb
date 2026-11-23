@@ -616,283 +616,19 @@ html.desktop-browser {
   padding-top: var(--browser-home-no-hero-top, calc(var(--browser-safe-area-top) + 92px));
 }
 
-/* The browser hero is a full-bleed, cinematic section while rows retain their
-   existing rendering and card dimensions below it. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero {
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card {
-  min-height: 85vh;
-  height: 85vh;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-backdrop {
-  object-position: center center;
-  opacity: 1;
-}
-
-.desktop-browser
-  .home-screen-shell.desktop-navigation-enabled
-  .home-hero-logo {
-  object-position: left 75%;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::before {
-  background: none;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::after {
-  background: linear-gradient(
-    180deg,
-    rgba(5, 5, 6, 0.02) 0%,
-    rgba(5, 5, 6, 0.08) 48%,
-    rgba(5, 5, 6, 0.92) 100%
-  );
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy {
-  width: min(52%, 720px);
-  min-height: 0;
-  padding: 0 0 clamp(40px, 6vh, 72px) clamp(32px, 5vw, 96px);
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-logo {
-  max-height: 120px;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-title-text {
-  font-size: clamp(38px, 4vw, 64px);
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary {
-  gap: 8px;
-  font-size: 14px;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description {
-  max-width: 580px;
-  font-size: 16px;
-  line-height: 1.5;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-}
-
-.desktop-browser .desktop-hero-details-button {
-  min-height: 42px;
-  margin-top: 8px;
-  padding: 0 18px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.96);
-  color: #151515;
-  cursor: pointer;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  transition: background-color 160ms ease, transform 160ms ease;
-}
-
-.desktop-browser .desktop-hero-details-button:focus-visible {
-  outline: 2px solid var(--focus-color);
-  outline-offset: 3px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .desktop-browser .desktop-hero-details-button:hover {
-    background: #fff;
-    transform: translateY(-1px);
-  }
-}
-
 /* Modern Home uses a TV-style absolute row viewport. In browser mode, make
    that viewport follow the hero in normal document flow without changing its
    cards or its own scrolling behavior. */
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-stage {
   position: relative;
 }
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
-  position: relative;
-  inset: auto;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media {
-  top: 0;
-  right: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::before {
-  width: 100%;
-  background: none;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::after {
-  background: linear-gradient(
-    180deg,
-    rgba(5, 5, 6, 0.02) 0%,
-    rgba(5, 5, 6, 0.08) 48%,
-    rgba(5, 5, 6, 0.92) 100%
-  );
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
-  top: 0;
-  right: auto;
-  bottom: 0;
-  left: 0;
-  width: min(52%, 720px);
-  max-width: min(52%, 720px);
-  padding: 0 0 clamp(40px, 6vh, 72px) clamp(32px, 5vw, 96px);
-}
-
-/* The browser hero is explicitly selected with these controls. TV retains its
-   existing focus-driven indicators and D-pad behavior. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-indicators {
-  display: none;
-}
-
-/* The controls keep their corner; only their line is borrowed.
-   `--hero-controls-middle` is how far the details button's middle sits above
-   the card's bottom edge, measured in homeScreen.js -- the copy's padding and
-   the button's height both change across breakpoints, and restating either one
-   here would be a second place to keep them in step. */
 /* The browser may pan the page vertically from the hero, but a sideways drag
    is the swipe and never a scroll -- otherwise the page rubber-bands and the
    gesture is cancelled halfway. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
-  touch-action: pan-y;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
-  position: absolute;
-  bottom: var(--hero-controls-middle, clamp(26px, 4vh, 48px));
-  right: clamp(24px, 5vw, 88px);
-  transform: translateY(50%);
-  z-index: 5;
-  display: inline-flex;
-  max-width: calc(100vw - 40px);
-  align-items: center;
-  gap: 10px;
-  padding: 0;
-  border: 0;
-  background: none;
-  box-shadow: none;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel[hidden] {
-  display: none;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot {
-  flex: 0 0 auto;
-  border: 0;
-  cursor: pointer;
-  font: inherit;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
-  display: inline-grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  background: none;
-  color: #fff;
-  font-size: 25px;
-  line-height: 1;
-  /* Standing on the artwork now, not on a tube. */
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots {
-  display: inline-flex;
-  max-width: min(38vw, 224px);
-  align-items: center;
-  gap: 7px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots::-webkit-scrollbar {
-  display: none;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot {
-  width: 7px;
-  height: 7px;
-  padding: 0;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.4);
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot.is-active {
-  width: 20px;
-  background: #fff;
-}
-
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button:focus-visible,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot:focus-visible {
-  outline: 2px solid var(--focus-color);
-  outline-offset: 2px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button:hover {
-    color: rgba(255, 255, 255, 0.72);
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dot:hover {
-    background: rgba(255, 255, 255, 0.72);
-  }
-}
 
 /* Issue #14: on a touch screen the hero is swiped, so the arrows are a second
    way to do what the finger already does. The dots stay -- they say where you
    are, and remain tappable. */
-@media (any-pointer: coarse) {
-  .desktop-browser
-    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
-    .desktop-hero-carousel
-    .desktop-hero-carousel-button {
-    display: none;
-  }
-
-  /* Without the tube behind them the dots sit straight on the artwork. */
-  .desktop-browser
-    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
-    .desktop-hero-carousel-dot {
-    position: relative;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
-  }
-
-  /* The dots row scrolls sideways, and its overflow clips vertically too, so
-     the padding is what lets the target below reach past the dot. */
-  .desktop-browser
-    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
-    .desktop-hero-carousel-dots {
-    padding-block: 13px;
-    margin-block: -13px;
-  }
-
-  /* With the arrows gone a 7px dot is the only control a finger has, so it
-     gets a target around it without growing on screen. */
-  .desktop-browser
-    .home-screen-shell.desktop-navigation-enabled.home-layout-modern
-    .desktop-hero-carousel-dot::before {
-    content: "";
-    position: absolute;
-    inset: -13px -4px;
-  }
-}
 
 .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs .home-track {
   --home-track-gap: 12px;
@@ -2208,33 +1944,6 @@ html.desktop-browser {
   background: var(--detail-bg);
 }
 
-.desktop-browser #detail .series-detail-backdrop,
-.desktop-browser #detail .series-detail-vignette {
-  bottom: auto;
-  height: 85vh;
-}
-
-.desktop-browser #detail .series-detail-backdrop {
-  background-position: center center;
-  background-size: cover;
-}
-
-.desktop-browser #detail .series-detail-logo {
-  object-position: left 75%;
-}
-
-.desktop-browser #detail .series-detail-vignette {
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.08) 42%, var(--detail-bg) 100%);
-}
-
-.desktop-browser #detail .detail-bottom-shadow {
-  top: calc(85vh - clamp(160px, 24vh, 260px));
-  bottom: auto;
-  height: clamp(160px, 24vh, 260px);
-  opacity: 1;
-  background: linear-gradient(180deg, transparent, var(--detail-bg));
-}
-
 .desktop-browser #detail .series-detail-content {
   position: relative;
   width: 100%;
@@ -2244,195 +1953,6 @@ html.desktop-browser {
   overflow: visible;
   padding: 0 0 72px;
 }
-
-.desktop-browser #detail .detail-hero-section {
-  min-height: 85vh;
-  height: auto;
-  padding: 0 clamp(20px, 3.4vw, 64px) clamp(48px, 5vh, 72px);
-}
-
-.desktop-browser #detail .detail-hero-brand {
-  min-height: 0;
-}
-
-.desktop-browser #detail .detail-hero-body {
-  width: min(100%, 660px);
-  max-height: none;
-  overflow: visible;
-}
-
-/* The hero, centred on a touch screen.
-   ------------------------------------------------------------------
-   The left-to-right scrim and left-aligned copy are a widescreen idea: on a
-   phone the artwork is portrait and the copy is the whole width anyway, so
-   the scrim only darkened one edge for no reason. Everything moves to the
-   bottom centre and the downward fade alone carries the text. Desktop keeps
-   its cinema framing. */
-/* The hero, centred on a touch screen.
-   ------------------------------------------------------------------
-   The left-to-right scrim and left-aligned copy are a widescreen idea: on a
-   phone the artwork is portrait and the copy is the whole width anyway, so
-   the scrim only darkened one edge for no reason. Everything moves to the
-   bottom centre and the downward fade alone carries the text. Desktop keeps
-   its cinema framing. */
-@media (any-pointer: coarse) {
-  .desktop-browser #detail .series-detail-vignette {
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 30%, var(--detail-bg) 100%);
-  }
-
-  .desktop-browser #detail .detail-hero-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    text-align: center;
-  }
-
-  .desktop-browser #detail .detail-hero-brand {
-    display: flex;
-    width: 100%;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .desktop-browser #detail .detail-hero-body {
-    display: flex;
-    width: min(100%, 660px);
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  /* Everything but the title and the buttons lives here, below the picture
-     rather than over it. */
-  .desktop-browser #detail .detail-hero-meta-section {
-    display: flex;
-    width: 100%;
-    box-sizing: border-box;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    padding: 4px clamp(20px, 3.4vw, 64px) 0;
-    text-align: center;
-  }
-
-  /* The buttons' bottom margin used to separate them from the copy that sat
-     under them inside the hero. That copy is below the artwork now, and the
-     margin was only adding to the gap. */
-  .desktop-browser #detail .detail-hero-body .series-detail-actions {
-    margin-bottom: 0;
-  }
-
-  /* A later breakpoint rule sets this padding with the same weight, so the
-     content wrapper is named to outrank it. */
-  .desktop-browser #detail .series-detail-content .detail-hero-section {
-    padding-bottom: 6px;
-  }
-
-  /* The column is anchored to the bottom of this box, so the box has to be
-     the window -- otherwise in a short landscape window it ends partway up
-     and the copy appears to float in the middle of the artwork. */
-  @media (orientation: landscape) {
-    .desktop-browser #detail .detail-hero-section,
-    .desktop-browser #detail .series-detail-content .detail-hero-section {
-      min-height: 100dvh;
-    }
-  }
-
-  .desktop-browser #detail .detail-hero-meta-section > * {
-    width: min(100%, 660px);
-  }
-
-  /* Reading, not framing -- but it belongs with the framing it was written
-     for. Split across two queries, a landscape window took the desktop hero
-     and these together, and the result was neither layout: a left-aligned
-     title above centred credits. */
-  /* Portrait has room for two lines before the synopsis becomes the page.
-     Landscape is wider and shallower, so it keeps the longer clamp. */
-  .desktop-browser #detail .series-detail-description.is-expanded {
-    -webkit-line-clamp: unset;
-    line-clamp: unset;
-    display: block;
-  }
-
-  /* The control belongs at the end of what it is cutting off, not on a line
-     below it. The fade keeps the last words from running under the label. */
-  .desktop-browser #detail .series-detail-description {
-    position: relative;
-  }
-
-  .desktop-browser #detail .detail-description-toggle {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    display: inline-flex;
-    width: auto;
-    align-items: center;
-    margin: 0;
-    /* Sits on the last line itself: same type and the same line box, so its
-       baseline is the text's baseline rather than a control parked below it.
-       The pad is the fade the last words disappear into. */
-    padding: 0 0 0 46px;
-    border: 0;
-    border-radius: 0;
-    background: linear-gradient(90deg, transparent 0%, var(--detail-bg) 42%, var(--detail-bg) 100%);
-    color: var(--detail-text-secondary, rgba(255, 255, 255, 0.62));
-    cursor: pointer;
-    font: inherit;
-    font-weight: 600;
-    height: 1.45em;
-  }
-
-  /* Expanded there is nothing to sit at the end of, so it returns to a line. */
-  .desktop-browser #detail .series-detail-description.is-expanded .detail-description-toggle {
-    position: static;
-    height: auto;
-    padding: 4px 8px;
-    background: transparent;
-  }
-
-  .desktop-browser #detail .detail-description-toggle[hidden] {
-    display: none;
-  }
-
-  .desktop-browser #detail .detail-description-toggle:focus-visible {
-    outline: 2px solid var(--detail-focus-ring);
-    outline-offset: 2px;
-  }
-
-  .desktop-browser #detail .series-detail-actions,
-  .desktop-browser #detail .detail-ratings-row,
-  .desktop-browser #detail .detail-meta-row {
-    justify-content: center;
-  }
-
-  .desktop-browser #detail .detail-meta-stack {
-    align-items: center;
-  }
-
-  .desktop-browser #detail .series-detail-support,
-  .desktop-browser #detail .series-detail-description,
-  .desktop-browser #detail .detail-resume-indicator {
-    width: 100%;
-    text-align: center;
-  }
-
-  /* The resume line is a flex row, and text-align does not move flex items --
-     it was the one thing on this page still sitting against the left edge. */
-  .desktop-browser #detail .detail-resume-indicator {
-    justify-content: center;
-  }
-}
-
-/* Portrait has room for two lines before the synopsis becomes the page.
-   Landscape is wider and shallower, so it keeps the longer clamp. */
-@media (any-pointer: coarse) and (orientation: portrait) {
-  .desktop-browser #detail .series-detail-description:not(.is-expanded) {
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-  }
-}
-
 .desktop-browser #detail .detail-desktop-back-button,
 .desktop-browser #castDetail .detail-desktop-back-button {
   position: fixed;
@@ -2501,24 +2021,6 @@ html.desktop-browser {
   box-shadow: none;
   outline: 2px solid rgb(var(--secondary-color-rgb) / 0.72);
   outline-offset: 2px;
-}
-
-.desktop-browser #detail .series-detail-logo {
-  max-width: min(100%, 480px);
-  max-height: 112px;
-  margin-bottom: 18px;
-}
-
-.desktop-browser #detail .series-detail-logo-skeleton {
-  width: min(100%, 480px);
-  height: 112px;
-  margin-bottom: 18px;
-}
-
-.desktop-browser #detail .series-detail-title {
-  margin-bottom: 14px;
-  font-size: clamp(42px, 3.4vw, 56px);
-  line-height: 1.08;
 }
 
 .desktop-browser #detail .series-detail-actions {
@@ -2686,63 +2188,6 @@ html.is-hero-stream-hold * {
   height: 22px;
 }
 
-.desktop-browser #detail .series-detail-description {
-  position: relative;
-  max-width: 660px;
-  margin-bottom: 12px;
-  font-size: 16px;
-  line-height: 1.48;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-}
-
-.desktop-browser #detail .series-detail-description.is-expanded {
-  -webkit-line-clamp: unset;
-  line-clamp: unset;
-  display: block;
-}
-
-.desktop-browser #detail .detail-description-toggle {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  display: inline-flex;
-  width: auto;
-  align-items: center;
-  margin: 0;
-  padding: 0 0 0 12px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--detail-text-secondary, rgba(255, 255, 255, 0.62));
-  cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-  text-shadow:
-    0 0 5px var(--detail-bg),
-    0 0 10px var(--detail-bg);
-  height: 1.45em;
-}
-
-.desktop-browser
-  #detail
-  .series-detail-description.is-expanded
-  .detail-description-toggle {
-  position: static;
-  height: auto;
-  padding: 4px 8px;
-  background: transparent;
-}
-
-.desktop-browser #detail .detail-description-toggle[hidden] {
-  display: none;
-}
-
-.desktop-browser #detail .detail-description-toggle:focus-visible {
-  outline: 2px solid var(--detail-focus-ring);
-  outline-offset: 2px;
-}
-
 .desktop-browser #detail .detail-meta-stack {
   gap: 6px;
 }
@@ -2762,16 +2207,6 @@ html.is-hero-stream-hold * {
 }
 
 @media (max-width: 700px) {
-  .desktop-browser #detail .series-detail-backdrop,
-  .desktop-browser #detail .series-detail-vignette,
-  .desktop-browser #detail .detail-hero-section {
-    min-height: min(68vh, 620px);
-    height: min(68vh, 620px);
-  }
-
-  .desktop-browser #detail .detail-hero-section {
-    padding-inline: 20px;
-  }
 
   .desktop-browser #detail .detail-desktop-back-button,
   .desktop-browser #castDetail .detail-desktop-back-button {
@@ -2779,10 +2214,6 @@ html.is-hero-stream-hold * {
     left: 20px;
     width: 40px;
     height: 40px;
-  }
-
-  .desktop-browser #detail .series-detail-title {
-    font-size: clamp(34px, 9vw, 44px);
   }
 
   .desktop-browser #detail .series-detail-actions {
@@ -9939,39 +9370,6 @@ html.is-hero-stream-hold * {
   padding-bottom: 48px;
 }
 
-/* Extend only the hero media beyond its layout box. The Continue Watching row
-   stays in normal flow while its cards sit over this decorative fade tail. */
-.desktop-browser
-  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
-  .home-modern-hero-card {
-  --desktop-home-hero-fade-tail: 96px;
-  overflow: visible;
-}
-
-.desktop-browser
-  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
-  .home-modern-hero-media {
-  height: calc(100% + var(--desktop-home-hero-fade-tail));
-  overflow: visible;
-}
-
-/* Keep the full-bleed backdrop visible behind the upper portion of the first
-   rail, then fade it gradually into the page background without a hard seam. */
-.desktop-browser
-  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
-  .home-modern-hero-media::after {
-  background: linear-gradient(
-    180deg,
-    rgba(5, 5, 6, 0.02) 0%,
-    rgba(5, 5, 6, 0.08) 48%,
-    rgba(5, 5, 6, 0.28) 72%,
-    rgba(5, 5, 6, 0.58) 88%,
-    rgba(5, 5, 6, 0.86) 96%,
-    rgb(5, 5, 6) 100%
-  );
-  pointer-events: none;
-}
-
 .desktop-browser .desktop-navigation {
   position: fixed;
   top: 20px;
@@ -10193,22 +9591,6 @@ html.desktop-browser[data-nav-placement] body .desktop-navigation.is-search-open
 
   .desktop-browser .desktop-navigation-item {
     padding: 0 10px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card {
-    min-height: min(70vh, 620px);
-    height: min(70vh, 620px);
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
-    width: min(100% - 32px, 560px);
-    max-width: min(100% - 32px, 560px);
-    padding: 0 0 28px 16px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description {
-    font-size: 14px;
   }
 }
 
@@ -12113,26 +11495,9 @@ body.desktop-browser {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-hero-disabled .home-route-content {
     --browser-home-no-hero-top: var(--browser-mobile-nav-clearance);
   }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card { min-height: min(70dvh, 580px); height: min(70dvh, 580px); }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy { width: min(100%, 520px); max-width: min(100%, 520px); padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 28px; gap: 8px; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-logo { max-height: 82px; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-title-text { font-size: clamp(30px, 9vw, 40px); }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary { gap: 6px; font-size: 13px; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description { font-size: 14px; line-height: 1.42; }
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel { right: var(--browser-page-gutter); }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs { gap: var(--browser-mobile-section-gap); padding-inline: var(--browser-page-gutter); }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue { padding-inline: calc(var(--browser-page-gutter) - 8px); }
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-track { padding-block: 8px 6px; }
-
-  .desktop-browser #detail .series-detail-backdrop,
-  .desktop-browser #detail .series-detail-vignette,
-  .desktop-browser #detail .detail-hero-section { min-height: min(72dvh, 620px); height: min(72dvh, 620px); }
-  .desktop-browser #detail .detail-hero-section { padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 28px; }
-  .desktop-browser #detail .series-detail-title { font-size: clamp(30px, 8.5vw, 40px); }
   .desktop-browser #detail .detail-meta-row { gap: 7px; }
 
   .desktop-browser #folderDetail .desktop-folder-detail-shell { padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 40px; }
@@ -12212,37 +11577,6 @@ body.desktop-browser {
 /* Mobile/PWA Hero keeps the browser artwork lifecycle, but restores its
    crossfade states after the desktop base rules above. Remove only the
    horizontal overlays here; the bottom gradient remains for copy readability. */
-@media (max-width: 1023px) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card::before,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media::before {
-    background: none;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop.home-hero-backdrop-transition-enter {
-    opacity: 0;
-    transition: opacity 400ms ease !important;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop.home-hero-backdrop-transition-enter.is-visible {
-    opacity: 1;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop-transition-ghost {
-    opacity: 1;
-    transition: opacity 400ms ease !important;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-backdrop-transition-ghost.is-fading-out {
-    opacity: 0;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
-    display: grid;
-    place-items: center;
-    padding: 0;
-    line-height: 1;
-  }
-}
 
 /* Shared browser card density.
    ---------------------------------------------------------------------------
@@ -12333,66 +11667,6 @@ body.desktop-browser {
       clamp(292px, 84vw, 348px)
     );
     --browser-home-heading-inset: max(16px, var(--browser-safe-area-left));
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
-    min-height: min(66dvh, 560px);
-    height: min(66dvh, 560px);
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
-    padding: var(--browser-mobile-nav-clearance) var(--browser-page-gutter) 22px;
-    gap: 7px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-logo {
-    max-height: 72px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-title-text {
-    font-size: clamp(29px, 8.5vw, 38px);
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary {
-    gap: 8px;
-    font-size: 12px;
-    line-height: 1.3;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-group {
-    gap: 8px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-description {
-    max-width: 36ch;
-    font-size: 14px;
-    line-height: 1.42;
-    letter-spacing: 0.2px;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-details-button {
-    min-height: 40px;
-    margin-top: 3px;
-    padding-inline: 16px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
-    right: var(--browser-page-gutter);
-    gap: 8px;
-    padding: 0;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-button {
-    width: 32px;
-    height: 32px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel-dots {
-    max-width: min(32vw, 150px);
-    gap: 6px;
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-row-continue {
@@ -12697,50 +11971,11 @@ body.desktop-browser {
     gap: var(--browser-card-row-gap, 28px) var(--browser-card-gap, 16px);
   }
 }
-
-/* Tablet browser Home has room for a larger rail, while retaining a visible
-   next card instead of reverting to the wide desktop shelves. */
 @media (min-width: 601px) and (max-width: 1023px) {
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern {
     --browser-home-tablet-gutter: clamp(24px, 4vw, 36px);
     --browser-home-tablet-poster-width: var(--browser-card-standard, clamp(176px, 24vw, 210px));
     --browser-home-tablet-continue-width: clamp(360px, 56vw, 460px);
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
-    min-height: min(62dvh, 600px);
-    height: min(62dvh, 600px);
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
-    width: min(62%, 540px);
-    max-width: min(62%, 540px);
-    padding: calc(var(--browser-safe-area-top) + 92px) var(--browser-home-tablet-gutter) 34px;
-    gap: 10px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-logo {
-    max-height: 96px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-title-text {
-    font-size: clamp(34px, 5.5vw, 46px);
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary {
-    gap: 10px;
-    font-size: 13px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-description {
-    max-width: 42ch;
-    font-size: 15px;
-    line-height: 1.45;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
-    right: var(--browser-home-tablet-gutter);
   }
 
   .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-catalogs {
@@ -12787,49 +12022,6 @@ body.desktop-browser {
 /* A landscape phone is often wider than the phone-width breakpoint, but has
    far less vertical room. Keep the hero complete and readable rather than
    clipping its copy before the rails begin. */
-@media (max-width: 1023px) and (max-height: 500px) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
-    min-height: min(100dvh, 430px);
-    height: min(100dvh, 430px);
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
-    width: min(58%, 500px);
-    max-width: min(58%, 500px);
-    padding-top: calc(var(--browser-safe-area-top) + 54px);
-    padding-bottom: 18px;
-    gap: 5px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-logo {
-    max-height: 62px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-title-text {
-    font-size: clamp(28px, 4vw, 36px);
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary {
-    gap: 6px;
-    font-size: 12px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-description {
-    font-size: 13px;
-    line-height: 1.35;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-details-button {
-    min-height: 36px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
-    right: max(16px, var(--browser-safe-area-right));
-  }
-}
 
 /* Tablet portrait benefits from a denser rail than the broad tablet defaults,
    while short tablet landscapes need both compact cards and enough room below
@@ -12849,53 +12041,9 @@ body.desktop-browser {
   }
 }
 
-@media (min-width: 601px) and (max-width: 1023px) and (orientation: landscape) and (max-height: 500px) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
-    padding-top: calc(var(--browser-floating-nav-top) + var(--browser-floating-nav-height) + 12px);
-  }
-}
-
 /* Detail keeps its browser composition on narrow screens, with dedicated
    phone-scale rails and typography rather than inheriting TV-sized geometry. */
 @media (max-width: 600px) {
-  .desktop-browser #detail .series-detail-backdrop,
-  .desktop-browser #detail .series-detail-vignette,
-  .desktop-browser #detail .detail-hero-section {
-    min-height: min(68dvh, 580px);
-    height: min(68dvh, 580px);
-  }
-
-  .desktop-browser #detail .detail-hero-section {
-    padding:
-      var(--browser-mobile-nav-clearance)
-      var(--browser-page-gutter)
-      24px;
-  }
-
-  .desktop-browser #detail .detail-hero-brand {
-    min-height: 0;
-  }
-
-  .desktop-browser #detail .series-detail-logo {
-    width: auto;
-    max-width: min(76vw, 320px);
-    max-height: min(19vw, 86px);
-    margin-bottom: 12px;
-  }
-
-  .desktop-browser #detail .series-detail-logo-skeleton {
-    width: min(76vw, 320px);
-    height: min(19vw, 86px);
-    margin-bottom: 12px;
-  }
-
-  .desktop-browser #detail .series-detail-title {
-    max-width: 100%;
-    margin-bottom: 10px;
-    font-size: clamp(30px, 8.5vw, 38px);
-    line-height: 1.08;
-    overflow-wrap: anywhere;
-  }
 
   .desktop-browser #detail .detail-desktop-back-button {
     top: calc(
@@ -12909,9 +12057,7 @@ body.desktop-browser {
     min-height: var(--browser-mobile-control-size);
   }
 
-  .desktop-browser #detail .detail-hero-body,
-  .desktop-browser #detail .series-detail-support,
-  .desktop-browser #detail .series-detail-description {
+  .desktop-browser #detail .series-detail-support {
     width: min(100%, 38rem);
     max-width: 100%;
   }
@@ -12949,12 +12095,6 @@ body.desktop-browser {
 
   .desktop-browser #detail .detail-rating-item {
     font-size: 13px;
-  }
-
-  .desktop-browser #detail .series-detail-description {
-    margin-bottom: 12px;
-    font-size: 15px;
-    line-height: 1.45;
   }
 
   .desktop-browser #detail .detail-meta-stack {
@@ -13131,34 +12271,6 @@ body.desktop-browser {
 @media (min-width: 601px) and (max-width: 1023px) {
   .desktop-browser #detail {
     --detail-tablet-gutter: clamp(24px, 4vw, 36px);
-  }
-
-  .desktop-browser #detail .series-detail-backdrop,
-  .desktop-browser #detail .series-detail-vignette,
-  .desktop-browser #detail .detail-hero-section {
-    min-height: min(68dvh, 720px);
-  }
-
-  .desktop-browser #detail .detail-hero-section {
-    padding: calc(var(--browser-safe-area-top) + 92px) var(--detail-tablet-gutter) 34px;
-  }
-
-  .desktop-browser #detail .detail-hero-body {
-    width: min(68%, 620px);
-  }
-
-  .desktop-browser #detail .series-detail-logo {
-    max-width: min(58vw, 420px);
-    max-height: 104px;
-  }
-
-  .desktop-browser #detail .series-detail-logo-skeleton {
-    width: min(58vw, 420px);
-    height: 104px;
-  }
-
-  .desktop-browser #detail .series-detail-title {
-    font-size: clamp(36px, 5.5vw, 48px);
   }
 
   .desktop-browser #detail .series-insight-tabs,
@@ -15806,25 +14918,6 @@ html:not([data-nav-placement="top"])
 /* Not in a query any more: the synopsis is cut on every screen, so the label
    that finishes it belongs on every screen too -- and a button's border and
    background over artwork is a box floating in the middle of a picture. */
-.desktop-browser .home-hero-description-toggle {
-  display: inline;
-  margin: 0 0 0 4px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: #fff;
-  /* The synopsis over artwork already needs this to stay readable; the label
-     is the same text on the same picture. */
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
-  cursor: pointer;
-  font: inherit;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.desktop-browser .home-hero-description-toggle[hidden] {
-  display: none;
-}
 
 /* The settings rail drew the same glyphs the phone does, but in a box the size
    of the glyph itself -- 20px against the phone's 36 -- so the coloured tile
@@ -15988,11 +15081,6 @@ html:not([data-nav-placement="top"])
    so anchoring it right throws the subject off the side entirely. Centred, the
    part of the frame the image was chosen for is the part that shows. Desktop is
    untouched. */
-@media (any-pointer: coarse) {
-  .desktop-browser #detail .series-detail-backdrop {
-    background-position: center center;
-  }
-}
 
 /* Quick Setup. One question per screen, the answer already standing on what the
    profile has, and Skip always within reach -- a setup nobody can get stuck in
@@ -17409,98 +16497,6 @@ html[data-nav-rail-corner="bottom-left"][data-nav-placement="sidebar"].nav-rail-
    not beside it -- so the column centres instead, and sits lower, where a
    thumb is rather than where the picture is.
    --------------------------------------------------------------------------- */
-@media (max-width: 600px) and (orientation: portrait) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-copy,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-copy {
-    align-items: center;
-    /* Lower than the wide layout leaves it: the picture above is the subject
-       on a phone, and the copy is a caption under it. The padding is what
-       leaves the dots their line underneath. */
-    padding-bottom: 36px;
-    text-align: center;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-brand {
-    align-items: center;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-primary,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-meta-secondary,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-chip-row {
-    justify-content: center;
-  }
-
-  /* The meta is centred as a block, but what wraps out of it was not --
-     a second row starting hard against the left edge while the first sat in
-     the middle. And the spacing: at 8px between every token and dot the
-     line needs more width than a phone has, so it wrapped where 4px fits.
-     Long genres still wrap, and now they wrap centred. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-group {
-    justify-content: center;
-    gap: 4px;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description {
-    text-align: center;
-  }
-
-  /* The button is centred with everything else, and the dots sit under it
-     rather than beside it -- one column, read straight down. */
-  .desktop-browser .desktop-hero-details-button {
-    align-self: center;
-  }
-
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .desktop-hero-carousel {
-    right: auto;
-    bottom: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-  }
-
-  /* Taller, so the copy ends lower down the screen and the artwork above it
-     gets the room an upright poster was made for. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-card,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-card {
-    min-height: min(80dvh, 660px);
-    height: min(80dvh, 660px);
-  }
-
-
-}
-
-/* ---------------------------------------------------------------------------
-   Where the hero ends.
-
-   The artwork stopped at a line: the gradient over it reached 92% black and
-   the page below is black, so the last 8% showed as a seam straight across
-   the screen. The detail page has no such line because its artwork dissolves,
-   so this one dissolves too -- the picture is faded out by a mask rather than
-   covered by one more layer.
-   --------------------------------------------------------------------------- */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-media,
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-backdrop-wrap {
-  --home-hero-fade-end: var(--desktop-home-hero-fade-tail, 0px);
-  --home-hero-fade-start: calc(var(--home-hero-fade-end) + 200px);
-  -webkit-mask-image: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0) 0,
-    rgba(0, 0, 0, 0) var(--home-hero-fade-end),
-    rgba(0, 0, 0, 1) var(--home-hero-fade-start)
-  );
-  mask-image: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0) 0,
-    rgba(0, 0, 0, 0) var(--home-hero-fade-end),
-    rgba(0, 0, 0, 1) var(--home-hero-fade-start)
-  );
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
-}
 
 /* ---------------------------------------------------------------------------
    The title on a landscape card.
@@ -17889,27 +16885,6 @@ html[data-nav-placement="bottom"].desktop-browser .desktop-navigation-item {
   margin-bottom: 14px;
 }
 
-@media (max-width: 600px) and (orientation: portrait) {
-  /* The logo box was centred all along; the artwork inside it was pinned to
-     the top-left corner by `object-position: 0% 0%`. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-logo {
-    object-position: center bottom;
-  }
-
-  /* A poster is shown whole rather than cropped to fill: it keeps its own
-     proportions from the top of the hero down, and the fade at the bottom
-     covers where it ends. Only the upright plate is treated this way -- wide
-     artwork still fills the frame, or it would leave half the hero empty. */
-  .desktop-browser
-    .home-screen-shell.desktop-navigation-enabled
-    .home-hero-backdrop.is-portrait-artwork {
-    bottom: auto;
-    height: auto;
-    object-fit: contain;
-    object-position: top center;
-  }
-}
-
 /* ---------------------------------------------------------------------------
    Room for the bottom bar on the pages that are not a shell.
 
@@ -17946,14 +16921,6 @@ html[data-nav-placement="bottom"].desktop-browser
 /* Written with the same weight as the rules that clamp it, and after them:
    the base hero rule carries three classes of its own, so a shorter selector
    lost and the clamp stayed. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description.is-expanded,
-.desktop-browser .home-hero-description.is-expanded {
-  display: block;
-  max-height: none;
-  -webkit-line-clamp: unset;
-  line-clamp: unset;
-  overflow: visible;
-}
 
 /* ---------------------------------------------------------------------------
    A title with no logo.
@@ -17964,30 +16931,8 @@ html[data-nav-placement="bottom"].desktop-browser
    rest a press away; the title is its own control, so there is no second one
    to explain. On a pointer, hovering shows it in full.
    --------------------------------------------------------------------------- */
-.desktop-browser .home-hero-title-text,
-.desktop-browser #detail .series-detail-title {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-
-.desktop-browser .home-hero-title-text.is-expanded,
-.desktop-browser #detail .series-detail-title.is-expanded {
-  display: block;
-  max-height: none;
-  -webkit-line-clamp: unset;
-  line-clamp: unset;
-}
 
 /* The hidden one is hidden, clamp or no clamp. */
-.desktop-browser .home-hero-title-text.is-hidden,
-.desktop-browser #detail .series-detail-title[hidden] {
-  display: none;
-}
 
 /* ---------------------------------------------------------------------------
    The Shortcut tutorial, folded away.
@@ -18043,14 +16988,6 @@ html[data-nav-placement="bottom"].desktop-browser
 
    The height that holds it to two lines is an inline style set in
    homeScreen.js, which fits the text and the label into them together. */
-.desktop-browser .home-screen-shell.desktop-navigation-enabled .home-hero-description,
-.desktop-browser
-  .home-screen-shell.desktop-navigation-enabled.home-layout-modern
-  .home-hero-description {
-  -webkit-line-clamp: none;
-  line-clamp: none;
-  text-overflow: clip;
-}
 
 /* ---------------------------------------------------------------------------
    The hero's meta line on a wide screen.
@@ -18062,26 +16999,6 @@ html[data-nav-placement="bottom"].desktop-browser
    Above the phone breakpoint only: the phone sizes these itself, smaller
    still, and this would undo that.
    --------------------------------------------------------------------------- */
-@media (min-width: 601px) {
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-secondary,
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-hero-imdb {
-    font-size: 16px;
-    line-height: 1.5;
-  }
-
-  /* And it stays one line. The meta was sized to the synopsis column, which
-     a movie with a genre, a runtime, a full date and a rating runs past by a
-     few pixels -- wrapping the rating back onto a row of its own, which is
-     what taking it off its own row was for. It is short text over artwork,
-     so it is allowed the width it needs. */
-  .desktop-browser .home-screen-shell.desktop-navigation-enabled.home-layout-modern .home-modern-hero-meta-line {
-    flex-wrap: nowrap;
-    white-space: nowrap;
-    width: max-content;
-    max-width: none;
-  }
-}
 
 
 /* The document itself is the scroller, not `body`.

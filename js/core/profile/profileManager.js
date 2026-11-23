@@ -1,4 +1,5 @@
 import { LocalStore } from "../storage/localStore.js";
+import { clearProfileLocalData } from "../auth/accountLocalDataReset.js";
 
 const PROFILES_KEY = "profiles";
 const ACTIVE_PROFILE_ID_KEY = "activeProfileId";
@@ -166,6 +167,11 @@ export const ProfileManager = {
     if (nextProfiles.length === profiles.length) {
       return false;
     }
+    // The slot is reusable, so this person's watch history, progress, provider
+    // credentials and sync baselines must go with the profile. Otherwise the
+    // next profile created in the slot inherits them and can push them back to
+    // the cloud as its own.
+    clearProfileLocalData(normalizedId);
     LocalStore.set(PROFILES_KEY, nextProfiles);
     if (this.getActiveProfileId() === normalizedId) {
       LocalStore.set(ACTIVE_PROFILE_ID_KEY, "1");

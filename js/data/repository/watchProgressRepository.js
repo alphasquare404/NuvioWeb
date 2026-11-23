@@ -61,6 +61,15 @@ function activeProfileId() {
   return String(ProfileManager.getActiveProfileId() || "1");
 }
 
+// A provider snapshot belongs to one profile and one provider account. Keying
+// the in-flight request and the cache by that scope keeps a fetch started for
+// profile A from being handed to profile B after a switch -- the values were
+// stamped with A's profile at creation, but the cache used to answer B.
+function traktSnapshotScope(profileId) {
+  const auth = TraktAuthStore.get(profileId);
+  return `${profileId}:${auth.username || auth.userSlug || ""}`;
+}
+
 let watchProgressSyncTimer = null;
 let watchProgressSyncInFlight = null;
 let traktProgressSnapshotCache = null;
@@ -349,7 +358,7 @@ function normalizeResumeProgress(progress = null) {
   };
 }
 
-function toProgressItemFromTraktHistory(historyItem) {
+function toProgressItemFromTraktHistory(historyItem, profileId = activeProfileId()) {
   if (!historyItem) return null;
   const isEpisode = historyItem.type === "episode";
   const tmdbId = isEpisode ? historyItem.showTmdbId : historyItem.tmdbId;
@@ -376,7 +385,7 @@ function toProgressItemFromTraktHistory(historyItem) {
     // Trakt history represents completed items, not partial progress.
     // Keep it out of Continue Watching while still letting it seed Next Up.
     progressPercent: 100,
-    profileId: activeProfileId(),
+    profileId,
     season:
       isEpisode &&
       historyItem.seasonNumber != null &&
@@ -391,7 +400,7 @@ function toProgressItemFromTraktHistory(historyItem) {
   };
 }
 
-function toProgressItemFromPlayback(playbackItem) {
+function toProgressItemFromPlayback(playbackItem, profileId = activeProfileId()) {
   if (!playbackItem || playbackItem.progressPercent == null) return null;
   const progressFraction = playbackItem.progressPercent / 100;
   if (
@@ -417,7 +426,7 @@ function toProgressItemFromPlayback(playbackItem) {
     positionMs: 0,
     durationMs: 0,
     progressPercent: playbackItem.progressPercent,
-    profileId: activeProfileId(),
+    profileId,
     season:
       isEpisode &&
       playbackItem.seasonNumber != null &&
@@ -432,7 +441,7 @@ function toProgressItemFromPlayback(playbackItem) {
   };
 }
 
-function toWatchedShowSeedItems(watchedShowItem) {
+function toWatchedShowSeedItems(watchedShowItem, profileId = activeProfileId()) {
   if (!watchedShowItem || !Array.isArray(watchedShowItem.seasons)) return [];
   const watchedEpisodes = [];
   const fallbackWatchedAt = watchedShowItem.lastWatchedAt
@@ -470,7 +479,7 @@ function toWatchedShowSeedItems(watchedShowItem) {
       positionMs: 1,
       durationMs: 1,
       progressPercent: 100,
-      profileId: activeProfileId(),
+      profileId,
       season: watchedEpisode.season,
       episode: watchedEpisode.episode,
       seasonNumber: watchedEpisode.season,
@@ -485,19 +494,21 @@ async function fetchTraktProgressSnapshot() {
     return { historyItems: [], playbackItems: [], watchedShowSeedItems: [] };
   }
 
+  const profileId = activeProfileId();
+  const scope = traktSnapshotScope(profileId);
   const now = Date.now();
   if (
     traktProgressSnapshotCache &&
-    traktProgressSnapshotCache.profileId === activeProfileId() &&
+    traktProgressSnapshotCache.scope === scope &&
     now - Number(traktProgressSnapshotCache.fetchedAt || 0) < TRAKT_PROGRESS_SNAPSHOT_TTL_MS
   ) {
     return traktProgressSnapshotCache.snapshot;
   }
-  if (traktProgressSnapshotInFlight) {
-    return traktProgressSnapshotInFlight;
+  if (traktProgressSnapshotInFlight && traktProgressSnapshotInFlight.scope === scope) {
+    return traktProgressSnapshotInFlight.promise;
   }
 
-  traktProgressSnapshotInFlight = (async () => {
+  const promise = (async () => {
     const [history, playbackState, watchedShows] = await Promise.all([
       withTimeout(
         TraktAuthService.fetchWatchHistory({ limit: 300 }),
@@ -523,25 +534,36 @@ async function fetchTraktProgressSnapshot() {
 
     const watchedShowSeedItems = [];
     watchedShows.forEach((watchedShow) => {
-      Array.prototype.push.apply(watchedShowSeedItems, toWatchedShowSeedItems(watchedShow));
+      Array.prototype.push.apply(
+        watchedShowSeedItems,
+        toWatchedShowSeedItems(watchedShow, profileId)
+      );
     });
 
     const snapshot = {
-      historyItems: history.map(toProgressItemFromTraktHistory).filter(Boolean),
-      playbackItems: playbackState.map(toProgressItemFromPlayback).filter(Boolean),
+      historyItems: history
+        .map((item) => toProgressItemFromTraktHistory(item, profileId))
+        .filter(Boolean),
+      playbackItems: playbackState
+        .map((item) => toProgressItemFromPlayback(item, profileId))
+        .filter(Boolean),
       watchedShowSeedItems
     };
     traktProgressSnapshotCache = {
-      profileId: activeProfileId(),
+      profileId,
+      scope,
       fetchedAt: Date.now(),
       snapshot
     };
     return snapshot;
   })().finally(() => {
-    traktProgressSnapshotInFlight = null;
+    if (traktProgressSnapshotInFlight && traktProgressSnapshotInFlight.promise === promise) {
+      traktProgressSnapshotInFlight = null;
+    }
   });
+  traktProgressSnapshotInFlight = { scope, promise };
 
-  return traktProgressSnapshotInFlight;
+  return promise;
 }
 
 async function fetchSimklProgressSnapshot() {
@@ -628,12 +650,10 @@ async function removeTraktPlaybackForContent(contentId) {
 }
 
 class WatchProgressRepository {
-  async saveProgress(progress, { authoritative = false } = {}) {
+  async saveProgress(progress, { authoritative = false, profileId = null } = {}) {
+    const pid = profileId == null ? activeProfileId() : String(profileId);
     if (isSeriesType(progress?.contentType)) {
-      ContinueWatchingPreferences.removeDismissedNextUpKeysForContent(
-        progress?.contentId,
-        activeProfileId()
-      );
+      ContinueWatchingPreferences.removeDismissedNextUpKeysForContent(progress?.contentId, pid);
     }
     const updatedAt = progress.updatedAt || Date.now();
     WatchProgressStore.upsert(
@@ -642,11 +662,18 @@ class WatchProgressRepository {
         source: String(progress?.source || "").trim() || selectedLocalProgressSource(),
         updatedAt
       },
-      activeProfileId(),
+      pid,
       { authoritative }
     );
-    patchOrInvalidateContinueWatchingDisplaySnapshot({ ...progress, updatedAt });
-    queueWatchProgressCloudSync();
+    if (pid === activeProfileId()) {
+      patchOrInvalidateContinueWatchingDisplaySnapshot({ ...progress, updatedAt });
+      queueWatchProgressCloudSync();
+    } else {
+      // The row belongs to a profile that is not on screen. Writing it is
+      // correct; patching the visible snapshot or pushing to the active
+      // profile's cloud scope is not.
+      invalidateContinueWatchingDisplaySnapshot();
+    }
   }
 
   async getProgressByContentId(contentId) {
@@ -675,8 +702,8 @@ class WatchProgressRepository {
     return this.getResumeByContentIds([contentId], target);
   }
 
-  async removeProgress(contentId, videoId = null) {
-    const pid = activeProfileId();
+  async removeProgress(contentId, videoId = null, { profileId = null } = {}) {
+    const pid = profileId == null ? activeProfileId() : String(profileId);
     const removedItems = WatchProgressStore.listForProfile(pid).filter((item) =>
       matchesProgressTarget(item, contentId, videoId)
     );
@@ -688,13 +715,16 @@ class WatchProgressRepository {
     // standing until something else forced a refresh.
     WatchProgressStore.remove(contentId, videoId, pid, { authoritative: true });
     invalidateContinueWatchingDisplaySnapshot();
+    if (pid !== activeProfileId()) {
+      return;
+    }
     queueWatchProgressCloudSync();
     void deleteWatchProgressFromCloud(removedItems).catch((error) => {
       console.warn("Watch progress cloud delete failed", error);
     });
   }
 
-  async removePlaybackProgress(identity = {}) {
+  async removePlaybackProgress(identity = {}, { profileId = null } = {}) {
     const contentId = String(identity?.contentId || identity?.itemId || "").trim();
     if (!contentId) {
       return false;
@@ -703,7 +733,7 @@ class WatchProgressRepository {
     const season = Number.isFinite(Number(identity?.season)) ? Number(identity.season) : null;
     const episode = Number.isFinite(Number(identity?.episode)) ? Number(identity.episode) : null;
     const isEpisode = season != null || episode != null;
-    const pid = activeProfileId();
+    const pid = profileId == null ? activeProfileId() : String(profileId);
     const removedItems = WatchProgressStore.listForProfile(pid).filter((item) => {
       if (String(item?.contentId || "") !== contentId) return false;
       if (!isEpisode) return !videoId || String(item?.videoId || "") === videoId;
@@ -723,6 +753,9 @@ class WatchProgressRepository {
       WatchProgressStore.listForProfile(pid).filter((item) => !removedItems.includes(item))
     );
     invalidateContinueWatchingDisplaySnapshot();
+    if (pid !== activeProfileId()) {
+      return true;
+    }
     queueWatchProgressCloudSync();
     void deleteWatchProgressFromCloud(removedItems).catch((error) => {
       console.warn("Watch progress cloud delete failed", error);
@@ -796,6 +829,14 @@ class WatchProgressRepository {
 
   async getAll() {
     return WatchProgressStore.listForProfile(activeProfileId());
+  }
+
+  // The progress rows that belong to the source that owns Continue Watching.
+  // A row recorded while another provider owned playback stays in the store so
+  // that provider can resume it, but it must not be read as this source's
+  // progress.
+  async getAllForSelectedSource() {
+    return filterForSelectedContinueWatchingSource(await this.getAll());
   }
 
   async getAllForContinueWatching() {

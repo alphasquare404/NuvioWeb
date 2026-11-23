@@ -9,6 +9,8 @@ import { MdbListSyncService } from "./mdbListSyncService.js";
 import { TraktAuthService, requestJson as traktRequestJson } from "./traktAuthService.js";
 import { ownsWatchProgress } from "./trackingWriteScope.js";
 import { mirrorWatchedToServers } from "../../core/media/mediaServerWatchedMirror.js";
+import { watchedItemIdentityValues } from "./watchedIdentity.js";
+import { selectWatchedItemsForSource } from "./watchedItemsScope.js";
 
 function activeProfileId() {
   return String(ProfileManager.getActiveProfileId() || "1");
@@ -40,6 +42,16 @@ function shouldUseTrakt() {
 
 function shouldUseMdbList() {
   return ownsWatchProgress(WatchProgressSource.MDBLIST) && MdbListAuthStore.isAuthenticated();
+}
+
+// The source that owns Continue Watching right now, matching how the progress
+// side resolves it: the selected setting only counts when that provider is
+// actually connected.
+function selectedWatchedSource() {
+  if (shouldUseSimkl()) return WatchProgressSource.SIMKL;
+  if (shouldUseMdbList()) return WatchProgressSource.MDBLIST;
+  if (shouldUseTrakt()) return WatchProgressSource.TRAKT;
+  return WatchProgressSource.NUVIO_SYNC;
 }
 
 function traktIds(item = {}) {
@@ -278,15 +290,12 @@ class WatchedItemsRepository {
   async getAll(limit = Infinity, { allowStale = false } = {}) {
     const profileId = activeProfileId();
     const local = WatchedItemsStore.listForProfile(profileId);
-    // A provider source answers with its own history. Local rows written under
-    // another provider would otherwise keep their badges beside MDBList's.
-    const visibleLocal = shouldUseMdbList()
-      ? local.filter((item) =>
-          String(item.source || "")
-            .toLowerCase()
-            .startsWith("mdblist")
-        )
-      : local;
+    // A local row records which source owned Continue Watching when it was
+    // written ("mdblist_local", "simkl_local", ...). Rows from another source
+    // must not be shown as this source's watched state: switching to Simkl used
+    // to present a title completed under MDBList as finished under Simkl too,
+    // even though neither the device nor Simkl had watched it there.
+    const visibleLocal = selectWatchedItemsForSource(local, selectedWatchedSource());
     const fetched = shouldUseSimkl()
       ? await SimklSyncService.getWatchedItems({ allowStale }).catch(() => [])
       : shouldUseMdbList()
@@ -306,11 +315,18 @@ class WatchedItemsRepository {
   async isWatched(contentId, options = {}) {
     const allowEpisodeEntries = Boolean(options?.allowEpisodeEntries);
     const all = await this.getAll();
+    const targetIdentities = Array.from(
+      watchedItemIdentityValues({ contentId: String(contentId || "") })
+    );
     return all.some((item) => {
-      if (item.contentId !== String(contentId || "")) {
+      if (!allowEpisodeEntries && !(item.season == null && item.episode == null)) {
         return false;
       }
-      return allowEpisodeEntries || (item.season == null && item.episode == null);
+      // A provider and the catalog are allowed to pick different ids for the
+      // same title (IMDb vs TMDb). The row carries its aliases, so compare the
+      // identity sets rather than one spelling of the id.
+      const itemIdentities = watchedItemIdentityValues(item);
+      return targetIdentities.some((identity) => itemIdentities.has(identity));
     });
   }
 
@@ -318,17 +334,22 @@ class WatchedItemsRepository {
     if (!item?.contentId) {
       return;
     }
+    const activeProfile = activeProfileId();
+    const pid = options.profileId == null ? activeProfile : String(options.profileId);
+    const profileIsActive = pid === activeProfile;
     // Local watched state is the completion boundary for Player and Continue
     // Watching. A tracking provider can be offline or reject a history write;
     // it must not prevent the local completion from being recorded.
-    clearTombstones(activeProfileId(), [item]);
+    clearTombstones(pid, [item]);
     WatchedItemsStore.upsert(
       {
         ...item,
-        source: String(item?.source || "").trim() || selectedLocalWatchedSource(),
+        source:
+          String(item?.source || "").trim() ||
+          (profileIsActive ? selectedLocalWatchedSource() : WatchProgressSource.NUVIO_SYNC),
         watchedAt: item.watchedAt || Date.now()
       },
-      activeProfileId(),
+      pid,
       // A completion is never one of playback's periodic writes: every caller
       // is a finish, a scrobble stop, a reconciliation sweep or the user
       // marking something watched. Announcing them like a tick left Home
@@ -336,6 +357,13 @@ class WatchedItemsRepository {
       // Continue Watching card. Callers may still opt out.
       { authoritative: options.authoritative !== false }
     );
+    // Provider credentials, the media-server mirror and the cloud push all
+    // belong to the profile currently on screen. A completion for a different
+    // profile is still recorded locally above, where that profile will find it
+    // when it becomes active again.
+    if (!profileIsActive) {
+      return;
+    }
     queueWatchedItemsCloudSync();
     if (options.skipServerWrite !== true) {
       void mirrorWatchedToServers(item, true).catch((error) => {

@@ -259,7 +259,16 @@ export const watchedSeriesReconciliationService = {
     }
 
     if (!allWatched && hasSeriesMarker) {
-      await watchedItemsRepository.unmark(normalizedContentId, { rootOnly: true });
+      // This marker is derived from episode rows, not a user command. Removing
+      // it used to send the provider a show-level history removal with no
+      // season/episode scope, which could delete episodes that are still
+      // watched. Only the local marker is reconciled here; an explicit episode
+      // un-watch still sends its own scoped target.
+      await watchedItemsRepository.unmark(normalizedContentId, {
+        rootOnly: true,
+        skipTrackingWrite: true,
+        skipServerWrite: true
+      });
       detailWatchedEnrichmentService.invalidateCache(normalizedContentId);
       return true;
     }

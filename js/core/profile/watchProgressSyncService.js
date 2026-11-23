@@ -57,6 +57,18 @@ let lastFailedPushAt = 0;
 // So a return from an outage owes a pull, and until it is paid no push leaves.
 let reconnectPullOwed = false;
 
+// Test seam for the reconnect retry schedule. The production delays total 37
+// seconds; a regression test only needs to observe that a failed pull keeps the
+// barrier and skips the push.
+let reconnectRetryDelaysMs = RECONNECT_RETRY_DELAYS_MS;
+
+export function setWatchProgressReconnectDelaysForTests(delays = null) {
+  reconnectRetryDelaysMs =
+    Array.isArray(delays) && delays.length
+      ? delays.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+      : RECONNECT_RETRY_DELAYS_MS;
+}
+
 export function noteWatchProgressReconnectPullOwed() {
   reconnectPullOwed = true;
 }
@@ -388,11 +400,16 @@ async function pushOnce() {
       return false;
     }
     const sessionGeneration = AuthManager.getSessionGeneration();
+    // Captured before the read: the rows belong to the profile that was active
+    // when they were read, and the payload must not be sent under a profile the
+    // user switched to while the store call was in flight.
+    const profileId = resolveProfileId();
     const items = coalesceSyncItems(await watchProgressRepository.getAll()).filter(
       (item) => isSyncableProgressItem(item) && isNuvioSyncOwnedProgress(item)
     );
-    if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
-    const profileId = resolveProfileId();
+    if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
+      return false;
+    }
 
     // Rows the baseline still carries but this device no longer has: viewing it
     // finished or removed. Deleting from the cloud is its own call, and when it
@@ -409,7 +426,11 @@ async function pushOnce() {
       (item) => !localKeys.has(progressKey(item))
     );
     if (retired.length) {
-      await WatchProgressSyncService.deleteItems(retired);
+      // A failed delete must not be acknowledged by the push that follows: doing
+      // so rewrites the baseline without the retired rows, and the deletion is
+      // never retried. Leaving the baseline alone keeps the intent durable.
+      const deleted = await WatchProgressSyncService.deleteItems(retired, { profileId });
+      if (!deleted) return false;
       if (!AuthManager.isSessionCurrent(sessionGeneration)) return false;
     }
 
@@ -450,6 +471,83 @@ async function pushOnce() {
   }
 }
 
+// The pull half of the sync, with an explicit success flag. The public pull
+// keeps returning the item list its callers expect; the reconnect path needs to
+// know whether an empty result means "the cloud is empty" or "the request
+// failed", because only the first may be followed by a push.
+async function pullWatchProgress({ watchedItemsReady = null } = {}) {
+  try {
+    if (!AuthManager.isAuthenticated) {
+      return { ok: false, items: [] };
+    }
+    const sessionGeneration = AuthManager.getSessionGeneration();
+    if (!shouldUseSupabaseWatchProgressSync()) {
+      return { ok: true, items: [] };
+    }
+    const profileId = resolveProfileId();
+    const localItems = await watchProgressRepository.getAll();
+    if (resolveProfileId() !== profileId) {
+      return { ok: false, items: localItems };
+    }
+    const rows = await SupabaseApi.rpc(PULL_RPC, { p_profile_id: profileId }, true);
+    if (!AuthManager.isSessionCurrent(sessionGeneration)) {
+      return { ok: false, items: [] };
+    }
+    const filteredRows = (Array.isArray(rows) ? rows : []).filter((row) => {
+      const rowProfile = row?.profile_id ?? row?.profileId ?? null;
+      if (rowProfile == null || rowProfile === "") {
+        return true;
+      }
+      return String(rowProfile) === String(profileId);
+    });
+    const remoteItems = filteredRows
+      .map((row) => mapProgressRow(row))
+      .filter((item) => Boolean(item.contentId) && isSyncableProgressItem(item));
+    const snapshotItems = normalizeProgressItems(remoteItems);
+    const baselineItems = readBaselineItems(profileId);
+    // A failed watched pull must not hold up progress; a stale watched store
+    // is the state this already handles conservatively by keeping the row.
+    if (watchedItemsReady) await Promise.resolve(watchedItemsReady).catch(() => {});
+    if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
+      return { ok: false, items: localItems };
+    }
+    const watchedAtByKey = buildWatchedAtByKey(WatchedItemsStore.listForProfile(profileId));
+    // Read local again, after the network. The list captured before the pull
+    // is a snapshot of a store that kept being written while the round trip
+    // was in flight -- a couple of seconds, which is exactly long enough for
+    // an external player's report to land. The merge then compared that stale
+    // copy against an equally old cloud row, concluded nothing had moved, and
+    // replaceAll wrote the old position back over the new one. It only
+    // happened on the first attempt because the second had no pull in flight.
+    const currentLocalItems = await watchProgressRepository.getAll();
+    if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
+      return { ok: false, items: localItems };
+    }
+    const mergedItems = mergeProgressItems(currentLocalItems, snapshotItems, baselineItems, {
+      watchedAtByKey
+    });
+    if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
+      return { ok: false, items: localItems };
+    }
+    // Stored first, and only then recorded. The baseline is this device's
+    // claim about what the cloud holds and what it has taken in; recording it
+    // before the rows landed meant a failure in between left it claiming a
+    // cloud the device never merged. Every later pull then read as "only I
+    // moved" and the device stopped following the cloud, with nothing to say
+    // so. The order is the whole fix: a write that does not happen leaves the
+    // old baseline, which is merely out of date, and the next pull settles it.
+    await watchProgressRepository.replaceAll(mergedItems, profileId);
+    writeBaselineItems(profileId, snapshotItems);
+    lastSuccessfulPushSignature = buildPushSignature(
+      buildRemoteProgressEntries(coalesceSyncItems(snapshotItems))
+    );
+    return { ok: true, items: mergedItems };
+  } catch (error) {
+    console.warn("Watch progress sync pull failed", error);
+    return { ok: false, items: [] };
+  }
+}
+
 export const WatchProgressSyncService = {
   // `watchedItemsReady` matters because a completion reaches this device as the
   // absence of a progress row, and only the watched records say so. Those are
@@ -458,74 +556,13 @@ export const WatchProgressSyncService = {
   // yet and hands a stale partial back. The network calls still overlap; only
   // the merge waits.
   async pull({ watchedItemsReady = null } = {}) {
-    try {
-      if (!AuthManager.isAuthenticated) {
-        return [];
-      }
-      const sessionGeneration = AuthManager.getSessionGeneration();
-      if (!shouldUseSupabaseWatchProgressSync()) {
-        return [];
-      }
-      const profileId = resolveProfileId();
-      const localItems = await watchProgressRepository.getAll();
-      if (resolveProfileId() !== profileId) {
-        return localItems;
-      }
-      const rows = await SupabaseApi.rpc(PULL_RPC, { p_profile_id: profileId }, true);
-      if (!AuthManager.isSessionCurrent(sessionGeneration)) return [];
-      const filteredRows = (Array.isArray(rows) ? rows : []).filter((row) => {
-        const rowProfile = row?.profile_id ?? row?.profileId ?? null;
-        if (rowProfile == null || rowProfile === "") {
-          return true;
-        }
-        return String(rowProfile) === String(profileId);
-      });
-      const remoteItems = filteredRows
-        .map((row) => mapProgressRow(row))
-        .filter((item) => Boolean(item.contentId) && isSyncableProgressItem(item));
-      const snapshotItems = normalizeProgressItems(remoteItems);
-      const baselineItems = readBaselineItems(profileId);
-      // A failed watched pull must not hold up progress; a stale watched store
-      // is the state this already handles conservatively by keeping the row.
-      if (watchedItemsReady) await Promise.resolve(watchedItemsReady).catch(() => {});
-      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
-        return localItems;
-      }
-      const watchedAtByKey = buildWatchedAtByKey(WatchedItemsStore.listForProfile(profileId));
-      // Read local again, after the network. The list captured before the pull
-      // is a snapshot of a store that kept being written while the round trip
-      // was in flight -- a couple of seconds, which is exactly long enough for
-      // an external player's report to land. The merge then compared that stale
-      // copy against an equally old cloud row, concluded nothing had moved, and
-      // replaceAll wrote the old position back over the new one. It only
-      // happened on the first attempt because the second had no pull in flight.
-      const currentLocalItems = await watchProgressRepository.getAll();
-      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
-        return localItems;
-      }
-      const mergedItems = mergeProgressItems(currentLocalItems, snapshotItems, baselineItems, {
-        watchedAtByKey
-      });
-      if (!AuthManager.isSessionCurrent(sessionGeneration) || resolveProfileId() !== profileId) {
-        return localItems;
-      }
-      // Stored first, and only then recorded. The baseline is this device's
-      // claim about what the cloud holds and what it has taken in; recording it
-      // before the rows landed meant a failure in between left it claiming a
-      // cloud the device never merged. Every later pull then read as "only I
-      // moved" and the device stopped following the cloud, with nothing to say
-      // so. The order is the whole fix: a write that does not happen leaves the
-      // old baseline, which is merely out of date, and the next pull settles it.
-      await watchProgressRepository.replaceAll(mergedItems, profileId);
-      writeBaselineItems(profileId, snapshotItems);
-      lastSuccessfulPushSignature = buildPushSignature(
-        buildRemoteProgressEntries(coalesceSyncItems(snapshotItems))
-      );
-      return mergedItems;
-    } catch (error) {
-      console.warn("Watch progress sync pull failed", error);
-      return [];
-    }
+    return (await pullWatchProgress({ watchedItemsReady })).items;
+  },
+
+  // Typed result for the reconnect path: a failed pull must never be read as an
+  // empty cloud and followed by a push of stale state.
+  async pullWithStatus({ watchedItemsReady = null } = {}) {
+    return pullWatchProgress({ watchedItemsReady });
   },
 
   async push() {
@@ -570,16 +607,25 @@ export const WatchProgressSyncService = {
     }
     // Completions made elsewhere have to be in hand before the merge runs, or a
     // partial left behind here outlives them and is pushed back over them.
-    for (let attempt = 0; attempt < RECONNECT_RETRY_DELAYS_MS.length; attempt += 1) {
-      const delay = RECONNECT_RETRY_DELAYS_MS[attempt];
+    for (let attempt = 0; attempt < reconnectRetryDelaysMs.length; attempt += 1) {
+      const delay = reconnectRetryDelaysMs[attempt];
       if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
       // Cleared on every attempt: the previous one failing is what arms it, and
       // an outage that has just ended is exactly when it should not apply.
       lastFailedPushSignature = "";
       lastFailedPushAt = 0;
-      await this.pull({
-        watchedItemsReady: WatchedItemsSyncService.pull().catch(() => null)
+      // Both pulls must succeed before anything is published: a failed pull
+      // returns an empty list, and treating that as an empty cloud is exactly
+      // how stale local state overwrites another device's viewing.
+      const watched = await WatchedItemsSyncService.pullWithStatus().catch(() => ({
+        ok: false,
+        items: []
+      }));
+      if (!watched.ok) continue;
+      const progress = await pullWatchProgress({
+        watchedItemsReady: Promise.resolve(watched.items)
       });
+      if (!progress.ok) continue;
       // Reconciled: this device's state now accounts for what the cloud holds,
       // so publishing it can no longer erase another device's viewing.
       reconnectPullOwed = false;
@@ -589,16 +635,16 @@ export const WatchProgressSyncService = {
       // nothing tried again. Before the progress push, because a completion in
       // the cloud is what stops another device restoring the partial this one
       // just deleted.
-      await WatchedItemsSyncService.push().catch((error) => {
+      const watchedPushed = await WatchedItemsSyncService.push().catch((error) => {
         console.warn("[ProgressSync] reconnect watched items push failed", error);
         return false;
       });
+      if (!watchedPushed) continue;
       const pushed = await this.push();
       if (pushed) return true;
     }
-    // Which of the two this is decides everything about what to do next: a
-    // dead session never recovers on its own, while a slow network does.
-    reconnectPullOwed = false;
+    // The barrier stays armed: pushing now would publish a state that has not
+    // been reconciled with the cloud. The next reconnect or foreground retries.
     console.warn(
       `[ProgressSync] reconnect(${trigger}) gave up after all attempts ` +
         `auth=${AuthManager.isAuthenticated} tokenExpired=${AuthManager.isAccessTokenExpired()}`
@@ -624,7 +670,7 @@ export const WatchProgressSyncService = {
     }
   },
 
-  async deleteItems(items = []) {
+  async deleteItems(items = [], { profileId = null } = {}) {
     try {
       if (!AuthManager.isAuthenticated) {
         return false;
@@ -632,6 +678,7 @@ export const WatchProgressSyncService = {
       if (!shouldUseSupabaseWatchProgressSync()) {
         return true;
       }
+      const scopeProfileId = profileId == null ? resolveProfileId() : Number(profileId);
       const keys = buildDeleteKeys(items);
       if (!keys.length) {
         return true;
@@ -639,18 +686,17 @@ export const WatchProgressSyncService = {
       await SupabaseApi.rpc(
         DELETE_RPC,
         {
-          p_profile_id: resolveProfileId(),
+          p_profile_id: scopeProfileId,
           p_keys: keys,
           p_origin_client_id: getSyncClientId()
         },
         true
       );
-      const profileId = resolveProfileId();
-      const baselineByKey = itemsByProgressKey(readBaselineItems(profileId));
+      const baselineByKey = itemsByProgressKey(readBaselineItems(scopeProfileId));
       normalizeProgressItems(items).forEach((item) => {
         baselineByKey.delete(progressKey(item));
       });
-      writeBaselineItems(profileId, Array.from(baselineByKey.values()));
+      writeBaselineItems(scopeProfileId, Array.from(baselineByKey.values()));
       lastSuccessfulPushSignature = "";
       return true;
     } catch (error) {

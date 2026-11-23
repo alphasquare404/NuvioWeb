@@ -1,39 +1,8 @@
 import { uniqueNonEmptyValues } from "./homeUtils.js";
 import { capTmdbImageSize } from "../../../core/media/tmdbImageSize.js";
 
-function normalizeHeroBackdropSource(source) {
-  // The hero is the one place a single picture fills the screen, so it is
-  // also the one place worth the pixels: a TMDB original rather than the
-  // 1280 everything else gets, and metahub's large rather than its medium.
-  const value = capTmdbImageSize(String(source || "").trim(), "heroBackdrop");
-  if (!value) {
-    return "";
-  }
-  // Continue Watching artwork is cached for up to 14 days. Upgrade only the
-  // old TMDB backdrop size so existing installs benefit without flushing the
-  // rest of the cache or increasing poster/episode-thumbnail payloads.
-  return value.replace(/(\/t\/p\/)w780\//i, "$1w1280/");
-}
-
-/**
- * Builds the ordered list of image candidates used by hero, poster and continue-watching cards.
- * @param {import("./homeTypes.js").HomeMediaSourceLike | null | undefined} item
- * @returns {string[]}
- */
-export function buildHeroBackdropSources(item = null) {
-  return uniqueNonEmptyValues([
-    // The plate first where there is one: a hero carries its own logo, and a
-    // second title printed into the artwork underneath it reads as a mistake.
-    normalizeHeroBackdropSource(item?.textlessBackdrop),
-    normalizeHeroBackdropSource(item?.background),
-    normalizeHeroBackdropSource(item?.backdrop),
-    normalizeHeroBackdropSource(item?.backdropUrl),
-    normalizeHeroBackdropSource(item?.landscapePoster),
-    item?.poster,
-    item?.thumbnail,
-    item?.episodeThumbnail
-  ]);
-}
+import { buildHeroBackdropSources } from "../../../core/media/heroArtworkSources.js";
+export { buildHeroBackdropSources } from "../../../core/media/heroArtworkSources.js";
 
 export function encodeHeroBackdropFallbacks(sources = []) {
   return sources.map((source) => encodeURIComponent(source)).join("|");
