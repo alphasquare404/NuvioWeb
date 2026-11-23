@@ -12,6 +12,14 @@ function activeProfileId() {
   return String(ProfileManager.getActiveProfileId() || "1");
 }
 
+// A provider snapshot belongs to one profile and one MDBList account. Keying
+// the in-flight request and the cache by that scope stops a fetch started for
+// profile A from being handed to profile B after a switch.
+function mdbListSnapshotScope(profileId) {
+  const auth = MdbListAuthService.getCurrentAuthState() || {};
+  return `${profileId}:${auth.userId || auth.username || ""}`;
+}
+
 function parseTimestamp(value) {
   if (value == null || value === "") return 0;
   const parsed = new Date(value).getTime();
@@ -312,7 +320,7 @@ export function buildMdbListHistoryPayload(item = {}, { remove = false } = {}) {
   };
 }
 
-async function fetchSnapshot() {
+async function fetchSnapshot(profileId) {
   if (!MdbListAuthService.isAuthenticated()) {
     return { historyItems: [], playbackItems: [], watchedShowSeedItems: [] };
   }
@@ -340,10 +348,14 @@ async function fetchSnapshot() {
   const watched = watchedResult?.response?.ok
     ? parseMdbListWatched(watchedResult.payload)
     : { historyItems: [], watchedShowSeedItems: [] };
+  // Stamped with the profile captured before the network, not the one active
+  // when the response lands: a switch during the round trip must not relabel
+  // the rows as somebody else's.
+  const stamp = (item) => ({ ...item, profileId });
   return {
-    playbackItems,
-    historyItems: watched.historyItems,
-    watchedShowSeedItems: watched.watchedShowSeedItems
+    playbackItems: playbackItems.map(stamp),
+    historyItems: watched.historyItems.map(stamp),
+    watchedShowSeedItems: watched.watchedShowSeedItems.map(stamp)
   };
 }
 
@@ -352,28 +364,36 @@ export const MdbListSyncService = {
     if (!MdbListAuthService.isAuthenticated()) {
       return { historyItems: [], playbackItems: [], watchedShowSeedItems: [] };
     }
+    const profileId = activeProfileId();
+    const scope = mdbListSnapshotScope(profileId);
     const now = Date.now();
     if (
       snapshotCache &&
-      snapshotCache.profileId === activeProfileId() &&
+      snapshotCache.scope === scope &&
       now - Number(snapshotCache.fetchedAt || 0) < maxAgeMs
     ) {
       return snapshotCache.snapshot;
     }
-    if (snapshotInFlight) return snapshotInFlight;
-    snapshotInFlight = fetchSnapshot()
+    if (snapshotInFlight && snapshotInFlight.scope === scope) {
+      return snapshotInFlight.promise;
+    }
+    const promise = fetchSnapshot(profileId)
       .then((snapshot) => {
         snapshotCache = {
-          profileId: activeProfileId(),
+          profileId,
+          scope,
           fetchedAt: Date.now(),
           snapshot
         };
         return snapshot;
       })
       .finally(() => {
-        snapshotInFlight = null;
+        if (snapshotInFlight && snapshotInFlight.promise === promise) {
+          snapshotInFlight = null;
+        }
       });
-    return snapshotInFlight;
+    snapshotInFlight = { scope, promise };
+    return promise;
   },
 
   async refresh({ force = true } = {}) {
@@ -387,10 +407,22 @@ export const MdbListSyncService = {
 
   async getWatchedItems({ allowStale = false } = {}) {
     const snapshot = await this.getProgressSnapshot({ maxAgeMs: allowStale ? SNAPSHOT_TTL_MS : 0 });
-    return (snapshot.historyItems || []).map((item) => ({
-      ...item,
-      watchedAt: Number(item.updatedAt || item.watchedAt || 0) || Date.now()
-    }));
+    // The watched payload has two shapes: flat history rows and episode rows
+    // nested under shows[].seasons[].episodes[]. The nested ones already seed
+    // Next Up; the watched list consumers must see the same episodes or the
+    // Detail badge disagrees with Next Up about what has been watched.
+    const byKey = new Map();
+    [...(snapshot.historyItems || []), ...(snapshot.watchedShowSeedItems || [])].forEach((item) => {
+      const key = `${String(item?.contentId || "")}:${item?.season ?? ""}:${item?.episode ?? ""}`;
+      const watchedAt = Number(item.updatedAt || item.watchedAt || 0) || Date.now();
+      const existing = byKey.get(key);
+      if (!existing || watchedAt >= Number(existing.watchedAt || 0)) {
+        byKey.set(key, { ...item, watchedAt });
+      }
+    });
+    return Array.from(byKey.values()).sort(
+      (left, right) => Number(right.watchedAt || 0) - Number(left.watchedAt || 0)
+    );
   },
 
   async markWatched(item = {}) {

@@ -1,3 +1,14 @@
+import { updateBrowserHeroGeometry } from "../../components/browserHeroGeometry.js";
+import { fitInlineSynopsis } from "../../components/inlineSynopsis.js";
+import {
+  PORTRAIT_BROWSER_HERO_QUERY,
+  usesCompactBrowserHero
+} from "../../components/browserHeroLayout.js";
+import {
+  heroImageFallbacks,
+  heroTargetData,
+  renderHeroTargetAttributes
+} from "../../../core/media/heroArtworkSources.js";
 import { playbackCompletionPreparation } from "../../../data/repository/playbackCompletionPreparation.js";
 import { mediaCatalogAddons } from "../../../data/repository/mediaServerCatalogRepository.js";
 import { MediaConnectionsStore } from "../../../core/media/mediaConnections.js";
@@ -31,7 +42,12 @@ import { WatchProgressStore } from "../../../data/local/watchProgressStore.js";
 import { WatchedItemsStore } from "../../../data/local/watchedItemsStore.js";
 import { TmdbService } from "../../../core/tmdb/tmdbService.js";
 import { capTmdbImageSize } from "../../../core/media/tmdbImageSize.js";
-import { readHeroArtwork, rememberHeroArtwork } from "../../../data/local/heroArtworkCache.js";
+import {
+  heroArtworkKey,
+  readHeroArtwork,
+  rememberHeroArtwork,
+  resolveHeroArtwork
+} from "../../../data/local/heroArtworkCache.js";
 import { TmdbMetadataService } from "../../../core/tmdb/tmdbMetadataService.js";
 import { isTmdbArtworkEnabled } from "../../../core/tmdb/tmdbArtworkGate.js";
 import {
@@ -133,6 +149,8 @@ import {
   CW_META_TIMEOUT_MS,
   CW_NEXT_UP_META_TIMEOUT_MS,
   CW_NEXT_UP_NEW_SEASON_UNAIRED_WINDOW_DAYS,
+  CW_NEXT_UP_PROGRESSIVE_BATCH,
+  CW_NEXT_UP_PROGRESSIVE_MAX_TOTAL,
   CW_PROGRESS_END_THRESHOLD,
   CW_PROGRESS_START_THRESHOLD,
   CW_RENDER_BATCH_ITEMS_CONSTRAINED,
@@ -154,6 +172,10 @@ import {
   HOME_ROW_TIMEOUT_MS
 } from "./homeConstants.js";
 import { resolveNextUpCandidates } from "./nextUpCandidateResolver.js";
+import {
+  mergeNextUpItemsIntoDisplay,
+  splitNextUpCandidates
+} from "./nextUpProgressiveResolution.js";
 import { shouldRefreshContinueWatchingForChange } from "./continueWatchingRefreshPolicy.js";
 import { onContinueWatchingStale } from "./continueWatchingStaleSignal.js";
 import {
@@ -281,16 +303,12 @@ async function getLocalSidebarProfileState() {
 // outranks `src`, so the artwork would freeze on the first title while the
 // copy under it kept changing. The choice is made here instead, and remade
 // on rotation and on rotating the phone.
-// Phones only. A tablet held upright still has its copy beside the artwork
-// rather than under it, and a poster in that layout looks like a mistake --
-// the wide picture is the one composed for a frame with text next to it.
-const HERO_PORTRAIT_MEDIA = "(orientation: portrait) and (max-width: 600px)";
 // Long enough for a TMDB answer on a decent connection, short enough that a
 // bad one is not something the person waits through.
 const HOME_HERO_ARTWORK_WAIT_MS = 700;
 
 function prefersPortraitHeroArtwork() {
-  return Boolean(globalThis.matchMedia?.(HERO_PORTRAIT_MEDIA)?.matches);
+  return Boolean(globalThis.matchMedia?.(PORTRAIT_BROWSER_HERO_QUERY)?.matches);
 }
 
 function resolveHeroArtworkSrc(display) {
@@ -298,11 +316,6 @@ function resolveHeroArtworkSrc(display) {
     return display.portraitBackdrop;
   }
   return display?.backdrop || "";
-}
-
-function heroArtworkKey(hero) {
-  const id = String(hero?.id || "").trim();
-  return id ? `${String(hero?.type || hero?.apiType || "movie")}:${id}` : "";
 }
 
 function usesPortraitHeroArtwork(display, src) {
@@ -315,10 +328,12 @@ function usesPortraitHeroArtwork(display, src) {
 }
 
 function renderHeroBackdropImage(display) {
-  if (!display?.backdrop) {
+  if (!resolveHeroArtworkSrc(display)) {
     return '<div class="home-hero-backdrop placeholder"></div>';
   }
-  const fallbackQueue = encodeHeroBackdropFallbacks(display.backdropFallbacks || []);
+  const fallbackQueue = encodeHeroBackdropFallbacks(
+    heroImageFallbacks(display, resolveHeroArtworkSrc(display))
+  );
   const fallbackAttribute = fallbackQueue
     ? ` data-fallback-srcs="${escapeAttribute(fallbackQueue)}"`
     : "";
@@ -607,6 +622,7 @@ function animateModernHeroBackdropSwap(backdrop, nextSrc, nextAlt = "", portrait
   }
 
   if (currentSrc === normalizedSrc) {
+    finalize();
     applyShape();
     backdrop.setAttribute("alt", normalizedAlt);
     backdrop.classList.remove("placeholder");
@@ -692,6 +708,7 @@ function animateModernHeroLogoSwap(logoNode, nextSrc, nextAlt = "") {
   }
 
   if (currentSrc === normalizedSrc) {
+    finalize();
     logoNode.setAttribute("alt", normalizedAlt);
     return;
   }
@@ -916,7 +933,16 @@ function normalizeHomeRowItem(row = null, item = null) {
       }
     );
   }
-  return normalizeCatalogItem(item, row.type || "movie");
+  return normalizeCatalogItem(
+    {
+      ...item,
+      addonBaseUrl: item.addonBaseUrl || row.addonBaseUrl || "",
+      addonId: item.addonId || row.addonId || "",
+      addonName: item.addonName || row.addonName || "",
+      catalogType: row.type || item.type || "movie"
+    },
+    row.type || "movie"
+  );
 }
 
 function formatEpisodeCode(season, episode) {
@@ -2161,9 +2187,7 @@ function renderHeroMarkup(layoutMode, heroItem, heroCandidates) {
                ${
                  isInteractive
                    ? `data-action="openDetail"
-               data-item-id="${escapeAttribute(heroItem?.id || "")}"
-               data-item-type="${escapeAttribute(heroItem?.type || "movie")}"
-               data-item-title="${escapeAttribute(heroItem?.name || "Untitled")}"`
+               ${renderHeroTargetAttributes(heroItem, escapeAttribute)}`
                    : ""
                }>
         <div class="home-hero-backdrop-wrap">
@@ -2172,7 +2196,7 @@ function renderHeroMarkup(layoutMode, heroItem, heroCandidates) {
         <div class="home-hero-copy">
           <div class="home-hero-brand">
             ${display.logo ? `<img class="home-hero-logo" src="${escapeAttribute(display.logo)}" alt="${escapeAttribute(display.title)}" decoding="async" fetchpriority="high" />` : ""}
-            <h1 class="home-hero-title-text${display.logo ? " is-hidden" : ""}">${escapeHtml(display.title)}</h1>
+            <h1 class="home-hero-title-text${display.logo ? " is-hidden" : ""}" title="${escapeAttribute(display.title)}">${escapeHtml(display.title)}</h1>
           </div>
           <div class="home-hero-meta-primary${display.metaPrimary.length ? "" : " is-empty"}">${renderMetaTokens(display.metaPrimary)}</div>
           <div class="home-hero-chip-row${display.chips.length ? "" : " is-empty"}">${display.chips.map((chip) => `<span class="home-hero-chip">${escapeHtml(chip)}</span>`).join("")}</div>
@@ -4077,8 +4101,7 @@ export const HomeScreen = {
       return hero;
     }
     void this.ensureHeroTextlessArtwork(hero);
-    const plate = this.heroTextlessArtwork?.get(key);
-    return plate?.textlessPoster || plate?.textlessBackdrop ? { ...hero, ...plate } : hero;
+    return resolveHeroArtwork(hero);
   },
 
   // A short hold before Home's first paint, so an upright phone opens with
@@ -4096,7 +4119,7 @@ export const HomeScreen = {
     }
     const hero = this.heroItem || this.heroCandidates?.[Number(this.heroIndex || 0)] || null;
     const key = heroArtworkKey(hero);
-    if (!key || this.heroTextlessArtwork?.has(key) || readHeroArtwork(key)) {
+    if (!key || readHeroArtwork(key)) {
       return;
     }
     await withTimeout(this.ensureHeroTextlessArtwork(hero), HOME_HERO_ARTWORK_WAIT_MS, null).catch(
@@ -4201,79 +4224,56 @@ export const HomeScreen = {
     }
   },
 
-  // The plates for one hero, fetched when it comes round and kept on the
-  // candidate itself, so the second time it appears costs nothing. A title
-  // with no plate is remembered as having none, or every pass would ask
-  // again for an answer that will not change.
+  // Only requests are memoized here. Artwork results belong to the shared
+  // cache, so Detail can replace them without leaving Home with a stale copy.
   async ensureHeroTextlessArtwork(hero) {
     const key = heroArtworkKey(hero);
-    if (!key) {
+    if (
+      !key ||
+      !isTmdbArtworkEnabled(TmdbSettingsStore.get()) ||
+      readHeroArtwork(key) ||
+      !getEffectiveTmdbApiKey()
+    )
       return;
-    }
-    // The cache holds TMDB artwork too: with the switches off, a plate learned
-    // in an earlier session must not reach the hero now.
-    const settings = TmdbSettingsStore.get();
-    if (!isTmdbArtworkEnabled(settings)) {
-      return;
-    }
-    if (!this.heroTextlessArtwork) {
-      this.heroTextlessArtwork = new Map();
-    }
-    // Asked once per title, answer or no answer.
-    if (this.heroTextlessArtwork.has(key)) {
-      return;
-    }
-    // What a previous run already learned. This is the whole point of the
-    // cache: a title seen before is drawn correctly on the first frame,
-    // with no request and nothing to swap.
-    const remembered = readHeroArtwork(key);
-    if (remembered) {
-      this.heroTextlessArtwork.set(key, {
-        textlessPoster: remembered.poster || null,
-        textlessBackdrop: remembered.backdrop || null
+    this.heroArtworkRequests ||= new Map();
+    const existing = this.heroArtworkRequests.get(key);
+    if (existing) return existing;
+    const request = Promise.resolve()
+      .then(async () => {
+        const tmdbId = await withTimeout(
+          TmdbService.ensureTmdbId(hero.id, hero.type || hero.apiType || "movie"),
+          2200,
+          null
+        );
+        if (!tmdbId) return;
+        const enriched = await withTimeout(
+          TmdbMetadataService.fetchEnrichment({
+            tmdbId,
+            contentType: hero.type || hero.apiType || "movie",
+            language: TmdbSettingsStore.get().language
+          }),
+          2400,
+          null
+        );
+        // Failure is not an answer saying this title has no artwork. Nor may an
+        // older request replace an answer Detail learned while it was pending.
+        if (!enriched) return;
+        if (!readHeroArtwork(key)) {
+          rememberHeroArtwork(key, {
+            poster: enriched.textlessPoster || "",
+            backdrop: enriched.textlessBackdrop || ""
+          });
+        }
+        if (heroArtworkKey(this.heroItem) === key) this.applyHeroToDom();
+      })
+      .catch((error) => {
+        console.warn("Hero textless artwork lookup failed", error);
+      })
+      .finally(() => {
+        if (this.heroArtworkRequests.get(key) === request) this.heroArtworkRequests.delete(key);
       });
-      return;
-    }
-    if (!getEffectiveTmdbApiKey()) {
-      return;
-    }
-    this.heroTextlessArtwork.set(key, {});
-    const itemType = String(hero.type || hero.apiType || "movie");
-    try {
-      const tmdbId = await withTimeout(TmdbService.ensureTmdbId(hero.id, itemType), 2200, null);
-      if (!tmdbId) {
-        return;
-      }
-      const enriched = await withTimeout(
-        TmdbMetadataService.fetchEnrichment({
-          tmdbId,
-          contentType: itemType,
-          language: settings.language
-        }),
-        2400,
-        null
-      );
-      // Remembered either way: a title with no plate is an answer worth
-      // keeping, or every run asks again for the same nothing.
-      rememberHeroArtwork(key, {
-        poster: enriched?.textlessPoster || "",
-        backdrop: enriched?.textlessBackdrop || ""
-      });
-      if (!enriched?.textlessPoster && !enriched?.textlessBackdrop) {
-        return;
-      }
-      this.heroTextlessArtwork.set(key, {
-        textlessPoster: enriched.textlessPoster || null,
-        textlessBackdrop: enriched.textlessBackdrop || null
-      });
-      // Still the one on screen? Then it gets the better picture now;
-      // otherwise it is already stored for its next turn.
-      if (heroArtworkKey(this.heroItem) === key) {
-        this.applyHeroToDom();
-      }
-    } catch (error) {
-      console.warn("Hero textless artwork lookup failed", error);
-    }
+    this.heroArtworkRequests.set(key, request);
+    return request;
   },
 
   applyHeroToDom() {
@@ -4296,19 +4296,29 @@ export const HomeScreen = {
     if (!display) {
       return;
     }
-    heroNode.dataset.itemId = hero?.id || "";
-    heroNode.dataset.itemType = hero?.type || "movie";
-    heroNode.dataset.itemTitle = hero?.name || "Untitled";
+    Object.assign(heroNode.dataset, heroTargetData(heroWithPlate));
     heroNode.classList.toggle("is-hero-meta-enriching", Boolean(hero?.heroMetaEnriching));
     heroNode.classList.remove("is-hero-focus-pending");
 
-    const backdrop = heroNode.querySelector(".home-hero-backdrop");
+    let backdrop = heroNode.querySelector(
+      ".home-hero-backdrop:not(.home-hero-backdrop-transition-ghost)"
+    );
+    if (backdrop && !(backdrop instanceof HTMLImageElement) && resolveHeroArtworkSrc(display)) {
+      const image = document.createElement("img");
+      image.className = "home-hero-backdrop";
+      image.setAttribute("onerror", buildImageFallbackErrorHandler());
+      backdrop.replaceWith(image);
+      backdrop = image;
+    }
     if (backdrop) {
       const src = resolveHeroArtworkSrc(display);
       const portraitShape = usesPortraitHeroArtwork(display, src);
+      backdrop.dataset.fallbackSrcs = encodeHeroBackdropFallbacks(heroImageFallbacks(display, src));
       if (this.layoutMode === "modern" && backdrop instanceof HTMLImageElement) {
         const shouldFreezeBackdrop =
-          Boolean(hero?.heroMetaEnriching) && String(backdrop.getAttribute("src") || "").trim();
+          !Platform.isBrowser() &&
+          Boolean(hero?.heroMetaEnriching) &&
+          String(backdrop.getAttribute("src") || "").trim();
         if (!shouldFreezeBackdrop) {
           animateModernHeroBackdropSwap(backdrop, src, display.title || "featured", portraitShape);
         } else {
@@ -4326,7 +4336,9 @@ export const HomeScreen = {
       }
     }
 
-    const logoNode = heroNode.querySelector(".home-hero-logo");
+    const logoNode = heroNode.querySelector(
+      ".home-hero-logo:not(.home-hero-logo-transition-ghost)"
+    );
     const brandNode = heroNode.querySelector(".home-hero-brand");
     if (display.logo) {
       if (logoNode) {
@@ -4336,7 +4348,9 @@ export const HomeScreen = {
           "afterbegin",
           `<img class="home-hero-logo home-hero-logo-transition-enter" src="${escapeAttribute(display.logo)}" alt="${escapeAttribute(display.title || "logo")}" decoding="async" fetchpriority="high" />`
         );
-        const insertedLogo = brandNode.querySelector(".home-hero-logo");
+        const insertedLogo = brandNode.querySelector(
+          ".home-hero-logo:not(.home-hero-logo-transition-ghost)"
+        );
         requestAnimationFrame(() => {
           insertedLogo?.classList?.add("is-visible");
           setTimeout(
@@ -4345,13 +4359,17 @@ export const HomeScreen = {
           );
         });
       }
-    } else if (logoNode) {
-      logoNode.remove();
+    } else {
+      brandNode
+        ?.querySelectorAll(".home-hero-logo-transition-ghost")
+        .forEach((node) => node.remove());
+      logoNode?.remove();
     }
 
     const titleNode = heroNode.querySelector(".home-hero-title-text");
     if (titleNode) {
       titleNode.textContent = display.title || "Untitled";
+      titleNode.setAttribute("title", titleNode.textContent);
       titleNode.classList.toggle("is-hidden", Boolean(display.logo));
     }
 
@@ -4397,7 +4415,6 @@ export const HomeScreen = {
       descriptionText.dataset.sourceText = display.description || "";
       descriptionNode.classList.toggle("is-empty", !display.description);
       this.bindHomeHeroDescriptionToggle(heroNode);
-      this.bindHomeHeroTitleToggle(heroNode);
     }
     this.scheduleHomeTruncationUpdate({ scope: heroNode });
     this.syncCollectionHeroMedia(hero);
@@ -7028,6 +7045,12 @@ export const HomeScreen = {
       const isModernHeroDescription =
         node.classList.contains("home-hero-description") &&
         Boolean(node.closest(".home-modern-hero-copy"));
+      if (Platform.isBrowser() && isModernHeroDescription && toggleNode) {
+        textHost.dataset.sourceText = sourceText;
+        textHost.dataset.fullText = sourceText;
+        fitInlineSynopsis(node, textHost, toggleNode, sourceText);
+        return;
+      }
       const { text: fullText, truncated: wordTrimmed } = isModernHeroDescription
         ? limitTextToWordCount(sourceText, modernHeroDescriptionWordLimit)
         : { text: sourceText, truncated: false };
@@ -7067,7 +7090,9 @@ export const HomeScreen = {
   },
 
   applyModernHeroDescriptionBounds(root = null) {
-    if (!this.container || this.layoutMode !== "modern") {
+    // Browser text and its inline control are measured together by
+    // fitInlineSynopsis. These legacy bounds belong only to the TV layout.
+    if (Platform.isBrowser() || !this.container || this.layoutMode !== "modern") {
       return;
     }
     // Two lines, whatever the screen. A wide hero has more room, but it is the
@@ -7106,38 +7131,6 @@ export const HomeScreen = {
       );
       description.style.maxHeight = `${lineBoxHeight * modernHeroDescriptionMaxLines}px`;
     });
-  },
-
-  // The hero's synopsis is trimmed to two lines on a phone held upright, with
-  // the rest behind a "more" that follows the sentence -- the same control the
-  // detail page's synopsis carries.
-  //
-  // The button is built here rather than in the hero's markup because swiping
-  // to the next hero rewrites the synopsis, and one code path creating it means
-  // the first hero and every one after it get the same thing.
-  // A title with no logo is drawn as text, and some of them are a sentence
-  // long -- long enough to cover the artwork it is written over. Two lines
-  // is the most it takes before it stops being a title; pressing it shows
-  // the rest, since a title is its own control and there is nowhere to put
-  // another one.
-  bindHomeHeroTitleToggle(root = null) {
-    if (!this.container) {
-      return;
-    }
-    const scope = root instanceof HTMLElement ? root : this.container;
-    const title = scope.querySelector(".home-hero-title-text");
-    if (!(title instanceof HTMLElement)) {
-      return;
-    }
-    title.classList.remove("is-expanded");
-    // On a pointer the whole title is readable without pressing anything.
-    title.setAttribute("title", title.textContent || "");
-    title.onclick = (event) => {
-      // The hero itself opens the title; reading the name of it should not.
-      event.preventDefault();
-      event.stopPropagation();
-      title.classList.toggle("is-expanded");
-    };
   },
 
   // The label has to be inside the two lines, not under them.
@@ -7203,6 +7196,19 @@ export const HomeScreen = {
         : t("detail_description_more", {}, "more");
     };
     const syncToggle = () => {
+      if (Platform.isBrowser()) {
+        const host = description.querySelector(".home-hero-description-text");
+        if (host) {
+          fitInlineSynopsis(
+            description,
+            host,
+            toggle,
+            host.dataset.sourceText || this.heroItem?.description || "",
+            description.classList.contains("is-expanded")
+          );
+        }
+        return;
+      }
       if (description.classList.contains("is-expanded")) {
         return;
       }
@@ -7239,6 +7245,10 @@ export const HomeScreen = {
       const expanded = description.classList.toggle("is-expanded");
       toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
       setLabel(expanded);
+      if (Platform.isBrowser()) {
+        syncToggle();
+        return;
+      }
       if (expanded) {
         // The synopsis as written, and no height to keep it out of. Not
         // `fullText`, which is already the forty-word cut.
@@ -9565,6 +9575,7 @@ export const HomeScreen = {
   // happened, or a Watch Progress source switched while Home was covered, was
   // to reload the page.
   onRouteRevealed() {
+    this.applyHeroToDom();
     if (
       this.mediaCatalogSettings !==
       JSON.stringify(
@@ -9677,17 +9688,19 @@ export const HomeScreen = {
       this.watchedItems = Array.isArray(watchedItems) ? watchedItems : [];
       this.watchedTitleIds = buildWatchedTitleIdSet(this.watchedItems);
       this.continueWatchingResolved = true;
-      this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(
-        this.allProgress,
-        this.continueWatching,
-        this.getContinueWatchingWatchedItems(),
-        {
-          applyDaysCap: applyTraktNextUpDaysCap,
-          includeProgressSeeds: !includeWatchedItemNextUpSeeds,
-          includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
-          nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
-        }
-      ).slice(0, CW_MAX_NEXT_UP_LOOKUPS);
+      this.setNextUpCandidates(
+        this.selectNextUpProgressCandidates(
+          this.allProgress,
+          this.continueWatching,
+          this.getContinueWatchingWatchedItems(),
+          {
+            applyDaysCap: applyTraktNextUpDaysCap,
+            includeProgressSeeds: !includeWatchedItemNextUpSeeds,
+            includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
+            nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
+          }
+        )
+      );
 
       const previousDisplaySignature = buildContinueWatchingSignature(this.continueWatchingDisplay);
       const shouldShow = Boolean(
@@ -10108,17 +10121,19 @@ export const HomeScreen = {
         if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
           return;
         }
-        this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(
-          this.allProgress,
-          this.continueWatching,
-          this.getContinueWatchingWatchedItems(),
-          {
-            applyDaysCap: applyTraktNextUpDaysCap,
-            includeProgressSeeds: !includeWatchedItemNextUpSeeds,
-            includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
-            nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
-          }
-        ).slice(0, CW_MAX_NEXT_UP_LOOKUPS);
+        this.setNextUpCandidates(
+          this.selectNextUpProgressCandidates(
+            this.allProgress,
+            this.continueWatching,
+            this.getContinueWatchingWatchedItems(),
+            {
+              applyDaysCap: applyTraktNextUpDaysCap,
+              includeProgressSeeds: !includeWatchedItemNextUpSeeds,
+              includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
+              nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
+            }
+          )
+        );
         let shouldShowLoading = Boolean(
           (this.continueWatching?.length || 0) + (this.nextUpProgressCandidates?.length || 0)
         );
@@ -10831,6 +10846,7 @@ export const HomeScreen = {
       this.catalogSeeAllMap = new Map();
     } else if (this.layoutMode === "modern") {
       modernLayoutPayload = renderModernHomeLayout({
+        browserHero: Platform.isBrowser(),
         rows: this.rows,
         heroItem,
         heroCandidates: this.heroCandidates,
@@ -11028,7 +11044,6 @@ export const HomeScreen = {
     this.buildNavigationModel();
     this.bindHomeViewportEvents();
     this.bindHomeHeroDescriptionToggle();
-    this.bindHomeHeroTitleToggle();
     if (Platform.isBrowser()) {
       this.browserCardTouchIntentCleanup?.();
       this.browserCardTouchIntentCleanup = bindBrowserCardTouchIntent(this.container, {
@@ -11680,6 +11695,80 @@ export const HomeScreen = {
     }
 
     return null;
+  },
+
+  setNextUpCandidates(candidates = []) {
+    const { initial, pending } = splitNextUpCandidates(candidates, CW_MAX_NEXT_UP_LOOKUPS);
+    this.nextUpProgressCandidates = initial;
+    this.nextUpPendingCandidates = pending;
+    this.nextUpResolvedTotal = initial.length;
+    // A new selection invalidates any batch still resolving from the previous
+    // one, so a slow lookup cannot append itself to a different list.
+    this.nextUpProgressiveGeneration = Number(this.nextUpProgressiveGeneration || 0) + 1;
+    this.nextUpProgressiveRunning = false;
+  },
+
+  // Resolve the next small batch of older Next Up candidates. Called when the
+  // Continue Watching row is scrolled to its rendered end, so a library with
+  // more shows than the first batch no longer hides the older ones forever.
+  resolveMoreNextUpCandidates() {
+    if (this.nextUpProgressiveRunning) {
+      return false;
+    }
+    const pending = Array.isArray(this.nextUpPendingCandidates) ? this.nextUpPendingCandidates : [];
+    if (!pending.length) {
+      return false;
+    }
+    const resolvedTotal = Number(this.nextUpResolvedTotal || 0);
+    if (resolvedTotal >= CW_NEXT_UP_PROGRESSIVE_MAX_TOTAL) {
+      return false;
+    }
+    const batch = pending.splice(0, CW_NEXT_UP_PROGRESSIVE_BATCH);
+    if (!batch.length) {
+      return false;
+    }
+    this.nextUpResolvedTotal = resolvedTotal + batch.length;
+    const generation = Number(this.nextUpProgressiveGeneration || 0);
+    const profileId = String(ProfileManager.getActiveProfileId() || "");
+    this.nextUpProgressiveRunning = true;
+    void (async () => {
+      try {
+        const items = await this.buildNextUpItems({
+          allProgress: this.allProgress,
+          inProgressItems: this.continueWatching,
+          nextUpProgressCandidates: batch,
+          watchedItems: this.getContinueWatchingWatchedItems()
+        });
+        if (
+          generation !== Number(this.nextUpProgressiveGeneration || 0) ||
+          Router.getCurrent() !== "home" ||
+          String(ProfileManager.getActiveProfileId() || "") !== profileId
+        ) {
+          return;
+        }
+        this.appendNextUpDisplayItems(items);
+      } catch (error) {
+        console.warn("Progressive Next Up resolution failed", error);
+      } finally {
+        this.nextUpProgressiveRunning = false;
+      }
+    })();
+    return true;
+  },
+
+  appendNextUpDisplayItems(items = []) {
+    const merged = mergeNextUpItemsIntoDisplay(this.continueWatchingDisplay || [], items, {
+      sort: (list) =>
+        sortContinueWatchingItemsForDisplay(list, this.layoutPrefs?.continueWatchingSortMode),
+      maxItems: CW_MAX_VISIBLE_ITEMS
+    });
+    if (!merged.added) {
+      return false;
+    }
+    this.continueWatchingDisplay = merged.items;
+    this.persistContinueWatchingSnapshot();
+    this.requestBackgroundRender();
+    return true;
   },
 
   async buildNextUpItems({
@@ -12380,6 +12469,12 @@ export const HomeScreen = {
         return;
       }
 
+      if (settings.useArtwork) {
+        rememberHeroArtwork(heroArtworkKey(hero), {
+          poster: enriched.textlessPoster || "",
+          backdrop: enriched.textlessBackdrop || ""
+        });
+      }
       this.heroItem = normalizeCatalogItem(
         {
           ...hero,
@@ -12459,7 +12554,7 @@ export const HomeScreen = {
 
   bindHeroOrientationWatch() {
     if (!Platform.isBrowser() || this.heroOrientationWatcher) return;
-    const query = globalThis.matchMedia?.(HERO_PORTRAIT_MEDIA);
+    const query = globalThis.matchMedia?.(PORTRAIT_BROWSER_HERO_QUERY);
     if (!query?.addEventListener) return;
     this.heroOrientationWatcher = () => {
       // Only the artwork depends on the shape of the screen, and this is the
@@ -12483,6 +12578,15 @@ export const HomeScreen = {
   // button's. That button's middle depends on the copy's padding and its own
   // height, both of which change across seven breakpoints -- so it is measured
   // once and handed to CSS rather than restated in each of them.
+  syncBrowserHeroGeometry() {
+    if (!Platform.isBrowser()) return;
+    const hero = this.container?.querySelector(".home-modern-hero-card");
+    const next = this.container?.querySelector(
+      ".home-continue-card:not(.home-continue-card-loading), .home-content-card"
+    );
+    updateBrowserHeroGeometry(hero, hero, next, !usesCompactBrowserHero());
+  },
+
   alignDesktopHeroControls(heroCard) {
     const button = heroCard?.querySelector(".desktop-hero-details-button");
     if (!button) {
@@ -12499,6 +12603,7 @@ export const HomeScreen = {
 
   watchDesktopHeroControlsAlignment(heroCard) {
     this.alignDesktopHeroControls(heroCard);
+    this.syncBrowserHeroGeometry();
     if (this.desktopHeroAlignmentObserver?.target === heroCard) {
       return;
     }
@@ -12507,8 +12612,13 @@ export const HomeScreen = {
       this.desktopHeroAlignmentObserver = null;
       return;
     }
-    const observer = new ResizeObserver(() => this.alignDesktopHeroControls(heroCard));
+    const observer = new ResizeObserver(() => {
+      this.alignDesktopHeroControls(heroCard);
+      this.syncBrowserHeroGeometry();
+    });
     observer.observe(heroCard);
+    const nextRail = this.container?.querySelector(".home-modern-rows-viewport");
+    if (nextRail) observer.observe(nextRail);
     this.desktopHeroAlignmentObserver = { target: heroCard, observer };
   },
 
@@ -12944,7 +13054,11 @@ export const HomeScreen = {
     ) {
       return false;
     }
-    return this.appendContinueWatchingBatch();
+    const appended = this.appendContinueWatchingBatch();
+    // Reaching the rendered end is also the moment to resolve the next batch of
+    // older Next Up candidates; the batch is appended when it lands.
+    this.resolveMoreNextUpCandidates();
+    return appended;
   },
 
   setupContinueWatchingProgressiveRendering() {
@@ -12977,6 +13091,7 @@ export const HomeScreen = {
             (Number(track.scrollLeft || 0) + Number(track.clientWidth || 0));
           if (distanceFromEnd <= stride * CW_RENDER_LOAD_AHEAD_ITEMS) {
             this.appendContinueWatchingBatch();
+            this.resolveMoreNextUpCandidates();
           }
         },
         this.isPerformanceConstrained() ? 160 : 80

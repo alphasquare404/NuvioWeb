@@ -43,8 +43,29 @@ function normalizeItem(item = {}, profileId) {
     // source's completions from another's. Absent on rows that predate it, and
     // on rows pulled from a cloud that has no column for it.
     ...(String(item.source || "").trim() ? { source: String(item.source).trim() } : {}),
+    // Provider aliases are the bridge between the id a catalog opened the
+    // title with and the id the provider recorded. Keeping them lets a watched
+    // row be recognised whether the title is opened as IMDb or as TMDb.
+    ...(String(item.imdbId || "").trim() ? { imdbId: String(item.imdbId).trim() } : {}),
+    ...(Number(item.tmdbId) > 0 ? { tmdbId: Number(item.tmdbId) } : {}),
+    ...(Number(item.traktId) > 0 ? { traktId: Number(item.traktId) } : {}),
     watchedAt: Number(item.watchedAt || Date.now())
   };
+}
+
+// The cap is a per-person safety valve, not a shared budget: a profile with a
+// large history used to evict another profile's rows entirely.
+function capPerProfile(items = [], limit = 5000) {
+  const counts = new Map();
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const pid = String(item?.profileId || "1");
+    const count = counts.get(pid) || 0;
+    if (count >= limit) {
+      return false;
+    }
+    counts.set(pid, count + 1);
+    return true;
+  });
 }
 
 function watchedItemKey(item = {}) {
@@ -98,12 +119,14 @@ export const WatchedItemsStore = {
       return;
     }
     const key = watchedItemKey(normalized);
-    const next = dedupeAndSort([
-      normalized,
-      ...this.listAll().filter(
-        (entry) => !(String(entry.profileId || "1") === pid && watchedItemKey(entry) === key)
-      )
-    ]).slice(0, 5000);
+    const next = capPerProfile(
+      dedupeAndSort([
+        normalized,
+        ...this.listAll().filter(
+          (entry) => !(String(entry.profileId || "1") === pid && watchedItemKey(entry) === key)
+        )
+      ])
+    );
     LocalStore.set(WATCHED_ITEMS_KEY, next);
     notifyChange(pid, "upsert", { authoritative, item: normalized });
   },
@@ -146,7 +169,7 @@ export const WatchedItemsStore = {
       .filter((item) => Boolean(item.contentId));
     LocalStore.set(
       WATCHED_ITEMS_KEY,
-      dedupeAndSort([...normalized, ...keepOtherProfiles]).slice(0, 5000)
+      capPerProfile(dedupeAndSort([...normalized, ...keepOtherProfiles]))
     );
     notifyChange(pid, "replaceForProfile");
   }

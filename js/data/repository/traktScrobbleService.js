@@ -4,10 +4,13 @@ import { ownsWatchProgress } from "./trackingWriteScope.js";
 
 const START_DEBOUNCE_MS = 15000;
 const MAX_CONSECUTIVE_FAILURES = 3;
+const BREAKER_COOLDOWN_MS = 60000;
 const WATCHED_THRESHOLD_PERCENT = 80;
 
 let startDebounceTimer = null;
 let consecutiveFailures = 0;
+let breakerOpenedAt = 0;
+let breakerProbeInFlight = false;
 let lastAction = null;
 
 function clearStartTimer() {
@@ -90,17 +93,28 @@ async function markAsWatchedLocally(context) {
 }
 
 async function sendScrobbleRequest(action, context) {
+  // Circuit breaker: after repeated failures, stop hammering and let one probe
+  // through after the cooldown. The old latch never reset on its own, so Trakt
+  // stayed silent for the rest of the module's life.
   if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-    return;
+    if (Date.now() - breakerOpenedAt < BREAKER_COOLDOWN_MS) {
+      return;
+    }
+    if (breakerProbeInFlight) {
+      return;
+    }
+    breakerProbeInFlight = true;
   }
 
   if (!context?.imdbId && !context?.tmdbId && !context?.traktId) {
+    breakerProbeInFlight = false;
     return;
   }
 
   try {
     const accessToken = await TraktAuthService.getValidAccessToken();
     if (!accessToken) {
+      breakerProbeInFlight = false;
       return;
     }
 
@@ -113,6 +127,8 @@ async function sendScrobbleRequest(action, context) {
 
     if (response.ok) {
       consecutiveFailures = 0;
+      breakerOpenedAt = 0;
+      breakerProbeInFlight = false;
       lastAction = action;
 
       if (action === "stop" && context.progressPercent >= WATCHED_THRESHOLD_PERCENT) {
@@ -120,6 +136,10 @@ async function sendScrobbleRequest(action, context) {
       }
     } else {
       consecutiveFailures++;
+      breakerProbeInFlight = false;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        breakerOpenedAt = Date.now();
+      }
       console.warn(`[TraktScrobble] ${action} failed`, {
         status: response.status,
         failures: consecutiveFailures
@@ -127,6 +147,10 @@ async function sendScrobbleRequest(action, context) {
     }
   } catch (error) {
     consecutiveFailures++;
+    breakerProbeInFlight = false;
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      breakerOpenedAt = Date.now();
+    }
     console.warn(`[TraktScrobble] ${action} error`, {
       error: error.message,
       failures: consecutiveFailures
@@ -171,5 +195,11 @@ export const TraktScrobbleService = {
   cancel() {
     clearStartTimer();
     lastAction = null;
+    // A new playback is a new session: it may retry even if the previous one
+    // tripped the breaker. Persisting the latch across sessions is what made
+    // scrobbling stay dead until a reload.
+    consecutiveFailures = 0;
+    breakerOpenedAt = 0;
+    breakerProbeInFlight = false;
   }
 };

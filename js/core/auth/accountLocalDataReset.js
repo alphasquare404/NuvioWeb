@@ -146,3 +146,83 @@ export function hasAccountLocalData(storage = globalThis.localStorage) {
   }
   return false;
 }
+
+/**
+ * Remove one profile's account-scoped local data.
+ *
+ * Deleting a profile used to remove only its entry in the profile list. The
+ * slot was then handed to the next profile created with it, which inherited the
+ * previous person's watch history, progress, provider credentials and sync
+ * baselines -- and could push them back to the cloud as its own.
+ *
+ * The shapes the app stores this data in are all handled here: arrays of rows
+ * carrying `profileId`, profile envelopes with a `profiles` map, plain maps
+ * keyed by profile id, and device rows suffixed with `:<profileId>`.
+ */
+export function clearProfileLocalData(profileId, storage = globalThis.localStorage) {
+  const pid = String(profileId || "").trim();
+  if (!pid || !storage) return false;
+  const keys = [];
+  try {
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key) keys.push(key);
+    }
+  } catch (_) {
+    return false;
+  }
+
+  let changed = false;
+  keys.forEach((key) => {
+    try {
+      if (key.endsWith(`:${pid}`)) {
+        storage.removeItem(key);
+        changed = true;
+        return;
+      }
+      const raw = storage.getItem(key);
+      if (raw == null || !shouldRemoveLocalStorageKey(key, raw)) return;
+      let value = null;
+      try {
+        value = JSON.parse(raw);
+      } catch (_) {
+        return;
+      }
+      if (Array.isArray(value)) {
+        const next = value.filter((item) => String(item?.profileId ?? "1") !== pid);
+        if (next.length !== value.length) {
+          storage.setItem(key, JSON.stringify(next));
+          changed = true;
+        }
+        return;
+      }
+      if (!value || typeof value !== "object") return;
+      if (
+        value.profiles &&
+        typeof value.profiles === "object" &&
+        !Array.isArray(value.profiles) &&
+        Object.prototype.hasOwnProperty.call(value.profiles, pid)
+      ) {
+        delete value.profiles[pid];
+        storage.setItem(key, JSON.stringify(value));
+        changed = true;
+        return;
+      }
+      // Plain maps keyed by profile id, such as the sync baselines. Only a
+      // nested object is profile state; a scalar under the same key could be
+      // an unrelated setting and is left alone.
+      if (
+        Object.prototype.hasOwnProperty.call(value, pid) &&
+        value[pid] &&
+        typeof value[pid] === "object"
+      ) {
+        delete value[pid];
+        storage.setItem(key, JSON.stringify(value));
+        changed = true;
+      }
+    } catch (_) {
+      // Best effort: a key that cannot be read is not a reason to stop.
+    }
+  });
+  return changed;
+}

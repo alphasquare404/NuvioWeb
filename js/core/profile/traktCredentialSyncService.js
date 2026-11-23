@@ -1,4 +1,5 @@
 import { AuthManager } from "../auth/authManager.js";
+import { captureAccountScope, isAccountScopeCurrent } from "../auth/accountScope.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { TraktAuthStore } from "../../data/local/traktAuthStore.js";
 import { ProfileManager } from "./profileManager.js";
@@ -158,11 +159,18 @@ export const TraktCredentialSyncService = {
           return false;
         }
         const resolvedProfileId = resolveProfileId(profileId);
+        // A response from the previous account must not repopulate credentials
+        // after a sign-out or account switch that happened while it was in
+        // flight. Profile id alone cannot tell those two sessions apart.
+        const scope = captureAccountScope(resolvedProfileId);
         const credentials = await SupabaseApi.rpc(
           PULL_RPC,
           { p_profile_id: resolvedProfileId },
           true
         );
+        if (!isAccountScopeCurrent(scope)) {
+          return false;
+        }
         const traktCredential = (Array.isArray(credentials) ? credentials : []).find(
           (entry) => String(entry?.provider || "").toLowerCase() === TRAKT_PROVIDER
         );

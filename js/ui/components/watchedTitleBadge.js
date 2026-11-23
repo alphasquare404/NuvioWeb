@@ -1,4 +1,5 @@
 import { I18n } from "../../i18n/index.js";
+import { watchedItemIdentityValues } from "../../data/repository/watchedIdentity.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -14,12 +15,13 @@ function watchedBadgeLabel() {
 }
 
 export function buildWatchedTitleIdSet(watchedItems = []) {
-  return new Set(
-    (Array.isArray(watchedItems) ? watchedItems : [])
-      .filter((item) => item?.season == null && item?.episode == null)
-      .map((item) => String(item?.contentId || "").trim())
-      .filter(Boolean)
-  );
+  const ids = new Set();
+  (Array.isArray(watchedItems) ? watchedItems : [])
+    .filter((item) => item?.season == null && item?.episode == null)
+    .forEach((item) => {
+      watchedItemIdentityValues(item).forEach((identity) => ids.add(identity));
+    });
+  return ids;
 }
 
 export function isTitleItemWatched(item = {}, watchedTitleIds = null) {
@@ -27,7 +29,11 @@ export function isTitleItemWatched(item = {}, watchedTitleIds = null) {
   if (!id || !watchedTitleIds || typeof watchedTitleIds.has !== "function") {
     return false;
   }
-  return watchedTitleIds.has(id);
+  // The title can be opened under a different id than the one the watched row
+  // was recorded with. Every verified alias is part of the set.
+  return Array.from(watchedItemIdentityValues(item)).some((identity) =>
+    watchedTitleIds.has(identity)
+  );
 }
 
 export function renderWatchedBadgeGlyph(className = "title-watched-badge-svg") {

@@ -57,15 +57,23 @@ export function watchProgressCardKey({ contentId, videoId, season, episode } = {
   if (!normalizedContentId) {
     return "";
   }
-  const rawVideoId = videoId == null ? "" : String(videoId).trim();
-  // A film's own id is not a distinct video within it.
-  const normalizedVideoId = !rawVideoId || rawVideoId === normalizedContentId ? "main" : rawVideoId;
   // Episodes are numbered from one, so a zero means "not an episode at all".
   // Season is only meaningful alongside one, which leaves a real season zero --
   // a specials run -- intact.
   const episodeNumber = Number(episode);
   const hasEpisode = Number.isFinite(episodeNumber) && episodeNumber > 0;
   const seasonNumber = Number(season);
+  const rawVideoId = videoId == null ? "" : String(videoId).trim();
+  // The stream/file video id is not part of an episode's identity: a watched
+  // record may drop it while the progress row keeps one, and using it in the
+  // key split one episode into two -- which kept a completed card alive and
+  // stopped Next Up preparation from finding the watched row. A film still uses
+  // its own id to distinguish versions.
+  const normalizedVideoId = hasEpisode
+    ? "main"
+    : !rawVideoId || rawVideoId === normalizedContentId
+      ? "main"
+      : rawVideoId;
   return [
     normalizedContentId,
     normalizedVideoId,
