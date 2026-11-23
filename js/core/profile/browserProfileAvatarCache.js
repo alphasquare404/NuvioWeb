@@ -17,7 +17,9 @@ function safeSourceIdentity(sourceUrl = "") {
 
 function cacheKey(identity = "") {
   const origin = globalThis.location?.origin || "https://nuvio.local";
-  return new Request(new URL(`__nuvio_profile_avatar__/${encodeURIComponent(identity)}`, `${origin}/`).href);
+  return new Request(
+    new URL(`__nuvio_profile_avatar__/${encodeURIComponent(identity)}`, `${origin}/`).href
+  );
 }
 
 function readIndex() {
@@ -108,9 +110,9 @@ export async function resolveBrowserProfileAvatar(
     const response = await fetch(sourceUrl, { credentials: "omit" });
     const cached = await storeAvatar(identity, response);
     if (cached) rememberIdentity(profile, identity);
-    return cached;
+    return cached || String(sourceUrl).trim();
   } catch {
-    return "";
+    return String(sourceUrl).trim();
   }
 }
 
