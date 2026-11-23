@@ -10,6 +10,7 @@ import { TraktAuthService, requestJson as traktRequestJson } from "./traktAuthSe
 import { ownsWatchProgress } from "./trackingWriteScope.js";
 import { mirrorWatchedToServers } from "../../core/media/mediaServerWatchedMirror.js";
 import { watchedItemIdentityValues } from "./watchedIdentity.js";
+import { selectWatchedItemsForSource } from "./watchedItemsScope.js";
 
 function activeProfileId() {
   return String(ProfileManager.getActiveProfileId() || "1");
@@ -41,6 +42,16 @@ function shouldUseTrakt() {
 
 function shouldUseMdbList() {
   return ownsWatchProgress(WatchProgressSource.MDBLIST) && MdbListAuthStore.isAuthenticated();
+}
+
+// The source that owns Continue Watching right now, matching how the progress
+// side resolves it: the selected setting only counts when that provider is
+// actually connected.
+function selectedWatchedSource() {
+  if (shouldUseSimkl()) return WatchProgressSource.SIMKL;
+  if (shouldUseMdbList()) return WatchProgressSource.MDBLIST;
+  if (shouldUseTrakt()) return WatchProgressSource.TRAKT;
+  return WatchProgressSource.NUVIO_SYNC;
 }
 
 function traktIds(item = {}) {
@@ -279,15 +290,12 @@ class WatchedItemsRepository {
   async getAll(limit = Infinity, { allowStale = false } = {}) {
     const profileId = activeProfileId();
     const local = WatchedItemsStore.listForProfile(profileId);
-    // A provider source answers with its own history. Local rows written under
-    // another provider would otherwise keep their badges beside MDBList's.
-    const visibleLocal = shouldUseMdbList()
-      ? local.filter((item) =>
-          String(item.source || "")
-            .toLowerCase()
-            .startsWith("mdblist")
-        )
-      : local;
+    // A local row records which source owned Continue Watching when it was
+    // written ("mdblist_local", "simkl_local", ...). Rows from another source
+    // must not be shown as this source's watched state: switching to Simkl used
+    // to present a title completed under MDBList as finished under Simkl too,
+    // even though neither the device nor Simkl had watched it there.
+    const visibleLocal = selectWatchedItemsForSource(local, selectedWatchedSource());
     const fetched = shouldUseSimkl()
       ? await SimklSyncService.getWatchedItems({ allowStale }).catch(() => [])
       : shouldUseMdbList()

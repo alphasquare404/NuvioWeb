@@ -66,7 +66,7 @@ async function fetchLocalWatchedMap(contentId) {
 }
 
 async function fetchProgressWatchedMap(contentId) {
-  const allProgress = await watchProgressRepository.getAll();
+  const allProgress = await watchProgressRepository.getAllForSelectedSource();
   const progressMap = new Map();
 
   for (const progress of allProgress) {

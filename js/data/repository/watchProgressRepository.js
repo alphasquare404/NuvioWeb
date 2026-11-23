@@ -831,6 +831,14 @@ class WatchProgressRepository {
     return WatchProgressStore.listForProfile(activeProfileId());
   }
 
+  // The progress rows that belong to the source that owns Continue Watching.
+  // A row recorded while another provider owned playback stays in the store so
+  // that provider can resume it, but it must not be read as this source's
+  // progress.
+  async getAllForSelectedSource() {
+    return filterForSelectedContinueWatchingSource(await this.getAll());
+  }
+
   async getAllForContinueWatching() {
     // Cloud/debrid playback has no add-on metadata, so its display fields and
     // the session needed to resolve a fresh URL travel with the progress entry
