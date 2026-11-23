@@ -149,6 +149,8 @@ import {
   CW_META_TIMEOUT_MS,
   CW_NEXT_UP_META_TIMEOUT_MS,
   CW_NEXT_UP_NEW_SEASON_UNAIRED_WINDOW_DAYS,
+  CW_NEXT_UP_PROGRESSIVE_BATCH,
+  CW_NEXT_UP_PROGRESSIVE_MAX_TOTAL,
   CW_PROGRESS_END_THRESHOLD,
   CW_PROGRESS_START_THRESHOLD,
   CW_RENDER_BATCH_ITEMS_CONSTRAINED,
@@ -170,6 +172,10 @@ import {
   HOME_ROW_TIMEOUT_MS
 } from "./homeConstants.js";
 import { resolveNextUpCandidates } from "./nextUpCandidateResolver.js";
+import {
+  mergeNextUpItemsIntoDisplay,
+  splitNextUpCandidates
+} from "./nextUpProgressiveResolution.js";
 import { shouldRefreshContinueWatchingForChange } from "./continueWatchingRefreshPolicy.js";
 import { onContinueWatchingStale } from "./continueWatchingStaleSignal.js";
 import {
@@ -9682,17 +9688,19 @@ export const HomeScreen = {
       this.watchedItems = Array.isArray(watchedItems) ? watchedItems : [];
       this.watchedTitleIds = buildWatchedTitleIdSet(this.watchedItems);
       this.continueWatchingResolved = true;
-      this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(
-        this.allProgress,
-        this.continueWatching,
-        this.getContinueWatchingWatchedItems(),
-        {
-          applyDaysCap: applyTraktNextUpDaysCap,
-          includeProgressSeeds: !includeWatchedItemNextUpSeeds,
-          includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
-          nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
-        }
-      ).slice(0, CW_MAX_NEXT_UP_LOOKUPS);
+      this.setNextUpCandidates(
+        this.selectNextUpProgressCandidates(
+          this.allProgress,
+          this.continueWatching,
+          this.getContinueWatchingWatchedItems(),
+          {
+            applyDaysCap: applyTraktNextUpDaysCap,
+            includeProgressSeeds: !includeWatchedItemNextUpSeeds,
+            includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
+            nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
+          }
+        )
+      );
 
       const previousDisplaySignature = buildContinueWatchingSignature(this.continueWatchingDisplay);
       const shouldShow = Boolean(
@@ -10113,17 +10121,19 @@ export const HomeScreen = {
         if (token !== this.homeLoadToken || Router.getCurrent() !== "home") {
           return;
         }
-        this.nextUpProgressCandidates = this.selectNextUpProgressCandidates(
-          this.allProgress,
-          this.continueWatching,
-          this.getContinueWatchingWatchedItems(),
-          {
-            applyDaysCap: applyTraktNextUpDaysCap,
-            includeProgressSeeds: !includeWatchedItemNextUpSeeds,
-            includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
-            nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
-          }
-        ).slice(0, CW_MAX_NEXT_UP_LOOKUPS);
+        this.setNextUpCandidates(
+          this.selectNextUpProgressCandidates(
+            this.allProgress,
+            this.continueWatching,
+            this.getContinueWatchingWatchedItems(),
+            {
+              applyDaysCap: applyTraktNextUpDaysCap,
+              includeProgressSeeds: !includeWatchedItemNextUpSeeds,
+              includeWatchedItemSeeds: includeWatchedItemNextUpSeeds,
+              nextUpFromFurthestEpisode: prefs.nextUpFromFurthestEpisode
+            }
+          )
+        );
         let shouldShowLoading = Boolean(
           (this.continueWatching?.length || 0) + (this.nextUpProgressCandidates?.length || 0)
         );
@@ -11687,6 +11697,80 @@ export const HomeScreen = {
     return null;
   },
 
+  setNextUpCandidates(candidates = []) {
+    const { initial, pending } = splitNextUpCandidates(candidates, CW_MAX_NEXT_UP_LOOKUPS);
+    this.nextUpProgressCandidates = initial;
+    this.nextUpPendingCandidates = pending;
+    this.nextUpResolvedTotal = initial.length;
+    // A new selection invalidates any batch still resolving from the previous
+    // one, so a slow lookup cannot append itself to a different list.
+    this.nextUpProgressiveGeneration = Number(this.nextUpProgressiveGeneration || 0) + 1;
+    this.nextUpProgressiveRunning = false;
+  },
+
+  // Resolve the next small batch of older Next Up candidates. Called when the
+  // Continue Watching row is scrolled to its rendered end, so a library with
+  // more shows than the first batch no longer hides the older ones forever.
+  resolveMoreNextUpCandidates() {
+    if (this.nextUpProgressiveRunning) {
+      return false;
+    }
+    const pending = Array.isArray(this.nextUpPendingCandidates) ? this.nextUpPendingCandidates : [];
+    if (!pending.length) {
+      return false;
+    }
+    const resolvedTotal = Number(this.nextUpResolvedTotal || 0);
+    if (resolvedTotal >= CW_NEXT_UP_PROGRESSIVE_MAX_TOTAL) {
+      return false;
+    }
+    const batch = pending.splice(0, CW_NEXT_UP_PROGRESSIVE_BATCH);
+    if (!batch.length) {
+      return false;
+    }
+    this.nextUpResolvedTotal = resolvedTotal + batch.length;
+    const generation = Number(this.nextUpProgressiveGeneration || 0);
+    const profileId = String(ProfileManager.getActiveProfileId() || "");
+    this.nextUpProgressiveRunning = true;
+    void (async () => {
+      try {
+        const items = await this.buildNextUpItems({
+          allProgress: this.allProgress,
+          inProgressItems: this.continueWatching,
+          nextUpProgressCandidates: batch,
+          watchedItems: this.getContinueWatchingWatchedItems()
+        });
+        if (
+          generation !== Number(this.nextUpProgressiveGeneration || 0) ||
+          Router.getCurrent() !== "home" ||
+          String(ProfileManager.getActiveProfileId() || "") !== profileId
+        ) {
+          return;
+        }
+        this.appendNextUpDisplayItems(items);
+      } catch (error) {
+        console.warn("Progressive Next Up resolution failed", error);
+      } finally {
+        this.nextUpProgressiveRunning = false;
+      }
+    })();
+    return true;
+  },
+
+  appendNextUpDisplayItems(items = []) {
+    const merged = mergeNextUpItemsIntoDisplay(this.continueWatchingDisplay || [], items, {
+      sort: (list) =>
+        sortContinueWatchingItemsForDisplay(list, this.layoutPrefs?.continueWatchingSortMode),
+      maxItems: CW_MAX_VISIBLE_ITEMS
+    });
+    if (!merged.added) {
+      return false;
+    }
+    this.continueWatchingDisplay = merged.items;
+    this.persistContinueWatchingSnapshot();
+    this.requestBackgroundRender();
+    return true;
+  },
+
   async buildNextUpItems({
     allProgress = [],
     inProgressItems = [],
@@ -12970,7 +13054,11 @@ export const HomeScreen = {
     ) {
       return false;
     }
-    return this.appendContinueWatchingBatch();
+    const appended = this.appendContinueWatchingBatch();
+    // Reaching the rendered end is also the moment to resolve the next batch of
+    // older Next Up candidates; the batch is appended when it lands.
+    this.resolveMoreNextUpCandidates();
+    return appended;
   },
 
   setupContinueWatchingProgressiveRendering() {
@@ -13003,6 +13091,7 @@ export const HomeScreen = {
             (Number(track.scrollLeft || 0) + Number(track.clientWidth || 0));
           if (distanceFromEnd <= stride * CW_RENDER_LOAD_AHEAD_ITEMS) {
             this.appendContinueWatchingBatch();
+            this.resolveMoreNextUpCandidates();
           }
         },
         this.isPerformanceConstrained() ? 160 : 80

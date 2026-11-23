@@ -9,6 +9,11 @@ export const HOME_LAYOUT_SEQUENCE = ["modern", "grid", "classic"];
 
 export const CW_MAX_NEXT_UP_LOOKUPS = 32;
 export const CW_MAX_NEXT_UP_CONCURRENCY = 4;
+// Next Up is resolved in stages: the newest candidates first so the row paints
+// quickly, then older shows in small batches as the row is scrolled. The total
+// bound keeps a very old library from turning into an unbounded lookup run.
+export const CW_NEXT_UP_PROGRESSIVE_BATCH = 16;
+export const CW_NEXT_UP_PROGRESSIVE_MAX_TOTAL = 200;
 export const CW_MAX_ENRICHMENT_CONCURRENCY = 4;
 export const CW_MAX_VISIBLE_ITEMS = 300;
 // On a cold profile activation (no display snapshot yet), the very first
