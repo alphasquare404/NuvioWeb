@@ -1,4 +1,10 @@
+import { I18n } from "../../i18n/index.js";
+
 const HOVER_DELAY_MS = 2000;
+
+function t(key, params = {}, fallback = key) {
+  return I18n.t(key, params, { fallback });
+}
 const CLOSE_GRACE_MS = 160;
 
 function escapeHtml(value) {
@@ -16,7 +22,9 @@ function canUseHoverPreview() {
 
 function formatTypeLabel(type) {
   const normalized = String(type || "").trim().toLowerCase();
-  return ["series", "show", "tv"].includes(normalized) ? "Series" : "Movie";
+  return ["series", "show", "tv"].includes(normalized)
+    ? I18n.t("type_series", {}, { fallback: "Series" })
+    : I18n.t("type_movie", {}, { fallback: "Movie" });
 }
 
 function formatGenres(genres) {
@@ -134,11 +142,11 @@ export function createDesktopMediaHoverPreview({
     const genres = formatGenres(item.genres);
     const overview = String(item.description || item.overview || "").trim();
     node.querySelector(".desktop-media-hover-preview-copy").innerHTML = `
-      <h2>${escapeHtml(item.name || item.title || "Untitled")}</h2>
+      <h2>${escapeHtml(item.name || item.title || t("common.untitled", {}, "Untitled"))}</h2>
       ${meta ? `<p class="desktop-media-hover-preview-meta">${escapeHtml(meta)}</p>` : ""}
       ${rating || genres ? `<p class="desktop-media-hover-preview-facts">${[rating, genres ? escapeHtml(genres) : ""].filter(Boolean).join("<span aria-hidden=\"true\"> • </span>")}</p>` : ""}
       ${overview ? `<p class="desktop-media-hover-preview-overview">${escapeHtml(overview)}</p>` : ""}
-      <div class="desktop-media-hover-preview-actions"><button type="button" class="desktop-media-hover-preview-primary" data-hover-preview-details><span class="material-icons">info</span>View Details</button>${typeof resolveTrailer === "function" && item.allowTrailer !== false ? '<button type="button" class="desktop-media-hover-preview-secondary" data-hover-preview-trailer><span class="material-icons">play_arrow</span>Play Trailer</button>' : ""}${typeof getLibraryMembership === "function" && typeof toggleLibrary === "function" && item.allowLibraryActions !== false ? '<button type="button" class="desktop-media-hover-preview-library" data-hover-preview-library aria-label="Add to Library" title="Add to Library"><span class="material-icons">add</span></button>' : ""}</div>`;
+      <div class="desktop-media-hover-preview-actions"><button type="button" class="desktop-media-hover-preview-primary" data-hover-preview-details><span class="material-icons">info</span>${escapeHtml(t("common.viewDetails", {}, "View Details"))}</button>${typeof resolveTrailer === "function" && item.allowTrailer !== false ? '<button type="button" class="desktop-media-hover-preview-secondary" data-hover-preview-trailer><span class="material-icons">play_arrow</span>${escapeHtml(t("detail.playTrailer", {}, "Play Trailer"))}</button>' : ""}${typeof getLibraryMembership === "function" && typeof toggleLibrary === "function" && item.allowLibraryActions !== false ? '<button type="button" class="desktop-media-hover-preview-library" data-hover-preview-library aria-label="${escapeHtml(t("detail.addToLibrary", {}, "Add to Library"))}" title="${escapeHtml(t("detail.addToLibrary", {}, "Add to Library"))}"><span class="material-icons">add</span></button>' : ""}</div>`;
   };
   const refreshLibraryButton = async (node, item, token) => {
     const button = node?.querySelector?.("[data-hover-preview-library]");

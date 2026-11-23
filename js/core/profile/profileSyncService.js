@@ -2,6 +2,7 @@ import { AuthManager } from "../auth/authManager.js";
 import { MAX_PROFILES, ProfileManager } from "./profileManager.js";
 import { SupabaseApi } from "../../data/remote/supabase/supabaseApi.js";
 import { LocalStore } from "../storage/localStore.js";
+import { I18n } from "../../i18n/index.js";
 
 const TABLE = "tv_profiles";
 const FALLBACK_TABLE = "profiles";
@@ -49,7 +50,7 @@ function mapProfileRow(row = {}) {
   return {
     id: String(normalizedIndex),
     profileIndex: normalizedIndex,
-    name: row.name || `Profile ${normalizedIndex}`,
+    name: row.name || I18n.t("profile_default_name", { index: normalizedIndex }, { fallback: `Profile ${normalizedIndex}` }),
     avatarColorHex: row.avatar_color_hex || row.avatarColorHex || "#1E88E5",
     avatarId: row.avatar_id || row.avatarId || null,
     avatarUrl: row.avatar_url || row.avatarUrl || null,

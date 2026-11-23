@@ -9,6 +9,11 @@ import {
 } from "../../../core/addons/homeCatalogs.js";
 import { Platform } from "../../../platform/index.js";
 import { ExperienceModeStore } from "../../../data/local/experienceModeStore.js";
+import { I18n } from "../../../i18n/index.js";
+
+function t(key, fallback) {
+  return I18n.t(key, {}, { fallback });
+}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -162,7 +167,7 @@ export const CatalogOrderScreen = {
           <div class="catalog-order-card-copy">
             <h2>${escapeHtml(item.catalogName)} - ${escapeHtml(toDisplayTypeLabel(item.type))}</h2>
             <p class="catalog-order-card-subtitle">${escapeHtml(item.addonName)}</p>
-            ${item.isDisabled ? '<p class="catalog-order-card-disabled">Disabled on Home</p>' : ""}
+            ${item.isDisabled ? `<p class="catalog-order-card-disabled">${t("catalog_order_disabled_on_home", "Disabled on Home")}</p>` : ""}
           </div>
           <div class="catalog-order-card-actions">
             <button type="button"
@@ -181,7 +186,7 @@ export const CatalogOrderScreen = {
                     data-col="2"
                     data-action="toggle"
                     data-disable-key="${escapeHtml(item.disableKey)}"
-                    tabindex="-1">${item.isDisabled ? "Enable" : "Disable"}</button>
+                    tabindex="-1">${item.isDisabled ? t("catalog_order_enable", "Enable") : t("catalog_order_disable", "Disable")}</button>
           </div>
         </article>
       `;
@@ -191,10 +196,10 @@ export const CatalogOrderScreen = {
     this.container.innerHTML = `
       <div class="catalog-order-shell">
         <main class="catalog-order-main">
-          <h1 class="catalog-order-title">Reorder Home Catalogs</h1>
-          <p class="catalog-order-subtitle">This controls catalog row order on Home (Classic + Modern + Grid).</p>
+          <h1 class="catalog-order-title">${t("catalog_order_title", "Reorder Home Catalogs")}</h1>
+          <p class="catalog-order-subtitle">${t("catalog_order_subtitle", "This controls catalog row order on Home (Classic + Modern + Grid).")}</p>
           <section class="catalog-order-list">
-            ${this.model.items.length ? itemsHtml : '<p class="catalog-order-empty">No home catalogs available yet.</p>'}
+            ${this.model.items.length ? itemsHtml : `<p class="catalog-order-empty">${t("catalog_order_empty", "No home catalogs available yet.")}</p>`}
           </section>
         </main>
       </div>

@@ -2154,8 +2154,8 @@ export const PlayerScreen = {
       this.streamCandidates = this.normalizeStreamCandidates([
         {
           url: initialStreamLocator,
-          title: "Current source",
-          addonName: "Current"
+          title: t("stream_current_source", {}, "Current source"),
+          addonName: t("stream_current_source_addon", {}, "Current")
         }
       ]);
     }

@@ -40,33 +40,81 @@ const PROFILE_PIN_OPEN_MS = 320;
 const PROFILE_PIN_CLOSE_MS = 240;
 const PROFILE_BACKGROUND_ANIMATION_MS = 520;
 const PROFILE_PIN_TEXT = {
-  set: "Set PIN",
-  change: "Change PIN",
-  remove: "Remove PIN",
-  headingSet: (name) => `Create a 4-digit PIN for ${name}.`,
-  headingUnlock: (name) => `Enter your PIN to access ${name}.`,
-  headingConfirm: "Confirm your new PIN.",
-  headingVerifyChange: (name) => `Enter current PIN to change PIN for ${name}.`,
-  headingVerifyRemove: (name) => `Enter current PIN to remove lock for ${name}.`,
-  supportSet: "This PIN will be required before opening this profile.",
-  supportUnlock: "Use your remote or keyboard to enter 4 digits.",
-  supportConfirm: "Re-enter the same 4 digits to finish setup.",
-  supportVerifyChange: "Enter the current 4-digit PIN before setting a new one.",
-  supportVerifyRemove: "Enter the current 4-digit PIN to remove this lock.",
-  mismatch: "PINs did not match. Enter a new PIN again.",
-  forgot: "Forgot PIN? Reset it from your Nuvio account on nuvio website.",
-  back: "Press back to cancel",
-  verifying: "Verifying…",
-  saving: "Saving…",
-  saved: (name) => `PIN saved for ${name}.`,
-  removed: (name) => `PIN lock removed for ${name}.`,
-  saveFailed: "Could not save PIN. Try again.",
-  verifyFailed: "Could not verify PIN. Try again.",
-  verifyOffline: "This profile is locked and needs a connection to unlock. Reconnect and try again.",
-  pinNeedsConnection: "PIN changes need a connection.",
-  invalidPin: "Invalid PIN. Try again.",
-  incorrectCurrent: "Current PIN is incorrect.",
-  lockedRetry: (seconds) => `Profile is locked. Try again in ${seconds}s.`
+  get set() {
+    return t("profile_pin_set", {}, "Set PIN");
+  },
+  get change() {
+    return t("profile_pin_change", {}, "Change PIN");
+  },
+  get remove() {
+    return t("profile_pin_remove", {}, "Remove PIN");
+  },
+  headingSet: (name) => t("profile_pin_overlay_set_heading", { name }, `Create a 4-digit PIN for ${name}.`),
+  headingUnlock: (name) =>
+    t("profile_pin_overlay_unlock_heading", { name }, `Enter your PIN to access ${name}.`),
+  get headingConfirm() {
+    return t("profile_pin_overlay_confirm_heading", {}, "Confirm your new PIN.");
+  },
+  headingVerifyChange: (name) =>
+    t("profile_pin_overlay_change_verify_heading", { name }, `Enter current PIN to change PIN for ${name}.`),
+  headingVerifyRemove: (name) =>
+    t("profile_pin_overlay_remove_verify_heading", { name }, `Enter current PIN to remove lock for ${name}.`),
+  get supportSet() {
+    return t("profile_pin_overlay_set_support", {}, "This PIN will be required before opening this profile.");
+  },
+  get supportUnlock() {
+    return t("profile_pin_overlay_unlock_support", {}, "Use your remote or keyboard to enter 4 digits.");
+  },
+  get supportConfirm() {
+    return t("profile_pin_overlay_confirm_support", {}, "Re-enter the same 4 digits to finish setup.");
+  },
+  get supportVerifyChange() {
+    return t("profile_pin_overlay_change_verify_support", {}, "Enter the current 4-digit PIN before setting a new one.");
+  },
+  get supportVerifyRemove() {
+    return t("profile_pin_overlay_remove_verify_support", {}, "Enter the current 4-digit PIN to remove this lock.");
+  },
+  get mismatch() {
+    return t("profile_pin_overlay_mismatch", {}, "PINs did not match. Enter a new PIN again.");
+  },
+  get forgot() {
+    return t("profile_pin_overlay_forgot_hint", {}, "Forgot PIN? Reset it from your Nuvio account on nuvio website.");
+  },
+  get back() {
+    return t("profile_pin_overlay_back_hint", {}, "Press back to cancel");
+  },
+  get verifying() {
+    return t("profile_pin_verifying", {}, "Verifying…");
+  },
+  get saving() {
+    return t("action_saving", {}, "Saving…");
+  },
+  saved: (name) => t("profile_pin_saved_for_profile", { name }, `PIN saved for ${name}.`),
+  removed: (name) => t("profile_pin_lock_removed_for_profile", { name }, `PIN lock removed for ${name}.`),
+  get saveFailed() {
+    return t("profile_pin_save_error", {}, "Could not save PIN. Try again.");
+  },
+  get verifyFailed() {
+    return t("profile_pin_verify_error", {}, "Could not verify PIN. Try again.");
+  },
+  get verifyOffline() {
+    return t(
+      "profile_pin_offline_unlock_error",
+      {},
+      "This profile is locked and needs a connection to unlock. Reconnect and try again."
+    );
+  },
+  get pinNeedsConnection() {
+    return t("profile_pin_needs_connection", {}, "PIN changes need a connection.");
+  },
+  get invalidPin() {
+    return t("profile_pin_invalid", {}, "Invalid PIN. Try again.");
+  },
+  get incorrectCurrent() {
+    return t("profile_pin_incorrect", {}, "Current PIN is incorrect.");
+  },
+  lockedRetry: (seconds) =>
+    t("profile_pin_locked", { seconds }, `Profile is locked. Try again in ${seconds}s.`)
 };
 
 function t(key, params = {}, fallback = key) {

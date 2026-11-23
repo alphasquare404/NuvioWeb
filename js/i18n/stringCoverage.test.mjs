@@ -75,7 +75,6 @@ const REPORTED = [
 const KNOWN_GAPS = [
   "account_signin_qr_subtitle_desktop",
   "account_signin_title",
-  "cast_detail_empty",
   "common.copied",
   "common.disabled",
   "common_close",
